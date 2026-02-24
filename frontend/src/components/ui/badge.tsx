@@ -6,7 +6,7 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-brand/10 text-blue-400",
+        default: "bg-brand/10 text-brand",
         secondary: "bg-secondary text-secondary-foreground",
         destructive: "bg-destructive/10 text-red-400",
         outline: "border border-border text-foreground",
@@ -24,7 +24,7 @@ interface BadgeProps extends React.HTMLAttributes<HTMLDivElement>, VariantProps<
 
 function Badge({ className, variant, dot = true, ...props }: BadgeProps) {
   const dotColors: Record<string, string> = {
-    default: "bg-blue-400",
+    default: "bg-brand",
     secondary: "bg-muted-foreground",
     destructive: "bg-red-400",
     outline: "bg-foreground",

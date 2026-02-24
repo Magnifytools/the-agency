@@ -12,9 +12,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
-        name: 'The Agency',
-        short_name: 'TheAgency',
-        description: 'Complete Agency Management Platform',
+        name: 'Magnify — Agency Manager',
+        short_name: 'Magnify',
+        description: 'Agency Management Platform by Magnify',
         theme_color: '#121212',
         background_color: '#121212',
         display: 'standalone',

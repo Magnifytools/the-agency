@@ -67,12 +67,16 @@ export function AppLayout() {
         <aside className="hidden md:flex w-[260px] flex-col flex-shrink-0 border-r border-border py-8 px-5 gap-10 bg-card/50">
           {/* Brand */}
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 font-extrabold bg-gradient-to-tr from-brand to-blue-400 rounded-xl flex items-center justify-center text-white text-sm shadow-md">
-              A
-            </div>
+            <svg width="28" height="28" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M46.17 33.4C44.05 28.29 41.14 24.01 37.23 20.1C33.32 16.19 28.68 13.09 23.57 10.97C18.46 8.86 12.99 7.77 7.45 7.77L7.45 49.88L7.45 92C12.99 92 18.46 90.91 23.57 88.79C28.68 86.67 33.32 83.57 37.23 79.66C41.14 75.75 44.03 71.56 46.15 66.45" stroke="#FFD600" strokeWidth="3"/>
+              <circle cx="33.61" cy="49.88" r="26.09" stroke="#F0F0F0" strokeWidth="3"/>
+              <circle cx="65.52" cy="49.88" r="26.09" stroke="#F0F0F0" strokeWidth="3"/>
+              <path d="M53.01 66.45C55.13 71.56 57.99 75.75 61.9 79.66C65.81 83.57 70.46 86.67 75.57 88.79C80.68 90.91 86.15 92 91.68 92L91.68 49.88L91.68 7.77C86.15 7.77 80.68 8.86 75.57 10.97C70.46 13.09 65.81 16.19 61.9 20.1C58.16 23.84 55.16 28.25 53.06 33.1" stroke="#F0F0F0" strokeWidth="3"/>
+              <circle cx="49.57" cy="49.88" r="4.78" stroke="#FFD600" strokeWidth="3" strokeLinecap="round" strokeLinejoin="bevel"/>
+            </svg>
             <div className="flex flex-col">
-              <span className="font-bold text-[16px] tracking-tight text-foreground">The Agency</span>
-              <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Platform</span>
+              <span className="font-bold text-[16px] tracking-tight text-foreground">Magnify</span>
+              <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Agency Manager</span>
             </div>
           </div>
 

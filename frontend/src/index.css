@@ -8,8 +8,8 @@
   --color-card-foreground: #FFFFFF;
   --color-popover: #1C1C1C;
   --color-popover-foreground: #FFFFFF;
-  --color-primary: #0044FF;
-  --color-primary-foreground: #FFFFFF;
+  --color-primary: #FFD600;
+  --color-primary-foreground: #0A0A0A;
   --color-secondary: #2E2E2E;
   --color-secondary-foreground: #E0E0E0;
   --color-muted: #2E2E2E;
@@ -20,8 +20,8 @@
   --color-destructive-foreground: #FFFFFF;
   --color-border: #2E2E2E;
   --color-input: #3D3D3D;
-  --color-ring: #0044FF;
-  --color-brand: #0044FF;
+  --color-ring: #FFD600;
+  --color-brand: #FFD600;
   --color-surface: #242424;
   --color-success: #22C55E;
   --color-warning: #F59E0B;
@@ -61,23 +61,23 @@
   }
 
   ::selection {
-    background: #0044FF;
-    color: #FFFFFF;
+    background: #FFD600;
+    color: #0A0A0A;
   }
 }
 
 @layer utilities {
   .text-brand {
-    color: #0044FF;
+    color: #FFD600;
   }
   .bg-brand {
-    background-color: #0044FF;
+    background-color: #FFD600;
   }
   .bg-brand-dim {
-    background-color: rgba(0, 68, 255, 0.1);
+    background-color: rgba(255, 214, 0, 0.1);
   }
   .border-brand {
-    border-color: #0044FF;
+    border-color: #FFD600;
   }
   .bg-surface {
     background-color: #242424;
