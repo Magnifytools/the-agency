@@ -93,7 +93,7 @@ frontend/src/
 ## Permission Modules
 ```
 dashboard, clients, projects, tasks, timesheet, billing, proposals,
-reports, growth, communications,
+reports, growth, communications, digests,
 finance_income, finance_expenses, finance_taxes, finance_forecasts,
 finance_advisor, finance_import, finance_dashboard,
 admin_users, admin_settings
@@ -104,6 +104,16 @@ admin_users, admin_settings
 - `SECRET_KEY` - JWT signing key
 - `ACCESS_TOKEN_EXPIRE_MINUTES` - Token TTL (default: 480)
 - `DISCORD_WEBHOOK_URL` - Optional Discord webhook
+- `ANTHROPIC_API_KEY` - API key for Claude (weekly digests generation)
+
+## Weekly Digests (Claude AI)
+- Collector: `backend/services/digest_collector.py` — recopila datos crudos (tareas, comunicaciones, tiempo)
+- Generator: `backend/services/digest_generator.py` — genera contenido via Claude API (anthropic==0.49.0)
+- Renderer: `backend/services/digest_renderer.py` — render a Slack (emoji text) o Email (HTML Magnify branded)
+- API: `backend/api/routes/digests.py` — CRUD completo + generate + generate-batch + render
+- Frontend: pages `digests-page.tsx` (lista) y `digest-edit-page.tsx` (editor con preview)
+- Estructura contenido: `{greeting, date, sections: {done, need, next}, closing}`
+- Tonos: formal | cercano | equipo
 
 ## No tocar
 - Módulos financieros custom: tax_service, forecast_service, income, expenses, taxes, forecasts
