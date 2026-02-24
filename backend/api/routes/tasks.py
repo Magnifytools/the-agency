@@ -1,14 +1,18 @@
 from __future__ import annotations
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import Task, TaskStatus, User
 from backend.schemas.task import TaskCreate, TaskUpdate, TaskResponse
 from backend.api.deps import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -69,7 +73,15 @@ async def create_task(
 ):
     task = Task(**body.model_dump())
     db.add(task)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conflicto al crear tarea (datos duplicados o referencia inválida)")
+    except Exception as e:
+        await db.rollback()
+        logger.error("Error creando tarea: %s", e)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
     await db.refresh(task)
     return _task_to_response(task)
 
@@ -100,7 +112,15 @@ async def update_task(
         raise HTTPException(status_code=404, detail="Task not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(task, field, value)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conflicto al actualizar tarea")
+    except Exception as e:
+        await db.rollback()
+        logger.error("Error actualizando tarea %d: %s", task_id, e)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
     await db.refresh(task)
     return _task_to_response(task)
 
@@ -115,5 +135,13 @@ async def delete_task(
     task = result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    await db.delete(task)
-    await db.commit()
+    try:
+        await db.delete(task)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No se puede eliminar: tiene registros asociados")
+    except Exception as e:
+        await db.rollback()
+        logger.error("Error eliminando tarea %d: %s", task_id, e)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")

@@ -1,14 +1,14 @@
 from __future__ import annotations
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 from backend.db.models import UserRole
 
 
 class UserCreate(BaseModel):
-    email: str
-    password: str
-    full_name: str
+    email: EmailStr
+    password: str = Field(min_length=6, max_length=128)
+    full_name: str = Field(min_length=1, max_length=255)
     role: UserRole = UserRole.member
     hourly_rate: Optional[float] = None
 

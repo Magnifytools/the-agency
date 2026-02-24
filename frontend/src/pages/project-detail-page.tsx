@@ -125,7 +125,7 @@ export default function ProjectDetailPage() {
               </Badge>
             </div>
             <p className="text-muted-foreground mt-1">
-              <Link to={`/ clients / ${project.client_id} `} className="hover:text-brand">
+              <Link to={`/clients/${project.client_id}`} className="hover:text-brand">
                 {project.client_name}
               </Link>
             </p>

@@ -14,6 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8004
 

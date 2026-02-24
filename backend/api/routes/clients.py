@@ -1,14 +1,18 @@
 from __future__ import annotations
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import Client, ClientStatus, Task, TimeEntry, User
 from backend.schemas.client import ClientCreate, ClientUpdate, ClientResponse
 from backend.api.deps import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
@@ -35,7 +39,15 @@ async def create_client(
 ):
     client = Client(**body.model_dump())
     db.add(client)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ya existe un cliente con esos datos")
+    except Exception as e:
+        await db.rollback()
+        logger.error("Error creando cliente: %s", e)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
     await db.refresh(client)
     return client
 
@@ -66,7 +78,15 @@ async def update_client(
         raise HTTPException(status_code=404, detail="Client not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(client, field, value)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conflicto al actualizar cliente")
+    except Exception as e:
+        await db.rollback()
+        logger.error("Error actualizando cliente %d: %s", client_id, e)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
     await db.refresh(client)
     return client
 
