@@ -828,3 +828,61 @@ export interface SyncLog {
   status: string
   created_at: string
 }
+
+// --- Weekly Digests ---
+
+export type DigestStatus = "draft" | "reviewed" | "sent"
+export type DigestTone = "formal" | "cercano" | "equipo"
+
+export interface DigestItem {
+  title: string
+  description: string
+}
+
+export interface DigestSections {
+  done: DigestItem[]
+  need: DigestItem[]
+  next: DigestItem[]
+}
+
+export interface DigestContent {
+  greeting: string
+  date: string
+  sections: DigestSections
+  closing: string
+}
+
+export interface Digest {
+  id: number
+  client_id: number
+  client_name: string | null
+  period_start: string
+  period_end: string
+  status: DigestStatus
+  tone: DigestTone
+  content: DigestContent | null
+  raw_context: Record<string, unknown> | null
+  generated_at: string | null
+  edited_at: string | null
+  created_by: number
+  creator_name: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DigestGenerateRequest {
+  client_id: number
+  period_start?: string | null
+  period_end?: string | null
+  tone?: DigestTone
+}
+
+export interface DigestUpdateRequest {
+  content?: DigestContent | null
+  tone?: DigestTone | null
+}
+
+export interface DigestRenderResponse {
+  format: "slack" | "email"
+  rendered: string
+}

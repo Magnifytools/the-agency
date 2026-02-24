@@ -17,6 +17,8 @@ import ProjectDetailPage from "@/pages/project-detail-page"
 import ReportsPage from "@/pages/reports-page"
 import ProposalsPage from "@/pages/proposals-page"
 
+import DigestsPage from "@/pages/digests-page"
+import DigestEditPage from "@/pages/digest-edit-page"
 import GrowthPage from "@/pages/growth-page"
 import FinanceDashboardPage from "@/pages/finance-dashboard-page"
 import IncomePage from "@/pages/income-page"
@@ -57,6 +59,8 @@ export default function App() {
               <Route path="/timesheet" element={<TimesheetPage />} />
               <Route path="/billing" element={<BillingPage />} />
               <Route path="/proposals" element={<ProposalsPage />} />
+              <Route path="/digests" element={<DigestsPage />} />
+              <Route path="/digests/:id/edit" element={<DigestEditPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               {/* Finance */}
               <Route path="/finance" element={<FinanceDashboardPage />} />

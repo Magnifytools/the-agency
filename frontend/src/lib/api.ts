@@ -64,6 +64,10 @@ import type {
   CsvImportResponse,
   CsvMapping,
   SyncLog,
+  Digest,
+  DigestGenerateRequest,
+  DigestUpdateRequest,
+  DigestRenderResponse,
 } from "./types"
 
 const api = axios.create({
@@ -412,6 +416,23 @@ export const financeSyncApi = {
     api.post<CsvMapping>("/finance/sync/mappings", data).then((r) => r.data),
   deleteMapping: (id: number) => api.delete(`/finance/sync/mappings/${id}`).then((r) => r.data),
   logs: () => api.get<SyncLog[]>("/finance/sync/logs").then((r) => r.data),
+}
+
+// --- Weekly Digests ---
+export const digestsApi = {
+  list: (params?: { client_id?: number; status?: string; limit?: number; offset?: number }) =>
+    api.get<Digest[]>("/digests", { params }).then((r) => r.data),
+  get: (id: number) => api.get<Digest>(`/digests/${id}`).then((r) => r.data),
+  generate: (data: DigestGenerateRequest) =>
+    api.post<Digest>("/digests/generate", data).then((r) => r.data),
+  generateBatch: (params?: { period_start?: string; period_end?: string; tone?: string }) =>
+    api.post<Digest[]>("/digests/generate-batch", null, { params }).then((r) => r.data),
+  update: (id: number, data: DigestUpdateRequest) =>
+    api.put<Digest>(`/digests/${id}`, data).then((r) => r.data),
+  updateStatus: (id: number, status: string) =>
+    api.patch<Digest>(`/digests/${id}/status`, { status }).then((r) => r.data),
+  render: (id: number, format: "slack" | "email") =>
+    api.get<DigestRenderResponse>(`/digests/${id}/render`, { params: { format } }).then((r) => r.data),
 }
 
 export const financeExportApi = {
