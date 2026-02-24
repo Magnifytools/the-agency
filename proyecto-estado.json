@@ -1,0 +1,220 @@
+{
+  "proyecto": "agency-manager",
+  "ultima_actualizacion": "2026-02-05T11:30:00.000000",
+  "estado_general": "sprint_1_completado",
+  "progreso_estimado": 40,
+  "tareas": [
+    {
+      "id": "T001",
+      "descripcion": "Scaffold backend: estructura de carpetas, requirements.txt, .env, config.py",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "Python 3.9 requiere eval-type-backport y bcrypt==4.1.3"
+    },
+    {
+      "id": "T002",
+      "descripcion": "Modelos SQLAlchemy 2.0: 8 tablas con enums, TimestampMixin, relaciones",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "Users, Clients, Tasks, TaskCategories, TimeEntries, Invoices, InvoiceItems, AuditLogs"
+    },
+    {
+      "id": "T003",
+      "descripcion": "Database setup: async engine aiosqlite, session factory, get_db()",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": ""
+    },
+    {
+      "id": "T004",
+      "descripcion": "Seed script: 2 usuarios + 8 categorías SEO",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "python -m backend.db.seed"
+    },
+    {
+      "id": "T005",
+      "descripcion": "Pydantic schemas: auth, client, task, task_category con Create/Update/Response",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": ""
+    },
+    {
+      "id": "T006",
+      "descripcion": "Módulo seguridad: hash/verify bcrypt, create/decode JWT",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": ""
+    },
+    {
+      "id": "T007",
+      "descripcion": "Auth dependencies: get_current_user, require_admin",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": ""
+    },
+    {
+      "id": "T008",
+      "descripcion": "Ruta auth: POST /api/auth/login, GET /api/auth/me",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": ""
+    },
+    {
+      "id": "T009",
+      "descripcion": "Rutas clientes: CRUD completo con soft delete y filtro status",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "DELETE cambia status a finished"
+    },
+    {
+      "id": "T010",
+      "descripcion": "Rutas categorías: GET list, POST, PUT, DELETE",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": ""
+    },
+    {
+      "id": "T011",
+      "descripcion": "Rutas tareas: CRUD con filtros client_id, status, category_id",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "Respuesta incluye client_name, category_name, assigned_user_name"
+    },
+    {
+      "id": "T012",
+      "descripcion": "main.py: FastAPI app con CORS, lifespan, routers",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": ""
+    },
+    {
+      "id": "T013",
+      "descripcion": "Scaffold frontend: Vite + React + TS + Tailwind v4 + dependencias",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "Proxy /api -> localhost:8000 configurado en vite.config.ts"
+    },
+    {
+      "id": "T014",
+      "descripcion": "Componentes UI shadcn-style: Button, Input, Select, Textarea, Dialog, Table, Badge, Card, Label",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "CVA + tailwind-merge + clsx"
+    },
+    {
+      "id": "T015",
+      "descripcion": "Capa API: Axios con interceptors JWT y redirect 401",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": ""
+    },
+    {
+      "id": "T016",
+      "descripcion": "Types TS: interfaces que reflejan schemas backend",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": ""
+    },
+    {
+      "id": "T017",
+      "descripcion": "Auth context: AuthProvider con login/logout, token en localStorage",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": ""
+    },
+    {
+      "id": "T018",
+      "descripcion": "Login page: formulario email/password, redirige a /clients",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": ""
+    },
+    {
+      "id": "T019",
+      "descripcion": "Layout: AppLayout con sidebar, ProtectedRoute",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "Nav: Clientes, Tareas. Header con usuario y logout."
+    },
+    {
+      "id": "T020",
+      "descripcion": "Clients page: tabs status, tabla, dialog crear/editar",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "TanStack Query para fetching + mutations"
+    },
+    {
+      "id": "T021",
+      "descripcion": "Tasks page: filtros (cliente, categoría, estado), tabla, dialog crear/editar",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "TanStack Query para fetching + mutations"
+    },
+    {
+      "id": "T022",
+      "descripcion": "Routing: BrowserRouter, QueryClientProvider, AuthProvider, rutas protegidas",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "/ redirige a /clients"
+    },
+    {
+      "id": "T023",
+      "descripcion": "Dashboard: cierre mensual con checklist + margen global",
+      "estado": "completado",
+      "prioridad": "media",
+      "notas": "Checklist mensual para disciplina financiera y card de margen estimado"
+    },
+    {
+      "id": "T024",
+      "descripcion": "Guardarraíles financieros + recordatorio cierre mensual",
+      "estado": "completado",
+      "prioridad": "media",
+      "notas": "Fondo impuestos, línea de crédito y día de recordatorio editable"
+    },
+    {
+      "id": "T025",
+      "descripcion": "Alertas financieras + estado cierre mensual",
+      "estado": "completado",
+      "prioridad": "media",
+      "notas": "Alertas por uso alto de crédito y fondo impuestos bajo"
+    },
+    {
+      "id": "T026",
+      "descripcion": "Umbrales configurables + export cierre mensual",
+      "estado": "completado",
+      "prioridad": "media",
+      "notas": "Umbrales editables y export CSV con auth"
+    },
+    {
+      "id": "T027",
+      "descripcion": "Plantilla cierre mensual (responsable + notas)",
+      "estado": "completado",
+      "prioridad": "media",
+      "notas": "Campos persistentes en cierre mensual"
+    }
+  ],
+  "bugs": [
+    {
+      "id": "B001",
+      "descripcion": "passlib muestra warning '(trapped) error reading bcrypt version' al hacer hash",
+      "severidad": "baja",
+      "estado": "conocido",
+      "notas": "Funcional, solo warning cosmético por incompatibilidad passlib<->bcrypt 4.x"
+    }
+  ],
+  "notas_tecnicas": [
+    "Python 3.9: requiere from __future__ import annotations + eval-type-backport para X | None",
+    "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
+    "Las tablas TimeEntries, Invoices, InvoiceItems, AuditLogs están modeladas pero sin rutas API aún",
+    "Alembic está instalado pero no se han generado migraciones todavía",
+    "npm cache global tiene problemas de permisos (root-owned). Usar --cache /tmp/npm-cache como workaround"
+  ],
+  "proximos_pasos": "Sprint 2: Alembic migraciones, rutas TimeEntry, dashboard con métricas, detalle de cliente con tareas asociadas",
+  "bloqueadores": "",
+  "puertos": {
+    "frontend": 5176,
+    "backend": 8003
+  },
+  "pendiente_david": "Rediseñar app"
+}

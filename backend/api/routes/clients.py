@@ -1,0 +1,129 @@
+from __future__ import annotations
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.db.database import get_db
+from backend.db.models import Client, ClientStatus, Task, TimeEntry, User
+from backend.schemas.client import ClientCreate, ClientUpdate, ClientResponse
+from backend.api.deps import get_current_user
+
+router = APIRouter(prefix="/api/clients", tags=["clients"])
+
+
+@router.get("", response_model=list[ClientResponse])
+async def list_clients(
+    status_filter: Optional[ClientStatus] = Query(None, alias="status"),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    query = select(Client)
+    if status_filter:
+        query = query.where(Client.status == status_filter)
+    query = query.order_by(Client.created_at.desc())
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.post("", response_model=ClientResponse, status_code=status.HTTP_201_CREATED)
+async def create_client(
+    body: ClientCreate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    client = Client(**body.model_dump())
+    db.add(client)
+    await db.commit()
+    await db.refresh(client)
+    return client
+
+
+@router.get("/{client_id}", response_model=ClientResponse)
+async def get_client(
+    client_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return client
+
+
+@router.put("/{client_id}", response_model=ClientResponse)
+async def update_client(
+    client_id: int,
+    body: ClientUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(client, field, value)
+    await db.commit()
+    await db.refresh(client)
+    return client
+
+
+@router.delete("/{client_id}", response_model=ClientResponse)
+async def delete_client(
+    client_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    client.status = ClientStatus.finished
+    await db.commit()
+    await db.refresh(client)
+    return client
+
+
+@router.get("/{client_id}/summary")
+async def get_client_summary(
+    client_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    # Fetch tasks
+    tasks_result = await db.execute(
+        select(Task).where(Task.client_id == client_id).order_by(Task.created_at.desc())
+    )
+    tasks = tasks_result.scalars().all()
+
+    # Aggregate time
+    time_result = await db.execute(
+        select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
+            TimeEntry.task_id.in_([t.id for t in tasks]),
+            TimeEntry.minutes.isnot(None),
+        )
+    )
+    total_tracked_minutes = time_result.scalar()
+
+    total_estimated = sum(t.estimated_minutes or 0 for t in tasks)
+    total_actual = sum(t.actual_minutes or 0 for t in tasks)
+
+    from backend.schemas.task import TaskResponse
+    from backend.api.routes.tasks import _task_to_response
+
+    return {
+        "client": ClientResponse.model_validate(client),
+        "tasks": [_task_to_response(t) for t in tasks],
+        "total_tasks": len(tasks),
+        "total_estimated_minutes": total_estimated,
+        "total_actual_minutes": total_actual,
+        "total_tracked_minutes": total_tracked_minutes,
+    }

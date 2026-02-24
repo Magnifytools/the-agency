@@ -1,0 +1,820 @@
+export type UserRole = "admin" | "member"
+export type ContractType = "monthly" | "one_time"
+export type ClientStatus = "active" | "paused" | "finished"
+export type TaskStatus = "pending" | "in_progress" | "completed"
+export type ProjectStatus = "planning" | "active" | "on_hold" | "completed" | "cancelled"
+export type PhaseStatus = "pending" | "in_progress" | "completed"
+
+export interface UserPermission {
+  module: string
+  can_read: boolean
+  can_write: boolean
+}
+
+export interface User {
+  id: number
+  email: string
+  full_name: string
+  role: UserRole
+  hourly_rate: number | null
+  is_active: boolean
+  permissions: UserPermission[]
+}
+
+export interface UserCreate {
+  email: string
+  password: string
+  full_name: string
+  role: UserRole
+  hourly_rate?: number | null
+}
+
+export interface Client {
+  id: number
+  name: string
+  email: string | null
+  phone: string | null
+  company: string | null
+  website: string | null
+  contract_type: ContractType
+  monthly_budget: number | null
+  status: ClientStatus
+  notes: string | null
+  cif: string | null
+  currency: string
+  monthly_fee: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ClientCreate {
+  name: string
+  email?: string | null
+  phone?: string | null
+  company?: string | null
+  website?: string | null
+  contract_type?: ContractType
+  monthly_budget?: number | null
+  status?: ClientStatus
+  notes?: string | null
+  cif?: string | null
+  currency?: string
+  monthly_fee?: number | null
+}
+
+export interface TaskCategory {
+  id: number
+  name: string
+  default_minutes: number
+  created_at: string
+  updated_at: string
+}
+
+export interface Task {
+  id: number
+  title: string
+  description: string | null
+  status: TaskStatus
+  estimated_minutes: number | null
+  actual_minutes: number | null
+  due_date: string | null
+  client_id: number
+  category_id: number | null
+  assigned_to: number | null
+  project_id: number | null
+  phase_id: number | null
+  depends_on: number | null
+  created_at: string
+  updated_at: string
+  client_name: string | null
+  category_name: string | null
+  assigned_user_name: string | null
+  project_name: string | null
+  phase_name: string | null
+}
+
+export interface TaskCreate {
+  title: string
+  description?: string | null
+  status?: TaskStatus
+  estimated_minutes?: number | null
+  actual_minutes?: number | null
+  due_date?: string | null
+  client_id: number
+  category_id?: number | null
+  assigned_to?: number | null
+  project_id?: number | null
+  phase_id?: number | null
+  depends_on?: number | null
+}
+
+export interface TokenResponse {
+  access_token: string
+  token_type: string
+}
+
+// Time Entries
+export interface TimeEntry {
+  id: number
+  minutes: number | null
+  started_at: string | null
+  date: string
+  notes: string | null
+  task_id: number | null
+  user_id: number
+  created_at: string
+  updated_at: string
+  task_title: string | null
+  client_name: string | null
+}
+
+export interface TimeEntryCreate {
+  minutes: number
+  task_id: number | null
+  notes?: string | null
+  date?: string | null
+}
+
+export interface ActiveTimer {
+  id: number
+  task_id: number | null
+  task_title: string | null
+  client_name: string | null
+  started_at: string
+}
+
+// Dashboard
+export interface DashboardOverview {
+  active_clients: number
+  pending_tasks: number
+  in_progress_tasks: number
+  hours_this_month: number
+  total_budget: number
+  total_cost: number
+  margin: number
+  margin_percent: number
+}
+
+export interface ClientProfitability {
+  client_id: number
+  client_name: string
+  budget: number
+  cost: number
+  margin: number
+  margin_percent: number
+  estimated_minutes: number
+  actual_minutes: number
+  variance_minutes: number
+  status: "profitable" | "at_risk" | "unprofitable"
+}
+
+export interface ProfitabilityResponse {
+  clients: ClientProfitability[]
+}
+
+export interface TeamMemberSummary {
+  user_id: number
+  full_name: string
+  hourly_rate: number | null
+  hours_this_month: number
+  cost: number
+  task_count: number
+  clients_touched: number
+}
+
+export interface MonthlyClose {
+  year: number
+  month: number
+  reviewed_numbers: boolean
+  reviewed_margin: boolean
+  reviewed_cash_buffer: boolean
+  reviewed_reinvestment: boolean
+  reviewed_debt: boolean
+  reviewed_taxes: boolean
+  reviewed_personal: boolean
+  responsible_name: string
+  notes: string
+  updated_at?: string | null
+}
+
+export interface FinancialSettings {
+  tax_reserve: number
+  credit_limit: number
+  credit_used: number
+  credit_utilization: number
+  monthly_close_day: number
+  credit_alert_pct: number
+  tax_reserve_target_pct: number
+  default_vat_rate: number
+  corporate_tax_rate: number
+  irpf_retention_rate: number
+  cash_start: number
+  advisor_expense_alert_pct: number
+  advisor_margin_warning_pct: number
+  ai_provider: string
+  ai_model: string
+  ai_api_url: string
+}
+
+export interface WeeklyTimesheet {
+  week_start: string
+  week_end: string
+  days: string[]
+  users: {
+    user_id: number
+    full_name: string
+    daily_minutes: Record<string, number>
+    total_minutes: number
+  }[]
+}
+
+// Client Summary
+export interface ClientSummary {
+  client: Client
+  tasks: Task[]
+  total_tasks: number
+  total_estimated_minutes: number
+  total_actual_minutes: number
+  total_tracked_minutes: number
+}
+
+// Projects
+export interface ProjectPhase {
+  id: number
+  name: string
+  description: string | null
+  order_index: number
+  start_date: string | null
+  due_date: string | null
+  completed_at: string | null
+  status: PhaseStatus
+  project_id: number
+  created_at: string
+  updated_at: string
+}
+
+export interface Project {
+  id: number
+  name: string
+  description: string | null
+  project_type: string | null
+  start_date: string | null
+  target_end_date: string | null
+  actual_end_date: string | null
+  status: ProjectStatus
+  progress_percent: number
+  budget_hours: number | null
+  budget_amount: number | null
+  gsc_url: string | null
+  ga4_property_id: string | null
+  is_recurring: boolean
+  client_id: number
+  client_name: string | null
+  phases: ProjectPhase[]
+  task_count: number
+  completed_task_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectListItem {
+  id: number
+  name: string
+  project_type: string | null
+  start_date: string | null
+  target_end_date: string | null
+  status: ProjectStatus
+  progress_percent: number
+  client_id: number
+  client_name: string | null
+  gsc_url: string | null
+  ga4_property_id: string | null
+  is_recurring: boolean
+  phase_count: number
+  task_count: number
+  completed_task_count: number
+}
+
+export interface ProjectCreate {
+  name: string
+  description?: string | null
+  project_type?: string | null
+  start_date?: string | null
+  target_end_date?: string | null
+  budget_hours?: number | null
+  budget_amount?: number | null
+  gsc_url?: string | null
+  ga4_property_id?: string | null
+  is_recurring?: boolean
+  client_id: number
+}
+
+export interface ProjectTemplate {
+  name: string
+  phase_count: number
+  task_count: number
+}
+
+// Communications
+export type CommunicationChannel = "email" | "call" | "meeting" | "whatsapp" | "slack" | "other"
+export type CommunicationDirection = "inbound" | "outbound"
+
+export interface Communication {
+  id: number
+  channel: CommunicationChannel
+  direction: CommunicationDirection
+  subject: string | null
+  summary: string
+  contact_name: string | null
+  occurred_at: string
+  requires_followup: boolean
+  followup_date: string | null
+  followup_notes: string | null
+  client_id: number
+  user_id: number
+  user_name: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CommunicationCreate {
+  channel: CommunicationChannel
+  direction: CommunicationDirection
+  subject?: string | null
+  summary: string
+  contact_name?: string | null
+  occurred_at: string
+  requires_followup?: boolean
+  followup_date?: string | null
+  followup_notes?: string | null
+}
+
+// PM Insights
+export type InsightType = "deadline" | "stalled" | "overdue" | "followup" | "workload" | "suggestion"
+export type InsightPriority = "high" | "medium" | "low"
+export type InsightStatus = "active" | "dismissed" | "acted"
+
+export interface Insight {
+  id: number
+  insight_type: InsightType
+  priority: InsightPriority
+  title: string
+  description: string
+  suggested_action: string | null
+  status: InsightStatus
+  dismissed_at: string | null
+  acted_at: string | null
+  generated_at: string
+  expires_at: string | null
+  user_id: number | null
+  client_id: number | null
+  project_id: number | null
+  task_id: number | null
+  client_name: string | null
+  project_name: string | null
+  task_title: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface InsightCount {
+  total: number
+  high: number
+  medium: number
+  low: number
+}
+
+export interface DailyBriefing {
+  date: string
+  greeting: string
+  priorities: { id: number; title: string; client: string | null; due: string | null }[]
+  alerts: { id: number; title: string; client: string | null; days_overdue: number }[]
+  followups: { client: string | null; subject: string; followup_date: string | null }[]
+  suggestion: string | null
+}
+
+// Alert Settings
+export interface AlertSettings {
+  id: number
+  user_id: number
+  days_without_activity: number
+  days_before_deadline: number
+  days_without_contact: number
+  max_tasks_per_week: number
+  notify_in_app: boolean
+  notify_email: boolean
+}
+
+export interface AlertSettingsUpdate {
+  days_without_activity?: number
+  days_before_deadline?: number
+  days_without_contact?: number
+  max_tasks_per_week?: number
+  notify_in_app?: boolean
+  notify_email?: boolean
+}
+
+// Proposals
+export type ProposalStatus = "draft" | "sent" | "accepted" | "rejected"
+
+export interface Proposal {
+  id: number
+  title: string
+  status: ProposalStatus
+  budget: number | null
+  scope: string | null
+  valid_until: string | null
+  client_id: number
+  project_id: number | null
+  client_name: string | null
+  project_name: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ProposalCreate {
+  title: string
+  status?: ProposalStatus
+  budget?: number | null
+  scope?: string | null
+  valid_until?: string | null
+  client_id: number
+  project_id?: number | null
+}
+
+export interface ProposalUpdate {
+  title?: string
+  status?: ProposalStatus
+  budget?: number | null
+  scope?: string | null
+  valid_until?: string | null
+  client_id?: number
+  project_id?: number | null
+}
+
+// Reports
+export type ReportType = "client_status" | "weekly_summary" | "project_status"
+export type ReportPeriod = "week" | "month"
+
+export interface ReportRequest {
+  type: ReportType
+  client_id?: number | null
+  project_id?: number | null
+  period?: ReportPeriod
+}
+
+export interface ReportSection {
+  title: string
+  content: string
+}
+
+export interface Report {
+  id: number
+  type: string
+  title: string
+  generated_at: string
+  period_start: string | null
+  period_end: string | null
+  client_name: string | null
+  project_name: string | null
+  sections: ReportSection[]
+  summary: string
+}
+
+// Growth Operations
+export type GrowthFunnelStage = "referral" | "desire" | "activate" | "revenue" | "retention" | "other"
+export type GrowthStatus = "idea" | "in_progress" | "completed" | "discarded"
+
+export interface GrowthIdea {
+  id: number
+  title: string
+  description: string | null
+  funnel_stage: GrowthFunnelStage
+  target_kpi: string | null
+  status: GrowthStatus
+  impact: number
+  confidence: number
+  ease: number
+  ice_score: number
+  experiment_start_date: string | null
+  experiment_end_date: string | null
+  results_notes: string | null
+  is_successful: boolean | null
+  project_id: number | null
+  task_id: number | null
+  project_name: string | null
+  task_title: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface GrowthIdeaCreate {
+  title: string
+  description?: string | null
+  funnel_stage?: GrowthFunnelStage
+  target_kpi?: string | null
+  status?: GrowthStatus
+  impact?: number
+  confidence?: number
+  ease?: number
+  experiment_start_date?: string | null
+  experiment_end_date?: string | null
+  results_notes?: string | null
+  is_successful?: boolean | null
+  project_id?: number | null
+  task_id?: number | null
+}
+
+// Invitations
+export interface Invitation {
+  id: number
+  email: string
+  token: string
+  role: UserRole
+  invited_by: number
+  inviter_name: string | null
+  expires_at: string
+  accepted_at: string | null
+  created_at: string
+}
+
+export interface InvitationCreate {
+  email: string
+  role?: UserRole
+  modules?: string[]
+}
+
+export interface GrowthIdeaUpdate {
+  title?: string
+  description?: string | null
+  funnel_stage?: GrowthFunnelStage
+  target_kpi?: string | null
+  status?: GrowthStatus
+  impact?: number
+  confidence?: number
+  ease?: number
+  experiment_start_date?: string | null
+  experiment_end_date?: string | null
+  results_notes?: string | null
+  is_successful?: boolean | null
+  project_id?: number | null
+  task_id?: number | null
+}
+
+// --- Financial Types ---
+
+export type IncomeType = "factura" | "recurrente" | "extra"
+export type IncomeStatus = "pendiente" | "cobrado"
+export type ExpenseStatus = "pendiente" | "pagado"
+export type TaxStatusType = "pendiente" | "pagado" | "aplazado"
+export type InsightSeverity = "info" | "warning" | "critical"
+
+export interface Income {
+  id: number
+  date: string
+  description: string
+  amount: number
+  type: IncomeType
+  client_id: number | null
+  client_name: string | null
+  invoice_number: string
+  vat_rate: number
+  vat_amount: number
+  status: IncomeStatus
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
+export interface IncomeCreate {
+  date: string
+  description: string
+  amount: number
+  type?: IncomeType
+  client_id?: number | null
+  invoice_number?: string
+  vat_rate?: number
+  vat_amount?: number
+  status?: IncomeStatus
+  notes?: string
+}
+
+export interface ExpenseCategory {
+  id: number
+  name: string
+  description: string
+  color: string
+  is_active: boolean
+  created_at: string
+}
+
+export interface ExpenseCategoryCreate {
+  name: string
+  description?: string
+  color?: string
+}
+
+export interface Expense {
+  id: number
+  date: string
+  description: string
+  amount: number
+  category_id: number | null
+  category_name: string | null
+  is_recurring: boolean
+  recurrence_period: string
+  vat_rate: number
+  vat_amount: number
+  is_deductible: boolean
+  supplier: string
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ExpenseCreate {
+  date: string
+  description: string
+  amount: number
+  category_id?: number | null
+  is_recurring?: boolean
+  recurrence_period?: string
+  vat_rate?: number
+  vat_amount?: number
+  is_deductible?: boolean
+  supplier?: string
+  notes?: string
+}
+
+export interface Tax {
+  id: number
+  name: string
+  model: string
+  period: string
+  year: number
+  base_amount: number
+  tax_rate: number
+  tax_amount: number
+  status: TaxStatusType
+  due_date: string | null
+  paid_date: string | null
+  notes: string
+  created_at: string
+}
+
+export interface TaxCreate {
+  name: string
+  model?: string
+  period?: string
+  year: number
+  base_amount?: number
+  tax_rate?: number
+  tax_amount?: number
+  status?: TaxStatusType
+  due_date?: string | null
+  paid_date?: string | null
+  notes?: string
+}
+
+export interface TaxCalendarItem {
+  model: string
+  name: string
+  period: string
+  due_date: string
+  status: string
+}
+
+export interface QuarterlyVatResult {
+  period: string
+  year: number
+  vat_collected: number
+  vat_paid: number
+  vat_balance: number
+  income_base: number
+  expense_base: number
+}
+
+export interface Forecast {
+  id: number
+  month: string
+  projected_income: number
+  projected_expenses: number
+  projected_taxes: number
+  projected_profit: number
+  confidence: number
+  notes: string
+  created_at: string
+}
+
+export interface ForecastCreate {
+  month: string
+  projected_income?: number
+  projected_expenses?: number
+  projected_taxes?: number
+  projected_profit?: number
+  confidence?: number
+  notes?: string
+}
+
+export interface ForecastVsActual {
+  month: string
+  projected_income: number
+  actual_income: number
+  projected_expenses: number
+  actual_expenses: number
+  projected_profit: number
+  actual_profit: number
+}
+
+export interface RunwayResponse {
+  current_cash: number
+  avg_monthly_burn: number
+  runway_months: number
+  runway_date: string | null
+}
+
+export interface FinancialInsight {
+  id: number
+  type: string
+  title: string
+  description: string
+  severity: InsightSeverity
+  is_read: boolean
+  is_dismissed: boolean
+  created_at: string
+}
+
+export interface AdvisorTask {
+  id: number
+  source_key: string
+  title: string
+  description: string
+  status: "open" | "done"
+  priority: "low" | "medium" | "high"
+  due_date: string | null
+  created_at: string
+}
+
+export interface AdvisorAiBrief {
+  id: number
+  period_start: string | null
+  period_end: string | null
+  content: string
+  model: string
+  provider: string
+  created_at: string
+}
+
+export interface AdvisorOverview {
+  total_income_month: number
+  total_expenses_month: number
+  net_profit_month: number
+  margin_pct: number
+  pending_taxes: number
+  next_tax_deadline: string | null
+  unread_insights: number
+  open_tasks: number
+  cash_runway_months: number | null
+}
+
+export interface CsvPreviewResponse {
+  headers: string[]
+  rows: string[][]
+  total_rows: number
+  detected_delimiter: string
+}
+
+export interface CsvImportRequest {
+  content: string
+  target: "expenses" | "income"
+  mapping: Record<string, string>
+  delimiter?: string
+}
+
+export interface CsvImportResponse {
+  records_processed: number
+  records_imported: number
+  records_skipped: number
+  errors: string[]
+}
+
+export interface CsvMapping {
+  id: number
+  name: string
+  target: string
+  mapping: Record<string, string>
+  delimiter: string
+  created_at: string
+}
+
+export interface SyncLog {
+  id: number
+  source: string
+  file_name: string
+  records_processed: number
+  records_imported: number
+  records_skipped: number
+  errors: string
+  status: string
+  created_at: string
+}
