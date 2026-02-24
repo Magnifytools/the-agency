@@ -51,6 +51,13 @@ class TaskStatus(str, enum.Enum):
     completed = "completed"
 
 
+class TaskPriority(str, enum.Enum):
+    urgent = "urgent"
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+
 class ProjectStatus(str, enum.Enum):
     planning = "planning"
     active = "active"
@@ -119,6 +126,18 @@ class ProposalStatus(str, enum.Enum):
     sent = "sent"
     accepted = "accepted"
     rejected = "rejected"
+
+
+class DigestStatus(str, enum.Enum):
+    draft = "draft"
+    reviewed = "reviewed"
+    sent = "sent"
+
+
+class DigestTone(str, enum.Enum):
+    formal = "formal"
+    cercano = "cercano"
+    equipo = "equipo"
 
 
 class GrowthFunnelStage(str, enum.Enum):
@@ -277,6 +296,7 @@ class Task(TimestampMixin, Base):
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     status = Column(Enum(TaskStatus), nullable=False, default=TaskStatus.pending)
+    priority = Column(Enum(TaskPriority), nullable=False, default=TaskPriority.medium, server_default="medium")
     estimated_minutes = Column(Integer, nullable=True)
     actual_minutes = Column(Integer, nullable=True)
     due_date = Column(DateTime, nullable=True)
@@ -548,6 +568,26 @@ class GrowthIdea(TimestampMixin, Base):
 
 
 # --- Financial Models (ported from Gestor Financiero) ---
+
+class WeeklyDigest(TimestampMixin, Base):
+    __tablename__ = "weekly_digests"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+    status = Column(Enum(DigestStatus), nullable=False, default=DigestStatus.draft)
+    tone = Column(Enum(DigestTone), nullable=False, default=DigestTone.cercano)
+    content = Column(JSON, nullable=True)  # {greeting, date, sections: {done, need, next}, closing}
+    raw_context = Column(JSON, nullable=True)  # datos crudos pasados a Claude
+    generated_at = Column(DateTime, nullable=True)
+    edited_at = Column(DateTime, nullable=True)
+
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    client = relationship("Client", lazy="selectin")
+    creator = relationship("User", lazy="selectin")
+
 
 class ExpenseCategory(TimestampMixin, Base):
     __tablename__ = "expense_categories"
