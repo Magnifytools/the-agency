@@ -11,18 +11,18 @@ from backend.core.security import hash_password
 
 USERS = [
     {
-        "email": "admin@agency.com",
-        "full_name": "Admin User",
+        "email": "david@magnify.ing",
+        "full_name": "David Carrasco",
         "role": UserRole.admin,
         "hourly_rate": 50.0,
-        "password": "admin123",
+        "password": "Magnify2026!",
     },
     {
-        "email": "member@agency.com",
-        "full_name": "Team Member",
+        "email": "nacho@magnify.ing",
+        "full_name": "Nacho",
         "role": UserRole.member,
         "hourly_rate": 30.0,
-        "password": "member123",
+        "password": "Magnify2026!",
     },
 ]
 
@@ -87,7 +87,7 @@ async def seed():
 
         # Seed default permissions for member user
         member_result = await session.execute(
-            select(User).where(User.email == "member@agency.com")
+            select(User).where(User.email == "nacho@magnify.ing")
         )
         member = member_result.scalar_one_or_none()
         if member:
@@ -97,7 +97,7 @@ async def seed():
             if not existing_perms.scalars().first():
                 default_modules = [
                     "dashboard", "clients", "tasks", "projects", "timesheet",
-                    "communications", "proposals", "reports", "growth",
+                    "communications", "proposals", "reports", "growth", "digests",
                 ]
                 for module in default_modules:
                     session.add(UserPermission(

@@ -24,6 +24,25 @@ async def lifespan(app: FastAPI):
     if settings.SECRET_KEY == DEFAULT_SECRET_KEY:
         logging.warning("SECRET_KEY está usando el valor por defecto. Configura SECRET_KEY en .env para producción.")
     async with engine.begin() as conn:
+        # Add priority column if missing (create_all doesn't add columns to existing tables)
+        await conn.execute(
+            __import__("sqlalchemy").text(
+                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority VARCHAR(10) NOT NULL DEFAULT 'medium'"
+            )
+        )
+        # Create enum types for weekly_digests if they don't exist
+        await conn.execute(
+            __import__("sqlalchemy").text(
+                "DO $$ BEGIN "
+                "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'digeststatus') THEN "
+                "CREATE TYPE digeststatus AS ENUM ('draft', 'reviewed', 'sent'); "
+                "END IF; "
+                "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'digesttone') THEN "
+                "CREATE TYPE digesttone AS ENUM ('formal', 'cercano', 'equipo'); "
+                "END IF; "
+                "END $$;"
+            )
+        )
         await conn.run_sync(Base.metadata.create_all)
     yield
 
@@ -75,7 +94,8 @@ if _frontend_dist.is_dir():
 
     @app.get("/{full_path:path}")
     async def serve_spa(request: Request, full_path: str):
-        file_path = _frontend_dist / full_path
-        if file_path.is_file():
+        file_path = (_frontend_dist / full_path).resolve()
+        # Prevent path traversal: resolved path must stay inside frontend/dist
+        if file_path.is_file() and str(file_path).startswith(str(_frontend_dist.resolve())):
             return FileResponse(str(file_path))
         return FileResponse(str(_frontend_dist / "index.html"))

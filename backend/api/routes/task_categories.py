@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.database import get_db
 from backend.db.models import TaskCategory, User
 from backend.schemas.task_category import TaskCategoryCreate, TaskCategoryUpdate, TaskCategoryResponse
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, require_module
 
 router = APIRouter(prefix="/api/task-categories", tags=["task_categories"])
 
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/task-categories", tags=["task_categories"])
 @router.get("", response_model=list[TaskCategoryResponse])
 async def list_categories(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("tasks")),
 ):
     result = await db.execute(select(TaskCategory).order_by(TaskCategory.name))
     return result.scalars().all()
@@ -23,7 +23,7 @@ async def list_categories(
 async def create_category(
     body: TaskCategoryCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("tasks", write=True)),
 ):
     cat = TaskCategory(**body.model_dump())
     db.add(cat)
@@ -37,7 +37,7 @@ async def update_category(
     category_id: int,
     body: TaskCategoryUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("tasks", write=True)),
 ):
     result = await db.execute(select(TaskCategory).where(TaskCategory.id == category_id))
     cat = result.scalar_one_or_none()
@@ -54,7 +54,7 @@ async def update_category(
 async def delete_category(
     category_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("tasks", write=True)),
 ):
     result = await db.execute(select(TaskCategory).where(TaskCategory.id == category_id))
     cat = result.scalar_one_or_none()

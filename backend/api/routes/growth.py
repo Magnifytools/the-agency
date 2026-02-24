@@ -8,7 +8,7 @@ from typing import List, Optional
 from backend.db.database import get_db
 from backend.db.models import GrowthIdea, User
 from backend.schemas.growth import GrowthIdeaCreate, GrowthIdeaUpdate, GrowthIdeaResponse
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, require_module
 
 router = APIRouter(tags=["growth"])
 
@@ -18,7 +18,7 @@ async def list_growth_ideas(
     status: Optional[str] = None,
     funnel_stage: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("growth")),
 ):
     query = select(GrowthIdea).options(
         selectinload(GrowthIdea.project), selectinload(GrowthIdea.task)
@@ -54,7 +54,7 @@ async def list_growth_ideas(
 async def create_growth_idea(
     idea_in: GrowthIdeaCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("growth", write=True)),
 ):
     idea_dict = idea_in.model_dump()
     # Calculate initial ICE score
@@ -72,7 +72,7 @@ async def update_growth_idea(
     idea_id: int,
     idea_in: GrowthIdeaUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("growth", write=True)),
 ):
     result = await db.execute(select(GrowthIdea).where(GrowthIdea.id == idea_id))
     idea = result.scalar_one_or_none()
@@ -99,7 +99,7 @@ async def update_growth_idea(
 async def delete_growth_idea(
     idea_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("growth", write=True)),
 ):
     result = await db.execute(select(GrowthIdea).where(GrowthIdea.id == idea_id))
     idea = result.scalar_one_or_none()

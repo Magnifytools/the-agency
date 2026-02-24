@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import Client, Task, TimeEntry, User
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, require_module
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 
@@ -30,7 +30,7 @@ async def export_billing(
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("billing")),
 ):
     now = datetime.now(timezone.utc)
     y = year or now.year

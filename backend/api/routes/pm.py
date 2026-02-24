@@ -11,7 +11,8 @@ from backend.db.models import PMInsight, User, InsightStatus, AlertSettings
 from backend.schemas.insight import InsightResponse, DailyBriefingResponse
 from backend.schemas.alert_settings import AlertSettingsResponse, AlertSettingsUpdate
 from backend.services.insights import generate_insights, get_daily_briefing
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, require_module
+from backend.db.models import UserRole
 
 router = APIRouter(prefix="/api/pm", tags=["pm"])
 
@@ -46,10 +47,14 @@ async def list_insights(
     status_filter: Optional[str] = None,
     priority: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("pm")),
 ):
-    """List all active insights, ordered by priority."""
+    """List active insights, scoped to current user (admin sees all)."""
     query = select(PMInsight)
+
+    # F-04: isolate by user_id for non-admin
+    if current_user.role != UserRole.admin:
+        query = query.where(PMInsight.user_id == current_user.id)
 
     if status_filter:
         query = query.where(PMInsight.status == status_filter)
@@ -73,15 +78,18 @@ async def list_insights(
 @router.post("/generate-insights", response_model=list[InsightResponse])
 async def trigger_generate_insights(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("pm", write=True)),
 ):
     """
     Generate new insights based on current state.
-    This clears old active insights and creates fresh ones.
+    This clears old active insights for THIS USER and creates fresh ones.
     """
-    # Clear old active insights (they'll be regenerated)
+    # F-04: only clear insights belonging to current user
     old_insights = await db.execute(
-        select(PMInsight).where(PMInsight.status == InsightStatus.active)
+        select(PMInsight).where(
+            PMInsight.status == InsightStatus.active,
+            PMInsight.user_id == current_user.id,
+        )
     )
     for old in old_insights.scalars().all():
         await db.delete(old)
@@ -97,7 +105,7 @@ async def trigger_generate_insights(
 async def dismiss_insight(
     insight_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("pm", write=True)),
 ):
     """Mark an insight as dismissed."""
     result = await db.execute(select(PMInsight).where(PMInsight.id == insight_id))
@@ -105,6 +113,10 @@ async def dismiss_insight(
 
     if not insight:
         raise HTTPException(status_code=404, detail="Insight not found")
+
+    # F-04: ownership check
+    if current_user.role != UserRole.admin and insight.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your insight")
 
     insight.status = InsightStatus.dismissed
     insight.dismissed_at = datetime.utcnow()
@@ -119,7 +131,7 @@ async def dismiss_insight(
 async def act_on_insight(
     insight_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("pm", write=True)),
 ):
     """Mark an insight as acted upon."""
     result = await db.execute(select(PMInsight).where(PMInsight.id == insight_id))
@@ -127,6 +139,10 @@ async def act_on_insight(
 
     if not insight:
         raise HTTPException(status_code=404, detail="Insight not found")
+
+    # F-04: ownership check
+    if current_user.role != UserRole.admin and insight.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your insight")
 
     insight.status = InsightStatus.acted
     insight.acted_at = datetime.utcnow()
@@ -140,7 +156,7 @@ async def act_on_insight(
 @router.get("/daily-briefing", response_model=DailyBriefingResponse)
 async def get_briefing(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("pm")),
 ):
     """Get the daily briefing summary."""
     briefing = await get_daily_briefing(db, user_id=current_user.id)
@@ -150,7 +166,7 @@ async def get_briefing(
 @router.post("/briefing/discord")
 async def share_briefing_to_discord(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("pm", write=True)),
 ):
     """Generate the daily briefing and share it to Discord via Webhook."""
     from backend.config import settings
@@ -207,12 +223,14 @@ async def share_briefing_to_discord(
 @router.get("/insights/count")
 async def get_insight_count(
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("pm")),
 ):
     """Get count of active insights by priority."""
-    result = await db.execute(
-        select(PMInsight).where(PMInsight.status == InsightStatus.active)
-    )
+    query = select(PMInsight).where(PMInsight.status == InsightStatus.active)
+    # F-04: scope to user
+    if current_user.role != UserRole.admin:
+        query = query.where(PMInsight.user_id == current_user.id)
+    result = await db.execute(query)
     insights = list(result.scalars().all())
 
     high = sum(1 for i in insights if i.priority.value == "high")
@@ -243,7 +261,7 @@ def _settings_to_response(settings: AlertSettings) -> AlertSettingsResponse:
 @router.get("/settings/alerts", response_model=AlertSettingsResponse)
 async def get_alert_settings(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("pm")),
 ):
     """Get alert settings for the current user, creating defaults if needed."""
     result = await db.execute(
@@ -265,7 +283,7 @@ async def get_alert_settings(
 async def update_alert_settings(
     data: AlertSettingsUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("pm", write=True)),
 ):
     """Update alert settings for the current user."""
     result = await db.execute(

@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useParams, Link } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { clientsApi, timeEntriesApi } from "@/lib/api"
+import { clientsApi, timeEntriesApi, projectsApi } from "@/lib/api"
 import type { TaskStatus } from "@/lib/types"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -44,10 +44,17 @@ export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const clientId = Number(id)
   const [timeLogTaskId, setTimeLogTaskId] = useState<{ id: number; title: string } | null>(null)
+  const [activeTab, setActiveTab] = useState<"tareas" | "proyectos" | "comunicaciones" | "tiempo">("tareas")
 
   const { data: summary, isLoading } = useQuery({
     queryKey: ["client-summary", clientId],
     queryFn: () => clientsApi.summary(clientId),
+    enabled: !!clientId,
+  })
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ["client-projects", clientId],
+    queryFn: () => projectsApi.listAll({ client_id: clientId }),
     enabled: !!clientId,
   })
 
@@ -114,64 +121,141 @@ export default function ClientDetailPage() {
         </Card>
       </div>
 
-      {/* Tasks Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Tareas</CardTitle>
-        </CardHeader>
-        <CardContent className="pt-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Titulo</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Est.</TableHead>
-                <TableHead>Real</TableHead>
-                <TableHead>Timer</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tasks.map((t) => (
-                <TableRow key={t.id}>
-                  <TableCell className="font-medium">{t.title}</TableCell>
-                  <TableCell>{taskStatusBadge(t.status)}</TableCell>
-                  <TableCell className="mono">{t.estimated_minutes ? formatMinutes(t.estimated_minutes) : "-"}</TableCell>
-                  <TableCell className="mono">{t.actual_minutes ? formatMinutes(t.actual_minutes) : "-"}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <TimerButton taskId={t.id} />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setTimeLogTaskId({ id: t.id, title: t.title })}
-                      >
-                        <Clock className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {tasks.length === 0 && (
+      {/* Tabs */}
+      <div className="flex items-center space-x-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
+        {(["tareas", "proyectos", "comunicaciones", "tiempo"] as const).map((tab) => (
+          <Button
+            key={tab}
+            variant={activeTab === tab ? "default" : "ghost"}
+            size="sm"
+            className="capitalize"
+            onClick={() => setActiveTab(tab)}
+          >
+            {tab}
+          </Button>
+        ))}
+      </div>
+
+      {/* Tab: Tareas */}
+      {activeTab === "tareas" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Tareas</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-4">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                    No hay tareas
-                  </TableCell>
+                  <TableHead>Titulo</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Est.</TableHead>
+                  <TableHead>Real</TableHead>
+                  <TableHead>Timer</TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              </TableHeader>
+              <TableBody>
+                {tasks.map((t) => (
+                  <TableRow key={t.id}>
+                    <TableCell className="font-medium">{t.title}</TableCell>
+                    <TableCell>{taskStatusBadge(t.status)}</TableCell>
+                    <TableCell className="mono">{t.estimated_minutes ? formatMinutes(t.estimated_minutes) : "-"}</TableCell>
+                    <TableCell className="mono">{t.actual_minutes ? formatMinutes(t.actual_minutes) : "-"}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <TimerButton taskId={t.id} />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setTimeLogTaskId({ id: t.id, title: t.title })}
+                        >
+                          <Clock className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {tasks.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                      No hay tareas
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Communications */}
-      <Card>
-        <CardContent className="p-6">
-          <CommunicationList clientId={clientId} />
-        </CardContent>
-      </Card>
+      {/* Tab: Proyectos */}
+      {activeTab === "proyectos" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Proyectos</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-4">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nombre</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Progreso</TableHead>
+                  <TableHead>Tareas</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {projects.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell className="font-medium">
+                      <Link to={`/projects/${p.id}`} className="text-brand hover:underline">
+                        {p.name}
+                      </Link>
+                    </TableCell>
+                    <TableCell>{p.project_type || "-"}</TableCell>
+                    <TableCell>
+                      <Badge variant={p.status === "active" ? "success" : p.status === "completed" ? "secondary" : "warning"}>
+                        {p.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-brand rounded-full"
+                            style={{ width: `${p.progress_percent}%` }}
+                          />
+                        </div>
+                        <span className="text-xs mono">{p.progress_percent}%</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="mono">{p.completed_task_count}/{p.task_count}</TableCell>
+                  </TableRow>
+                ))}
+                {projects.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                      No hay proyectos
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Recent Time Entries */}
-      {recentEntries.length > 0 && (
+      {/* Tab: Comunicaciones */}
+      {activeTab === "comunicaciones" && (
+        <Card>
+          <CardContent className="p-6">
+            <CommunicationList clientId={clientId} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Tab: Tiempo */}
+      {activeTab === "tiempo" && (
         <Card>
           <CardHeader>
             <CardTitle>Entradas de tiempo recientes</CardTitle>
@@ -195,6 +279,13 @@ export default function ClientDetailPage() {
                     <TableCell className="max-w-[200px] truncate">{e.notes || "-"}</TableCell>
                   </TableRow>
                 ))}
+                {recentEntries.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                      No hay entradas de tiempo
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </CardContent>

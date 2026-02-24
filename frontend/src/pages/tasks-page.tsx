@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { tasksApi, clientsApi, categoriesApi, usersApi } from "@/lib/api"
-import type { Task, TaskCreate, TaskStatus } from "@/lib/types"
+import type { Task, TaskCreate, TaskStatus, TaskPriority } from "@/lib/types"
 import { usePagination } from "@/hooks/use-pagination"
 import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
@@ -21,14 +21,22 @@ import { KanbanBoard } from "@/components/tasks/kanban-board"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 
-const taskStatusBadge = (status: TaskStatus) => {
-  const map: Record<TaskStatus, { label: string; variant: "secondary" | "warning" | "success" }> = {
-    pending: { label: "Pendiente", variant: "secondary" },
-    in_progress: { label: "En curso", variant: "warning" },
-    completed: { label: "Completada", variant: "success" },
+const priorityBadge = (priority: TaskPriority) => {
+  const map: Record<TaskPriority, { label: string; variant: "destructive" | "warning" | "secondary" | "outline" }> = {
+    urgent: { label: "Urgente", variant: "destructive" },
+    high: { label: "Alta", variant: "warning" },
+    medium: { label: "Media", variant: "secondary" },
+    low: { label: "Baja", variant: "outline" },
   }
-  const { label, variant } = map[status]
-  return <Badge variant={variant}>{label}</Badge>
+  const { label, variant } = map[priority] ?? { label: priority, variant: "secondary" as const }
+  return <Badge variant={variant} dot={false}>{label}</Badge>
+}
+
+const formatMinutes = (mins: number) => {
+  if (mins < 60) return `${mins}m`
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
 export default function TasksPage() {
@@ -44,17 +52,21 @@ export default function TasksPage() {
   const [filterClient, setFilterClient] = useState<string>("")
   const [filterCategory, setFilterCategory] = useState<string>("")
   const [filterStatus, setFilterStatus] = useState<string>("")
+  const [filterPriority, setFilterPriority] = useState<string>("")
+  const [filterAssigned, setFilterAssigned] = useState<string>("")
 
   // QA Health Filters
   const [qaFilter, setQaFilter] = useState<"none" | "unassigned" | "no_date" | "no_estimate" | "overdue">("none")
 
   const { data: tasksData, isLoading } = useQuery({
-    queryKey: ["tasks", filterClient, filterCategory, filterStatus, page, pageSize],
+    queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, page, pageSize],
     queryFn: () =>
       tasksApi.list({
         client_id: filterClient ? Number(filterClient) : undefined,
         category_id: filterCategory ? Number(filterCategory) : undefined,
         status: filterStatus || undefined,
+        priority: filterPriority || undefined,
+        assigned_to: filterAssigned ? Number(filterAssigned) : undefined,
         page,
         page_size: pageSize,
       }),
@@ -143,6 +155,7 @@ export default function TasksPage() {
       title: fd.get("title") as string,
       description: (fd.get("description") as string) || null,
       status: (fd.get("status") as TaskStatus) || "pending",
+      priority: (fd.get("priority") as TaskPriority) || "medium",
       estimated_minutes: fd.get("estimated_minutes") ? Number(fd.get("estimated_minutes")) : null,
       actual_minutes: fd.get("actual_minutes") ? Number(fd.get("actual_minutes")) : null,
       due_date: (fd.get("due_date") as string) || null,
@@ -189,6 +202,21 @@ export default function TasksPage() {
           <option value="pending">Pendiente</option>
           <option value="in_progress">En curso</option>
           <option value="completed">Completada</option>
+        </Select>
+        <Select value={filterPriority} onChange={(e) => { setFilterPriority(e.target.value); reset() }} className="w-48">
+          <option value="">Todas las prioridades</option>
+          <option value="urgent">Urgente</option>
+          <option value="high">Alta</option>
+          <option value="medium">Media</option>
+          <option value="low">Baja</option>
+        </Select>
+        <Select value={filterAssigned} onChange={(e) => { setFilterAssigned(e.target.value); reset() }} className="w-48">
+          <option value="">Todos los asignados</option>
+          {users.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.full_name}
+            </option>
+          ))}
         </Select>
       </div>
 
@@ -269,10 +297,10 @@ export default function TasksPage() {
             <TableRow>
               <TableHead>Titulo</TableHead>
               <TableHead>Cliente</TableHead>
-              <TableHead>Categoria</TableHead>
+              <TableHead>Prioridad</TableHead>
               <TableHead>Asignado</TableHead>
               <TableHead>Estado</TableHead>
-              <TableHead>Est. (min)</TableHead>
+              <TableHead>Est / Real</TableHead>
               <TableHead>Fecha limite</TableHead>
               <TableHead>Timer</TableHead>
               <TableHead className="w-24">Acciones</TableHead>
@@ -292,17 +320,46 @@ export default function TasksPage() {
                   (qaFilter === "overdue" && QA_overdue)
                   ? "bg-destructive/5" : "";
 
+              const est = t.estimated_minutes
+              const real = t.actual_minutes
+              const diff = est && real ? real - est : null
+
               return (
                 <TableRow key={t.id} className={rowHighlight}>
                   <TableCell className="font-medium">{t.title}</TableCell>
                   <TableCell>{t.client_name || "-"}</TableCell>
-                  <TableCell>{t.category_name || "-"}</TableCell>
+                  <TableCell>{priorityBadge(t.priority)}</TableCell>
                   <TableCell className={qaFilter === "unassigned" && QA_unassigned ? "text-destructive font-bold" : ""}>
                     {t.assigned_user_name || (QA_unassigned && qaFilter === "unassigned" ? "⚠️ Faltante" : "-")}
                   </TableCell>
-                  <TableCell>{taskStatusBadge(t.status)}</TableCell>
-                  <TableCell className={`mono ${qaFilter === "no_estimate" && QA_noestimate ? "text-destructive font-bold" : ""}`}>
-                    {t.estimated_minutes ?? (QA_noestimate && qaFilter === "no_estimate" ? "⚠️ 0" : "-")}
+                  <TableCell>
+                    <Select
+                      value={t.status}
+                      onChange={(e) => updateMutation.mutate({ id: t.id, data: { status: e.target.value as TaskStatus } })}
+                      className="h-7 text-xs w-28 py-0"
+                    >
+                      <option value="pending">Pendiente</option>
+                      <option value="in_progress">En curso</option>
+                      <option value="completed">Completada</option>
+                    </Select>
+                  </TableCell>
+                  <TableCell className="text-xs mono">
+                    {est || real ? (
+                      <span>
+                        {est ? formatMinutes(est) : "-"}
+                        {" / "}
+                        {real ? formatMinutes(real) : "-"}
+                        {diff !== null && diff !== 0 && (
+                          <span className={diff > 0 ? "text-red-400 ml-1" : "text-green-400 ml-1"}>
+                            ({diff > 0 ? "+" : ""}{formatMinutes(Math.abs(diff))})
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className={qaFilter === "no_estimate" && QA_noestimate ? "text-destructive font-bold" : ""}>
+                        {QA_noestimate && qaFilter === "no_estimate" ? "⚠️ 0" : "-"}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className={`mono ${(qaFilter === "no_date" && QA_nodate) || (qaFilter === "overdue" && QA_overdue)
                       ? "text-destructive font-bold" : ""
@@ -417,6 +474,15 @@ export default function TasksPage() {
                 <option value="pending">Pendiente</option>
                 <option value="in_progress">En curso</option>
                 <option value="completed">Completada</option>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="priority">Prioridad</Label>
+              <Select id="priority" name="priority" defaultValue={editing?.priority ?? "medium"}>
+                <option value="urgent">Urgente</option>
+                <option value="high">Alta</option>
+                <option value="medium">Media</option>
+                <option value="low">Baja</option>
               </Select>
             </div>
             <div className="space-y-2">

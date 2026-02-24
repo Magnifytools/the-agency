@@ -8,7 +8,7 @@ from jinja2 import Environment, BaseLoader
 
 from backend.db.database import get_db
 from backend.db.models import Proposal, Client, Project, User, ProposalStatus
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, require_module
 from backend.schemas.proposal import ProposalCreate, ProposalUpdate, ProposalResponse
 
 router = APIRouter(prefix="/api/proposals", tags=["proposals"])
@@ -34,7 +34,7 @@ async def list_proposals(
     client_id: Optional[int] = None,
     status_filter: Optional[ProposalStatus] = None,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_module("proposals")),
 ):
     query = select(Proposal)
     
@@ -54,7 +54,7 @@ async def list_proposals(
 async def create_proposal(
     data: ProposalCreate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_module("proposals", write=True)),
 ):
     # Verify client exists
     client = await db.execute(select(Client).where(Client.id == data.client_id))
@@ -77,7 +77,7 @@ async def create_proposal(
 async def get_proposal(
     proposal_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_module("proposals")),
 ):
     result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
     prop = result.scalar_one_or_none()
@@ -93,7 +93,7 @@ async def update_proposal(
     proposal_id: int,
     data: ProposalUpdate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_module("proposals", write=True)),
 ):
     result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
     prop = result.scalar_one_or_none()
@@ -117,7 +117,7 @@ async def update_proposal(
 async def delete_proposal(
     proposal_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_module("proposals", write=True)),
 ):
     result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
     prop = result.scalar_one_or_none()
@@ -195,7 +195,7 @@ PDF_HTML_TEMPLATE = """
 async def generate_proposal_pdf(
     proposal_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_module("proposals")),
 ):
     try:
         from weasyprint import HTML

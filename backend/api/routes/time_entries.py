@@ -8,7 +8,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
-from backend.db.models import TimeEntry, Task, User
+from backend.db.models import TimeEntry, Task, User, UserRole
 from backend.schemas.time_entry import (
     TimeEntryCreate,
     TimeEntryUpdate,
@@ -17,7 +17,7 @@ from backend.schemas.time_entry import (
     TimerStopRequest,
     ActiveTimerResponse,
 )
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, require_module
 
 router = APIRouter(tags=["time-entries"])
 
@@ -44,7 +44,7 @@ def _entry_to_response(entry: TimeEntry) -> TimeEntryResponse:
 async def create_time_entry(
     body: TimeEntryCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("timesheet", write=True)),
 ):
     entry = TimeEntry(
         minutes=body.minutes,
@@ -66,13 +66,16 @@ async def list_time_entries(
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("timesheet")),
 ):
     query = select(TimeEntry).where(TimeEntry.minutes.isnot(None))
+    # F-05: members can only see their own time entries
+    if current_user.role != UserRole.admin:
+        query = query.where(TimeEntry.user_id == current_user.id)
+    elif user_id is not None:
+        query = query.where(TimeEntry.user_id == user_id)
     if task_id is not None:
         query = query.where(TimeEntry.task_id == task_id)
-    if user_id is not None:
-        query = query.where(TimeEntry.user_id == user_id)
     if date_from is not None:
         query = query.where(TimeEntry.date >= date_from)
     if date_to is not None:
@@ -86,7 +89,7 @@ async def list_time_entries(
 async def weekly_timesheet(
     week_start: Optional[date_type] = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("timesheet")),
 ):
     today = datetime.now(timezone.utc).date()
     if week_start is None:
@@ -139,12 +142,15 @@ async def update_time_entry(
     entry_id: int,
     body: TimeEntryUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("timesheet", write=True)),
 ):
     result = await db.execute(select(TimeEntry).where(TimeEntry.id == entry_id))
     entry = result.scalar_one_or_none()
     if entry is None:
         raise HTTPException(status_code=404, detail="Time entry not found")
+    # F-05: members can only edit their own entries
+    if current_user.role != UserRole.admin and entry.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your time entry")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(entry, field, value)
     await db.commit()
@@ -156,12 +162,15 @@ async def update_time_entry(
 async def delete_time_entry(
     entry_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("timesheet", write=True)),
 ):
     result = await db.execute(select(TimeEntry).where(TimeEntry.id == entry_id))
     entry = result.scalar_one_or_none()
     if entry is None:
         raise HTTPException(status_code=404, detail="Time entry not found")
+    # F-05: members can only delete their own entries
+    if current_user.role != UserRole.admin and entry.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your time entry")
     await db.delete(entry)
     await db.commit()
 
@@ -172,7 +181,7 @@ async def delete_time_entry(
 async def start_timer(
     body: TimerStartRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("timesheet", write=True)),
 ):
     # Check no active timer for this user
     result = await db.execute(
@@ -230,7 +239,7 @@ async def start_timer(
 async def stop_timer(
     body: TimerStopRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("timesheet", write=True)),
 ):
     result = await db.execute(
         select(TimeEntry).where(
@@ -254,7 +263,7 @@ async def stop_timer(
 @router.get("/api/timer/active", response_model=ActiveTimerResponse)
 async def get_active_timer(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("timesheet")),
 ):
     result = await db.execute(
         select(TimeEntry).where(

@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { dashboardApi, discordApi } from "@/lib/api"
+import { dashboardApi, discordApi, tasksApi, timeEntriesApi } from "@/lib/api"
 import { useAuth } from "@/context/auth-context"
 import { MetricCard } from "@/components/dashboard/metric-card"
 import { ProfitabilityChart } from "@/components/dashboard/profitability-chart"
@@ -95,6 +95,38 @@ export default function DashboardPage() {
     onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar los guardarraíles")),
   })
 
+  // Worker-specific queries
+  const { data: myInProgressTasks } = useQuery({
+    queryKey: ["my-tasks-in-progress", user?.id],
+    queryFn: () => tasksApi.listAll({ assigned_to: user!.id, status: "in_progress" }),
+    enabled: !!user && user.role === "member",
+  })
+
+  const { data: myPendingTasks } = useQuery({
+    queryKey: ["my-tasks-pending", user?.id],
+    queryFn: () => tasksApi.listAll({ assigned_to: user!.id, status: "pending" }),
+    enabled: !!user && user.role === "member",
+  })
+
+  const { data: myOverdueTasks } = useQuery({
+    queryKey: ["my-tasks-overdue", user?.id],
+    queryFn: () => tasksApi.listAll({ assigned_to: user!.id, overdue: true }),
+    enabled: !!user && user.role === "member",
+  })
+
+  const { data: weeklyTimesheet } = useQuery({
+    queryKey: ["weekly-timesheet"],
+    queryFn: () => timeEntriesApi.weekly(),
+    enabled: !!user && user.role === "member",
+  })
+
+  // Admin overdue tasks
+  const { data: allOverdueTasks } = useQuery({
+    queryKey: ["all-overdue-tasks"],
+    queryFn: () => tasksApi.listAll({ overdue: true }),
+    enabled: !!user && user.role === "admin",
+  })
+
   const handlePreview = async () => {
     await fetchPreview()
     setPreviewOpen(true)
@@ -148,6 +180,115 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* ===== WORKER DASHBOARD ===== */}
+      {!isAdmin && user && (
+        <div className="space-y-6">
+          {/* Mis horas esta semana */}
+          {weeklyTimesheet && (() => {
+            const myRow = weeklyTimesheet.users.find(u => u.user_id === user.id)
+            const totalHours = myRow ? Math.round(myRow.total_minutes / 60 * 10) / 10 : 0
+            return (
+              <div className="grid grid-cols-2 gap-4">
+                <MetricCard icon={Clock} label="Mis horas esta semana" value={`${totalHours}h`} />
+                <MetricCard icon={CheckSquare} label="Tareas en curso" value={myInProgressTasks?.length ?? 0} subtitle={`${myPendingTasks?.length ?? 0} pendientes`} />
+              </div>
+            )
+          })()}
+
+          {/* Mis tareas vencidas */}
+          {myOverdueTasks && myOverdueTasks.length > 0 && (
+            <Card className="border-red-500/30 bg-red-500/5">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-red-400 text-sm">Mis tareas vencidas ({myOverdueTasks.length})</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tarea</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Fecha limite</TableHead>
+                      <TableHead>Dias atrasada</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {myOverdueTasks.map(t => {
+                      const daysOverdue = t.due_date ? Math.floor((Date.now() - new Date(t.due_date).getTime()) / 86400000) : 0
+                      return (
+                        <TableRow key={t.id}>
+                          <TableCell className="font-medium">{t.title}</TableCell>
+                          <TableCell>{t.client_name || "-"}</TableCell>
+                          <TableCell className="mono">{t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : "-"}</TableCell>
+                          <TableCell className="text-red-400 font-bold">{daysOverdue}d</TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Mis tareas en curso */}
+          {myInProgressTasks && myInProgressTasks.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Mis tareas en curso</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tarea</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Fecha limite</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {myInProgressTasks.map(t => (
+                      <TableRow key={t.id}>
+                        <TableCell className="font-medium">{t.title}</TableCell>
+                        <TableCell>{t.client_name || "-"}</TableCell>
+                        <TableCell className="mono">{t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : "-"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Mis tareas pendientes */}
+          {myPendingTasks && myPendingTasks.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Mis tareas pendientes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tarea</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Fecha limite</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {myPendingTasks.map(t => (
+                      <TableRow key={t.id}>
+                        <TableCell className="font-medium">{t.title}</TableCell>
+                        <TableCell>{t.client_name || "-"}</TableCell>
+                        <TableCell className="mono">{t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : "-"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
       {closeReminder && (
         <Card>
           <CardContent className="pt-6">
@@ -178,6 +319,42 @@ export default function DashboardPage() {
 
       {/* PM Insights Panel - Moved to the very top for Daily Ops focus */}
       <InsightsPanel />
+
+      {/* Admin: Tareas vencidas */}
+      {isAdmin && allOverdueTasks && allOverdueTasks.length > 0 && (
+        <Card className="border-red-500/30 bg-red-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-red-400 text-sm">Tareas vencidas ({allOverdueTasks.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tarea</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Asignado</TableHead>
+                  <TableHead>Fecha limite</TableHead>
+                  <TableHead>Dias atrasada</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {allOverdueTasks.map(t => {
+                  const daysOverdue = t.due_date ? Math.floor((Date.now() - new Date(t.due_date).getTime()) / 86400000) : 0
+                  return (
+                    <TableRow key={t.id}>
+                      <TableCell className="font-medium">{t.title}</TableCell>
+                      <TableCell>{t.client_name || "-"}</TableCell>
+                      <TableCell>{t.assigned_user_name || "-"}</TableCell>
+                      <TableCell className="mono">{t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : "-"}</TableCell>
+                      <TableCell className="text-red-400 font-bold">{daysOverdue}d</TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {financialAlerts.length > 0 && isAdmin && (
         <Card className="border-warning/50 bg-warning/5">
@@ -400,8 +577,8 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* Profitability */}
-      {profitability && profitability.clients.length > 0 && (
+      {/* Profitability (admin only) */}
+      {isAdmin && profitability && profitability.clients.length > 0 && (
         <div className="grid lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader>
@@ -449,8 +626,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Team Summary */}
-      {team && team.length > 0 && (
+      {/* Team Summary (admin only) */}
+      {isAdmin && team && team.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Resumen del equipo</CardTitle>

@@ -9,6 +9,7 @@ export type UserRole = "admin" | "member"
 export type ContractType = "monthly" | "one_time"
 export type ClientStatus = "active" | "paused" | "finished"
 export type TaskStatus = "pending" | "in_progress" | "completed"
+export type TaskPriority = "urgent" | "high" | "medium" | "low"
 export type ProjectStatus = "planning" | "active" | "on_hold" | "completed" | "cancelled"
 export type PhaseStatus = "pending" | "in_progress" | "completed"
 
@@ -82,6 +83,7 @@ export interface Task {
   title: string
   description: string | null
   status: TaskStatus
+  priority: TaskPriority
   estimated_minutes: number | null
   actual_minutes: number | null
   due_date: string | null
@@ -104,6 +106,7 @@ export interface TaskCreate {
   title: string
   description?: string | null
   status?: TaskStatus
+  priority?: TaskPriority
   estimated_minutes?: number | null
   actual_minutes?: number | null
   due_date?: string | null

@@ -213,7 +213,7 @@ async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> 
     # 6. Quality Assurance: Tasks without estimation or assignees
     active_tasks_no_estimate = await db.execute(
         select(Task)
-        .where(Task.status == TaskStatus.todo)
+        .where(Task.status == TaskStatus.pending)
         .where(Task.estimated_minutes == None)
         .limit(20)
     )
@@ -221,7 +221,7 @@ async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> 
 
     active_tasks_unassigned = await db.execute(
         select(Task)
-        .where(Task.status == TaskStatus.todo)
+        .where(Task.status == TaskStatus.pending)
         .where(Task.assigned_to == None)
         .limit(20)
     )
@@ -229,7 +229,7 @@ async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> 
 
     active_tasks_no_date = await db.execute(
         select(Task)
-        .where(Task.status == TaskStatus.todo)
+        .where(Task.status == TaskStatus.pending)
         .where(Task.due_date == None)
         .limit(20)
     )

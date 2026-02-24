@@ -6,10 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
-from backend.db.models import GeneratedReport, User
+from backend.db.models import GeneratedReport, User, UserRole
 from backend.schemas.report import ReportRequest, ReportResponse, ReportSection
 from backend.services.reports import generate_report
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, require_module
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -34,7 +34,7 @@ def _to_response(report: GeneratedReport) -> ReportResponse:
 async def create_report(
     request: ReportRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("reports", write=True)),
 ):
     """Generate a new report."""
     try:
@@ -55,14 +55,15 @@ async def create_report(
 async def list_reports(
     limit: int = 20,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("reports")),
 ):
     """List recently generated reports."""
-    result = await db.execute(
-        select(GeneratedReport)
-        .order_by(GeneratedReport.generated_at.desc())
-        .limit(limit)
-    )
+    query = select(GeneratedReport)
+    # F-07: members only see their own reports
+    if current_user.role != UserRole.admin:
+        query = query.where(GeneratedReport.user_id == current_user.id)
+    query = query.order_by(GeneratedReport.generated_at.desc()).limit(limit)
+    result = await db.execute(query)
     return [_to_response(r) for r in result.scalars().all()]
 
 
@@ -70,7 +71,7 @@ async def list_reports(
 async def get_report(
     report_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("reports")),
 ):
     """Get a specific report by ID."""
     result = await db.execute(
@@ -80,6 +81,9 @@ async def get_report(
 
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    # F-07: members can only see their own reports
+    if current_user.role != UserRole.admin and report.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your report")
 
     return _to_response(report)
 
@@ -88,7 +92,7 @@ async def get_report(
 async def delete_report(
     report_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("reports", write=True)),
 ):
     """Delete a report."""
     result = await db.execute(
@@ -98,6 +102,9 @@ async def delete_report(
 
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    # F-07: members can only delete their own reports
+    if current_user.role != UserRole.admin and report.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your report")
 
     await db.delete(report)
     await db.commit()

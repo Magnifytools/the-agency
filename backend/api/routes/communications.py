@@ -6,9 +6,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
-from backend.db.models import CommunicationLog, Client, User, CommunicationChannel, CommunicationDirection
+from backend.db.models import CommunicationLog, Client, User, UserRole, CommunicationChannel, CommunicationDirection
 from backend.schemas.communication import CommunicationCreate, CommunicationUpdate, CommunicationResponse
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, require_module
 
 router = APIRouter(prefix="/api", tags=["communications"])
 
@@ -37,7 +37,7 @@ def _to_response(comm: CommunicationLog) -> CommunicationResponse:
 async def list_client_communications(
     client_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_module("communications")),
 ):
     """List all communications for a client, ordered by most recent first."""
     result = await db.execute(
@@ -53,7 +53,7 @@ async def create_communication(
     client_id: int,
     body: CommunicationCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("communications", write=True)),
 ):
     """Create a new communication log entry for a client."""
     # Verify client exists
@@ -84,7 +84,7 @@ async def create_communication(
 async def get_communication(
     comm_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_module("communications")),
 ):
     result = await db.execute(select(CommunicationLog).where(CommunicationLog.id == comm_id))
     comm = result.scalar_one_or_none()
@@ -98,12 +98,15 @@ async def update_communication(
     comm_id: int,
     body: CommunicationUpdate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("communications", write=True)),
 ):
     result = await db.execute(select(CommunicationLog).where(CommunicationLog.id == comm_id))
     comm = result.scalar_one_or_none()
     if not comm:
         raise HTTPException(status_code=404, detail="Communication not found")
+    # F-06: members can only edit their own communications
+    if current_user.role != UserRole.admin and comm.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your communication")
 
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -124,12 +127,15 @@ async def update_communication(
 async def delete_communication(
     comm_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("communications", write=True)),
 ):
     result = await db.execute(select(CommunicationLog).where(CommunicationLog.id == comm_id))
     comm = result.scalar_one_or_none()
     if not comm:
         raise HTTPException(status_code=404, detail="Communication not found")
+    # F-06: members can only delete their own communications
+    if current_user.role != UserRole.admin and comm.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your communication")
     await db.delete(comm)
     await db.commit()
 
@@ -137,12 +143,13 @@ async def delete_communication(
 @router.get("/communications/pending-followups", response_model=list[CommunicationResponse])
 async def list_pending_followups(
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("communications")),
 ):
     """List all communications that require follow-up and haven't been addressed."""
-    result = await db.execute(
-        select(CommunicationLog)
-        .where(CommunicationLog.requires_followup.is_(True))
-        .order_by(CommunicationLog.followup_date.asc())
-    )
+    query = select(CommunicationLog).where(CommunicationLog.requires_followup.is_(True))
+    # F-06: members see only their own followups
+    if current_user.role != UserRole.admin:
+        query = query.where(CommunicationLog.user_id == current_user.id)
+    query = query.order_by(CommunicationLog.followup_date.asc())
+    result = await db.execute(query)
     return [_to_response(c) for c in result.scalars().all()]

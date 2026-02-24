@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
-from backend.db.models import Task, TaskStatus, User
+from backend.db.models import Task, TaskStatus, TaskPriority, User
 from backend.schemas.task import TaskCreate, TaskUpdate, TaskResponse
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module
@@ -24,6 +24,7 @@ def _task_to_response(task: Task) -> TaskResponse:
         title=task.title,
         description=task.description,
         status=task.status,
+        priority=task.priority,
         estimated_minutes=task.estimated_minutes,
         actual_minutes=task.actual_minutes,
         due_date=task.due_date,
@@ -49,6 +50,9 @@ async def list_tasks(
     status_filter: Optional[TaskStatus] = Query(None, alias="status"),
     category_id: Optional[int] = Query(None),
     project_id: Optional[int] = Query(None),
+    assigned_to: Optional[int] = Query(None),
+    priority: Optional[TaskPriority] = Query(None),
+    overdue: Optional[bool] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -63,6 +67,16 @@ async def list_tasks(
         base = base.where(Task.category_id == category_id)
     if project_id is not None:
         base = base.where(Task.project_id == project_id)
+    if assigned_to is not None:
+        base = base.where(Task.assigned_to == assigned_to)
+    if priority is not None:
+        base = base.where(Task.priority == priority)
+    if overdue:
+        from datetime import datetime
+        base = base.where(
+            Task.due_date < datetime.utcnow(),
+            Task.status != TaskStatus.completed,
+        )
 
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
 

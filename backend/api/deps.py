@@ -35,19 +35,24 @@ async def require_admin(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
-def require_module(module: str):
-    """Dependency factory: checks if user has read access to a module.
+def require_module(module: str, write: bool = False):
+    """Dependency factory: checks if user has access to a module.
+    If write=True, checks can_write; otherwise checks can_read.
     Admin users bypass permission checks."""
 
     async def checker(current_user: User = Depends(get_current_user)) -> User:
         if current_user.role == UserRole.admin:
             return current_user
         for perm in current_user.permissions:
-            if perm.module == module and perm.can_read:
-                return current_user
+            if perm.module == module:
+                if write and perm.can_write:
+                    return current_user
+                if not write and perm.can_read:
+                    return current_user
+        action = "write" if write else "read"
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"No access to module: {module}",
+            detail=f"No {action} access to module: {module}",
         )
 
     return checker

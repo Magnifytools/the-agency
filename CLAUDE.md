@@ -41,7 +41,7 @@ npx tsc --noEmit                   # Type check only
 Vite proxies `/api` requests to `localhost:8004` in dev mode.
 
 ### Seed Data
-- Users: `admin@agency.com` / `admin123` (admin), `member@agency.com` / `member123` (member)
+- Users: `david@magnify.ing` / `Magnify2026!` (admin), `nacho@magnify.ing` / `Magnify2026!` (member)
 - 8 SEO task categories pre-seeded
 - 8 expense categories pre-seeded
 
@@ -105,8 +105,14 @@ admin_users, admin_settings
 - `ACCESS_TOKEN_EXPIRE_MINUTES` - Token TTL (default: 480)
 - `DISCORD_WEBHOOK_URL` - Optional Discord webhook
 
+## No tocar
+- Módulos financieros custom: tax_service, forecast_service, income, expenses, taxes, forecasts
+- Se reemplazarán por integración Holded en fase posterior
+- Si necesitas importar algo de estos módulos, no lo hagas. Trabaja alrededor.
+
 ## Errores conocidos
 - bcrypt pinned a 4.1.3 (incompatibilidad passlib)
+- `Base.metadata.create_all` no agrega columnas a tablas existentes. Para nuevas columnas en tablas existentes, agregar `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` en `backend/main.py` lifespan.
 
 ---
 

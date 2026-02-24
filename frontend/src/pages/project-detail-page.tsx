@@ -241,12 +241,12 @@ export default function ProjectDetailPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <PhaseIcon
-                      className={`h - 5 w - 5 ${phase.status === "completed"
+                      className={`h-5 w-5 ${phase.status === "completed"
                         ? "text-success"
                         : phase.status === "in_progress"
                           ? "text-brand"
                           : "text-muted-foreground"
-                        } `}
+                        }`}
                     />
                     <div>
                       <CardTitle className="text-base font-semibold text-foreground">
@@ -361,7 +361,7 @@ function TaskRow({
     <div className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-card/50 group">
       <button
         onClick={() => onStatusChange(isCompleted ? "pending" : "completed")}
-        className={`flex - shrink - 0 ${isCompleted ? "text-success" : "text-muted-foreground hover:text-brand"} `}
+        className={`flex-shrink-0 ${isCompleted ? "text-success" : "text-muted-foreground hover:text-brand"}`}
       >
         {isCompleted ? (
           <CheckCircle2 className="h-5 w-5" />
@@ -370,7 +370,7 @@ function TaskRow({
         )}
       </button>
       <div className="flex-1 min-w-0">
-        <p className={`text - sm ${isCompleted ? "line-through text-muted-foreground" : ""} `}>
+        <p className={`text-sm ${isCompleted ? "line-through text-muted-foreground" : ""}`}>
           {task.title}
         </p>
       </div>
@@ -378,7 +378,7 @@ function TaskRow({
         <span className="text-xs text-muted-foreground">{task.assigned_to}</span>
       )}
       <Link
-        to={`/ tasks ? id = ${task.id} `}
+        to={`/tasks?id=${task.id}`}
         className="text-xs text-muted-foreground hover:text-brand opacity-0 group-hover:opacity-100"
       >
         Ver
