@@ -21,6 +21,7 @@ import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
+import { getErrorMessage } from "@/lib/utils"
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   planning: "Planificación",
@@ -424,7 +425,7 @@ function EditProjectDialog({
       toast.success("Proyecto actualizado")
       onOpenChange(false)
     },
-    onError: () => toast.error("Error al actualizar"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar")),
   })
 
   return (
@@ -557,7 +558,7 @@ function AddTaskDialog({
       setTitle("")
       setEstimatedMinutes("")
     },
-    onError: () => toast.error("Error al crear tarea"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al crear tarea")),
   })
 
   return (

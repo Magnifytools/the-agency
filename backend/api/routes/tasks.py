@@ -3,14 +3,15 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import Task, TaskStatus, User
 from backend.schemas.task import TaskCreate, TaskUpdate, TaskResponse
-from backend.api.deps import get_current_user
+from backend.schemas.pagination import PaginatedResponse
+from backend.api.deps import get_current_user, require_module
 
 logger = logging.getLogger(__name__)
 
@@ -42,34 +43,45 @@ def _task_to_response(task: Task) -> TaskResponse:
     )
 
 
-@router.get("", response_model=list[TaskResponse])
+@router.get("", response_model=PaginatedResponse[TaskResponse])
 async def list_tasks(
     client_id: Optional[int] = Query(None),
     status_filter: Optional[TaskStatus] = Query(None, alias="status"),
     category_id: Optional[int] = Query(None),
     project_id: Optional[int] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("tasks")),
 ):
-    query = select(Task)
+    base = select(Task)
     if client_id is not None:
-        query = query.where(Task.client_id == client_id)
+        base = base.where(Task.client_id == client_id)
     if status_filter is not None:
-        query = query.where(Task.status == status_filter)
+        base = base.where(Task.status == status_filter)
     if category_id is not None:
-        query = query.where(Task.category_id == category_id)
+        base = base.where(Task.category_id == category_id)
     if project_id is not None:
-        query = query.where(Task.project_id == project_id)
-    query = query.order_by(Task.created_at.desc())
+        base = base.where(Task.project_id == project_id)
+
+    total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
+
+    query = base.order_by(Task.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(query)
-    return [_task_to_response(t) for t in result.scalars().all()]
+
+    return PaginatedResponse(
+        items=[_task_to_response(t) for t in result.scalars().all()],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(
     body: TaskCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("tasks")),
 ):
     task = Task(**body.model_dump())
     db.add(task)
@@ -90,7 +102,7 @@ async def create_task(
 async def get_task(
     task_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("tasks")),
 ):
     result = await db.execute(select(Task).where(Task.id == task_id))
     task = result.scalar_one_or_none()
@@ -104,7 +116,7 @@ async def update_task(
     task_id: int,
     body: TaskUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("tasks")),
 ):
     result = await db.execute(select(Task).where(Task.id == task_id))
     task = result.scalar_one_or_none()
@@ -129,7 +141,7 @@ async def update_task(
 async def delete_task(
     task_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("tasks")),
 ):
     result = await db.execute(select(Task).where(Task.id == task_id))
     task = result.scalar_one_or_none()

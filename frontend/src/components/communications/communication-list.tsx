@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { getErrorMessage } from "@/lib/utils"
 
 const CHANNEL_ICONS: Record<CommunicationChannel, typeof Mail> = {
   email: Mail,
@@ -64,7 +65,7 @@ export function CommunicationList({ clientId }: CommunicationListProps) {
       toast.success("Comunicación eliminada")
       setDeleteId(null)
     },
-    onError: () => toast.error("Error al eliminar"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar")),
   })
 
   const formatDate = (date: string) => {
@@ -253,7 +254,7 @@ function AddCommunicationDialog({
         followup_notes: "",
       })
     },
-    onError: () => toast.error("Error al registrar"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al registrar")),
   })
 
   return (

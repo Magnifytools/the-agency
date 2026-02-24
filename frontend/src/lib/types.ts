@@ -1,3 +1,10 @@
+export interface PaginatedResponse<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export type UserRole = "admin" | "member"
 export type ContractType = "monthly" | "one_time"
 export type ClientStatus = "active" | "paused" | "finished"

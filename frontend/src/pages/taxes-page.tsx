@@ -13,6 +13,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Plus, Pencil, Trash2, Calculator } from "lucide-react"
 import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
 
 const fmt = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
 const currentYear = new Date().getFullYear()
@@ -58,7 +59,7 @@ export default function TaxesPage() {
       qc.invalidateQueries({ queryKey: ["tax-summary"] })
       toast.success("Impuestos calculados")
     },
-    onError: () => toast.error("Error al calcular"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al calcular")),
   })
 
   const createMut = useMutation({

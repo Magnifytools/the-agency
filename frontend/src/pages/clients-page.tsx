@@ -3,6 +3,8 @@ import { Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { clientsApi } from "@/lib/api"
 import type { Client, ClientCreate, ClientStatus } from "@/lib/types"
+import { usePagination } from "@/hooks/use-pagination"
+import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -14,6 +16,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
 
 const STATUS_TABS: { label: string; value: ClientStatus | "all" }[] = [
   { label: "Todos", value: "all" },
@@ -34,15 +37,17 @@ const statusBadge = (status: ClientStatus) => {
 
 export default function ClientsPage() {
   const queryClient = useQueryClient()
+  const { page, pageSize, setPage, reset } = usePagination(25)
   const [tab, setTab] = useState<ClientStatus | "all">("all")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
 
-  const { data: clients = [], isLoading } = useQuery({
-    queryKey: ["clients", tab],
-    queryFn: () => clientsApi.list(tab === "all" ? undefined : tab),
+  const { data, isLoading } = useQuery({
+    queryKey: ["clients", tab, page, pageSize],
+    queryFn: () => clientsApi.list({ status: tab === "all" ? undefined : tab, page, page_size: pageSize }),
   })
+  const clients = data?.items ?? []
 
   const createMutation = useMutation({
     mutationFn: (data: ClientCreate) => clientsApi.create(data),
@@ -51,7 +56,7 @@ export default function ClientsPage() {
       closeDialog()
       toast.success("Cliente creado")
     },
-    onError: () => toast.error("Error al crear cliente"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al crear cliente")),
   })
 
   const updateMutation = useMutation({
@@ -61,7 +66,7 @@ export default function ClientsPage() {
       closeDialog()
       toast.success("Cliente actualizado")
     },
-    onError: () => toast.error("Error al actualizar cliente"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar cliente")),
   })
 
   const deleteMutation = useMutation({
@@ -70,7 +75,7 @@ export default function ClientsPage() {
       queryClient.invalidateQueries({ queryKey: ["clients"] })
       toast.success("Cliente archivado")
     },
-    onError: () => toast.error("Error al archivar cliente"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al archivar cliente")),
   })
 
   const closeDialog = () => {
@@ -125,7 +130,7 @@ export default function ClientsPage() {
             key={t.value}
             variant={tab === t.value ? "default" : "outline"}
             size="sm"
-            onClick={() => setTab(t.value)}
+            onClick={() => { setTab(t.value); reset() }}
           >
             {t.label}
           </Button>
@@ -183,6 +188,8 @@ export default function ClientsPage() {
           </TableBody>
         </Table>
       )}
+
+      <Pagination page={page} pageSize={pageSize} total={data?.total ?? 0} onPageChange={setPage} />
 
       {/* Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

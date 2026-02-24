@@ -3,6 +3,7 @@ import { timerApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Play, Square } from "lucide-react"
 import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
 
 interface TimerButtonProps {
   taskId: number
@@ -25,10 +26,7 @@ export function TimerButton({ taskId }: TimerButtonProps) {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       toast.success("Timer iniciado")
     },
-    onError: (err: any) => {
-      const msg = err.response?.data?.detail || "Error al iniciar timer"
-      toast.error(msg)
-    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al iniciar timer")),
   })
 
   const stopMutation = useMutation({
@@ -38,7 +36,7 @@ export function TimerButton({ taskId }: TimerButtonProps) {
       queryClient.invalidateQueries({ queryKey: ["time-entries"] })
       toast.success("Timer detenido")
     },
-    onError: () => toast.error("Error al detener timer"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al detener timer")),
   })
 
   if (isThisTaskRunning) {

@@ -30,7 +30,7 @@ from backend.schemas.dashboard import (
     FinancialSettingsResponse,
     FinancialSettingsUpdate,
 )
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, require_module
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -58,7 +58,7 @@ async def get_overview(
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("dashboard")),
 ):
     now = datetime.now(timezone.utc)
     y = year or now.year
@@ -127,54 +127,62 @@ async def get_profitability(
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("dashboard")),
 ):
     now = datetime.now(timezone.utc)
     y = year or now.year
     m = month or now.month
     start, end = _month_range(y, m)
 
-    # Get active clients
+    # Get active clients (1 query)
     r = await db.execute(select(Client).where(Client.status == ClientStatus.active))
     clients = r.scalars().all()
+    client_ids = [c.id for c in clients]
 
+    if not client_ids:
+        return ProfitabilityResponse(clients=[])
+
+    # Aggregate actual minutes + cost per client (1 query instead of N)
+    r = await db.execute(
+        select(
+            Task.client_id,
+            func.coalesce(func.sum(TimeEntry.minutes), 0).label("actual_minutes"),
+            func.coalesce(func.sum(TimeEntry.minutes * User.hourly_rate / 60), 0).label("cost"),
+        )
+        .select_from(TimeEntry)
+        .join(Task, TimeEntry.task_id == Task.id)
+        .join(User, TimeEntry.user_id == User.id)
+        .where(
+            Task.client_id.in_(client_ids),
+            TimeEntry.minutes.isnot(None),
+            TimeEntry.date >= start,
+            TimeEntry.date <= end,
+        )
+        .group_by(Task.client_id)
+    )
+    time_map = {row.client_id: (int(row.actual_minutes), round(float(row.cost), 2)) for row in r.all()}
+
+    # Aggregate estimated minutes per client (1 query instead of N)
+    r = await db.execute(
+        select(
+            Task.client_id,
+            func.coalesce(func.sum(Task.estimated_minutes), 0).label("est"),
+        )
+        .where(
+            Task.client_id.in_(client_ids),
+            Task.created_at >= start,
+            Task.created_at <= end,
+        )
+        .group_by(Task.client_id)
+    )
+    est_map = {row.client_id: int(row.est) for row in r.all()}
+
+    # Build response using dict lookups (no per-client queries)
     result = []
     for client in clients:
         budget = client.monthly_budget or 0
-
-        # Actual minutes + cost for this client this month
-        r = await db.execute(
-            select(
-                func.coalesce(func.sum(TimeEntry.minutes), 0),
-                func.coalesce(func.sum(TimeEntry.minutes * User.hourly_rate / 60), 0),
-            )
-            .select_from(TimeEntry)
-            .join(Task, TimeEntry.task_id == Task.id)
-            .join(User, TimeEntry.user_id == User.id)
-            .where(
-                and_(
-                    Task.client_id == client.id,
-                    TimeEntry.minutes.isnot(None),
-                    TimeEntry.date >= start,
-                    TimeEntry.date <= end,
-                )
-            )
-        )
-        actual_minutes, cost_val = r.first() or (0, 0)
-        actual_minutes = int(actual_minutes or 0)
-        cost = round(cost_val or 0, 2)
-
-        # Estimated minutes for tasks created in the period
-        r = await db.execute(
-            select(func.coalesce(func.sum(Task.estimated_minutes), 0)).where(
-                and_(
-                    Task.client_id == client.id,
-                    Task.created_at >= start,
-                    Task.created_at <= end,
-                )
-            )
-        )
-        estimated_minutes = int(r.scalar() or 0)
+        actual_minutes, cost = time_map.get(client.id, (0, 0))
+        estimated_minutes = est_map.get(client.id, 0)
         variance_minutes = actual_minutes - estimated_minutes
         margin = round(budget - cost, 2)
         margin_pct = round((margin / budget * 100) if budget > 0 else 0, 1)
@@ -207,61 +215,45 @@ async def get_team_summary(
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("dashboard")),
 ):
     now = datetime.now(timezone.utc)
     y = year or now.year
     m = month or now.month
     start, end = _month_range(y, m)
 
+    # Get users (1 query)
     r = await db.execute(select(User).order_by(User.full_name))
     users = r.scalars().all()
 
+    # Aggregate all metrics per user in a single query (instead of 3N queries)
+    r = await db.execute(
+        select(
+            TimeEntry.user_id,
+            func.coalesce(func.sum(TimeEntry.minutes), 0).label("total_minutes"),
+            func.count(distinct(TimeEntry.task_id)).label("task_count"),
+            func.count(distinct(Task.client_id)).label("clients_touched"),
+        )
+        .select_from(TimeEntry)
+        .outerjoin(Task, TimeEntry.task_id == Task.id)
+        .where(
+            TimeEntry.minutes.isnot(None),
+            TimeEntry.date >= start,
+            TimeEntry.date <= end,
+        )
+        .group_by(TimeEntry.user_id)
+    )
+    metrics_map = {
+        row.user_id: (int(row.total_minutes), int(row.task_count), int(row.clients_touched))
+        for row in r.all()
+    }
+
+    # Build response using dict lookups (no per-user queries)
     result = []
     for user in users:
-        # Hours this month
-        r = await db.execute(
-            select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
-                and_(
-                    TimeEntry.user_id == user.id,
-                    TimeEntry.minutes.isnot(None),
-                    TimeEntry.date >= start,
-                    TimeEntry.date <= end,
-                )
-            )
-        )
-        total_minutes = r.scalar() or 0
+        total_minutes, task_count, clients_touched = metrics_map.get(user.id, (0, 0, 0))
         hours = round(total_minutes / 60, 1)
         cost = round(hours * (user.hourly_rate or 0), 2)
-
-        # Task count
-        r = await db.execute(
-            select(func.count(distinct(TimeEntry.task_id))).where(
-                and_(
-                    TimeEntry.user_id == user.id,
-                    TimeEntry.minutes.isnot(None),
-                    TimeEntry.date >= start,
-                    TimeEntry.date <= end,
-                )
-            )
-        )
-        task_count = r.scalar() or 0
-
-        # Clients touched
-        r = await db.execute(
-            select(func.count(distinct(Task.client_id)))
-            .select_from(TimeEntry)
-            .join(Task, TimeEntry.task_id == Task.id)
-            .where(
-                and_(
-                    TimeEntry.user_id == user.id,
-                    TimeEntry.minutes.isnot(None),
-                    TimeEntry.date >= start,
-                    TimeEntry.date <= end,
-                )
-            )
-        )
-        clients_touched = r.scalar() or 0
 
         result.append(TeamMemberSummary(
             user_id=user.id,
@@ -281,7 +273,7 @@ async def get_monthly_close(
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("dashboard")),
 ):
     now = datetime.now(timezone.utc)
     y = year or now.year
@@ -323,7 +315,7 @@ async def update_monthly_close(
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("dashboard")),
 ):
     now = datetime.now(timezone.utc)
     y = year or now.year
@@ -362,7 +354,7 @@ async def export_monthly_close(
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("dashboard")),
 ):
     now = datetime.now(timezone.utc)
     y = year or now.year
@@ -406,7 +398,7 @@ async def export_monthly_close(
 @router.get("/financial-settings", response_model=FinancialSettingsResponse)
 async def get_financial_settings(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("dashboard")),
 ):
     record = await _get_or_create_financial_settings(db)
     return _financial_settings_response(record)
@@ -438,7 +430,7 @@ def _financial_settings_response(record: FinancialSettings) -> FinancialSettings
 async def update_financial_settings(
     body: FinancialSettingsUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("dashboard")),
 ):
     record = await _get_or_create_financial_settings(db)
     updates = body.model_dump(exclude_unset=True)

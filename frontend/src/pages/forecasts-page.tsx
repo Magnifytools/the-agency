@@ -12,6 +12,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Plus, Pencil, Trash2, Sparkles } from "lucide-react"
 import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
 
 const fmt = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
 const currentYear = new Date().getFullYear()
@@ -45,7 +46,7 @@ export default function ForecastsPage() {
       qc.invalidateQueries({ queryKey: ["finance-vs-actual"] })
       toast.success("Previsiones generadas")
     },
-    onError: () => toast.error("Error al generar"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al generar")),
   })
 
   const createMut = useMutation({

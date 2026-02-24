@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Square, Clock, Play } from "lucide-react"
 import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
 
 function formatElapsed(startedAt: string): string {
   const elapsed = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)
@@ -41,7 +42,7 @@ export function ActiveTimerBar() {
       setOmniInput("")
       toast.success("Timer iniciado")
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || "Error al iniciar timer"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al iniciar timer")),
   })
 
   const stopMutation = useMutation({
@@ -51,7 +52,7 @@ export function ActiveTimerBar() {
       queryClient.invalidateQueries({ queryKey: ["time-entries"] })
       toast.success("Timer detenido")
     },
-    onError: () => toast.error("Error al detener timer"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al detener timer")),
   })
 
   const handleOmniSubmit = (e: React.FormEvent) => {

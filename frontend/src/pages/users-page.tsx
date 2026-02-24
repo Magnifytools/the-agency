@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { usersApi } from "@/lib/api"
 import type { User } from "@/lib/types"
 import { useAuth } from "@/context/auth-context"
+import { usePagination } from "@/hooks/use-pagination"
+import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,9 +15,11 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
 import type { UserCreate, UserRole } from "@/lib/types"
+import { getErrorMessage } from "@/lib/utils"
 
 export default function UsersPage() {
   const queryClient = useQueryClient()
+  const { page, pageSize, setPage } = usePagination(25)
   const { user: currentUser } = useAuth()
   const [editing, setEditing] = useState<User | null>(null)
 
@@ -28,10 +32,11 @@ export default function UsersPage() {
     hourly_rate: null,
   })
 
-  const { data: users = [], isLoading } = useQuery({
-    queryKey: ["users"],
-    queryFn: () => usersApi.list(),
+  const { data, isLoading } = useQuery({
+    queryKey: ["users", page, pageSize],
+    queryFn: () => usersApi.list({ page, page_size: pageSize }),
   })
+  const users = data?.items ?? []
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<User> }) =>
@@ -41,7 +46,7 @@ export default function UsersPage() {
       setEditing(null)
       toast.success("Usuario actualizado")
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || "Error al actualizar"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar")),
   })
 
   const createMutation = useMutation({
@@ -52,7 +57,7 @@ export default function UsersPage() {
       setIsInviteOpen(false)
       setInviteData({ email: "", password: "", full_name: "", role: "member", hourly_rate: null })
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || "Error al invitar"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al invitar")),
   })
 
   const handleSubmitEdit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -119,6 +124,8 @@ export default function UsersPage() {
           </TableBody>
         </Table>
       )}
+
+      <Pagination page={page} pageSize={pageSize} total={data?.total ?? 0} onPageChange={setPage} />
 
       {/* Edit Dialog */}
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>

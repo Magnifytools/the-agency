@@ -2,6 +2,8 @@ import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { tasksApi, clientsApi, categoriesApi, usersApi } from "@/lib/api"
 import type { Task, TaskCreate, TaskStatus } from "@/lib/types"
+import { usePagination } from "@/hooks/use-pagination"
+import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,6 +19,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { MyDayView } from "@/components/tasks/my-day-view"
 import { KanbanBoard } from "@/components/tasks/kanban-board"
 import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
 
 const taskStatusBadge = (status: TaskStatus) => {
   const map: Record<TaskStatus, { label: string; variant: "secondary" | "warning" | "success" }> = {
@@ -30,6 +33,7 @@ const taskStatusBadge = (status: TaskStatus) => {
 
 export default function TasksPage() {
   const queryClient = useQueryClient()
+  const { page, pageSize, setPage, reset } = usePagination(25)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Task | null>(null)
   const [timeLogTask, setTimeLogTask] = useState<Task | null>(null)
@@ -44,15 +48,18 @@ export default function TasksPage() {
   // QA Health Filters
   const [qaFilter, setQaFilter] = useState<"none" | "unassigned" | "no_date" | "no_estimate" | "overdue">("none")
 
-  const { data: allTasks = [], isLoading } = useQuery({
-    queryKey: ["tasks", filterClient, filterCategory, filterStatus],
+  const { data: tasksData, isLoading } = useQuery({
+    queryKey: ["tasks", filterClient, filterCategory, filterStatus, page, pageSize],
     queryFn: () =>
       tasksApi.list({
         client_id: filterClient ? Number(filterClient) : undefined,
         category_id: filterCategory ? Number(filterCategory) : undefined,
         status: filterStatus || undefined,
+        page,
+        page_size: pageSize,
       }),
   })
+  const allTasks = tasksData?.items ?? []
 
   // Apply QA Health Filters on the frontend
   const now = new Date()
@@ -71,8 +78,8 @@ export default function TasksPage() {
   })
 
   const { data: clients = [] } = useQuery({
-    queryKey: ["clients"],
-    queryFn: () => clientsApi.list(),
+    queryKey: ["clients-all"],
+    queryFn: () => clientsApi.listAll(),
   })
 
   const { data: categories = [] } = useQuery({
@@ -81,8 +88,8 @@ export default function TasksPage() {
   })
 
   const { data: users = [] } = useQuery({
-    queryKey: ["users"],
-    queryFn: () => usersApi.list(),
+    queryKey: ["users-all"],
+    queryFn: () => usersApi.listAll(),
   })
 
   const createMutation = useMutation({
@@ -92,7 +99,7 @@ export default function TasksPage() {
       closeDialog()
       toast.success("Tarea creada")
     },
-    onError: () => toast.error("Error al crear tarea"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al crear tarea")),
   })
 
   const updateMutation = useMutation({
@@ -102,7 +109,7 @@ export default function TasksPage() {
       closeDialog()
       toast.success("Tarea actualizada")
     },
-    onError: () => toast.error("Error al actualizar tarea"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar tarea")),
   })
 
   const deleteMutation = useMutation({
@@ -111,7 +118,7 @@ export default function TasksPage() {
       queryClient.invalidateQueries({ queryKey: ["tasks"] })
       toast.success("Tarea eliminada")
     },
-    onError: () => toast.error("Error al eliminar tarea"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar tarea")),
   })
 
   const closeDialog = () => {
@@ -161,7 +168,7 @@ export default function TasksPage() {
 
       {/* Filters */}
       <div className="flex gap-3">
-        <Select value={filterClient} onChange={(e) => setFilterClient(e.target.value)} className="w-48">
+        <Select value={filterClient} onChange={(e) => { setFilterClient(e.target.value); reset() }} className="w-48">
           <option value="">Todos los clientes</option>
           {clients.map((c) => (
             <option key={c.id} value={c.id}>
@@ -169,7 +176,7 @@ export default function TasksPage() {
             </option>
           ))}
         </Select>
-        <Select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="w-48">
+        <Select value={filterCategory} onChange={(e) => { setFilterCategory(e.target.value); reset() }} className="w-48">
           <option value="">Todas las categorias</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
@@ -177,7 +184,7 @@ export default function TasksPage() {
             </option>
           ))}
         </Select>
-        <Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-48">
+        <Select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); reset() }} className="w-48">
           <option value="">Todos los estados</option>
           <option value="pending">Pendiente</option>
           <option value="in_progress">En curso</option>
@@ -337,6 +344,10 @@ export default function TasksPage() {
             )}
           </TableBody>
         </Table>
+      )}
+
+      {view === "all" && (
+        <Pagination page={page} pageSize={pageSize} total={tasksData?.total ?? 0} onPageChange={setPage} />
       )}
 
       {/* Conditional Rendering of Views */}

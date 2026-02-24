@@ -16,6 +16,7 @@ import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
 
 const statusConfig: Record<ProposalStatus, { label: string; variant: "default" | "secondary" | "success" | "destructive" }> = {
     draft: { label: "Borrador", variant: "secondary" },
@@ -44,8 +45,8 @@ export default function ProposalsPage() {
     })
 
     const { data: clients = [] } = useQuery({
-        queryKey: ["clients"],
-        queryFn: () => clientsApi.list("active"),
+        queryKey: ["clients-all-active"],
+        queryFn: () => clientsApi.listAll("active"),
     })
 
     const createMutation = useMutation({
@@ -55,7 +56,7 @@ export default function ProposalsPage() {
             setDialogOpen(false)
             toast.success("Propuesta creada")
         },
-        onError: () => toast.error("Error al crear la propuesta"),
+        onError: (err) => toast.error(getErrorMessage(err, "Error al crear la propuesta")),
     })
 
     const updateMutation = useMutation({
@@ -65,7 +66,7 @@ export default function ProposalsPage() {
             setDialogOpen(false)
             toast.success("Propuesta actualizada")
         },
-        onError: () => toast.error("Error al actualizar la propuesta"),
+        onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar la propuesta")),
     })
 
     const deleteMutation = useMutation({
@@ -75,7 +76,7 @@ export default function ProposalsPage() {
             setDeleteId(null)
             toast.success("Propuesta eliminada")
         },
-        onError: () => toast.error("Error al eliminar la propuesta"),
+        onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar la propuesta")),
     })
 
     const openCreate = () => {

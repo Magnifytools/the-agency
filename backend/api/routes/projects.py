@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Optional
 
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,7 +18,8 @@ from backend.schemas.project import (
     ProjectPhaseResponse,
     PROJECT_TEMPLATES,
 )
-from backend.api.deps import get_current_user
+from backend.schemas.pagination import PaginatedResponse
+from backend.api.deps import get_current_user, require_module
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -31,31 +32,79 @@ def calculate_progress(tasks: list) -> int:
     return int((completed / len(tasks)) * 100)
 
 
-@router.get("", response_model=list[ProjectListResponse])
+def _build_project_response(project: Project) -> ProjectResponse:
+    """Build a ProjectResponse from a Project model with eagerly loaded relationships."""
+    task_count = len(project.tasks) if project.tasks else 0
+    completed_count = (
+        sum(1 for t in project.tasks if t.status == TaskStatus.completed)
+        if project.tasks else 0
+    )
+    return ProjectResponse(
+        id=project.id,
+        name=project.name,
+        description=project.description,
+        project_type=project.project_type,
+        start_date=project.start_date,
+        target_end_date=project.target_end_date,
+        actual_end_date=project.actual_end_date,
+        status=project.status.value,
+        progress_percent=project.progress_percent,
+        budget_hours=project.budget_hours,
+        budget_amount=project.budget_amount,
+        client_id=project.client_id,
+        client_name=project.client.name if project.client else None,
+        phases=[
+            ProjectPhaseResponse(
+                id=ph.id,
+                name=ph.name,
+                description=ph.description,
+                order_index=ph.order_index,
+                start_date=ph.start_date,
+                due_date=ph.due_date,
+                completed_at=ph.completed_at,
+                status=ph.status.value,
+                project_id=ph.project_id,
+                created_at=ph.created_at,
+                updated_at=ph.updated_at,
+            )
+            for ph in (project.phases or [])
+        ],
+        task_count=task_count,
+        completed_task_count=completed_count,
+        created_at=project.created_at,
+        updated_at=project.updated_at,
+    )
+
+
+@router.get("", response_model=PaginatedResponse[ProjectListResponse])
 async def list_projects(
     client_id: Optional[int] = None,
-    status: Optional[str] = None,
+    status_filter: Optional[str] = Query(None, alias="status"),
     project_type: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    _user=Depends(require_module("projects")),
 ):
-    query = select(Project)
+    base = select(Project)
     if client_id:
-        query = query.where(Project.client_id == client_id)
-    if status:
-        query = query.where(Project.status == status)
+        base = base.where(Project.client_id == client_id)
+    if status_filter:
+        base = base.where(Project.status == status_filter)
     if project_type:
-        query = query.where(Project.project_type == project_type)
-    query = query.order_by(Project.created_at.desc())
+        base = base.where(Project.project_type == project_type)
 
+    total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
+
+    query = base.order_by(Project.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(query)
     projects = result.scalars().all()
 
-    response = []
+    items = []
     for p in projects:
         task_count = len(p.tasks) if p.tasks else 0
         completed_count = sum(1 for t in p.tasks if t.status == TaskStatus.completed) if p.tasks else 0
-        response.append(
+        items.append(
             ProjectListResponse(
                 id=p.id,
                 name=p.name,
@@ -71,14 +120,14 @@ async def list_projects(
                 completed_task_count=completed_count,
             )
         )
-    return response
+    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 async def create_project(
     body: ProjectCreate,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    _user=Depends(require_module("projects")),
 ):
     project = Project(
         name=body.name,
@@ -94,30 +143,11 @@ async def create_project(
     await db.commit()
     await db.refresh(project)
 
-    return ProjectResponse(
-        id=project.id,
-        name=project.name,
-        description=project.description,
-        project_type=project.project_type,
-        start_date=project.start_date,
-        target_end_date=project.target_end_date,
-        actual_end_date=project.actual_end_date,
-        status=project.status.value,
-        progress_percent=project.progress_percent,
-        budget_hours=project.budget_hours,
-        budget_amount=project.budget_amount,
-        client_id=project.client_id,
-        client_name=project.client.name if project.client else None,
-        phases=[],
-        task_count=0,
-        completed_task_count=0,
-        created_at=project.created_at,
-        updated_at=project.updated_at,
-    )
+    return _build_project_response(project)
 
 
 @router.get("/templates")
-async def get_project_templates(_user=Depends(get_current_user)):
+async def get_project_templates(_user=Depends(require_module("projects"))):
     """Return available project templates."""
     return {
         key: {"name": val["name"], "phase_count": len(val["phases"]), "task_count": len(val.get("default_tasks", []))}
@@ -131,7 +161,7 @@ async def create_project_from_template(
     template_key: str,
     start_date: Optional[datetime] = None,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    _user=Depends(require_module("projects")),
 ):
     """Create a project from a template with phases and tasks pre-populated."""
     if template_key not in PROJECT_TEMPLATES:
@@ -187,96 +217,21 @@ async def create_project_from_template(
     await db.commit()
     await db.refresh(project)
 
-    # Build response
-    task_count = len(project.tasks) if project.tasks else 0
-    completed_count = sum(1 for t in project.tasks if t.status == TaskStatus.completed) if project.tasks else 0
-
-    return ProjectResponse(
-        id=project.id,
-        name=project.name,
-        description=project.description,
-        project_type=project.project_type,
-        start_date=project.start_date,
-        target_end_date=project.target_end_date,
-        actual_end_date=project.actual_end_date,
-        status=project.status.value,
-        progress_percent=project.progress_percent,
-        budget_hours=project.budget_hours,
-        budget_amount=project.budget_amount,
-        client_id=project.client_id,
-        client_name=project.client.name if project.client else None,
-        phases=[
-            ProjectPhaseResponse(
-                id=ph.id,
-                name=ph.name,
-                description=ph.description,
-                order_index=ph.order_index,
-                start_date=ph.start_date,
-                due_date=ph.due_date,
-                completed_at=ph.completed_at,
-                status=ph.status.value,
-                project_id=ph.project_id,
-                created_at=ph.created_at,
-                updated_at=ph.updated_at,
-            )
-            for ph in project.phases
-        ],
-        task_count=task_count,
-        completed_task_count=completed_count,
-        created_at=project.created_at,
-        updated_at=project.updated_at,
-    )
+    return _build_project_response(project)
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 async def get_project(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    _user=Depends(require_module("projects")),
 ):
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    task_count = len(project.tasks) if project.tasks else 0
-    completed_count = sum(1 for t in project.tasks if t.status == TaskStatus.completed) if project.tasks else 0
-
-    return ProjectResponse(
-        id=project.id,
-        name=project.name,
-        description=project.description,
-        project_type=project.project_type,
-        start_date=project.start_date,
-        target_end_date=project.target_end_date,
-        actual_end_date=project.actual_end_date,
-        status=project.status.value,
-        progress_percent=project.progress_percent,
-        budget_hours=project.budget_hours,
-        budget_amount=project.budget_amount,
-        client_id=project.client_id,
-        client_name=project.client.name if project.client else None,
-        phases=[
-            ProjectPhaseResponse(
-                id=ph.id,
-                name=ph.name,
-                description=ph.description,
-                order_index=ph.order_index,
-                start_date=ph.start_date,
-                due_date=ph.due_date,
-                completed_at=ph.completed_at,
-                status=ph.status.value,
-                project_id=ph.project_id,
-                created_at=ph.created_at,
-                updated_at=ph.updated_at,
-            )
-            for ph in project.phases
-        ],
-        task_count=task_count,
-        completed_task_count=completed_count,
-        created_at=project.created_at,
-        updated_at=project.updated_at,
-    )
+    return _build_project_response(project)
 
 
 @router.put("/{project_id}", response_model=ProjectResponse)
@@ -284,7 +239,7 @@ async def update_project(
     project_id: int,
     body: ProjectUpdate,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    _user=Depends(require_module("projects")),
 ):
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -304,51 +259,14 @@ async def update_project(
     await db.commit()
     await db.refresh(project)
 
-    task_count = len(project.tasks) if project.tasks else 0
-    completed_count = sum(1 for t in project.tasks if t.status == TaskStatus.completed) if project.tasks else 0
-
-    return ProjectResponse(
-        id=project.id,
-        name=project.name,
-        description=project.description,
-        project_type=project.project_type,
-        start_date=project.start_date,
-        target_end_date=project.target_end_date,
-        actual_end_date=project.actual_end_date,
-        status=project.status.value,
-        progress_percent=project.progress_percent,
-        budget_hours=project.budget_hours,
-        budget_amount=project.budget_amount,
-        client_id=project.client_id,
-        client_name=project.client.name if project.client else None,
-        phases=[
-            ProjectPhaseResponse(
-                id=ph.id,
-                name=ph.name,
-                description=ph.description,
-                order_index=ph.order_index,
-                start_date=ph.start_date,
-                due_date=ph.due_date,
-                completed_at=ph.completed_at,
-                status=ph.status.value,
-                project_id=ph.project_id,
-                created_at=ph.created_at,
-                updated_at=ph.updated_at,
-            )
-            for ph in project.phases
-        ],
-        task_count=task_count,
-        completed_task_count=completed_count,
-        created_at=project.created_at,
-        updated_at=project.updated_at,
-    )
+    return _build_project_response(project)
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    _user=Depends(require_module("projects")),
 ):
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -371,7 +289,7 @@ async def create_phase(
     project_id: int,
     body: ProjectPhaseCreate,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    _user=Depends(require_module("projects")),
 ):
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -410,7 +328,7 @@ async def update_phase(
     phase_id: int,
     body: ProjectPhaseUpdate,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    _user=Depends(require_module("projects")),
 ):
     result = await db.execute(select(ProjectPhase).where(ProjectPhase.id == phase_id))
     phase = result.scalar_one_or_none()
@@ -447,7 +365,7 @@ async def update_phase(
 async def delete_phase(
     phase_id: int,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    _user=Depends(require_module("projects")),
 ):
     result = await db.execute(select(ProjectPhase).where(ProjectPhase.id == phase_id))
     phase = result.scalar_one_or_none()
@@ -466,7 +384,7 @@ async def delete_phase(
 async def get_project_tasks(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    _user=Depends(require_module("projects")),
 ):
     """Get all tasks for a project, grouped by phase."""
     result = await db.execute(select(Project).where(Project.id == project_id))

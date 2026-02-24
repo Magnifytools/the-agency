@@ -10,32 +10,39 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.database import get_db
 from backend.db.models import Client, ClientStatus, Task, TimeEntry, User
 from backend.schemas.client import ClientCreate, ClientUpdate, ClientResponse
-from backend.api.deps import get_current_user
+from backend.schemas.pagination import PaginatedResponse
+from backend.api.deps import get_current_user, require_module
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
 
-@router.get("", response_model=list[ClientResponse])
+@router.get("", response_model=PaginatedResponse[ClientResponse])
 async def list_clients(
     status_filter: Optional[ClientStatus] = Query(None, alias="status"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("clients")),
 ):
-    query = select(Client)
+    base = select(Client)
     if status_filter:
-        query = query.where(Client.status == status_filter)
-    query = query.order_by(Client.created_at.desc())
+        base = base.where(Client.status == status_filter)
+
+    total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
+
+    query = base.order_by(Client.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(query)
-    return result.scalars().all()
+
+    return PaginatedResponse(items=result.scalars().all(), total=total, page=page, page_size=page_size)
 
 
 @router.post("", response_model=ClientResponse, status_code=status.HTTP_201_CREATED)
 async def create_client(
     body: ClientCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("clients")),
 ):
     client = Client(**body.model_dump())
     db.add(client)
@@ -56,7 +63,7 @@ async def create_client(
 async def get_client(
     client_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("clients")),
 ):
     result = await db.execute(select(Client).where(Client.id == client_id))
     client = result.scalar_one_or_none()
@@ -70,7 +77,7 @@ async def update_client(
     client_id: int,
     body: ClientUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("clients")),
 ):
     result = await db.execute(select(Client).where(Client.id == client_id))
     client = result.scalar_one_or_none()
@@ -95,7 +102,7 @@ async def update_client(
 async def delete_client(
     client_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("clients")),
 ):
     result = await db.execute(select(Client).where(Client.id == client_id))
     client = result.scalar_one_or_none()
@@ -111,7 +118,7 @@ async def delete_client(
 async def get_client_summary(
     client_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_module("clients")),
 ):
     result = await db.execute(select(Client).where(Client.id == client_id))
     client = result.scalar_one_or_none()

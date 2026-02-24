@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Select } from "@/components/ui/select"
 import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
 
 function getMonday(date: Date) {
   const d = new Date(date)
@@ -47,8 +48,8 @@ export default function TimesheetPage() {
 
   // Obtener tareas para el selector
   const { data: myTasks = [] } = useQuery({
-    queryKey: ["tasks", "my-tasks"],
-    queryFn: () => tasksApi.list(), // Idealmente filtrado por asignado a mí
+    queryKey: ["tasks-all", "my-tasks"],
+    queryFn: () => tasksApi.listAll(),
   })
 
   const updateMutation = useMutation({
@@ -58,7 +59,7 @@ export default function TimesheetPage() {
       queryClient.invalidateQueries({ queryKey: ["time-entries"] })
       toast.success("Entrada asignada")
     },
-    onError: () => toast.error("Error al asignar tarea"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al asignar tarea")),
   })
 
   const days = weeklyData?.days || []

@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
 
 interface TimeLogDialogProps {
   taskId: number
@@ -44,7 +45,7 @@ export function TimeLogDialog({ taskId, taskTitle, open, onOpenChange }: TimeLog
       setShowForm(false)
       toast.success("Entrada de tiempo creada")
     },
-    onError: () => toast.error("Error al crear entrada"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al crear entrada")),
   })
 
   const deleteMutation = useMutation({
@@ -53,7 +54,7 @@ export function TimeLogDialog({ taskId, taskTitle, open, onOpenChange }: TimeLog
       queryClient.invalidateQueries({ queryKey: ["time-entries", taskId] })
       toast.success("Entrada eliminada")
     },
-    onError: () => toast.error("Error al eliminar entrada"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar entrada")),
   })
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {

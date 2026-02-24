@@ -10,6 +10,7 @@ import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { getErrorMessage } from "@/lib/utils"
 
 const REPORT_TYPES: { value: ReportType; label: string; icon: typeof FileText }[] = [
   { value: "client_status", label: "Estado de cliente", icon: Building2 },
@@ -33,7 +34,7 @@ export default function ReportsPage() {
       queryClient.invalidateQueries({ queryKey: ["reports"] })
       toast.success("Informe eliminado")
     },
-    onError: () => toast.error("Error al eliminar"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar")),
   })
 
   const formatDate = (dateStr: string) => {
@@ -171,14 +172,14 @@ function GenerateReportDialog({
   const [period, setPeriod] = useState<ReportPeriod>("month")
 
   const { data: clients = [] } = useQuery({
-    queryKey: ["clients"],
-    queryFn: () => clientsApi.list("active"),
+    queryKey: ["clients-all-active"],
+    queryFn: () => clientsApi.listAll("active"),
     enabled: open && type === "client_status",
   })
 
   const { data: projects = [] } = useQuery({
-    queryKey: ["projects"],
-    queryFn: () => projectsApi.list({ status: "active" }),
+    queryKey: ["projects-all-active"],
+    queryFn: () => projectsApi.listAll({ status: "active" }),
     enabled: open && type === "project_status",
   })
 
@@ -189,9 +190,7 @@ function GenerateReportDialog({
       toast.success("Informe generado")
       onOpenChange(false)
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.detail || "Error al generar informe")
-    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al generar informe")),
   })
 
   const handleSubmit = (e: React.FormEvent) => {

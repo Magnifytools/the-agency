@@ -7,6 +7,7 @@ import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useState } from "react"
+import { getErrorMessage } from "@/lib/utils"
 
 export function AlertSettingsDialog({
   open,
@@ -29,7 +30,7 @@ export function AlertSettingsDialog({
       queryClient.invalidateQueries({ queryKey: ["alert-settings"] })
       toast.success("Configuración guardada")
     },
-    onError: () => toast.error("Error al guardar"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al guardar")),
   })
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {

@@ -15,6 +15,7 @@ import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Users, CheckSquare, Clock, DollarSign, Send, Eye } from "lucide-react"
 import { toast } from "sonner"
 import { InboxWidget } from "@/components/dashboard/inbox-widget"
+import { getErrorMessage } from "@/lib/utils"
 
 const MONTHS = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -75,7 +76,7 @@ export default function DashboardPage() {
   const sendMutation = useMutation({
     mutationFn: () => discordApi.send(),
     onSuccess: () => toast.success("Resumen enviado a Discord"),
-    onError: (err: any) => toast.error(err.response?.data?.detail || "Error al enviar a Discord"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al enviar a Discord")),
   })
 
   const closeMutation = useMutation({
@@ -83,7 +84,7 @@ export default function DashboardPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dashboard-monthly-close", year, month] })
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || "Error al actualizar el cierre"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar el cierre")),
   })
 
   const financialMutation = useMutation({
@@ -91,7 +92,7 @@ export default function DashboardPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dashboard-financial-settings"] })
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || "Error al actualizar los guardarraíles"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar los guardarraíles")),
   })
 
   const handlePreview = async () => {

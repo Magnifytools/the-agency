@@ -12,6 +12,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
 
 const fmt = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
 
@@ -35,13 +36,13 @@ export default function ExpensesPage() {
   const createMut = useMutation({
     mutationFn: (data: ExpenseCreate) => financeExpensesApi.create(data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-expenses"] }); setDialogOpen(false); setEditing(null); toast.success("Gasto creado") },
-    onError: () => toast.error("Error al crear"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al crear")),
   })
 
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<ExpenseCreate> }) => financeExpensesApi.update(id, data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-expenses"] }); setDialogOpen(false); setEditing(null); toast.success("Gasto actualizado") },
-    onError: () => toast.error("Error al actualizar"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar")),
   })
 
   const deleteMut = useMutation({

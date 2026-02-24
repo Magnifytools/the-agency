@@ -5,6 +5,8 @@ import { Plus, FolderKanban, Calendar, Trash2, Repeat } from "lucide-react"
 import { toast } from "sonner"
 import { projectsApi, clientsApi } from "@/lib/api"
 import type { ProjectListItem, ProjectStatus } from "@/lib/types"
+import { usePagination } from "@/hooks/use-pagination"
+import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { getErrorMessage } from "@/lib/utils"
 
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
@@ -33,20 +36,22 @@ const STATUS_VARIANTS: Record<ProjectStatus, "default" | "success" | "warning" |
 
 export default function ProjectsPage() {
   const queryClient = useQueryClient()
+  const { page, pageSize, setPage, reset } = usePagination(25)
   const [statusFilter, setStatusFilter] = useState<string>("")
   const [typeFilter, setTypeFilter] = useState<string>("")
   const [showNewDialog, setShowNewDialog] = useState(false)
   const [showTemplateDialog, setShowTemplateDialog] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
 
-  const { data: projects = [], isLoading } = useQuery({
-    queryKey: ["projects", statusFilter],
-    queryFn: () => projectsApi.list(statusFilter ? { status: statusFilter } : undefined),
+  const { data: projectsData, isLoading } = useQuery({
+    queryKey: ["projects", statusFilter, page, pageSize],
+    queryFn: () => projectsApi.list({ ...(statusFilter ? { status: statusFilter } : {}), page, page_size: pageSize }),
   })
+  const projects = projectsData?.items ?? []
 
   const { data: clients = [] } = useQuery({
-    queryKey: ["clients"],
-    queryFn: () => clientsApi.list("active"),
+    queryKey: ["clients-all-active"],
+    queryFn: () => clientsApi.listAll("active"),
   })
 
   const { data: templates = {} } = useQuery({
@@ -61,7 +66,7 @@ export default function ProjectsPage() {
       toast.success("Proyecto eliminado")
       setDeleteId(null)
     },
-    onError: () => toast.error("Error al eliminar proyecto"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar proyecto")),
   })
 
   const formatDate = (date: string | null) => {
@@ -95,7 +100,7 @@ export default function ProjectsPage() {
       <div className="flex gap-4">
         <Select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => { setStatusFilter(e.target.value); reset() }}
           className="w-48"
         >
           <option value="">Todos los estados</option>
@@ -141,6 +146,8 @@ export default function ProjectsPage() {
           ))}
         </div>
       )}
+
+      <Pagination page={page} pageSize={pageSize} total={projectsData?.total ?? 0} onPageChange={setPage} />
 
       {/* New Empty Project Dialog */}
       <NewProjectDialog
@@ -274,7 +281,7 @@ function NewProjectDialog({
       onOpenChange(false)
       setFormData({ name: "", client_id: "", project_type: "", start_date: "", target_end_date: "" })
     },
-    onError: () => toast.error("Error al crear proyecto"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al crear proyecto")),
   })
 
   return (
@@ -371,7 +378,7 @@ function TemplateDialog({
       setTemplateKey("")
       setStartDate("")
     },
-    onError: () => toast.error("Error al crear proyecto"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al crear proyecto")),
   })
 
   const selectedTemplate = templateKey ? templates[templateKey] : null

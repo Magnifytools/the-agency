@@ -13,6 +13,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Plus, Rocket, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { getErrorMessage } from "@/lib/utils"
 
 const FUNNEL_STAGES: Record<GrowthFunnelStage, string> = {
     referral: "Referral",
@@ -75,7 +76,7 @@ export default function GrowthPage() {
                 title: "", description: "", funnel_stage: "other", target_kpi: "", status: "idea", impact: 5, confidence: 5, ease: 5
             })
         },
-        onError: () => toast.error("Error al crear la idea"),
+        onError: (err) => toast.error(getErrorMessage(err, "Error al crear la idea")),
     })
 
     const updateMutation = useMutation({
@@ -84,7 +85,7 @@ export default function GrowthPage() {
             queryClient.invalidateQueries({ queryKey: ["growth-ideas"] })
             toast.success("Idea actualizada")
         },
-        onError: () => toast.error("Error al actualizar la idea"),
+        onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar la idea")),
     })
 
     const deleteMutation = useMutation({
@@ -94,7 +95,7 @@ export default function GrowthPage() {
             setDeleteId(null)
             toast.success("Idea eliminada")
         },
-        onError: () => toast.error("Error al eliminar la idea"),
+        onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar la idea")),
     })
 
     const handleCreate = (e: React.FormEvent) => {

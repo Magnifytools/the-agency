@@ -1,24 +1,29 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import User, UserRole
 from backend.schemas.user import UserCreate, UserUpdate, UserListResponse
+from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user
 from backend.core.security import hash_password
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
-@router.get("", response_model=list[UserListResponse])
+@router.get("", response_model=PaginatedResponse[UserListResponse])
 async def list_users(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(User).order_by(User.full_name))
-    return result.scalars().all()
+    total = (await db.execute(select(func.count()).select_from(User))).scalar() or 0
+    query = select(User).order_by(User.full_name).offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(query)
+    return PaginatedResponse(items=result.scalars().all(), total=total, page=page, page_size=page_size)
 
 
 @router.post("", response_model=UserListResponse, status_code=201)

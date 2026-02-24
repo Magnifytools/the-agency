@@ -5,7 +5,7 @@ Run with: python -m backend.db.seed
 import asyncio
 from sqlalchemy import select
 from backend.db.database import engine, async_session
-from backend.db.models import Base, User, TaskCategory, UserRole, ExpenseCategory
+from backend.db.models import Base, User, TaskCategory, UserRole, ExpenseCategory, UserPermission
 from backend.core.security import hash_password
 
 
@@ -84,6 +84,31 @@ async def seed():
                 session.add(ExpenseCategory(**ec))
 
         await session.commit()
+
+        # Seed default permissions for member user
+        member_result = await session.execute(
+            select(User).where(User.email == "member@agency.com")
+        )
+        member = member_result.scalar_one_or_none()
+        if member:
+            existing_perms = await session.execute(
+                select(UserPermission).where(UserPermission.user_id == member.id)
+            )
+            if not existing_perms.scalars().first():
+                default_modules = [
+                    "dashboard", "clients", "tasks", "projects", "timesheet",
+                    "communications", "proposals", "reports", "growth",
+                ]
+                for module in default_modules:
+                    session.add(UserPermission(
+                        user_id=member.id,
+                        module=module,
+                        can_read=True,
+                        can_write=True,
+                    ))
+                await session.commit()
+                print(f"Default permissions created for member user ({len(default_modules)} modules)")
+
         print("Seed completed successfully.")
 
 

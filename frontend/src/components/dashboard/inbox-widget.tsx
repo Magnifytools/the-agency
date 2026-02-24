@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { CornerDownLeft, Inbox as InboxIcon, CheckCircle2, GripVertical, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
 
 export function InboxWidget() {
     const [newTask, setNewTask] = useState("")
@@ -14,7 +15,7 @@ export function InboxWidget() {
     const { data: inboxTasks = [], isLoading } = useQuery({
         queryKey: ["inbox-tasks"],
         // Query functions would go here, assuming tasksApi supports fetching inbox/unassigned items
-        queryFn: () => tasksApi.list({ status: "pending", is_inbox: true } as any),
+        queryFn: () => tasksApi.listAll({ status: "pending" } as any),
     })
 
     // We map a quick capture mutation here, assuming the backend can handle creating a minimal task.
@@ -25,7 +26,7 @@ export function InboxWidget() {
             queryClient.invalidateQueries({ queryKey: ["inbox-tasks"] })
             toast.success("Capturado en el Inbox")
         },
-        onError: () => toast.error("Error al guardar en el Inbox"),
+        onError: (err) => toast.error(getErrorMessage(err, "Error al guardar en el Inbox")),
     })
 
     const completeMutation = useMutation({

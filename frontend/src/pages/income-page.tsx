@@ -12,6 +12,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
 
 const TYPES = [
   { label: "Factura", value: "factura" },
@@ -39,20 +40,20 @@ export default function IncomePage() {
   })
 
   const { data: clients = [] } = useQuery({
-    queryKey: ["clients"],
-    queryFn: () => clientsApi.list(),
+    queryKey: ["clients-all"],
+    queryFn: () => clientsApi.listAll(),
   })
 
   const createMut = useMutation({
     mutationFn: (data: IncomeCreate) => financeIncomeApi.create(data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-income"] }); setDialogOpen(false); setEditing(null); toast.success("Ingreso creado") },
-    onError: () => toast.error("Error al crear"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al crear")),
   })
 
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<IncomeCreate> }) => financeIncomeApi.update(id, data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-income"] }); setDialogOpen(false); setEditing(null); toast.success("Ingreso actualizado") },
-    onError: () => toast.error("Error al actualizar"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar")),
   })
 
   const deleteMut = useMutation({

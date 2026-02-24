@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Upload, FileSpreadsheet } from "lucide-react"
 import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
 
 export default function ImportPage() {
   const qc = useQueryClient()
@@ -38,7 +39,7 @@ export default function ImportPage() {
       setMapping(autoMap)
       setStep("map")
     },
-    onError: () => toast.error("Error al procesar CSV"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al procesar CSV")),
   })
 
   const importMut = useMutation({
@@ -56,7 +57,7 @@ export default function ImportPage() {
       }
       setStep("done")
     },
-    onError: () => toast.error("Error al importar"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al importar")),
   })
 
   function handleFileRead(e: React.ChangeEvent<HTMLInputElement>) {

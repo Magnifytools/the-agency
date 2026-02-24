@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AlertSettingsButton } from "./alert-settings-dialog"
+import { getErrorMessage } from "@/lib/utils"
 
 const TYPE_ICONS: Record<InsightType, typeof AlertTriangle> = {
   deadline: Calendar,
@@ -56,7 +57,7 @@ export function InsightsPanel() {
       queryClient.invalidateQueries({ queryKey: ["insight-count"] })
       toast.success(`${data.length} insights generados`)
     },
-    onError: () => toast.error("Error al generar insights"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al generar insights")),
   })
 
   const dismissMutation = useMutation({
