@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { dashboardApi, discordApi, tasksApi, timeEntriesApi } from "@/lib/api"
+import { dashboardApi, discordApi, tasksApi, timeEntriesApi, digestsApi, clientsApi } from "@/lib/api"
 import { useAuth } from "@/context/auth-context"
 import { MetricCard } from "@/components/dashboard/metric-card"
 import { ProfitabilityChart } from "@/components/dashboard/profitability-chart"
@@ -12,8 +12,9 @@ import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Users, CheckSquare, Clock, DollarSign, Send, Eye } from "lucide-react"
+import { Users, CheckSquare, Clock, DollarSign, Send, Eye, Newspaper } from "lucide-react"
 import { toast } from "sonner"
+import { Link } from "react-router-dom"
 import { InboxWidget } from "@/components/dashboard/inbox-widget"
 import { getErrorMessage } from "@/lib/utils"
 
@@ -126,6 +127,32 @@ export default function DashboardPage() {
     queryFn: () => tasksApi.listAll({ overdue: true }),
     enabled: !!user && user.role === "admin",
   })
+
+  // Digest widget: clients without digest this week
+  const { data: recentDigests } = useQuery({
+    queryKey: ["recent-digests"],
+    queryFn: () => digestsApi.list({ limit: 100 }),
+    enabled: !!user,
+  })
+  const { data: allClients } = useQuery({
+    queryKey: ["clients-all-active"],
+    queryFn: () => clientsApi.listAll("active"),
+    enabled: !!user,
+  })
+
+  // Compute clients missing digests this week
+  const getMondayOfWeek = (d: Date) => {
+    const day = d.getDay()
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1)
+    return new Date(d.getFullYear(), d.getMonth(), diff).toISOString().slice(0, 10)
+  }
+  const thisMonday = getMondayOfWeek(new Date())
+  const clientsWithDigestThisWeek = new Set(
+    (recentDigests || [])
+      .filter(d => d.period_start >= thisMonday || d.created_at >= thisMonday)
+      .map(d => d.client_id)
+  )
+  const clientsMissingDigest = (allClients || []).filter(c => !clientsWithDigestThisWeek.has(c.id))
 
   const handlePreview = async () => {
     await fetchPreview()
@@ -352,6 +379,33 @@ export default function DashboardPage() {
                 })}
               </TableBody>
             </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Digest widget: clients missing digest this week */}
+      {clientsMissingDigest.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Newspaper className="w-4 h-4" />
+                Digests pendientes ({clientsMissingDigest.length})
+              </CardTitle>
+              <Link to="/digests">
+                <Button variant="outline" size="sm">Ver digests</Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {clientsMissingDigest.map(c => (
+                <Badge key={c.id} variant="secondary">{c.name}</Badge>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-3">
+              Estos clientes no tienen digest generado esta semana.
+            </p>
           </CardContent>
         </Card>
       )}
