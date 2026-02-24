@@ -1,6 +1,6 @@
 import { Link, useLocation, Outlet } from "react-router-dom"
 import { useAuth } from "@/context/auth-context"
-import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, MessageSquare, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload } from "lucide-react"
+import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
 import { useMemo } from "react"

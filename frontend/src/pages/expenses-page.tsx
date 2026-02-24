@@ -132,7 +132,7 @@ export default function ExpensesPage() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setEditing(null) }}>
+      <Dialog open={dialogOpen} onOpenChange={() => { setDialogOpen(false); setEditing(null) }}>
         <DialogHeader><DialogTitle>{editing ? "Editar gasto" : "Nuevo gasto"}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -188,7 +188,7 @@ export default function ExpensesPage() {
         title="Eliminar gasto"
         description="Esta accion no se puede deshacer."
         onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
-        onCancel={() => setDeleteId(null)}
+        onOpenChange={() => setDeleteId(null)}
       />
     </div>
   )

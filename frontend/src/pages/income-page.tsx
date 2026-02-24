@@ -69,12 +69,12 @@ export default function IncomePage() {
       date: fd.get("date") as string,
       description: fd.get("description") as string,
       amount: parseFloat(fd.get("amount") as string) || 0,
-      type: (fd.get("type") as string) || "factura",
+      type: (fd.get("type") as IncomeCreate["type"]) || "factura",
       client_id: fd.get("client_id") ? parseInt(fd.get("client_id") as string) : undefined,
       invoice_number: (fd.get("invoice_number") as string) || "",
       vat_rate: parseFloat(fd.get("vat_rate") as string) || 21,
       vat_amount: parseFloat(fd.get("vat_amount") as string) || 0,
-      status: (fd.get("status") as string) || "cobrado",
+      status: (fd.get("status") as IncomeCreate["status"]) || "cobrado",
       notes: (fd.get("notes") as string) || "",
     }
     if (editing) {
@@ -150,7 +150,7 @@ export default function IncomePage() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setEditing(null) }}>
+      <Dialog open={dialogOpen} onOpenChange={() => { setDialogOpen(false); setEditing(null) }}>
         <DialogHeader><DialogTitle>{editing ? "Editar ingreso" : "Nuevo ingreso"}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -196,7 +196,7 @@ export default function IncomePage() {
         title="Eliminar ingreso"
         description="Esta accion no se puede deshacer."
         onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
-        onCancel={() => setDeleteId(null)}
+        onOpenChange={() => setDeleteId(null)}
       />
     </div>
   )

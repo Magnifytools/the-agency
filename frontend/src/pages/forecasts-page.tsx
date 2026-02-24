@@ -187,7 +187,7 @@ export default function ForecastsPage() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setEditing(null) }}>
+      <Dialog open={dialogOpen} onOpenChange={() => { setDialogOpen(false); setEditing(null) }}>
         <DialogHeader><DialogTitle>{editing ? "Editar prevision" : "Nueva prevision"}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div><Label>Mes</Label><Input name="month" type="month" defaultValue={editing?.month?.slice(0, 7) || ""} required /></div>
@@ -209,7 +209,7 @@ export default function ForecastsPage() {
       </Dialog>
 
       <ConfirmDialog open={deleteId !== null} title="Eliminar prevision" description="Esta accion no se puede deshacer."
-        onConfirm={() => deleteId && deleteMut.mutate(deleteId)} onCancel={() => setDeleteId(null)} />
+        onConfirm={() => deleteId && deleteMut.mutate(deleteId)} onOpenChange={() => setDeleteId(null)} />
     </div>
   )
 }

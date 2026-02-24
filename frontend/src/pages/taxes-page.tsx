@@ -87,7 +87,7 @@ export default function TaxesPage() {
       base_amount: parseFloat(fd.get("base_amount") as string) || 0,
       tax_rate: parseFloat(fd.get("tax_rate") as string) || 0,
       tax_amount: parseFloat(fd.get("tax_amount") as string) || 0,
-      status: (fd.get("status") as string) || "pendiente",
+      status: (fd.get("status") as TaxCreate["status"]) || "pendiente",
       due_date: (fd.get("due_date") as string) || undefined,
     }
     if (editing) updateMut.mutate({ id: editing.id, data })
@@ -190,7 +190,7 @@ export default function TaxesPage() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setEditing(null) }}>
+      <Dialog open={dialogOpen} onOpenChange={() => { setDialogOpen(false); setEditing(null) }}>
         <DialogHeader><DialogTitle>{editing ? "Editar impuesto" : "Nuevo impuesto"}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div><Label>Nombre</Label><Input name="name" defaultValue={editing?.name || ""} required /></div>
@@ -222,7 +222,7 @@ export default function TaxesPage() {
       </Dialog>
 
       <ConfirmDialog open={deleteId !== null} title="Eliminar impuesto" description="Esta accion no se puede deshacer."
-        onConfirm={() => deleteId && deleteMut.mutate(deleteId)} onCancel={() => setDeleteId(null)} />
+        onConfirm={() => deleteId && deleteMut.mutate(deleteId)} onOpenChange={() => setDeleteId(null)} />
     </div>
   )
 }
