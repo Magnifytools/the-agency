@@ -14,7 +14,7 @@ from backend.config import settings, DEFAULT_SECRET_KEY
 from backend.api.routes import (
     auth, clients, tasks, task_categories, time_entries, users,
     dashboard, discord, billing, projects, communications, pm,
-    reports, proposals, growth, invitations,
+    reports, proposals, growth, invitations, digests,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
 )
 
@@ -77,6 +77,7 @@ app.include_router(reports.router)
 app.include_router(proposals.router)
 app.include_router(growth.router)
 app.include_router(invitations.router)
+app.include_router(digests.router)
 # Financial routes
 app.include_router(income.router)
 app.include_router(expenses.router)
