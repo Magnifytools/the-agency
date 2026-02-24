@@ -1,7 +1,7 @@
 from typing import Optional, List
 from pydantic import BaseModel
 from datetime import datetime
-from db.models import GrowthFunnelStage, GrowthStatus
+from backend.db.models import GrowthFunnelStage, GrowthStatus
 
 class GrowthIdeaBase(BaseModel):
     title: str
