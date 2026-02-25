@@ -15,14 +15,14 @@ USERS = [
         "full_name": "David Carrasco",
         "role": UserRole.admin,
         "hourly_rate": 50.0,
-        "password": "Magnify2026!",
+        "password": "@iJU%KA8H@LwEQJX",
     },
     {
         "email": "nacho@magnify.ing",
         "full_name": "Nacho",
         "role": UserRole.member,
         "hourly_rate": 30.0,
-        "password": "Magnify2026!",
+        "password": "JSEINgQ5JB7kKNsq",
     },
 ]
 
