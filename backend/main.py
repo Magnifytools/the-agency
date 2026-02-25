@@ -105,23 +105,6 @@ async def lifespan(app: FastAPI):
         for col_sql in proposal_cols:
             await conn.execute(sa_text(col_sql))
 
-        # One-time user migration: update old seed users to new credentials
-        await conn.execute(
-            sa_text(
-                "UPDATE users SET email = 'david@magnify.ing', full_name = 'David Carrasco', "
-                "hashed_password = :pw, hourly_rate = 50.0 "
-                "WHERE email = 'admin@agency.com'"
-            ),
-            {"pw": "$2b$12$2b/UwKNOUq.uDua0VIncpO2TA9P5dXTayZSQbgHPlERVRsAQkW72a"},
-        )
-        await conn.execute(
-            sa_text(
-                "UPDATE users SET email = 'nacho@magnify.ing', full_name = 'Nacho', "
-                "hashed_password = :pw, hourly_rate = 30.0 "
-                "WHERE email = 'member@agency.com'"
-            ),
-            {"pw": "$2b$12$Th.adxAxRJ/IDjzaoFtxneDa51.Au3to3VLj4j39DIUnaCHXIyuiq"},
-        )
     yield
 
 
