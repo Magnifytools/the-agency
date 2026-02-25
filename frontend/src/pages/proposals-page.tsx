@@ -337,22 +337,10 @@ export default function ProposalsPage() {
         }
     }
 
-    const downloadPdf = async (id: number, e?: React.MouseEvent) => {
+    const openPdf = (id: number, e?: React.MouseEvent) => {
         e?.stopPropagation()
-        try {
-            toast.loading("Generando PDF...", { id: "pdf" })
-            const blob = await proposalsApi.downloadPdf(id)
-            const url = window.URL.createObjectURL(new Blob([blob]))
-            const link = document.createElement("a")
-            link.href = url
-            link.setAttribute("download", `Propuesta_${id}.pdf`)
-            document.body.appendChild(link)
-            link.click()
-            link.remove()
-            toast.success("PDF generado", { id: "pdf" })
-        } catch {
-            toast.error("Error al generar el PDF", { id: "pdf" })
-        }
+        const token = localStorage.getItem("token")
+        window.open(`${proposalsApi.pdfUrl(id)}?token=${token}`, "_blank")
     }
 
     // --- Pricing helpers ---
@@ -439,7 +427,7 @@ export default function ProposalsPage() {
                                 Convertir a Proyecto
                             </Button>
                         )}
-                        <Button size="sm" variant="outline" onClick={() => downloadPdf(p.id)}>
+                        <Button size="sm" variant="outline" onClick={() => openPdf(p.id)}>
                             <Download className="w-4 h-4 mr-1" /> PDF
                         </Button>
                         <Button size="sm" variant="ghost" onClick={() => duplicateMutation.mutate(p.id)}>
@@ -731,7 +719,7 @@ export default function ProposalsPage() {
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-1">
-                                                    <Button variant="ghost" size="sm" onClick={(e) => downloadPdf(p.id, e)} title="PDF">
+                                                    <Button variant="ghost" size="sm" onClick={(e) => openPdf(p.id, e)} title="PDF">
                                                         <Download className="w-4 h-4 text-brand" />
                                                     </Button>
                                                     {p.status === "draft" && (

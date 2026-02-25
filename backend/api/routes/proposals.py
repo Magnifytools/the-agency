@@ -631,13 +631,35 @@ async def generate_proposal_pdf(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("proposals")),
 ):
-    """Generate a branded PDF from proposal content."""
-    try:
-        from xhtml2pdf import pisa
-        import io
-    except ImportError:
-        raise HTTPException(status_code=500, detail="xhtml2pdf no está instalado")
+    """Generate a print-ready HTML page for the proposal.
 
+    Returns HTML that the browser can print/save as PDF via Ctrl+P.
+    The page includes @media print styles for clean A4 output.
+    """
+    return await _render_proposal_html(proposal_id, db)
+
+
+@router.get("/{proposal_id}/pdf")
+async def get_proposal_pdf(
+    proposal_id: int,
+    token: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Render proposal as print-ready HTML. Accepts auth via query param for new-tab usage."""
+    from backend.core.security import decode_access_token
+
+    if token:
+        payload = decode_access_token(token)
+        if payload is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    else:
+        raise HTTPException(status_code=401, detail="Token required")
+
+    return await _render_proposal_html(proposal_id, db)
+
+
+async def _render_proposal_html(proposal_id: int, db: AsyncSession) -> Response:
+    """Render proposal as print-ready HTML page."""
     result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
     prop = result.scalar_one_or_none()
     if not prop:
@@ -645,7 +667,6 @@ async def generate_proposal_pdf(
 
     content = prop.generated_content or {}
     pricing = prop.pricing_options or []
-    # Ensure pricing items are dicts with defaults
     pricing_safe = []
     for p in pricing:
         if isinstance(p, dict):
@@ -683,26 +704,7 @@ async def generate_proposal_pdf(
         pricing=pricing_safe,
     )
 
-    buffer = io.BytesIO()
-    pisa_status = pisa.CreatePDF(html_content, dest=buffer)
-    if pisa_status.err:
-        raise HTTPException(status_code=500, detail="Error al generar PDF")
-    pdf_bytes = buffer.getvalue()
-
-    filename = f"Propuesta_{prop.company_name or 'cliente'}_{prop.title[:30].replace(' ', '_')}.pdf"
-
     return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        content=html_content,
+        media_type="text/html",
     )
-
-
-# Legacy endpoint for backward compatibility
-@router.get("/{proposal_id}/pdf")
-async def get_proposal_pdf(
-    proposal_id: int,
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("proposals")),
-):
-    return await generate_proposal_pdf(proposal_id, db, _user)

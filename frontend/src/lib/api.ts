@@ -332,8 +332,7 @@ export const proposalsApi = {
   duplicate: (id: number) => api.post<Proposal>(`/proposals/${id}/duplicate`).then((r) => r.data),
   convert: (id: number) => api.post<Proposal>(`/proposals/${id}/convert`).then((r) => r.data),
   generate: (id: number) => api.post<Proposal>(`/proposals/${id}/generate`).then((r) => r.data),
-  downloadPdf: (id: number) =>
-    api.get(`/proposals/${id}/pdf`, { responseType: "blob" }).then((r) => r.data),
+  pdfUrl: (id: number) => `/api/proposals/${id}/pdf`,
 }
 
 // Invitations & Permissions
