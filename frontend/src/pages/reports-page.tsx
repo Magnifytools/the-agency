@@ -60,7 +60,10 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold uppercase tracking-wide">Informes</h2>
+        <div>
+          <h2 className="text-2xl font-bold uppercase tracking-wide">Informes</h2>
+          <p className="text-sm text-muted-foreground mt-1">{reports.length} informes generados</p>
+        </div>
         <Button onClick={() => setGenerateOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Generar informe
@@ -72,8 +75,11 @@ export default function ReportsPage() {
       ) : reports.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
-            <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground mb-4">No hay informes generados</p>
+            <div className="p-4 rounded-2xl bg-brand/5 inline-block mb-4">
+              <FileText className="h-10 w-10 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground mb-1">Sin informes</h3>
+            <p className="text-sm text-muted-foreground mb-6">Genera informes de estado por cliente o proyecto con IA.</p>
             <Button onClick={() => setGenerateOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Generar primer informe

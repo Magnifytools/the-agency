@@ -5,6 +5,8 @@ import { useAuth } from "@/context/auth-context"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Select } from "@/components/ui/select"
+import { Clock } from "lucide-react"
+import { EmptyTableState } from "@/components/ui/empty-state"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 
@@ -67,7 +69,10 @@ export default function TimesheetPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold uppercase tracking-wide">Timesheet</h2>
+        <div>
+          <h2 className="text-2xl font-bold uppercase tracking-wide">Timesheet</h2>
+          <p className="text-sm text-muted-foreground mt-1">Semana actual · {todaysEntries.length} registros hoy</p>
+        </div>
       </div>
 
       <Card>
@@ -86,11 +91,7 @@ export default function TimesheetPage() {
             </TableHeader>
             <TableBody>
               {todaysEntries.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={3} className="text-center text-muted-foreground py-4">
-                    No tienes registros de tiempo hoy.
-                  </TableCell>
-                </TableRow>
+                <EmptyTableState colSpan={3} icon={Clock} title="Sin registros hoy" description="Usa el timer desde cualquier tarea para registrar tiempo." />
               )}
               {todaysEntries.map((e) => (
                 <TableRow key={e.id}>

@@ -12,7 +12,8 @@ import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List } from "lucide-react"
+import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare } from "lucide-react"
+import { EmptyTableState } from "@/components/ui/empty-state"
 import { TimerButton } from "@/components/timer/timer-button"
 import { TimeLogDialog } from "@/components/timer/time-log-dialog"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -173,7 +174,10 @@ export default function TasksPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold uppercase tracking-wide">Tareas</h2>
+        <div>
+          <h2 className="text-2xl font-bold uppercase tracking-wide">Tareas</h2>
+          {tasksData && <p className="text-sm text-muted-foreground mt-1">{tasksData.total} tareas · {tasks.filter(t => t.status === "in_progress").length} en curso</p>}
+        </div>
         <Button onClick={openCreate}>
           <Plus className="h-4 w-4 mr-2" /> Nueva tarea
         </Button>
@@ -393,11 +397,7 @@ export default function TasksPage() {
               )
             })}
             {tasks.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                  No hay tareas
-                </TableCell>
-              </TableRow>
+              <EmptyTableState colSpan={9} icon={CheckSquare} title="Sin tareas" description="Crea tareas, asígnalas y trackea con timer integrado." />
             )}
           </TableBody>
         </Table>

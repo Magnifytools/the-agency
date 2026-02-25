@@ -115,7 +115,7 @@ export default function GrowthPage() {
                         Growth Operations
                     </h1>
                     <p className="text-muted-foreground text-sm mt-1">
-                        Priorización ICE y gestión de experimentos de crecimiento
+                        {ideas.length} ideas · Priorización ICE y gestión de experimentos
                     </p>
                 </div>
                 <Button onClick={() => setShowDialog(true)}>
@@ -164,9 +164,13 @@ export default function GrowthPage() {
                     </TableHeader>
                     <TableBody>
                         {ideas.length === 0 && !isLoading && (
-                            <TableRow>
-                                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                                    El backlog está vacío. Añade nuevas ideas para priorizarlas.
+                            <TableRow className="hover:bg-transparent">
+                                <TableCell colSpan={9} className="py-12">
+                                    <div className="flex flex-col items-center">
+                                        <Rocket className="h-8 w-8 text-muted-foreground/30 mb-3" />
+                                        <p className="text-sm font-medium text-foreground mb-1">Sin ideas</p>
+                                        <p className="text-xs text-muted-foreground">Añade hipótesis, prioriza con ICE y trackea resultados.</p>
+                                    </div>
                                 </TableCell>
                             </TableRow>
                         )}

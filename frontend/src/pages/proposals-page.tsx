@@ -631,7 +631,7 @@ export default function ProposalsPage() {
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Propuestas</h1>
                     <p className="text-muted-foreground mt-1">
-                        Crea y gestiona propuestas comerciales para tus clientes y leads.
+                        {proposals.length} propuestas · Crea y gestiona propuestas comerciales con IA.
                     </p>
                 </div>
                 <Button onClick={openCreate} className="w-full sm:w-auto">
@@ -678,10 +678,15 @@ export default function ProposalsPage() {
                         </TableHeader>
                         <TableBody>
                             {proposals.length === 0 ? (
-                                <TableRow>
-                                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                                        <FileText className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                                        No hay propuestas{statusFilter !== "all" ? ` con estado "${statusConfig[statusFilter].label}"` : ""}.
+                                <TableRow className="hover:bg-transparent">
+                                    <TableCell colSpan={7} className="py-12">
+                                        <div className="flex flex-col items-center">
+                                            <FileText className="h-8 w-8 text-muted-foreground/30 mb-3" />
+                                            <p className="text-sm font-medium text-foreground mb-1">Sin propuestas</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {statusFilter !== "all" ? `No hay propuestas con estado "${statusConfig[statusFilter].label}".` : "Crea propuestas con pricing y genera contenido con IA."}
+                                            </p>
+                                        </div>
                                     </TableCell>
                                 </TableRow>
                             ) : (

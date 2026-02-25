@@ -122,7 +122,7 @@ export default function DigestsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Digests Semanales</h1>
-          <p className="text-muted-foreground">Resúmenes semanales generados con IA para clientes</p>
+          <p className="text-muted-foreground">{digests.length} digests · Resúmenes semanales con IA para clientes</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -182,10 +182,13 @@ export default function DigestsPage() {
                   </TableCell>
                 </TableRow>
               ) : digests.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
-                    <FileText className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                    <p className="text-muted-foreground">No hay digests. Genera el primero.</p>
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={6} className="py-12">
+                    <div className="flex flex-col items-center">
+                      <FileText className="h-8 w-8 text-muted-foreground/30 mb-3" />
+                      <p className="text-sm font-medium text-foreground mb-1">Sin digests</p>
+                      <p className="text-xs text-muted-foreground">Genera resúmenes semanales con IA para tus clientes.</p>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { billingApi } from "@/lib/api"
 
 interface BillingRow {
@@ -33,7 +34,7 @@ export default function BillingPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold uppercase tracking-wide">Export facturación</h2>
+        <h2 className="text-2xl font-bold uppercase tracking-wide flex items-center gap-2">Export facturación <Badge variant="warning" dot={false}>Beta</Badge></h2>
         <div className="flex gap-2">
           <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="border border-border rounded-md px-3 py-2 text-sm bg-background">
             {Array.from({ length: 12 }).map((_, i) => (

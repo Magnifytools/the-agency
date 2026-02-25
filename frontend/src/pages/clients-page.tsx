@@ -14,7 +14,8 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { Plus, Pencil, Trash2 } from "lucide-react"
+import { Plus, Pencil, Trash2, Users } from "lucide-react"
+import { EmptyTableState } from "@/components/ui/empty-state"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 
@@ -117,7 +118,10 @@ export default function ClientsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold uppercase tracking-wide">Clientes</h2>
+        <div>
+          <h2 className="text-2xl font-bold uppercase tracking-wide">Clientes</h2>
+          {data && <p className="text-sm text-muted-foreground mt-1">{data.total} clientes · {clients.length} en vista</p>}
+        </div>
         <Button onClick={openCreate}>
           <Plus className="h-4 w-4 mr-2" /> Nuevo cliente
         </Button>
@@ -179,11 +183,7 @@ export default function ClientsPage() {
               </TableRow>
             ))}
             {clients.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                  No hay clientes
-                </TableCell>
-              </TableRow>
+              <EmptyTableState colSpan={7} icon={Users} title="Sin clientes todavía" description="Aquí verás tus clientes con estado, presupuesto y contacto." />
             )}
           </TableBody>
         </Table>

@@ -14,8 +14,9 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import {
   LayoutGrid, List, Plus, DollarSign, Calendar,
-  GripVertical, Trophy, X as XIcon
+  GripVertical, Trophy, X as XIcon, Target
 } from "lucide-react"
+import { EmptyTableState } from "@/components/ui/empty-state"
 import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
 
@@ -270,11 +271,7 @@ export default function LeadsPage() {
                   </TableRow>
                 ))}
                 {!isLoading && leads.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                      No hay leads
-                    </TableCell>
-                  </TableRow>
+                  <EmptyTableState colSpan={8} icon={Target} title="Pipeline vacío" description="Añade leads y sigue su progreso por etapas del funnel." />
                 )}
               </TableBody>
             </Table>

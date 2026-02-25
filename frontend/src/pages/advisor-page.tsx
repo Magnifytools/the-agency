@@ -51,7 +51,7 @@ export default function AdvisorPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Asesor Financiero</h1>
+        <h1 className="text-2xl font-bold flex items-center gap-2">Asesor Financiero <Badge variant="warning" dot={false}>Beta</Badge></h1>
         <p className="text-muted-foreground">Resumen, alertas y tareas</p>
       </div>
 

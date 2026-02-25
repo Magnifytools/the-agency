@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { InfoTooltip } from "@/components/ui/tooltip"
 import { Users, CheckSquare, Clock, DollarSign, Send, Eye, Newspaper, Target, FileText } from "lucide-react"
 import { toast } from "sonner"
 import { Link } from "react-router-dom"
@@ -217,7 +218,14 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold uppercase tracking-wide">Dashboard</h2>
+        <div>
+          <h2 className="text-2xl font-bold uppercase tracking-wide">Dashboard</h2>
+          {overview && (
+            <p className="text-sm text-muted-foreground mt-1">
+              {MONTHS[month - 1]}: {overview.pending_tasks + overview.in_progress_tasks} tareas activas, {overview.active_clients} clientes
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <DailyBriefingButton />
           <Select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="w-40">
@@ -242,8 +250,8 @@ export default function DashboardPage() {
             const totalHours = myRow ? Math.round(myRow.total_minutes / 60 * 10) / 10 : 0
             return (
               <div className="grid grid-cols-2 gap-4">
-                <MetricCard icon={Clock} label="Mis horas esta semana" value={`${totalHours}h`} />
-                <MetricCard icon={CheckSquare} label="Tareas en curso" value={myInProgressTasks?.length ?? 0} subtitle={`${myPendingTasks?.length ?? 0} pendientes`} />
+                <MetricCard icon={Clock} label="Mis horas esta semana" value={`${totalHours}h`} tooltip="Horas registradas esta semana (lunes a hoy)." />
+                <MetricCard icon={CheckSquare} label="Tareas en curso" value={myInProgressTasks?.length ?? 0} subtitle={`${myPendingTasks?.length ?? 0} pendientes`} tooltip="Tareas asignadas a ti con estado 'en curso'." />
               </div>
             )
           })()}
@@ -358,10 +366,10 @@ export default function DashboardPage() {
         <div className="lg:col-span-2 space-y-6">
           {overview && (
             <div className="grid grid-cols-2 gap-4">
-              <MetricCard icon={Users} label="Clientes activos" value={overview.active_clients} />
-              <MetricCard icon={CheckSquare} label="Tareas pendientes" value={overview.pending_tasks + overview.in_progress_tasks} subtitle={`${overview.in_progress_tasks} en curso`} />
-              <MetricCard icon={Clock} label="Horas mes" value={`${overview.hours_this_month}h`} />
-              <MetricCard icon={DollarSign} label="Presupuesto total" value={`${overview.total_budget.toLocaleString("es-ES")}€`} subtitle={`Coste: ${overview.total_cost.toLocaleString("es-ES")}€`} />
+              <MetricCard icon={Users} label="Clientes activos" value={overview.active_clients} tooltip="Clientes con estado 'activo'. No incluye pausados ni finalizados." />
+              <MetricCard icon={CheckSquare} label="Tareas pendientes" value={overview.pending_tasks + overview.in_progress_tasks} subtitle={`${overview.in_progress_tasks} en curso`} tooltip="Tareas 'pendiente' + 'en curso' del mes. Subtítulo muestra en curso." />
+              <MetricCard icon={Clock} label="Horas mes" value={`${overview.hours_this_month}h`} tooltip="Total horas registradas del equipo en el mes seleccionado." />
+              <MetricCard icon={DollarSign} label="Presupuesto total" value={`${overview.total_budget.toLocaleString("es-ES")}€`} subtitle={`Coste: ${overview.total_cost.toLocaleString("es-ES")}€`} tooltip="Suma de presupuestos mensuales de clientes activos. Coste = horas × tarifa." />
             </div>
           )}
         </div>
@@ -765,12 +773,12 @@ export default function DashboardPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Cliente</TableHead>
-                    <TableHead>Presupuesto</TableHead>
-                    <TableHead>Coste</TableHead>
-                    <TableHead>Estimado</TableHead>
-                    <TableHead>Real</TableHead>
-                    <TableHead>Δ</TableHead>
-                    <TableHead>Margen</TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">Presupuesto <InfoTooltip content="Fee mensual del cliente" /></span></TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">Coste <InfoTooltip content="Horas trabajadas × tarifa/hora de cada miembro" /></span></TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">Estimado <InfoTooltip content="Horas estimadas en las tareas del cliente" /></span></TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">Real <InfoTooltip content="Horas realmente registradas (timesheet)" /></span></TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">Δ <InfoTooltip content="Diferencia real − estimado. Positivo = se pasó de tiempo." /></span></TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">Margen <InfoTooltip content="Presupuesto − Coste. El % indica rentabilidad." /></span></TableHead>
                     <TableHead>Estado</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -813,11 +821,11 @@ export default function DashboardPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Miembro</TableHead>
-                  <TableHead>Tarifa/h</TableHead>
-                  <TableHead>Horas mes</TableHead>
-                  <TableHead>Coste</TableHead>
+                  <TableHead><span className="inline-flex items-center gap-1">Tarifa/h <InfoTooltip content="Tarifa por hora configurada para este miembro." /></span></TableHead>
+                  <TableHead><span className="inline-flex items-center gap-1">Horas mes <InfoTooltip content="Total horas registradas este mes." /></span></TableHead>
+                  <TableHead><span className="inline-flex items-center gap-1">Coste <InfoTooltip content="Horas × Tarifa/h." /></span></TableHead>
                   <TableHead>Tareas</TableHead>
-                  <TableHead>Clientes</TableHead>
+                  <TableHead><span className="inline-flex items-center gap-1">Clientes <InfoTooltip content="Nº clientes distintos en los que ha trabajado este mes." /></span></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
