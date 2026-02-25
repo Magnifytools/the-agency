@@ -4,6 +4,7 @@ import { Toaster } from "sonner"
 import { AuthProvider } from "@/context/auth-context"
 import { ProtectedRoute } from "@/components/layout/protected-route"
 import { AppLayout } from "@/components/layout/app-layout"
+import { ErrorBoundary } from "@/components/ui/error-boundary"
 import LoginPage from "@/pages/login"
 import DashboardPage from "@/pages/dashboard-page"
 import ClientsPage from "@/pages/clients-page"
@@ -40,6 +41,7 @@ const queryClient = new QueryClient({
 
 export default function App() {
   return (
+    <ErrorBoundary section="App">
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
@@ -48,7 +50,9 @@ export default function App() {
             <Route
               element={
                 <ProtectedRoute>
-                  <AppLayout />
+                  <ErrorBoundary section="Layout">
+                    <AppLayout />
+                  </ErrorBoundary>
                 </ProtectedRoute>
               }
             >
@@ -87,5 +91,6 @@ export default function App() {
       </BrowserRouter>
       <Toaster position="top-right" richColors />
     </QueryClientProvider>
+    </ErrorBoundary>
   )
 }

@@ -499,8 +499,15 @@ async def holded_config(
         )
         result[f"last_sync_{sync_type}"] = q.scalar_one_or_none()
 
+    # Derive connection health from most recent sync across all types
+    last_syncs = [v for v in result.values() if v is not None]
+    healthy = bool(settings.HOLDED_API_KEY) and any(
+        s.status == "success" for s in last_syncs
+    ) if last_syncs else False
+
     return HoldedConfigResponse(
         api_key_configured=bool(settings.HOLDED_API_KEY),
+        connection_healthy=healthy,
         **result,
     )
 

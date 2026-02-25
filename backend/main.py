@@ -1,10 +1,12 @@
 from contextlib import asynccontextmanager
 import logging
 import os
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
@@ -29,86 +31,94 @@ async def lifespan(app: FastAPI):
                 "Set SECRET_KEY environment variable in Railway."
             )
         logging.warning("SECRET_KEY está usando el valor por defecto. Configura SECRET_KEY en .env para producción.")
+    # TODO(M-03): Migrate DDL below to Alembic. These inline migrations are
+    # idempotent (IF NOT EXISTS) but fragile — they run on every startup and
+    # cannot be rolled back. Tracked as tech-debt for Sprint 4+.
     async with engine.begin() as conn:
         sa_text = __import__("sqlalchemy").text
-        # Create enum types before create_all (needed for new databases)
-        await conn.execute(
-            sa_text(
-                "DO $$ BEGIN "
-                "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'digeststatus') THEN "
-                "CREATE TYPE digeststatus AS ENUM ('draft', 'reviewed', 'sent'); "
-                "END IF; "
-                "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'digesttone') THEN "
-                "CREATE TYPE digesttone AS ENUM ('formal', 'cercano', 'equipo'); "
-                "END IF; "
-                "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'leadstatus') THEN "
-                "CREATE TYPE leadstatus AS ENUM ('new', 'contacted', 'discovery', 'proposal', 'negotiation', 'won', 'lost'); "
-                "END IF; "
-                "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'leadsource') THEN "
-                "CREATE TYPE leadsource AS ENUM ('website', 'referral', 'linkedin', 'conference', 'cold_outreach', 'other'); "
-                "END IF; "
-                "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'leadactivitytype') THEN "
-                "CREATE TYPE leadactivitytype AS ENUM ('note', 'email_sent', 'email_received', 'call', 'meeting', 'proposal_sent', 'status_change', 'followup_set'); "
-                "END IF; "
-                "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'servicetype') THEN "
-                "CREATE TYPE servicetype AS ENUM ('seo_sprint', 'migration', 'market_study', 'consulting_retainer', 'partnership_retainer', 'brand_audit', 'custom'); "
-                "END IF; "
-                "END $$;"
+        try:
+            # Create enum types before create_all (needed for new databases)
+            await conn.execute(
+                sa_text(
+                    "DO $$ BEGIN "
+                    "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'digeststatus') THEN "
+                    "CREATE TYPE digeststatus AS ENUM ('draft', 'reviewed', 'sent'); "
+                    "END IF; "
+                    "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'digesttone') THEN "
+                    "CREATE TYPE digesttone AS ENUM ('formal', 'cercano', 'equipo'); "
+                    "END IF; "
+                    "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'leadstatus') THEN "
+                    "CREATE TYPE leadstatus AS ENUM ('new', 'contacted', 'discovery', 'proposal', 'negotiation', 'won', 'lost'); "
+                    "END IF; "
+                    "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'leadsource') THEN "
+                    "CREATE TYPE leadsource AS ENUM ('website', 'referral', 'linkedin', 'conference', 'cold_outreach', 'other'); "
+                    "END IF; "
+                    "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'leadactivitytype') THEN "
+                    "CREATE TYPE leadactivitytype AS ENUM ('note', 'email_sent', 'email_received', 'call', 'meeting', 'proposal_sent', 'status_change', 'followup_set'); "
+                    "END IF; "
+                    "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'servicetype') THEN "
+                    "CREATE TYPE servicetype AS ENUM ('seo_sprint', 'migration', 'market_study', 'consulting_retainer', 'partnership_retainer', 'brand_audit', 'custom'); "
+                    "END IF; "
+                    "END $$;"
+                )
             )
-        )
-        # Create all tables first (safe for new databases)
-        await conn.run_sync(Base.metadata.create_all)
-        # Then add columns that create_all doesn't add to existing tables
-        await conn.execute(
-            sa_text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority VARCHAR(10) NOT NULL DEFAULT 'medium'")
-        )
-        await conn.execute(
-            sa_text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS holded_contact_id VARCHAR(100)")
-        )
-        await conn.execute(
-            sa_text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS vat_number VARCHAR(50)")
-        )
-        # Sprint 3: Add 'expired' to proposalstatus enum if it exists
-        await conn.execute(
-            sa_text(
-                "DO $$ BEGIN "
-                "IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'proposalstatus') THEN "
-                "BEGIN ALTER TYPE proposalstatus ADD VALUE IF NOT EXISTS 'expired'; EXCEPTION WHEN OTHERS THEN NULL; END; "
-                "END IF; "
-                "END $$;"
+            # Create all tables first (safe for new databases)
+            await conn.run_sync(Base.metadata.create_all)
+            # Then add columns that create_all doesn't add to existing tables
+            await conn.execute(
+                sa_text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority VARCHAR(10) NOT NULL DEFAULT 'medium'")
             )
-        )
-        # Sprint 3: Make client_id nullable (proposals can start from leads)
-        await conn.execute(
-            sa_text("ALTER TABLE proposals ALTER COLUMN client_id DROP NOT NULL")
-        )
-        # Sprint 3: New columns for proposals table
-        proposal_cols = [
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS lead_id INTEGER REFERENCES leads(id)",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id)",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS contact_name VARCHAR(200)",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS company_name VARCHAR(200) NOT NULL DEFAULT ''",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS service_type servicetype",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS situation TEXT",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS problem TEXT",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS cost_of_inaction TEXT",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS opportunity TEXT",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS approach TEXT",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS relevant_cases TEXT",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS pricing_options JSONB",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS internal_hours_david NUMERIC(10,1)",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS internal_hours_nacho NUMERIC(10,1)",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS internal_cost_estimate NUMERIC(10,2)",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS estimated_margin_percent NUMERIC(5,2)",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS generated_content JSONB",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS responded_at TIMESTAMP",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS response_notes TEXT",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS valid_until DATE",
-            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS converted_project_id INTEGER REFERENCES projects(id)",
-        ]
-        for col_sql in proposal_cols:
-            await conn.execute(sa_text(col_sql))
+            await conn.execute(
+                sa_text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS holded_contact_id VARCHAR(100)")
+            )
+            await conn.execute(
+                sa_text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS vat_number VARCHAR(50)")
+            )
+            # Sprint 3: Add 'expired' to proposalstatus enum if it exists
+            await conn.execute(
+                sa_text(
+                    "DO $$ BEGIN "
+                    "IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'proposalstatus') THEN "
+                    "BEGIN ALTER TYPE proposalstatus ADD VALUE IF NOT EXISTS 'expired'; EXCEPTION WHEN OTHERS THEN NULL; END; "
+                    "END IF; "
+                    "END $$;"
+                )
+            )
+            # Sprint 3: Make client_id nullable (proposals can start from leads)
+            await conn.execute(
+                sa_text("ALTER TABLE proposals ALTER COLUMN client_id DROP NOT NULL")
+            )
+            # Sprint 3: New columns for proposals table
+            proposal_cols = [
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS lead_id INTEGER REFERENCES leads(id)",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id)",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS contact_name VARCHAR(200)",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS company_name VARCHAR(200) NOT NULL DEFAULT ''",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS service_type servicetype",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS situation TEXT",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS problem TEXT",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS cost_of_inaction TEXT",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS opportunity TEXT",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS approach TEXT",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS relevant_cases TEXT",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS pricing_options JSONB",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS internal_hours_david NUMERIC(10,1)",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS internal_hours_nacho NUMERIC(10,1)",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS internal_cost_estimate NUMERIC(10,2)",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS estimated_margin_percent NUMERIC(5,2)",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS generated_content JSONB",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS responded_at TIMESTAMP",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS response_notes TEXT",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS valid_until DATE",
+                "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS converted_project_id INTEGER REFERENCES projects(id)",
+            ]
+            for col_sql in proposal_cols:
+                await conn.execute(sa_text(col_sql))
+            logging.info("Database schema migrations completed successfully.")
+        except Exception as e:
+            logging.error(f"Database migration failed: {e}")
+            raise
 
     yield
 
@@ -126,6 +136,19 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    """Adds X-Request-ID header to every response for traceability."""
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())[:8]
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+
+app.add_middleware(RequestIdMiddleware)
 
 app.include_router(auth.router)
 app.include_router(clients.router)

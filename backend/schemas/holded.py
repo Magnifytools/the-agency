@@ -121,6 +121,7 @@ class HoldedDashboardResponse(BaseModel):
 
 class HoldedConfigResponse(BaseModel):
     api_key_configured: bool
+    connection_healthy: bool = False
     last_sync_contacts: Optional[SyncLogResponse] = None
     last_sync_invoices: Optional[SyncLogResponse] = None
     last_sync_expenses: Optional[SyncLogResponse] = None

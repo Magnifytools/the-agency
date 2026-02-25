@@ -1,30 +1,53 @@
 """Seed script: creates initial users and task categories.
 
 Run with: python -m backend.db.seed
+
+Passwords are read from environment variables:
+  SEED_ADMIN_PASSWORD  — password for the admin user (david@magnify.ing)
+  SEED_MEMBER_PASSWORD — password for the member user (nacho@magnify.ing)
+
+If not set, random 24-char passwords are generated and printed to stdout.
 """
 import asyncio
+import os
+import secrets
+import string
 from sqlalchemy import select
 from backend.db.database import engine, async_session
 from backend.db.models import Base, User, TaskCategory, UserRole, ExpenseCategory, UserPermission, ServiceTemplate, ServiceType
 from backend.core.security import hash_password
 
 
-USERS = [
-    {
-        "email": "david@magnify.ing",
-        "full_name": "David Carrasco",
-        "role": UserRole.admin,
-        "hourly_rate": 50.0,
-        "password": "@iJU%KA8H@LwEQJX",
-    },
-    {
-        "email": "nacho@magnify.ing",
-        "full_name": "Nacho",
-        "role": UserRole.member,
-        "hourly_rate": 30.0,
-        "password": "JSEINgQ5JB7kKNsq",
-    },
-]
+def _generate_password(length: int = 24) -> str:
+    alphabet = string.ascii_letters + string.digits + "!@#$%&*"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def _get_seed_users() -> list[dict]:
+    admin_pw = os.environ.get("SEED_ADMIN_PASSWORD") or _generate_password()
+    member_pw = os.environ.get("SEED_MEMBER_PASSWORD") or _generate_password()
+
+    if not os.environ.get("SEED_ADMIN_PASSWORD"):
+        print(f"⚠ SEED_ADMIN_PASSWORD not set. Generated: {admin_pw}")
+    if not os.environ.get("SEED_MEMBER_PASSWORD"):
+        print(f"⚠ SEED_MEMBER_PASSWORD not set. Generated: {member_pw}")
+
+    return [
+        {
+            "email": "david@magnify.ing",
+            "full_name": "David Carrasco",
+            "role": UserRole.admin,
+            "hourly_rate": 50.0,
+            "password": admin_pw,
+        },
+        {
+            "email": "nacho@magnify.ing",
+            "full_name": "Nacho",
+            "role": UserRole.member,
+            "hourly_rate": 30.0,
+            "password": member_pw,
+        },
+    ]
 
 CATEGORIES = [
     {"name": "Auditoría SEO", "default_minutes": 120},
@@ -152,7 +175,8 @@ async def seed():
 
     async with async_session() as session:
         # Seed users
-        for u in USERS:
+        users = _get_seed_users()
+        for u in users:
             existing = await session.execute(select(User).where(User.email == u["email"]))
             if existing.scalar_one_or_none() is None:
                 user = User(

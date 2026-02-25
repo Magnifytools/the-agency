@@ -5,6 +5,7 @@ dist/
 build/
 .env
 venv/
+.venv/
 *.db
 node_modules/
 frontend/dist/
