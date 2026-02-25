@@ -633,9 +633,10 @@ async def generate_proposal_pdf(
 ):
     """Generate a branded PDF from proposal content."""
     try:
-        from weasyprint import HTML
+        from xhtml2pdf import pisa
+        import io
     except ImportError:
-        raise HTTPException(status_code=500, detail="WeasyPrint no está instalado")
+        raise HTTPException(status_code=500, detail="xhtml2pdf no está instalado")
 
     result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
     prop = result.scalar_one_or_none()
@@ -682,7 +683,12 @@ async def generate_proposal_pdf(
         pricing=pricing_safe,
     )
 
-    pdf_bytes = HTML(string=html_content).write_pdf()
+    buffer = io.BytesIO()
+    pisa_status = pisa.CreatePDF(html_content, dest=buffer)
+    if pisa_status.err:
+        raise HTTPException(status_code=500, detail="Error al generar PDF")
+    pdf_bytes = buffer.getvalue()
+
     filename = f"Propuesta_{prop.company_name or 'cliente'}_{prop.title[:30].replace(' ', '_')}.pdf"
 
     return Response(
