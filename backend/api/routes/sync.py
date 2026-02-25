@@ -81,7 +81,7 @@ async def import_csv(
         records_imported=imported,
         records_skipped=skipped,
         errors="; ".join(errors[:20]),
-        status="completado" if not errors else "completado",
+        status="completado" if not errors else "parcial",
     )
     db.add(log)
     await db.commit()

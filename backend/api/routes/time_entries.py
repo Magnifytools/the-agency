@@ -94,7 +94,7 @@ async def weekly_timesheet(
     today = datetime.now(timezone.utc).date()
     if week_start is None:
         week_start = today - timedelta(days=today.weekday())  # Monday
-    start_dt = datetime.combine(week_start, datetime.min.time(), tzinfo=timezone.utc)
+    start_dt = datetime.combine(week_start, datetime.min.time())
     end_dt = start_dt + timedelta(days=7)
 
     # Load users
