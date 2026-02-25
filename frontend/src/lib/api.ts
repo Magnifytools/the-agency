@@ -68,6 +68,20 @@ import type {
   DigestGenerateRequest,
   DigestUpdateRequest,
   DigestRenderResponse,
+  Lead,
+  LeadCreate,
+  LeadDetail,
+  LeadActivity,
+  PipelineSummary,
+  LeadReminder,
+  HoldedSyncResult,
+  HoldedSyncStatus,
+  HoldedSyncLog,
+  HoldedInvoice,
+  HoldedExpense,
+  HoldedDashboard,
+  HoldedConfig,
+  HoldedTestConnection,
 } from "./types"
 
 const api = axios.create({
@@ -203,6 +217,16 @@ export const discordApi = {
     api.get<{ summary: string; date: string }>("/discord/preview", { params: date ? { date } : {} }).then((r) => r.data),
   send: (date?: string) =>
     api.post<{ ok: boolean; date: string }>("/discord/send", null, { params: date ? { date } : {} }).then((r) => r.data),
+  settings: () =>
+    api.get<import("./types").DiscordSettings>("/discord/settings").then((r) => r.data),
+  updateSettings: (data: Partial<import("./types").DiscordSettings>) =>
+    api.put<import("./types").DiscordSettings>("/discord/settings", data).then((r) => r.data),
+  testWebhook: () =>
+    api.post<import("./types").DiscordTestResponse>("/discord/test-webhook").then((r) => r.data),
+  sendDailySummary: (date?: string) =>
+    api.post<import("./types").DiscordSendResponse>("/discord/send-daily-summary", null, { params: date ? { date } : {} }).then((r) => r.data),
+  sendDigest: (digestId: number) =>
+    api.post<import("./types").DiscordSendResponse>(`/discord/send-digest/${digestId}`).then((r) => r.data),
 }
 
 // Task Categories
@@ -433,6 +457,50 @@ export const digestsApi = {
     api.patch<Digest>(`/digests/${id}/status`, { status }).then((r) => r.data),
   render: (id: number, format: "slack" | "email") =>
     api.get<DigestRenderResponse>(`/digests/${id}/render`, { params: { format } }).then((r) => r.data),
+}
+
+// --- CRM Leads ---
+export const leadsApi = {
+  list: (params?: { status?: string; source?: string; assigned_to?: number; service_interest?: string }) =>
+    api.get<Lead[]>("/leads", { params }).then((r) => r.data),
+  get: (id: number) => api.get<LeadDetail>(`/leads/${id}`).then((r) => r.data),
+  create: (data: LeadCreate) => api.post<Lead>("/leads", data).then((r) => r.data),
+  update: (id: number, data: Partial<LeadCreate> & { status?: string; lost_reason?: string; last_contacted_at?: string }) =>
+    api.put<Lead>(`/leads/${id}`, data).then((r) => r.data),
+  delete: (id: number) => api.delete(`/leads/${id}`).then((r) => r.data),
+  addActivity: (leadId: number, data: { activity_type: string; title: string; description?: string }) =>
+    api.post<LeadActivity>(`/leads/${leadId}/activities`, data).then((r) => r.data),
+  convert: (leadId: number) =>
+    api.post<{ message: string; client_id: number; client_name: string }>(`/leads/${leadId}/convert`).then((r) => r.data),
+  pipelineSummary: () =>
+    api.get<PipelineSummary>("/leads/pipeline-summary").then((r) => r.data),
+  reminders: () =>
+    api.get<LeadReminder[]>("/leads/reminders").then((r) => r.data),
+}
+
+// --- Holded Integration ---
+export const holdedApi = {
+  // Sync
+  syncContacts: () => api.post<HoldedSyncResult>("/holded/sync/contacts").then((r) => r.data),
+  syncInvoices: () => api.post<HoldedSyncResult>("/holded/sync/invoices").then((r) => r.data),
+  syncExpenses: () => api.post<HoldedSyncResult>("/holded/sync/expenses").then((r) => r.data),
+  syncAll: () => api.post<HoldedSyncResult[]>("/holded/sync/all").then((r) => r.data),
+  syncStatus: () => api.get<HoldedSyncStatus>("/holded/sync/status").then((r) => r.data),
+  syncLogs: (limit = 20) => api.get<HoldedSyncLog[]>("/holded/sync/logs", { params: { limit } }).then((r) => r.data),
+  // Data
+  invoices: (params?: { client_id?: number; status?: string; date_from?: string; date_to?: string }) =>
+    api.get<HoldedInvoice[]>("/holded/invoices", { params }).then((r) => r.data),
+  invoicePdf: (holdedId: string) =>
+    api.get(`/holded/invoices/${holdedId}/pdf`, { responseType: "blob" }).then((r) => r.data),
+  expenses: (params?: { category?: string; date_from?: string; date_to?: string }) =>
+    api.get<HoldedExpense[]>("/holded/expenses", { params }).then((r) => r.data),
+  dashboard: () => api.get<HoldedDashboard>("/holded/dashboard").then((r) => r.data),
+  // Config
+  config: () => api.get<HoldedConfig>("/holded/config").then((r) => r.data),
+  testConnection: () => api.post<HoldedTestConnection>("/holded/test-connection").then((r) => r.data),
+  // Client invoices
+  clientInvoices: (clientId: number) =>
+    api.get<HoldedInvoice[]>(`/holded/clients/${clientId}/invoices`).then((r) => r.data),
 }
 
 export const financeExportApi = {

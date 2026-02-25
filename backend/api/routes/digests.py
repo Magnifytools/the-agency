@@ -32,7 +32,7 @@ from backend.schemas.digest import (
 )
 from backend.services.digest_collector import collect_digest_data
 from backend.services.digest_generator import generate_digest_content
-from backend.services.digest_renderer import render_slack, render_email
+from backend.services.digest_renderer import render_slack, render_email, render_discord
 from backend.api.deps import require_module
 
 router = APIRouter(prefix="/api/digests", tags=["digests"])
@@ -305,7 +305,7 @@ async def update_digest_status(
 @router.get("/{digest_id}/render", response_model=DigestRenderResponse)
 async def render_digest(
     digest_id: int,
-    format: str = Query("slack", pattern="^(slack|email)$"),
+    format: str = Query("slack", pattern="^(slack|email|discord)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("digests")),
 ):
@@ -328,6 +328,8 @@ async def render_digest(
 
     if format == "slack":
         rendered = render_slack(content)
+    elif format == "discord":
+        rendered = render_discord(content)
     else:
         rendered = render_email(content)
 

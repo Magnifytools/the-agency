@@ -80,6 +80,22 @@ async def create_communication(
     return _to_response(comm)
 
 
+# Static path BEFORE dynamic {comm_id} to avoid 422
+@router.get("/communications/pending-followups", response_model=list[CommunicationResponse])
+async def list_pending_followups(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("communications")),
+):
+    """List all communications that require follow-up and haven't been addressed."""
+    query = select(CommunicationLog).where(CommunicationLog.requires_followup.is_(True))
+    # F-06: members see only their own followups
+    if current_user.role != UserRole.admin:
+        query = query.where(CommunicationLog.user_id == current_user.id)
+    query = query.order_by(CommunicationLog.followup_date.asc())
+    result = await db.execute(query)
+    return [_to_response(c) for c in result.scalars().all()]
+
+
 @router.get("/communications/{comm_id}", response_model=CommunicationResponse)
 async def get_communication(
     comm_id: int,
@@ -138,18 +154,3 @@ async def delete_communication(
         raise HTTPException(status_code=403, detail="Not your communication")
     await db.delete(comm)
     await db.commit()
-
-
-@router.get("/communications/pending-followups", response_model=list[CommunicationResponse])
-async def list_pending_followups(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_module("communications")),
-):
-    """List all communications that require follow-up and haven't been addressed."""
-    query = select(CommunicationLog).where(CommunicationLog.requires_followup.is_(True))
-    # F-06: members see only their own followups
-    if current_user.role != UserRole.admin:
-        query = query.where(CommunicationLog.user_id == current_user.id)
-    query = query.order_by(CommunicationLog.followup_date.asc())
-    result = await db.execute(query)
-    return [_to_response(c) for c in result.scalars().all()]

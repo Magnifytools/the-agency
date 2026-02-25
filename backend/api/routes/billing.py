@@ -18,15 +18,16 @@ router = APIRouter(prefix="/api/billing", tags=["billing"])
 
 
 def _month_range(year: int, month: int):
+    """Return naive datetimes (no tz) to match TIMESTAMP WITHOUT TIME ZONE columns."""
     _, last_day = monthrange(year, month)
-    start = datetime(year, month, 1, tzinfo=timezone.utc)
-    end = datetime(year, month, last_day, 23, 59, 59, tzinfo=timezone.utc)
+    start = datetime(year, month, 1)
+    end = datetime(year, month, last_day, 23, 59, 59)
     return start, end
 
 
 @router.get("/export")
 async def export_billing(
-    format: str = Query("csv", regex="^(csv|json)$"),
+    format: str = Query("csv", pattern="^(csv|json)$"),
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),

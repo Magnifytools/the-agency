@@ -260,7 +260,7 @@ async def stop_timer(
     return _entry_to_response(entry)
 
 
-@router.get("/api/timer/active", response_model=ActiveTimerResponse)
+@router.get("/api/timer/active", response_model=Optional[ActiveTimerResponse])
 async def get_active_timer(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("timesheet")),
@@ -272,7 +272,7 @@ async def get_active_timer(
     )
     entry = result.scalar_one_or_none()
     if entry is None:
-        raise HTTPException(status_code=status.HTTP_204_NO_CONTENT)
+        return None
     return ActiveTimerResponse(
         id=entry.id,
         task_id=entry.task_id,

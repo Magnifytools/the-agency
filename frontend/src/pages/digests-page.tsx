@@ -2,8 +2,8 @@ import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2 } from "lucide-react"
-import { digestsApi, clientsApi } from "@/lib/api"
+import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle } from "lucide-react"
+import { digestsApi, clientsApi, discordApi } from "@/lib/api"
 import type { Digest, DigestStatus, DigestTone } from "@/lib/types"
 
 import { Button } from "@/components/ui/button"
@@ -84,6 +84,14 @@ export default function DigestsPage() {
       setPreviewContent(data.rendered)
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al renderizar")),
+  })
+
+  const discordSendMutation = useMutation({
+    mutationFn: (digestId: number) => discordApi.sendDigest(digestId),
+    onSuccess: (data) => {
+      toast.success(data.message)
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al enviar a Discord")),
   })
 
   const handleGenerate = () => {
@@ -231,6 +239,15 @@ export default function DigestsPage() {
                           onClick={() => handlePreview(digest, "email")}
                         >
                           <Send className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Enviar a Discord"
+                          onClick={() => discordSendMutation.mutate(digest.id)}
+                          disabled={discordSendMutation.isPending}
+                        >
+                          <MessageCircle className="w-4 h-4" />
                         </Button>
                       </div>
                     </TableCell>

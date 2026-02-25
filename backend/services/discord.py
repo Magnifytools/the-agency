@@ -12,8 +12,10 @@ from backend.config import settings
 
 
 async def generate_daily_summary(db: AsyncSession, date: datetime) -> str:
-    start = date.replace(hour=0, minute=0, second=0, microsecond=0)
-    end = date.replace(hour=23, minute=59, second=59, microsecond=999999)
+    # Remove timezone info for comparison with naive TIMESTAMP columns
+    naive = date.replace(tzinfo=None)
+    start = naive.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = naive.replace(hour=23, minute=59, second=59, microsecond=999999)
 
     result = await db.execute(
         select(TimeEntry).where(

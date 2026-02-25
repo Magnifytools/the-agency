@@ -98,6 +98,7 @@ async def seed():
                 default_modules = [
                     "dashboard", "clients", "tasks", "projects", "timesheet",
                     "communications", "proposals", "reports", "growth", "digests",
+                    "leads",
                 ]
                 for module in default_modules:
                     session.add(UserPermission(

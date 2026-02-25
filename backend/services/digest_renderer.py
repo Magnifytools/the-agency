@@ -13,6 +13,47 @@ from backend.schemas.digest import DigestContent, DigestItem
 # Slack renderer
 # ---------------------------------------------------------------------------
 
+def render_discord(content: DigestContent) -> str:
+    """Render digest content as Discord-formatted Markdown message."""
+    lines: list[str] = []
+
+    # Header
+    date_str = content.date or "—"
+    lines.append(f"**📊 Resumen diario — Magnify — {date_str}**")
+    lines.append("")
+
+    # Done section
+    if content.sections.done:
+        lines.append("**🎯 ¿Qué hemos hecho?**")
+        for item in content.sections.done:
+            desc = f" — {item.description}" if item.description else ""
+            lines.append(f"• {item.title}{desc}")
+        lines.append("")
+
+    # Need section
+    if content.sections.need:
+        lines.append("**⚠️ ¿Qué necesitamos?**")
+        for item in content.sections.need:
+            desc = f" — {item.description}" if item.description else ""
+            lines.append(f"• {item.title}{desc}")
+        lines.append("")
+
+    # Next section
+    if content.sections.next:
+        lines.append("**📋 ¿Qué vamos a hacer?**")
+        for item in content.sections.next:
+            desc = f" — {item.description}" if item.description else ""
+            lines.append(f"• {item.title}{desc}")
+        lines.append("")
+
+    # Closing / AI note
+    if content.closing:
+        lines.append("**💡 Nota del día**")
+        lines.append(content.closing)
+
+    return "\n".join(lines)
+
+
 def render_slack(content: DigestContent) -> str:
     """Render digest content as Slack-formatted text with emojis."""
     lines: list[str] = []

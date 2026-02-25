@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { dashboardApi, discordApi, tasksApi, timeEntriesApi, digestsApi, clientsApi } from "@/lib/api"
+import { dashboardApi, discordApi, tasksApi, timeEntriesApi, digestsApi, clientsApi, leadsApi } from "@/lib/api"
 import { useAuth } from "@/context/auth-context"
 import { MetricCard } from "@/components/dashboard/metric-card"
 import { ProfitabilityChart } from "@/components/dashboard/profitability-chart"
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Users, CheckSquare, Clock, DollarSign, Send, Eye, Newspaper } from "lucide-react"
+import { Users, CheckSquare, Clock, DollarSign, Send, Eye, Newspaper, Target } from "lucide-react"
 import { toast } from "sonner"
 import { Link } from "react-router-dom"
 import { InboxWidget } from "@/components/dashboard/inbox-widget"
@@ -137,6 +137,13 @@ export default function DashboardPage() {
   const { data: allClients } = useQuery({
     queryKey: ["clients-all-active"],
     queryFn: () => clientsApi.listAll("active"),
+    enabled: !!user,
+  })
+
+  // Lead reminders: followups overdue or within 3 days
+  const { data: leadReminders } = useQuery({
+    queryKey: ["lead-reminders"],
+    queryFn: () => leadsApi.reminders(),
     enabled: !!user,
   })
 
@@ -406,6 +413,63 @@ export default function DashboardPage() {
             <p className="text-xs text-muted-foreground mt-3">
               Estos clientes no tienen digest generado esta semana.
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Lead reminders: followups overdue or within 3 days */}
+      {leadReminders && leadReminders.length > 0 && (
+        <Card className="border-brand/20">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Target className="w-4 h-4 text-brand" />
+                Seguimientos de leads ({leadReminders.length})
+              </CardTitle>
+              <Link to="/leads">
+                <Button variant="outline" size="sm">Ver pipeline</Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Empresa</TableHead>
+                  <TableHead>Contacto</TableHead>
+                  <TableHead>Followup</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Notas</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {leadReminders.map(r => (
+                  <TableRow key={r.id}>
+                    <TableCell>
+                      <Link to={`/leads/${r.id}`} className="font-medium text-brand hover:underline">
+                        {r.company_name}
+                      </Link>
+                    </TableCell>
+                    <TableCell>{r.contact_name || "-"}</TableCell>
+                    <TableCell>
+                      <span className={r.days_until_followup < 0 ? "text-red-400 font-bold" : r.days_until_followup === 0 ? "text-yellow-400 font-bold" : ""}>
+                        {r.days_until_followup < 0
+                          ? `${Math.abs(r.days_until_followup)}d atrasado`
+                          : r.days_until_followup === 0
+                          ? "Hoy"
+                          : `En ${r.days_until_followup}d`}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-xs">{r.status}</Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
+                      {r.next_followup_notes || "-"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       )}

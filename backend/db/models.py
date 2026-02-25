@@ -6,6 +6,7 @@ from sqlalchemy import (
     Integer,
     String,
     Float,
+    Numeric,
     Text,
     Date,
     DateTime,
@@ -140,6 +141,36 @@ class DigestTone(str, enum.Enum):
     equipo = "equipo"
 
 
+class LeadStatus(str, enum.Enum):
+    new = "new"
+    contacted = "contacted"
+    discovery = "discovery"
+    proposal = "proposal"
+    negotiation = "negotiation"
+    won = "won"
+    lost = "lost"
+
+
+class LeadSource(str, enum.Enum):
+    website = "website"
+    referral = "referral"
+    linkedin = "linkedin"
+    conference = "conference"
+    cold_outreach = "cold_outreach"
+    other = "other"
+
+
+class LeadActivityType(str, enum.Enum):
+    note = "note"
+    email_sent = "email_sent"
+    email_received = "email_received"
+    call = "call"
+    meeting = "meeting"
+    proposal_sent = "proposal_sent"
+    status_change = "status_change"
+    followup_set = "followup_set"
+
+
 class GrowthFunnelStage(str, enum.Enum):
     referral = "referral"
     desire = "desire"
@@ -191,6 +222,9 @@ class Client(TimestampMixin, Base):
     cif = Column(String(50), nullable=True)
     currency = Column(String(10), nullable=False, default="EUR")
     monthly_fee = Column(Float, nullable=True)
+    # Holded integration
+    holded_contact_id = Column(String(100), nullable=True)
+    vat_number = Column(String(50), nullable=True)
 
     tasks = relationship("Task", back_populates="client", lazy="selectin")
     projects = relationship("Project", back_populates="client", lazy="selectin")
@@ -589,6 +623,64 @@ class WeeklyDigest(TimestampMixin, Base):
     creator = relationship("User", lazy="selectin")
 
 
+class Lead(TimestampMixin, Base):
+    __tablename__ = "leads"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # Datos basicos
+    company_name = Column(String(200), nullable=False)
+    contact_name = Column(String(200), nullable=True)
+    email = Column(String(200), nullable=True)
+    phone = Column(String(50), nullable=True)
+    website = Column(String(300), nullable=True)
+    linkedin_url = Column(String(300), nullable=True)
+
+    # Pipeline
+    status = Column(Enum(LeadStatus), nullable=False, default=LeadStatus.new)
+    source = Column(Enum(LeadSource), nullable=False, default=LeadSource.other)
+    assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # Valor y servicio
+    estimated_value = Column(Numeric(10, 2), nullable=True)
+    service_interest = Column(String(100), nullable=True)
+    currency = Column(String(3), nullable=False, default="EUR")
+
+    # Contexto
+    notes = Column(Text, nullable=True)
+    industry = Column(String(100), nullable=True)
+    company_size = Column(String(50), nullable=True)
+    current_website_traffic = Column(String(100), nullable=True)
+
+    # Seguimiento
+    next_followup_date = Column(Date, nullable=True)
+    next_followup_notes = Column(Text, nullable=True)
+    last_contacted_at = Column(DateTime, nullable=True)
+
+    # Conversion
+    converted_client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
+    converted_at = Column(DateTime, nullable=True)
+    lost_reason = Column(Text, nullable=True)
+
+    # Relaciones
+    assigned_user = relationship("User", lazy="selectin")
+    converted_client = relationship("Client", lazy="selectin")
+    activities = relationship("LeadActivity", back_populates="lead", lazy="selectin", order_by="LeadActivity.created_at.desc()")
+
+
+class LeadActivity(TimestampMixin, Base):
+    __tablename__ = "lead_activities"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    lead_id = Column(Integer, ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    activity_type = Column(Enum(LeadActivityType), nullable=False)
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+
+    lead = relationship("Lead", back_populates="activities", lazy="selectin")
+    user = relationship("User", lazy="selectin")
+
+
 class ExpenseCategory(TimestampMixin, Base):
     __tablename__ = "expense_categories"
 
@@ -736,3 +828,72 @@ class CsvMapping(TimestampMixin, Base):
     target = Column(String(50), nullable=False, default="expenses")  # expenses, income
     mapping = Column(JSON, nullable=False)
     delimiter = Column(String(5), nullable=False, default=",")
+
+
+# ── Holded Integration ─────────────────────────────────────
+
+
+class HoldedSyncLog(Base):
+    __tablename__ = "holded_sync_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    sync_type = Column(String(50), nullable=False)  # contacts, invoices, expenses
+    status = Column(String(20), nullable=False, default="in_progress")  # success, error, partial
+    records_synced = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+
+class HoldedInvoiceCache(Base):
+    __tablename__ = "holded_invoices_cache"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    holded_id = Column(String(100), unique=True, nullable=False)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
+    contact_name = Column(String(300), nullable=True)
+    invoice_number = Column(String(100), nullable=True)
+    date = Column(Date, nullable=True)
+    due_date = Column(Date, nullable=True)
+    total = Column(Numeric(10, 2), default=0)
+    subtotal = Column(Numeric(10, 2), default=0)
+    tax = Column(Numeric(10, 2), default=0)
+    status = Column(String(50), nullable=True)  # paid, pending, overdue
+    currency = Column(String(3), default="EUR")
+    raw_data = Column(JSON, nullable=True)
+    synced_at = Column(DateTime, default=datetime.utcnow)
+
+    client = relationship("Client", lazy="selectin")
+
+
+class HoldedExpenseCache(Base):
+    __tablename__ = "holded_expenses_cache"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    holded_id = Column(String(100), unique=True, nullable=False)
+    description = Column(String(300), nullable=True)
+    date = Column(Date, nullable=True)
+    total = Column(Numeric(10, 2), default=0)
+    subtotal = Column(Numeric(10, 2), default=0)
+    tax = Column(Numeric(10, 2), default=0)
+    category = Column(String(100), nullable=True)
+    supplier = Column(String(300), nullable=True)
+    status = Column(String(50), nullable=True)
+    raw_data = Column(JSON, nullable=True)
+    synced_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ── Discord Settings ─────────────────────────────────────
+
+
+class DiscordSettings(Base):
+    __tablename__ = "discord_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    webhook_url = Column(String(500), nullable=True)
+    auto_daily_summary = Column(Boolean, default=False)
+    summary_time = Column(String(5), default="18:00")  # HH:MM
+    include_ai_note = Column(Boolean, default=True)
+    last_sent_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

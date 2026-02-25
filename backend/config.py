@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     DISCORD_WEBHOOK_URL: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
+    HOLDED_API_KEY: Optional[str] = None
 
     model_config = {"env_file": str(Path(__file__).resolve().parent.parent / ".env")}
 

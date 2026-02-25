@@ -14,7 +14,7 @@ from backend.config import settings, DEFAULT_SECRET_KEY
 from backend.api.routes import (
     auth, clients, tasks, task_categories, time_entries, users,
     dashboard, discord, billing, projects, communications, pm,
-    reports, proposals, growth, invitations, digests,
+    reports, proposals, growth, invitations, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
 )
 
@@ -24,15 +24,10 @@ async def lifespan(app: FastAPI):
     if settings.SECRET_KEY == DEFAULT_SECRET_KEY:
         logging.warning("SECRET_KEY está usando el valor por defecto. Configura SECRET_KEY en .env para producción.")
     async with engine.begin() as conn:
-        # Add priority column if missing (create_all doesn't add columns to existing tables)
+        sa_text = __import__("sqlalchemy").text
+        # Create enum types before create_all (needed for new databases)
         await conn.execute(
-            __import__("sqlalchemy").text(
-                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority VARCHAR(10) NOT NULL DEFAULT 'medium'"
-            )
-        )
-        # Create enum types for weekly_digests if they don't exist
-        await conn.execute(
-            __import__("sqlalchemy").text(
+            sa_text(
                 "DO $$ BEGIN "
                 "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'digeststatus') THEN "
                 "CREATE TYPE digeststatus AS ENUM ('draft', 'reviewed', 'sent'); "
@@ -40,10 +35,30 @@ async def lifespan(app: FastAPI):
                 "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'digesttone') THEN "
                 "CREATE TYPE digesttone AS ENUM ('formal', 'cercano', 'equipo'); "
                 "END IF; "
+                "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'leadstatus') THEN "
+                "CREATE TYPE leadstatus AS ENUM ('new', 'contacted', 'discovery', 'proposal', 'negotiation', 'won', 'lost'); "
+                "END IF; "
+                "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'leadsource') THEN "
+                "CREATE TYPE leadsource AS ENUM ('website', 'referral', 'linkedin', 'conference', 'cold_outreach', 'other'); "
+                "END IF; "
+                "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'leadactivitytype') THEN "
+                "CREATE TYPE leadactivitytype AS ENUM ('note', 'email_sent', 'email_received', 'call', 'meeting', 'proposal_sent', 'status_change', 'followup_set'); "
+                "END IF; "
                 "END $$;"
             )
         )
+        # Create all tables first (safe for new databases)
         await conn.run_sync(Base.metadata.create_all)
+        # Then add columns that create_all doesn't add to existing tables
+        await conn.execute(
+            sa_text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority VARCHAR(10) NOT NULL DEFAULT 'medium'")
+        )
+        await conn.execute(
+            sa_text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS holded_contact_id VARCHAR(100)")
+        )
+        await conn.execute(
+            sa_text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS vat_number VARCHAR(50)")
+        )
     yield
 
 
@@ -78,6 +93,8 @@ app.include_router(proposals.router)
 app.include_router(growth.router)
 app.include_router(invitations.router)
 app.include_router(digests.router)
+app.include_router(leads.router)
+app.include_router(holded.router)
 # Financial routes
 app.include_router(income.router)
 app.include_router(expenses.router)

@@ -883,6 +883,208 @@ export interface DigestUpdateRequest {
 }
 
 export interface DigestRenderResponse {
-  format: "slack" | "email"
+  format: "slack" | "email" | "discord"
   rendered: string
+}
+
+// --- CRM Leads ---
+
+export type LeadStatus = "new" | "contacted" | "discovery" | "proposal" | "negotiation" | "won" | "lost"
+export type LeadSource = "website" | "referral" | "linkedin" | "conference" | "cold_outreach" | "other"
+export type LeadActivityType = "note" | "email_sent" | "email_received" | "call" | "meeting" | "proposal_sent" | "status_change" | "followup_set"
+
+export interface Lead {
+  id: number
+  company_name: string
+  contact_name: string | null
+  email: string | null
+  phone: string | null
+  website: string | null
+  linkedin_url: string | null
+  status: LeadStatus
+  source: LeadSource
+  assigned_to: number | null
+  assigned_user_name: string | null
+  estimated_value: number | null
+  service_interest: string | null
+  currency: string
+  notes: string | null
+  industry: string | null
+  company_size: string | null
+  current_website_traffic: string | null
+  next_followup_date: string | null
+  next_followup_notes: string | null
+  last_contacted_at: string | null
+  converted_client_id: number | null
+  converted_at: string | null
+  lost_reason: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface LeadCreate {
+  company_name: string
+  contact_name?: string | null
+  email?: string | null
+  phone?: string | null
+  website?: string | null
+  linkedin_url?: string | null
+  status?: LeadStatus
+  source?: LeadSource
+  assigned_to?: number | null
+  estimated_value?: number | null
+  service_interest?: string | null
+  currency?: string
+  notes?: string | null
+  industry?: string | null
+  company_size?: string | null
+  current_website_traffic?: string | null
+  next_followup_date?: string | null
+  next_followup_notes?: string | null
+}
+
+export interface LeadActivity {
+  id: number
+  lead_id: number
+  user_id: number
+  user_name: string | null
+  activity_type: LeadActivityType
+  title: string
+  description: string | null
+  created_at: string
+}
+
+export interface LeadDetail extends Lead {
+  activities: LeadActivity[]
+}
+
+export interface PipelineStageSummary {
+  status: LeadStatus
+  count: number
+  total_value: number
+}
+
+export interface PipelineSummary {
+  stages: PipelineStageSummary[]
+  total_leads: number
+  total_value: number
+}
+
+export interface LeadReminder {
+  id: number
+  company_name: string
+  contact_name: string | null
+  next_followup_date: string | null
+  next_followup_notes: string | null
+  status: LeadStatus
+  assigned_user_name: string | null
+  days_until_followup: number
+}
+
+// --- Holded Integration ---
+
+export interface HoldedSyncLog {
+  id: number
+  sync_type: string
+  status: string
+  records_synced: number
+  error_message: string | null
+  started_at: string
+  completed_at: string | null
+}
+
+export interface HoldedSyncStatus {
+  contacts: HoldedSyncLog | null
+  invoices: HoldedSyncLog | null
+  expenses: HoldedSyncLog | null
+}
+
+export interface HoldedSyncResult {
+  sync_type: string
+  status: string
+  records_synced: number
+  error_message: string | null
+}
+
+export interface HoldedInvoice {
+  id: number
+  holded_id: string
+  client_id: number | null
+  contact_name: string | null
+  invoice_number: string | null
+  date: string | null
+  due_date: string | null
+  total: number
+  subtotal: number
+  tax: number
+  status: string | null
+  currency: string
+  synced_at: string | null
+}
+
+export interface HoldedExpense {
+  id: number
+  holded_id: string
+  description: string | null
+  date: string | null
+  total: number
+  subtotal: number
+  tax: number
+  category: string | null
+  supplier: string | null
+  status: string | null
+  synced_at: string | null
+}
+
+export interface HoldedMonthlyFinancials {
+  month: string
+  income: number
+  expenses: number
+  profit: number
+}
+
+export interface HoldedDashboard {
+  income_this_month: number
+  expenses_this_month: number
+  profit_this_month: number
+  income_ytd: number
+  expenses_ytd: number
+  profit_ytd: number
+  pending_invoices: HoldedInvoice[]
+  monthly_data: HoldedMonthlyFinancials[]
+}
+
+export interface HoldedConfig {
+  api_key_configured: boolean
+  last_sync_contacts: HoldedSyncLog | null
+  last_sync_invoices: HoldedSyncLog | null
+  last_sync_expenses: HoldedSyncLog | null
+}
+
+export interface HoldedTestConnection {
+  success: boolean
+  message: string
+}
+
+// --- Discord Integration ---
+
+export interface DiscordSettings {
+  id: number
+  webhook_url: string | null
+  webhook_configured: boolean
+  auto_daily_summary: boolean
+  summary_time: string
+  include_ai_note: boolean
+  last_sent_at: string | null
+}
+
+export interface DiscordTestResponse {
+  success: boolean
+  message: string
+}
+
+export interface DiscordSendResponse {
+  success: boolean
+  message: string
+  date?: string
 }

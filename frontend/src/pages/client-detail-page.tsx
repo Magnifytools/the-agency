@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useParams, Link } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { clientsApi, timeEntriesApi, projectsApi } from "@/lib/api"
+import { clientsApi, timeEntriesApi, projectsApi, holdedApi } from "@/lib/api"
 import type { TaskStatus } from "@/lib/types"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -44,7 +44,7 @@ export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const clientId = Number(id)
   const [timeLogTaskId, setTimeLogTaskId] = useState<{ id: number; title: string } | null>(null)
-  const [activeTab, setActiveTab] = useState<"tareas" | "proyectos" | "comunicaciones" | "tiempo">("tareas")
+  const [activeTab, setActiveTab] = useState<"tareas" | "proyectos" | "comunicaciones" | "tiempo" | "facturas">("tareas")
 
   const { data: summary, isLoading } = useQuery({
     queryKey: ["client-summary", clientId],
@@ -56,6 +56,20 @@ export default function ClientDetailPage() {
     queryKey: ["client-projects", clientId],
     queryFn: () => projectsApi.listAll({ client_id: clientId }),
     enabled: !!clientId,
+  })
+
+  const { data: holdedConfig } = useQuery({
+    queryKey: ["holded-config"],
+    queryFn: holdedApi.config,
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+  const holdedEnabled = holdedConfig?.api_key_configured ?? false
+
+  const { data: clientInvoices = [] } = useQuery({
+    queryKey: ["holded-client-invoices", clientId],
+    queryFn: () => holdedApi.clientInvoices(clientId),
+    enabled: !!clientId && holdedEnabled,
   })
 
   const { data: recentEntries = [] } = useQuery({
@@ -123,7 +137,7 @@ export default function ClientDetailPage() {
 
       {/* Tabs */}
       <div className="flex items-center space-x-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
-        {(["tareas", "proyectos", "comunicaciones", "tiempo"] as const).map((tab) => (
+        {(["tareas", "proyectos", "comunicaciones", "tiempo", ...(holdedEnabled ? ["facturas" as const] : [])] as const).map((tab) => (
           <Button
             key={tab}
             variant={activeTab === tab ? "default" : "ghost"}
@@ -283,6 +297,50 @@ export default function ClientDetailPage() {
                   <TableRow>
                     <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
                       No hay entradas de tiempo
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Tab: Facturas (Holded) */}
+      {activeTab === "facturas" && holdedEnabled && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Facturas (Holded)</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-4">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nº Factura</TableHead>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Vencimiento</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead>Estado</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {clientInvoices.map((inv) => (
+                  <TableRow key={inv.holded_id}>
+                    <TableCell className="font-medium">{inv.invoice_number || "-"}</TableCell>
+                    <TableCell className="mono">{inv.date ? new Date(inv.date).toLocaleDateString("es-ES") : "-"}</TableCell>
+                    <TableCell className="mono">{inv.due_date ? new Date(inv.due_date).toLocaleDateString("es-ES") : "-"}</TableCell>
+                    <TableCell className="mono font-semibold">{inv.total.toLocaleString("es-ES", { style: "currency", currency: inv.currency || "EUR" })}</TableCell>
+                    <TableCell>
+                      <Badge variant={inv.status === "paid" ? "success" : inv.status === "overdue" ? "destructive" : "warning"}>
+                        {inv.status === "paid" ? "Pagada" : inv.status === "overdue" ? "Vencida" : "Pendiente"}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {clientInvoices.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                      No hay facturas de Holded para este cliente
                     </TableCell>
                   </TableRow>
                 )}

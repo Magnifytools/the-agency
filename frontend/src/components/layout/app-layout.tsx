@@ -1,6 +1,8 @@
 import { Link, useLocation, Outlet } from "react-router-dom"
+import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/context/auth-context"
-import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper } from "lucide-react"
+import { holdedApi } from "@/lib/api"
+import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
 import { useMemo } from "react"
@@ -9,10 +11,19 @@ export function AppLayout() {
   const { user, logout, hasPermission, isAdmin } = useAuth()
   const location = useLocation()
 
+  const { data: holdedConfig } = useQuery({
+    queryKey: ["holded-config"],
+    queryFn: holdedApi.config,
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+  const holdedEnabled = holdedConfig?.api_key_configured ?? false
+
   const mainNav = useMemo(() => {
     const items = [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
       { to: "/clients", label: "Clientes", icon: Users, module: "clients" },
+      { to: "/leads", label: "Pipeline", icon: Target, module: "leads" },
       { to: "/projects", label: "Proyectos", icon: FolderKanban, module: "projects" },
       { to: "/tasks", label: "Tareas", icon: CheckSquare, module: "tasks" },
       { to: "/growth", label: "Growth", icon: Rocket, module: "growth" },
@@ -40,15 +51,24 @@ export function AppLayout() {
 
   const adminNav = useMemo(() => {
     if (!isAdmin) return []
-    return [{ to: "/users", label: "Equipo", icon: UserCog }]
+    return [
+      { to: "/users", label: "Equipo", icon: UserCog },
+      { to: "/discord", label: "Discord", icon: MessageCircle },
+    ]
   }, [isAdmin])
 
   const isActive = (path: string) => {
+    if (path === "/finance-holded") {
+      return location.pathname === "/finance-holded"
+    }
     if (path === "/finance") {
       return location.pathname === "/finance"
     }
     if (path === "/clients") {
       return location.pathname === "/clients" || location.pathname.startsWith("/clients/")
+    }
+    if (path === "/leads") {
+      return location.pathname === "/leads" || location.pathname.startsWith("/leads/")
     }
     if (path === "/projects") {
       return location.pathname === "/projects" || location.pathname.startsWith("/projects/")
@@ -104,7 +124,23 @@ export function AppLayout() {
             ))}
 
             {/* Finance Nav */}
-            {financeNav.length > 0 && (
+            {holdedEnabled ? (
+              <div className="mt-8 flex flex-col gap-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">Finanzas</p>
+                <Link
+                  to="/finance-holded"
+                  className={cn(
+                    "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
+                    isActive("/finance-holded")
+                      ? "bg-brand/10 text-brand"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  <Wallet className={cn("h-[18px] w-[18px]", isActive("/finance-holded") ? "text-brand" : "text-muted-foreground group-hover:text-foreground transition-colors")} />
+                  Finanzas (Holded)
+                </Link>
+              </div>
+            ) : financeNav.length > 0 ? (
               <div className="mt-8 flex flex-col gap-1.5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">Finanzas</p>
                 {financeNav.map((item) => (
@@ -123,7 +159,7 @@ export function AppLayout() {
                   </Link>
                 ))}
               </div>
-            )}
+            ) : null}
 
             {/* Admin Nav */}
             {adminNav.length > 0 && (
@@ -176,7 +212,11 @@ export function AppLayout() {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-[60px] bg-card/95 backdrop-blur-md border-t border-border flex items-center justify-around px-2 z-50 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.3)]">
         {[
           ...mainNav.slice(0, 3),
-          ...(financeNav.length > 0 ? [{ to: "/finance", label: "Finanzas", icon: Wallet }] : []),
+          ...(holdedEnabled
+            ? [{ to: "/finance-holded", label: "Finanzas", icon: Wallet }]
+            : financeNav.length > 0
+              ? [{ to: "/finance", label: "Finanzas", icon: Wallet }]
+              : []),
           ...mainNav.slice(3, 4),
         ].slice(0, 5).map((item) => (
           <Link
