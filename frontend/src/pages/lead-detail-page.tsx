@@ -1,8 +1,8 @@
 import { useState } from "react"
 import { useParams, Link, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { leadsApi, usersApi } from "@/lib/api"
-import { useAuth } from "@/context/auth-context"
+import { leadsApi } from "@/lib/api"
+// auth context available if needed
 import type { LeadStatus, LeadActivityType } from "@/lib/types"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -13,8 +13,8 @@ import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import {
-  ArrowLeft, Building2, Mail, Phone, Globe, Linkedin,
-  Calendar, DollarSign, ChevronRight, ChevronLeft, Plus,
+  ArrowLeft, Mail, Phone, Globe, Linkedin,
+  ChevronRight, ChevronLeft, Plus,
   MessageSquare, PhoneCall, Video, FileText, Bell, UserCheck, Sparkles
 } from "lucide-react"
 import { toast } from "sonner"
@@ -62,7 +62,6 @@ export default function LeadDetailPage() {
   const leadId = Number(id)
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { isAdmin } = useAuth()
   const [showActivity, setShowActivity] = useState(false)
   const [showConvert, setShowConvert] = useState(false)
   const [showLost, setShowLost] = useState(false)

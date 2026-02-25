@@ -165,7 +165,7 @@ function ResumenTab() {
                     borderRadius: "8px",
                     color: "hsl(var(--foreground))",
                   }}
-                  formatter={(val: number) => formatCurrency(val)}
+                  formatter={(val: unknown) => formatCurrency(Number(val))}
                 />
                 <Legend />
                 <Bar dataKey="Ingresos" fill="#22c55e" radius={[4, 4, 0, 0]} />

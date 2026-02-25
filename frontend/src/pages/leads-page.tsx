@@ -13,8 +13,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import {
-  LayoutGrid, List, Plus, Building2, DollarSign, Calendar,
-  GripVertical, AlertCircle, Trophy, X as XIcon
+  LayoutGrid, List, Plus, DollarSign, Calendar,
+  GripVertical, Trophy, X as XIcon
 } from "lucide-react"
 import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
@@ -39,16 +39,6 @@ const SOURCE_LABELS: Record<LeadSource, string> = {
   conference: "Conferencia",
   cold_outreach: "Cold Outreach",
   other: "Otro",
-}
-
-const STATUS_LABELS: Record<LeadStatus, string> = {
-  new: "Nuevo",
-  contacted: "Contactado",
-  discovery: "Discovery",
-  proposal: "Propuesta",
-  negotiation: "Negociacion",
-  won: "Ganado",
-  lost: "Perdido",
 }
 
 function formatValue(v: number | null, currency = "EUR") {
@@ -115,15 +105,6 @@ export default function LeadsPage() {
       setShowConvertDialog(null)
     },
     onError: () => toast.error("Error al convertir lead"),
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => leadsApi.delete(id),
-    onSuccess: () => {
-      toast.success("Lead eliminado")
-      qc.invalidateQueries({ queryKey: ["leads"] })
-      qc.invalidateQueries({ queryKey: ["pipeline-summary"] })
-    },
   })
 
   const handleDrop = (lead: Lead, newStatus: LeadStatus) => {

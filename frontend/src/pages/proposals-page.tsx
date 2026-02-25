@@ -5,7 +5,7 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import {
     FileText, Plus, Trash2, Download, ArrowLeft, Copy, Sparkles,
-    Send, CheckCircle, XCircle, Clock, ChevronRight, ChevronLeft,
+    Send, CheckCircle, XCircle, ChevronRight, ChevronLeft,
     Building2, Euro, AlertTriangle
 } from "lucide-react"
 import { proposalsApi, serviceTemplatesApi, leadsApi, clientsApi } from "@/lib/api"
