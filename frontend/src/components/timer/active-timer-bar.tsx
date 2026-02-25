@@ -103,7 +103,7 @@ export function ActiveTimerBar() {
           variant="secondary"
           onClick={() => stopMutation.mutate()}
           disabled={stopMutation.isPending}
-          className="bg-primary-foreground text-brand hover:bg-primary-foreground/80"
+          className="bg-white text-brand hover:bg-white/90 font-semibold"
         >
           <Square className="h-3 w-3 mr-1" /> Detener
         </Button>
