@@ -77,9 +77,9 @@ async def list_time_entries(
     if task_id is not None:
         query = query.where(TimeEntry.task_id == task_id)
     if date_from is not None:
-        query = query.where(TimeEntry.date >= date_from)
+        query = query.where(TimeEntry.date >= date_from.replace(tzinfo=None))
     if date_to is not None:
-        query = query.where(TimeEntry.date <= date_to)
+        query = query.where(TimeEntry.date <= date_to.replace(tzinfo=None))
     query = query.order_by(TimeEntry.date.desc())
     result = await db.execute(query)
     return [_entry_to_response(e) for e in result.scalars().all()]
