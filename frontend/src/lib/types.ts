@@ -424,42 +424,125 @@ export interface AlertSettingsUpdate {
   notify_email?: boolean
 }
 
-// Proposals
-export type ProposalStatus = "draft" | "sent" | "accepted" | "rejected"
+// Proposals & Service Templates
+export type ServiceType = "seo_sprint" | "migration" | "market_study" | "consulting_retainer" | "partnership_retainer" | "brand_audit" | "custom"
+export type ProposalStatus = "draft" | "sent" | "accepted" | "rejected" | "expired"
 
-export interface Proposal {
+export interface PricingOption {
+  name: string
+  description: string
+  ideal_for?: string
+  price: number
+  is_recurring: boolean
+  recommended: boolean
+}
+
+export interface PhaseItem {
+  name: string
+  duration: string
+  outcome: string
+}
+
+export interface ServiceTemplate {
   id: number
-  title: string
-  status: ProposalStatus
-  budget: number | null
-  scope: string | null
-  valid_until: string | null
-  client_id: number
-  project_id: number | null
-  client_name: string | null
-  project_name: string | null
+  service_type: ServiceType
+  name: string
+  description: string | null
+  is_recurring: boolean
+  price_range_min: number | null
+  price_range_max: number | null
+  default_phases: PhaseItem[] | null
+  default_includes: string | null
+  default_excludes: string | null
+  prompt_context: string | null
   created_at: string
   updated_at: string
 }
 
+export interface Proposal {
+  id: number
+  title: string
+  lead_id: number | null
+  client_id: number | null
+  created_by: number | null
+  contact_name: string | null
+  company_name: string
+  service_type: ServiceType | null
+  situation: string | null
+  problem: string | null
+  cost_of_inaction: string | null
+  opportunity: string | null
+  approach: string | null
+  relevant_cases: string | null
+  pricing_options: PricingOption[] | null
+  internal_hours_david: number | null
+  internal_hours_nacho: number | null
+  internal_cost_estimate: number | null
+  estimated_margin_percent: number | null
+  generated_content: Record<string, unknown> | null
+  status: ProposalStatus
+  sent_at: string | null
+  responded_at: string | null
+  response_notes: string | null
+  valid_until: string | null
+  converted_project_id: number | null
+  created_at: string
+  updated_at: string
+  // Denormalized
+  client_name: string | null
+  lead_company: string | null
+  created_by_name: string | null
+}
+
 export interface ProposalCreate {
   title: string
-  status?: ProposalStatus
-  budget?: number | null
-  scope?: string | null
+  lead_id?: number | null
+  client_id?: number | null
+  contact_name?: string | null
+  company_name?: string
+  service_type?: ServiceType | null
+  situation?: string | null
+  problem?: string | null
+  cost_of_inaction?: string | null
+  opportunity?: string | null
+  approach?: string | null
+  relevant_cases?: string | null
+  pricing_options?: PricingOption[] | null
+  internal_hours_david?: number | null
+  internal_hours_nacho?: number | null
+  internal_cost_estimate?: number | null
+  estimated_margin_percent?: number | null
+  generated_content?: Record<string, unknown> | null
   valid_until?: string | null
-  client_id: number
-  project_id?: number | null
 }
 
 export interface ProposalUpdate {
   title?: string
-  status?: ProposalStatus
-  budget?: number | null
-  scope?: string | null
+  lead_id?: number | null
+  client_id?: number | null
+  contact_name?: string | null
+  company_name?: string
+  service_type?: ServiceType | null
+  situation?: string | null
+  problem?: string | null
+  cost_of_inaction?: string | null
+  opportunity?: string | null
+  approach?: string | null
+  relevant_cases?: string | null
+  pricing_options?: PricingOption[] | null
+  internal_hours_david?: number | null
+  internal_hours_nacho?: number | null
+  internal_cost_estimate?: number | null
+  estimated_margin_percent?: number | null
+  generated_content?: Record<string, unknown> | null
   valid_until?: string | null
-  client_id?: number
-  project_id?: number | null
+  status?: ProposalStatus
+  response_notes?: string | null
+}
+
+export interface ProposalStatusUpdate {
+  status: ProposalStatus
+  response_notes?: string | null
 }
 
 // Reports

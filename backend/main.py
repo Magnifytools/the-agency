@@ -16,6 +16,7 @@ from backend.api.routes import (
     dashboard, discord, billing, projects, communications, pm,
     reports, proposals, growth, invitations, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
+    service_templates,
 )
 
 
@@ -44,6 +45,9 @@ async def lifespan(app: FastAPI):
                 "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'leadactivitytype') THEN "
                 "CREATE TYPE leadactivitytype AS ENUM ('note', 'email_sent', 'email_received', 'call', 'meeting', 'proposal_sent', 'status_change', 'followup_set'); "
                 "END IF; "
+                "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'servicetype') THEN "
+                "CREATE TYPE servicetype AS ENUM ('seo_sprint', 'migration', 'market_study', 'consulting_retainer', 'partnership_retainer', 'brand_audit', 'custom'); "
+                "END IF; "
                 "END $$;"
             )
         )
@@ -59,6 +63,47 @@ async def lifespan(app: FastAPI):
         await conn.execute(
             sa_text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS vat_number VARCHAR(50)")
         )
+        # Sprint 3: Add 'expired' to proposalstatus enum if it exists
+        await conn.execute(
+            sa_text(
+                "DO $$ BEGIN "
+                "IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'proposalstatus') THEN "
+                "BEGIN ALTER TYPE proposalstatus ADD VALUE IF NOT EXISTS 'expired'; EXCEPTION WHEN OTHERS THEN NULL; END; "
+                "END IF; "
+                "END $$;"
+            )
+        )
+        # Sprint 3: Make client_id nullable (proposals can start from leads)
+        await conn.execute(
+            sa_text("ALTER TABLE proposals ALTER COLUMN client_id DROP NOT NULL")
+        )
+        # Sprint 3: New columns for proposals table
+        proposal_cols = [
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS lead_id INTEGER REFERENCES leads(id)",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id)",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS contact_name VARCHAR(200)",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS company_name VARCHAR(200) NOT NULL DEFAULT ''",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS service_type servicetype",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS situation TEXT",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS problem TEXT",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS cost_of_inaction TEXT",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS opportunity TEXT",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS approach TEXT",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS relevant_cases TEXT",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS pricing_options JSONB",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS internal_hours_david NUMERIC(10,1)",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS internal_hours_nacho NUMERIC(10,1)",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS internal_cost_estimate NUMERIC(10,2)",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS estimated_margin_percent NUMERIC(5,2)",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS generated_content JSONB",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS responded_at TIMESTAMP",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS response_notes TEXT",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS valid_until DATE",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS converted_project_id INTEGER REFERENCES projects(id)",
+        ]
+        for col_sql in proposal_cols:
+            await conn.execute(sa_text(col_sql))
     yield
 
 
@@ -90,6 +135,7 @@ app.include_router(communications.router)
 app.include_router(pm.router)
 app.include_router(reports.router)
 app.include_router(proposals.router)
+app.include_router(service_templates.router)
 app.include_router(growth.router)
 app.include_router(invitations.router)
 app.include_router(digests.router)

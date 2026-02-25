@@ -122,11 +122,22 @@ class InsightStatus(str, enum.Enum):
     acted = "acted"
 
 
+class ServiceType(str, enum.Enum):
+    seo_sprint = "seo_sprint"
+    migration = "migration"
+    market_study = "market_study"
+    consulting_retainer = "consulting_retainer"
+    partnership_retainer = "partnership_retainer"
+    brand_audit = "brand_audit"
+    custom = "custom"
+
+
 class ProposalStatus(str, enum.Enum):
     draft = "draft"
     sent = "sent"
     accepted = "accepted"
     rejected = "rejected"
+    expired = "expired"
 
 
 class DigestStatus(str, enum.Enum):
@@ -286,21 +297,82 @@ class ProjectPhase(TimestampMixin, Base):
     tasks = relationship("Task", back_populates="phase", lazy="selectin")
 
 
+class ServiceTemplate(TimestampMixin, Base):
+    __tablename__ = "service_templates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    service_type = Column(Enum(ServiceType), unique=True, nullable=False)
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+
+    is_recurring = Column(Boolean, default=False)
+    price_range_min = Column(Numeric(10, 2), nullable=True)
+    price_range_max = Column(Numeric(10, 2), nullable=True)
+
+    default_phases = Column(JSON, nullable=True)
+    default_includes = Column(Text, nullable=True)
+    default_excludes = Column(Text, nullable=True)
+
+    prompt_context = Column(Text, nullable=True)
+
+
 class Proposal(TimestampMixin, Base):
     __tablename__ = "proposals"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    title = Column(String(200), nullable=False)
+
+    # Vinculación
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # Datos de la propuesta
+    title = Column(String(300), nullable=False)
+    contact_name = Column(String(200), nullable=True)
+    company_name = Column(String(200), nullable=False, default="")
+
+    # Tipo de servicio
+    service_type = Column(Enum(ServiceType), nullable=True)
+
+    # Contexto (input del usuario)
+    situation = Column(Text, nullable=True)
+    problem = Column(Text, nullable=True)
+    cost_of_inaction = Column(Text, nullable=True)
+    opportunity = Column(Text, nullable=True)
+    approach = Column(Text, nullable=True)
+    relevant_cases = Column(Text, nullable=True)
+
+    # Opciones de precio (siempre 2-3)
+    pricing_options = Column(JSON, nullable=True)
+
+    # Cálculo interno (NUNCA visible en la propuesta generada)
+    internal_hours_david = Column(Numeric(10, 1), nullable=True)
+    internal_hours_nacho = Column(Numeric(10, 1), nullable=True)
+    internal_cost_estimate = Column(Numeric(10, 2), nullable=True)
+    estimated_margin_percent = Column(Numeric(5, 2), nullable=True)
+
+    # Contenido generado por IA
+    generated_content = Column(JSON, nullable=True)
+
+    # Estado y tracking
     status = Column(Enum(ProposalStatus), nullable=False, default=ProposalStatus.draft)
+    sent_at = Column(DateTime, nullable=True)
+    responded_at = Column(DateTime, nullable=True)
+    response_notes = Column(Text, nullable=True)
+    valid_until = Column(Date, nullable=True)
+
+    # Si aceptada → proyecto creado
+    converted_project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+
+    # Legacy fields (kept for backward compat)
     budget = Column(Float, nullable=True)
     scope = Column(Text, nullable=True)
-    valid_until = Column(DateTime, nullable=True)
 
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
-
+    # Relaciones
+    lead = relationship("Lead", lazy="selectin")
     client = relationship("Client", lazy="selectin")
-    project = relationship("Project", lazy="selectin")
+    created_by_user = relationship("User", lazy="selectin")
+    converted_project = relationship("Project", foreign_keys=[converted_project_id], lazy="selectin")
 
 
 class Event(TimestampMixin, Base):

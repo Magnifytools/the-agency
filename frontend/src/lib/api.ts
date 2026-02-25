@@ -38,6 +38,8 @@ import type {
   Proposal,
   ProposalCreate,
   ProposalUpdate,
+  ProposalStatusUpdate,
+  ServiceTemplate,
   GrowthIdea,
   GrowthIdeaCreate,
   GrowthIdeaUpdate,
@@ -309,15 +311,27 @@ export const reportsApi = {
     api.delete(`/reports/${id}`).then((r) => r.data),
 }
 
+// Service Templates
+export const serviceTemplatesApi = {
+  list: () => api.get<ServiceTemplate[]>("/service-templates").then((r) => r.data),
+  get: (serviceType: string) =>
+    api.get<ServiceTemplate>(`/service-templates/${serviceType}`).then((r) => r.data),
+}
+
 // Proposals
 export const proposalsApi = {
-  list: (params?: { client_id?: number; status_filter?: string }) =>
+  list: (params?: { client_id?: number; status?: string; lead_id?: number; service_type?: string }) =>
     api.get<Proposal[]>("/proposals", { params }).then((r) => r.data),
   get: (id: number) => api.get<Proposal>(`/proposals/${id}`).then((r) => r.data),
   create: (data: ProposalCreate) => api.post<Proposal>("/proposals", data).then((r) => r.data),
   update: (id: number, data: ProposalUpdate) =>
     api.put<Proposal>(`/proposals/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/proposals/${id}`).then((r) => r.data),
+  changeStatus: (id: number, data: ProposalStatusUpdate) =>
+    api.put<Proposal>(`/proposals/${id}/status`, data).then((r) => r.data),
+  duplicate: (id: number) => api.post<Proposal>(`/proposals/${id}/duplicate`).then((r) => r.data),
+  convert: (id: number) => api.post<Proposal>(`/proposals/${id}/convert`).then((r) => r.data),
+  generate: (id: number) => api.post<Proposal>(`/proposals/${id}/generate`).then((r) => r.data),
   downloadPdf: (id: number) =>
     api.get(`/proposals/${id}/pdf`, { responseType: "blob" }).then((r) => r.data),
 }

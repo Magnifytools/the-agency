@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import {
   ArrowLeft, Building2, Mail, Phone, Globe, Linkedin,
   Calendar, DollarSign, ChevronRight, ChevronLeft, Plus,
-  MessageSquare, PhoneCall, Video, FileText, Bell, UserCheck
+  MessageSquare, PhoneCall, Video, FileText, Bell, UserCheck, Sparkles
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -175,6 +175,14 @@ export default function LeadDetailPage() {
           {lead.contact_name && <p className="text-muted-foreground mt-0.5">{lead.contact_name}</p>}
         </div>
         <div className="flex gap-2">
+          {lead.status !== "won" && lead.status !== "lost" && (
+            <Button
+              variant="outline"
+              onClick={() => navigate("/proposals", { state: { createFromLead: lead } })}
+            >
+              <Sparkles className="h-4 w-4 mr-2" /> Crear Propuesta
+            </Button>
+          )}
           {canConvert && (
             <Button onClick={() => setShowConvert(true)} className="bg-green-600 hover:bg-green-700">
               <UserCheck className="h-4 w-4 mr-2" /> Convertir a cliente

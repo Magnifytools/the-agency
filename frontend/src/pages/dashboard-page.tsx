@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { dashboardApi, discordApi, tasksApi, timeEntriesApi, digestsApi, clientsApi, leadsApi } from "@/lib/api"
+import { dashboardApi, discordApi, tasksApi, timeEntriesApi, digestsApi, clientsApi, leadsApi, proposalsApi } from "@/lib/api"
 import { useAuth } from "@/context/auth-context"
 import { MetricCard } from "@/components/dashboard/metric-card"
 import { ProfitabilityChart } from "@/components/dashboard/profitability-chart"
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Users, CheckSquare, Clock, DollarSign, Send, Eye, Newspaper, Target } from "lucide-react"
+import { Users, CheckSquare, Clock, DollarSign, Send, Eye, Newspaper, Target, FileText } from "lucide-react"
 import { toast } from "sonner"
 import { Link } from "react-router-dom"
 import { InboxWidget } from "@/components/dashboard/inbox-widget"
@@ -146,6 +146,25 @@ export default function DashboardPage() {
     queryFn: () => leadsApi.reminders(),
     enabled: !!user,
   })
+
+  // Proposals pipeline
+  const { data: allProposals } = useQuery({
+    queryKey: ["proposals-pipeline"],
+    queryFn: () => proposalsApi.list(),
+    enabled: !!user,
+  })
+
+  const proposalStats = (() => {
+    if (!allProposals) return null
+    const drafts = allProposals.filter(p => p.status === "draft")
+    const sent = allProposals.filter(p => p.status === "sent")
+    const accepted = allProposals.filter(p => p.status === "accepted")
+    const pipelineValue = sent.reduce((sum, p) => {
+      const maxPrice = (p.pricing_options || []).reduce((max, opt) => Math.max(max, opt.price || 0), 0)
+      return sum + maxPrice
+    }, 0)
+    return { drafts: drafts.length, sent: sent.length, accepted: accepted.length, total: allProposals.length, pipelineValue }
+  })()
 
   // Compute clients missing digests this week
   const getMondayOfWeek = (d: Date) => {
@@ -470,6 +489,45 @@ export default function DashboardPage() {
                 ))}
               </TableBody>
             </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Proposals pipeline */}
+      {proposalStats && proposalStats.total > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <FileText className="w-4 h-4 text-brand" />
+                Pipeline de propuestas
+              </CardTitle>
+              <Link to="/proposals">
+                <Button variant="outline" size="sm">Ver propuestas</Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-6">
+              <div className="text-center">
+                <div className="text-2xl font-bold">{proposalStats.drafts}</div>
+                <div className="text-xs text-muted-foreground">Borradores</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-400">{proposalStats.sent}</div>
+                <div className="text-xs text-muted-foreground">Enviadas</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-400">{proposalStats.accepted}</div>
+                <div className="text-xs text-muted-foreground">Aceptadas</div>
+              </div>
+              {proposalStats.pipelineValue > 0 && (
+                <div className="ml-auto text-right">
+                  <div className="text-2xl font-bold text-brand">{proposalStats.pipelineValue.toLocaleString("es-ES")}€</div>
+                  <div className="text-xs text-muted-foreground">Valor pipeline (enviadas)</div>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
