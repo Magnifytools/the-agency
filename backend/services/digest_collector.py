@@ -26,8 +26,8 @@ async def collect_digest_data(
 ) -> dict:
     """Collect all relevant data for a client digest within the given period."""
 
-    start_dt = datetime.combine(period_start, datetime.min.time(), tzinfo=timezone.utc)
-    end_dt = datetime.combine(period_end, datetime.max.time(), tzinfo=timezone.utc)
+    start_dt = datetime.combine(period_start, datetime.min.time())
+    end_dt = datetime.combine(period_end, datetime.max.time())
 
     # --- Client info ---
     client_result = await db.execute(select(Client).where(Client.id == client_id))

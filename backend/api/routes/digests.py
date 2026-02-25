@@ -120,7 +120,7 @@ async def generate_digest(
         tone=request.tone,
         content=content,
         raw_context=raw_data,
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.utcnow(),
         created_by=current_user.id,
     )
     db.add(digest)
@@ -171,7 +171,7 @@ async def generate_batch(
                 tone=tone,
                 content=content,
                 raw_context=raw_data,
-                generated_at=datetime.now(timezone.utc),
+                generated_at=datetime.utcnow(),
                 created_by=current_user.id,
             )
             db.add(digest)
@@ -261,7 +261,7 @@ async def update_digest(
 
     if request.content is not None:
         digest.content = request.content.model_dump()
-        digest.edited_at = datetime.now(timezone.utc)
+        digest.edited_at = datetime.utcnow()
     if request.tone is not None:
         digest.tone = request.tone
 
