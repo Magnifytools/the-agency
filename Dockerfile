@@ -8,6 +8,7 @@ RUN npm run build
 FROM python:3.12-slim
 WORKDIR /app
 
+# Cache bust: xhtml2pdf v0.2.16
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
