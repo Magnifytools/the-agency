@@ -60,9 +60,12 @@ async def _send_discord_message(webhook_url: str, message: str) -> bool:
     # Discord limit is 2000 chars per message
     if len(message) > 2000:
         message = message[:1997] + "..."
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(webhook_url, json={"content": message})
-        return resp.status_code in (200, 204)
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(webhook_url, json={"content": message})
+            return resp.status_code in (200, 204)
+    except (httpx.HTTPError, Exception):
+        return False
 
 
 # ── Existing endpoints (kept) ─────────────────────────────

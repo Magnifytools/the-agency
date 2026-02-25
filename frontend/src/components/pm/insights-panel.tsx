@@ -7,6 +7,7 @@ import {
   MessageCircle,
   TrendingUp,
   Lightbulb,
+  Star,
   X,
   Check,
   RefreshCw,
@@ -28,6 +29,7 @@ const TYPE_ICONS: Record<InsightType, typeof AlertTriangle> = {
   followup: MessageCircle,
   workload: TrendingUp,
   suggestion: Lightbulb,
+  quality: Star,
 }
 
 const PRIORITY_COLORS: Record<InsightPriority, string> = {
@@ -169,7 +171,7 @@ function InsightCard({
   onAct: () => void
   compact?: boolean
 }) {
-  const Icon = TYPE_ICONS[insight.insight_type]
+  const Icon = TYPE_ICONS[insight.insight_type] ?? AlertTriangle
 
   const getLink = () => {
     if (insight.task_id) return `/tasks?id=${insight.task_id}`

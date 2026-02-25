@@ -8,7 +8,7 @@ from backend.db.database import get_db
 from backend.db.models import User, UserRole
 from backend.schemas.user import UserCreate, UserUpdate, UserListResponse
 from backend.schemas.pagination import PaginatedResponse
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, require_admin
 from backend.core.security import hash_password
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -18,12 +18,27 @@ async def list_users(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     total = (await db.execute(select(func.count()).select_from(User))).scalar() or 0
-    query = select(User).order_by(User.full_name).offset((page - 1) * page_size).limit(page_size)
-    result = await db.execute(query)
-    return PaginatedResponse(items=result.scalars().all(), total=total, page=page, page_size=page_size)
+    if current_user.role == UserRole.admin:
+        # Admin sees all fields
+        query = select(User).order_by(User.full_name).offset((page - 1) * page_size).limit(page_size)
+        result = await db.execute(query)
+        return PaginatedResponse(items=result.scalars().all(), total=total, page=page, page_size=page_size)
+    else:
+        # Non-admin: return only id, full_name, email, role (strip sensitive fields like hourly_rate)
+        query = select(User).order_by(User.full_name).offset((page - 1) * page_size).limit(page_size)
+        result = await db.execute(query)
+        users = result.scalars().all()
+        sanitized = [
+            UserListResponse(
+                id=u.id, full_name=u.full_name, email=u.email, role=u.role,
+                hourly_rate=None,
+            )
+            for u in users
+        ]
+        return PaginatedResponse(items=sanitized, total=total, page=page, page_size=page_size)
 
 
 @router.post("", response_model=UserListResponse, status_code=201)
@@ -58,8 +73,11 @@ async def create_user(
 async def get_user(
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
+    # Non-admin can only view their own profile
+    if current_user.role != UserRole.admin and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Solo puedes ver tu propio perfil")
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:

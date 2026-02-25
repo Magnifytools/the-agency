@@ -360,7 +360,7 @@ export interface CommunicationCreate {
 }
 
 // PM Insights
-export type InsightType = "deadline" | "stalled" | "overdue" | "followup" | "workload" | "suggestion"
+export type InsightType = "deadline" | "stalled" | "overdue" | "followup" | "workload" | "suggestion" | "quality"
 export type InsightPriority = "high" | "medium" | "low"
 export type InsightStatus = "active" | "dismissed" | "acted"
 

@@ -1,7 +1,7 @@
 """Schemas for Holded integration."""
-from datetime import date, datetime
+from datetime import date as dt_date, datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 # ── Sync ───────────────────────────────────────────────────
@@ -39,8 +39,8 @@ class HoldedInvoiceResponse(BaseModel):
     client_id: Optional[int] = None
     contact_name: Optional[str] = None
     invoice_number: Optional[str] = None
-    date: Optional[date] = None
-    due_date: Optional[date] = None
+    date: Optional[dt_date] = None
+    due_date: Optional[dt_date] = None
     total: float = 0
     subtotal: float = 0
     tax: float = 0
@@ -50,6 +50,20 @@ class HoldedInvoiceResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @field_validator("date", "due_date", mode="before")
+    @classmethod
+    def parse_date_permissive(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, dt_date):
+            return v
+        if isinstance(v, str):
+            try:
+                return dt_date.fromisoformat(v[:10])
+            except (ValueError, IndexError):
+                return None
+        return None
+
 
 # ── Expenses ───────────────────────────────────────────────
 
@@ -57,7 +71,7 @@ class HoldedExpenseResponse(BaseModel):
     id: int
     holded_id: str
     description: Optional[str] = None
-    date: Optional[date] = None
+    date: Optional[dt_date] = None
     total: float = 0
     subtotal: float = 0
     tax: float = 0
@@ -67,6 +81,20 @@ class HoldedExpenseResponse(BaseModel):
     synced_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def parse_date_permissive(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, dt_date):
+            return v
+        if isinstance(v, str):
+            try:
+                return dt_date.fromisoformat(v[:10])
+            except (ValueError, IndexError):
+                return None
+        return None
 
 
 # ── Dashboard ──────────────────────────────────────────────

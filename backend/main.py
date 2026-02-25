@@ -23,6 +23,11 @@ from backend.api.routes import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if settings.SECRET_KEY == DEFAULT_SECRET_KEY:
+        if os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_PROJECT_ID"):
+            raise RuntimeError(
+                "SECRET_KEY must be changed in production. "
+                "Set SECRET_KEY environment variable in Railway."
+            )
         logging.warning("SECRET_KEY está usando el valor por defecto. Configura SECRET_KEY en .env para producción.")
     async with engine.begin() as conn:
         sa_text = __import__("sqlalchemy").text

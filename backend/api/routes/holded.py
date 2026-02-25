@@ -393,6 +393,13 @@ async def holded_dashboard(
     user=Depends(require_admin),
 ):
     """Financial summary from Holded cache."""
+    try:
+        return await _build_holded_dashboard(session)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error building Holded dashboard: {str(e)}")
+
+
+async def _build_holded_dashboard(session: AsyncSession) -> HoldedDashboardResponse:
     now = date.today()
     year_start = date(now.year, 1, 1)
     month_start = date(now.year, now.month, 1)

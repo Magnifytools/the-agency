@@ -110,6 +110,8 @@ async def generate_digest(
         content = await generate_digest_content(raw_data, request.tone)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error generating digest: {str(e)}")
 
     # Create digest record
     digest = WeeklyDigest(
