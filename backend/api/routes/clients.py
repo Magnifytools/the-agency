@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/clients", tags=["clients"])
 async def list_clients(
     status_filter: Optional[ClientStatus] = Query(None, alias="status"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=1, le=100),
+    page_size: int = Query(25, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients")),
 ):
