@@ -598,4 +598,7 @@ export const notificationsApi = {
     api.put(`/notifications/${id}/read`).then((r) => r.data),
   markAllRead: () =>
     api.put("/notifications/read-all").then((r) => r.data),
+  generateChecks: () =>
+    api.post<{ created: number }>("/notifications/generate-checks").then((r) => r.data),
 }
+

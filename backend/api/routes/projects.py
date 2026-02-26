@@ -335,6 +335,7 @@ async def update_phase(
     if not phase:
         raise HTTPException(status_code=404, detail="Phase not found")
 
+    was_completed_before = phase.completed_at is not None
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         if field == "status" and value:
@@ -345,6 +346,36 @@ async def update_phase(
 
     await db.commit()
     await db.refresh(phase)
+
+    # Notify project members when phase is newly completed
+    if phase.completed_at and not was_completed_before:
+        try:
+            from backend.services.notification_service import create_notification, PHASE_COMPLETED
+            proj_result = await db.execute(select(Project).where(Project.id == phase.project_id))
+            project = proj_result.scalar_one_or_none()
+            if project:
+                user_ids: set[int] = set()
+                task_result = await db.execute(
+                    select(Task).where(Task.project_id == project.id, Task.assigned_to.isnot(None))
+                )
+                for t in task_result.scalars().all():
+                    if t.assigned_to:
+                        user_ids.add(t.assigned_to)
+                for uid in user_ids:
+                    await create_notification(
+                        db,
+                        user_id=uid,
+                        type=PHASE_COMPLETED,
+                        title=f"Fase completada: {phase.name}",
+                        message=f"La fase '{phase.name}' del proyecto '{project.name}' se ha completado",
+                        link_url=f"/projects/{project.id}",
+                        entity_type="project",
+                        entity_id=project.id,
+                    )
+                if user_ids:
+                    await db.commit()
+        except Exception:
+            pass  # Notification failure should never break phase update
 
     return ProjectPhaseResponse(
         id=phase.id,

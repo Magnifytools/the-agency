@@ -49,6 +49,18 @@ export function NotificationBell() {
     return () => document.removeEventListener("mousedown", handleClick)
   }, [open])
 
+  // When panel opens, generate checks for overdue tasks & lead followups, then refresh
+  useEffect(() => {
+    if (open) {
+      notificationsApi.generateChecks().then(() => {
+        queryClient.invalidateQueries({ queryKey: ["notifications-unread-count"] })
+        queryClient.invalidateQueries({ queryKey: ["notifications-list"] })
+      }).catch(() => {
+        // Silent fail — generate-checks is best-effort
+      })
+    }
+  }, [open, queryClient])
+
   const count = unread?.count || 0
 
   const handleNotifClick = (notif: { id: number; link_url: string | null; is_read: boolean }) => {

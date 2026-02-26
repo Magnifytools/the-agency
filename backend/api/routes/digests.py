@@ -191,6 +191,23 @@ async def generate_batch(
         for d in digests:
             await db.refresh(d)
 
+        # Notify creator that batch is done
+        try:
+            from backend.services.notification_service import create_notification, DIGEST_GENERATED
+            await create_notification(
+                db,
+                user_id=current_user.id,
+                type=DIGEST_GENERATED,
+                title=f"Batch de digests generado",
+                message=f"{len(digests)} digests creados para {period_start} — {period_end}",
+                link_url="/digests",
+                entity_type="digest",
+                entity_id=None,
+            )
+            await db.commit()
+        except Exception:
+            pass  # Notification failure should never break digest generation
+
     return [_to_response(d) for d in digests]
 
 

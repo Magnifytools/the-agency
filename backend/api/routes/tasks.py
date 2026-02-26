@@ -109,6 +109,22 @@ async def create_task(
         logger.error("Error creando tarea: %s", e)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
     await db.refresh(task)
+
+    # Notify assignee
+    if body.assigned_to:
+        from backend.services.notification_service import create_notification, TASK_ASSIGNED
+        await create_notification(
+            db,
+            user_id=body.assigned_to,
+            type=TASK_ASSIGNED,
+            title=f"Nueva tarea asignada: {task.title}",
+            message=f"Se te ha asignado la tarea '{task.title}'",
+            link_url="/tasks",
+            entity_type="task",
+            entity_id=task.id,
+        )
+        await db.commit()
+
     return _task_to_response(task)
 
 
@@ -136,6 +152,7 @@ async def update_task(
     task = result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
+    old_assigned_to = task.assigned_to
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(task, field, value)
     try:
@@ -148,6 +165,24 @@ async def update_task(
         logger.error("Error actualizando tarea %d: %s", task_id, e)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
     await db.refresh(task)
+
+    # Notify new assignee if assignment changed
+    update_data = body.model_dump(exclude_unset=True)
+    new_assigned = update_data.get("assigned_to")
+    if new_assigned and new_assigned != old_assigned_to:
+        from backend.services.notification_service import create_notification, TASK_ASSIGNED
+        await create_notification(
+            db,
+            user_id=new_assigned,
+            type=TASK_ASSIGNED,
+            title=f"Tarea asignada: {task.title}",
+            message=f"Se te ha reasignado la tarea '{task.title}'",
+            link_url="/tasks",
+            entity_type="task",
+            entity_id=task.id,
+        )
+        await db.commit()
+
     return _task_to_response(task)
 
 
