@@ -70,6 +70,52 @@ export interface ClientCreate {
   monthly_fee?: number | null
 }
 
+export interface ClientContact {
+  id: number
+  client_id: number
+  name: string
+  email: string | null
+  phone: string | null
+  position: string | null
+  is_primary: boolean
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ClientContactCreate {
+  name: string
+  email?: string | null
+  phone?: string | null
+  position?: string | null
+  is_primary?: boolean
+  notes?: string | null
+}
+
+export interface ClientHealthScore {
+  client_id: number
+  client_name: string
+  score: number
+  factors: {
+    communication: number
+    tasks: number
+    digests: number
+    profitability: number
+    followups: number
+  }
+  risk_level: "healthy" | "warning" | "at_risk"
+}
+
+export interface CapacityMember {
+  user_id: number
+  full_name: string
+  weekly_hours: number
+  assigned_minutes: number
+  task_count: number
+  load_percent: number
+  status: "available" | "busy" | "overloaded"
+}
+
 export interface TaskCategory {
   id: number
   name: string

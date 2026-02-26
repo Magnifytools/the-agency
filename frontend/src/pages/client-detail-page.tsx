@@ -1,16 +1,17 @@
 import { useState } from "react"
 import { useParams, Link } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { clientsApi, timeEntriesApi, projectsApi, holdedApi } from "@/lib/api"
+import { clientsApi, timeEntriesApi, projectsApi, holdedApi, clientHealthApi } from "@/lib/api"
 import type { TaskStatus } from "@/lib/types"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { ArrowLeft, Clock } from "lucide-react"
+import { ArrowLeft, Clock, Heart } from "lucide-react"
 import { TimerButton } from "@/components/timer/timer-button"
 import { TimeLogDialog } from "@/components/timer/time-log-dialog"
 import { CommunicationList } from "@/components/communications/communication-list"
+import { ContactList } from "@/components/clients/contact-list"
 
 function formatMinutes(m: number): string {
   const h = Math.floor(m / 60)
@@ -44,7 +45,7 @@ export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const clientId = Number(id)
   const [timeLogTaskId, setTimeLogTaskId] = useState<{ id: number; title: string } | null>(null)
-  const [activeTab, setActiveTab] = useState<"tareas" | "proyectos" | "comunicaciones" | "tiempo" | "facturas">("tareas")
+  const [activeTab, setActiveTab] = useState<"tareas" | "proyectos" | "comunicaciones" | "contactos" | "tiempo" | "facturas">("tareas")
 
   const { data: summary, isLoading } = useQuery({
     queryKey: ["client-summary", clientId],
@@ -70,6 +71,13 @@ export default function ClientDetailPage() {
     queryKey: ["holded-client-invoices", clientId],
     queryFn: () => holdedApi.clientInvoices(clientId),
     enabled: !!clientId && holdedEnabled,
+  })
+
+  const { data: health } = useQuery({
+    queryKey: ["client-health", clientId],
+    queryFn: () => clientHealthApi.get(clientId),
+    enabled: !!clientId,
+    staleTime: 60_000,
   })
 
   const { data: recentEntries = [] } = useQuery({
@@ -108,7 +116,7 @@ export default function ClientDetailPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total tareas</p>
@@ -133,11 +141,39 @@ export default function ClientDetailPage() {
             <p className="kpi-value mt-1">{formatMinutes(summary.total_tracked_minutes)}</p>
           </CardContent>
         </Card>
+        {health && (
+          <Card className={health.risk_level === "at_risk" ? "border-red-300 bg-red-50/50" : health.risk_level === "warning" ? "border-amber-300 bg-amber-50/50" : ""}>
+            <CardContent className="p-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                <Heart className="h-3 w-3" /> Salud
+              </p>
+              <p className={`kpi-value mt-1 ${health.risk_level === "healthy" ? "text-green-600" : health.risk_level === "warning" ? "text-amber-500" : "text-red-500"}`}>
+                {health.score}/100
+              </p>
+              <div className="mt-2 grid grid-cols-5 gap-1">
+                {[
+                  { label: "Com", val: health.factors.communication, max: 25 },
+                  { label: "Tar", val: health.factors.tasks, max: 25 },
+                  { label: "Dig", val: health.factors.digests, max: 15 },
+                  { label: "Ren", val: health.factors.profitability, max: 20 },
+                  { label: "Fup", val: health.factors.followups, max: 15 },
+                ].map((f) => (
+                  <div key={f.label} className="text-center">
+                    <div className="text-[9px] text-muted-foreground">{f.label}</div>
+                    <div className="h-1 bg-muted rounded-full overflow-hidden mt-0.5">
+                      <div className="h-full bg-brand rounded-full" style={{ width: `${(f.val / f.max) * 100}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Tabs */}
       <div className="flex items-center space-x-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
-        {(["tareas", "proyectos", "comunicaciones", "tiempo", ...(holdedEnabled ? ["facturas" as const] : [])] as const).map((tab) => (
+        {(["tareas", "proyectos", "comunicaciones", "contactos", "tiempo", ...(holdedEnabled ? ["facturas" as const] : [])] as const).map((tab) => (
           <Button
             key={tab}
             variant={activeTab === tab ? "default" : "ghost"}
@@ -264,6 +300,15 @@ export default function ClientDetailPage() {
         <Card>
           <CardContent className="p-6">
             <CommunicationList clientId={clientId} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Tab: Contactos */}
+      {activeTab === "contactos" && (
+        <Card>
+          <CardContent className="p-6">
+            <ContactList clientId={clientId} />
           </CardContent>
         </Card>
       )}

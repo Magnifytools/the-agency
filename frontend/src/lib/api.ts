@@ -90,6 +90,10 @@ import type {
   DailyDiscordResponse,
   EmailDraftRequest,
   EmailDraftResponse,
+  ClientContact,
+  ClientContactCreate,
+  ClientHealthScore,
+  CapacityMember,
 } from "./types"
 
 const api = axios.create({
@@ -549,4 +553,30 @@ export const financeExportApi = {
     api.get("/finance/export/expenses", { params, responseType: "blob" }).then((r) => r.data),
   taxes: (params?: { year?: number }) =>
     api.get("/finance/export/taxes", { params, responseType: "blob" }).then((r) => r.data),
+}
+
+// --- Client Contacts ---
+export const contactsApi = {
+  list: (clientId: number) =>
+    api.get<ClientContact[]>(`/clients/${clientId}/contacts`).then((r) => r.data),
+  create: (clientId: number, data: ClientContactCreate) =>
+    api.post<ClientContact>(`/clients/${clientId}/contacts`, data).then((r) => r.data),
+  update: (clientId: number, contactId: number, data: Partial<ClientContactCreate>) =>
+    api.put<ClientContact>(`/clients/${clientId}/contacts/${contactId}`, data).then((r) => r.data),
+  delete: (clientId: number, contactId: number) =>
+    api.delete(`/clients/${clientId}/contacts/${contactId}`).then((r) => r.data),
+}
+
+// --- Client Health Score ---
+export const clientHealthApi = {
+  get: (clientId: number) =>
+    api.get<ClientHealthScore>(`/clients/${clientId}/health`).then((r) => r.data),
+  list: () =>
+    api.get<ClientHealthScore[]>("/clients/health-scores").then((r) => r.data),
+}
+
+// --- Capacity Planning ---
+export const capacityApi = {
+  get: () =>
+    api.get<CapacityMember[]>("/dashboard/capacity").then((r) => r.data),
 }

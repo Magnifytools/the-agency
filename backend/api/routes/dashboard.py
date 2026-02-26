@@ -453,3 +453,54 @@ async def update_financial_settings(
     await db.commit()
     await db.refresh(record)
     return _financial_settings_response(record)
+
+
+@router.get("/capacity")
+async def get_capacity(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("dashboard")),
+):
+    """Team capacity: assigned hours vs available hours per active member."""
+    users_result = await db.execute(
+        select(User).where(User.is_active == True).order_by(User.full_name)
+    )
+    users = users_result.scalars().all()
+
+    capacity = []
+    for user in users:
+        # Sum estimated_minutes for pending + in_progress tasks assigned to this user
+        assigned_result = await db.execute(
+            select(
+                func.coalesce(func.sum(Task.estimated_minutes), 0),
+                func.count(),
+            )
+            .where(
+                Task.assigned_to == user.id,
+                Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
+            )
+        )
+        row = assigned_result.one()
+        assigned_minutes = row[0] or 0
+        task_count = row[1] or 0
+
+        weekly_minutes = (user.weekly_hours or 40) * 60
+        load_pct = round((assigned_minutes / weekly_minutes) * 100) if weekly_minutes > 0 else 0
+
+        if load_pct < 70:
+            status = "available"
+        elif load_pct < 90:
+            status = "busy"
+        else:
+            status = "overloaded"
+
+        capacity.append({
+            "user_id": user.id,
+            "full_name": user.full_name,
+            "weekly_hours": user.weekly_hours or 40,
+            "assigned_minutes": assigned_minutes,
+            "task_count": task_count,
+            "load_percent": load_pct,
+            "status": status,
+        })
+
+    return capacity

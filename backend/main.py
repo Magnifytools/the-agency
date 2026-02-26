@@ -18,7 +18,7 @@ from backend.api.routes import (
     dashboard, discord, billing, projects, communications, pm,
     reports, proposals, growth, invitations, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
-    service_templates, dailys,
+    service_templates, dailys, contacts,
 )
 
 
@@ -113,6 +113,13 @@ async def lifespan(app: FastAPI):
             ]
             for col_sql in proposal_cols:
                 await conn.execute(sa_text(col_sql))
+            # CRM: client_contacts table + contact_id on communication_logs + weekly_hours on users
+            await conn.execute(
+                sa_text("ALTER TABLE communication_logs ADD COLUMN IF NOT EXISTS contact_id INTEGER REFERENCES client_contacts(id)")
+            )
+            await conn.execute(
+                sa_text("ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_hours FLOAT NOT NULL DEFAULT 40.0")
+            )
             logging.info("Database schema migrations completed successfully.")
         except Exception as e:
             logging.error(f"Database migration failed: {e}")
@@ -178,6 +185,7 @@ app.include_router(advisor.router)
 app.include_router(sync.router)
 app.include_router(export.router)
 app.include_router(dailys.router)
+app.include_router(contacts.router)
 
 # Serve frontend static files in production
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"

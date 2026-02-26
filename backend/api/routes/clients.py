@@ -12,6 +12,7 @@ from backend.db.models import Client, ClientStatus, Task, TimeEntry, User
 from backend.schemas.client import ClientCreate, ClientUpdate, ClientResponse
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module
+from backend.services.client_health import compute_health
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,39 @@ async def create_client(
         raise HTTPException(status_code=500, detail="Error interno del servidor")
     await db.refresh(client)
     return client
+
+
+@router.get("/health-scores")
+async def list_health_scores(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("clients")),
+):
+    """Health scores for all active clients."""
+    result = await db.execute(
+        select(Client).where(Client.status == ClientStatus.active).order_by(Client.name)
+    )
+    clients = result.scalars().all()
+    scores = []
+    for client in clients:
+        score = await compute_health(client, db)
+        scores.append(score)
+    # Sort by score ascending (worst first)
+    scores.sort(key=lambda s: s["score"])
+    return scores
+
+
+@router.get("/{client_id}/health")
+async def get_client_health(
+    client_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("clients")),
+):
+    """Health score for a single client."""
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return await compute_health(client, db)
 
 
 @router.get("/{client_id}", response_model=ClientResponse)

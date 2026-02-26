@@ -1,8 +1,8 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { clientsApi } from "@/lib/api"
-import type { Client, ClientCreate, ClientStatus } from "@/lib/types"
+import { clientsApi, clientHealthApi } from "@/lib/api"
+import type { Client, ClientCreate, ClientStatus, ClientHealthScore } from "@/lib/types"
 import { usePagination } from "@/hooks/use-pagination"
 import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { Plus, Pencil, Trash2, Users } from "lucide-react"
+import { Plus, Pencil, Trash2, Users, Heart } from "lucide-react"
 import { EmptyTableState } from "@/components/ui/empty-state"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
@@ -49,6 +49,13 @@ export default function ClientsPage() {
     queryFn: () => clientsApi.list({ status: tab === "all" ? undefined : tab, page, page_size: pageSize }),
   })
   const clients = data?.items ?? []
+
+  const { data: healthScores = [] } = useQuery({
+    queryKey: ["client-health-scores"],
+    queryFn: () => clientHealthApi.list(),
+    staleTime: 60_000,
+  })
+  const healthMap = new Map(healthScores.map((h: ClientHealthScore) => [h.client_id, h]))
 
   const createMutation = useMutation({
     mutationFn: (data: ClientCreate) => clientsApi.create(data),
@@ -154,6 +161,7 @@ export default function ClientsPage() {
               <TableHead>Contrato</TableHead>
               <TableHead>Presupuesto</TableHead>
               <TableHead>Estado</TableHead>
+              <TableHead>Salud</TableHead>
               <TableHead className="w-24">Acciones</TableHead>
             </TableRow>
           </TableHeader>
@@ -171,6 +179,18 @@ export default function ClientsPage() {
                 <TableCell className="mono">{c.monthly_budget != null ? `${c.monthly_budget}€` : "-"}</TableCell>
                 <TableCell>{statusBadge(c.status)}</TableCell>
                 <TableCell>
+                  {(() => {
+                    const h = healthMap.get(c.id)
+                    if (!h) return <span className="text-muted-foreground text-xs">-</span>
+                    const color = h.risk_level === "healthy" ? "text-green-600" : h.risk_level === "warning" ? "text-amber-500" : "text-red-500"
+                    return (
+                      <span className={`inline-flex items-center gap-1 text-xs font-semibold ${color}`} title={`Comunicacion: ${h.factors.communication} | Tareas: ${h.factors.tasks} | Digests: ${h.factors.digests} | Rentabilidad: ${h.factors.profitability} | Followups: ${h.factors.followups}`}>
+                        <Heart className="h-3 w-3" />{h.score}
+                      </span>
+                    )
+                  })()}
+                </TableCell>
+                <TableCell>
                   <div className="flex gap-1">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(c)}>
                       <Pencil className="h-4 w-4" />
@@ -183,7 +203,7 @@ export default function ClientsPage() {
               </TableRow>
             ))}
             {clients.length === 0 && (
-              <EmptyTableState colSpan={7} icon={Users} title="Sin clientes todavía" description="Aquí verás tus clientes con estado, presupuesto y contacto." />
+              <EmptyTableState colSpan={8} icon={Users} title="Sin clientes todavía" description="Aquí verás tus clientes con estado, presupuesto y contacto." />
             )}
           </TableBody>
         </Table>

@@ -2,7 +2,7 @@ import { Link, useLocation, Outlet } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/context/auth-context"
 import { holdedApi } from "@/lib/api"
-import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList } from "lucide-react"
+import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList, Gauge } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
 import { useMemo } from "react"
@@ -53,6 +53,7 @@ export function AppLayout() {
   const adminNav = useMemo(() => {
     if (!isAdmin) return []
     return [
+      { to: "/capacity", label: "Capacidad", icon: Gauge },
       { to: "/users", label: "Equipo", icon: UserCog },
       { to: "/discord", label: "Discord", icon: MessageCircle },
     ]

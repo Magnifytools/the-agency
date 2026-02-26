@@ -38,6 +38,7 @@ const ImportPage = lazy(() => import("@/pages/import-page"))
 const HoldedFinancePage = lazy(() => import("@/pages/holded-finance-page"))
 const DiscordSettingsPage = lazy(() => import("@/pages/discord-settings-page"))
 const DailysPage = lazy(() => import("@/pages/dailys-page"))
+const CapacityPage = lazy(() => import("@/pages/capacity-page"))
 
 function PageLoader() {
   return (
@@ -79,6 +80,7 @@ export default function App() {
               <Route path="/projects" element={<Suspense fallback={<PageLoader />}><ProjectsPage /></Suspense>} />
               <Route path="/projects/:id" element={<Suspense fallback={<PageLoader />}><ProjectDetailPage /></Suspense>} />
               <Route path="/growth" element={<Suspense fallback={<PageLoader />}><GrowthPage /></Suspense>} />
+              <Route path="/capacity" element={<Suspense fallback={<PageLoader />}><CapacityPage /></Suspense>} />
               <Route path="/users" element={<Suspense fallback={<PageLoader />}><UsersPage /></Suspense>} />
               <Route path="/timesheet" element={<Suspense fallback={<PageLoader />}><TimesheetPage /></Suspense>} />
               <Route path="/billing" element={<Suspense fallback={<PageLoader />}><BillingPage /></Suspense>} />

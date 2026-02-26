@@ -214,6 +214,7 @@ class User(TimestampMixin, Base):
     full_name = Column(String(255), nullable=False)
     role = Column(Enum(UserRole), nullable=False, default=UserRole.member)
     hourly_rate = Column(Float, nullable=True)
+    weekly_hours = Column(Float, nullable=False, default=40.0)
     is_active = Column(Boolean, nullable=False, default=True)
     invited_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
@@ -245,6 +246,7 @@ class Client(TimestampMixin, Base):
     tasks = relationship("Task", back_populates="client", lazy="selectin")
     projects = relationship("Project", back_populates="client", lazy="selectin")
     communications = relationship("CommunicationLog", back_populates="client", lazy="selectin", order_by="CommunicationLog.occurred_at.desc()")
+    contacts = relationship("ClientContact", back_populates="client", lazy="selectin", order_by="ClientContact.is_primary.desc()")
     incomes = relationship("Income", back_populates="client", lazy="selectin")
 
 
@@ -445,6 +447,21 @@ class TimeEntry(TimestampMixin, Base):
     user = relationship("User", lazy="selectin")
 
 
+class ClientContact(TimestampMixin, Base):
+    __tablename__ = "client_contacts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    name = Column(String(200), nullable=False)
+    email = Column(String(255), nullable=True)
+    phone = Column(String(50), nullable=True)
+    position = Column(String(100), nullable=True)  # "CEO", "Marketing Manager"
+    is_primary = Column(Boolean, nullable=False, default=False)
+    notes = Column(Text, nullable=True)
+
+    client = relationship("Client", back_populates="contacts", lazy="selectin")
+
+
 class CommunicationLog(TimestampMixin, Base):
     __tablename__ = "communication_logs"
 
@@ -461,9 +478,11 @@ class CommunicationLog(TimestampMixin, Base):
 
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    contact_id = Column(Integer, ForeignKey("client_contacts.id"), nullable=True)
 
     client = relationship("Client", back_populates="communications", lazy="selectin")
     user = relationship("User", lazy="selectin")
+    contact = relationship("ClientContact", lazy="selectin")
 
 
 class PMInsight(TimestampMixin, Base):
