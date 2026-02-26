@@ -64,7 +64,7 @@ async def draft_email(
             "ANTHROPIC_API_KEY no configurada. Agrega la clave en el archivo .env"
         )
 
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     # Build context parts
     context_parts = [f"CLIENTE: {client_name}"]
@@ -112,7 +112,7 @@ async def draft_email(
 
     logger.info("Drafting email for client: %s, purpose: %s", client_name, purpose)
 
-    message = client.messages.create(
+    message = await client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=2048,
         system=SYSTEM_PROMPT,

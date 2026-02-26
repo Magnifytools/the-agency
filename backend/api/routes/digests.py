@@ -34,6 +34,7 @@ from backend.services.digest_collector import collect_digest_data
 from backend.services.digest_generator import generate_digest_content
 from backend.services.digest_renderer import render_slack, render_email, render_discord
 from backend.api.deps import require_module
+from backend.core.rate_limiter import ai_limiter
 
 router = APIRouter(prefix="/api/digests", tags=["digests"])
 
@@ -90,6 +91,8 @@ async def generate_digest(
     current_user: User = Depends(require_module("digests", write=True)),
 ):
     """Generate a weekly digest for a single client."""
+    ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
+
     period_start = request.period_start
     period_end = request.period_end
 
@@ -145,6 +148,8 @@ async def generate_batch(
     current_user: User = Depends(require_module("digests", write=True)),
 ):
     """Generate digests for all active clients at once."""
+    ai_limiter.check(current_user.id, max_requests=3, window_seconds=60)
+
     if not period_start or not period_end:
         period_start, period_end = _default_period()
 

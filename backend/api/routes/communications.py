@@ -12,6 +12,7 @@ from backend.schemas.communication import (
     EmailDraftRequest, EmailDraftResponse,
 )
 from backend.api.deps import get_current_user, require_module
+from backend.core.rate_limiter import ai_limiter
 from backend.services.email_drafter import draft_email
 
 router = APIRouter(prefix="/api", tags=["communications"])
@@ -93,6 +94,8 @@ async def draft_email_endpoint(
     current_user: User = Depends(require_module("communications", write=True)),
 ):
     """Use AI to draft an email for a client communication."""
+    ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
+
     # Get client info
     result = await db.execute(select(Client).where(Client.id == body.client_id))
     client_obj = result.scalar_one_or_none()

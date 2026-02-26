@@ -53,7 +53,7 @@ async def generate_report_narrative(
             "ANTHROPIC_API_KEY no configurada. Agrega la clave en el archivo .env"
         )
 
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     # Build the user prompt from sections
     context_parts = []
@@ -76,7 +76,7 @@ async def generate_report_narrative(
 
     logger.info("Generating AI narrative for report: %s", report_title)
 
-    message = client.messages.create(
+    message = await client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=4096,
         system=SYSTEM_PROMPT,

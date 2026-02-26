@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.database import get_db
 from backend.db.models import DailyUpdate, DailyUpdateStatus, DiscordSettings, User
 from backend.api.deps import get_current_user
+from backend.core.rate_limiter import ai_limiter
 from backend.schemas.daily import (
     DailySubmitRequest,
     DailyUpdateResponse,
@@ -49,6 +50,8 @@ async def submit_daily(
     current_user: User = Depends(get_current_user),
 ):
     """Submit a daily update. The raw text is parsed by AI into structured data."""
+    ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
+
     if not body.raw_text.strip():
         raise HTTPException(status_code=400, detail="El texto del daily no puede estar vacío")
 

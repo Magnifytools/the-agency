@@ -11,6 +11,7 @@ from backend.schemas.report import ReportRequest, ReportResponse, ReportSection
 from backend.services.reports import generate_report
 from backend.services.report_narrator import generate_report_narrative
 from backend.api.deps import get_current_user, require_module
+from backend.core.rate_limiter import ai_limiter
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -96,6 +97,8 @@ async def generate_narrative(
     current_user: User = Depends(require_module("reports")),
 ):
     """Generate an AI narrative version of an existing report."""
+    ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
+
     result = await db.execute(
         select(GeneratedReport).where(GeneratedReport.id == report_id)
     )

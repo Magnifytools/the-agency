@@ -68,11 +68,11 @@ async def parse_daily_update(raw_text: str) -> dict:
             "ANTHROPIC_API_KEY no configurada. Agrega la clave en el archivo .env"
         )
 
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     logger.info("Parsing daily update (%d chars)", len(raw_text))
 
-    message = client.messages.create(
+    message = await client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=4096,
         system=SYSTEM_PROMPT,
