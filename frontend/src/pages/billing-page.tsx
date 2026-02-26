@@ -26,9 +26,14 @@ export default function BillingPage() {
     queryFn: () => billingApi.preview({ year, month }) as Promise<BillingRow[]>,
   })
 
-  const downloadCsv = () => {
-    const url = `/api/billing/export?format=csv&year=${year}&month=${month}`
-    window.location.href = url
+  const downloadCsv = async () => {
+    const blob = await billingApi.exportCsv({ year, month })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `facturacion-${year}-${String(month).padStart(2, "0")}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (

@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 
 from backend.db.database import engine
 from backend.db.models import Base
-from backend.config import settings, DEFAULT_SECRET_KEY
+from backend.config import settings
 from backend.api.routes import (
     auth, clients, tasks, task_categories, time_entries, users,
     dashboard, discord, billing, projects, communications, pm,
@@ -24,13 +24,8 @@ from backend.api.routes import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if settings.SECRET_KEY == DEFAULT_SECRET_KEY:
-        if os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_PROJECT_ID"):
-            raise RuntimeError(
-                "SECRET_KEY must be changed in production. "
-                "Set SECRET_KEY environment variable in Railway."
-            )
-        logging.warning("SECRET_KEY está usando el valor por defecto. Configura SECRET_KEY en .env para producción.")
+    # SECRET_KEY validation is handled by Settings model_validator in config.py.
+    # If we reach here, the key is either non-default or we're in dev mode.
     # TODO(M-03): Migrate DDL below to Alembic. These inline migrations are
     # idempotent (IF NOT EXISTS) but fragile — they run on every startup and
     # cannot be rolled back. Tracked as tech-debt for Sprint 4+.

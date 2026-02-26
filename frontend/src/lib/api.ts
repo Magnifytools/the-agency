@@ -217,6 +217,8 @@ export const dashboardApi = {
 export const billingApi = {
   preview: (params: { year: number; month: number }) =>
     api.get("/billing/export", { params: { ...params, format: "json" } }).then((r) => r.data),
+  exportCsv: (params: { year: number; month: number }) =>
+    api.get("/billing/export", { params: { ...params, format: "csv" }, responseType: "blob" }).then((r) => r.data),
 }
 
 // Discord

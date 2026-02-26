@@ -198,7 +198,11 @@ async def send_daily_summary(
             date=d.strftime("%Y-%m-%d"),
         )
 
-    raise HTTPException(status_code=500, detail="Error al enviar a Discord")
+    return DiscordSendResponse(
+        success=False,
+        message="Error al enviar a Discord. Verifica el webhook.",
+        date=d.strftime("%Y-%m-%d"),
+    )
 
 
 # ── Send digest to Discord ────────────────────────────────
@@ -241,4 +245,7 @@ async def send_digest_to_discord(
             message=f"Digest #{digest_id} enviado a Discord",
         )
 
-    raise HTTPException(status_code=500, detail="Error al enviar a Discord")
+    return DiscordSendResponse(
+        success=False,
+        message=f"Error al enviar digest #{digest_id} a Discord. Verifica el webhook.",
+    )

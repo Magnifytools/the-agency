@@ -27,14 +27,14 @@ async def list_users(
         result = await db.execute(query)
         return PaginatedResponse(items=result.scalars().all(), total=total, page=page, page_size=page_size)
     else:
-        # Non-admin: return only id, full_name, email, role (strip sensitive fields like hourly_rate)
+        # Non-admin: return only id + full_name (minimal for task/lead assignment pickers)
         query = select(User).order_by(User.full_name).offset((page - 1) * page_size).limit(page_size)
         result = await db.execute(query)
         users = result.scalars().all()
         sanitized = [
             UserListResponse(
-                id=u.id, full_name=u.full_name, email=u.email, role=u.role,
-                hourly_rate=None,
+                id=u.id, full_name=u.full_name,
+                email=None, role=None, hourly_rate=None,
             )
             for u in users
         ]

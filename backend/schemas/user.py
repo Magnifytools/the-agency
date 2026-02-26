@@ -21,9 +21,9 @@ class UserUpdate(BaseModel):
 
 class UserListResponse(BaseModel):
     id: int
-    email: str
+    email: Optional[str] = None
     full_name: str
-    role: UserRole
+    role: Optional[UserRole] = None
     hourly_rate: Optional[float] = None
 
     model_config = {"from_attributes": True}
