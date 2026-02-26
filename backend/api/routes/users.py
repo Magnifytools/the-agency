@@ -5,7 +5,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
-from backend.db.models import User, UserRole
+from backend.db.models import User, UserPermission, UserRole
 from backend.schemas.user import UserCreate, UserUpdate, UserListResponse
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_admin
@@ -112,3 +112,47 @@ async def update_user(
     await db.commit()
     await db.refresh(user)
     return user
+
+
+@router.post("/{user_id}/permissions", status_code=200)
+async def sync_user_permissions(
+    user_id: int,
+    modules: list[str],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Admin-only: set a user's module permissions to exactly the given list."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Load current permissions
+    perms_result = await db.execute(
+        select(UserPermission).where(UserPermission.user_id == user_id)
+    )
+    existing = {p.module: p for p in perms_result.scalars().all()}
+    desired = set(modules)
+
+    # Remove extras
+    removed = []
+    for mod, perm in existing.items():
+        if mod not in desired:
+            await db.delete(perm)
+            removed.append(mod)
+
+    # Add missing
+    added = []
+    for mod in desired:
+        if mod not in existing:
+            db.add(UserPermission(user_id=user_id, module=mod, can_read=True, can_write=True))
+            added.append(mod)
+
+    await db.commit()
+
+    return {
+        "user_id": user_id,
+        "modules": sorted(desired),
+        "added": sorted(added),
+        "removed": sorted(removed),
+    }
