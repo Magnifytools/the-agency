@@ -106,6 +106,19 @@ export interface ClientHealthScore {
   risk_level: "healthy" | "warning" | "at_risk"
 }
 
+export interface ActivityEvent {
+  id: string
+  type: string
+  subtype: string
+  timestamp: string
+  title: string
+  description: string | null
+  detail: string | null
+  user_name: string | null
+  contact_name?: string | null
+  icon: string
+}
+
 export interface CapacityMember {
   user_id: number
   full_name: string

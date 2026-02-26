@@ -12,6 +12,7 @@ import { TimerButton } from "@/components/timer/timer-button"
 import { TimeLogDialog } from "@/components/timer/time-log-dialog"
 import { CommunicationList } from "@/components/communications/communication-list"
 import { ContactList } from "@/components/clients/contact-list"
+import { ActivityTimeline } from "@/components/clients/activity-timeline"
 
 function formatMinutes(m: number): string {
   const h = Math.floor(m / 60)
@@ -45,7 +46,7 @@ export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const clientId = Number(id)
   const [timeLogTaskId, setTimeLogTaskId] = useState<{ id: number; title: string } | null>(null)
-  const [activeTab, setActiveTab] = useState<"tareas" | "proyectos" | "comunicaciones" | "contactos" | "tiempo" | "facturas">("tareas")
+  const [activeTab, setActiveTab] = useState<"actividad" | "tareas" | "proyectos" | "comunicaciones" | "contactos" | "tiempo" | "facturas">("actividad")
 
   const { data: summary, isLoading } = useQuery({
     queryKey: ["client-summary", clientId],
@@ -173,7 +174,7 @@ export default function ClientDetailPage() {
 
       {/* Tabs */}
       <div className="flex items-center space-x-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
-        {(["tareas", "proyectos", "comunicaciones", "contactos", "tiempo", ...(holdedEnabled ? ["facturas" as const] : [])] as const).map((tab) => (
+        {(["actividad", "tareas", "proyectos", "comunicaciones", "contactos", "tiempo", ...(holdedEnabled ? ["facturas" as const] : [])] as const).map((tab) => (
           <Button
             key={tab}
             variant={activeTab === tab ? "default" : "ghost"}
@@ -185,6 +186,15 @@ export default function ClientDetailPage() {
           </Button>
         ))}
       </div>
+
+      {/* Tab: Actividad (Timeline) */}
+      {activeTab === "actividad" && (
+        <Card>
+          <CardContent className="p-6">
+            <ActivityTimeline clientId={clientId} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Tab: Tareas */}
       {activeTab === "tareas" && (

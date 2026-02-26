@@ -94,6 +94,7 @@ import type {
   ClientContactCreate,
   ClientHealthScore,
   CapacityMember,
+  ActivityEvent,
 } from "./types"
 
 const api = axios.create({
@@ -579,4 +580,10 @@ export const clientHealthApi = {
 export const capacityApi = {
   get: () =>
     api.get<CapacityMember[]>("/dashboard/capacity").then((r) => r.data),
+}
+
+// --- Client Activity Timeline ---
+export const clientActivityApi = {
+  list: (clientId: number, limit = 50) =>
+    api.get<ActivityEvent[]>(`/clients/${clientId}/activity`, { params: { limit } }).then((r) => r.data),
 }
