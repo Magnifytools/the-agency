@@ -206,28 +206,43 @@ async def seed():
 
         await session.commit()
 
-        # Seed default permissions for member user
+        # Sync permissions for member user (always update to desired set)
         member_result = await session.execute(
             select(User).where(User.email == "nacho@magnify.ing")
         )
         member = member_result.scalar_one_or_none()
         if member:
+            desired_modules = [
+                "dashboard", "clients", "tasks", "projects", "timesheet",
+            ]
+
             existing_perms = await session.execute(
                 select(UserPermission).where(UserPermission.user_id == member.id)
             )
-            if not existing_perms.scalars().first():
-                default_modules = [
-                    "dashboard", "clients", "tasks", "projects", "timesheet",
-                ]
-                for module in default_modules:
-                    session.add(UserPermission(
-                        user_id=member.id,
-                        module=module,
-                        can_read=True,
-                        can_write=True,
-                    ))
-                await session.commit()
-                print(f"Default permissions created for member user ({len(default_modules)} modules)")
+            existing = {p.module: p for p in existing_perms.scalars().all()}
+            existing_modules = set(existing.keys())
+            desired_set = set(desired_modules)
+
+            # Remove permissions no longer desired
+            removed = existing_modules - desired_set
+            for mod in removed:
+                await session.delete(existing[mod])
+
+            # Add missing permissions
+            added = desired_set - existing_modules
+            for mod in added:
+                session.add(UserPermission(
+                    user_id=member.id,
+                    module=mod,
+                    can_read=True,
+                    can_write=True,
+                ))
+
+            await session.commit()
+            if removed or added:
+                print(f"Member permissions synced: +{len(added)} added, -{len(removed)} removed → {len(desired_modules)} modules")
+            else:
+                print(f"Member permissions already up to date ({len(desired_modules)} modules)")
 
         # Seed service templates
         for tmpl_data in SERVICE_TEMPLATES:
