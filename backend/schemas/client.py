@@ -1,9 +1,9 @@
 from __future__ import annotations
 from typing import Optional
 
-from datetime import datetime
+from datetime import date, datetime
 from pydantic import BaseModel
-from backend.db.models import ContractType, ClientStatus
+from backend.db.models import ContractType, ClientStatus, BillingCycle
 
 
 class ClientCreate(BaseModel):
@@ -16,6 +16,12 @@ class ClientCreate(BaseModel):
     monthly_budget: Optional[float] = None
     status: ClientStatus = ClientStatus.active
     notes: Optional[str] = None
+    ga4_property_id: Optional[str] = None
+    gsc_url: Optional[str] = None
+    billing_cycle: Optional[BillingCycle] = None
+    billing_day: Optional[int] = None
+    next_invoice_date: Optional[date] = None
+    last_invoiced_date: Optional[date] = None
 
 
 class ClientUpdate(BaseModel):
@@ -28,6 +34,12 @@ class ClientUpdate(BaseModel):
     monthly_budget: Optional[float] = None
     status: Optional[ClientStatus] = None
     notes: Optional[str] = None
+    ga4_property_id: Optional[str] = None
+    gsc_url: Optional[str] = None
+    billing_cycle: Optional[BillingCycle] = None
+    billing_day: Optional[int] = None
+    next_invoice_date: Optional[date] = None
+    last_invoiced_date: Optional[date] = None
 
 
 class ClientResponse(BaseModel):
@@ -41,6 +53,12 @@ class ClientResponse(BaseModel):
     monthly_budget: Optional[float] = None
     status: ClientStatus
     notes: Optional[str] = None
+    ga4_property_id: Optional[str] = None
+    gsc_url: Optional[str] = None
+    billing_cycle: Optional[BillingCycle] = None
+    billing_day: Optional[int] = None
+    next_invoice_date: Optional[date] = None
+    last_invoiced_date: Optional[date] = None
     created_at: datetime
     updated_at: datetime
 

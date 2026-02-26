@@ -16,7 +16,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { projectsApi, tasksApi } from "@/lib/api"
-import type { Project, ProjectStatus, PhaseStatus, TaskStatus } from "@/lib/types"
+import type { Project, ProjectPhase, ProjectStatus, PhaseStatus, Task, TaskStatus } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -279,11 +279,11 @@ export default function ProjectDetailPage() {
           />
         )}
 
-        {viewMode === "list" && tasksData?.phases?.map((phaseGroup: any) => {
+        {viewMode === "list" && tasksData?.phases?.map((phaseGroup: { phase: ProjectPhase; tasks: Task[] }) => {
           const phase = phaseGroup.phase
           const tasks = phaseGroup.tasks
           const PhaseIcon = PHASE_STATUS_ICONS[phase.status as PhaseStatus] || Circle
-          const completedTasks = tasks.filter((t: any) => t.status === "completed").length
+          const completedTasks = tasks.filter((t: Task) => t.status === "completed").length
 
           return (
             <Card key={phase.id}>
@@ -334,7 +334,7 @@ export default function ProjectDetailPage() {
                   <p className="text-sm text-muted-foreground py-2">Sin tareas en esta fase</p>
                 ) : (
                   <div className="space-y-1">
-                    {tasks.map((task: any) => (
+                    {tasks.map((task: Task) => (
                       <TaskRow
                         key={task.id}
                         task={task}
@@ -360,7 +360,7 @@ export default function ProjectDetailPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-1">
-                {tasksData.unassigned_tasks.map((task: any) => (
+                {tasksData.unassigned_tasks.map((task: Task) => (
                   <TaskRow
                     key={task.id}
                     task={task}
@@ -402,7 +402,7 @@ function TaskRow({
   task,
   onStatusChange,
 }: {
-  task: { id: number; title: string; status: TaskStatus; due_date: string | null; assigned_to: string | null }
+  task: { id: number; title: string; status: TaskStatus; due_date: string | null; assigned_to: number | string | null }
   onStatusChange: (status: TaskStatus) => void
 }) {
   const isCompleted = task.status === "completed"

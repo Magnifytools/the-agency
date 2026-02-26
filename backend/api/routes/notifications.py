@@ -9,11 +9,11 @@ from sqlalchemy import select, func, update, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
-from backend.db.models import Notification, Task, TaskStatus, Lead, LeadStatus
+from backend.db.models import Notification, Task, TaskStatus, Lead, LeadStatus, Client, ClientStatus, UserRole
 from backend.api.deps import get_current_user
 from backend.schemas.notification import NotificationResponse
 from backend.services.notification_service import (
-    create_notification, TASK_OVERDUE, LEAD_FOLLOWUP,
+    create_notification, TASK_OVERDUE, LEAD_FOLLOWUP, BILLING_REMINDER,
 )
 
 logger = logging.getLogger(__name__)
@@ -198,6 +198,46 @@ async def generate_notification_checks(
                 created += 1
     except Exception as e:
         logger.error("Error checking lead followups: %s", e)
+
+    # 3. Billing reminders for clients due within 3 days (admin only)
+    if user.role == UserRole.admin:
+        try:
+            from datetime import timedelta
+            threshold = today + timedelta(days=3)
+            billing_result = await db.execute(
+                select(Client).where(
+                    Client.status == ClientStatus.active,
+                    Client.next_invoice_date.isnot(None),
+                    Client.next_invoice_date <= threshold,
+                )
+            )
+            for client in billing_result.scalars().all():
+                existing = await db.execute(
+                    select(Notification.id).where(
+                        Notification.user_id == user.id,
+                        Notification.entity_type == "client",
+                        Notification.entity_id == client.id,
+                        Notification.type == BILLING_REMINDER,
+                        Notification.is_read.is_(False),
+                    )
+                )
+                if not existing.scalar_one_or_none():
+                    date_str = client.next_invoice_date.strftime("%d/%m/%Y")
+                    days_left = (client.next_invoice_date - today).days
+                    msg = f"Toca facturar a {client.name} el {date_str}" if days_left >= 0 else f"Factura vencida para {client.name} desde el {date_str}"
+                    await create_notification(
+                        db,
+                        user_id=user.id,
+                        type=BILLING_REMINDER,
+                        title=f"Facturacion: {client.name}",
+                        message=msg,
+                        link_url=f"/clients/{client.id}",
+                        entity_type="client",
+                        entity_id=client.id,
+                    )
+                    created += 1
+        except Exception as e:
+            logger.error("Error checking billing reminders: %s", e)
 
     if created > 0:
         await db.commit()

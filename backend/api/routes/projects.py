@@ -127,7 +127,7 @@ async def list_projects(
 async def create_project(
     body: ProjectCreate,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_module("projects")),
+    _user=Depends(require_module("projects", write=True)),
 ):
     project = Project(
         name=body.name,
@@ -161,7 +161,7 @@ async def create_project_from_template(
     template_key: str,
     start_date: Optional[datetime] = None,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_module("projects")),
+    _user=Depends(require_module("projects", write=True)),
 ):
     """Create a project from a template with phases and tasks pre-populated."""
     if template_key not in PROJECT_TEMPLATES:
@@ -239,7 +239,7 @@ async def update_project(
     project_id: int,
     body: ProjectUpdate,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_module("projects")),
+    _user=Depends(require_module("projects", write=True)),
 ):
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -266,7 +266,7 @@ async def update_project(
 async def delete_project(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_module("projects")),
+    _user=Depends(require_module("projects", write=True)),
 ):
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -289,7 +289,7 @@ async def create_phase(
     project_id: int,
     body: ProjectPhaseCreate,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_module("projects")),
+    _user=Depends(require_module("projects", write=True)),
 ):
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -328,7 +328,7 @@ async def update_phase(
     phase_id: int,
     body: ProjectPhaseUpdate,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_module("projects")),
+    _user=Depends(require_module("projects", write=True)),
 ):
     result = await db.execute(select(ProjectPhase).where(ProjectPhase.id == phase_id))
     phase = result.scalar_one_or_none()
@@ -396,7 +396,7 @@ async def update_phase(
 async def delete_phase(
     phase_id: int,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_module("projects")),
+    _user=Depends(require_module("projects", write=True)),
 ):
     result = await db.execute(select(ProjectPhase).where(ProjectPhase.id == phase_id))
     phase = result.scalar_one_or_none()

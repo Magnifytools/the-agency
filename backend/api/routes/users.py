@@ -103,6 +103,10 @@ async def update_user(
     if "role" in data and current_user.role != UserRole.admin:
         raise HTTPException(status_code=403, detail="Solo admin puede cambiar roles")
 
+    # Only admin can change hourly_rate
+    if "hourly_rate" in data and current_user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="Solo admin puede cambiar el hourly rate")
+
     # Non-admin can only edit their own profile
     if current_user.role != UserRole.admin and current_user.id != user_id:
         raise HTTPException(status_code=403, detail="Solo puedes editar tu propio perfil")

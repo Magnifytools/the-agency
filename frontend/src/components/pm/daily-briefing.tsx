@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
 
 export function DailyBriefingDialog({
   open,
@@ -25,8 +26,8 @@ export function DailyBriefingDialog({
     onSuccess: () => {
       toast.success("Briefing compartido en Discord")
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.detail || "Error al compartir en Discord")
+    onError: (err) => {
+      toast.error(getErrorMessage(err, "Error al compartir en Discord"))
     }
   })
 

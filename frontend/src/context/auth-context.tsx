@@ -16,7 +16,7 @@ const AuthContext = createContext<AuthContextType | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(() => !!localStorage.getItem("token"))
 
   useEffect(() => {
     const token = localStorage.getItem("token")
@@ -26,8 +26,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .then(setUser)
         .catch(() => localStorage.removeItem("token"))
         .finally(() => setIsLoading(false))
-    } else {
-      setIsLoading(false)
     }
   }, [])
 
@@ -65,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error("useAuth must be inside AuthProvider")

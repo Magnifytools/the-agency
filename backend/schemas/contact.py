@@ -12,6 +12,10 @@ class ContactCreate(BaseModel):
     position: Optional[str] = None
     is_primary: bool = False
     notes: Optional[str] = None
+    department: Optional[str] = None
+    preferred_channel: Optional[str] = None
+    language: Optional[str] = None
+    linkedin_url: Optional[str] = None
 
 
 class ContactUpdate(BaseModel):
@@ -21,6 +25,10 @@ class ContactUpdate(BaseModel):
     position: Optional[str] = None
     is_primary: Optional[bool] = None
     notes: Optional[str] = None
+    department: Optional[str] = None
+    preferred_channel: Optional[str] = None
+    language: Optional[str] = None
+    linkedin_url: Optional[str] = None
 
 
 class ContactResponse(BaseModel):
@@ -32,6 +40,10 @@ class ContactResponse(BaseModel):
     position: Optional[str] = None
     is_primary: bool
     notes: Optional[str] = None
+    department: Optional[str] = None
+    preferred_channel: Optional[str] = None
+    language: Optional[str] = None
+    linkedin_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

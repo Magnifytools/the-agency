@@ -56,14 +56,17 @@ async def create_report(
 @router.get("", response_model=list[ReportResponse])
 async def list_reports(
     limit: int = 20,
+    client_id: int | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("reports")),
 ):
-    """List recently generated reports."""
+    """List recently generated reports, optionally filtered by client."""
     query = select(GeneratedReport)
     # F-07: members only see their own reports
     if current_user.role != UserRole.admin:
         query = query.where(GeneratedReport.user_id == current_user.id)
+    if client_id is not None:
+        query = query.where(GeneratedReport.client_id == client_id)
     query = query.order_by(GeneratedReport.generated_at.desc()).limit(limit)
     result = await db.execute(query)
     return [_to_response(r) for r in result.scalars().all()]

@@ -43,6 +43,7 @@ export default function DigestEditPage() {
   })
 
   // Populate form when digest loads
+  /* eslint-disable react-hooks/set-state-in-effect -- Syncing form state from fetched async data */
   useEffect(() => {
     if (digest) {
       setTone(digest.tone)
@@ -58,6 +59,7 @@ export default function DigestEditPage() {
       }
     }
   }, [digest])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const updateMutation = useMutation({
     mutationFn: () => {

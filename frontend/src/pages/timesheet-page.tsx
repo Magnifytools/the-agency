@@ -36,7 +36,7 @@ export default function TimesheetPage() {
   const [weekStart, setWeekStart] = useState(() => toInputDate(getMonday(new Date())))
   const todayDate = toInputDate(new Date())
 
-  const { data: weeklyData } = useQuery({
+  const { data: weeklyData, isLoading: weekLoading, error: weekError, refetch: weekRefetch } = useQuery({
     queryKey: ["timesheet-week", weekStart],
     queryFn: () => timeEntriesApi.weekly(weekStart),
   })
@@ -141,8 +141,12 @@ export default function TimesheetPage() {
 
       <Card>
         <CardContent className="pt-4">
-          {!weeklyData ? (
+          {weekLoading ? (
             <div className="text-sm text-muted-foreground">Cargando...</div>
+          ) : weekError ? (
+            <div className="text-red-500 text-sm">Error al cargar datos. <button className="underline ml-1" onClick={() => weekRefetch()}>Reintentar</button></div>
+          ) : !weeklyData ? (
+            <div className="text-sm text-muted-foreground">Sin datos</div>
           ) : (
             <Table>
               <TableHeader>

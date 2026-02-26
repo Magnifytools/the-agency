@@ -92,6 +92,12 @@ import type {
   EmailDraftResponse,
   ClientContact,
   ClientContactCreate,
+  ClientResource,
+  ClientResourceCreate,
+  BillingEvent,
+  BillingEventCreate,
+  BillingStatus,
+  ClientDashboard,
   ClientHealthScore,
   CapacityMember,
   ActivityEvent,
@@ -100,6 +106,7 @@ import type {
 
 const api = axios.create({
   baseURL: "/api",
+  timeout: 30_000,
 })
 
 api.interceptors.request.use((config) => {
@@ -155,7 +162,7 @@ export const clientsApi = {
 export const tasksApi = {
   list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number; priority?: string; overdue?: boolean; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params }).then((r) => r.data),
-  listAll: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number; priority?: string; overdue?: boolean }) =>
+  listAll: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params: { ...params, page_size: 999 } }).then((r) => r.data.items),
   get: (id: number) => api.get<Task>(`/tasks/${id}`).then((r) => r.data),
   create: (data: TaskCreate) => api.post<Task>("/tasks", data).then((r) => r.data),
@@ -317,8 +324,8 @@ export const pmApi = {
 
 // Reports
 export const reportsApi = {
-  list: (limit?: number) =>
-    api.get<Report[]>("/reports", { params: limit ? { limit } : {} }).then((r) => r.data),
+  list: (params?: { limit?: number; client_id?: number }) =>
+    api.get<Report[]>("/reports", { params }).then((r) => r.data),
   get: (id: number) =>
     api.get<Report>(`/reports/${id}`).then((r) => r.data),
   generate: (data: ReportRequest) =>
@@ -519,12 +526,12 @@ export const holdedApi = {
   syncStatus: () => api.get<HoldedSyncStatus>("/holded/sync/status").then((r) => r.data),
   syncLogs: (limit = 20) => api.get<HoldedSyncLog[]>("/holded/sync/logs", { params: { limit } }).then((r) => r.data),
   // Data
-  invoices: (params?: { client_id?: number; status?: string; date_from?: string; date_to?: string }) =>
-    api.get<HoldedInvoice[]>("/holded/invoices", { params }).then((r) => r.data),
+  invoices: (params?: { client_id?: number; status?: string; date_from?: string; date_to?: string; page?: number; page_size?: number }) =>
+    api.get<PaginatedResponse<HoldedInvoice>>("/holded/invoices", { params }).then((r) => r.data),
   invoicePdf: (holdedId: string) =>
     api.get(`/holded/invoices/${holdedId}/pdf`, { responseType: "blob" }).then((r) => r.data),
-  expenses: (params?: { category?: string; date_from?: string; date_to?: string }) =>
-    api.get<HoldedExpense[]>("/holded/expenses", { params }).then((r) => r.data),
+  expenses: (params?: { category?: string; date_from?: string; date_to?: string; page?: number; page_size?: number }) =>
+    api.get<PaginatedResponse<HoldedExpense>>("/holded/expenses", { params }).then((r) => r.data),
   dashboard: () => api.get<HoldedDashboard>("/holded/dashboard").then((r) => r.data),
   // Config
   config: () => api.get<HoldedConfig>("/holded/config").then((r) => r.data),
@@ -567,6 +574,38 @@ export const contactsApi = {
     api.put<ClientContact>(`/clients/${clientId}/contacts/${contactId}`, data).then((r) => r.data),
   delete: (clientId: number, contactId: number) =>
     api.delete(`/clients/${clientId}/contacts/${contactId}`).then((r) => r.data),
+}
+
+// --- Client Resources ---
+export const resourcesApi = {
+  list: (clientId: number) =>
+    api.get<ClientResource[]>(`/clients/${clientId}/resources`).then((r) => r.data),
+  create: (clientId: number, data: ClientResourceCreate) =>
+    api.post<ClientResource>(`/clients/${clientId}/resources`, data).then((r) => r.data),
+  update: (clientId: number, resourceId: number, data: Partial<ClientResourceCreate>) =>
+    api.put<ClientResource>(`/clients/${clientId}/resources/${resourceId}`, data).then((r) => r.data),
+  delete: (clientId: number, resourceId: number) =>
+    api.delete(`/clients/${clientId}/resources/${resourceId}`).then((r) => r.data),
+}
+
+// --- Client Billing Events ---
+export const billingEventsApi = {
+  list: (clientId: number) =>
+    api.get<BillingEvent[]>(`/clients/${clientId}/billing`).then((r) => r.data),
+  create: (clientId: number, data: BillingEventCreate) =>
+    api.post<BillingEvent>(`/clients/${clientId}/billing`, data).then((r) => r.data),
+  status: (clientId: number) =>
+    api.get<BillingStatus>(`/clients/${clientId}/billing/status`).then((r) => r.data),
+  markInvoiced: (clientId: number) =>
+    api.post<BillingEvent>(`/clients/${clientId}/billing/mark-invoiced`).then((r) => r.data),
+  markPaid: (clientId: number, amount?: number) =>
+    api.post<BillingEvent>(`/clients/${clientId}/billing/mark-paid`, null, { params: amount ? { amount } : {} }).then((r) => r.data),
+}
+
+// --- Client Dashboard ---
+export const clientDashboardApi = {
+  get: (clientId: number) =>
+    api.get<ClientDashboard>(`/clients/${clientId}/dashboard`).then((r) => r.data),
 }
 
 // --- Client Health Score ---

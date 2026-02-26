@@ -95,7 +95,7 @@ async def list_tasks(
 async def create_task(
     body: TaskCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("tasks")),
+    _: User = Depends(require_module("tasks", write=True)),
 ):
     task = Task(**body.model_dump())
     db.add(task)
@@ -146,7 +146,7 @@ async def update_task(
     task_id: int,
     body: TaskUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("tasks")),
+    _: User = Depends(require_module("tasks", write=True)),
 ):
     result = await db.execute(select(Task).where(Task.id == task_id))
     task = result.scalar_one_or_none()
@@ -190,7 +190,7 @@ async def update_task(
 async def delete_task(
     task_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("tasks")),
+    _: User = Depends(require_module("tasks", write=True)),
 ):
     result = await db.execute(select(Task).where(Task.id == task_id))
     task = result.scalar_one_or_none()

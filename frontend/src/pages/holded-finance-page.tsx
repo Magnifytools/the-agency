@@ -117,12 +117,14 @@ export default function HoldedFinancePage() {
 // ── Resumen Tab ──────────────────────────────────────────
 
 function ResumenTab() {
-  const { data: dashboard } = useQuery({
+  const { data: dashboard, isLoading, error, refetch } = useQuery({
     queryKey: ["holded-dashboard"],
     queryFn: () => holdedApi.dashboard(),
   })
 
-  if (!dashboard) return <div className="text-muted-foreground">Cargando...</div>
+  if (isLoading) return <div className="text-muted-foreground">Cargando...</div>
+  if (error) return <div className="text-red-500 text-sm">Error al cargar datos. <button className="underline ml-1" onClick={() => refetch()}>Reintentar</button></div>
+  if (!dashboard) return null
 
   const chartData = dashboard.monthly_data.map((m) => ({
     name: m.month.slice(5), // "MM"
@@ -225,16 +227,28 @@ function FacturasTab() {
   const [statusFilter, setStatusFilter] = useState("")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  const [page, setPage] = useState(1)
 
-  const { data: invoices = [], isLoading } = useQuery({
-    queryKey: ["holded-invoices", statusFilter, dateFrom, dateTo],
+  const { data, isLoading } = useQuery({
+    queryKey: ["holded-invoices", statusFilter, dateFrom, dateTo, page],
     queryFn: () =>
       holdedApi.invoices({
         status: statusFilter || undefined,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
+        page,
+        page_size: 50,
       }),
   })
+  const invoices = data?.items ?? []
+  const total = data?.total ?? 0
+  const totalPages = Math.ceil(total / 50)
+
+  // Reset page when filters change
+  const updateFilter = (setter: (v: string) => void, value: string) => {
+    setter(value)
+    setPage(1)
+  }
 
   const handleDownloadPdf = async (holdedId: string, invoiceNumber: string | null) => {
     try {
@@ -255,7 +269,7 @@ function FacturasTab() {
   return (
     <div className="space-y-4">
       <div className="flex gap-3 flex-wrap">
-        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-[160px]">
+        <Select value={statusFilter} onChange={(e) => updateFilter(setStatusFilter, e.target.value)} className="w-[160px]">
           <option value="">Todos</option>
           <option value="paid">Pagada</option>
           <option value="pending">Pendiente</option>
@@ -264,14 +278,14 @@ function FacturasTab() {
         <Input
           type="date"
           value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
+          onChange={(e) => updateFilter(setDateFrom, e.target.value)}
           className="w-[160px]"
           placeholder="Desde"
         />
         <Input
           type="date"
           value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
+          onChange={(e) => updateFilter(setDateTo, e.target.value)}
           className="w-[160px]"
           placeholder="Hasta"
         />
@@ -329,6 +343,17 @@ function FacturasTab() {
           </Table>
         </CardContent>
       </Card>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span>{total} facturas</span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Anterior</Button>
+            <span className="flex items-center px-2">Página {page} de {totalPages}</span>
+            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Siguiente</Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -339,24 +364,35 @@ function GastosTab() {
   const [categoryFilter, setCategoryFilter] = useState("")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  const [page, setPage] = useState(1)
 
-  const { data: expenses = [], isLoading } = useQuery({
-    queryKey: ["holded-expenses", categoryFilter, dateFrom, dateTo],
+  const { data, isLoading } = useQuery({
+    queryKey: ["holded-expenses", categoryFilter, dateFrom, dateTo, page],
     queryFn: () =>
       holdedApi.expenses({
         category: categoryFilter || undefined,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
+        page,
+        page_size: 50,
       }),
   })
+  const expenses = data?.items ?? []
+  const total = data?.total ?? 0
+  const totalPages = Math.ceil(total / 50)
 
-  // Extract unique categories
+  const updateFilter = (setter: (v: string) => void, value: string) => {
+    setter(value)
+    setPage(1)
+  }
+
+  // Extract unique categories from current page
   const categories = [...new Set(expenses.map((e) => e.category).filter(Boolean))]
 
   return (
     <div className="space-y-4">
       <div className="flex gap-3 flex-wrap">
-        <Select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="w-[200px]">
+        <Select value={categoryFilter} onChange={(e) => updateFilter(setCategoryFilter, e.target.value)} className="w-[200px]">
           <option value="">Todas las categorias</option>
           {categories.map((c) => (
             <option key={c!} value={c!}>{c}</option>
@@ -365,13 +401,13 @@ function GastosTab() {
         <Input
           type="date"
           value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
+          onChange={(e) => updateFilter(setDateFrom, e.target.value)}
           className="w-[160px]"
         />
         <Input
           type="date"
           value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
+          onChange={(e) => updateFilter(setDateTo, e.target.value)}
           className="w-[160px]"
         />
       </div>
@@ -421,6 +457,17 @@ function GastosTab() {
           </Table>
         </CardContent>
       </Card>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span>{total} gastos</span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Anterior</Button>
+            <span className="flex items-center px-2">Página {page} de {totalPages}</span>
+            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Siguiente</Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

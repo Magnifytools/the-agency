@@ -18,7 +18,8 @@ from backend.api.routes import (
     dashboard, discord, billing, projects, communications, pm,
     reports, proposals, growth, invitations, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
-    service_templates, dailys, contacts, activity, notifications,
+    service_templates, dailys, contacts, activity, notifications, resources,
+    billing_events, client_dashboard,
 )
 
 
@@ -56,6 +57,15 @@ async def lifespan(app: FastAPI):
                     "END IF; "
                     "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'dailyupdatestatus') THEN "
                     "CREATE TYPE dailyupdatestatus AS ENUM ('draft', 'sent'); "
+                    "END IF; "
+                    "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'resourcetype') THEN "
+                    "CREATE TYPE resourcetype AS ENUM ('spreadsheet', 'document', 'email', 'account', 'dashboard', 'other'); "
+                    "END IF; "
+                    "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'billingcycle') THEN "
+                    "CREATE TYPE billingcycle AS ENUM ('monthly', 'bimonthly', 'quarterly', 'annual', 'one_time'); "
+                    "END IF; "
+                    "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'billingeventtype') THEN "
+                    "CREATE TYPE billingeventtype AS ENUM ('invoice_sent', 'payment_received', 'reminder_sent', 'note'); "
                     "END IF; "
                     "END $$;"
                 )
@@ -123,6 +133,39 @@ async def lifespan(app: FastAPI):
             # Gantt: add start_date to tasks
             await conn.execute(
                 sa_text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS start_date TIMESTAMP")
+            )
+            # Client analytics settings
+            await conn.execute(
+                sa_text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS ga4_property_id VARCHAR(50)")
+            )
+            await conn.execute(
+                sa_text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS gsc_url VARCHAR(255)")
+            )
+            # Client billing settings
+            await conn.execute(
+                sa_text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_cycle billingcycle")
+            )
+            await conn.execute(
+                sa_text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_day INTEGER")
+            )
+            await conn.execute(
+                sa_text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS next_invoice_date DATE")
+            )
+            await conn.execute(
+                sa_text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_invoiced_date DATE")
+            )
+            # Enhanced client contacts
+            await conn.execute(
+                sa_text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS department VARCHAR(100)")
+            )
+            await conn.execute(
+                sa_text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS preferred_channel VARCHAR(50)")
+            )
+            await conn.execute(
+                sa_text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS language VARCHAR(50)")
+            )
+            await conn.execute(
+                sa_text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS linkedin_url VARCHAR(300)")
             )
             logging.info("Database schema migrations completed successfully.")
         except Exception as e:
@@ -192,6 +235,9 @@ app.include_router(dailys.router)
 app.include_router(contacts.router)
 app.include_router(activity.router)
 app.include_router(notifications.router)
+app.include_router(resources.router)
+app.include_router(billing_events.router)
+app.include_router(client_dashboard.router)
 
 # Serve frontend static files in production
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
@@ -202,6 +248,6 @@ if _frontend_dist.is_dir():
     async def serve_spa(request: Request, full_path: str):
         file_path = (_frontend_dist / full_path).resolve()
         # Prevent path traversal: resolved path must stay inside frontend/dist
-        if file_path.is_file() and str(file_path).startswith(str(_frontend_dist.resolve())):
+        if file_path.is_file() and file_path.is_relative_to(_frontend_dist.resolve()):
             return FileResponse(str(file_path))
         return FileResponse(str(_frontend_dist / "index.html"))

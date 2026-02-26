@@ -326,12 +326,14 @@ async def sync_logs(
 # ── Data endpoints (read from cache) ──────────────────────
 
 
-@router.get("/invoices", response_model=list[HoldedInvoiceResponse])
+@router.get("/invoices")
 async def list_invoices(
     client_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     session: AsyncSession = Depends(get_db),
     user=Depends(require_admin),
 ):
@@ -345,8 +347,9 @@ async def list_invoices(
     if date_to:
         q = q.where(HoldedInvoiceCache.date <= date_to)
 
-    result = await session.execute(q)
-    return result.scalars().all()
+    total = (await session.execute(select(func.count()).select_from(q.subquery()))).scalar() or 0
+    result = await session.execute(q.offset((page - 1) * page_size).limit(page_size))
+    return {"items": result.scalars().all(), "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/invoices/{holded_id}/pdf")
@@ -367,11 +370,13 @@ async def get_invoice_pdf(
         raise HTTPException(status_code=502, detail=f"Error descargando PDF: {e.detail}")
 
 
-@router.get("/expenses", response_model=list[HoldedExpenseResponse])
+@router.get("/expenses")
 async def list_expenses(
     category: Optional[str] = Query(None),
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     session: AsyncSession = Depends(get_db),
     user=Depends(require_admin),
 ):
@@ -383,8 +388,9 @@ async def list_expenses(
     if date_to:
         q = q.where(HoldedExpenseCache.date <= date_to)
 
-    result = await session.execute(q)
-    return result.scalars().all()
+    total = (await session.execute(select(func.count()).select_from(q.subquery()))).scalar() or 0
+    result = await session.execute(q.offset((page - 1) * page_size).limit(page_size))
+    return {"items": result.scalars().all(), "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/dashboard", response_model=HoldedDashboardResponse)

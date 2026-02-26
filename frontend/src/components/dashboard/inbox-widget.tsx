@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { tasksApi } from "@/lib/api"
+import type { Task } from "@/lib/types"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,11 +15,11 @@ export function InboxWidget() {
 
     const { data: inboxTasks = [], isLoading } = useQuery({
         queryKey: ["inbox-tasks"],
-        queryFn: () => tasksApi.listAll({ status: "pending", assigned_to: "unassigned" } as any),
+        queryFn: () => tasksApi.listAll({ status: "pending", assigned_to: "unassigned" }),
     })
 
     const createMutation = useMutation({
-        mutationFn: (title: string) => tasksApi.create({ title, status: "pending", client_id: 0, is_inbox: true } as any),
+        mutationFn: (title: string) => tasksApi.create({ title, status: "pending", client_id: 0, is_inbox: true }),
         onSuccess: () => {
             setNewTask("")
             queryClient.invalidateQueries({ queryKey: ["inbox-tasks"] })
@@ -28,7 +29,7 @@ export function InboxWidget() {
     })
 
     const completeMutation = useMutation({
-        mutationFn: (id: number) => tasksApi.update(id, { status: "completed" } as any),
+        mutationFn: (id: number) => tasksApi.update(id, { status: "completed" }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["inbox-tasks"] })
             toast.success("Tarea completada")
@@ -91,7 +92,7 @@ export function InboxWidget() {
                             <p className="text-sm">Inbox vacío. ¡Gran trabajo!</p>
                         </div>
                     ) : (
-                        inboxTasks.map((task: any) => (
+                        inboxTasks.map((task: Task) => (
                             <div
                                 key={task.id}
                                 className="group flex items-start gap-3 p-3 hover:bg-muted/50 rounded-xl border border-transparent hover:border-border/50 transition-all"

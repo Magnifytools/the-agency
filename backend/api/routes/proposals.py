@@ -642,19 +642,10 @@ async def generate_proposal_pdf(
 @router.get("/{proposal_id}/pdf")
 async def get_proposal_pdf(
     proposal_id: int,
-    token: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("proposals")),
 ):
-    """Render proposal as print-ready HTML. Accepts auth via query param for new-tab usage."""
-    from backend.core.security import decode_access_token
-
-    if token:
-        payload = decode_access_token(token)
-        if payload is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-    else:
-        raise HTTPException(status_code=401, detail="Token required")
-
+    """Render proposal as print-ready HTML. Uses standard Bearer auth."""
     return await _render_proposal_html(proposal_id, db)
 
 

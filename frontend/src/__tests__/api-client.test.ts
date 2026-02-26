@@ -29,7 +29,7 @@ describe("API Client", () => {
       get length() {
         return Object.keys(store).length
       },
-      key: vi.fn((_index: number) => null),
+      key: vi.fn(() => null),
     }
     Object.defineProperty(globalThis, "localStorage", {
       value: mockStorage,

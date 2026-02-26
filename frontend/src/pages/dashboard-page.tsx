@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { dashboardApi, discordApi, tasksApi, timeEntriesApi, digestsApi, clientsApi, leadsApi, proposalsApi } from "@/lib/api"
+import type { PricingOption } from "@/lib/types"
 import { useAuth } from "@/context/auth-context"
 import { MetricCard } from "@/components/dashboard/metric-card"
 import { ProfitabilityChart } from "@/components/dashboard/profitability-chart"
@@ -30,12 +31,12 @@ const MONTHS = [
 ]
 
 function profitBadge(status: string) {
-  const map: Record<string, { label: string; variant: "success" | "warning" | "destructive" }> = {
+  const map: Record<string, { label: string; variant: "success" | "warning" | "destructive" | "secondary" }> = {
     profitable: { label: "Rentable", variant: "success" },
     at_risk: { label: "En riesgo", variant: "warning" },
     unprofitable: { label: "No rentable", variant: "destructive" },
   }
-  const { label, variant } = map[status] || { label: status, variant: "secondary" as any }
+  const { label, variant } = map[status] || { label: status, variant: "secondary" }
   return <Badge variant={variant}>{label}</Badge>
 }
 
@@ -163,14 +164,14 @@ export default function DashboardPage() {
     const sent = allProposals.filter((p) => p.status === "sent")
     const accepted = allProposals.filter((p) => p.status === "accepted")
     const pipelineValue = sent.reduce((sum, p) => {
-      const maxPrice = (p.pricing_options || []).reduce((max: number, opt: any) => Math.max(max, opt.price || 0), 0)
+      const maxPrice = (p.pricing_options || []).reduce((max: number, opt: PricingOption) => Math.max(max, opt.price || 0), 0)
       return sum + maxPrice
     }, 0)
     return { drafts: drafts.length, sent: sent.length, accepted: accepted.length, total: allProposals.length, pipelineValue }
   })()
 
   const closeKeys = ["reviewed_numbers", "reviewed_margin", "reviewed_cash_buffer", "reviewed_reinvestment", "reviewed_debt", "reviewed_taxes", "reviewed_personal"]
-  const closeDoneCount = monthlyClose ? closeKeys.filter((key) => Boolean((monthlyClose as any)[key])).length : 0
+  const closeDoneCount = monthlyClose ? closeKeys.filter((key) => Boolean(monthlyClose[key as keyof typeof monthlyClose])).length : 0
   const closeTotalCount = closeKeys.length
   const closeDay = financialSettings?.monthly_close_day || 5
   const nowDay = new Date().getDate()
@@ -226,7 +227,7 @@ export default function DashboardPage() {
       {!isAdmin && user && (
         <div className="space-y-6">
           {weeklyTimesheet && (() => {
-            const myRow = weeklyTimesheet.users.find((u: any) => u.user_id === user.id)
+            const myRow = weeklyTimesheet.users.find((u: { user_id: number; total_minutes: number }) => u.user_id === user.id)
             const totalHours = myRow ? Math.round(myRow.total_minutes / 60 * 10) / 10 : 0
             return (
               <div className="grid grid-cols-2 gap-4">
@@ -356,7 +357,7 @@ export default function DashboardPage() {
         </details>
       )}
 
-      {monthlyClose && <MonthlyCloseChecklist monthlyClose={monthlyClose} onUpdate={(p) => closeMutation.mutate(p)} onExport={handleExportClose} isPending={closeMutation.isPending} />}
+      {monthlyClose && <MonthlyCloseChecklist monthlyClose={monthlyClose as unknown as Record<string, string | boolean | null>} onUpdate={(p) => closeMutation.mutate(p)} onExport={handleExportClose} isPending={closeMutation.isPending} />}
 
       {isAdmin && profitability && profitability.clients.length > 0 && (
         <div className="grid lg:grid-cols-2 gap-6">

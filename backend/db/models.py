@@ -187,6 +187,30 @@ class LeadActivityType(str, enum.Enum):
     followup_set = "followup_set"
 
 
+class BillingCycle(str, enum.Enum):
+    monthly = "monthly"
+    bimonthly = "bimonthly"
+    quarterly = "quarterly"
+    annual = "annual"
+    one_time = "one_time"
+
+
+class BillingEventType(str, enum.Enum):
+    invoice_sent = "invoice_sent"
+    payment_received = "payment_received"
+    reminder_sent = "reminder_sent"
+    note = "note"
+
+
+class ResourceType(str, enum.Enum):
+    spreadsheet = "spreadsheet"
+    document = "document"
+    email = "email"
+    account = "account"
+    dashboard = "dashboard"
+    other = "other"
+
+
 class GrowthFunnelStage(str, enum.Enum):
     referral = "referral"
     desire = "desire"
@@ -242,12 +266,22 @@ class Client(TimestampMixin, Base):
     # Holded integration
     holded_contact_id = Column(String(100), nullable=True)
     vat_number = Column(String(50), nullable=True)
+    # Analytics settings
+    ga4_property_id = Column(String(50), nullable=True)
+    gsc_url = Column(String(255), nullable=True)
+    # Billing settings
+    billing_cycle = Column(Enum(BillingCycle), nullable=True)
+    billing_day = Column(Integer, nullable=True)  # 1-28
+    next_invoice_date = Column(Date, nullable=True)
+    last_invoiced_date = Column(Date, nullable=True)
 
     tasks = relationship("Task", back_populates="client", lazy="selectin")
     projects = relationship("Project", back_populates="client", lazy="selectin")
     communications = relationship("CommunicationLog", back_populates="client", lazy="selectin", order_by="CommunicationLog.occurred_at.desc()")
     contacts = relationship("ClientContact", back_populates="client", lazy="selectin", order_by="ClientContact.is_primary.desc()")
     incomes = relationship("Income", back_populates="client", lazy="selectin")
+    resources = relationship("ClientResource", back_populates="client", lazy="selectin", order_by="ClientResource.label")
+    billing_events = relationship("BillingEvent", back_populates="client", lazy="selectin", order_by="BillingEvent.event_date.desc()")
 
 
 class TaskCategory(TimestampMixin, Base):
@@ -459,8 +493,39 @@ class ClientContact(TimestampMixin, Base):
     position = Column(String(100), nullable=True)  # "CEO", "Marketing Manager"
     is_primary = Column(Boolean, nullable=False, default=False)
     notes = Column(Text, nullable=True)
+    department = Column(String(100), nullable=True)
+    preferred_channel = Column(String(50), nullable=True)  # email, call, whatsapp, etc.
+    language = Column(String(50), nullable=True)  # es, en, ca, etc.
+    linkedin_url = Column(String(300), nullable=True)
 
     client = relationship("Client", back_populates="contacts", lazy="selectin")
+
+
+class ClientResource(TimestampMixin, Base):
+    __tablename__ = "client_resources"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
+    label = Column(String(200), nullable=False)
+    url = Column(String(500), nullable=False)
+    resource_type = Column(Enum(ResourceType), nullable=False, default=ResourceType.other)
+    notes = Column(Text, nullable=True)
+
+    client = relationship("Client", back_populates="resources", lazy="selectin")
+
+
+class BillingEvent(TimestampMixin, Base):
+    __tablename__ = "billing_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
+    event_type = Column(Enum(BillingEventType), nullable=False)
+    amount = Column(Float, nullable=True)
+    invoice_number = Column(String(100), nullable=True)
+    notes = Column(Text, nullable=True)
+    event_date = Column(Date, nullable=False)
+
+    client = relationship("Client", back_populates="billing_events", lazy="selectin")
 
 
 class CommunicationLog(TimestampMixin, Base):

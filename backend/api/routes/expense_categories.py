@@ -25,7 +25,7 @@ async def list_categories(
 async def create_category(
     data: ExpenseCategoryCreate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_expenses")),
+    _user: User = Depends(require_module("finance_expenses", write=True)),
 ):
     cat = ExpenseCategory(**data.model_dump())
     db.add(cat)
@@ -39,7 +39,7 @@ async def update_category(
     category_id: int,
     data: ExpenseCategoryCreate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_expenses")),
+    _user: User = Depends(require_module("finance_expenses", write=True)),
 ):
     r = await db.execute(select(ExpenseCategory).where(ExpenseCategory.id == category_id))
     cat = r.scalars().first()
@@ -56,7 +56,7 @@ async def update_category(
 async def delete_category(
     category_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_expenses")),
+    _user: User = Depends(require_module("finance_expenses", write=True)),
 ):
     r = await db.execute(select(ExpenseCategory).where(ExpenseCategory.id == category_id))
     cat = r.scalars().first()

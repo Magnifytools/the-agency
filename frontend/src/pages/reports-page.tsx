@@ -27,7 +27,7 @@ export default function ReportsPage() {
 
   const { data: reports = [], isLoading } = useQuery({
     queryKey: ["reports"],
-    queryFn: () => reportsApi.list(20),
+    queryFn: () => reportsApi.list({ limit: 20 }),
   })
 
   const narrativeMutation = useMutation({

@@ -13,6 +13,12 @@ import { TimeLogDialog } from "@/components/timer/time-log-dialog"
 import { CommunicationList } from "@/components/communications/communication-list"
 import { ContactList } from "@/components/clients/contact-list"
 import { ActivityTimeline } from "@/components/clients/activity-timeline"
+import { ResourceList } from "@/components/clients/resource-list"
+import { BillingTab } from "@/components/clients/billing-tab"
+import { ClientDashboardTab } from "@/components/clients/client-dashboard-tab"
+import { ClientAiAdvisor } from "@/components/clients/client-ai-advisor"
+import { ClientReportsTab } from "@/components/clients/client-reports-tab"
+import { ClientSettingsTab } from "@/components/clients/client-settings-tab"
 
 function formatMinutes(m: number): string {
   const h = Math.floor(m / 60)
@@ -28,7 +34,7 @@ const statusBadge = (status: string) => {
     paused: { label: "Pausado", variant: "warning" },
     finished: { label: "Finalizado", variant: "secondary" },
   }
-  const { label, variant } = map[status] || { label: status, variant: "secondary" as any }
+  const { label, variant } = map[status] || { label: status, variant: "secondary" }
   return <Badge variant={variant}>{label}</Badge>
 }
 
@@ -46,7 +52,7 @@ export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const clientId = Number(id)
   const [timeLogTaskId, setTimeLogTaskId] = useState<{ id: number; title: string } | null>(null)
-  const [activeTab, setActiveTab] = useState<"actividad" | "tareas" | "proyectos" | "comunicaciones" | "contactos" | "tiempo" | "facturas">("actividad")
+  const [activeTab, setActiveTab] = useState<"actividad" | "tareas" | "proyectos" | "comunicaciones" | "contactos" | "panel" | "tiempo" | "facturacion" | "recursos" | "informes" | "ajustes" | "facturas">("actividad")
 
   const { data: summary, isLoading } = useQuery({
     queryKey: ["client-summary", clientId],
@@ -173,13 +179,13 @@ export default function ClientDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center space-x-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
-        {(["actividad", "tareas", "proyectos", "comunicaciones", "contactos", "tiempo", ...(holdedEnabled ? ["facturas" as const] : [])] as const).map((tab) => (
+      <div className="flex items-center space-x-1 bg-muted/30 p-1 w-fit rounded-lg border border-border overflow-x-auto">
+        {(["actividad", "tareas", "proyectos", "panel", "comunicaciones", "contactos", "tiempo", "facturacion", "recursos", "informes", ...(holdedEnabled ? ["facturas" as const] : []), "ajustes"] as const).map((tab) => (
           <Button
             key={tab}
             variant={activeTab === tab ? "default" : "ghost"}
             size="sm"
-            className="capitalize"
+            className="capitalize whitespace-nowrap"
             onClick={() => setActiveTab(tab)}
           >
             {tab}
@@ -187,13 +193,20 @@ export default function ClientDetailPage() {
         ))}
       </div>
 
-      {/* Tab: Actividad (Timeline) */}
+      {/* Tab: Actividad (Timeline + AI Advisor) */}
       {activeTab === "actividad" && (
-        <Card>
-          <CardContent className="p-6">
-            <ActivityTimeline clientId={clientId} />
-          </CardContent>
-        </Card>
+        <div className="space-y-6">
+          <Card>
+            <CardContent className="p-6">
+              <ClientAiAdvisor clientId={clientId} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-6">
+              <ActivityTimeline clientId={clientId} />
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Tab: Tareas */}
@@ -305,6 +318,11 @@ export default function ClientDetailPage() {
         </Card>
       )}
 
+      {/* Tab: Panel */}
+      {activeTab === "panel" && (
+        <ClientDashboardTab client={client} />
+      )}
+
       {/* Tab: Comunicaciones */}
       {activeTab === "comunicaciones" && (
         <Card>
@@ -359,6 +377,34 @@ export default function ClientDetailPage() {
             </Table>
           </CardContent>
         </Card>
+      )}
+
+      {/* Tab: Recursos */}
+      {activeTab === "recursos" && (
+        <Card>
+          <CardContent className="p-6">
+            <ResourceList clientId={clientId} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Tab: Facturacion */}
+      {activeTab === "facturacion" && (
+        <BillingTab client={client} />
+      )}
+
+      {/* Tab: Informes */}
+      {activeTab === "informes" && (
+        <Card>
+          <CardContent className="p-6">
+            <ClientReportsTab clientId={clientId} clientName={client.name} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Tab: Ajustes */}
+      {activeTab === "ajustes" && (
+        <ClientSettingsTab client={client} />
       )}
 
       {/* Tab: Facturas (Holded) */}

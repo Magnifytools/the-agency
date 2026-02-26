@@ -9,6 +9,8 @@ interface OverdueTasksProps {
 }
 
 export function OverdueTasks({ tasks, showAssigned = false, title }: OverdueTasksProps) {
+  // eslint-disable-next-line react-hooks/purity -- Date.now() for computing days overdue is intentional
+  const now = Date.now()
   if (!tasks || tasks.length === 0) return null
 
   return (
@@ -32,7 +34,7 @@ export function OverdueTasks({ tasks, showAssigned = false, title }: OverdueTask
           <TableBody>
             {tasks.map((t) => {
               const daysOverdue = t.due_date
-                ? Math.floor((Date.now() - new Date(t.due_date).getTime()) / 86400000)
+                ? Math.floor((now - new Date(t.due_date).getTime()) / 86400000)
                 : 0
               return (
                 <TableRow key={t.id}>

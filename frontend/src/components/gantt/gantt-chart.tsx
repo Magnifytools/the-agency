@@ -61,10 +61,13 @@ export function GanttChart({ project, tasksData }: GanttChartProps) {
 
   const projectStart = parseDate(project.start_date)
   const projectEnd = parseDate(project.target_end_date)
+  const startTime = projectStart?.getTime() ?? null
+  const endTime = projectEnd?.getTime() ?? null
 
   const config = useMemo(
     () => calculateConfig(projectStart, projectEnd, zoom),
-    [projectStart?.getTime(), projectEnd?.getTime(), zoom]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [startTime, endTime, zoom]
   )
 
   const toggleCollapse = (phaseId: number) => {

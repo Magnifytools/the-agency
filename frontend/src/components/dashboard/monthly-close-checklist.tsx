@@ -13,7 +13,7 @@ const CLOSE_ITEMS = [
 ]
 
 interface MonthlyCloseChecklistProps {
-  monthlyClose: Record<string, any>
+  monthlyClose: Record<string, boolean | string | null>
   onUpdate: (payload: Record<string, boolean | string>) => void
   onExport: () => void
   isPending: boolean
@@ -50,7 +50,7 @@ export function MonthlyCloseChecklist({
             <input
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               type="text"
-              defaultValue={monthlyClose.responsible_name || ""}
+              defaultValue={String(monthlyClose.responsible_name || "")}
               onBlur={(e) => onUpdate({ responsible_name: e.target.value })}
             />
           </div>
@@ -59,7 +59,7 @@ export function MonthlyCloseChecklist({
             <textarea
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               rows={3}
-              defaultValue={monthlyClose.notes || ""}
+              defaultValue={String(monthlyClose.notes || "")}
               onBlur={(e) => onUpdate({ notes: e.target.value })}
             />
           </div>

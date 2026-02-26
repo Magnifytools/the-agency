@@ -37,6 +37,9 @@ export interface UserCreate {
   hourly_rate?: number | null
 }
 
+export type BillingCycle = "monthly" | "bimonthly" | "quarterly" | "annual" | "one_time"
+export type BillingEventType = "invoice_sent" | "payment_received" | "reminder_sent" | "note"
+
 export interface Client {
   id: number
   name: string
@@ -51,6 +54,12 @@ export interface Client {
   cif: string | null
   currency: string
   monthly_fee: number | null
+  ga4_property_id: string | null
+  gsc_url: string | null
+  billing_cycle: BillingCycle | null
+  billing_day: number | null
+  next_invoice_date: string | null
+  last_invoiced_date: string | null
   created_at: string
   updated_at: string
 }
@@ -68,6 +77,12 @@ export interface ClientCreate {
   cif?: string | null
   currency?: string
   monthly_fee?: number | null
+  ga4_property_id?: string | null
+  gsc_url?: string | null
+  billing_cycle?: BillingCycle | null
+  billing_day?: number | null
+  next_invoice_date?: string | null
+  last_invoiced_date?: string | null
 }
 
 export interface ClientContact {
@@ -77,6 +92,10 @@ export interface ClientContact {
   email: string | null
   phone: string | null
   position: string | null
+  department: string | null
+  preferred_channel: string | null
+  language: string | null
+  linkedin_url: string | null
   is_primary: boolean
   notes: string | null
   created_at: string
@@ -88,8 +107,84 @@ export interface ClientContactCreate {
   email?: string | null
   phone?: string | null
   position?: string | null
+  department?: string | null
+  preferred_channel?: string | null
+  language?: string | null
+  linkedin_url?: string | null
   is_primary?: boolean
   notes?: string | null
+}
+
+// Client Resources
+export type ResourceType = "spreadsheet" | "document" | "email" | "account" | "dashboard" | "other"
+
+export interface ClientResource {
+  id: number
+  client_id: number
+  label: string
+  url: string
+  resource_type: ResourceType
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ClientResourceCreate {
+  label: string
+  url: string
+  resource_type?: ResourceType
+  notes?: string | null
+}
+
+// Billing Events
+export interface BillingEvent {
+  id: number
+  client_id: number
+  event_type: BillingEventType
+  amount: number | null
+  invoice_number: string | null
+  notes: string | null
+  event_date: string
+  created_at: string
+  updated_at: string
+}
+
+export interface BillingEventCreate {
+  event_type: BillingEventType
+  amount?: number | null
+  invoice_number?: string | null
+  notes?: string | null
+  event_date: string
+}
+
+export interface BillingStatus {
+  billing_cycle: string | null
+  billing_day: number | null
+  next_invoice_date: string | null
+  last_invoiced_date: string | null
+  days_until_invoice: number | null
+  is_overdue: boolean
+  monthly_fee: number | null
+  last_payment_date: string | null
+  last_payment_amount: number | null
+}
+
+// Client Dashboard
+export interface ClientDashboard {
+  hours_this_month: number
+  hours_last_month: number
+  hours_trend_pct: number
+  total_cost_this_month: number
+  monthly_fee: number
+  monthly_budget: number
+  margin: number
+  margin_pct: number
+  profitability_status: "profitable" | "at_risk" | "unprofitable"
+  tasks_by_status: Record<string, number>
+  tasks_overdue: number
+  tasks_due_this_week: number
+  monthly_hours_breakdown: Record<string, number>
+  team_breakdown: { user_id: number; full_name: string; hours: number; cost: number }[]
 }
 
 export interface ClientHealthScore {
@@ -190,6 +285,7 @@ export interface TaskCreate {
   project_id?: number | null
   phase_id?: number | null
   depends_on?: number | null
+  is_inbox?: boolean
 }
 
 export interface TokenResponse {

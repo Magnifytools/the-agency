@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Plus, Pencil, Trash2, Star, Mail, Phone, User } from "lucide-react"
+import { Plus, Pencil, Trash2, Star, Mail, Phone, User, Linkedin, Building2 } from "lucide-react"
 import { toast } from "sonner"
 import { contactsApi } from "@/lib/api"
 import type { ClientContact, ClientContactCreate } from "@/lib/types"
@@ -107,6 +107,25 @@ export function ContactList({ clientId }: Props) {
                     </Button>
                   </div>
                 </div>
+                {(c.department || c.preferred_channel) && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {c.department && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        <Building2 className="h-3 w-3 mr-0.5" />{c.department}
+                      </Badge>
+                    )}
+                    {c.preferred_channel && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        {c.preferred_channel}
+                      </Badge>
+                    )}
+                    {c.language && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        {c.language}
+                      </Badge>
+                    )}
+                  </div>
+                )}
                 <div className="mt-2 space-y-1">
                   {c.email && (
                     <a href={`mailto:${c.email}`} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
@@ -116,6 +135,11 @@ export function ContactList({ clientId }: Props) {
                   {c.phone && (
                     <a href={`tel:${c.phone}`} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
                       <Phone className="h-3 w-3" />{c.phone}
+                    </a>
+                  )}
+                  {c.linkedin_url && (
+                    <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+                      <Linkedin className="h-3 w-3" />LinkedIn
                     </a>
                   )}
                 </div>
@@ -174,6 +198,10 @@ function ContactForm({
   const [email, setEmail] = useState(initial?.email ?? "")
   const [phone, setPhone] = useState(initial?.phone ?? "")
   const [position, setPosition] = useState(initial?.position ?? "")
+  const [department, setDepartment] = useState(initial?.department ?? "")
+  const [preferredChannel, setPreferredChannel] = useState(initial?.preferred_channel ?? "")
+  const [language, setLanguage] = useState(initial?.language ?? "")
+  const [linkedinUrl, setLinkedinUrl] = useState(initial?.linkedin_url ?? "")
   const [isPrimary, setIsPrimary] = useState(initial?.is_primary ?? false)
   const [notes, setNotes] = useState(initial?.notes ?? "")
 
@@ -185,6 +213,10 @@ function ContactForm({
       email: email.trim() || null,
       phone: phone.trim() || null,
       position: position.trim() || null,
+      department: department.trim() || null,
+      preferred_channel: preferredChannel.trim() || null,
+      language: language.trim() || null,
+      linkedin_url: linkedinUrl.trim() || null,
       is_primary: isPrimary,
       notes: notes.trim() || null,
     })
@@ -208,6 +240,22 @@ function ContactForm({
         <div>
           <Label>Telefono</Label>
           <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+34 600 000 000" />
+        </div>
+        <div>
+          <Label>Departamento</Label>
+          <Input value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="Marketing" />
+        </div>
+        <div>
+          <Label>Canal preferido</Label>
+          <Input value={preferredChannel} onChange={(e) => setPreferredChannel(e.target.value)} placeholder="Email, WhatsApp, Slack..." />
+        </div>
+        <div>
+          <Label>Idioma</Label>
+          <Input value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="Espanol, Ingles..." />
+        </div>
+        <div>
+          <Label>LinkedIn</Label>
+          <Input value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} placeholder="https://linkedin.com/in/..." />
         </div>
       </div>
       <div>

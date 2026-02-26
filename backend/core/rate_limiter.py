@@ -40,3 +40,27 @@ class RateLimiter:
 
 # Singleton shared across all endpoints
 ai_limiter = RateLimiter()
+
+
+class LoginRateLimiter:
+    """Sliding-window rate limiter keyed by string (email/IP) for login attempts."""
+
+    def __init__(self) -> None:
+        self._requests: dict[str, list[float]] = defaultdict(list)
+
+    def check(self, key: str, max_requests: int, window_seconds: int) -> None:
+        """Raise 429 if *key* exceeded *max_requests* in the last *window_seconds*."""
+        now = time.monotonic()
+        cutoff = now - window_seconds
+        self._requests[key] = [t for t in self._requests[key] if t > cutoff]
+
+        if len(self._requests[key]) >= max_requests:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Demasiados intentos de login. Intenta de nuevo en unos minutos.",
+            )
+
+        self._requests[key].append(now)
+
+
+login_limiter = LoginRateLimiter()

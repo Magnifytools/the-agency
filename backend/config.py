@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     DISCORD_WEBHOOK_URL: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     HOLDED_API_KEY: Optional[str] = None
+    DEFAULT_HOURLY_RATE: float = 40.0
 
     model_config = {"env_file": str(Path(__file__).resolve().parent.parent / ".env")}
 

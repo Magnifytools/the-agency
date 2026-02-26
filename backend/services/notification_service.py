@@ -16,6 +16,7 @@ TASK_OVERDUE = "task_overdue"
 LEAD_FOLLOWUP = "lead_followup"
 DIGEST_GENERATED = "digest_generated"
 PHASE_COMPLETED = "phase_completed"
+BILLING_REMINDER = "billing_reminder"
 
 
 async def create_notification(

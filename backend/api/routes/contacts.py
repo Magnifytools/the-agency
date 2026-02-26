@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.database import get_db
 from backend.db.models import User, Client, ClientContact
 from backend.schemas.contact import ContactCreate, ContactUpdate, ContactResponse
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, require_module
 
 router = APIRouter(prefix="/api/clients/{client_id}/contacts", tags=["contacts"])
 
@@ -24,7 +24,7 @@ async def _get_client(client_id: int, db: AsyncSession) -> Client:
 async def list_contacts(
     client_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_module("clients")),
 ):
     await _get_client(client_id, db)
     result = await db.execute(
@@ -40,7 +40,7 @@ async def create_contact(
     client_id: int,
     body: ContactCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_module("clients", write=True)),
 ):
     await _get_client(client_id, db)
 
@@ -68,7 +68,7 @@ async def update_contact(
     contact_id: int,
     body: ContactUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_module("clients", write=True)),
 ):
     result = await db.execute(
         select(ClientContact).where(
@@ -106,7 +106,7 @@ async def delete_contact(
     client_id: int,
     contact_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_module("clients", write=True)),
 ):
     result = await db.execute(
         select(ClientContact).where(

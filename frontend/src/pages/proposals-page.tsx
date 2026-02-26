@@ -337,10 +337,21 @@ export default function ProposalsPage() {
         }
     }
 
-    const openPdf = (id: number, e?: React.MouseEvent) => {
+    const openPdf = async (id: number, e?: React.MouseEvent) => {
         e?.stopPropagation()
-        const token = localStorage.getItem("token")
-        window.open(`${proposalsApi.pdfUrl(id)}?token=${token}`, "_blank")
+        try {
+            const token = localStorage.getItem("token")
+            const res = await fetch(`/api/proposals/${id}/pdf`, {
+                headers: { Authorization: `Bearer ${token}` },
+            })
+            if (!res.ok) throw new Error("Error al generar PDF")
+            const blob = await res.blob()
+            const url = URL.createObjectURL(blob)
+            window.open(url, "_blank")
+            setTimeout(() => URL.revokeObjectURL(url), 60000)
+        } catch {
+            toast.error("Error al abrir el PDF")
+        }
     }
 
     // --- Pricing helpers ---

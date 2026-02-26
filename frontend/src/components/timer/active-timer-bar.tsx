@@ -28,6 +28,7 @@ export function ActiveTimerBar() {
 
   useEffect(() => {
     if (!timer?.started_at) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial sync before interval starts
     setElapsed(formatElapsed(timer.started_at))
     const interval = setInterval(() => {
       setElapsed(formatElapsed(timer.started_at))

@@ -21,7 +21,7 @@ export default function BillingPage() {
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
 
-  const { data } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["billing-json", year, month],
     queryFn: () => billingApi.preview({ year, month }) as Promise<BillingRow[]>,
   })
@@ -60,9 +60,11 @@ export default function BillingPage() {
           <CardTitle>Vista previa</CardTitle>
         </CardHeader>
         <CardContent className="pt-4">
-          {!data ? (
+          {isLoading ? (
             <div className="text-sm text-muted-foreground">Cargando...</div>
-          ) : data.length === 0 ? (
+          ) : error ? (
+            <div className="text-red-500 text-sm">Error al cargar datos. <button className="underline ml-1" onClick={() => refetch()}>Reintentar</button></div>
+          ) : !data || data.length === 0 ? (
             <div className="text-sm text-muted-foreground">Sin datos para este periodo.</div>
           ) : (
             <Table>

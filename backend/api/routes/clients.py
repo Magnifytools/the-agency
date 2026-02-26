@@ -12,7 +12,7 @@ from backend.db.models import Client, ClientStatus, Task, TimeEntry, User
 from backend.schemas.client import ClientCreate, ClientUpdate, ClientResponse
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module
-from backend.services.client_health import compute_health
+from backend.services.client_health import compute_health, compute_health_batch
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ async def list_clients(
 async def create_client(
     body: ClientCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("clients")),
+    _: User = Depends(require_module("clients", write=True)),
 ):
     client = Client(**body.model_dump())
     db.add(client)
@@ -70,10 +70,7 @@ async def list_health_scores(
         select(Client).where(Client.status == ClientStatus.active).order_by(Client.name)
     )
     clients = result.scalars().all()
-    scores = []
-    for client in clients:
-        score = await compute_health(client, db)
-        scores.append(score)
+    scores = await compute_health_batch(clients, db)
     # Sort by score ascending (worst first)
     scores.sort(key=lambda s: s["score"])
     return scores
@@ -111,7 +108,7 @@ async def update_client(
     client_id: int,
     body: ClientUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("clients")),
+    _: User = Depends(require_module("clients", write=True)),
 ):
     result = await db.execute(select(Client).where(Client.id == client_id))
     client = result.scalar_one_or_none()
@@ -136,7 +133,7 @@ async def update_client(
 async def delete_client(
     client_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("clients")),
+    _: User = Depends(require_module("clients", write=True)),
 ):
     result = await db.execute(select(Client).where(Client.id == client_id))
     client = result.scalar_one_or_none()
@@ -188,3 +185,18 @@ async def get_client_summary(
         "total_actual_minutes": total_actual,
         "total_tracked_minutes": total_tracked_minutes,
     }
+
+
+@router.post("/{client_id}/ai-advice")
+async def get_ai_advice(
+    client_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("clients", write=True)),
+):
+    """Get AI-generated recommendations for a client."""
+    from backend.services.client_advisor import get_client_advice
+    try:
+        recommendations = await get_client_advice(db, client_id)
+        return {"recommendations": recommendations}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

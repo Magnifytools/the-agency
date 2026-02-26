@@ -86,12 +86,15 @@ async def list_dailys(
     date_to: str | None = Query(None, description="YYYY-MM-DD"),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """List daily updates with optional filters."""
     q = select(DailyUpdate).order_by(DailyUpdate.date.desc(), DailyUpdate.created_at.desc())
 
-    if user_id:
+    # Privacy: non-admin can only see their own dailys
+    if current_user.role.value != "admin":
+        q = q.where(DailyUpdate.user_id == current_user.id)
+    elif user_id:
         q = q.where(DailyUpdate.user_id == user_id)
     if date_from:
         try:
@@ -113,13 +116,18 @@ async def list_dailys(
 async def get_daily(
     daily_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Get a single daily update."""
     result = await db.execute(select(DailyUpdate).where(DailyUpdate.id == daily_id))
     daily = result.scalars().first()
     if not daily:
         raise HTTPException(status_code=404, detail="Daily update no encontrado")
+
+    # Ownership check: only owner or admin
+    if daily.user_id != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="No tienes acceso a este daily")
+
     return _to_response(daily)
 
 
