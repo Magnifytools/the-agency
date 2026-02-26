@@ -84,7 +84,7 @@ async def get_income(
 async def create_income(
     data: IncomeCreate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_income")),
+    _user: User = Depends(require_module("finance_income", write=True)),
 ):
     payload = data.model_dump()
     payload["amount"] = _round_money(payload.get("amount")) or 0.0
@@ -101,7 +101,7 @@ async def update_income(
     income_id: int,
     data: IncomeUpdate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_income")),
+    _user: User = Depends(require_module("finance_income", write=True)),
 ):
     r = await db.execute(select(Income).where(Income.id == income_id))
     item = r.scalars().first()
@@ -120,7 +120,7 @@ async def update_income(
 async def delete_income(
     income_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_income")),
+    _user: User = Depends(require_module("finance_income", write=True)),
 ):
     r = await db.execute(select(Income).where(Income.id == income_id))
     item = r.scalars().first()

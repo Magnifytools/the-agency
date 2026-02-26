@@ -295,7 +295,7 @@ export default function TasksPage() {
       {/* Table & Planner */}
       {isLoading ? (
         <p className="text-muted-foreground">Cargando...</p>
-      ) : (
+      ) : view === "all" ? (
         <Table>
           <TableHeader>
             <TableRow>
@@ -401,7 +401,7 @@ export default function TasksPage() {
             )}
           </TableBody>
         </Table>
-      )}
+      ) : null}
 
       {view === "all" && (
         <Pagination page={page} pageSize={pageSize} total={tasksData?.total ?? 0} onPageChange={setPage} />

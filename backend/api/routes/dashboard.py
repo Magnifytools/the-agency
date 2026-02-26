@@ -431,7 +431,7 @@ def _financial_settings_response(record: FinancialSettings) -> FinancialSettings
 async def update_financial_settings(
     body: FinancialSettingsUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("dashboard")),
+    _: User = Depends(require_module("dashboard", write=True)),
 ):
     record = await _get_or_create_financial_settings(db)
     updates = body.model_dump(exclude_unset=True)
@@ -466,22 +466,21 @@ async def get_capacity(
     )
     users = users_result.scalars().all()
 
+    # Single aggregate query for all users (fix N+1)
+    task_stats_result = await db.execute(
+        select(
+            Task.assigned_to,
+            func.coalesce(func.sum(Task.estimated_minutes), 0),
+            func.count(),
+        )
+        .where(Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]))
+        .group_by(Task.assigned_to)
+    )
+    stats_map = {row[0]: (row[1] or 0, row[2] or 0) for row in task_stats_result.all()}
+
     capacity = []
     for user in users:
-        # Sum estimated_minutes for pending + in_progress tasks assigned to this user
-        assigned_result = await db.execute(
-            select(
-                func.coalesce(func.sum(Task.estimated_minutes), 0),
-                func.count(),
-            )
-            .where(
-                Task.assigned_to == user.id,
-                Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
-            )
-        )
-        row = assigned_result.one()
-        assigned_minutes = row[0] or 0
-        task_count = row[1] or 0
+        assigned_minutes, task_count = stats_map.get(user.id, (0, 0))
 
         weekly_minutes = (user.weekly_hours or 40) * 60
         load_pct = round((assigned_minutes / weekly_minutes) * 100) if weekly_minutes > 0 else 0

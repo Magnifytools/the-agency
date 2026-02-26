@@ -91,7 +91,7 @@ async def tax_summary(
 async def calculate_taxes(
     year: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_taxes")),
+    _user: User = Depends(require_module("finance_taxes", write=True)),
 ):
     results = await calculate_all_taxes(db, year)
     return {"calculated": len(results), "year": year}
@@ -114,7 +114,7 @@ async def get_tax(
 async def create_tax(
     data: TaxCreate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_taxes")),
+    _user: User = Depends(require_module("finance_taxes", write=True)),
 ):
     item = Tax(**data.model_dump())
     db.add(item)
@@ -128,7 +128,7 @@ async def update_tax(
     tax_id: int,
     data: TaxUpdate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_taxes")),
+    _user: User = Depends(require_module("finance_taxes", write=True)),
 ):
     r = await db.execute(select(Tax).where(Tax.id == tax_id))
     item = r.scalars().first()
@@ -145,7 +145,7 @@ async def update_tax(
 async def delete_tax(
     tax_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_taxes")),
+    _user: User = Depends(require_module("finance_taxes", write=True)),
 ):
     r = await db.execute(select(Tax).where(Tax.id == tax_id))
     item = r.scalars().first()

@@ -440,8 +440,8 @@ GENERA LA PROPUESTA CON ESTA ESTRUCTURA EXACTA en JSON:
 Responde SOLO con el JSON, sin markdown ni texto adicional."""
 
     import anthropic
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-    message = client.messages.create(
+    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    message = await client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=4000,
         messages=[{"role": "user", "content": prompt}],
@@ -693,7 +693,7 @@ async def _render_proposal_html(proposal_id: int, db: AsyncSession) -> Response:
         "Propuesta de servicios"
     )
 
-    env = Environment(loader=BaseLoader())
+    env = Environment(loader=BaseLoader(), autoescape=True)
     template = env.from_string(PDF_HTML_TEMPLATE)
     html_content = template.render(
         title=prop.title,

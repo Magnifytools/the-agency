@@ -216,7 +216,7 @@ class User(TimestampMixin, Base):
     hourly_rate = Column(Float, nullable=True)
     weekly_hours = Column(Float, nullable=False, default=40.0)
     is_active = Column(Boolean, nullable=False, default=True)
-    invited_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    invited_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
 
     tasks = relationship("Task", back_populates="assigned_user", lazy="selectin", foreign_keys="[Task.assigned_to]")
     permissions = relationship("UserPermission", back_populates="user", lazy="selectin", cascade="all, delete-orphan")
@@ -278,7 +278,7 @@ class Project(TimestampMixin, Base):
     ga4_property_id = Column(String(50), nullable=True)
     is_recurring = Column(Boolean, nullable=False, default=False)
 
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
 
     client = relationship("Client", back_populates="projects", lazy="selectin")
     phases = relationship("ProjectPhase", back_populates="project", lazy="selectin", order_by="ProjectPhase.order_index")
@@ -298,7 +298,7 @@ class ProjectPhase(TimestampMixin, Base):
     completed_at = Column(DateTime, nullable=True)
     status = Column(Enum(PhaseStatus), nullable=False, default=PhaseStatus.pending)
 
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
 
     project = relationship("Project", back_populates="phases", lazy="selectin")
     tasks = relationship("Task", back_populates="phase", lazy="selectin")
@@ -329,9 +329,9 @@ class Proposal(TimestampMixin, Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
 
     # Vinculación
-    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True)
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
 
     # Datos de la propuesta
     title = Column(String(300), nullable=False)
@@ -369,7 +369,7 @@ class Proposal(TimestampMixin, Base):
     valid_until = Column(Date, nullable=True)
 
     # Si aceptada → proyecto creado
-    converted_project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    converted_project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
 
     # Legacy fields (kept for backward compat)
     budget = Column(Float, nullable=True)
@@ -393,9 +393,9 @@ class Event(TimestampMixin, Base):
     end_time = Column(DateTime, nullable=True)
     is_all_day = Column(Boolean, nullable=False, default=False)
 
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     client = relationship("Client", lazy="selectin")
     project = relationship("Project", lazy="selectin")
@@ -415,12 +415,12 @@ class Task(TimestampMixin, Base):
     due_date = Column(DateTime, nullable=True)
     is_inbox = Column(Boolean, nullable=False, default=False)
 
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
-    category_id = Column(Integer, ForeignKey("task_categories.id"), nullable=True)
-    assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
-    phase_id = Column(Integer, ForeignKey("project_phases.id"), nullable=True)
-    depends_on = Column(Integer, ForeignKey("tasks.id"), nullable=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
+    category_id = Column(Integer, ForeignKey("task_categories.id"), nullable=True, index=True)
+    assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
+    phase_id = Column(Integer, ForeignKey("project_phases.id"), nullable=True, index=True)
+    depends_on = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
 
     client = relationship("Client", back_populates="tasks", lazy="selectin")
     category = relationship("TaskCategory", back_populates="tasks", lazy="selectin")
@@ -440,8 +440,8 @@ class TimeEntry(TimestampMixin, Base):
     date = Column(DateTime, nullable=False, default=func.now())
     notes = Column(Text, nullable=True)
 
-    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     task = relationship("Task", back_populates="time_entries", lazy="selectin")
     user = relationship("User", lazy="selectin")
@@ -451,7 +451,7 @@ class ClientContact(TimestampMixin, Base):
     __tablename__ = "client_contacts"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
     name = Column(String(200), nullable=False)
     email = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
@@ -476,9 +476,9 @@ class CommunicationLog(TimestampMixin, Base):
     followup_date = Column(DateTime, nullable=True)
     followup_notes = Column(Text, nullable=True)
 
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    contact_id = Column(Integer, ForeignKey("client_contacts.id"), nullable=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    contact_id = Column(Integer, ForeignKey("client_contacts.id"), nullable=True, index=True)
 
     client = relationship("Client", back_populates="communications", lazy="selectin")
     user = relationship("User", lazy="selectin")
@@ -500,10 +500,10 @@ class PMInsight(TimestampMixin, Base):
     generated_at = Column(DateTime, nullable=False)
     expires_at = Column(DateTime, nullable=True)
 
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
-    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
 
     user = relationship("User", lazy="selectin")
     client = relationship("Client", lazy="selectin")
@@ -521,7 +521,7 @@ class Invoice(TimestampMixin, Base):
     paid = Column(Boolean, nullable=False, default=False)
     notes = Column(Text, nullable=True)
 
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
 
     client = relationship("Client", lazy="selectin")
 
@@ -534,8 +534,8 @@ class InvoiceItem(TimestampMixin, Base):
     quantity = Column(Float, nullable=False, default=1)
     unit_price = Column(Float, nullable=False)
 
-    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False)
-    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
 
     invoice = relationship("Invoice", lazy="selectin")
     task = relationship("Task", lazy="selectin")
@@ -550,7 +550,7 @@ class AuditLog(TimestampMixin, Base):
     entity_id = Column(Integer, nullable=False)
     details = Column(Text, nullable=True)
 
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     user = relationship("User", lazy="selectin")
 
@@ -632,9 +632,9 @@ class GeneratedReport(TimestampMixin, Base):
     period_end = Column(DateTime, nullable=True)
     content = Column(Text, nullable=False)  # JSON string with sections and summary
 
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
 
     user = relationship("User", lazy="selectin")
     client = relationship("Client", lazy="selectin")
@@ -645,7 +645,7 @@ class UserPermission(TimestampMixin, Base):
     __tablename__ = "user_permissions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     module = Column(String(50), nullable=False)
     can_read = Column(Boolean, nullable=False, default=True)
     can_write = Column(Boolean, nullable=False, default=False)
@@ -660,7 +660,7 @@ class UserInvitation(TimestampMixin, Base):
     email = Column(String(255), nullable=False)
     token = Column(String(255), unique=True, nullable=False, index=True)
     role = Column(Enum(UserRole), nullable=False, default=UserRole.member)
-    invited_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    invited_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     expires_at = Column(DateTime, nullable=False)
     accepted_at = Column(DateTime, nullable=True)
 
@@ -690,8 +690,8 @@ class GrowthIdea(TimestampMixin, Base):
     is_successful = Column(Boolean, nullable=True)
 
     # Optional Link to Project or Task for execution tracking
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
-    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
 
     project = relationship("Project", lazy="selectin")
     task = relationship("Task", lazy="selectin")
@@ -703,7 +703,7 @@ class WeeklyDigest(TimestampMixin, Base):
     __tablename__ = "weekly_digests"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
     period_start = Column(Date, nullable=False)
     period_end = Column(Date, nullable=False)
     status = Column(Enum(DigestStatus), nullable=False, default=DigestStatus.draft)
@@ -713,7 +713,7 @@ class WeeklyDigest(TimestampMixin, Base):
     generated_at = Column(DateTime, nullable=True)
     edited_at = Column(DateTime, nullable=True)
 
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     client = relationship("Client", lazy="selectin")
     creator = relationship("User", lazy="selectin")
@@ -734,7 +734,7 @@ class Lead(TimestampMixin, Base):
     # Pipeline
     status = Column(Enum(LeadStatus), nullable=False, default=LeadStatus.new)
     source = Column(Enum(LeadSource), nullable=False, default=LeadSource.other)
-    assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True)
+    assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
 
     # Valor y servicio
     estimated_value = Column(Numeric(10, 2), nullable=True)
@@ -753,7 +753,7 @@ class Lead(TimestampMixin, Base):
     last_contacted_at = Column(DateTime, nullable=True)
 
     # Conversion
-    converted_client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
+    converted_client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
     converted_at = Column(DateTime, nullable=True)
     lost_reason = Column(Text, nullable=True)
 
@@ -767,8 +767,8 @@ class LeadActivity(TimestampMixin, Base):
     __tablename__ = "lead_activities"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    lead_id = Column(Integer, ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    lead_id = Column(Integer, ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     activity_type = Column(Enum(LeadActivityType), nullable=False)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
@@ -797,7 +797,7 @@ class Income(TimestampMixin, Base):
     description = Column(String(255), nullable=False)
     amount = Column(Float, nullable=False)
     type = Column(String(50), nullable=False, default="factura")  # factura, recurrente, extra
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
     invoice_number = Column(String(100), nullable=False, default="")
     vat_rate = Column(Float, nullable=False, default=21.0)
     vat_amount = Column(Float, nullable=False, default=0.0)
@@ -814,7 +814,7 @@ class Expense(TimestampMixin, Base):
     date = Column(Date, nullable=False)
     description = Column(String(255), nullable=False)
     amount = Column(Float, nullable=False)
-    category_id = Column(Integer, ForeignKey("expense_categories.id"), nullable=True)
+    category_id = Column(Integer, ForeignKey("expense_categories.id"), nullable=True, index=True)
     is_recurring = Column(Boolean, nullable=False, default=False)
     recurrence_period = Column(String(50), nullable=False, default="")  # mensual, trimestral, anual
     vat_rate = Column(Float, nullable=False, default=21.0)
@@ -897,7 +897,7 @@ class AdvisorAiBriefPayload(TimestampMixin, Base):
     __tablename__ = "advisor_ai_brief_payloads"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    brief_id = Column(Integer, ForeignKey("advisor_ai_briefs.id"), nullable=False)
+    brief_id = Column(Integer, ForeignKey("advisor_ai_briefs.id"), nullable=False, index=True)
     payload = Column(Text, nullable=False, default="")
 
     brief = relationship("AdvisorAiBrief", back_populates="payloads", lazy="selectin")
@@ -946,7 +946,7 @@ class HoldedInvoiceCache(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     holded_id = Column(String(100), unique=True, nullable=False)
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
     contact_name = Column(String(300), nullable=True)
     invoice_number = Column(String(100), nullable=True)
     date = Column(Date, nullable=True)
@@ -1002,7 +1002,7 @@ class DailyUpdate(TimestampMixin, Base):
     __tablename__ = "daily_updates"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     date = Column(Date, nullable=False)
     raw_text = Column(Text, nullable=False)
     parsed_data = Column(JSON, nullable=True)  # {projects: [{name, client, tasks: [{description, details}]}]}

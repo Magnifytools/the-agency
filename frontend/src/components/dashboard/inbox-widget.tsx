@@ -14,13 +14,11 @@ export function InboxWidget() {
 
     const { data: inboxTasks = [], isLoading } = useQuery({
         queryKey: ["inbox-tasks"],
-        // Query functions would go here, assuming tasksApi supports fetching inbox/unassigned items
-        queryFn: () => tasksApi.listAll({ status: "pending" } as any),
+        queryFn: () => tasksApi.listAll({ status: "pending", assigned_to: "unassigned" } as any),
     })
 
-    // We map a quick capture mutation here, assuming the backend can handle creating a minimal task.
     const createMutation = useMutation({
-        mutationFn: (title: string) => tasksApi.create({ title, is_inbox: true, status: "pending" } as any),
+        mutationFn: (title: string) => tasksApi.create({ title, status: "pending", client_id: 0, is_inbox: true } as any),
         onSuccess: () => {
             setNewTask("")
             queryClient.invalidateQueries({ queryKey: ["inbox-tasks"] })

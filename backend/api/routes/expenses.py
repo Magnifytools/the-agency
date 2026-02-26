@@ -82,7 +82,7 @@ async def get_expense(
 async def create_expense(
     data: ExpenseCreate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_expenses")),
+    _user: User = Depends(require_module("finance_expenses", write=True)),
 ):
     payload = data.model_dump()
     payload["amount"] = _round_money(payload.get("amount")) or 0.0
@@ -99,7 +99,7 @@ async def update_expense(
     expense_id: int,
     data: ExpenseUpdate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_expenses")),
+    _user: User = Depends(require_module("finance_expenses", write=True)),
 ):
     r = await db.execute(select(Expense).where(Expense.id == expense_id))
     item = r.scalars().first()
@@ -118,7 +118,7 @@ async def update_expense(
 async def delete_expense(
     expense_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_expenses")),
+    _user: User = Depends(require_module("finance_expenses", write=True)),
 ):
     r = await db.execute(select(Expense).where(Expense.id == expense_id))
     item = r.scalars().first()

@@ -33,7 +33,7 @@ async def list_forecasts(
 async def generate(
     months: int = Query(default=6),
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_forecasts")),
+    _user: User = Depends(require_module("finance_forecasts", write=True)),
 ):
     results = await generate_forecasts(db, months)
     return {"generated": len(results)}
@@ -73,7 +73,7 @@ async def get_forecast(
 async def create_forecast(
     data: ForecastCreate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_forecasts")),
+    _user: User = Depends(require_module("finance_forecasts", write=True)),
 ):
     item = Forecast(**data.model_dump())
     db.add(item)
@@ -87,7 +87,7 @@ async def update_forecast(
     forecast_id: int,
     data: ForecastUpdate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_forecasts")),
+    _user: User = Depends(require_module("finance_forecasts", write=True)),
 ):
     r = await db.execute(select(Forecast).where(Forecast.id == forecast_id))
     item = r.scalars().first()
@@ -104,7 +104,7 @@ async def update_forecast(
 async def delete_forecast(
     forecast_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("finance_forecasts")),
+    _user: User = Depends(require_module("finance_forecasts", write=True)),
 ):
     r = await db.execute(select(Forecast).where(Forecast.id == forecast_id))
     item = r.scalars().first()
