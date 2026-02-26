@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { format } from "date-fns"
+import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
 import { ClipboardList, Sparkles, MessageCircle, Loader2, ChevronDown, ChevronUp, RefreshCw, Trash2 } from "lucide-react"
 import { dailysApi } from "@/lib/api"
@@ -8,6 +8,7 @@ import type { DailyUpdate, ParsedProject, ParsedTask } from "@/lib/types"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
@@ -17,6 +18,9 @@ export default function DailysPage() {
   const { user } = useAuth()
   const [rawText, setRawText] = useState("")
   const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [reparsingId, setReparsingId] = useState<number | null>(null)
+  const [sendingId, setSendingId] = useState<number | null>(null)
+  const [deleteId, setDeleteId] = useState<number | null>(null)
 
   const { data: dailys = [], isLoading } = useQuery({
     queryKey: ["dailys"],
@@ -34,31 +38,34 @@ export default function DailysPage() {
   })
 
   const reparseMutation = useMutation({
-    mutationFn: (id: number) => dailysApi.reparse(id),
+    mutationFn: (id: number) => { setReparsingId(id); return dailysApi.reparse(id) },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dailys"] })
+      setReparsingId(null)
       toast.success("Daily re-parseado")
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al re-parsear")),
+    onError: (err) => { setReparsingId(null); toast.error(getErrorMessage(err, "Error al re-parsear")) },
   })
 
   const discordMutation = useMutation({
-    mutationFn: (id: number) => dailysApi.sendDiscord(id),
+    mutationFn: (id: number) => { setSendingId(id); return dailysApi.sendDiscord(id) },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["dailys"] })
+      setSendingId(null)
       if (data.success) {
         toast.success("Enviado a Discord")
       } else {
         toast.error(data.message)
       }
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al enviar a Discord")),
+    onError: (err) => { setSendingId(null); toast.error(getErrorMessage(err, "Error al enviar a Discord")) },
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => dailysApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dailys"] })
+      setDeleteId(null)
       toast.success("Daily eliminado")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar")),
@@ -141,14 +148,23 @@ export default function DailysPage() {
               onToggle={() => setExpandedId(expandedId === daily.id ? null : daily.id)}
               onReparse={() => reparseMutation.mutate(daily.id)}
               onSendDiscord={() => discordMutation.mutate(daily.id)}
-              onDelete={() => deleteMutation.mutate(daily.id)}
-              isReparsing={reparseMutation.isPending}
-              isSending={discordMutation.isPending}
+              onDelete={() => setDeleteId(daily.id)}
+              isReparsing={reparsingId === daily.id}
+              isSending={sendingId === daily.id}
               currentUserId={user?.id}
             />
           ))
         )}
       </div>
+
+      <ConfirmDialog
+        open={deleteId !== null}
+        onOpenChange={(open) => !open && setDeleteId(null)}
+        title="Eliminar daily"
+        description="¿Seguro que quieres eliminar este daily update? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
+      />
     </div>
   )
 }
@@ -192,7 +208,7 @@ function DailyCard({
                 {daily.user_name || "Usuario"}
               </span>
               <span className="text-xs text-muted-foreground">
-                {format(new Date(daily.date), "EEEE d MMM yyyy", { locale: es })}
+                {format(parseISO(daily.date + "T00:00:00"), "EEEE d MMM yyyy", { locale: es })}
               </span>
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
                 daily.status === "sent"

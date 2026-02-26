@@ -91,9 +91,15 @@ async def list_dailys(
     if user_id:
         q = q.where(DailyUpdate.user_id == user_id)
     if date_from:
-        q = q.where(DailyUpdate.date >= date_from)
+        try:
+            q = q.where(DailyUpdate.date >= date_type.fromisoformat(date_from))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date_from debe tener formato YYYY-MM-DD")
     if date_to:
-        q = q.where(DailyUpdate.date <= date_to)
+        try:
+            q = q.where(DailyUpdate.date <= date_type.fromisoformat(date_to))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date_to debe tener formato YYYY-MM-DD")
 
     q = q.limit(limit)
     result = await db.execute(q)
@@ -126,6 +132,10 @@ async def reparse_daily(
     if not daily:
         raise HTTPException(status_code=404, detail="Daily update no encontrado")
 
+    # Ownership check: only owner or admin
+    if daily.user_id != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="Solo puedes re-parsear tus propios dailys")
+
     try:
         parsed = await parse_daily_update(daily.raw_text)
     except Exception as e:
@@ -151,6 +161,10 @@ async def send_daily_to_discord(
     daily = result.scalars().first()
     if not daily:
         raise HTTPException(status_code=404, detail="Daily update no encontrado")
+
+    # Ownership check: only owner or admin
+    if daily.user_id != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="Solo puedes enviar tus propios dailys a Discord")
 
     if not daily.parsed_data:
         raise HTTPException(status_code=400, detail="El daily no tiene datos parseados")

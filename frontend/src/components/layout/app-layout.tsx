@@ -28,13 +28,13 @@ export function AppLayout() {
       { to: "/tasks", label: "Tareas", icon: CheckSquare, module: "tasks" },
       { to: "/growth", label: "Growth", icon: Rocket, module: "growth" },
       { to: "/timesheet", label: "Timesheet", icon: Clock, module: "timesheet" },
-      { to: "/dailys", label: "Dailys", icon: ClipboardList, module: "dailys" },
+      { to: "/dailys", label: "Dailys", icon: ClipboardList },
       { to: "/digests", label: "Digests", icon: Newspaper, module: "digests" },
       { to: "/reports", label: "Informes", icon: FileText, module: "reports" },
       { to: "/proposals", label: "Presupuestos", icon: ScrollText, module: "proposals" },
       { to: "/billing", label: "Facturacion", icon: CreditCard, module: "billing" },
     ]
-    return items.filter((item) => hasPermission(item.module))
+    return items.filter((item) => !item.module || hasPermission(item.module))
   }, [hasPermission])
 
   const financeNav = useMemo(() => {
