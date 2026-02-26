@@ -7,8 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import CommunicationLog, Client, User, UserRole, CommunicationChannel, CommunicationDirection
-from backend.schemas.communication import CommunicationCreate, CommunicationUpdate, CommunicationResponse
+from backend.schemas.communication import (
+    CommunicationCreate, CommunicationUpdate, CommunicationResponse,
+    EmailDraftRequest, EmailDraftResponse,
+)
 from backend.api.deps import get_current_user, require_module
+from backend.services.email_drafter import draft_email
 
 router = APIRouter(prefix="/api", tags=["communications"])
 
@@ -80,7 +84,70 @@ async def create_communication(
     return _to_response(comm)
 
 
-# Static path BEFORE dynamic {comm_id} to avoid 422
+# Static paths BEFORE dynamic {comm_id} to avoid 422
+
+@router.post("/communications/draft-email", response_model=EmailDraftResponse)
+async def draft_email_endpoint(
+    body: EmailDraftRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("communications", write=True)),
+):
+    """Use AI to draft an email for a client communication."""
+    # Get client info
+    result = await db.execute(select(Client).where(Client.id == body.client_id))
+    client_obj = result.scalar_one_or_none()
+    if not client_obj:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    # Get reply-to communication if provided
+    reply_to = None
+    if body.reply_to_id:
+        result = await db.execute(
+            select(CommunicationLog).where(CommunicationLog.id == body.reply_to_id)
+        )
+        reply_comm = result.scalar_one_or_none()
+        if reply_comm:
+            reply_to = {
+                "subject": reply_comm.subject,
+                "summary": reply_comm.summary,
+                "contact_name": reply_comm.contact_name,
+                "channel": reply_comm.channel.value,
+            }
+
+    # Get recent communications for context
+    recent_result = await db.execute(
+        select(CommunicationLog)
+        .where(CommunicationLog.client_id == body.client_id)
+        .order_by(CommunicationLog.occurred_at.desc())
+        .limit(5)
+    )
+    recent_comms = [
+        {
+            "subject": c.subject,
+            "summary": c.summary,
+            "direction": c.direction.value,
+            "contact_name": c.contact_name,
+        }
+        for c in recent_result.scalars().all()
+    ]
+
+    try:
+        draft = await draft_email(
+            client_name=client_obj.name,
+            contact_name=body.contact_name,
+            purpose=body.purpose,
+            reply_to=reply_to,
+            recent_communications=recent_comms,
+            project_context=body.project_context,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error al generar borrador: {str(e)}")
+
+    return EmailDraftResponse(**draft)
+
+
 @router.get("/communications/pending-followups", response_model=list[CommunicationResponse])
 async def list_pending_followups(
     db: AsyncSession = Depends(get_db),

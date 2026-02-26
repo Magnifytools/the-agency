@@ -47,3 +47,20 @@ class CommunicationResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# --- AI Email Draft schemas ---
+
+class EmailDraftRequest(BaseModel):
+    client_id: int
+    purpose: str  # What the email should accomplish
+    contact_name: Optional[str] = None
+    reply_to_id: Optional[int] = None  # communication_id to reply to
+    project_context: Optional[str] = None
+
+
+class EmailDraftResponse(BaseModel):
+    subject: str
+    body: str
+    tone: str
+    suggested_followup: Optional[str] = None

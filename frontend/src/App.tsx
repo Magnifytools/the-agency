@@ -32,6 +32,7 @@ import AdvisorPage from "@/pages/advisor-page"
 import ImportPage from "@/pages/import-page"
 import HoldedFinancePage from "@/pages/holded-finance-page"
 import DiscordSettingsPage from "@/pages/discord-settings-page"
+import DailysPage from "@/pages/dailys-page"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -71,6 +72,7 @@ export default function App() {
               <Route path="/proposals" element={<ProposalsPage />} />
               <Route path="/digests" element={<DigestsPage />} />
               <Route path="/digests/:id/edit" element={<DigestEditPage />} />
+              <Route path="/dailys" element={<DailysPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               {/* Finance */}
               <Route path="/finance" element={<FinanceDashboardPage />} />

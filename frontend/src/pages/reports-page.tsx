@@ -1,9 +1,9 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { FileText, Plus, Trash2, Copy, Building2, FolderKanban, Calendar } from "lucide-react"
+import { FileText, Plus, Trash2, Copy, Building2, FolderKanban, Calendar, Sparkles, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { reportsApi, clientsApi, projectsApi } from "@/lib/api"
-import type { Report, ReportType, ReportPeriod } from "@/lib/types"
+import type { Report, ReportType, ReportPeriod, ReportNarrative } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -22,10 +22,22 @@ export default function ReportsPage() {
   const queryClient = useQueryClient()
   const [generateOpen, setGenerateOpen] = useState(false)
   const [viewReport, setViewReport] = useState<Report | null>(null)
+  const [narrative, setNarrative] = useState<ReportNarrative | null>(null)
+  const [showNarrative, setShowNarrative] = useState(false)
 
   const { data: reports = [], isLoading } = useQuery({
     queryKey: ["reports"],
     queryFn: () => reportsApi.list(20),
+  })
+
+  const narrativeMutation = useMutation({
+    mutationFn: (id: number) => reportsApi.aiNarrative(id),
+    onSuccess: (data) => {
+      setNarrative(data)
+      setShowNarrative(true)
+      toast.success("Narrativa IA generada")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al generar narrativa")),
   })
 
   const deleteMutation = useMutation({
@@ -49,12 +61,6 @@ export default function ReportsPage() {
 
   const getTypeInfo = (type: string) => {
     return REPORT_TYPES.find((t) => t.value === type) || REPORT_TYPES[0]
-  }
-
-  const copyToClipboard = (report: Report) => {
-    const text = report.sections.map((s) => `## ${s.title}\n${s.content}`).join("\n\n")
-    navigator.clipboard.writeText(text)
-    toast.success("Copiado al portapapeles")
   }
 
   return (
@@ -137,26 +143,74 @@ export default function ReportsPage() {
 
       {/* View Report Dialog */}
       {viewReport && (
-        <Dialog open={!!viewReport} onOpenChange={() => setViewReport(null)}>
+        <Dialog open={!!viewReport} onOpenChange={() => { setViewReport(null); setShowNarrative(false); setNarrative(null) }}>
           <DialogHeader>
             <DialogTitle>{viewReport.title}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 mt-4 max-h-[60vh] overflow-y-auto">
-            {viewReport.sections.map((section, i) => (
-              <div key={i}>
-                <h4 className="font-medium mb-2">{section.title}</h4>
-                <div className="text-sm text-muted-foreground whitespace-pre-line">
-                  {section.content}
+
+          {/* Toggle: Structured vs Narrative */}
+          <div className="flex gap-2 mt-4 mb-2">
+            <Button
+              variant={!showNarrative ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowNarrative(false)}
+            >
+              Estructurado
+            </Button>
+            <Button
+              variant={showNarrative ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                if (!narrative && !narrativeMutation.isPending) {
+                  narrativeMutation.mutate(viewReport.id)
+                } else {
+                  setShowNarrative(true)
+                }
+              }}
+              disabled={narrativeMutation.isPending}
+            >
+              {narrativeMutation.isPending ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generando...</>
+              ) : (
+                <><Sparkles className="h-4 w-4 mr-2" />Narrativa IA</>
+              )}
+            </Button>
+          </div>
+
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+            {showNarrative && narrative ? (
+              <div>
+                <div className="bg-brand/5 rounded-lg p-4 mb-4">
+                  <h4 className="text-sm font-semibold mb-1">Resumen ejecutivo</h4>
+                  <p className="text-sm text-muted-foreground">{narrative.executive_summary}</p>
+                </div>
+                <div className="text-sm whitespace-pre-line prose prose-sm max-w-none">
+                  {narrative.narrative}
                 </div>
               </div>
-            ))}
+            ) : (
+              viewReport.sections.map((section, i) => (
+                <div key={i}>
+                  <h4 className="font-medium mb-2">{section.title}</h4>
+                  <div className="text-sm text-muted-foreground whitespace-pre-line">
+                    {section.content}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
           <div className="flex justify-end gap-2 mt-6">
-            <Button variant="outline" onClick={() => copyToClipboard(viewReport)}>
+            <Button variant="outline" onClick={() => {
+              const text = showNarrative && narrative
+                ? narrative.narrative
+                : viewReport.sections.map((s) => `## ${s.title}\n${s.content}`).join("\n\n")
+              navigator.clipboard.writeText(text)
+              toast.success("Copiado al portapapeles")
+            }}>
               <Copy className="h-4 w-4 mr-2" />
               Copiar
             </Button>
-            <Button onClick={() => setViewReport(null)}>Cerrar</Button>
+            <Button onClick={() => { setViewReport(null); setShowNarrative(false); setNarrative(null) }}>Cerrar</Button>
           </div>
         </Dialog>
       )}

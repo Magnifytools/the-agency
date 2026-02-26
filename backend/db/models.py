@@ -140,6 +140,11 @@ class ProposalStatus(str, enum.Enum):
     expired = "expired"
 
 
+class DailyUpdateStatus(str, enum.Enum):
+    draft = "draft"
+    sent = "sent"
+
+
 class DigestStatus(str, enum.Enum):
     draft = "draft"
     reviewed = "reviewed"
@@ -969,3 +974,20 @@ class DiscordSettings(Base):
     last_sent_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+# ── Daily Updates ─────────────────────────────────────
+
+
+class DailyUpdate(TimestampMixin, Base):
+    __tablename__ = "daily_updates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    date = Column(Date, nullable=False)
+    raw_text = Column(Text, nullable=False)
+    parsed_data = Column(JSON, nullable=True)  # {projects: [{name, client, tasks: [{description, details}]}]}
+    status = Column(Enum(DailyUpdateStatus), nullable=False, default=DailyUpdateStatus.draft)
+    discord_sent_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", lazy="selectin")

@@ -35,6 +35,7 @@ import type {
   AlertSettingsUpdate,
   Report,
   ReportRequest,
+  ReportNarrative,
   Proposal,
   ProposalCreate,
   ProposalUpdate,
@@ -84,6 +85,11 @@ import type {
   HoldedDashboard,
   HoldedConfig,
   HoldedTestConnection,
+  DailyUpdate,
+  DailySubmitRequest,
+  DailyDiscordResponse,
+  EmailDraftRequest,
+  EmailDraftResponse,
 } from "./types"
 
 const api = axios.create({
@@ -275,6 +281,8 @@ export const communicationsApi = {
   delete: (id: number) => api.delete(`/communications/${id}`).then((r) => r.data),
   pendingFollowups: () =>
     api.get<Communication[]>("/communications/pending-followups").then((r) => r.data),
+  draftEmail: (data: EmailDraftRequest) =>
+    api.post<EmailDraftResponse>("/communications/draft-email", data).then((r) => r.data),
 }
 
 // PM Assistant
@@ -309,6 +317,8 @@ export const reportsApi = {
     api.post<Report>("/reports/generate", data).then((r) => r.data),
   delete: (id: number) =>
     api.delete(`/reports/${id}`).then((r) => r.data),
+  aiNarrative: (id: number) =>
+    api.post<ReportNarrative>(`/reports/${id}/ai-narrative`).then((r) => r.data),
 }
 
 // Service Templates
@@ -514,6 +524,20 @@ export const holdedApi = {
   // Client invoices
   clientInvoices: (clientId: number) =>
     api.get<HoldedInvoice[]>(`/holded/clients/${clientId}/invoices`).then((r) => r.data),
+}
+
+// --- Daily Updates ---
+export const dailysApi = {
+  list: (params?: { user_id?: number; date_from?: string; date_to?: string; limit?: number }) =>
+    api.get<DailyUpdate[]>("/dailys", { params }).then((r) => r.data),
+  get: (id: number) => api.get<DailyUpdate>(`/dailys/${id}`).then((r) => r.data),
+  submit: (data: DailySubmitRequest) =>
+    api.post<DailyUpdate>("/dailys", data).then((r) => r.data),
+  reparse: (id: number) =>
+    api.post<DailyUpdate>(`/dailys/${id}/reparse`).then((r) => r.data),
+  sendDiscord: (id: number) =>
+    api.post<DailyDiscordResponse>(`/dailys/${id}/send-discord`).then((r) => r.data),
+  delete: (id: number) => api.delete(`/dailys/${id}`).then((r) => r.data),
 }
 
 export const financeExportApi = {

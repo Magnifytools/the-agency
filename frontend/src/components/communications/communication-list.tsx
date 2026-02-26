@@ -12,10 +12,13 @@ import {
   ArrowUpRight,
   Bell,
   Trash2,
+  Sparkles,
+  Loader2,
+  Copy,
 } from "lucide-react"
 import { toast } from "sonner"
 import { communicationsApi } from "@/lib/api"
-import type { Communication, CommunicationChannel, CommunicationDirection } from "@/lib/types"
+import type { Communication, CommunicationChannel, CommunicationDirection, EmailDraftResponse } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -51,6 +54,8 @@ interface CommunicationListProps {
 export function CommunicationList({ clientId }: CommunicationListProps) {
   const queryClient = useQueryClient()
   const [showAddDialog, setShowAddDialog] = useState(false)
+  const [showDraftDialog, setShowDraftDialog] = useState(false)
+  const [replyToComm, setReplyToComm] = useState<Communication | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
 
   const { data: communications = [], isLoading } = useQuery({
@@ -94,10 +99,16 @@ export function CommunicationList({ clientId }: CommunicationListProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Comunicaciones</h3>
-        <Button size="sm" onClick={() => setShowAddDialog(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Registrar
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => { setReplyToComm(null); setShowDraftDialog(true) }}>
+            <Sparkles className="h-4 w-4 mr-2" />
+            Redactar con IA
+          </Button>
+          <Button size="sm" onClick={() => setShowAddDialog(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Registrar
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -119,6 +130,7 @@ export function CommunicationList({ clientId }: CommunicationListProps) {
               key={comm.id}
               communication={comm}
               onDelete={() => setDeleteId(comm.id)}
+              onReply={() => { setReplyToComm(comm); setShowDraftDialog(true) }}
               formatRelativeDate={formatRelativeDate}
             />
           ))}
@@ -129,6 +141,13 @@ export function CommunicationList({ clientId }: CommunicationListProps) {
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
         clientId={clientId}
+      />
+
+      <DraftEmailDialog
+        open={showDraftDialog}
+        onOpenChange={setShowDraftDialog}
+        clientId={clientId}
+        replyTo={replyToComm}
       />
 
       <ConfirmDialog
@@ -146,10 +165,12 @@ export function CommunicationList({ clientId }: CommunicationListProps) {
 function CommunicationCard({
   communication,
   onDelete,
+  onReply,
   formatRelativeDate,
 }: {
   communication: Communication
   onDelete: () => void
+  onReply: () => void
   formatRelativeDate: (date: string) => string
 }) {
   const Icon = CHANNEL_ICONS[communication.channel]
@@ -192,12 +213,21 @@ function CommunicationCard({
             )}
           </div>
         </div>
-        <button
-          onClick={onDelete}
-          className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={onReply}
+            className="p-1.5 rounded-md text-muted-foreground hover:text-brand hover:bg-brand/10"
+            title="Responder con IA"
+          >
+            <Sparkles className="h-4 w-4" />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -378,6 +408,169 @@ function AddCommunicationDialog({
           </Button>
         </div>
       </form>
+    </Dialog>
+  )
+}
+
+function DraftEmailDialog({
+  open,
+  onOpenChange,
+  clientId,
+  replyTo,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  clientId: number
+  replyTo: Communication | null
+}) {
+  const [purpose, setPurpose] = useState("")
+  const [contactName, setContactName] = useState("")
+  const [projectContext, setProjectContext] = useState("")
+  const [draft, setDraft] = useState<EmailDraftResponse | null>(null)
+
+  const draftMutation = useMutation({
+    mutationFn: () =>
+      communicationsApi.draftEmail({
+        client_id: clientId,
+        purpose,
+        contact_name: contactName || replyTo?.contact_name || undefined,
+        reply_to_id: replyTo?.id || undefined,
+        project_context: projectContext || undefined,
+      }),
+    onSuccess: (data) => {
+      setDraft(data)
+      toast.success("Borrador generado con IA")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al generar borrador")),
+  })
+
+  const handleClose = () => {
+    onOpenChange(false)
+    setPurpose("")
+    setContactName("")
+    setProjectContext("")
+    setDraft(null)
+  }
+
+  const copyDraft = () => {
+    if (!draft) return
+    const text = `Asunto: ${draft.subject}\n\n${draft.body}`
+    navigator.clipboard.writeText(text)
+    toast.success("Copiado al portapapeles")
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogHeader>
+        <DialogTitle>
+          {replyTo ? "Responder con IA" : "Redactar email con IA"}
+        </DialogTitle>
+      </DialogHeader>
+
+      {!draft ? (
+        <div className="space-y-4 mt-4">
+          {replyTo && (
+            <div className="p-3 rounded-lg bg-surface text-sm">
+              <p className="text-xs text-muted-foreground mb-1">Respondiendo a:</p>
+              <p className="font-medium">{replyTo.subject || "Sin asunto"}</p>
+              <p className="text-muted-foreground line-clamp-2 mt-1">{replyTo.summary}</p>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label>
+              {replyTo ? "Instrucciones para la respuesta *" : "Propósito del email *"}
+            </Label>
+            <textarea
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              placeholder={
+                replyTo
+                  ? "Ej: Confirmar que recibimos su feedback y proponer reunión..."
+                  : "Ej: Seguimiento del proyecto, enviar actualización semanal..."
+              }
+              className="flex min-h-[80px] w-full rounded-[10px] border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Contacto (nombre)</Label>
+            <Input
+              value={contactName}
+              onChange={(e) => setContactName(e.target.value)}
+              placeholder={replyTo?.contact_name || "Nombre del destinatario"}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Contexto adicional del proyecto</Label>
+            <textarea
+              value={projectContext}
+              onChange={(e) => setProjectContext(e.target.value)}
+              placeholder="Ej: El proyecto va bien, completamos la fase 2. Quedan 3 semanas para entrega..."
+              className="flex min-h-[60px] w-full rounded-[10px] border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4">
+            <Button type="button" variant="outline" onClick={handleClose}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => draftMutation.mutate()}
+              disabled={!purpose.trim() || draftMutation.isPending}
+            >
+              {draftMutation.isPending ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generando...</>
+              ) : (
+                <><Sparkles className="h-4 w-4 mr-2" />Generar borrador</>
+              )}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4 mt-4">
+          <div className="p-4 rounded-lg border border-brand/20 bg-brand/5">
+            <div className="flex items-center gap-2 mb-3">
+              <Mail className="h-4 w-4 text-brand" />
+              <span className="text-sm font-medium">Borrador generado</span>
+              <Badge variant="outline" className="ml-auto text-xs">{draft.tone}</Badge>
+            </div>
+            <div className="space-y-2">
+              <div>
+                <span className="text-xs text-muted-foreground">Asunto:</span>
+                <p className="text-sm font-medium">{draft.subject}</p>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Cuerpo:</span>
+                <div className="text-sm whitespace-pre-line mt-1 p-3 rounded-lg bg-background max-h-[40vh] overflow-y-auto">
+                  {draft.body}
+                </div>
+              </div>
+              {draft.suggested_followup && (
+                <div className="mt-2 p-2 rounded bg-yellow-500/10 text-xs">
+                  <span className="font-medium">Sugerencia de seguimiento: </span>
+                  {draft.suggested_followup}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-between gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setDraft(null)}>
+              Regenerar
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={copyDraft}>
+                <Copy className="h-4 w-4 mr-2" />
+                Copiar
+              </Button>
+              <Button onClick={handleClose}>Cerrar</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Dialog>
   )
 }

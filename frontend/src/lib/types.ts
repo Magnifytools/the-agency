@@ -359,6 +359,22 @@ export interface CommunicationCreate {
   followup_notes?: string | null
 }
 
+// AI Email Draft
+export interface EmailDraftRequest {
+  client_id: number
+  purpose: string
+  contact_name?: string | null
+  reply_to_id?: number | null
+  project_context?: string | null
+}
+
+export interface EmailDraftResponse {
+  subject: string
+  body: string
+  tone: string
+  suggested_followup: string | null
+}
+
 // PM Insights
 export type InsightType = "deadline" | "stalled" | "overdue" | "followup" | "workload" | "suggestion" | "quality"
 export type InsightPriority = "high" | "medium" | "low"
@@ -572,6 +588,11 @@ export interface Report {
   project_name: string | null
   sections: ReportSection[]
   summary: string
+}
+
+export interface ReportNarrative {
+  narrative: string
+  executive_summary: string
 }
 
 // Growth Operations
@@ -1145,6 +1166,50 @@ export interface HoldedConfig {
 }
 
 export interface HoldedTestConnection {
+  success: boolean
+  message: string
+}
+
+// --- Daily Updates ---
+
+export type DailyUpdateStatus = "draft" | "sent"
+
+export interface ParsedTask {
+  description: string
+  details: string
+}
+
+export interface ParsedProject {
+  name: string
+  client: string
+  tasks: ParsedTask[]
+}
+
+export interface ParsedDailyData {
+  projects: ParsedProject[]
+  general: ParsedTask[]
+  tomorrow: string[]
+}
+
+export interface DailyUpdate {
+  id: number
+  user_id: number
+  user_name: string | null
+  date: string
+  raw_text: string
+  parsed_data: ParsedDailyData | null
+  status: DailyUpdateStatus
+  discord_sent_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DailySubmitRequest {
+  raw_text: string
+  date?: string | null
+}
+
+export interface DailyDiscordResponse {
   success: boolean
   message: string
 }

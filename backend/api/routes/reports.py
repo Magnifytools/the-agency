@@ -9,6 +9,7 @@ from backend.db.database import get_db
 from backend.db.models import GeneratedReport, User, UserRole
 from backend.schemas.report import ReportRequest, ReportResponse, ReportSection
 from backend.services.reports import generate_report
+from backend.services.report_narrator import generate_report_narrative
 from backend.api.deps import get_current_user, require_module
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
@@ -86,6 +87,43 @@ async def get_report(
         raise HTTPException(status_code=403, detail="Not your report")
 
     return _to_response(report)
+
+
+@router.post("/{report_id}/ai-narrative")
+async def generate_narrative(
+    report_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("reports")),
+):
+    """Generate an AI narrative version of an existing report."""
+    result = await db.execute(
+        select(GeneratedReport).where(GeneratedReport.id == report_id)
+    )
+    report = result.scalar_one_or_none()
+
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    if current_user.role != UserRole.admin and report.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your report")
+
+    content = json.loads(report.content)
+    sections = content.get("sections", [])
+    summary = content.get("summary", "")
+
+    try:
+        narrative = await generate_report_narrative(
+            report_title=report.title,
+            sections=sections,
+            summary=summary,
+            client_name=report.client.name if report.client else None,
+            project_name=report.project.name if report.project else None,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error generando narrativa: {str(e)}")
+
+    return narrative
 
 
 @router.delete("/{report_id}")

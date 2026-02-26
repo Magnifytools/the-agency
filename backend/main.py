@@ -18,7 +18,7 @@ from backend.api.routes import (
     dashboard, discord, billing, projects, communications, pm,
     reports, proposals, growth, invitations, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
-    service_templates,
+    service_templates, dailys,
 )
 
 
@@ -58,6 +58,9 @@ async def lifespan(app: FastAPI):
                     "END IF; "
                     "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'servicetype') THEN "
                     "CREATE TYPE servicetype AS ENUM ('seo_sprint', 'migration', 'market_study', 'consulting_retainer', 'partnership_retainer', 'brand_audit', 'custom'); "
+                    "END IF; "
+                    "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'dailyupdatestatus') THEN "
+                    "CREATE TYPE dailyupdatestatus AS ENUM ('draft', 'sent'); "
                     "END IF; "
                     "END $$;"
                 )
@@ -179,6 +182,7 @@ app.include_router(forecasts.router)
 app.include_router(advisor.router)
 app.include_router(sync.router)
 app.include_router(export.router)
+app.include_router(dailys.router)
 
 # Serve frontend static files in production
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"

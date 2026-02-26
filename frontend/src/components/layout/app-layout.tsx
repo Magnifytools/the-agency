@@ -2,7 +2,7 @@ import { Link, useLocation, Outlet } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/context/auth-context"
 import { holdedApi } from "@/lib/api"
-import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle } from "lucide-react"
+import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
 import { useMemo } from "react"
@@ -28,6 +28,7 @@ export function AppLayout() {
       { to: "/tasks", label: "Tareas", icon: CheckSquare, module: "tasks" },
       { to: "/growth", label: "Growth", icon: Rocket, module: "growth" },
       { to: "/timesheet", label: "Timesheet", icon: Clock, module: "timesheet" },
+      { to: "/dailys", label: "Dailys", icon: ClipboardList, module: "dailys" },
       { to: "/digests", label: "Digests", icon: Newspaper, module: "digests" },
       { to: "/reports", label: "Informes", icon: FileText, module: "reports" },
       { to: "/proposals", label: "Presupuestos", icon: ScrollText, module: "proposals" },
@@ -75,6 +76,9 @@ export function AppLayout() {
     }
     if (path === "/proposals") {
       return location.pathname === "/proposals" || location.pathname.startsWith("/proposals/")
+    }
+    if (path === "/dailys") {
+      return location.pathname === "/dailys" || location.pathname.startsWith("/dailys/")
     }
     if (path === "/digests") {
       return location.pathname === "/digests" || location.pathname.startsWith("/digests/")
