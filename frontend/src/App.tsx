@@ -39,6 +39,7 @@ const HoldedFinancePage = lazy(() => import("@/pages/holded-finance-page"))
 const DiscordSettingsPage = lazy(() => import("@/pages/discord-settings-page"))
 const DailysPage = lazy(() => import("@/pages/dailys-page"))
 const CapacityPage = lazy(() => import("@/pages/capacity-page"))
+const ExecutiveDashboardPage = lazy(() => import("@/pages/executive-dashboard-page"))
 
 function PageLoader() {
   return (
@@ -72,6 +73,7 @@ export default function App() {
               }
             >
               <Route path="/dashboard" element={<Suspense fallback={<PageLoader />}><DashboardPage /></Suspense>} />
+              <Route path="/executive" element={<Suspense fallback={<PageLoader />}><ExecutiveDashboardPage /></Suspense>} />
               <Route path="/leads" element={<Suspense fallback={<PageLoader />}><LeadsPage /></Suspense>} />
               <Route path="/leads/:id" element={<Suspense fallback={<PageLoader />}><LeadDetailPage /></Suspense>} />
               <Route path="/clients" element={<Suspense fallback={<PageLoader />}><ClientsPage /></Suspense>} />

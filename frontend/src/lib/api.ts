@@ -95,6 +95,7 @@ import type {
   ClientHealthScore,
   CapacityMember,
   ActivityEvent,
+  NotificationItem,
 } from "./types"
 
 const api = axios.create({
@@ -586,4 +587,15 @@ export const capacityApi = {
 export const clientActivityApi = {
   list: (clientId: number, limit = 50) =>
     api.get<ActivityEvent[]>(`/clients/${clientId}/activity`, { params: { limit } }).then((r) => r.data),
+}
+
+export const notificationsApi = {
+  list: (params?: { limit?: number; offset?: number; unread_only?: boolean }) =>
+    api.get<NotificationItem[]>("/notifications", { params }).then((r) => r.data),
+  unreadCount: () =>
+    api.get<{ count: number }>("/notifications/unread-count").then((r) => r.data),
+  markRead: (id: number) =>
+    api.put(`/notifications/${id}/read`).then((r) => r.data),
+  markAllRead: () =>
+    api.put("/notifications/read-all").then((r) => r.data),
 }

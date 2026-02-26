@@ -119,6 +119,19 @@ export interface ActivityEvent {
   icon: string
 }
 
+export interface NotificationItem {
+  id: number
+  user_id: number
+  type: string
+  title: string
+  message: string | null
+  is_read: boolean
+  link_url: string | null
+  entity_type: string | null
+  entity_id: number | null
+  created_at: string
+}
+
 export interface CapacityMember {
   user_id: number
   full_name: string
@@ -145,6 +158,7 @@ export interface Task {
   priority: TaskPriority
   estimated_minutes: number | null
   actual_minutes: number | null
+  start_date: string | null
   due_date: string | null
   client_id: number
   category_id: number | null
@@ -168,6 +182,7 @@ export interface TaskCreate {
   priority?: TaskPriority
   estimated_minutes?: number | null
   actual_minutes?: number | null
+  start_date?: string | null
   due_date?: string | null
   client_id: number
   category_id?: number | null

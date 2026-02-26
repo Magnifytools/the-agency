@@ -412,6 +412,7 @@ class Task(TimestampMixin, Base):
     priority = Column(Enum(TaskPriority), nullable=False, default=TaskPriority.medium, server_default="medium")
     estimated_minutes = Column(Integer, nullable=True)
     actual_minutes = Column(Integer, nullable=True)
+    start_date = Column(DateTime, nullable=True)
     due_date = Column(DateTime, nullable=True)
     is_inbox = Column(Boolean, nullable=False, default=False)
 
@@ -1008,5 +1009,21 @@ class DailyUpdate(TimestampMixin, Base):
     parsed_data = Column(JSON, nullable=True)  # {projects: [{name, client, tasks: [{description, details}]}]}
     status = Column(Enum(DailyUpdateStatus), nullable=False, default=DailyUpdateStatus.draft)
     discord_sent_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", lazy="selectin")
+
+
+class Notification(TimestampMixin, Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    type = Column(String(50), nullable=False)  # task_assigned, task_overdue, lead_followup, digest_pending
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=True)
+    is_read = Column(Boolean, nullable=False, default=False)
+    link_url = Column(String(500), nullable=True)  # e.g. "/tasks?id=123"
+    entity_type = Column(String(50), nullable=True)  # task, lead, digest
+    entity_id = Column(Integer, nullable=True)
 
     user = relationship("User", lazy="selectin")

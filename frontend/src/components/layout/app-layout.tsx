@@ -2,9 +2,10 @@ import { Link, useLocation, Outlet } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/context/auth-context"
 import { holdedApi } from "@/lib/api"
-import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList, Gauge } from "lucide-react"
+import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList, Gauge, BarChart3 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
+import { NotificationBell } from "@/components/layout/notification-bell"
 import { useMemo } from "react"
 
 export function AppLayout() {
@@ -22,6 +23,7 @@ export function AppLayout() {
   const mainNav = useMemo(() => {
     const items = [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
+      { to: "/executive", label: "Ejecutivo", icon: BarChart3, module: "dashboard", adminOnly: true },
       { to: "/clients", label: "Clientes", icon: Users, module: "clients" },
       { to: "/leads", label: "Pipeline", icon: Target, module: "leads" },
       { to: "/projects", label: "Proyectos", icon: FolderKanban, module: "projects" },
@@ -34,8 +36,11 @@ export function AppLayout() {
       { to: "/proposals", label: "Presupuestos", icon: ScrollText, module: "proposals" },
       { to: "/billing", label: "Facturacion", icon: CreditCard, module: "billing" },
     ]
-    return items.filter((item) => !item.module || hasPermission(item.module))
-  }, [hasPermission])
+    return items.filter((item) => {
+      if (item.adminOnly && !isAdmin) return false
+      return !item.module || hasPermission(item.module)
+    })
+  }, [hasPermission, isAdmin])
 
   const financeNav = useMemo(() => {
     const items = [
@@ -193,13 +198,16 @@ export function AppLayout() {
                 <p className="font-semibold text-foreground truncate">{user?.full_name}</p>
                 <p className="text-muted-foreground text-[11px] mt-0.5 truncate">{user?.email}</p>
               </div>
-              <button
-                onClick={logout}
-                className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors flex-shrink-0"
-                title="Cerrar sesion"
-              >
-                <LogOut className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <NotificationBell />
+                <button
+                  onClick={logout}
+                  className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                  title="Cerrar sesion"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
         </aside>

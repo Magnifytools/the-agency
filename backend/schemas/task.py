@@ -13,6 +13,7 @@ class TaskCreate(BaseModel):
     priority: TaskPriority = TaskPriority.medium
     estimated_minutes: Optional[int] = None
     actual_minutes: Optional[int] = None
+    start_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
     client_id: int
     category_id: Optional[int] = None
@@ -29,6 +30,7 @@ class TaskUpdate(BaseModel):
     priority: Optional[TaskPriority] = None
     estimated_minutes: Optional[int] = None
     actual_minutes: Optional[int] = None
+    start_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
     client_id: Optional[int] = None
     category_id: Optional[int] = None
@@ -46,6 +48,7 @@ class TaskResponse(BaseModel):
     priority: TaskPriority = TaskPriority.medium
     estimated_minutes: Optional[int] = None
     actual_minutes: Optional[int] = None
+    start_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
     client_id: int
     category_id: Optional[int] = None

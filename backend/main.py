@@ -18,7 +18,7 @@ from backend.api.routes import (
     dashboard, discord, billing, projects, communications, pm,
     reports, proposals, growth, invitations, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
-    service_templates, dailys, contacts, activity,
+    service_templates, dailys, contacts, activity, notifications,
 )
 
 
@@ -120,6 +120,10 @@ async def lifespan(app: FastAPI):
             await conn.execute(
                 sa_text("ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_hours FLOAT NOT NULL DEFAULT 40.0")
             )
+            # Gantt: add start_date to tasks
+            await conn.execute(
+                sa_text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS start_date TIMESTAMP")
+            )
             logging.info("Database schema migrations completed successfully.")
         except Exception as e:
             logging.error(f"Database migration failed: {e}")
@@ -187,6 +191,7 @@ app.include_router(export.router)
 app.include_router(dailys.router)
 app.include_router(contacts.router)
 app.include_router(activity.router)
+app.include_router(notifications.router)
 
 # Serve frontend static files in production
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"

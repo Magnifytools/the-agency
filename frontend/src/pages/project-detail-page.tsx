@@ -10,6 +10,9 @@ import {
   Edit2,
   Plus,
   PlayCircle,
+  List,
+  GanttChartSquare,
+  Columns,
 } from "lucide-react"
 import { toast } from "sonner"
 import { projectsApi, tasksApi } from "@/lib/api"
@@ -22,6 +25,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { getErrorMessage } from "@/lib/utils"
+import { GanttChart } from "@/components/gantt/gantt-chart"
+import { ProjectPhaseKanban } from "@/components/projects/project-phase-kanban"
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   planning: "Planificación",
@@ -50,6 +55,7 @@ export default function ProjectDetailPage() {
   const queryClient = useQueryClient()
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showAddTaskDialog, setShowAddTaskDialog] = useState<number | null>(null)
+  const [viewMode, setViewMode] = useState<"list" | "gantt" | "kanban">("list")
 
   const { data: project, isLoading } = useQuery({
     queryKey: ["project", id],
@@ -225,11 +231,55 @@ export default function ProjectDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Phases and Tasks */}
+      {/* View Toggle + Phases and Tasks */}
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold">Fases y Tareas</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Fases y Tareas</h2>
+          <div className="flex items-center gap-1">
+            <Button
+              variant={viewMode === "list" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode("list")}
+              className="h-8"
+            >
+              <List className="h-4 w-4 mr-1.5" />
+              Lista
+            </Button>
+            <Button
+              variant={viewMode === "gantt" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode("gantt")}
+              className="h-8"
+            >
+              <GanttChartSquare className="h-4 w-4 mr-1.5" />
+              Gantt
+            </Button>
+            <Button
+              variant={viewMode === "kanban" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode("kanban")}
+              className="h-8"
+            >
+              <Columns className="h-4 w-4 mr-1.5" />
+              Kanban
+            </Button>
+          </div>
+        </div>
 
-        {tasksData?.phases?.map((phaseGroup: any) => {
+        {viewMode === "gantt" && project && tasksData && (
+          <GanttChart project={project} tasksData={tasksData} />
+        )}
+
+        {viewMode === "kanban" && tasksData && (
+          <ProjectPhaseKanban
+            phases={tasksData.phases}
+            onPhaseStatusChange={(phaseId, newStatus) =>
+              updatePhaseMutation.mutate({ phaseId, status: newStatus })
+            }
+          />
+        )}
+
+        {viewMode === "list" && tasksData?.phases?.map((phaseGroup: any) => {
           const phase = phaseGroup.phase
           const tasks = phaseGroup.tasks
           const PhaseIcon = PHASE_STATUS_ICONS[phase.status as PhaseStatus] || Circle
@@ -301,7 +351,7 @@ export default function ProjectDetailPage() {
         })}
 
         {/* Unassigned Tasks */}
-        {tasksData?.unassigned_tasks?.length > 0 && (
+        {viewMode === "list" && tasksData?.unassigned_tasks?.length > 0 && (
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-semibold text-foreground">
