@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from datetime import datetime
 from typing import Optional
 
@@ -55,16 +56,54 @@ def parse_date(value: str) -> Optional[str]:
 
 
 def parse_amount(value: str) -> Optional[float]:
-    value = value.strip().replace("\u20ac", "").replace("$", "").strip()
-    value = value.replace(".", "").replace(",", ".")
+    if value is None:
+        return None
+
+    normalized = re.sub(r"[^\d,.\-()]", "", value.strip())
+    if not normalized:
+        return None
+
+    is_negative = False
+    if normalized.startswith("(") and normalized.endswith(")"):
+        is_negative = True
+        normalized = normalized[1:-1]
+
+    if normalized.startswith("-"):
+        is_negative = True
+        normalized = normalized[1:]
+
+    if not normalized:
+        return None
+
+    comma_idx = normalized.rfind(",")
+    dot_idx = normalized.rfind(".")
+
+    if comma_idx != -1 and dot_idx != -1:
+        # Decimal separator is usually the last one in locale-formatted numbers.
+        decimal_sep = "," if comma_idx > dot_idx else "."
+        thousands_sep = "." if decimal_sep == "," else ","
+        normalized = normalized.replace(thousands_sep, "")
+        normalized = normalized.replace(decimal_sep, ".")
+    elif comma_idx != -1:
+        parts = normalized.split(",")
+        if len(parts) > 2:
+            normalized = "".join(parts[:-1]) + "." + parts[-1]
+        elif len(parts[-1]) in (0, 1, 2):
+            normalized = normalized.replace(",", ".")
+        else:
+            normalized = normalized.replace(",", "")
+    elif dot_idx != -1:
+        parts = normalized.split(".")
+        if len(parts) > 2:
+            normalized = "".join(parts[:-1]) + "." + parts[-1]
+        elif len(parts[-1]) not in (0, 1, 2):
+            normalized = normalized.replace(".", "")
+
     try:
-        return float(value)
+        amount = float(normalized)
+        return -amount if is_negative else amount
     except ValueError:
-        original = value.replace(".", ",").replace(",", ".", 1)
-        try:
-            return float(original)
-        except ValueError:
-            return None
+        return None
 
 
 def process_csv_preview(content: str) -> dict:

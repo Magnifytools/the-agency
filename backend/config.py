@@ -22,9 +22,16 @@ def _is_production() -> bool:
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://agency:agency@localhost:5432/the_agency"
+    REDIS_URL: Optional[str] = None
     SECRET_KEY: str = DEFAULT_SECRET_KEY
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
     ALGORITHM: str = "HS256"
+    AUTH_COOKIE_NAME: str = "agency_access_token"
+    CSRF_COOKIE_NAME: str = "agency_csrf_token"
+    AUTH_COOKIE_SECURE: bool = False
+    AUTH_COOKIE_DOMAIN: Optional[str] = None
+    AUTH_COOKIE_SAMESITE: str = "lax"
+    AUTH_COOKIE_PATH: str = "/"
     DISCORD_WEBHOOK_URL: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     HOLDED_API_KEY: Optional[str] = None
@@ -49,6 +56,16 @@ class Settings(BaseSettings):
                 "SECRET_KEY must be at least 32 characters in production. "
                 f"Current length: {len(self.SECRET_KEY)}"
             )
+
+        cookie_samesite = self.AUTH_COOKIE_SAMESITE.lower()
+        if cookie_samesite not in {"lax", "strict", "none"}:
+            raise ValueError("AUTH_COOKIE_SAMESITE must be one of: lax, strict, none")
+        self.AUTH_COOKIE_SAMESITE = cookie_samesite
+        if _is_production() and not self.AUTH_COOKIE_SECURE:
+            raise ValueError("AUTH_COOKIE_SECURE must be true in production")
+        if self.AUTH_COOKIE_SAMESITE == "none" and not self.AUTH_COOKIE_SECURE:
+            logging.warning("AUTH_COOKIE_SAMESITE=none usually requires AUTH_COOKIE_SECURE=true")
+
         return self
 
 

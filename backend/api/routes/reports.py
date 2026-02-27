@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,7 @@ from backend.api.deps import get_current_user, require_module
 from backend.core.rate_limiter import ai_limiter
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
+logger = logging.getLogger(__name__)
 
 
 def _to_response(report: GeneratedReport) -> ReportResponse:
@@ -49,8 +51,8 @@ async def create_report(
             period=request.period.value,
         )
         return _to_response(report)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="No se pudo generar el reporte con esos datos")
 
 
 @router.get("", response_model=list[ReportResponse])
@@ -124,10 +126,11 @@ async def generate_narrative(
             client_name=report.client.name if report.client else None,
             project_name=report.project.name if report.project else None,
         )
-    except ValueError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Error generando narrativa: {str(e)}")
+    except ValueError:
+        raise HTTPException(status_code=502, detail="No se pudo generar la narrativa del reporte")
+    except Exception:
+        logger.exception("Unexpected error generating report narrative for report_id=%s", report_id)
+        raise HTTPException(status_code=502, detail="Error generando narrativa")
 
     return narrative
 

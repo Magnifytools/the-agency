@@ -97,6 +97,22 @@ class HoldedExpenseResponse(BaseModel):
         return None
 
 
+# ── Paginated responses ───────────────────────────────────
+
+class HoldedInvoicePageResponse(BaseModel):
+    items: list[HoldedInvoiceResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class HoldedExpensePageResponse(BaseModel):
+    items: list[HoldedExpenseResponse]
+    total: int
+    page: int
+    page_size: int
+
+
 # ── Dashboard ──────────────────────────────────────────────
 
 class MonthlyFinancials(BaseModel):

@@ -47,17 +47,19 @@ const PRIORITY_BADGES: Record<InsightPriority, "destructive" | "warning" | "defa
 export function InsightsPanel() {
   const queryClient = useQueryClient()
 
-  const { data: insights = [], isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["insights"],
     queryFn: () => pmApi.insights(),
   })
+  const insights = Array.isArray(data) ? data : []
 
   const generateMutation = useMutation({
     mutationFn: () => pmApi.generateInsights(),
     onSuccess: (data) => {
+      const generated = Array.isArray(data) ? data.length : 0
       queryClient.invalidateQueries({ queryKey: ["insights"] })
       queryClient.invalidateQueries({ queryKey: ["insight-count"] })
-      toast.success(`${data.length} insights generados`)
+      toast.success(`${generated} insights generados`)
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al generar insights")),
   })

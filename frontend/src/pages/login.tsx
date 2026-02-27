@@ -1,9 +1,11 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { AxiosError } from "axios"
 import { useAuth } from "@/context/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { getErrorMessage } from "@/lib/utils"
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -20,8 +22,20 @@ export default function LoginPage() {
     try {
       await login(email, password)
       navigate("/dashboard")
-    } catch {
-      setError("Credenciales incorrectas")
+    } catch (err) {
+      if (err instanceof AxiosError) {
+        if (!err.response) {
+          setError("No se pudo conectar con el servidor. Revisa tu red.")
+        } else if (err.response.status === 401) {
+          setError("Email o contraseña incorrectos.")
+        } else if (err.response.status >= 500) {
+          setError("Error interno del servidor. Intenta de nuevo.")
+        } else {
+          setError(getErrorMessage(err, "No se pudo iniciar sesión."))
+        }
+      } else {
+        setError(getErrorMessage(err, "No se pudo iniciar sesión."))
+      }
     } finally {
       setLoading(false)
     }

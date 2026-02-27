@@ -11,6 +11,7 @@ Endpoints:
 """
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
@@ -37,6 +38,7 @@ from backend.api.deps import require_module
 from backend.core.rate_limiter import ai_limiter
 
 router = APIRouter(prefix="/api/digests", tags=["digests"])
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -111,10 +113,11 @@ async def generate_digest(
     # Generate content via Claude API
     try:
         content = await generate_digest_content(raw_data, request.tone)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Error generating digest: {str(e)}")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="No se pudo generar el digest con los datos proporcionados")
+    except Exception:
+        logger.exception("Unexpected error generating digest for client_id=%s", request.client_id)
+        raise HTTPException(status_code=502, detail="Error generando digest")
 
     # Create digest record
     digest = WeeklyDigest(
@@ -163,8 +166,6 @@ async def generate_batch(
         raise HTTPException(status_code=404, detail="No active clients found")
 
     digests = []
-    errors = []
-
     for client in clients:
         try:
             raw_data = await collect_digest_data(db, client.id, period_start, period_end)
@@ -183,8 +184,8 @@ async def generate_batch(
             )
             db.add(digest)
             digests.append(digest)
-        except Exception as e:
-            errors.append({"client_id": client.id, "client_name": client.name, "error": str(e)})
+        except Exception:
+            logger.exception("Batch digest generation failed for client_id=%s", client.id)
 
     if digests:
         await db.commit()

@@ -13,7 +13,6 @@ class InvitationCreate(BaseModel):
 class InvitationResponse(BaseModel):
     id: int
     email: str
-    token: str
     role: str
     invited_by: int
     inviter_name: Optional[str] = None
@@ -22,6 +21,10 @@ class InvitationResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class InvitationCreateResponse(InvitationResponse):
+    token: str
 
 
 class AcceptInvitationRequest(BaseModel):

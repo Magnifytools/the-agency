@@ -1,6 +1,7 @@
 import { useState } from "react"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { holdedApi } from "@/lib/api"
+import { holdedKeys, isHoldedQueryKey } from "@/lib/query-keys"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,6 +19,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { getErrorMessage } from "@/lib/utils"
 
 type TabKey = "resumen" | "facturas" | "gastos" | "config"
+const SYNC_LOG_LIMIT = 20
 
 const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
   { key: "resumen", label: "Resumen", icon: TrendingUp },
@@ -38,10 +40,15 @@ function formatDate(d: string | null) {
 export default function HoldedFinancePage() {
   const [tab, setTab] = useState<TabKey>("resumen")
   const qc = useQueryClient()
+  const invalidateHoldedQueries = () =>
+    qc.invalidateQueries({
+      predicate: (query) => isHoldedQueryKey(query.queryKey),
+    })
 
   const { data: config } = useQuery({
-    queryKey: ["holded-config"],
+    queryKey: holdedKeys.config(),
     queryFn: () => holdedApi.config(),
+    retry: false,
   })
 
   const syncAllMutation = useMutation({
@@ -49,12 +56,12 @@ export default function HoldedFinancePage() {
     onSuccess: (results) => {
       const ok = results.filter((r) => r.status === "success").length
       toast.success(`Sincronizacion completada: ${ok}/${results.length} exitosos`)
-      qc.invalidateQueries({ queryKey: ["holded"] })
+      void invalidateHoldedQueries()
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al sincronizar")),
   })
 
-  const connected = config?.api_key_configured
+  const connected = Boolean(config?.api_key_configured)
 
   return (
     <div className="space-y-6">
@@ -89,39 +96,45 @@ export default function HoldedFinancePage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-muted/30 border border-border rounded-lg p-1 w-fit">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              tab === t.key
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <t.icon className="h-4 w-4" />
-            {t.label}
-          </button>
-        ))}
+      <div className="overflow-x-auto pb-1">
+        <div className="inline-flex min-w-max gap-1 bg-muted/30 border border-border rounded-lg p-1">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                tab === t.key
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <t.icon className="h-4 w-4" />
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {tab === "resumen" && <ResumenTab />}
-      {tab === "facturas" && <FacturasTab />}
-      {tab === "gastos" && <GastosTab />}
-      {tab === "config" && <ConfigTab />}
+      {tab === "resumen" && <ResumenTab connected={connected} />}
+      {tab === "facturas" && <FacturasTab connected={connected} />}
+      {tab === "gastos" && <GastosTab connected={connected} />}
+      {tab === "config" && <ConfigTab onInvalidateHolded={invalidateHoldedQueries} />}
     </div>
   )
 }
 
 // ── Resumen Tab ──────────────────────────────────────────
 
-function ResumenTab() {
+function ResumenTab({ connected }: { connected: boolean }) {
   const { data: dashboard, isLoading, error, refetch } = useQuery({
-    queryKey: ["holded-dashboard"],
+    queryKey: holdedKeys.dashboard(),
     queryFn: () => holdedApi.dashboard(),
+    enabled: connected,
+    staleTime: 60_000,
+    retry: false,
   })
 
+  if (!connected) return <div className="text-muted-foreground">Configura la conexion con Holded para ver el resumen.</div>
   if (isLoading) return <div className="text-muted-foreground">Cargando...</div>
   if (error) return <div className="text-red-500 text-sm">Error al cargar datos. <button className="underline ml-1" onClick={() => refetch()}>Reintentar</button></div>
   if (!dashboard) return null
@@ -188,32 +201,50 @@ function ResumenTab() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Numero</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Vencimiento</TableHead>
-                  <TableHead>Importe</TableHead>
-                  <TableHead>Estado</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {dashboard.pending_invoices.map((inv) => (
-                  <TableRow key={inv.id}>
-                    <TableCell className="font-medium">{inv.invoice_number || "-"}</TableCell>
-                    <TableCell>{inv.contact_name || "-"}</TableCell>
-                    <TableCell className="mono">{formatDate(inv.date)}</TableCell>
-                    <TableCell className="mono">{formatDate(inv.due_date)}</TableCell>
-                    <TableCell className="mono font-medium">{formatCurrency(inv.total, inv.currency)}</TableCell>
-                    <TableCell>
-                      <InvoiceStatusBadge status={inv.status} />
-                    </TableCell>
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Numero</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Vencimiento</TableHead>
+                    <TableHead>Importe</TableHead>
+                    <TableHead>Estado</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {dashboard.pending_invoices.map((inv) => (
+                    <TableRow key={inv.id}>
+                      <TableCell className="font-medium">{inv.invoice_number || "-"}</TableCell>
+                      <TableCell>{inv.contact_name || "-"}</TableCell>
+                      <TableCell className="mono">{formatDate(inv.date)}</TableCell>
+                      <TableCell className="mono">{formatDate(inv.due_date)}</TableCell>
+                      <TableCell className="mono font-medium">{formatCurrency(inv.total, inv.currency)}</TableCell>
+                      <TableCell>
+                        <InvoiceStatusBadge status={inv.status} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="md:hidden space-y-3">
+              {dashboard.pending_invoices.map((inv) => (
+                <div key={inv.id} className="rounded-lg border border-border p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium truncate">{inv.invoice_number || "-"}</p>
+                    <InvoiceStatusBadge status={inv.status} />
+                  </div>
+                  <p className="text-sm text-muted-foreground truncate">{inv.contact_name || "-"}</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                    <p>Fecha: {formatDate(inv.date)}</p>
+                    <p>Vence: {formatDate(inv.due_date)}</p>
+                  </div>
+                  <p className="mono text-sm font-medium">{formatCurrency(inv.total, inv.currency)}</p>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -223,14 +254,14 @@ function ResumenTab() {
 
 // ── Facturas Tab ─────────────────────────────────────────
 
-function FacturasTab() {
+function FacturasTab({ connected }: { connected: boolean }) {
   const [statusFilter, setStatusFilter] = useState("")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [page, setPage] = useState(1)
 
   const { data, isLoading } = useQuery({
-    queryKey: ["holded-invoices", statusFilter, dateFrom, dateTo, page],
+    queryKey: holdedKeys.invoices(statusFilter, dateFrom, dateTo, page),
     queryFn: () =>
       holdedApi.invoices({
         status: statusFilter || undefined,
@@ -239,6 +270,9 @@ function FacturasTab() {
         page,
         page_size: 50,
       }),
+    enabled: connected,
+    placeholderData: keepPreviousData,
+    retry: false,
   })
   const invoices = data?.items ?? []
   const total = data?.total ?? 0
@@ -265,6 +299,10 @@ function FacturasTab() {
       toast.error("Error al descargar PDF")
     }
   }
+
+  const hasError = !isLoading && !data
+
+  if (!connected) return <div className="text-muted-foreground">Conecta Holded para consultar facturas.</div>
 
   return (
     <div className="space-y-4">
@@ -293,54 +331,93 @@ function FacturasTab() {
 
       <Card>
         <CardContent className="pt-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Numero</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Vencimiento</TableHead>
-                <TableHead>Subtotal</TableHead>
-                <TableHead>IVA</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invoices.map((inv) => (
-                <TableRow key={inv.id}>
-                  <TableCell className="font-medium">{inv.invoice_number || "-"}</TableCell>
-                  <TableCell>{inv.contact_name || "-"}</TableCell>
-                  <TableCell className="mono">{formatDate(inv.date)}</TableCell>
-                  <TableCell className="mono">{formatDate(inv.due_date)}</TableCell>
-                  <TableCell className="mono">{formatCurrency(inv.subtotal)}</TableCell>
-                  <TableCell className="mono">{formatCurrency(inv.tax)}</TableCell>
-                  <TableCell className="mono font-medium">{formatCurrency(inv.total, inv.currency)}</TableCell>
-                  <TableCell>
-                    <InvoiceStatusBadge status={inv.status} />
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDownloadPdf(inv.holded_id, inv.invoice_number)}
-                      title="Descargar PDF"
-                    >
-                      <Download className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!isLoading && invoices.length === 0 && (
+          {hasError && (
+            <p className="text-sm text-red-500 mb-4">Error al cargar facturas. Reintenta sincronizar o recargar.</p>
+          )}
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                    No hay facturas. Sincroniza con Holded primero.
-                  </TableCell>
+                  <TableHead>Numero</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Vencimiento</TableHead>
+                  <TableHead>Subtotal</TableHead>
+                  <TableHead>IVA</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {invoices.map((inv) => (
+                  <TableRow key={inv.id}>
+                    <TableCell className="font-medium">{inv.invoice_number || "-"}</TableCell>
+                    <TableCell>{inv.contact_name || "-"}</TableCell>
+                    <TableCell className="mono">{formatDate(inv.date)}</TableCell>
+                    <TableCell className="mono">{formatDate(inv.due_date)}</TableCell>
+                    <TableCell className="mono">{formatCurrency(inv.subtotal)}</TableCell>
+                    <TableCell className="mono">{formatCurrency(inv.tax)}</TableCell>
+                    <TableCell className="mono font-medium">{formatCurrency(inv.total, inv.currency)}</TableCell>
+                    <TableCell>
+                      <InvoiceStatusBadge status={inv.status} />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDownloadPdf(inv.holded_id, inv.invoice_number)}
+                        title="Descargar PDF"
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {!isLoading && invoices.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                      No hay facturas. Sincroniza con Holded primero.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="md:hidden space-y-3">
+            {invoices.map((inv) => (
+              <div key={inv.id} className="rounded-lg border border-border p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium truncate">{inv.invoice_number || "-"}</p>
+                  <InvoiceStatusBadge status={inv.status} />
+                </div>
+                <p className="text-sm text-muted-foreground truncate">{inv.contact_name || "-"}</p>
+                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                  <p>Fecha: {formatDate(inv.date)}</p>
+                  <p>Vence: {formatDate(inv.due_date)}</p>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <p className="mono">Sub: {formatCurrency(inv.subtotal)}</p>
+                  <p className="mono">IVA: {formatCurrency(inv.tax)}</p>
+                  <p className="mono font-medium">Tot: {formatCurrency(inv.total, inv.currency)}</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => handleDownloadPdf(inv.holded_id, inv.invoice_number)}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Descargar PDF
+                </Button>
+              </div>
+            ))}
+            {!isLoading && invoices.length === 0 && (
+              <div className="rounded-lg border border-border p-4 text-center text-sm text-muted-foreground">
+                No hay facturas. Sincroniza con Holded primero.
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -360,14 +437,14 @@ function FacturasTab() {
 
 // ── Gastos Tab ───────────────────────────────────────────
 
-function GastosTab() {
+function GastosTab({ connected }: { connected: boolean }) {
   const [categoryFilter, setCategoryFilter] = useState("")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [page, setPage] = useState(1)
 
   const { data, isLoading } = useQuery({
-    queryKey: ["holded-expenses", categoryFilter, dateFrom, dateTo, page],
+    queryKey: holdedKeys.expenses(categoryFilter, dateFrom, dateTo, page),
     queryFn: () =>
       holdedApi.expenses({
         category: categoryFilter || undefined,
@@ -376,6 +453,9 @@ function GastosTab() {
         page,
         page_size: 50,
       }),
+    enabled: connected,
+    placeholderData: keepPreviousData,
+    retry: false,
   })
   const expenses = data?.items ?? []
   const total = data?.total ?? 0
@@ -388,6 +468,9 @@ function GastosTab() {
 
   // Extract unique categories from current page
   const categories = [...new Set(expenses.map((e) => e.category).filter(Boolean))]
+  const hasError = !isLoading && !data
+
+  if (!connected) return <div className="text-muted-foreground">Conecta Holded para consultar gastos.</div>
 
   return (
     <div className="space-y-4">
@@ -414,47 +497,79 @@ function GastosTab() {
 
       <Card>
         <CardContent className="pt-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Descripcion</TableHead>
-                <TableHead>Proveedor</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Categoria</TableHead>
-                <TableHead>Subtotal</TableHead>
-                <TableHead>IVA</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Estado</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {expenses.map((exp) => (
-                <TableRow key={exp.id}>
-                  <TableCell className="font-medium max-w-[200px] truncate">{exp.description || "-"}</TableCell>
-                  <TableCell>{exp.supplier || "-"}</TableCell>
-                  <TableCell className="mono">{formatDate(exp.date)}</TableCell>
-                  <TableCell>
-                    {exp.category ? <Badge variant="secondary">{exp.category}</Badge> : "-"}
-                  </TableCell>
-                  <TableCell className="mono">{formatCurrency(exp.subtotal)}</TableCell>
-                  <TableCell className="mono">{formatCurrency(exp.tax)}</TableCell>
-                  <TableCell className="mono font-medium">{formatCurrency(exp.total)}</TableCell>
-                  <TableCell>
-                    <Badge variant={exp.status === "paid" ? "success" : "warning"}>
-                      {exp.status === "paid" ? "Pagado" : "Pendiente"}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!isLoading && expenses.length === 0 && (
+          {hasError && (
+            <p className="text-sm text-red-500 mb-4">Error al cargar gastos. Reintenta sincronizar o recargar.</p>
+          )}
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                    No hay gastos. Sincroniza con Holded primero.
-                  </TableCell>
+                  <TableHead>Descripcion</TableHead>
+                  <TableHead>Proveedor</TableHead>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Categoria</TableHead>
+                  <TableHead>Subtotal</TableHead>
+                  <TableHead>IVA</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead>Estado</TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {expenses.map((exp) => (
+                  <TableRow key={exp.id}>
+                    <TableCell className="font-medium max-w-[200px] truncate">{exp.description || "-"}</TableCell>
+                    <TableCell>{exp.supplier || "-"}</TableCell>
+                    <TableCell className="mono">{formatDate(exp.date)}</TableCell>
+                    <TableCell>
+                      {exp.category ? <Badge variant="secondary">{exp.category}</Badge> : "-"}
+                    </TableCell>
+                    <TableCell className="mono">{formatCurrency(exp.subtotal)}</TableCell>
+                    <TableCell className="mono">{formatCurrency(exp.tax)}</TableCell>
+                    <TableCell className="mono font-medium">{formatCurrency(exp.total)}</TableCell>
+                    <TableCell>
+                      <Badge variant={exp.status === "paid" ? "success" : "warning"}>
+                        {exp.status === "paid" ? "Pagado" : "Pendiente"}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {!isLoading && expenses.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                      No hay gastos. Sincroniza con Holded primero.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="md:hidden space-y-3">
+            {expenses.map((exp) => (
+              <div key={exp.id} className="rounded-lg border border-border p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium truncate">{exp.description || "-"}</p>
+                  <Badge variant={exp.status === "paid" ? "success" : "warning"}>
+                    {exp.status === "paid" ? "Pagado" : "Pendiente"}
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground truncate">{exp.supplier || "-"}</p>
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  {exp.category ? <Badge variant="secondary">{exp.category}</Badge> : <span className="text-muted-foreground">Sin categoria</span>}
+                  <span className="text-muted-foreground">{formatDate(exp.date)}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <p className="mono">Sub: {formatCurrency(exp.subtotal)}</p>
+                  <p className="mono">IVA: {formatCurrency(exp.tax)}</p>
+                  <p className="mono font-medium">Tot: {formatCurrency(exp.total)}</p>
+                </div>
+              </div>
+            ))}
+            {!isLoading && expenses.length === 0 && (
+              <div className="rounded-lg border border-border p-4 text-center text-sm text-muted-foreground">
+                No hay gastos. Sincroniza con Holded primero.
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -474,17 +589,18 @@ function GastosTab() {
 
 // ── Config Tab ───────────────────────────────────────────
 
-function ConfigTab() {
-  const qc = useQueryClient()
-
+function ConfigTab({ onInvalidateHolded }: { onInvalidateHolded: () => Promise<unknown> }) {
   const { data: config } = useQuery({
-    queryKey: ["holded-config"],
+    queryKey: holdedKeys.config(),
     queryFn: () => holdedApi.config(),
+    staleTime: 60_000,
+    retry: false,
   })
 
   const { data: logs } = useQuery({
-    queryKey: ["holded-sync-logs"],
-    queryFn: () => holdedApi.syncLogs(20),
+    queryKey: holdedKeys.syncLogs(SYNC_LOG_LIMIT),
+    queryFn: () => holdedApi.syncLogs(SYNC_LOG_LIMIT),
+    retry: false,
   })
 
   const testMutation = useMutation({
@@ -503,7 +619,7 @@ function ConfigTab() {
     mutationFn: () => holdedApi.syncContacts(),
     onSuccess: (r) => {
       toast.success(`Contactos sincronizados: ${r.records_synced}`)
-      qc.invalidateQueries({ queryKey: ["holded"] })
+      void onInvalidateHolded()
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al sincronizar contactos")),
   })
@@ -599,35 +715,53 @@ function ConfigTab() {
             <CardTitle className="text-sm">Historial de sincronizaciones</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Registros</TableHead>
-                  <TableHead>Inicio</TableHead>
-                  <TableHead>Error</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {logs.map((log) => (
-                  <TableRow key={log.id}>
-                    <TableCell className="font-medium">{log.sync_type}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        <SyncStatusIcon status={log.status} />
-                        <span className="text-sm">{log.status}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="mono">{log.records_synced}</TableCell>
-                    <TableCell className="mono text-xs">{formatDate(log.started_at)}</TableCell>
-                    <TableCell className="text-xs text-red-400 max-w-[200px] truncate">
-                      {log.error_message || "-"}
-                    </TableCell>
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Registros</TableHead>
+                    <TableHead>Inicio</TableHead>
+                    <TableHead>Error</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {logs.map((log) => (
+                    <TableRow key={log.id}>
+                      <TableCell className="font-medium">{log.sync_type}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5">
+                          <SyncStatusIcon status={log.status} />
+                          <span className="text-sm">{log.status}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="mono">{log.records_synced}</TableCell>
+                      <TableCell className="mono text-xs">{formatDate(log.started_at)}</TableCell>
+                      <TableCell className="text-xs text-red-400 max-w-[200px] truncate">
+                        {log.error_message || "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="md:hidden space-y-3">
+              {logs.map((log) => (
+                <div key={log.id} className="rounded-lg border border-border p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium">{log.sync_type}</p>
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <SyncStatusIcon status={log.status} />
+                      <span>{log.status}</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Inicio: {formatDate(log.started_at)}</p>
+                  <p className="text-xs">Registros: <span className="mono">{log.records_synced}</span></p>
+                  {log.error_message && <p className="text-xs text-red-400 break-words">{log.error_message}</p>}
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}

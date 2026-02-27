@@ -50,7 +50,7 @@ async def list_tasks(
     status_filter: Optional[TaskStatus] = Query(None, alias="status"),
     category_id: Optional[int] = Query(None),
     project_id: Optional[int] = Query(None),
-    assigned_to: Optional[int] = Query(None),
+    assigned_to: Optional[str] = Query(None),
     priority: Optional[TaskPriority] = Query(None),
     overdue: Optional[bool] = Query(None),
     page: int = Query(1, ge=1),
@@ -68,7 +68,10 @@ async def list_tasks(
     if project_id is not None:
         base = base.where(Task.project_id == project_id)
     if assigned_to is not None:
-        base = base.where(Task.assigned_to == assigned_to)
+        if assigned_to == "unassigned":
+            base = base.where(Task.assigned_to.is_(None))
+        else:
+            base = base.where(Task.assigned_to == int(assigned_to))
     if priority is not None:
         base = base.where(Task.priority == priority)
     if overdue:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -16,6 +17,7 @@ from backend.core.rate_limiter import ai_limiter
 from backend.services.email_drafter import draft_email
 
 router = APIRouter(prefix="/api", tags=["communications"])
+logger = logging.getLogger(__name__)
 
 
 def _to_response(comm: CommunicationLog) -> CommunicationResponse:
@@ -143,10 +145,14 @@ async def draft_email_endpoint(
             recent_communications=recent_comms,
             project_context=body.project_context,
         )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Error al generar borrador: {str(e)}")
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="No se pudo generar el borrador con los datos proporcionados",
+        )
+    except Exception:
+        logger.exception("Unexpected error generating draft email")
+        raise HTTPException(status_code=502, detail="Error al generar borrador")
 
     return EmailDraftResponse(**draft)
 

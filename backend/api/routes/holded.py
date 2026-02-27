@@ -1,4 +1,5 @@
 """Holded integration API routes."""
+import logging
 from datetime import datetime, date
 from typing import Optional
 
@@ -18,9 +19,11 @@ from backend.schemas.holded import (
     HoldedInvoiceResponse, HoldedExpenseResponse,
     HoldedDashboardResponse, MonthlyFinancials,
     HoldedConfigResponse, TestConnectionResponse,
+    HoldedInvoicePageResponse, HoldedExpensePageResponse,
 )
 
 router = APIRouter(prefix="/api/holded", tags=["holded"])
+logger = logging.getLogger(__name__)
 
 
 def _get_holded_client() -> HoldedClient:
@@ -96,6 +99,13 @@ async def sync_contacts(
         log.completed_at = datetime.utcnow()
         await session.commit()
         raise HTTPException(status_code=502, detail=f"Error de Holded: {e.detail}")
+    except Exception:
+        log.status = "error"
+        log.error_message = "Unexpected contacts sync error"
+        log.completed_at = datetime.utcnow()
+        await session.commit()
+        logger.exception("Unexpected error syncing Holded contacts")
+        raise HTTPException(status_code=500, detail="Error interno sincronizando contactos")
 
 
 @router.post("/sync/invoices", response_model=SyncResult)
@@ -195,6 +205,13 @@ async def sync_invoices(
         log.completed_at = datetime.utcnow()
         await session.commit()
         raise HTTPException(status_code=502, detail=f"Error de Holded: {e.detail}")
+    except Exception:
+        log.status = "error"
+        log.error_message = "Unexpected invoices sync error"
+        log.completed_at = datetime.utcnow()
+        await session.commit()
+        logger.exception("Unexpected error syncing Holded invoices")
+        raise HTTPException(status_code=500, detail="Error interno sincronizando facturas")
 
 
 @router.post("/sync/expenses", response_model=SyncResult)
@@ -268,6 +285,13 @@ async def sync_expenses(
         log.completed_at = datetime.utcnow()
         await session.commit()
         raise HTTPException(status_code=502, detail=f"Error de Holded: {e.detail}")
+    except Exception:
+        log.status = "error"
+        log.error_message = "Unexpected expenses sync error"
+        log.completed_at = datetime.utcnow()
+        await session.commit()
+        logger.exception("Unexpected error syncing Holded expenses")
+        raise HTTPException(status_code=500, detail="Error interno sincronizando gastos")
 
 
 @router.post("/sync/all")
@@ -287,6 +311,15 @@ async def sync_all(
                 status="error",
                 records_synced=0,
                 error_message=e.detail,
+            ))
+        except Exception:
+            sync_type = sync_fn.__name__.replace("sync_", "")
+            logger.exception("Unexpected error in Holded sync_all stage: %s", sync_type)
+            results.append(SyncResult(
+                sync_type=sync_type,
+                status="error",
+                records_synced=0,
+                error_message="Error interno de sincronizacion",
             ))
     return results
 
@@ -326,7 +359,7 @@ async def sync_logs(
 # ── Data endpoints (read from cache) ──────────────────────
 
 
-@router.get("/invoices")
+@router.get("/invoices", response_model=HoldedInvoicePageResponse)
 async def list_invoices(
     client_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
@@ -370,7 +403,7 @@ async def get_invoice_pdf(
         raise HTTPException(status_code=502, detail=f"Error descargando PDF: {e.detail}")
 
 
-@router.get("/expenses")
+@router.get("/expenses", response_model=HoldedExpensePageResponse)
 async def list_expenses(
     category: Optional[str] = Query(None),
     date_from: Optional[date] = Query(None),
@@ -401,8 +434,9 @@ async def holded_dashboard(
     """Financial summary from Holded cache."""
     try:
         return await _build_holded_dashboard(session)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Error building Holded dashboard: {str(e)}")
+    except Exception:
+        logger.exception("Failed to build Holded dashboard")
+        raise HTTPException(status_code=502, detail="No se pudo cargar el dashboard de Holded")
 
 
 async def _build_holded_dashboard(session: AsyncSession) -> HoldedDashboardResponse:
@@ -530,8 +564,9 @@ async def test_connection(
         if ok:
             return TestConnectionResponse(success=True, message="Conexion exitosa con Holded")
         return TestConnectionResponse(success=False, message="No se pudo conectar con Holded")
-    except Exception as e:
-        return TestConnectionResponse(success=False, message=f"Error: {str(e)}")
+    except Exception:
+        logger.exception("Unexpected error testing Holded connection")
+        return TestConnectionResponse(success=False, message="Error interno al probar conexion")
 
 
 # ── Client-level invoice lookup ────────────────────────────

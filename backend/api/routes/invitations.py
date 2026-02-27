@@ -13,6 +13,7 @@ from backend.core.security import hash_password
 from backend.schemas.invitation import (
     InvitationCreate,
     InvitationResponse,
+    InvitationCreateResponse,
     AcceptInvitationRequest,
     PermissionItem,
     UserPermissionsUpdate,
@@ -25,6 +26,19 @@ router = APIRouter(prefix="/api", tags=["invitations"])
 
 def _inv_response(inv: UserInvitation) -> InvitationResponse:
     return InvitationResponse(
+        id=inv.id,
+        email=inv.email,
+        role=inv.role.value,
+        invited_by=inv.invited_by,
+        inviter_name=inv.inviter.full_name if inv.inviter else None,
+        expires_at=inv.expires_at,
+        accepted_at=inv.accepted_at,
+        created_at=inv.created_at,
+    )
+
+
+def _inv_create_response(inv: UserInvitation) -> InvitationCreateResponse:
+    return InvitationCreateResponse(
         id=inv.id,
         email=inv.email,
         token=inv.token,
@@ -49,7 +63,7 @@ async def list_invitations(
     return [_inv_response(i) for i in result.scalars().all()]
 
 
-@router.post("/invitations", response_model=InvitationResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/invitations", response_model=InvitationCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_invitation(
     body: InvitationCreate,
     db: AsyncSession = Depends(get_db),
@@ -83,7 +97,7 @@ async def create_invitation(
     await db.commit()
     await db.refresh(invitation)
 
-    return _inv_response(invitation)
+    return _inv_create_response(invitation)
 
 
 @router.post("/invitations/accept", response_model=UserResponse)

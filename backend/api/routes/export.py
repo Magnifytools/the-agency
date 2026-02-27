@@ -1,26 +1,23 @@
 from __future__ import annotations
 
 from typing import Optional
-from datetime import date
-import csv
-import io
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import Response
 from sqlalchemy import select, extract
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import Income, Expense, Tax, User
 from backend.api.deps import require_module
-
+from backend.services.csv_utils import build_csv_response
+from backend.services.report_period import MAX_REPORT_YEAR, MIN_REPORT_YEAR
 router = APIRouter(prefix="/api/finance/export", tags=["finance-export"])
 
 
 @router.get("/income")
 async def export_income(
-    year: Optional[int] = Query(None),
-    month: Optional[int] = Query(None),
+    year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
+    month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("finance_income")),
 ):
@@ -33,26 +30,28 @@ async def export_income(
     r = await db.execute(q)
     items = r.scalars().all()
 
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["fecha", "descripcion", "importe", "tipo", "factura", "iva_tipo", "iva_importe", "estado", "notas"])
-    for item in items:
-        writer.writerow([
-            item.date.isoformat(), item.description, item.amount, item.type,
-            item.invoice_number, item.vat_rate, item.vat_amount, item.status, item.notes,
-        ])
-
-    return Response(
-        output.getvalue(),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=ingresos.csv"},
+    header = ["fecha", "descripcion", "importe", "tipo", "factura", "iva_tipo", "iva_importe", "estado", "notas"]
+    csv_rows = (
+        [
+            item.date.isoformat(),
+            item.description,
+            item.amount,
+            item.type,
+            item.invoice_number,
+            item.vat_rate,
+            item.vat_amount,
+            item.status,
+            item.notes,
+        ]
+        for item in items
     )
+    return build_csv_response("ingresos.csv", header, csv_rows)
 
 
 @router.get("/expenses")
 async def export_expenses(
-    year: Optional[int] = Query(None),
-    month: Optional[int] = Query(None),
+    year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
+    month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("finance_expenses")),
 ):
@@ -65,25 +64,27 @@ async def export_expenses(
     r = await db.execute(q)
     items = r.scalars().all()
 
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["fecha", "descripcion", "importe", "proveedor", "iva_tipo", "iva_importe", "deducible", "recurrente", "notas"])
-    for item in items:
-        writer.writerow([
-            item.date.isoformat(), item.description, item.amount, item.supplier,
-            item.vat_rate, item.vat_amount, item.is_deductible, item.is_recurring, item.notes,
-        ])
-
-    return Response(
-        output.getvalue(),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=gastos.csv"},
+    header = ["fecha", "descripcion", "importe", "proveedor", "iva_tipo", "iva_importe", "deducible", "recurrente", "notas"]
+    csv_rows = (
+        [
+            item.date.isoformat(),
+            item.description,
+            item.amount,
+            item.supplier,
+            item.vat_rate,
+            item.vat_amount,
+            item.is_deductible,
+            item.is_recurring,
+            item.notes,
+        ]
+        for item in items
     )
+    return build_csv_response("gastos.csv", header, csv_rows)
 
 
 @router.get("/taxes")
 async def export_taxes(
-    year: Optional[int] = Query(None),
+    year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("finance_taxes")),
 ):
@@ -94,19 +95,20 @@ async def export_taxes(
     r = await db.execute(q)
     items = r.scalars().all()
 
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["nombre", "modelo", "periodo", "ano", "base", "tipo", "cuota", "estado", "vencimiento", "pagado"])
-    for item in items:
-        writer.writerow([
-            item.name, item.model, item.period, item.year, item.base_amount,
-            item.tax_rate, item.tax_amount, item.status,
+    header = ["nombre", "modelo", "periodo", "ano", "base", "tipo", "cuota", "estado", "vencimiento", "pagado"]
+    csv_rows = (
+        [
+            item.name,
+            item.model,
+            item.period,
+            item.year,
+            item.base_amount,
+            item.tax_rate,
+            item.tax_amount,
+            item.status,
             item.due_date.isoformat() if item.due_date else "",
             item.paid_date.isoformat() if item.paid_date else "",
-        ])
-
-    return Response(
-        output.getvalue(),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=impuestos.csv"},
+        ]
+        for item in items
     )
+    return build_csv_response("impuestos.csv", header, csv_rows)

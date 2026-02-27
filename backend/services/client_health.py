@@ -109,22 +109,33 @@ def _build_result(client_id: int, client_name: str, comm: int, tasks: int,
     }
 
 
+def _utc_now_naive() -> datetime:
+    """Use naive UTC datetimes to match TIMESTAMP WITHOUT TIME ZONE columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _as_naive_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 # ── Single-client version (used by /{client_id}/health) ─────
 
 
 async def compute_health(client: Client, db: AsyncSession) -> dict:
     """Return health score dict for a single client."""
-    now = datetime.now(timezone.utc)
+    now = _utc_now_naive()
 
     # --- 1. Communication frequency (25 pts) ---
     last_comm = await db.execute(
         select(func.max(CommunicationLog.occurred_at))
         .where(CommunicationLog.client_id == client.id)
     )
-    last_comm_date = last_comm.scalar()
+    last_comm_date = _as_naive_utc(last_comm.scalar())
     if last_comm_date:
-        if last_comm_date.tzinfo is None:
-            last_comm_date = last_comm_date.replace(tzinfo=timezone.utc)
         days_since = (now - last_comm_date).days
     else:
         days_since = None
@@ -217,7 +228,7 @@ async def compute_health_batch(
     if not clients:
         return []
 
-    now = datetime.now(timezone.utc)
+    now = _utc_now_naive()
     client_ids = [c.id for c in clients]
     client_name_map = {c.id: c.name for c in clients}
     client_budget_map = {c.id: c.monthly_budget for c in clients}
@@ -293,6 +304,7 @@ async def compute_health_batch(
                 0,
             ),
         )
+        .select_from(TimeEntry)
         .join(Task, TimeEntry.task_id == Task.id)
         .join(User, TimeEntry.user_id == User.id)
         .where(
@@ -322,10 +334,8 @@ async def compute_health_batch(
     scores: list[dict] = []
     for cid in client_ids:
         # 1. Communication
-        last_date = last_comm_map.get(cid)
+        last_date = _as_naive_utc(last_comm_map.get(cid))
         if last_date is not None:
-            if last_date.tzinfo is None:
-                last_date = last_date.replace(tzinfo=timezone.utc)
             days_since: int | None = (now - last_date).days
         else:
             days_since = None

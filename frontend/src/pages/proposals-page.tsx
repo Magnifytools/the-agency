@@ -111,6 +111,7 @@ export default function ProposalsPage() {
     const [wizardOpen, setWizardOpen] = useState(false)
 
     // Auto-open wizard when navigating from lead detail
+    /* eslint-disable react-hooks/set-state-in-effect -- One-time hydration of wizard state from router payload */
     useEffect(() => {
         const state = location.state as { createFromLead?: { id: number; company_name: string; contact_name?: string; service_interest?: string; estimated_value?: number } } | null
         if (state?.createFromLead) {
@@ -129,6 +130,7 @@ export default function ProposalsPage() {
             window.history.replaceState({}, document.title)
         }
     }, [location.state])
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     // --- Queries ---
     const { data: proposals = [] } = useQuery({
@@ -340,17 +342,12 @@ export default function ProposalsPage() {
     const openPdf = async (id: number, e?: React.MouseEvent) => {
         e?.stopPropagation()
         try {
-            const token = localStorage.getItem("token")
-            const res = await fetch(`/api/proposals/${id}/pdf`, {
-                headers: { Authorization: `Bearer ${token}` },
-            })
-            if (!res.ok) throw new Error("Error al generar PDF")
-            const blob = await res.blob()
+            const blob = await proposalsApi.pdf(id)
             const url = URL.createObjectURL(blob)
             window.open(url, "_blank")
             setTimeout(() => URL.revokeObjectURL(url), 60000)
-        } catch {
-            toast.error("Error al abrir el PDF")
+        } catch (err) {
+            toast.error(getErrorMessage(err, "Error al abrir el PDF"))
         }
     }
 

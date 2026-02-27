@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import secrets
 
 import bcrypt
 from jose import JWTError, jwt
@@ -22,6 +23,10 @@ def create_access_token(data: dict) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def create_csrf_token() -> str:
+    return secrets.token_urlsafe(32)
 
 
 def decode_access_token(token: str) -> Optional[dict]:

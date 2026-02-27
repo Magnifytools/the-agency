@@ -813,13 +813,16 @@ export interface GrowthIdeaCreate {
 export interface Invitation {
   id: number
   email: string
-  token: string
   role: UserRole
   invited_by: number
   inviter_name: string | null
   expires_at: string
   accepted_at: string | null
   created_at: string
+}
+
+export interface InvitationCreateResult extends Invitation {
+  token: string
 }
 
 export interface InvitationCreate {
@@ -1406,4 +1409,3 @@ export interface DiscordSendResponse {
   message: string
   date?: string
 }
-

@@ -81,10 +81,10 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
         <h2 className="text-2xl font-bold uppercase tracking-wide">Equipo</h2>
         {currentUser?.role === "admin" && (
-          <Button onClick={() => setIsInviteOpen(true)}>
+          <Button onClick={() => setIsInviteOpen(true)} className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" /> Invitar Miembro
           </Button>
         )}
@@ -93,36 +93,60 @@ export default function UsersPage() {
       {isLoading ? (
         <p className="text-muted-foreground">Cargando...</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nombre</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Rol</TableHead>
-              <TableHead>Tarifa/h</TableHead>
-              <TableHead className="w-12"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nombre</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Rol</TableHead>
+                  <TableHead>Tarifa/h</TableHead>
+                  <TableHead className="w-12"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {users.map((u) => (
+                  <TableRow key={u.id}>
+                    <TableCell className="font-medium">{u.full_name}</TableCell>
+                    <TableCell>{u.email}</TableCell>
+                    <TableCell>
+                      <Badge variant={u.role === "admin" ? "default" : "secondary"}>
+                        {u.role === "admin" ? "Admin" : "Miembro"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="mono">{u.hourly_rate != null ? `${u.hourly_rate}€/h` : "-"}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" onClick={() => setEditing(u)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="md:hidden space-y-3">
             {users.map((u) => (
-              <TableRow key={u.id}>
-                <TableCell className="font-medium">{u.full_name}</TableCell>
-                <TableCell>{u.email}</TableCell>
-                <TableCell>
+              <div key={u.id} className="rounded-lg border border-border p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium">{u.full_name}</p>
                   <Badge variant={u.role === "admin" ? "default" : "secondary"}>
                     {u.role === "admin" ? "Admin" : "Miembro"}
                   </Badge>
-                </TableCell>
-                <TableCell className="mono">{u.hourly_rate != null ? `${u.hourly_rate}€/h` : "-"}</TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="icon" onClick={() => setEditing(u)}>
-                    <Pencil className="h-4 w-4" />
+                </div>
+                <p className="text-sm text-muted-foreground break-all">{u.email}</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm mono">{u.hourly_rate != null ? `${u.hourly_rate}€/h` : "-"}</p>
+                  <Button variant="outline" size="sm" onClick={() => setEditing(u)}>
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Editar
                   </Button>
-                </TableCell>
-              </TableRow>
+                </div>
+              </div>
             ))}
-          </TableBody>
-        </Table>
+          </div>
+        </>
       )}
 
       <Pagination page={page} pageSize={pageSize} total={data?.total ?? 0} onPageChange={setPage} />

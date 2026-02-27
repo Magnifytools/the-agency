@@ -8,7 +8,7 @@ interface AuthContextType {
   isLoading: boolean
   isAdmin: boolean
   login: (email: string, password: string) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
   hasPermission: (module: string, write?: boolean) => boolean
 }
 
@@ -16,28 +16,24 @@ const AuthContext = createContext<AuthContextType | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(() => !!localStorage.getItem("token"))
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem("token")
-    if (token) {
-      authApi
-        .me()
-        .then(setUser)
-        .catch(() => localStorage.removeItem("token"))
-        .finally(() => setIsLoading(false))
-    }
+    authApi
+      .me()
+      .then(setUser)
+      .catch(() => setUser(null))
+      .finally(() => setIsLoading(false))
   }, [])
 
   const login = async (email: string, password: string) => {
-    const { access_token } = await authApi.login(email, password)
-    localStorage.setItem("token", access_token)
+    await authApi.login(email, password)
     const me = await authApi.me()
     setUser(me)
   }
 
-  const logout = () => {
-    localStorage.removeItem("token")
+  const logout = async () => {
+    await authApi.logout().catch(() => undefined)
     setUser(null)
   }
 

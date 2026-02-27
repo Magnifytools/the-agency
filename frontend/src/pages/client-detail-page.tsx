@@ -19,6 +19,8 @@ import { ClientDashboardTab } from "@/components/clients/client-dashboard-tab"
 import { ClientAiAdvisor } from "@/components/clients/client-ai-advisor"
 import { ClientReportsTab } from "@/components/clients/client-reports-tab"
 import { ClientSettingsTab } from "@/components/clients/client-settings-tab"
+import { useAuth } from "@/context/auth-context"
+import { holdedKeys } from "@/lib/query-keys"
 
 function formatMinutes(m: number): string {
   const h = Math.floor(m / 60)
@@ -49,6 +51,7 @@ const taskStatusBadge = (status: TaskStatus) => {
 }
 
 export default function ClientDetailPage() {
+  const { isAdmin } = useAuth()
   const { id } = useParams<{ id: string }>()
   const clientId = Number(id)
   const [timeLogTaskId, setTimeLogTaskId] = useState<{ id: number; title: string } | null>(null)
@@ -67,15 +70,16 @@ export default function ClientDetailPage() {
   })
 
   const { data: holdedConfig } = useQuery({
-    queryKey: ["holded-config"],
+    queryKey: holdedKeys.config(),
     queryFn: holdedApi.config,
     staleTime: 5 * 60_000,
     retry: false,
+    enabled: isAdmin,
   })
-  const holdedEnabled = holdedConfig?.api_key_configured ?? false
+  const holdedEnabled = isAdmin && (holdedConfig?.api_key_configured ?? false)
 
   const { data: clientInvoices = [] } = useQuery({
-    queryKey: ["holded-client-invoices", clientId],
+    queryKey: holdedKeys.clientInvoices(clientId),
     queryFn: () => holdedApi.clientInvoices(clientId),
     enabled: !!clientId && holdedEnabled,
   })

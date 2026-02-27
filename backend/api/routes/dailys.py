@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import date as date_type, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -19,6 +20,7 @@ from backend.schemas.daily import (
 from backend.services.daily_parser import parse_daily_update, format_daily_for_discord
 
 router = APIRouter(prefix="/api/dailys", tags=["daily-updates"])
+logger = logging.getLogger(__name__)
 
 
 def _to_response(d: DailyUpdate) -> DailyUpdateResponse:
@@ -60,10 +62,11 @@ async def submit_daily(
     # Parse with AI
     try:
         parsed = await parse_daily_update(body.raw_text)
-    except ValueError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Error al parsear el daily: {str(e)}")
+    except ValueError:
+        raise HTTPException(status_code=502, detail="No se pudo interpretar el daily")
+    except Exception:
+        logger.exception("Unexpected error parsing daily for user_id=%s", current_user.id)
+        raise HTTPException(status_code=502, detail="Error al parsear el daily")
 
     daily = DailyUpdate(
         user_id=current_user.id,
@@ -149,8 +152,9 @@ async def reparse_daily(
 
     try:
         parsed = await parse_daily_update(daily.raw_text)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Error al re-parsear: {str(e)}")
+    except Exception:
+        logger.exception("Unexpected error reparsing daily_id=%s", daily_id)
+        raise HTTPException(status_code=502, detail="Error al re-parsear el daily")
 
     daily.parsed_data = parsed
     await db.commit()

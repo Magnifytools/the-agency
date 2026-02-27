@@ -1,3 +1,33 @@
+/* PP Neue Montreal — self-hosted */
+@font-face {
+  font-family: 'PP Neue Montreal';
+  src: url('/fonts/ppneuemontreal-book.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PP Neue Montreal';
+  src: url('/fonts/ppneuemontreal-medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PP Neue Montreal';
+  src: url('/fonts/ppneuemontreal-medium.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PP Neue Montreal';
+  src: url('/fonts/ppneuemontreal-bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 @import "tailwindcss";
 
 @theme {
@@ -29,6 +59,7 @@
   --radius-md: 10px;
   --radius-lg: 16px;
   --radius-xl: 20px;
+  --font-display: 'DM Serif Display', Georgia, serif;
 }
 
 @layer base {
@@ -37,7 +68,7 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'PP Neue Montreal', -apple-system, BlinkMacSystemFont, sans-serif;
     margin: 0;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -58,6 +89,11 @@
   }
   ::-webkit-scrollbar-thumb:hover {
     background: #555;
+  }
+
+  h1, h2 {
+    font-family: var(--font-display);
+    font-weight: 400;
   }
 
   ::selection {
@@ -83,11 +119,12 @@
     background-color: #242424;
   }
   .kpi-value {
+    font-family: var(--font-display);
     font-size: 2.5rem;
-    font-weight: 600;
+    font-weight: 400;
     line-height: 1;
     color: #FFFFFF;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.02em;
     font-variant-numeric: tabular-nums;
   }
   .section-label {

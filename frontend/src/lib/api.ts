@@ -45,6 +45,7 @@ import type {
   GrowthIdeaCreate,
   GrowthIdeaUpdate,
   Invitation,
+  InvitationCreateResult,
   InvitationCreate,
   Income,
   IncomeCreate,
@@ -107,12 +108,22 @@ import type {
 const api = axios.create({
   baseURL: "/api",
   timeout: 30_000,
+  withCredentials: true,
 })
 
+function getCookie(name: string): string | null {
+  if (typeof document === "undefined") return null
+  const match = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${name}=`))
+  if (!match) return null
+  return decodeURIComponent(match.substring(name.length + 1))
+}
+
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token")
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+  const csrfToken = getCookie("agency_csrf_token")
+  if (csrfToken) {
+    config.headers["X-CSRF-Token"] = csrfToken
   }
   return config
 })
@@ -120,18 +131,32 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (error) => {
+    const method = String(error.config?.method || "").toLowerCase()
+    const isGetRequest = method === "get"
+    const requestUrl = String(error.config?.url || "")
     if (error.response) {
       const status = error.response.status
       if (status === 401) {
-        localStorage.removeItem("token")
-        window.location.href = "/login"
+        const isAuthRequest =
+          requestUrl.includes("/auth/login") ||
+          requestUrl.includes("/auth/me") ||
+          requestUrl.includes("/auth/logout")
+        if (!isAuthRequest) {
+          window.location.href = "/login"
+        }
       } else if (status === 403) {
-        toast.error("No tienes permisos para esta acción")
+        if (!isGetRequest) {
+          toast.error("No tienes permisos para esta acción")
+        }
       } else if (status >= 500) {
-        toast.error("Error del servidor. Intenta de nuevo.")
+        if (!isGetRequest) {
+          toast.error("Error del servidor. Intenta de nuevo.")
+        }
       }
     } else if (error.request) {
-      toast.error("Error de conexión. Verifica tu red.")
+      if (!isGetRequest) {
+        toast.error("Error de conexión. Verifica tu red.")
+      }
     }
     return Promise.reject(error)
   }
@@ -141,6 +166,7 @@ api.interceptors.response.use(
 export const authApi = {
   login: (email: string, password: string) =>
     api.post<TokenResponse>("/auth/login", { email, password }).then((r) => r.data),
+  logout: () => api.post<void>("/auth/logout").then((r) => r.data),
   me: () => api.get<User>("/auth/me").then((r) => r.data),
 }
 
@@ -156,6 +182,8 @@ export const clientsApi = {
     api.put<Client>(`/clients/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete<Client>(`/clients/${id}`).then((r) => r.data),
   summary: (id: number) => api.get<ClientSummary>(`/clients/${id}/summary`).then((r) => r.data),
+  aiAdvice: (id: number) =>
+    api.post<{ recommendations: Array<{ priority: "high" | "medium" | "low"; category: string; title: string; description: string; action: string }> }>(`/clients/${id}/ai-advice`).then((r) => r.data),
 }
 
 // Tasks
@@ -357,6 +385,7 @@ export const proposalsApi = {
   duplicate: (id: number) => api.post<Proposal>(`/proposals/${id}/duplicate`).then((r) => r.data),
   convert: (id: number) => api.post<Proposal>(`/proposals/${id}/convert`).then((r) => r.data),
   generate: (id: number) => api.post<Proposal>(`/proposals/${id}/generate`).then((r) => r.data),
+  pdf: (id: number) => api.get(`/proposals/${id}/pdf`, { responseType: "blob" }).then((r) => r.data),
   pdfUrl: (id: number) => `/api/proposals/${id}/pdf`,
 }
 
@@ -364,7 +393,7 @@ export const proposalsApi = {
 export const invitationsApi = {
   list: () => api.get<Invitation[]>("/invitations").then((r) => r.data),
   create: (data: InvitationCreate) =>
-    api.post<Invitation>("/invitations", data).then((r) => r.data),
+    api.post<InvitationCreateResult>("/invitations", data).then((r) => r.data),
   revoke: (id: number) => api.delete(`/invitations/${id}`).then((r) => r.data),
   accept: (data: { token: string; full_name: string; password: string }) =>
     api.post<User>("/invitations/accept", data).then((r) => r.data),
@@ -640,4 +669,3 @@ export const notificationsApi = {
   generateChecks: () =>
     api.post<{ created: number }>("/notifications/generate-checks").then((r) => r.data),
 }
-

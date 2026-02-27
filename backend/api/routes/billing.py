@@ -1,42 +1,34 @@
 from __future__ import annotations
 from typing import Optional
 
-import csv
-import io
-from datetime import datetime, timezone
-from calendar import monthrange
-
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import Client, Task, TimeEntry, User
-from backend.api.deps import get_current_user, require_module
+from backend.api.deps import require_module
+from backend.services.csv_utils import build_csv_response
+from backend.services.report_period import (
+    MAX_REPORT_YEAR,
+    MIN_REPORT_YEAR,
+    month_range_naive,
+    resolve_default_period,
+)
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
-
-
-def _month_range(year: int, month: int):
-    """Return naive datetimes (no tz) to match TIMESTAMP WITHOUT TIME ZONE columns."""
-    _, last_day = monthrange(year, month)
-    start = datetime(year, month, 1)
-    end = datetime(year, month, last_day, 23, 59, 59)
-    return start, end
 
 
 @router.get("/export")
 async def export_billing(
     format: str = Query("csv", pattern="^(csv|json)$"),
-    year: Optional[int] = Query(None),
-    month: Optional[int] = Query(None),
+    year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
+    month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("billing")),
 ):
-    now = datetime.now(timezone.utc)
-    y = year or now.year
-    m = month or now.month
-    start, end = _month_range(y, m)
+    y, m = resolve_default_period(year, month)
+    start, end = month_range_naive(y, m)
 
     # Aggregate time + cost per client for the month
     result = await db.execute(
@@ -81,15 +73,9 @@ async def export_billing(
         return rows
 
     # CSV export
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=["client_id", "client_name", "period", "hours", "cost", "budget", "margin"])
-    writer.writeheader()
-    for r in rows:
-        writer.writerow(r)
-
-    content = output.getvalue()
-    return Response(
-        content,
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=billing_{y}_{m:02d}.csv"},
+    header = ["client_id", "client_name", "period", "hours", "cost", "budget", "margin"]
+    csv_rows = (
+        [r["client_id"], r["client_name"], r["period"], r["hours"], r["cost"], r["budget"], r["margin"]]
+        for r in rows
     )
+    return build_csv_response(f"billing_{y}_{m:02d}.csv", header, csv_rows)

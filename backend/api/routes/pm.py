@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 from typing import Optional
 
 from datetime import datetime
@@ -15,6 +16,7 @@ from backend.api.deps import get_current_user, require_module
 from backend.db.models import UserRole
 
 router = APIRouter(prefix="/api/pm", tags=["pm"])
+logger = logging.getLogger(__name__)
 
 
 def _to_response(insight: PMInsight) -> InsightResponse:
@@ -214,8 +216,9 @@ async def share_briefing_to_discord(
         async with httpx.AsyncClient() as client:
             resp = await client.post(settings.DISCORD_WEBHOOK_URL, json=discord_payload)
             resp.raise_for_status()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to push to Discord: {str(e)}")
+    except Exception:
+        logger.exception("Failed to push PM briefing to Discord for user_id=%s", current_user.id)
+        raise HTTPException(status_code=500, detail="No se pudo enviar el briefing a Discord")
         
     return {"status": "ok", "message": "Briefing shared to Discord."}
 

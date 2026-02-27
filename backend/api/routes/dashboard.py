@@ -1,11 +1,7 @@
 from __future__ import annotations
 from typing import Optional
 
-from datetime import datetime, timezone
-from calendar import monthrange
-
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import Response
 from sqlalchemy import select, func, and_, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,16 +27,15 @@ from backend.schemas.dashboard import (
     FinancialSettingsUpdate,
 )
 from backend.api.deps import get_current_user, require_module
+from backend.services.csv_utils import build_csv_response
+from backend.services.report_period import (
+    MAX_REPORT_YEAR,
+    MIN_REPORT_YEAR,
+    month_range_naive,
+    resolve_default_period,
+)
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
-
-
-def _month_range(year: int, month: int):
-    """Return naive datetimes (no tz) to match TIMESTAMP WITHOUT TIME ZONE columns."""
-    _, last_day = monthrange(year, month)
-    start = datetime(year, month, 1)
-    end = datetime(year, month, last_day, 23, 59, 59)
-    return start, end
 
 
 async def _get_or_create_financial_settings(db: AsyncSession) -> FinancialSettings:
@@ -56,15 +51,13 @@ async def _get_or_create_financial_settings(db: AsyncSession) -> FinancialSettin
 
 @router.get("/overview", response_model=DashboardOverview)
 async def get_overview(
-    year: Optional[int] = Query(None),
-    month: Optional[int] = Query(None),
+    year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
+    month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("dashboard")),
 ):
-    now = datetime.now(timezone.utc)
-    y = year or now.year
-    m = month or now.month
-    start, end = _month_range(y, m)
+    y, m = resolve_default_period(year, month)
+    start, end = month_range_naive(y, m)
 
     # Active clients
     r = await db.execute(
@@ -125,15 +118,13 @@ async def get_overview(
 
 @router.get("/profitability", response_model=ProfitabilityResponse)
 async def get_profitability(
-    year: Optional[int] = Query(None),
-    month: Optional[int] = Query(None),
+    year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
+    month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("dashboard")),
 ):
-    now = datetime.now(timezone.utc)
-    y = year or now.year
-    m = month or now.month
-    start, end = _month_range(y, m)
+    y, m = resolve_default_period(year, month)
+    start, end = month_range_naive(y, m)
 
     # Get active clients (1 query)
     r = await db.execute(select(Client).where(Client.status == ClientStatus.active))
@@ -213,15 +204,13 @@ async def get_profitability(
 
 @router.get("/team", response_model=list[TeamMemberSummary])
 async def get_team_summary(
-    year: Optional[int] = Query(None),
-    month: Optional[int] = Query(None),
+    year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
+    month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("dashboard")),
 ):
-    now = datetime.now(timezone.utc)
-    y = year or now.year
-    m = month or now.month
-    start, end = _month_range(y, m)
+    y, m = resolve_default_period(year, month)
+    start, end = month_range_naive(y, m)
 
     # Get users (1 query)
     r = await db.execute(select(User).order_by(User.full_name))
@@ -271,14 +260,12 @@ async def get_team_summary(
 
 @router.get("/monthly-close", response_model=MonthlyCloseResponse)
 async def get_monthly_close(
-    year: Optional[int] = Query(None),
-    month: Optional[int] = Query(None),
+    year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
+    month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("dashboard")),
 ):
-    now = datetime.now(timezone.utc)
-    y = year or now.year
-    m = month or now.month
+    y, m = resolve_default_period(year, month)
 
     r = await db.execute(
         select(MonthlyClose).where(and_(MonthlyClose.year == y, MonthlyClose.month == m))
@@ -313,14 +300,12 @@ def _monthly_close_response(record: MonthlyClose) -> MonthlyCloseResponse:
 @router.put("/monthly-close", response_model=MonthlyCloseResponse)
 async def update_monthly_close(
     body: MonthlyCloseUpdate,
-    year: Optional[int] = Query(None),
-    month: Optional[int] = Query(None),
+    year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
+    month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("dashboard")),
 ):
-    now = datetime.now(timezone.utc)
-    y = year or now.year
-    m = month or now.month
+    y, m = resolve_default_period(year, month)
 
     r = await db.execute(
         select(MonthlyClose).where(and_(MonthlyClose.year == y, MonthlyClose.month == m))
@@ -352,14 +337,12 @@ async def update_monthly_close(
 
 @router.get("/monthly-close/export")
 async def export_monthly_close(
-    year: Optional[int] = Query(None),
-    month: Optional[int] = Query(None),
+    year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
+    month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("dashboard")),
 ):
-    now = datetime.now(timezone.utc)
-    y = year or now.year
-    m = month or now.month
+    y, m = resolve_default_period(year, month)
     r = await db.execute(
         select(MonthlyClose).where(and_(MonthlyClose.year == y, MonthlyClose.month == m))
     )
@@ -385,14 +368,11 @@ async def export_monthly_close(
         "updated_at": record.updated_at.isoformat() if record.updated_at else None,
     }
 
-    lines = ["campo,valor"]
-    for key, value in payload.items():
-        lines.append(f"{key},{value}")
-    content = "\n".join(lines)
-    return Response(
-        content,
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=cierre-mensual-{y}-{m:02d}.csv"},
+    csv_rows = ([key, value] for key, value in payload.items())
+    return build_csv_response(
+        f"cierre-mensual-{y}-{m:02d}.csv",
+        ["campo", "valor"],
+        csv_rows,
     )
 
 

@@ -2,6 +2,7 @@ import { Link, useLocation, Outlet } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/context/auth-context"
 import { holdedApi } from "@/lib/api"
+import { holdedKeys } from "@/lib/query-keys"
 import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList, Gauge, BarChart3 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
@@ -13,12 +14,13 @@ export function AppLayout() {
   const location = useLocation()
 
   const { data: holdedConfig } = useQuery({
-    queryKey: ["holded-config"],
+    queryKey: holdedKeys.config(),
     queryFn: holdedApi.config,
     staleTime: 5 * 60_000,
     retry: false,
+    enabled: isAdmin,
   })
-  const holdedEnabled = holdedConfig?.api_key_configured ?? false
+  const holdedEnabled = isAdmin && (holdedConfig?.api_key_configured ?? false)
 
   const mainNav = useMemo(() => {
     const items = [
@@ -63,6 +65,23 @@ export function AppLayout() {
       { to: "/discord", label: "Discord", icon: MessageCircle },
     ]
   }, [isAdmin])
+
+  const mobileNav = useMemo(() => {
+    const findMain = (path: string) => mainNav.find((item) => item.to === path)
+    const financeItem = holdedEnabled
+      ? { to: "/finance-holded", label: "Finanzas", icon: Wallet }
+      : financeNav.length > 0
+        ? { to: "/finance", label: "Finanzas", icon: Wallet }
+        : null
+
+    return [
+      findMain("/dashboard"),
+      findMain("/clients"),
+      findMain("/leads"),
+      financeItem,
+      findMain("/projects"),
+    ].filter((item): item is { to: string; label: string; icon: typeof Wallet } => Boolean(item))
+  }, [mainNav, holdedEnabled, financeNav])
 
   const isActive = (path: string) => {
     if (path === "/finance-holded") {
@@ -201,7 +220,7 @@ export function AppLayout() {
               <div className="flex items-center gap-1 flex-shrink-0">
                 <NotificationBell />
                 <button
-                  onClick={logout}
+                  onClick={() => void logout()}
                   className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
                   title="Cerrar sesion"
                 >
@@ -220,15 +239,7 @@ export function AppLayout() {
 
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-[60px] bg-card/95 backdrop-blur-md border-t border-border flex items-center justify-around px-2 z-50 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.3)]">
-        {[
-          ...mainNav.slice(0, 3),
-          ...(holdedEnabled
-            ? [{ to: "/finance-holded", label: "Finanzas", icon: Wallet }]
-            : financeNav.length > 0
-              ? [{ to: "/finance", label: "Finanzas", icon: Wallet }]
-              : []),
-          ...mainNav.slice(3, 4),
-        ].slice(0, 5).map((item) => (
+        {mobileNav.map((item) => (
           <Link
             key={item.to}
             to={item.to}

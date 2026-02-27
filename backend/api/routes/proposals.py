@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 from typing import Any, Optional
 from datetime import datetime, date, timedelta
 
@@ -20,6 +21,7 @@ from backend.schemas.proposal import (
 )
 
 router = APIRouter(prefix="/api/proposals", tags=["proposals"])
+logger = logging.getLogger(__name__)
 
 
 def _to_response(prop: Proposal) -> dict[str, Any]:
@@ -455,8 +457,9 @@ Responde SOLO con el JSON, sin markdown ni texto adicional."""
             content_text = content_text.split("\n", 1)[1]
             content_text = content_text.rsplit("```", 1)[0]
         generated = json.loads(content_text)
-    except (json.JSONDecodeError, IndexError) as e:
-        raise HTTPException(status_code=500, detail=f"Error parseando respuesta de IA: {str(e)}")
+    except (json.JSONDecodeError, IndexError):
+        logger.exception("Invalid AI JSON while generating proposal id=%s", proposal_id)
+        raise HTTPException(status_code=502, detail="La IA devolvio un formato no valido")
 
     prop.generated_content = generated
     await db.commit()
