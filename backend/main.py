@@ -42,6 +42,17 @@ app.add_middleware(
 )
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Adds security headers including HSTS to every response."""
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+
 class RequestIdMiddleware(BaseHTTPMiddleware):
     """Adds X-Request-ID header to every response for traceability."""
     async def dispatch(self, request: Request, call_next):
@@ -53,6 +64,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(RequestIdMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 class CsrfProtectionMiddleware(BaseHTTPMiddleware):
