@@ -669,3 +669,32 @@ export const notificationsApi = {
   generateChecks: () =>
     api.post<{ created: number }>("/notifications/generate-checks").then((r) => r.data),
 }
+
+// --- Engine Integration ---
+export interface EngineProject {
+  id: number
+  name: string
+  domain: string
+  logo_url: string | null
+  agency_client_id: number | null
+  agency_project_id: number | null
+  agency_synced_at: string | null
+}
+
+export interface EngineMetrics {
+  project_id: number
+  project_name: string
+  domain: string
+  content_count: number
+  keyword_count: number
+  avg_position: number | null
+  clicks_30d: number
+  impressions_30d: number
+}
+
+export const engineApi = {
+  listProjects: () =>
+    api.get<EngineProject[]>("/engine/projects").then((r) => r.data),
+  getMetrics: (projectId: number) =>
+    api.get<EngineMetrics>(`/engine/projects/${projectId}/metrics`).then((r) => r.data),
+}

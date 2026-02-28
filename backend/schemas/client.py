@@ -40,6 +40,7 @@ class ClientUpdate(BaseModel):
     billing_day: Optional[int] = None
     next_invoice_date: Optional[date] = None
     last_invoiced_date: Optional[date] = None
+    engine_project_id: Optional[int] = None
 
 
 class ClientResponse(BaseModel):
@@ -59,6 +60,7 @@ class ClientResponse(BaseModel):
     billing_day: Optional[int] = None
     next_invoice_date: Optional[date] = None
     last_invoiced_date: Optional[date] = None
+    engine_project_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 

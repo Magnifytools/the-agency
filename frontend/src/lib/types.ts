@@ -60,6 +60,7 @@ export interface Client {
   billing_day: number | null
   next_invoice_date: string | null
   last_invoiced_date: string | null
+  engine_project_id: number | null
   created_at: string
   updated_at: string
 }
@@ -83,6 +84,7 @@ export interface ClientCreate {
   billing_day?: number | null
   next_invoice_date?: string | null
   last_invoiced_date?: string | null
+  engine_project_id?: number | null
 }
 
 export interface ClientContact {

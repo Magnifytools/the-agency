@@ -19,6 +19,7 @@ import { ClientDashboardTab } from "@/components/clients/client-dashboard-tab"
 import { ClientAiAdvisor } from "@/components/clients/client-ai-advisor"
 import { ClientReportsTab } from "@/components/clients/client-reports-tab"
 import { ClientSettingsTab } from "@/components/clients/client-settings-tab"
+import { EngineMetricsWidget } from "@/components/clients/engine-metrics-widget"
 import { useAuth } from "@/context/auth-context"
 import { holdedKeys } from "@/lib/query-keys"
 
@@ -324,7 +325,10 @@ export default function ClientDetailPage() {
 
       {/* Tab: Panel */}
       {activeTab === "panel" && (
-        <ClientDashboardTab client={client} />
+        <div className="space-y-6">
+          <EngineMetricsWidget client={client} />
+          <ClientDashboardTab client={client} />
+        </div>
       )}
 
       {/* Tab: Comunicaciones */}
