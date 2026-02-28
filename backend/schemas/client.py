@@ -61,6 +61,12 @@ class ClientResponse(BaseModel):
     next_invoice_date: Optional[date] = None
     last_invoiced_date: Optional[date] = None
     engine_project_id: Optional[int] = None
+    engine_content_count: Optional[int] = None
+    engine_keyword_count: Optional[int] = None
+    engine_avg_position: Optional[float] = None
+    engine_clicks_30d: Optional[int] = None
+    engine_impressions_30d: Optional[int] = None
+    engine_metrics_synced_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 

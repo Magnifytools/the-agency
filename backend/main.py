@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import asyncio
 import logging
 import os
 import uuid
@@ -21,10 +22,31 @@ from backend.api.routes import (
 )
 
 
+async def _engine_sync_loop():
+    from backend.services.engine_sync_service import sync_engine_metrics
+    await asyncio.sleep(60)  # initial delay
+    while True:
+        try:
+            await sync_engine_metrics()
+        except Exception as e:
+            logging.error("Engine sync loop error: %s", e)
+        await asyncio.sleep(settings.ENGINE_SYNC_INTERVAL_HOURS * 3600)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logging.info("Startup ready. Database schema must be managed via Alembic migrations.")
+    task = None
+    if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL:
+        task = asyncio.create_task(_engine_sync_loop())
+        logging.info("Engine sync started (interval: %dh)", settings.ENGINE_SYNC_INTERVAL_HOURS)
+    logging.info("Startup ready.")
     yield
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="The Agency", version="1.0.0", lifespan=lifespan)

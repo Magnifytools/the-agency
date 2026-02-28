@@ -697,4 +697,6 @@ export const engineApi = {
     api.get<EngineProject[]>("/engine/projects").then((r) => r.data),
   getMetrics: (projectId: number) =>
     api.get<EngineMetrics>(`/engine/projects/${projectId}/metrics`).then((r) => r.data),
+  triggerSync: () =>
+    api.post<{ synced: number; failed: number }>("/engine/sync").then((r) => r.data),
 }

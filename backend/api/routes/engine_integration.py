@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 import httpx
 
 from backend.config import settings
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, require_admin
 from backend.db.models import User
 
 router = APIRouter(prefix="/api/engine", tags=["engine-integration"])
@@ -46,3 +46,10 @@ async def get_engine_project_metrics(project_id: int, _: User = Depends(get_curr
     if resp.status_code != 200:
         raise HTTPException(status_code=resp.status_code, detail="Error fetching Engine metrics")
     return resp.json()
+
+
+@router.post("/sync")
+async def trigger_engine_sync(_: User = Depends(require_admin)):
+    """Admin-only: manually trigger Engine metrics sync for all linked clients."""
+    from backend.services.engine_sync_service import sync_engine_metrics
+    return await sync_engine_metrics()

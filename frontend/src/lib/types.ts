@@ -61,6 +61,12 @@ export interface Client {
   next_invoice_date: string | null
   last_invoiced_date: string | null
   engine_project_id: number | null
+  engine_content_count: number | null
+  engine_keyword_count: number | null
+  engine_avg_position: number | null
+  engine_clicks_30d: number | null
+  engine_impressions_30d: number | null
+  engine_metrics_synced_at: string | null
   created_at: string
   updated_at: string
 }

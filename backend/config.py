@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     DEFAULT_HOURLY_RATE: float = 40.0
     ENGINE_API_URL: Optional[str] = None
     ENGINE_SERVICE_KEY: Optional[str] = None
+    ENGINE_SYNC_INTERVAL_HOURS: int = 6
+    ENGINE_SYNC_ENABLED: bool = True
 
     model_config = {"env_file": str(Path(__file__).resolve().parent.parent / ".env")}
 

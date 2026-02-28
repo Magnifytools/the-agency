@@ -275,6 +275,13 @@ class Client(TimestampMixin, Base):
     next_invoice_date = Column(Date, nullable=True)
     last_invoiced_date = Column(Date, nullable=True)
     engine_project_id = Column(Integer, nullable=True)
+    # Engine cached metrics (synced periodically)
+    engine_content_count = Column(Integer, nullable=True)
+    engine_keyword_count = Column(Integer, nullable=True)
+    engine_avg_position = Column(Float, nullable=True)
+    engine_clicks_30d = Column(Integer, nullable=True)
+    engine_impressions_30d = Column(Integer, nullable=True)
+    engine_metrics_synced_at = Column(DateTime(timezone=True), nullable=True)
 
     tasks = relationship("Task", back_populates="client", lazy="selectin")
     projects = relationship("Project", back_populates="client", lazy="selectin")
