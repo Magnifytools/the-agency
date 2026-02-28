@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     AUTH_COOKIE_NAME: str = "agency_access_token"
     CSRF_COOKIE_NAME: str = "agency_csrf_token"
-    AUTH_COOKIE_SECURE: bool = False
+    AUTH_COOKIE_SECURE: bool = _is_production()
     AUTH_COOKIE_DOMAIN: Optional[str] = None
     AUTH_COOKIE_SAMESITE: str = "lax"
     AUTH_COOKIE_PATH: str = "/"
