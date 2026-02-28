@@ -274,6 +274,7 @@ class Client(TimestampMixin, Base):
     billing_day = Column(Integer, nullable=True)  # 1-28
     next_invoice_date = Column(Date, nullable=True)
     last_invoiced_date = Column(Date, nullable=True)
+    engine_project_id = Column(Integer, nullable=True)
 
     tasks = relationship("Task", back_populates="client", lazy="selectin")
     projects = relationship("Project", back_populates="client", lazy="selectin")
@@ -311,6 +312,7 @@ class Project(TimestampMixin, Base):
     gsc_url = Column(String(255), nullable=True)
     ga4_property_id = Column(String(50), nullable=True)
     is_recurring = Column(Boolean, nullable=False, default=False)
+    engine_project_id = Column(Integer, nullable=True)
 
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
 

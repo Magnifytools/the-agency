@@ -17,7 +17,7 @@ from backend.api.routes import (
     reports, proposals, growth, invitations, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
     service_templates, dailys, contacts, activity, notifications, resources,
-    billing_events, client_dashboard,
+    billing_events, client_dashboard, engine_integration,
 )
 
 
@@ -135,6 +135,7 @@ app.include_router(notifications.router)
 app.include_router(resources.router)
 app.include_router(billing_events.router)
 app.include_router(client_dashboard.router)
+app.include_router(engine_integration.router)
 
 # Serve frontend static files in production
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
