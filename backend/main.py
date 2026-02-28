@@ -5,6 +5,8 @@ import os
 import uuid
 from pathlib import Path
 
+logging.basicConfig(level=logging.INFO)
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
