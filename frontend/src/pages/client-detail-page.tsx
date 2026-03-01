@@ -1,8 +1,11 @@
 import { useState } from "react"
 import { useParams, Link } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { clientsApi, timeEntriesApi, projectsApi, holdedApi, clientHealthApi } from "@/lib/api"
-import type { TaskStatus } from "@/lib/types"
+import type { TaskStatus, Client } from "@/lib/types"
+import { Input } from "@/components/ui/input"
+import { Select } from "@/components/ui/select"
+import { Pencil, Check, X } from "lucide-react"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -49,6 +52,155 @@ const taskStatusBadge = (status: TaskStatus) => {
   }
   const { label, variant } = map[status]
   return <Badge variant={variant}>{label}</Badge>
+}
+
+function RevenueIntelligenceCard({ client }: { client: Client }) {
+  const queryClient = useQueryClient()
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState({
+    business_model: client.business_model || "",
+    aov: client.aov ?? "",
+    conversion_rate: client.conversion_rate ?? "",
+    ltv: client.ltv ?? "",
+    seo_maturity_level: client.seo_maturity_level || "",
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: (data: Record<string, unknown>) => clientsApi.update(client.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-summary", client.id] })
+      setEditing(false)
+    },
+  })
+
+  const handleSave = () => {
+    updateMutation.mutate({
+      business_model: form.business_model || null,
+      aov: form.aov !== "" ? Number(form.aov) : null,
+      conversion_rate: form.conversion_rate !== "" ? Number(form.conversion_rate) : null,
+      ltv: form.ltv !== "" ? Number(form.ltv) : null,
+      seo_maturity_level: form.seo_maturity_level || null,
+    })
+  }
+
+  const businessModelLabels: Record<string, string> = {
+    ecommerce: "E-commerce",
+    saas: "SaaS",
+    lead_gen: "Lead Generation",
+    media: "Media / Publisher",
+  }
+  const maturityLabels: Record<string, string> = {
+    none: "Sin SEO",
+    basic: "Básico",
+    intermediate: "Intermedio",
+    advanced: "Avanzado",
+  }
+
+  const hasData = client.business_model || client.aov || client.conversion_rate || client.ltv || client.seo_maturity_level
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-base">Revenue Intelligence</CardTitle>
+        {!editing ? (
+          <Button variant="ghost" size="sm" onClick={() => {
+            setForm({
+              business_model: client.business_model || "",
+              aov: client.aov ?? "",
+              conversion_rate: client.conversion_rate ?? "",
+              ltv: client.ltv ?? "",
+              seo_maturity_level: client.seo_maturity_level || "",
+            })
+            setEditing(true)
+          }}>
+            <Pencil className="w-4 h-4" />
+          </Button>
+        ) : (
+          <div className="flex gap-1">
+            <Button variant="ghost" size="sm" onClick={handleSave} disabled={updateMutation.isPending}>
+              <Check className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
+      </CardHeader>
+      <CardContent>
+        {editing ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-muted-foreground">Modelo de negocio</label>
+              <Select value={form.business_model} onChange={e => setForm(f => ({ ...f, business_model: e.target.value }))}>
+                <option value="">Seleccionar...</option>
+                <option value="ecommerce">E-commerce</option>
+                <option value="saas">SaaS</option>
+                <option value="lead_gen">Lead Generation</option>
+                <option value="media">Media / Publisher</option>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">AOV (€)</label>
+              <Input type="number" value={form.aov} onChange={e => setForm(f => ({ ...f, aov: e.target.value }))} placeholder="0" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Conversión (%)</label>
+              <Input type="number" step="0.1" value={form.conversion_rate} onChange={e => setForm(f => ({ ...f, conversion_rate: e.target.value }))} placeholder="0" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">LTV (€)</label>
+              <Input type="number" value={form.ltv} onChange={e => setForm(f => ({ ...f, ltv: e.target.value }))} placeholder="0" />
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs text-muted-foreground">Madurez SEO</label>
+              <Select value={form.seo_maturity_level} onChange={e => setForm(f => ({ ...f, seo_maturity_level: e.target.value }))}>
+                <option value="">Seleccionar...</option>
+                <option value="none">Sin SEO</option>
+                <option value="basic">Básico</option>
+                <option value="intermediate">Intermedio</option>
+                <option value="advanced">Avanzado</option>
+              </Select>
+            </div>
+          </div>
+        ) : hasData ? (
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            {client.business_model && (
+              <div>
+                <p className="text-xs text-muted-foreground">Modelo</p>
+                <p className="font-medium">{businessModelLabels[client.business_model] || client.business_model}</p>
+              </div>
+            )}
+            {client.aov != null && (
+              <div>
+                <p className="text-xs text-muted-foreground">AOV</p>
+                <p className="font-medium">{client.aov.toLocaleString("es-ES")} €</p>
+              </div>
+            )}
+            {client.conversion_rate != null && (
+              <div>
+                <p className="text-xs text-muted-foreground">Conversión</p>
+                <p className="font-medium">{client.conversion_rate}%</p>
+              </div>
+            )}
+            {client.ltv != null && (
+              <div>
+                <p className="text-xs text-muted-foreground">LTV</p>
+                <p className="font-medium">{client.ltv.toLocaleString("es-ES")} €</p>
+              </div>
+            )}
+            {client.seo_maturity_level && (
+              <div>
+                <p className="text-xs text-muted-foreground">Madurez SEO</p>
+                <p className="font-medium">{maturityLabels[client.seo_maturity_level] || client.seo_maturity_level}</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Sin datos de negocio. Haz clic en el lápiz para añadir.</p>
+        )}
+      </CardContent>
+    </Card>
+  )
 }
 
 export default function ClientDetailPage() {
@@ -327,6 +479,7 @@ export default function ClientDetailPage() {
       {activeTab === "panel" && (
         <div className="space-y-6">
           <EngineMetricsWidget client={client} />
+          <RevenueIntelligenceCard client={client} />
           <ClientDashboardTab client={client} />
         </div>
       )}

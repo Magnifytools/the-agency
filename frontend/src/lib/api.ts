@@ -105,6 +105,8 @@ import type {
   CapacityMember,
   ActivityEvent,
   NotificationItem,
+  InvestmentCalculateRequest,
+  InvestmentCalculateResponse,
 } from "./types"
 
 export const CSRF_COOKIE_NAME = "agency_csrf_token"
@@ -397,6 +399,12 @@ export const proposalsApi = {
   generate: (id: number) => api.post<Proposal>(`/proposals/${id}/generate`).then((r) => r.data),
   pdf: (id: number) => api.get(`/proposals/${id}/pdf`, { responseType: "blob" }).then((r) => r.data),
   pdfUrl: (id: number) => `/api/proposals/${id}/pdf`,
+}
+
+// Investments
+export const investmentsApi = {
+  calculate: (data: InvestmentCalculateRequest) =>
+    api.post<InvestmentCalculateResponse>("/investments/calculate", data).then((r) => r.data),
 }
 
 // Invitations & Permissions

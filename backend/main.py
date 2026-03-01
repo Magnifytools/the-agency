@@ -20,7 +20,7 @@ from backend.api.routes import (
     reports, proposals, growth, invitations, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
     service_templates, dailys, contacts, activity, notifications, resources,
-    billing_events, client_dashboard, engine_integration,
+    billing_events, client_dashboard, engine_integration, investments,
 )
 
 
@@ -49,6 +49,12 @@ async def _ensure_columns():
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_impressions_30d INTEGER",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_metrics_synced_at TIMESTAMPTZ",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS engine_project_id INTEGER",
+        # Revenue intelligence fields
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS business_model VARCHAR(50)",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS aov DOUBLE PRECISION",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS conversion_rate DOUBLE PRECISION",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS ltv DOUBLE PRECISION",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS seo_maturity_level VARCHAR(20)",
     ]
     async with engine.begin() as conn:
         for sql in stmts:
@@ -181,6 +187,7 @@ app.include_router(resources.router)
 app.include_router(billing_events.router)
 app.include_router(client_dashboard.router)
 app.include_router(engine_integration.router)
+app.include_router(investments.router)
 
 # Serve frontend static files in production
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"

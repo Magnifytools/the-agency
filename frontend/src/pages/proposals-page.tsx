@@ -6,12 +6,12 @@ import { es } from "date-fns/locale"
 import {
     FileText, Plus, Trash2, Download, ArrowLeft, Copy, Sparkles,
     Send, CheckCircle, XCircle, ChevronRight, ChevronLeft,
-    Building2, Euro, AlertTriangle
+    Building2, Euro, AlertTriangle, Calculator, TrendingUp
 } from "lucide-react"
-import { proposalsApi, serviceTemplatesApi, leadsApi, clientsApi } from "@/lib/api"
+import { proposalsApi, serviceTemplatesApi, leadsApi, clientsApi, investmentsApi } from "@/lib/api"
 import type {
     Proposal, ProposalCreate, ProposalUpdate, ProposalStatus, ProposalStatusUpdate,
-    ServiceType, PricingOption
+    ServiceType, PricingOption, InvestmentCalculateResponse,
 } from "@/lib/types"
 
 import { Button } from "@/components/ui/button"
@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 
@@ -55,6 +56,15 @@ interface WizardForm {
     contact_name: string
     company_name: string
     service_type: ServiceType | null
+    // Revenue fields (step 2)
+    business_model: string
+    aov: string
+    conversion_rate: string
+    ltv: string
+    seo_maturity_level: string
+    current_monthly_traffic: string
+    save_to_client: boolean
+    // Context fields
     situation: string
     problem: string
     cost_of_inaction: string
@@ -74,6 +84,13 @@ const emptyForm: WizardForm = {
     contact_name: "",
     company_name: "",
     service_type: null,
+    business_model: "",
+    aov: "",
+    conversion_rate: "",
+    ltv: "",
+    seo_maturity_level: "",
+    current_monthly_traffic: "",
+    save_to_client: false,
     situation: "",
     problem: "",
     cost_of_inaction: "",
@@ -98,6 +115,86 @@ const emptyPricing: PricingOption = {
 const DAVID_RATE = 50
 const NACHO_RATE = 30
 
+function RoiPreviewStep({ form }: { form: WizardForm }) {
+    const [result, setResult] = useState<InvestmentCalculateResponse | null>(null)
+    const [loading, setLoading] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+
+    const hasRequiredFields = form.business_model && form.aov && form.conversion_rate && form.ltv && form.current_monthly_traffic
+
+    useEffect(() => {
+        if (!hasRequiredFields) return
+
+        // Get monthly_investment from recommended pricing
+        let monthlyInvestment: number | undefined
+        const recommended = form.pricing_options.find(o => o.recommended && o.is_recurring)
+        if (recommended) monthlyInvestment = recommended.price
+        else {
+            const recurring = form.pricing_options.find(o => o.is_recurring)
+            if (recurring) monthlyInvestment = recurring.price
+        }
+        if (!monthlyInvestment) return
+
+        setLoading(true)
+        setError(null)
+        investmentsApi.calculate({
+            business_model: form.business_model || undefined,
+            aov: Number(form.aov),
+            conversion_rate: Number(form.conversion_rate),
+            ltv: Number(form.ltv),
+            seo_maturity: form.seo_maturity_level || undefined,
+            current_monthly_traffic: Number(form.current_monthly_traffic),
+            monthly_investment: monthlyInvestment,
+        }).then(setResult).catch(err => {
+            setError(getErrorMessage(err))
+        }).finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    if (!hasRequiredFields) {
+        return (
+            <div className="text-center py-8">
+                <Calculator className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
+                <p className="text-sm text-muted-foreground">Completa los datos de Revenue (paso 2) y Pricing (paso 4) para ver la previsualización.</p>
+            </div>
+        )
+    }
+
+    if (loading) {
+        return <p className="text-sm text-muted-foreground text-center py-8">Calculando modelo de inversión...</p>
+    }
+
+    if (error) {
+        return <p className="text-sm text-destructive text-center py-8">{error}</p>
+    }
+
+    if (!result) return null
+
+    return (
+        <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+                {result.scenarios.map(s => (
+                    <Card key={s.key}>
+                        <CardContent className="p-4 text-center">
+                            <p className="text-xs font-medium text-muted-foreground mb-1">{s.label}</p>
+                            <p className="text-xl font-bold">{s.roi_percent}%</p>
+                            <p className="text-xs text-muted-foreground">ROI</p>
+                            <div className="mt-2 space-y-1 text-xs text-left">
+                                <p>Tráfico: <span className="font-medium text-green-400">+{s.traffic_increase.toLocaleString("es-ES")}</span></p>
+                                <p>Ingresos: <span className="font-medium">{s.revenue_increase.toLocaleString("es-ES")}€</span></p>
+                                {s.payback_months && <p>Payback: <span className="font-medium">mes {s.payback_months}</span></p>}
+                            </div>
+                        </CardContent>
+                    </Card>
+                ))}
+            </div>
+            <div className="bg-secondary/30 rounded-lg p-3 text-sm text-center">
+                <p>Break-even: <strong>mes {result.summary.break_even_month ?? "N/A"}</strong> | ROI año 1: <strong>{result.summary.year1_roi_range}</strong> | Ingresos: <strong>{result.summary.year1_revenue_range}</strong></p>
+            </div>
+        </div>
+    )
+}
+
 export default function ProposalsPage() {
     const queryClient = useQueryClient()
     const location = useLocation()
@@ -109,6 +206,18 @@ export default function ProposalsPage() {
     const [wizardStep, setWizardStep] = useState(0)
     const [form, setForm] = useState<WizardForm>(emptyForm)
     const [wizardOpen, setWizardOpen] = useState(false)
+    const [roiDialogOpen, setRoiDialogOpen] = useState(false)
+    const [roiResult, setRoiResult] = useState<InvestmentCalculateResponse | null>(null)
+    const [roiForm, setRoiForm] = useState({
+        business_model: "",
+        aov: "",
+        conversion_rate: "",
+        ltv: "",
+        seo_maturity: "",
+        current_monthly_traffic: "",
+        monthly_investment: "",
+    })
+    const [roiLoading, setRoiLoading] = useState(false)
 
     // Auto-open wizard when navigating from lead detail
     /* eslint-disable react-hooks/set-state-in-effect -- One-time hydration of wizard state from router payload */
@@ -240,6 +349,8 @@ export default function ProposalsPage() {
     }
 
     const openEdit = (p: Proposal) => {
+        // Auto-fill revenue fields from client if available
+        const clientData = p.client_id ? clients.find(c => c.id === p.client_id) : null
         setForm({
             title: p.title,
             lead_id: p.lead_id,
@@ -247,6 +358,13 @@ export default function ProposalsPage() {
             contact_name: p.contact_name || "",
             company_name: p.company_name || "",
             service_type: p.service_type,
+            business_model: clientData?.business_model || "",
+            aov: clientData?.aov?.toString() || "",
+            conversion_rate: clientData?.conversion_rate?.toString() || "",
+            ltv: clientData?.ltv?.toString() || "",
+            seo_maturity_level: clientData?.seo_maturity_level || "",
+            current_monthly_traffic: "",
+            save_to_client: false,
             situation: p.situation || "",
             problem: p.problem || "",
             cost_of_inaction: p.cost_of_inaction || "",
@@ -305,7 +423,7 @@ export default function ProposalsPage() {
         return Math.round(((totalRevenue - computedCost) / totalRevenue) * 100)
     }, [totalRevenue, computedCost])
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!form.title || !form.company_name) {
             toast.error("El titulo y la empresa son obligatorios")
             return
@@ -330,6 +448,21 @@ export default function ProposalsPage() {
             internal_cost_estimate: computedCost || undefined,
             estimated_margin_percent: computedMargin || undefined,
             valid_until: form.valid_until ? new Date(form.valid_until).toISOString() : undefined,
+        }
+
+        // Save revenue fields to client if checkbox is checked
+        if (form.save_to_client && form.client_id) {
+            try {
+                await clientsApi.update(form.client_id, {
+                    business_model: form.business_model || null,
+                    aov: form.aov ? Number(form.aov) : null,
+                    conversion_rate: form.conversion_rate ? Number(form.conversion_rate) : null,
+                    ltv: form.ltv ? Number(form.ltv) : null,
+                    seo_maturity_level: form.seo_maturity_level || null,
+                })
+            } catch {
+                // Non-blocking — proposal save still proceeds
+            }
         }
 
         if (editingId) {
@@ -438,6 +571,9 @@ export default function ProposalsPage() {
                         <Button size="sm" variant="outline" onClick={() => openPdf(p.id)}>
                             <Download className="w-4 h-4 mr-1" /> PDF
                         </Button>
+                        <Button size="sm" variant="outline" onClick={() => setRoiDialogOpen(true)}>
+                            <Calculator className="w-4 h-4 mr-1" /> Calculadora ROI
+                        </Button>
                         <Button size="sm" variant="ghost" onClick={() => duplicateMutation.mutate(p.id)}>
                             <Copy className="w-4 h-4 mr-1" /> Duplicar
                         </Button>
@@ -518,17 +654,104 @@ export default function ProposalsPage() {
                             </Card>
                         )}
 
-                        {p.generated_content && Object.keys(p.generated_content).length > 0 && (
+                        {p.generated_content && Object.keys(p.generated_content).length > 0 && (() => {
+                            const gc = p.generated_content as Record<string, unknown>
+                            const labelMap: Record<string, string> = {
+                                executive_summary: "Resumen ejecutivo",
+                                opening: "Apertura",
+                                situation: "Situación actual",
+                                problem: "El reto",
+                                cost_of_inaction: "Coste de no actuar",
+                                null_case: "Escenario sin acción",
+                                opportunity: "La oportunidad",
+                                approach: "Nuestra propuesta",
+                                phases: "Fases del proyecto",
+                                includes: "Qué incluye",
+                                excludes: "Qué no incluye",
+                                success_metrics: "Métricas de éxito",
+                                credibility: "Sobre Magnify",
+                                cases: "Casos de éxito",
+                                next_steps: "Siguientes pasos",
+                                investment_model: "Modelo de inversión",
+                            }
+                            return (
                             <Card>
                                 <CardContent className="p-6">
                                     <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
                                         <Sparkles className="w-5 h-5 text-brand" /> Contenido generado por IA
                                     </h3>
                                     <div className="space-y-4">
-                                        {Object.entries(p.generated_content).map(([key, value]) => (
+                                        {/* Executive Summary - highlighted callout */}
+                                        {gc.executive_summary && (
+                                            <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-4">
+                                                <p className="text-xs font-medium text-blue-400 uppercase tracking-wide mb-2">Resumen ejecutivo</p>
+                                                <p className="text-sm font-medium">{String(gc.executive_summary)}</p>
+                                            </div>
+                                        )}
+
+                                        {/* Null Case - warning style */}
+                                        {gc.null_case && (
+                                            <div className="bg-orange-500/5 border-l-2 border-orange-500 rounded-r-lg p-4">
+                                                <p className="text-xs font-medium text-orange-400 uppercase tracking-wide mb-2">Escenario sin acción</p>
+                                                <p className="text-sm">{String(gc.null_case)}</p>
+                                            </div>
+                                        )}
+
+                                        {/* Success Metrics - table */}
+                                        {Array.isArray(gc.success_metrics) && gc.success_metrics.length > 0 && (
+                                            <div>
+                                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Métricas de éxito</p>
+                                                <div className="border border-border rounded-lg overflow-hidden">
+                                                    <table className="w-full text-sm">
+                                                        <thead>
+                                                            <tr className="bg-secondary/50">
+                                                                <th className="text-left p-2 font-medium">Métrica</th>
+                                                                <th className="text-left p-2 font-medium">Actual</th>
+                                                                <th className="text-left p-2 font-medium">Objetivo 12m</th>
+                                                                <th className="text-left p-2 font-medium">Impacto</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {(gc.success_metrics as Array<{metric: string; current: string; target_12m: string; impact: string}>).map((m, i) => (
+                                                                <tr key={i} className="border-t border-border">
+                                                                    <td className="p-2 font-medium">{m.metric}</td>
+                                                                    <td className="p-2">{m.current}</td>
+                                                                    <td className="p-2">{m.target_12m}</td>
+                                                                    <td className="p-2">{m.impact}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Phases - cards */}
+                                        {Array.isArray(gc.phases) && gc.phases.length > 0 && (
+                                            <div>
+                                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Fases del proyecto</p>
+                                                <div className="space-y-2">
+                                                    {(gc.phases as Array<{name: string; duration: string; outcome: string}>).map((phase, i) => (
+                                                        <div key={i} className="bg-secondary/30 border-l-2 border-foreground/30 rounded-r-lg p-3">
+                                                            <div className="flex justify-between items-baseline">
+                                                                <span className="font-medium text-sm">{phase.name}</span>
+                                                                <span className="text-xs text-muted-foreground">{phase.duration}</span>
+                                                            </div>
+                                                            <p className="text-xs text-muted-foreground mt-1">{phase.outcome}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Remaining text fields */}
+                                        {Object.entries(gc)
+                                            .filter(([key]) => !["executive_summary", "null_case", "success_metrics", "phases", "investment_model"].includes(key))
+                                            .filter(([, value]) => value && typeof value === "string")
+                                            .map(([key, value]) => (
                                             <div key={key}>
                                                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-                                                    {key.replace(/_/g, " ")}
+                                                    {labelMap[key] || key.replace(/_/g, " ")}
                                                 </p>
                                                 <p className="text-sm whitespace-pre-wrap">{String(value)}</p>
                                             </div>
@@ -536,7 +759,8 @@ export default function ProposalsPage() {
                                     </div>
                                 </CardContent>
                             </Card>
-                        )}
+                            )
+                        })()}
                     </div>
 
                     {/* Sidebar */}
@@ -767,7 +991,7 @@ export default function ProposalsPage() {
                         <div className="mb-6">
                             <h2 className="text-lg font-semibold">{editingId ? "Editar Propuesta" : "Nueva Propuesta"}</h2>
                             <div className="flex items-center gap-2 mt-4">
-                                {["Datos basicos", "Contexto", "Pricing", "Interno"].map((stepName, i) => (
+                                {["Datos basicos", "Revenue", "Contexto", "Pricing", "ROI Preview", "Interno"].map((stepName, i) => (
                                     <div key={i} className="flex items-center gap-2">
                                         <button
                                             onClick={() => setWizardStep(i)}
@@ -782,7 +1006,7 @@ export default function ProposalsPage() {
                                             <span>{i + 1}</span>
                                             <span className="hidden sm:inline">{stepName}</span>
                                         </button>
-                                        {i < 3 && <ChevronRight className="w-3 h-3 text-muted-foreground" />}
+                                        {i < 5 && <ChevronRight className="w-3 h-3 text-muted-foreground" />}
                                     </div>
                                 ))}
                             </div>
@@ -812,7 +1036,15 @@ export default function ProposalsPage() {
                                             setForm((prev) => ({ ...prev, client_id: v }))
                                             if (v) {
                                                 const client = clients.find((c) => c.id === v)
-                                                if (client) setForm((prev) => ({ ...prev, company_name: prev.company_name || client.name }))
+                                                if (client) setForm((prev) => ({
+                                                    ...prev,
+                                                    company_name: prev.company_name || client.name,
+                                                    business_model: client.business_model || prev.business_model,
+                                                    aov: client.aov?.toString() || prev.aov,
+                                                    conversion_rate: client.conversion_rate?.toString() || prev.conversion_rate,
+                                                    ltv: client.ltv?.toString() || prev.ltv,
+                                                    seo_maturity_level: client.seo_maturity_level || prev.seo_maturity_level,
+                                                }))
                                             }
                                         }}>
                                             <option value="">Sin cliente</option>
@@ -877,8 +1109,61 @@ export default function ProposalsPage() {
                             </div>
                         )}
 
-                        {/* Step 1: Context */}
+                        {/* Step 1: Revenue */}
                         {wizardStep === 1 && (
+                            <div className="space-y-4">
+                                <p className="text-sm text-muted-foreground">
+                                    Datos de negocio del cliente para calcular ROI. Se auto-rellenan si hay datos guardados en el cliente.
+                                </p>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>Modelo de negocio</Label>
+                                        <Select value={form.business_model} onChange={e => setForm(f => ({ ...f, business_model: e.target.value }))}>
+                                            <option value="">Seleccionar...</option>
+                                            <option value="ecommerce">E-commerce</option>
+                                            <option value="saas">SaaS</option>
+                                            <option value="lead_gen">Lead Generation</option>
+                                            <option value="media">Media / Publisher</option>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>AOV (€)</Label>
+                                        <Input type="number" value={form.aov} onChange={e => setForm(f => ({ ...f, aov: e.target.value }))} placeholder="100" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Tasa de conversión (%)</Label>
+                                        <Input type="number" step="0.1" value={form.conversion_rate} onChange={e => setForm(f => ({ ...f, conversion_rate: e.target.value }))} placeholder="2.5" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>LTV (€)</Label>
+                                        <Input type="number" value={form.ltv} onChange={e => setForm(f => ({ ...f, ltv: e.target.value }))} placeholder="200" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Madurez SEO</Label>
+                                        <Select value={form.seo_maturity_level} onChange={e => setForm(f => ({ ...f, seo_maturity_level: e.target.value }))}>
+                                            <option value="">Seleccionar...</option>
+                                            <option value="none">Sin SEO</option>
+                                            <option value="basic">Básico</option>
+                                            <option value="intermediate">Intermedio</option>
+                                            <option value="advanced">Avanzado</option>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Tráfico mensual actual</Label>
+                                        <Input type="number" value={form.current_monthly_traffic} onChange={e => setForm(f => ({ ...f, current_monthly_traffic: e.target.value }))} placeholder="5000" />
+                                    </div>
+                                </div>
+                                {form.client_id && (
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <input type="checkbox" checked={form.save_to_client} onChange={e => setForm(f => ({ ...f, save_to_client: e.target.checked }))} className="rounded" />
+                                        Guardar estos datos en el cliente
+                                    </label>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Step 2: Context */}
+                        {wizardStep === 2 && (
                             <div className="space-y-4">
                                 <p className="text-sm text-muted-foreground">
                                     Estos campos alimentan la generacion IA de la propuesta. Cuanto mas contexto, mejor resultado.
@@ -940,8 +1225,8 @@ export default function ProposalsPage() {
                             </div>
                         )}
 
-                        {/* Step 2: Pricing */}
-                        {wizardStep === 2 && (
+                        {/* Step 3: Pricing */}
+                        {wizardStep === 3 && (
                             <div className="space-y-4">
                                 <div className="flex justify-between items-center">
                                     <p className="text-sm text-muted-foreground">Define las opciones de precio. Marca una como recomendada.</p>
@@ -1025,8 +1310,18 @@ export default function ProposalsPage() {
                             </div>
                         )}
 
-                        {/* Step 3: Internal */}
-                        {wizardStep === 3 && (
+                        {/* Step 4: ROI Preview */}
+                        {wizardStep === 4 && (
+                            <div className="space-y-4">
+                                <p className="text-sm text-muted-foreground">
+                                    Vista previa del modelo de inversión calculado con los datos de Revenue (paso 2) y Pricing (paso 4).
+                                </p>
+                                <RoiPreviewStep form={form} />
+                            </div>
+                        )}
+
+                        {/* Step 5: Internal */}
+                        {wizardStep === 5 && (
                             <div className="space-y-4">
                                 <p className="text-sm text-muted-foreground">
                                     Estimaciones internas de horas y coste. Esto NO aparece en la propuesta al cliente.
@@ -1110,7 +1405,7 @@ export default function ProposalsPage() {
                                     <><ChevronLeft className="w-4 h-4 mr-1" /> Anterior</>
                                 ) : "Cancelar"}
                             </Button>
-                            {wizardStep < 3 ? (
+                            {wizardStep < 5 ? (
                                 <Button onClick={() => setWizardStep(wizardStep + 1)}>
                                     Siguiente <ChevronRight className="w-4 h-4 ml-1" />
                                 </Button>
@@ -1134,6 +1429,196 @@ export default function ProposalsPage() {
                 description="Solo se pueden eliminar propuestas en borrador. Esta accion no se puede deshacer."
                 onConfirm={() => deleteMutation.mutate(deleteId!)}
             />
+
+            {/* ROI Calculator Dialog */}
+            <Dialog open={roiDialogOpen} onOpenChange={(open) => { setRoiDialogOpen(open); if (!open) setRoiResult(null) }}>
+                <DialogHeader>
+                    <DialogTitle>Calculadora ROI SEO</DialogTitle>
+                </DialogHeader>
+                <DialogContent>
+                    {!roiResult ? (
+                        <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <Label>Modelo de negocio</Label>
+                                    <Select value={roiForm.business_model} onChange={e => setRoiForm(f => ({ ...f, business_model: e.target.value }))}>
+                                        <option value="">Seleccionar...</option>
+                                        <option value="ecommerce">E-commerce</option>
+                                        <option value="saas">SaaS</option>
+                                        <option value="lead_gen">Lead Generation</option>
+                                        <option value="media">Media / Publisher</option>
+                                    </Select>
+                                </div>
+                                <div>
+                                    <Label>AOV (€)</Label>
+                                    <Input type="number" value={roiForm.aov} onChange={e => setRoiForm(f => ({ ...f, aov: e.target.value }))} placeholder="100" />
+                                </div>
+                                <div>
+                                    <Label>Conversión (%)</Label>
+                                    <Input type="number" step="0.1" value={roiForm.conversion_rate} onChange={e => setRoiForm(f => ({ ...f, conversion_rate: e.target.value }))} placeholder="2.5" />
+                                </div>
+                                <div>
+                                    <Label>LTV (€)</Label>
+                                    <Input type="number" value={roiForm.ltv} onChange={e => setRoiForm(f => ({ ...f, ltv: e.target.value }))} placeholder="200" />
+                                </div>
+                                <div>
+                                    <Label>Tráfico mensual actual</Label>
+                                    <Input type="number" value={roiForm.current_monthly_traffic} onChange={e => setRoiForm(f => ({ ...f, current_monthly_traffic: e.target.value }))} placeholder="5000" />
+                                </div>
+                                <div>
+                                    <Label>Inversión mensual (€)</Label>
+                                    <Input type="number" value={roiForm.monthly_investment} onChange={e => setRoiForm(f => ({ ...f, monthly_investment: e.target.value }))} placeholder="2000" />
+                                </div>
+                                <div className="col-span-2">
+                                    <Label>Madurez SEO</Label>
+                                    <Select value={roiForm.seo_maturity} onChange={e => setRoiForm(f => ({ ...f, seo_maturity: e.target.value }))}>
+                                        <option value="">Seleccionar...</option>
+                                        <option value="none">Sin SEO</option>
+                                        <option value="basic">Básico</option>
+                                        <option value="intermediate">Intermedio</option>
+                                        <option value="advanced">Avanzado</option>
+                                    </Select>
+                                </div>
+                            </div>
+                            <DialogFooter>
+                                <Button variant="outline" onClick={() => {
+                                    // Auto-fill from proposal client
+                                    if (selectedProposal?.client_id) {
+                                        const clientData = clients.find(c => c.id === selectedProposal.client_id)
+                                        if (clientData) {
+                                            setRoiForm(f => ({
+                                                ...f,
+                                                business_model: clientData.business_model || f.business_model,
+                                                aov: clientData.aov?.toString() || f.aov,
+                                                conversion_rate: clientData.conversion_rate?.toString() || f.conversion_rate,
+                                                ltv: clientData.ltv?.toString() || f.ltv,
+                                                seo_maturity: clientData.seo_maturity_level || f.seo_maturity,
+                                            }))
+                                        }
+                                    }
+                                }}>Autorellenar de cliente</Button>
+                                <Button onClick={async () => {
+                                    setRoiLoading(true)
+                                    try {
+                                        const res = await investmentsApi.calculate({
+                                            client_id: selectedProposal?.client_id,
+                                            proposal_id: selectedProposal?.id,
+                                            business_model: roiForm.business_model || undefined,
+                                            aov: roiForm.aov ? Number(roiForm.aov) : undefined,
+                                            conversion_rate: roiForm.conversion_rate ? Number(roiForm.conversion_rate) : undefined,
+                                            ltv: roiForm.ltv ? Number(roiForm.ltv) : undefined,
+                                            seo_maturity: roiForm.seo_maturity || undefined,
+                                            current_monthly_traffic: roiForm.current_monthly_traffic ? Number(roiForm.current_monthly_traffic) : undefined,
+                                            monthly_investment: roiForm.monthly_investment ? Number(roiForm.monthly_investment) : undefined,
+                                        })
+                                        setRoiResult(res)
+                                    } catch (err) {
+                                        toast.error(getErrorMessage(err))
+                                    } finally {
+                                        setRoiLoading(false)
+                                    }
+                                }} disabled={roiLoading}>
+                                    {roiLoading ? "Calculando..." : "Calcular ROI"}
+                                </Button>
+                            </DialogFooter>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {/* Summary */}
+                            <div className="grid grid-cols-3 gap-3">
+                                <div className="bg-secondary/30 rounded-lg p-3 text-center">
+                                    <p className="text-xs text-muted-foreground">Break-even</p>
+                                    <p className="text-lg font-bold">Mes {roiResult.summary.break_even_month ?? "N/A"}</p>
+                                </div>
+                                <div className="bg-secondary/30 rounded-lg p-3 text-center">
+                                    <p className="text-xs text-muted-foreground">ROI Año 1</p>
+                                    <p className="text-lg font-bold">{roiResult.summary.year1_roi_range}</p>
+                                </div>
+                                <div className="bg-secondary/30 rounded-lg p-3 text-center">
+                                    <p className="text-xs text-muted-foreground">Ingresos Año 1</p>
+                                    <p className="text-lg font-bold text-xs">{roiResult.summary.year1_revenue_range}</p>
+                                </div>
+                            </div>
+
+                            {/* Scenarios */}
+                            <div className="space-y-2">
+                                <p className="text-sm font-medium">Escenarios</p>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {roiResult.scenarios.map(s => (
+                                        <div key={s.key} className="border border-border rounded-lg p-3">
+                                            <p className="text-xs font-medium mb-2">{s.label}</p>
+                                            <div className="space-y-1 text-xs">
+                                                <p>Tráfico: <span className="font-medium text-green-400">+{s.traffic_increase.toLocaleString("es-ES")}</span></p>
+                                                <p>Conversiones: <span className="font-medium">+{s.new_conversions}</span></p>
+                                                <p>Ingresos: <span className="font-medium">{s.revenue_increase.toLocaleString("es-ES")}€</span></p>
+                                                <p>ROI: <span className="font-bold">{s.roi_percent}%</span></p>
+                                                {s.payback_months && <p>Payback: <span className="font-medium">mes {s.payback_months}</span></p>}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Monthly projection (collapsed by default) */}
+                            <details className="text-sm">
+                                <summary className="cursor-pointer font-medium mb-2">Proyección mensual (moderado)</summary>
+                                <div className="border border-border rounded-lg overflow-hidden">
+                                    <table className="w-full text-xs">
+                                        <thead>
+                                            <tr className="bg-secondary/50">
+                                                <th className="p-1.5 text-left">Mes</th>
+                                                <th className="p-1.5 text-right">Tráfico</th>
+                                                <th className="p-1.5 text-right">Conv.</th>
+                                                <th className="p-1.5 text-right">Ingresos</th>
+                                                <th className="p-1.5 text-right">ROI</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {roiResult.monthly_projection.map(r => (
+                                                <tr key={r.month} className="border-t border-border">
+                                                    <td className="p-1.5">{r.month}</td>
+                                                    <td className="p-1.5 text-right">{r.traffic.toLocaleString("es-ES")}</td>
+                                                    <td className="p-1.5 text-right">{r.conversions}</td>
+                                                    <td className="p-1.5 text-right">{r.revenue.toLocaleString("es-ES")}€</td>
+                                                    <td className="p-1.5 text-right">{r.roi}%</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </details>
+
+                            <DialogFooter>
+                                <Button variant="outline" onClick={() => setRoiResult(null)}>Recalcular</Button>
+                                <Button onClick={async () => {
+                                    if (!selectedProposal) return
+                                    try {
+                                        const currentContent = selectedProposal.generated_content || {}
+                                        await proposalsApi.update(selectedProposal.id, {
+                                            generated_content: {
+                                                ...currentContent,
+                                                investment_model: {
+                                                    scenarios: roiResult.scenarios,
+                                                    summary: roiResult.summary,
+                                                    assumptions: roiResult.assumptions,
+                                                },
+                                            },
+                                        })
+                                        queryClient.invalidateQueries({ queryKey: ["proposals"] })
+                                        toast.success("Modelo de inversión incluido en la propuesta")
+                                        setRoiDialogOpen(false)
+                                        setRoiResult(null)
+                                    } catch (err) {
+                                        toast.error(getErrorMessage(err))
+                                    }
+                                }}>
+                                    <TrendingUp className="w-4 h-4 mr-1" /> Incluir en propuesta
+                                </Button>
+                            </DialogFooter>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

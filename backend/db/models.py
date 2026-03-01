@@ -275,6 +275,12 @@ class Client(TimestampMixin, Base):
     next_invoice_date = Column(Date, nullable=True)
     last_invoiced_date = Column(Date, nullable=True)
     engine_project_id = Column(Integer, nullable=True)
+    # Revenue intelligence
+    business_model = Column(String(50), nullable=True)  # ecommerce, saas, lead_gen, media
+    aov = Column(Float, nullable=True)  # Average Order Value EUR
+    conversion_rate = Column(Float, nullable=True)  # 0-100
+    ltv = Column(Float, nullable=True)  # Lifetime Value EUR
+    seo_maturity_level = Column(String(20), nullable=True)  # none, basic, intermediate, advanced
     # Engine cached metrics (synced periodically)
     engine_content_count = Column(Integer, nullable=True)
     engine_keyword_count = Column(Integer, nullable=True)

@@ -19,6 +19,8 @@ from backend.schemas.proposal import (
     ProposalCreate, ProposalUpdate, ProposalResponse,
     ProposalStatusUpdate,
 )
+from backend.services.ai_utils import get_anthropic_client, parse_claude_json
+from backend.core.rate_limiter import ai_limiter
 
 router = APIRouter(prefix="/api/proposals", tags=["proposals"])
 logger = logging.getLogger(__name__)
@@ -354,10 +356,7 @@ async def generate_proposal_content(
     current_user: User = Depends(require_module("proposals", write=True)),
 ):
     """Generate proposal content using Claude API."""
-    from backend.config import settings
-
-    if not settings.ANTHROPIC_API_KEY:
-        raise HTTPException(status_code=400, detail="ANTHROPIC_API_KEY no configurada")
+    ai_limiter.check(current_user.id, max_requests=10, window_seconds=300)
 
     result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
     prop = result.scalar_one_or_none()
@@ -396,6 +395,27 @@ async def generate_proposal_content(
                 recurring = "/mes" if opt.get("is_recurring") else ""
                 pricing_str += f"- {opt['name']}: {opt.get('price', 0)}€{recurring}{rec} — {opt.get('description', '')}\n"
 
+    # Enrich prompt with client revenue fields when available
+    client_context = ""
+    if prop.client_id:
+        client_result = await db.execute(select(Client).where(Client.id == prop.client_id))
+        client_obj = client_result.scalar_one_or_none()
+        if client_obj:
+            fields = []
+            if client_obj.business_model:
+                fields.append(f"- Modelo de negocio: {client_obj.business_model}")
+            if client_obj.aov:
+                fields.append(f"- Valor medio de pedido (AOV): {client_obj.aov}€")
+            if client_obj.conversion_rate:
+                fields.append(f"- Tasa de conversión: {client_obj.conversion_rate}%")
+            if client_obj.ltv:
+                fields.append(f"- Valor de vida del cliente (LTV): {client_obj.ltv}€")
+            if client_obj.seo_maturity_level:
+                fields.append(f"- Madurez SEO: {client_obj.seo_maturity_level}")
+            if fields:
+                client_context = "\n\nDATOS DE NEGOCIO DEL CLIENTE:\n" + "\n".join(fields)
+                client_context += "\nUsa estos datos para hacer estimaciones de ROI más específicas en la propuesta."
+
     prompt = f"""Eres el redactor de propuestas de Magnify, una consultora SEO boutique en Barcelona dirigida por David Carrasco. Generas propuestas de servicios SEO profesionales, directas y centradas en el impacto de negocio del cliente.
 
 REGLAS ESTRICTAS:
@@ -421,19 +441,22 @@ DATOS DE LA PROPUESTA:
 - No incluye: {excludes_info or 'No especificado'}
 - Opciones de precio:
 {pricing_str or 'No definidas'}
-- Casos relevantes: {prop.relevant_cases or 'No especificados'}
+- Casos relevantes: {prop.relevant_cases or 'No especificados'}{client_context}
 
 GENERA LA PROPUESTA CON ESTA ESTRUCTURA EXACTA en JSON:
 {{
+  "executive_summary": "Resumen ejecutivo en 3-4 frases. El problema, la oportunidad, y por qué Magnify es la mejor opción.",
   "opening": "Saludo personalizado + referencia a la conversación. 2-3 frases máximo.",
   "situation": "Situación actual del cliente. 1 párrafo.",
   "problem": "El problema REAL de negocio. Directo, sin rodeos. 1 párrafo.",
   "cost_of_inaction": "Qué pierde el cliente cada mes/año sin actuar. 1-2 frases.",
+  "null_case": "Escenario detallado a 12 meses si el cliente no actúa. Datos concretos de pérdida de mercado, tráfico o ingresos. 1-2 párrafos.",
   "opportunity": "Qué es posible. Específico y motivador. 1 párrafo.",
   "approach": "Las 2-3 palancas principales explicadas como si hablaras con un CEO. 2-3 párrafos.",
   "phases": [{{"name": "...", "duration": "...", "outcome": "Qué cambia al terminar esta fase."}}],
   "includes": "Qué incluye el servicio. Párrafo breve.",
   "excludes": "Qué no incluye. Párrafo breve.",
+  "success_metrics": [{{"metric": "Nombre del KPI", "current": "Valor actual estimado", "target_12m": "Objetivo a 12 meses", "impact": "Impacto en negocio"}}],
   "credibility": "2-3 líneas sobre Magnify. Nombres de empresas reconocibles.",
   "cases": "1-2 mini-casos de 2 líneas cada uno.",
   "next_steps": "3 pasos concretos con fechas tentativas."
@@ -441,23 +464,20 @@ GENERA LA PROPUESTA CON ESTA ESTRUCTURA EXACTA en JSON:
 
 Responde SOLO con el JSON, sin markdown ni texto adicional."""
 
-    import anthropic
-    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    try:
+        client = get_anthropic_client()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     message = await client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=4000,
         messages=[{"role": "user", "content": prompt}],
     )
 
-    import json
     try:
-        content_text = message.content[0].text
-        # Strip markdown code blocks if present
-        if content_text.startswith("```"):
-            content_text = content_text.split("\n", 1)[1]
-            content_text = content_text.rsplit("```", 1)[0]
-        generated = json.loads(content_text)
-    except (json.JSONDecodeError, IndexError):
+        generated = parse_claude_json(message)
+    except ValueError:
         logger.exception("Invalid AI JSON while generating proposal id=%s", proposal_id)
         raise HTTPException(status_code=502, detail="La IA devolvio un formato no valido")
 
@@ -498,6 +518,17 @@ PDF_HTML_TEMPLATE = """
         h2 { font-size: 14pt; margin-top: 25px; margin-bottom: 10px; color: #111; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
         p { margin: 8px 0; }
 
+        /* Executive Summary */
+        .exec-summary { background: #f0f4ff; border: 1px solid #c5d4f0; padding: 15px 18px; margin: 15px 0; border-radius: 6px; font-size: 11pt; line-height: 1.7; }
+
+        /* Null Case */
+        .null-case { background: #fff8f0; border-left: 3px solid #e67e22; padding: 12px 15px; margin: 12px 0; border-radius: 0 4px 4px 0; }
+
+        /* Success Metrics */
+        .metrics-table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 9pt; }
+        .metrics-table th { background: #f5f5f5; padding: 8px 10px; text-align: left; border-bottom: 2px solid #ddd; font-weight: 700; }
+        .metrics-table td { padding: 8px 10px; border-bottom: 1px solid #eee; }
+
         /* Phases */
         .phase { background: #f5f5f5; padding: 12px 15px; margin: 8px 0; border-left: 3px solid #333; border-radius: 0 4px 4px 0; }
         .phase-name { font-weight: 700; }
@@ -536,6 +567,10 @@ PDF_HTML_TEMPLATE = """
     <p>{{ content.opening }}</p>
     {% endif %}
 
+    {% if content.executive_summary %}
+    <div class="exec-summary">{{ content.executive_summary }}</div>
+    {% endif %}
+
     {% if content.situation %}
     <h2>Situación actual</h2>
     <p>{{ content.situation }}</p>
@@ -548,6 +583,12 @@ PDF_HTML_TEMPLATE = """
 
     {% if content.cost_of_inaction %}
     <p><strong>{{ content.cost_of_inaction }}</strong></p>
+    {% endif %}
+
+    {% if content.null_case %}
+    <div class="null-case">
+        <strong>Si no se actúa:</strong> {{ content.null_case }}
+    </div>
     {% endif %}
 
     {% if content.opportunity %}
@@ -573,6 +614,30 @@ PDF_HTML_TEMPLATE = """
         <div class="phase-outcome">→ {{ phase.outcome }}</div>
     </div>
     {% endfor %}
+    {% endif %}
+
+    {% if content.success_metrics %}
+    <h2>Métricas de éxito</h2>
+    <table class="metrics-table">
+        <thead>
+            <tr>
+                <th>Métrica</th>
+                <th>Actual</th>
+                <th>Objetivo 12m</th>
+                <th>Impacto</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for m in content.success_metrics %}
+            <tr>
+                <td><strong>{{ m.metric }}</strong></td>
+                <td>{{ m.current }}</td>
+                <td>{{ m.target_12m }}</td>
+                <td>{{ m.impact }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
     {% endif %}
 
     {% if content.includes %}
@@ -603,6 +668,31 @@ PDF_HTML_TEMPLATE = """
     <p style="font-size: 9pt; color: #666; margin-top: 15px;">
         Proyectos: 50% al inicio, 50% a la entrega. Retainers: mensual, sin permanencia, 30 días de aviso.
     </p>
+
+    {% if content.investment_model %}
+    <h2>Modelo de inversión SEO</h2>
+    {% if content.investment_model.summary %}
+    <p><strong>Break-even estimado:</strong> mes {{ content.investment_model.summary.break_even_month or 'N/A' }}</p>
+    <p><strong>ROI año 1:</strong> {{ content.investment_model.summary.year1_roi_range or 'N/A' }}</p>
+    <p><strong>Ingresos año 1:</strong> {{ content.investment_model.summary.year1_revenue_range or 'N/A' }}</p>
+    {% endif %}
+    {% if content.investment_model.scenarios %}
+    <table class="metrics-table">
+        <thead><tr><th>Escenario</th><th>Tráfico nuevo</th><th>Conversiones</th><th>Ingresos</th><th>ROI</th></tr></thead>
+        <tbody>
+        {% for s in content.investment_model.scenarios %}
+        <tr>
+            <td><strong>{{ s.label }}</strong></td>
+            <td>+{{ s.traffic_increase }}</td>
+            <td>+{{ s.new_conversions }}</td>
+            <td>{{ s.revenue_increase }}€</td>
+            <td>{{ s.roi_percent }}%</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    {% endif %}
 
     {% if content.credibility %}
     <h2>Sobre Magnify</h2>

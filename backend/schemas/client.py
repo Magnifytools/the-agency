@@ -22,6 +22,12 @@ class ClientCreate(BaseModel):
     billing_day: Optional[int] = None
     next_invoice_date: Optional[date] = None
     last_invoiced_date: Optional[date] = None
+    # Revenue intelligence
+    business_model: Optional[str] = None
+    aov: Optional[float] = None
+    conversion_rate: Optional[float] = None
+    ltv: Optional[float] = None
+    seo_maturity_level: Optional[str] = None
 
 
 class ClientUpdate(BaseModel):
@@ -41,6 +47,12 @@ class ClientUpdate(BaseModel):
     next_invoice_date: Optional[date] = None
     last_invoiced_date: Optional[date] = None
     engine_project_id: Optional[int] = None
+    # Revenue intelligence
+    business_model: Optional[str] = None
+    aov: Optional[float] = None
+    conversion_rate: Optional[float] = None
+    ltv: Optional[float] = None
+    seo_maturity_level: Optional[str] = None
 
 
 class ClientResponse(BaseModel):
@@ -67,6 +79,12 @@ class ClientResponse(BaseModel):
     engine_clicks_30d: Optional[int] = None
     engine_impressions_30d: Optional[int] = None
     engine_metrics_synced_at: Optional[datetime] = None
+    # Revenue intelligence
+    business_model: Optional[str] = None
+    aov: Optional[float] = None
+    conversion_rate: Optional[float] = None
+    ltv: Optional[float] = None
+    seo_maturity_level: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

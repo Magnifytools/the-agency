@@ -67,6 +67,12 @@ export interface Client {
   engine_clicks_30d: number | null
   engine_impressions_30d: number | null
   engine_metrics_synced_at: string | null
+  // Revenue intelligence
+  business_model: string | null
+  aov: number | null
+  conversion_rate: number | null
+  ltv: number | null
+  seo_maturity_level: string | null
   created_at: string
   updated_at: string
 }
@@ -91,6 +97,12 @@ export interface ClientCreate {
   next_invoice_date?: string | null
   last_invoiced_date?: string | null
   engine_project_id?: number | null
+  // Revenue intelligence
+  business_model?: string | null
+  aov?: number | null
+  conversion_rate?: number | null
+  ltv?: number | null
+  seo_maturity_level?: string | null
 }
 
 export interface ClientContact {
@@ -766,6 +778,56 @@ export interface ProposalUpdate {
 export interface ProposalStatusUpdate {
   status: ProposalStatus
   response_notes?: string | null
+}
+
+// Investment Models
+export interface InvestmentCalculateRequest {
+  client_id?: number | null
+  proposal_id?: number | null
+  business_model?: string | null
+  aov?: number | null
+  conversion_rate?: number | null
+  ltv?: number | null
+  seo_maturity?: string | null
+  current_monthly_traffic?: number | null
+  monthly_investment?: number | null
+  months?: number
+}
+
+export interface InvestmentScenario {
+  label: string
+  key: string
+  traffic_increase: number
+  new_conversions: number
+  revenue_increase: number
+  roi_percent: number
+  payback_months: number | null
+}
+
+export interface InvestmentMonthlyRow {
+  month: number
+  traffic: number
+  new_visitors: number
+  conversions: number
+  revenue: number
+  cumulative_investment: number
+  cumulative_revenue: number
+  roi: number
+}
+
+export interface InvestmentSummary {
+  break_even_month: number | null
+  year1_roi_range: string
+  year1_revenue_range: string
+  total_investment: number
+}
+
+export interface InvestmentCalculateResponse {
+  scenarios: InvestmentScenario[]
+  monthly_projection: InvestmentMonthlyRow[]
+  summary: InvestmentSummary
+  assumptions: Record<string, unknown>
+  inputs_used: Record<string, unknown>
 }
 
 // Reports
