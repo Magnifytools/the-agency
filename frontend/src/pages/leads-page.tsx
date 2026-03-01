@@ -142,7 +142,7 @@ export default function LeadsPage() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Pipeline</h2>
           <p className="text-muted-foreground text-sm mt-1">
-            {pipelineSummary ? `${pipelineSummary.total_leads} leads · ${formatValue(pipelineSummary.total_value)} pipeline` : "Cargando..."}
+            {pipelineSummary ? `${pipelineSummary.total_leads} leads · ${formatValue(pipelineSummary.total_value)} pipeline` : <span className="inline-block animate-pulse bg-muted rounded h-4 w-40" />}
           </p>
         </div>
         <div className="flex items-center gap-2">

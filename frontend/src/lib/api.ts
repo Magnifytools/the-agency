@@ -1,6 +1,9 @@
 import axios from "axios"
 import { toast } from "sonner"
 import type {
+  ProjectEvidence,
+  ProjectEvidenceCreate,
+  SearchResults,
   PaginatedResponse,
   Client,
   ClientCreate,
@@ -693,6 +696,24 @@ export const notificationsApi = {
     api.put("/notifications/read-all").then((r) => r.data),
   generateChecks: () =>
     api.post<{ created: number }>("/notifications/generate-checks").then((r) => r.data),
+}
+
+// --- Project Evidence ---
+export const evidenceApi = {
+  list: (projectId: number) =>
+    api.get<ProjectEvidence[]>(`/projects/${projectId}/evidence`).then((r) => r.data),
+  create: (projectId: number, data: ProjectEvidenceCreate) =>
+    api.post<ProjectEvidence>(`/projects/${projectId}/evidence`, data).then((r) => r.data),
+  update: (projectId: number, evidenceId: number, data: Partial<ProjectEvidenceCreate>) =>
+    api.put<ProjectEvidence>(`/projects/${projectId}/evidence/${evidenceId}`, data).then((r) => r.data),
+  delete: (projectId: number, evidenceId: number) =>
+    api.delete(`/projects/${projectId}/evidence/${evidenceId}`).then((r) => r.data),
+}
+
+// --- Global Search ---
+export const searchApi = {
+  search: (q: string) =>
+    api.get<SearchResults>("/search", { params: { q } }).then((r) => r.data),
 }
 
 // --- Engine Integration ---

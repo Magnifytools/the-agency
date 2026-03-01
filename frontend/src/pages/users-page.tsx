@@ -16,6 +16,7 @@ import { Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
 import type { UserCreate, UserRole } from "@/lib/types"
 import { getErrorMessage } from "@/lib/utils"
+import { SkeletonTableRow } from "@/components/ui/skeleton"
 
 export default function UsersPage() {
   const queryClient = useQueryClient()
@@ -91,7 +92,20 @@ export default function UsersPage() {
       </div>
 
       {isLoading ? (
-        <p className="text-muted-foreground">Cargando...</p>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nombre</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Rol</TableHead>
+              <TableHead>Tarifa/h</TableHead>
+              <TableHead>Acciones</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {Array.from({ length: 3 }).map((_, i) => <SkeletonTableRow key={i} cols={5} />)}
+          </TableBody>
+        </Table>
       ) : (
         <>
           <div className="hidden md:block">

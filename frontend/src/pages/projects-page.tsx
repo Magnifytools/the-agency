@@ -123,7 +123,15 @@ export default function ProjectsPage() {
 
       {/* Projects Grid */}
       {isLoading ? (
-        <div className="text-muted-foreground">Cargando...</div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-border bg-card p-4 space-y-3">
+              <div className="animate-pulse rounded-md bg-muted h-4 w-1/3" />
+              <div className="animate-pulse rounded-md bg-muted h-8 w-1/2" />
+              <div className="animate-pulse rounded-md bg-muted h-3 w-2/3" />
+            </div>
+          ))}
+        </div>
       ) : (typeFilter ? projects.filter(p => typeFilter === "recurring" ? p.is_recurring : !p.is_recurring) : projects).length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">

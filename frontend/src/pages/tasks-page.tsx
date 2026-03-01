@@ -12,8 +12,13 @@ import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare } from "lucide-react"
+import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare, Loader2 } from "lucide-react"
+import { useTableSort } from "@/hooks/use-table-sort"
+import { useBulkSelect } from "@/hooks/use-bulk-select"
+import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { BulkActionBar } from "@/components/ui/bulk-action-bar"
 import { EmptyTableState } from "@/components/ui/empty-state"
+import { SkeletonTableRow } from "@/components/ui/skeleton"
 import { TimerButton } from "@/components/timer/timer-button"
 import { TimeLogDialog } from "@/components/timer/time-log-dialog"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -58,6 +63,7 @@ export default function TasksPage() {
 
   // QA Health Filters
   const [qaFilter, setQaFilter] = useState<"none" | "unassigned" | "no_date" | "no_estimate" | "overdue">("none")
+  const [bulkStatus, setBulkStatus] = useState("")
 
   const { data: tasksData, isLoading } = useQuery({
     queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, page, pageSize],
@@ -88,6 +94,34 @@ export default function TasksPage() {
       return new Date(t.due_date) < now
     }
     return true
+  })
+
+  const { sortedItems: sortedTasks, sortConfig: taskSortConfig, requestSort: requestTaskSort } = useTableSort(tasks)
+  const { selectedIds: selectedTaskIds, isSelected: isTaskSelected, toggleItem: toggleTask, toggleAll: toggleAllTasks, clearSelection: clearTaskSelection, selectedCount: selectedTaskCount, allSelected: allTasksSelected } = useBulkSelect(tasks)
+
+  const bulkStatusMutation = useMutation({
+    mutationFn: async ({ ids, status }: { ids: number[]; status: string }) => {
+      await Promise.all(ids.map((id) => tasksApi.update(id, { status: status as TaskStatus })))
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      clearTaskSelection()
+      setBulkStatus("")
+      toast.success("Tareas actualizadas")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar tareas")),
+  })
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      await Promise.all(ids.map((id) => tasksApi.delete(id)))
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      clearTaskSelection()
+      toast.success("Tareas eliminadas")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar tareas")),
   })
 
   const { data: clients = [] } = useQuery({
@@ -294,11 +328,10 @@ export default function TasksPage() {
 
       {/* Table & Planner */}
       {isLoading ? (
-        <p className="text-muted-foreground">Cargando...</p>
-      ) : view === "all" ? (
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10" />
               <TableHead>Titulo</TableHead>
               <TableHead>Cliente</TableHead>
               <TableHead>Prioridad</TableHead>
@@ -306,12 +339,39 @@ export default function TasksPage() {
               <TableHead>Estado</TableHead>
               <TableHead>Est / Real</TableHead>
               <TableHead>Fecha limite</TableHead>
+              <TableHead>Tiempo</TableHead>
+              <TableHead className="w-24">Acciones</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={10} />)}
+          </TableBody>
+        </Table>
+      ) : view === "all" ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-10">
+                <input
+                  type="checkbox"
+                  checked={allTasksSelected}
+                  onChange={toggleAllTasks}
+                  className="rounded border-border"
+                />
+              </TableHead>
+              <SortableTableHead sortKey="title" currentSort={taskSortConfig} onSort={requestTaskSort}>Titulo</SortableTableHead>
+              <SortableTableHead sortKey="client_name" currentSort={taskSortConfig} onSort={requestTaskSort}>Cliente</SortableTableHead>
+              <SortableTableHead sortKey="priority" currentSort={taskSortConfig} onSort={requestTaskSort}>Prioridad</SortableTableHead>
+              <TableHead>Asignado</TableHead>
+              <SortableTableHead sortKey="status" currentSort={taskSortConfig} onSort={requestTaskSort}>Estado</SortableTableHead>
+              <TableHead>Est / Real</TableHead>
+              <SortableTableHead sortKey="due_date" currentSort={taskSortConfig} onSort={requestTaskSort}>Fecha limite</SortableTableHead>
               <TableHead>Timer</TableHead>
               <TableHead className="w-24">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {tasks.map((t) => {
+            {sortedTasks.map((t) => {
               const QA_unassigned = t.assigned_to === null;
               const QA_nodate = t.due_date === null;
               const QA_noestimate = t.estimated_minutes === null;
@@ -330,6 +390,14 @@ export default function TasksPage() {
 
               return (
                 <TableRow key={t.id} className={rowHighlight}>
+                  <TableCell>
+                    <input
+                      type="checkbox"
+                      checked={isTaskSelected(t.id)}
+                      onChange={() => toggleTask(t.id)}
+                      className="rounded border-border"
+                    />
+                  </TableCell>
                   <TableCell className="font-medium">{t.title}</TableCell>
                   <TableCell>{t.client_name || "-"}</TableCell>
                   <TableCell>{priorityBadge(t.priority)}</TableCell>
@@ -397,7 +465,7 @@ export default function TasksPage() {
               )
             })}
             {tasks.length === 0 && (
-              <EmptyTableState colSpan={9} icon={CheckSquare} title="Sin tareas" description="Crea tareas, asígnalas y trackea con timer integrado." />
+              <EmptyTableState colSpan={10} icon={CheckSquare} title="Sin tareas" description="Crea tareas, asígnalas y trackea con timer integrado." />
             )}
           </TableBody>
         </Table>
@@ -549,6 +617,41 @@ export default function TasksPage() {
           }
         }}
       />
+
+      {/* Bulk Action Bar */}
+      <BulkActionBar selectedCount={selectedTaskCount} onClear={clearTaskSelection}>
+        <Select
+          value={bulkStatus}
+          onChange={(e) => setBulkStatus(e.target.value)}
+          className="h-8 text-xs w-36"
+        >
+          <option value="">Cambiar estado</option>
+          <option value="pending">Pendiente</option>
+          <option value="in_progress">En curso</option>
+          <option value="completed">Completada</option>
+        </Select>
+        {bulkStatus && (
+          <Button
+            size="sm"
+            onClick={() => bulkStatusMutation.mutate({ ids: [...selectedTaskIds], status: bulkStatus })}
+            disabled={bulkStatusMutation.isPending}
+          >
+            {bulkStatusMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Aplicar"}
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="destructive"
+          onClick={() => {
+            if (confirm(`Eliminar ${selectedTaskCount} tareas?`)) {
+              bulkDeleteMutation.mutate([...selectedTaskIds])
+            }
+          }}
+          disabled={bulkDeleteMutation.isPending}
+        >
+          Eliminar
+        </Button>
+      </BulkActionBar>
     </div>
   )
 }

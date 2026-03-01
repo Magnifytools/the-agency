@@ -12,8 +12,10 @@ import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Breadcrumb } from "@/components/ui/breadcrumb"
+import { Skeleton, SkeletonCard } from "@/components/ui/skeleton"
 import {
-  ArrowLeft, Mail, Phone, Globe, Linkedin,
+  Mail, Phone, Globe, Linkedin,
   ChevronRight, ChevronLeft, Plus,
   MessageSquare, PhoneCall, Video, FileText, Bell, UserCheck, Sparkles
 } from "lucide-react"
@@ -151,7 +153,15 @@ export default function LeadDetailPage() {
     )
   }
 
-  if (isLoading) return <p className="text-muted-foreground">Cargando...</p>
+  if (isLoading) return (
+    <div className="space-y-6 max-w-4xl">
+      <Skeleton className="h-5 w-48" />
+      <Skeleton className="h-8 w-64" />
+      <div className="grid grid-cols-2 gap-4">
+        {Array.from({ length: 2 }).map((_, i) => <SkeletonCard key={i} />)}
+      </div>
+    </div>
+  )
   if (!lead) return <p className="text-muted-foreground">Lead no encontrado</p>
 
   const currentIdx = STATUS_ORDER.indexOf(lead.status)
@@ -161,11 +171,13 @@ export default function LeadDetailPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      {/* Header */}
+      {/* Breadcrumb + Header */}
+      <Breadcrumb items={[
+        { label: "Inicio", href: "/dashboard" },
+        { label: "Pipeline", href: "/leads" },
+        { label: lead.company_name },
+      ]} />
       <div className="flex items-center gap-4">
-        <Link to="/leads">
-          <Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button>
-        </Link>
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap">
             <h2 className="text-2xl font-bold">{lead.company_name}</h2>

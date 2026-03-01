@@ -3,15 +3,29 @@ import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/context/auth-context"
 import { holdedApi } from "@/lib/api"
 import { holdedKeys } from "@/lib/query-keys"
-import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList, Gauge, BarChart3 } from "lucide-react"
+import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList, Gauge, BarChart3, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
 import { NotificationBell } from "@/components/layout/notification-bell"
-import { useMemo } from "react"
+import { SearchPalette } from "@/components/layout/search-palette"
+import { useMemo, useState, useEffect, useCallback } from "react"
 
 export function AppLayout() {
   const { user, logout, hasPermission, isAdmin } = useAuth()
   const location = useLocation()
+  const [searchOpen, setSearchOpen] = useState(false)
+
+  const handleSearchKeydown = useCallback((e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      e.preventDefault()
+      setSearchOpen((o) => !o)
+    }
+  }, [])
+
+  useEffect(() => {
+    document.addEventListener("keydown", handleSearchKeydown)
+    return () => document.removeEventListener("keydown", handleSearchKeydown)
+  }, [handleSearchKeydown])
 
   const { data: holdedConfig } = useQuery({
     queryKey: holdedKeys.config(),
@@ -129,6 +143,18 @@ export function AppLayout() {
               <span className="text-[10px] text-muted-foreground font-medium tracking-wider">by Magnify</span>
             </div>
           </div>
+
+          {/* Search Button */}
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-all group w-full"
+          >
+            <Search className="h-[18px] w-[18px] text-muted-foreground group-hover:text-foreground transition-colors" />
+            <span className="flex-1 text-left">Buscar</span>
+            <kbd className="hidden lg:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground/60 bg-muted rounded border border-border">
+              ⌘K
+            </kbd>
+          </button>
 
           {/* Main Nav */}
           <div className="flex flex-col gap-1.5 flex-1">
@@ -255,6 +281,8 @@ export function AppLayout() {
           </Link>
         ))}
       </nav>
+
+      <SearchPalette open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   )
 }

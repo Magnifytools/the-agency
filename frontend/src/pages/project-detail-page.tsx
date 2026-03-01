@@ -2,7 +2,6 @@ import { useState } from "react"
 import { useParams, Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
-  ArrowLeft,
   Calendar,
   CheckCircle2,
   Circle,
@@ -27,6 +26,9 @@ import { Select } from "@/components/ui/select"
 import { getErrorMessage } from "@/lib/utils"
 import { GanttChart } from "@/components/gantt/gantt-chart"
 import { ProjectPhaseKanban } from "@/components/projects/project-phase-kanban"
+import { EvidenceList } from "@/components/projects/evidence-list"
+import { Breadcrumb } from "@/components/ui/breadcrumb"
+import { Skeleton, SkeletonCard } from "@/components/ui/skeleton"
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   planning: "Planificación",
@@ -56,6 +58,7 @@ export default function ProjectDetailPage() {
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showAddTaskDialog, setShowAddTaskDialog] = useState<number | null>(null)
   const [viewMode, setViewMode] = useState<"list" | "gantt" | "kanban">("list")
+  const [activeTab, setActiveTab] = useState<"tasks" | "evidence">("tasks")
 
   const { data: project, isLoading } = useQuery({
     queryKey: ["project", id],
@@ -97,7 +100,19 @@ export default function ProjectDetailPage() {
   })
 
   if (isLoading) {
-    return <div className="text-muted-foreground">Cargando...</div>
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-5 w-48" />
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-6 w-20" />
+        </div>
+        <div className="grid grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
+        </div>
+        <Skeleton className="h-64 w-full" />
+      </div>
+    )
   }
 
   if (!project) {
@@ -115,28 +130,25 @@ export default function ProjectDetailPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Breadcrumb + Header */}
+      <Breadcrumb items={[
+        { label: "Inicio", href: "/dashboard" },
+        { label: "Proyectos", href: "/projects" },
+        { label: project.name },
+      ]} />
       <div className="flex items-start justify-between">
-        <div className="flex items-start gap-4">
-          <Link
-            to="/projects"
-            className="mt-1 p-2 rounded-lg hover:bg-card text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold">{project.name}</h1>
-              <Badge variant={STATUS_VARIANTS[project.status]}>
-                {STATUS_LABELS[project.status]}
-              </Badge>
-            </div>
-            <p className="text-muted-foreground mt-1">
-              <Link to={`/clients/${project.client_id}`} className="hover:text-brand">
-                {project.client_name}
-              </Link>
-            </p>
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">{project.name}</h1>
+            <Badge variant={STATUS_VARIANTS[project.status]}>
+              {STATUS_LABELS[project.status]}
+            </Badge>
           </div>
+          <p className="text-muted-foreground mt-1">
+            <Link to={`/clients/${project.client_id}`} className="hover:text-brand">
+              {project.client_name}
+            </Link>
+          </p>
         </div>
         <div className="flex gap-2">
           <Select
@@ -231,8 +243,31 @@ export default function ProjectDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Tab Toggle: Tasks / Evidence */}
+      <div className="flex items-center space-x-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
+        <Button
+          variant={activeTab === "tasks" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setActiveTab("tasks")}
+        >
+          Fases y Tareas
+        </Button>
+        <Button
+          variant={activeTab === "evidence" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setActiveTab("evidence")}
+        >
+          Evidencia
+        </Button>
+      </div>
+
+      {/* Evidence Tab */}
+      {activeTab === "evidence" && project && (
+        <EvidenceList projectId={project.id} phases={project.phases} />
+      )}
+
       {/* View Toggle + Phases and Tasks */}
-      <div className="space-y-4">
+      {activeTab === "tasks" && <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Fases y Tareas</h2>
           <div className="flex items-center gap-1">
@@ -373,7 +408,7 @@ export default function ProjectDetailPage() {
             </CardContent>
           </Card>
         )}
-      </div>
+      </div>}
 
       {/* Edit Dialog */}
       {project && (

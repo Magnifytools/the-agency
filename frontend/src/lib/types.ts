@@ -1452,6 +1452,40 @@ export interface HoldedTestConnection {
   message: string
 }
 
+// --- Project Evidence ---
+export type EvidenceType = "screenshot" | "report" | "analytics" | "ranking" | "content" | "deliverable" | "other"
+
+export interface ProjectEvidence {
+  id: number
+  project_id: number
+  phase_id: number | null
+  title: string
+  url: string
+  evidence_type: EvidenceType
+  description: string | null
+  created_by: number | null
+  creator_name: string | null
+  phase_name: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectEvidenceCreate {
+  title: string
+  url: string
+  evidence_type?: EvidenceType
+  phase_id?: number | null
+  description?: string | null
+}
+
+// --- Search ---
+export interface SearchResults {
+  clients: { id: number; name: string; company: string | null; status: string }[]
+  projects: { id: number; name: string; client_name: string | null; status: string }[]
+  tasks: { id: number; title: string; client_name: string | null; status: string }[]
+  leads: { id: number; company_name: string; contact_name: string | null; status: string }[]
+}
+
 // --- Daily Updates ---
 
 export type DailyUpdateStatus = "draft" | "sent"

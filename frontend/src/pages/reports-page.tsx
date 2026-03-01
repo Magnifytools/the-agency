@@ -11,6 +11,7 @@ import { Select } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { getErrorMessage } from "@/lib/utils"
+import { SkeletonCard } from "@/components/ui/skeleton"
 
 const REPORT_TYPES: { value: ReportType; label: string; icon: typeof FileText }[] = [
   { value: "client_status", label: "Estado de cliente", icon: Building2 },
@@ -108,7 +109,9 @@ export default function ReportsPage() {
       </div>
 
       {isLoading ? (
-        <div className="py-12 text-center text-muted-foreground">Cargando...</div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}
+        </div>
       ) : reports.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">

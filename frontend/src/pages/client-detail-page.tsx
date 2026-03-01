@@ -10,7 +10,9 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { ArrowLeft, Clock, Heart } from "lucide-react"
+import { Clock, Heart } from "lucide-react"
+import { Breadcrumb } from "@/components/ui/breadcrumb"
+import { Skeleton, SkeletonCard } from "@/components/ui/skeleton"
 import { TimerButton } from "@/components/timer/timer-button"
 import { TimeLogDialog } from "@/components/timer/time-log-dialog"
 import { CommunicationList } from "@/components/communications/communication-list"
@@ -256,20 +258,31 @@ export default function ClientDetailPage() {
     enabled: !!summary?.tasks.length,
   })
 
-  if (isLoading) return <p className="text-muted-foreground">Cargando...</p>
+  if (isLoading) return (
+    <div className="space-y-6">
+      <Skeleton className="h-5 w-48" />
+      <div className="flex items-center gap-4">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-6 w-20" />
+      </div>
+      <div className="grid grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
+      </div>
+    </div>
+  )
   if (!summary) return <p className="text-muted-foreground">Cliente no encontrado</p>
 
   const { client, tasks } = summary
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Breadcrumb + Header */}
+      <Breadcrumb items={[
+        { label: "Inicio", href: "/dashboard" },
+        { label: "Clientes", href: "/clients" },
+        { label: client.name },
+      ]} />
       <div className="flex items-center gap-4">
-        <Link to="/clients">
-          <Button variant="ghost" size="icon">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
         <div>
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold uppercase tracking-wide">{client.name}</h2>

@@ -332,6 +332,7 @@ class Project(TimestampMixin, Base):
     client = relationship("Client", back_populates="projects", lazy="selectin")
     phases = relationship("ProjectPhase", back_populates="project", lazy="selectin", order_by="ProjectPhase.order_index")
     tasks = relationship("Task", back_populates="project", lazy="selectin")
+    evidence = relationship("ProjectEvidence", back_populates="project", lazy="selectin", order_by="ProjectEvidence.created_at.desc()")
 
 
 class ProjectPhase(TimestampMixin, Base):
@@ -527,6 +528,33 @@ class ClientResource(TimestampMixin, Base):
     notes = Column(Text, nullable=True)
 
     client = relationship("Client", back_populates="resources", lazy="selectin")
+
+
+class EvidenceType(str, enum.Enum):
+    screenshot = "screenshot"
+    report = "report"
+    analytics = "analytics"
+    ranking = "ranking"
+    content = "content"
+    deliverable = "deliverable"
+    other = "other"
+
+
+class ProjectEvidence(TimestampMixin, Base):
+    __tablename__ = "project_evidence"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    phase_id = Column(Integer, ForeignKey("project_phases.id"), nullable=True, index=True)
+    title = Column(String(200), nullable=False)
+    url = Column(Text, nullable=False)
+    evidence_type = Column(Enum(EvidenceType), default=EvidenceType.other)
+    description = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    project = relationship("Project", back_populates="evidence", lazy="selectin")
+    phase = relationship("ProjectPhase", lazy="selectin")
+    creator = relationship("User", lazy="selectin")
 
 
 class BillingEvent(TimestampMixin, Base):

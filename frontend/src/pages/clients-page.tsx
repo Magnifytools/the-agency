@@ -14,8 +14,13 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { Plus, Pencil, Trash2, Users, Heart } from "lucide-react"
+import { Plus, Pencil, Trash2, Users, Heart, Loader2 } from "lucide-react"
+import { useTableSort } from "@/hooks/use-table-sort"
+import { useBulkSelect } from "@/hooks/use-bulk-select"
+import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { BulkActionBar } from "@/components/ui/bulk-action-bar"
 import { EmptyTableState } from "@/components/ui/empty-state"
+import { SkeletonTableRow } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 
@@ -43,6 +48,7 @@ export default function ClientsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [bulkStatus, setBulkStatus] = useState("")
 
   const { data, isLoading } = useQuery({
     queryKey: ["clients", tab, page, pageSize],
@@ -56,6 +62,22 @@ export default function ClientsPage() {
     staleTime: 60_000,
   })
   const healthMap = new Map(healthScores.map((h: ClientHealthScore) => [h.client_id, h]))
+
+  const { sortedItems: sortedClients, sortConfig: clientSortConfig, requestSort: requestClientSort } = useTableSort(clients)
+  const { selectedIds: selectedClientIds, isSelected: isClientSelected, toggleItem: toggleClient, toggleAll: toggleAllClients, clearSelection: clearClientSelection, selectedCount: selectedClientCount, allSelected: allClientsSelected } = useBulkSelect(clients)
+
+  const bulkClientStatusMutation = useMutation({
+    mutationFn: async ({ ids, status }: { ids: number[]; status: string }) => {
+      await Promise.all(ids.map((id) => clientsApi.update(id, { status: status as ClientCreate["status"] })))
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clients"] })
+      clearClientSelection()
+      setBulkStatus("")
+      toast.success("Clientes actualizados")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar clientes")),
+  })
 
   const createMutation = useMutation({
     mutationFn: (data: ClientCreate) => clientsApi.create(data),
@@ -150,11 +172,10 @@ export default function ClientsPage() {
 
       {/* Table */}
       {isLoading ? (
-        <p className="text-muted-foreground">Cargando...</p>
-      ) : (
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10" />
               <TableHead>Nombre</TableHead>
               <TableHead>Empresa</TableHead>
               <TableHead>Email</TableHead>
@@ -166,8 +187,42 @@ export default function ClientsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {clients.map((c) => (
+            {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={9} />)}
+          </TableBody>
+        </Table>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-10">
+                <input
+                  type="checkbox"
+                  checked={allClientsSelected}
+                  onChange={toggleAllClients}
+                  className="rounded border-border"
+                />
+              </TableHead>
+              <SortableTableHead sortKey="name" currentSort={clientSortConfig} onSort={requestClientSort}>Nombre</SortableTableHead>
+              <TableHead>Empresa</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Contrato</TableHead>
+              <SortableTableHead sortKey="monthly_budget" currentSort={clientSortConfig} onSort={requestClientSort}>Presupuesto</SortableTableHead>
+              <TableHead>Estado</TableHead>
+              <TableHead>Salud</TableHead>
+              <TableHead className="w-24">Acciones</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sortedClients.map((c) => (
               <TableRow key={c.id}>
+                <TableCell>
+                  <input
+                    type="checkbox"
+                    checked={isClientSelected(c.id)}
+                    onChange={() => toggleClient(c.id)}
+                    className="rounded border-border"
+                  />
+                </TableCell>
                 <TableCell className="font-medium">
                   <Link to={`/clients/${c.id}`} className="hover:underline text-brand">
                     {c.name}
@@ -203,7 +258,7 @@ export default function ClientsPage() {
               </TableRow>
             ))}
             {clients.length === 0 && (
-              <EmptyTableState colSpan={8} icon={Users} title="Sin clientes todavía" description="Aquí verás tus clientes con estado, presupuesto y contacto." />
+              <EmptyTableState colSpan={9} icon={Users} title="Sin clientes todavía" description="Aquí verás tus clientes con estado, presupuesto y contacto." />
             )}
           </TableBody>
         </Table>
@@ -291,6 +346,24 @@ export default function ClientsPage() {
           }
         }}
       />
+
+      {/* Bulk Actions */}
+      <BulkActionBar selectedCount={selectedClientCount} onClear={clearClientSelection}>
+        <Select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)} className="h-8 text-xs w-36">
+          <option value="">Cambiar estado…</option>
+          <option value="active">Activo</option>
+          <option value="paused">Pausado</option>
+          <option value="finished">Finalizado</option>
+        </Select>
+        <Button
+          size="sm"
+          disabled={!bulkStatus || bulkClientStatusMutation.isPending}
+          onClick={() => bulkClientStatusMutation.mutate({ ids: Array.from(selectedClientIds), status: bulkStatus })}
+        >
+          {bulkClientStatusMutation.isPending && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+          Aplicar
+        </Button>
+      </BulkActionBar>
     </div>
   )
 }
