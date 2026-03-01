@@ -11,12 +11,13 @@ from backend.db.database import get_db
 from backend.db.models import (
     User, Client, Task, TaskStatus, TimeEntry, TaskCategory,
 )
+from backend.schemas.dashboard import ClientDashboardResponse, ProfitabilityStatus
 from backend.api.deps import get_current_user
 
 router = APIRouter(prefix="/api/clients/{client_id}/dashboard", tags=["client-dashboard"])
 
 
-@router.get("")
+@router.get("", response_model=ClientDashboardResponse)
 async def client_dashboard(
     client_id: int,
     db: AsyncSession = Depends(get_db),
@@ -24,10 +25,7 @@ async def client_dashboard(
 ):
     today = date.today()
     first_of_month = today.replace(day=1)
-    if today.month == 1:
-        first_of_last_month = today.replace(year=today.year - 1, month=12, day=1)
-    else:
-        first_of_last_month = today.replace(month=today.month - 1, day=1)
+    first_of_last_month = (first_of_month - timedelta(days=1)).replace(day=1)
 
     # --- Tasks by status ---
     task_result = await db.execute(
@@ -60,12 +58,8 @@ async def client_dashboard(
     )
     tasks_due_this_week = due_week_result.scalar() or 0
 
-    # --- Hours this month ---
-    # Get all task IDs for this client
-    task_ids_result = await db.execute(
-        select(Task.id).where(Task.client_id == client_id)
-    )
-    task_ids = [r[0] for r in task_ids_result.all()]
+    # --- Hours (using subquery to avoid N+1) ---
+    task_subq = select(Task.id).where(Task.client_id == client_id).scalar_subquery()
 
     hours_this_month = 0.0
     hours_last_month = 0.0
@@ -73,77 +67,76 @@ async def client_dashboard(
     team_breakdown: dict[int, dict] = {}
     monthly_hours: dict[str, float] = {}
 
-    if task_ids:
-        # Hours this month with user info
-        entries_this_month = await db.execute(
-            select(TimeEntry.minutes, TimeEntry.user_id, User.full_name, User.hourly_rate)
-            .join(User, TimeEntry.user_id == User.id)
-            .where(
-                TimeEntry.task_id.in_(task_ids),
-                TimeEntry.minutes.isnot(None),
-                TimeEntry.date >= datetime.combine(first_of_month, datetime.min.time()),
-            )
+    # Hours this month with user info
+    entries_this_month = await db.execute(
+        select(TimeEntry.minutes, TimeEntry.user_id, User.full_name, User.hourly_rate)
+        .join(User, TimeEntry.user_id == User.id)
+        .where(
+            TimeEntry.task_id.in_(task_subq),
+            TimeEntry.minutes.isnot(None),
+            TimeEntry.date >= datetime.combine(first_of_month, datetime.min.time()),
         )
-        for minutes, user_id, full_name, hourly_rate in entries_this_month.all():
-            hrs = (minutes or 0) / 60
-            hours_this_month += hrs
-            rate = hourly_rate or 0
-            cost = hrs * rate
-            total_cost_this_month += cost
+    )
+    for minutes, user_id, full_name, hourly_rate in entries_this_month.all():
+        hrs = (minutes or 0) / 60
+        hours_this_month += hrs
+        rate = hourly_rate or 0
+        cost = hrs * rate
+        total_cost_this_month += cost
 
-            if user_id not in team_breakdown:
-                team_breakdown[user_id] = {
-                    "user_id": user_id,
-                    "full_name": full_name,
-                    "hours": 0.0,
-                    "cost": 0.0,
-                }
-            team_breakdown[user_id]["hours"] += hrs
-            team_breakdown[user_id]["cost"] += cost
+        if user_id not in team_breakdown:
+            team_breakdown[user_id] = {
+                "user_id": user_id,
+                "full_name": full_name,
+                "hours": 0.0,
+                "cost": 0.0,
+            }
+        team_breakdown[user_id]["hours"] += hrs
+        team_breakdown[user_id]["cost"] += cost
 
-        # Hours last month
-        last_month_result = await db.execute(
-            select(func.sum(TimeEntry.minutes)).where(
-                TimeEntry.task_id.in_(task_ids),
-                TimeEntry.minutes.isnot(None),
-                TimeEntry.date >= datetime.combine(first_of_last_month, datetime.min.time()),
-                TimeEntry.date < datetime.combine(first_of_month, datetime.min.time()),
-            )
+    # Hours last month
+    last_month_result = await db.execute(
+        select(func.sum(TimeEntry.minutes)).where(
+            TimeEntry.task_id.in_(task_subq),
+            TimeEntry.minutes.isnot(None),
+            TimeEntry.date >= datetime.combine(first_of_last_month, datetime.min.time()),
+            TimeEntry.date < datetime.combine(first_of_month, datetime.min.time()),
         )
-        last_month_mins = last_month_result.scalar() or 0
-        hours_last_month = last_month_mins / 60
+    )
+    last_month_mins = last_month_result.scalar() or 0
+    hours_last_month = last_month_mins / 60
 
-        # Monthly breakdown (last 6 months)
-        six_months_ago = today.replace(day=1)
-        for _ in range(6):
-            if six_months_ago.month == 1:
-                six_months_ago = six_months_ago.replace(year=six_months_ago.year - 1, month=12)
-            else:
-                six_months_ago = six_months_ago.replace(month=six_months_ago.month - 1)
+    # Monthly breakdown (last 6 months)
+    six_months_ago = first_of_month
+    for _ in range(6):
+        six_months_ago = (six_months_ago - timedelta(days=1)).replace(day=1)
 
-        monthly_result = await db.execute(
-            select(
-                extract("year", TimeEntry.date).label("yr"),
-                extract("month", TimeEntry.date).label("mo"),
-                func.sum(TimeEntry.minutes),
-            )
-            .where(
-                TimeEntry.task_id.in_(task_ids),
-                TimeEntry.minutes.isnot(None),
-                TimeEntry.date >= datetime.combine(six_months_ago, datetime.min.time()),
-            )
-            .group_by("yr", "mo")
-            .order_by("yr", "mo")
+    monthly_result = await db.execute(
+        select(
+            extract("year", TimeEntry.date).label("yr"),
+            extract("month", TimeEntry.date).label("mo"),
+            func.sum(TimeEntry.minutes),
         )
-        for yr, mo, total_mins in monthly_result.all():
-            key = f"{int(yr)}-{int(mo):02d}"
-            monthly_hours[key] = round((total_mins or 0) / 60, 1)
+        .where(
+            TimeEntry.task_id.in_(task_subq),
+            TimeEntry.minutes.isnot(None),
+            TimeEntry.date >= datetime.combine(six_months_ago, datetime.min.time()),
+        )
+        .group_by("yr", "mo")
+        .order_by("yr", "mo")
+    )
+    for yr, mo, total_mins in monthly_result.all():
+        key = f"{int(yr)}-{int(mo):02d}"
+        monthly_hours[key] = round((total_mins or 0) / 60, 1)
 
-    # --- Client financial data ---
-    client_result = await db.execute(select(Client).where(Client.id == client_id))
-    client = client_result.scalar_one_or_none()
-    monthly_fee = client.monthly_fee or 0 if client else 0
-    monthly_budget = client.monthly_budget or 0 if client else 0
+    # --- Client financial data (only needed fields) ---
+    client_result = await db.execute(
+        select(Client.monthly_fee, Client.monthly_budget)
+        .where(Client.id == client_id)
+    )
+    row = client_result.one_or_none()
+    monthly_fee = (row[0] or 0) if row else 0
+    monthly_budget = (row[1] or 0) if row else 0
 
     margin = monthly_fee - total_cost_this_month
     margin_pct = round((margin / monthly_fee) * 100, 1) if monthly_fee > 0 else 0
@@ -151,11 +144,11 @@ async def client_dashboard(
     if hours_last_month > 0:
         hours_trend_pct = round(((hours_this_month - hours_last_month) / hours_last_month) * 100, 1)
 
-    profitability_status = "profitable"
+    profitability_status = ProfitabilityStatus.profitable
     if margin_pct < 10:
-        profitability_status = "unprofitable"
+        profitability_status = ProfitabilityStatus.unprofitable
     elif margin_pct < 30:
-        profitability_status = "at_risk"
+        profitability_status = ProfitabilityStatus.at_risk
 
     return {
         "hours_this_month": round(hours_this_month, 1),

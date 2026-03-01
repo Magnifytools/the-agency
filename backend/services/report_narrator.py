@@ -3,12 +3,9 @@ into polished, narrative-style reports ready to share with clients.
 """
 from __future__ import annotations
 
-import json
 import logging
 
-import anthropic
-
-from backend.config import settings
+from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +45,7 @@ async def generate_report_narrative(
     Returns dict with 'narrative' (full text) and 'executive_summary' (brief).
     Raises ValueError if API key is missing or response is invalid.
     """
-    if not settings.ANTHROPIC_API_KEY:
-        raise ValueError(
-            "ANTHROPIC_API_KEY no configurada. Agrega la clave en el archivo .env"
-        )
-
-    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    client = get_anthropic_client()
 
     # Build the user prompt from sections
     context_parts = []
@@ -83,22 +75,7 @@ async def generate_report_narrative(
         messages=[{"role": "user", "content": user_prompt}],
     )
 
-    raw_text = message.content[0].text.strip()
-
-    # Clean markdown wrapping
-    if raw_text.startswith("```"):
-        lines = raw_text.split("\n")
-        if lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        raw_text = "\n".join(lines)
-
-    try:
-        content = json.loads(raw_text)
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse narrative response: %s", raw_text[:200])
-        raise ValueError(f"La respuesta de Claude no es JSON válido: {e}") from e
+    content = parse_claude_json(message)
 
     result = {
         "narrative": content.get("narrative", ""),

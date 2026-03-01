@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { FileText, Plus, Sparkles, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { reportsApi } from "@/lib/api"
+import { clientKeys } from "@/lib/query-keys"
 import type { ReportNarrative } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,7 +21,7 @@ export function ClientReportsTab({ clientId, clientName }: Props) {
   const [narrative, setNarrative] = useState<ReportNarrative | null>(null)
 
   const { data: reports = [], isLoading } = useQuery({
-    queryKey: ["client-reports", clientId],
+    queryKey: clientKeys.reports(clientId),
     queryFn: () => reportsApi.list({ client_id: clientId, limit: 20 }),
   })
 
@@ -32,7 +33,7 @@ export function ClientReportsTab({ clientId, clientName }: Props) {
         period: "month",
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["client-reports", clientId] })
+      qc.invalidateQueries({ queryKey: clientKeys.reports(clientId) })
       toast.success("Informe generado")
     },
     onError: (e) => toast.error(getErrorMessage(e)),

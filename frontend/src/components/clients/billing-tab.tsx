@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Receipt, CreditCard, CalendarClock, Plus } from "lucide-react"
 import { toast } from "sonner"
 import { billingEventsApi, clientsApi } from "@/lib/api"
+import { clientKeys } from "@/lib/query-keys"
 import type { Client, BillingCycle, BillingEventCreate } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -10,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select } from "@/components/ui/select"
 import { getErrorMessage } from "@/lib/utils"
 
 interface Props {
@@ -36,22 +38,26 @@ export function BillingTab({ client }: Props) {
   const [showConfig, setShowConfig] = useState(false)
   const [showEventForm, setShowEventForm] = useState(false)
 
+  const invalidateBilling = () => {
+    qc.invalidateQueries({ queryKey: clientKeys.billingStatus(client.id) })
+    qc.invalidateQueries({ queryKey: clientKeys.billing(client.id) })
+  }
+
   const { data: status } = useQuery({
-    queryKey: ["billing-status", client.id],
+    queryKey: clientKeys.billingStatus(client.id),
     queryFn: () => billingEventsApi.status(client.id),
   })
 
   const { data: events = [] } = useQuery({
-    queryKey: ["billing-events", client.id],
+    queryKey: clientKeys.billing(client.id),
     queryFn: () => billingEventsApi.list(client.id),
   })
 
   const markInvoicedMut = useMutation({
     mutationFn: () => billingEventsApi.markInvoiced(client.id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["billing-status", client.id] })
-      qc.invalidateQueries({ queryKey: ["billing-events", client.id] })
-      qc.invalidateQueries({ queryKey: ["client-summary", client.id] })
+      invalidateBilling()
+      qc.invalidateQueries({ queryKey: clientKeys.summary(client.id) })
       toast.success("Marcado como facturado")
     },
     onError: (e) => toast.error(getErrorMessage(e)),
@@ -60,8 +66,7 @@ export function BillingTab({ client }: Props) {
   const markPaidMut = useMutation({
     mutationFn: () => billingEventsApi.markPaid(client.id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["billing-status", client.id] })
-      qc.invalidateQueries({ queryKey: ["billing-events", client.id] })
+      invalidateBilling()
       toast.success("Pago registrado")
     },
     onError: (e) => toast.error(getErrorMessage(e)),
@@ -70,7 +75,7 @@ export function BillingTab({ client }: Props) {
   const createEventMut = useMutation({
     mutationFn: (data: BillingEventCreate) => billingEventsApi.create(client.id, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["billing-events", client.id] })
+      invalidateBilling()
       setShowEventForm(false)
       toast.success("Evento registrado")
     },
@@ -225,8 +230,8 @@ export function BillingTab({ client }: Props) {
           client={client}
           onSave={() => {
             setShowConfig(false)
-            qc.invalidateQueries({ queryKey: ["billing-status", client.id] })
-            qc.invalidateQueries({ queryKey: ["client-summary", client.id] })
+            qc.invalidateQueries({ queryKey: clientKeys.billingStatus(client.id) })
+            qc.invalidateQueries({ queryKey: clientKeys.summary(client.id) })
           }}
         />
       </Dialog>
@@ -275,8 +280,7 @@ function BillingConfigForm({ client, onSave }: { client: Client; onSave: () => v
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <Label>Ciclo de facturacion</Label>
-          <select
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+          <Select
             value={cycle}
             onChange={(e) => setCycle(e.target.value as BillingCycle | "")}
           >
@@ -284,7 +288,7 @@ function BillingConfigForm({ client, onSave }: { client: Client; onSave: () => v
             {BILLING_CYCLES.map((c) => (
               <option key={c.value} value={c.value}>{c.label}</option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <Label>Dia de facturacion (1-28)</Label>
@@ -346,8 +350,7 @@ function EventForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <Label>Tipo</Label>
-          <select
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+          <Select
             value={eventType}
             onChange={(e) => setEventType(e.target.value)}
           >
@@ -355,7 +358,7 @@ function EventForm({
             <option value="payment_received">Pago recibido</option>
             <option value="reminder_sent">Recordatorio</option>
             <option value="note">Nota</option>
-          </select>
+          </Select>
         </div>
         <div>
           <Label>Fecha</Label>

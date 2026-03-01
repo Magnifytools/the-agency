@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Plus, Pencil, Trash2, ExternalLink, Sheet, FileText, Mail, UserCircle, BarChart2, Link2 } from "lucide-react"
 import { toast } from "sonner"
 import { resourcesApi } from "@/lib/api"
+import { clientKeys } from "@/lib/query-keys"
 import type { ClientResource, ClientResourceCreate, ResourceType } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -10,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select } from "@/components/ui/select"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { getErrorMessage } from "@/lib/utils"
 
@@ -42,14 +44,14 @@ export function ResourceList({ clientId }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<ClientResource | null>(null)
 
   const { data: resources = [], isLoading } = useQuery({
-    queryKey: ["client-resources", clientId],
+    queryKey: clientKeys.resources(clientId),
     queryFn: () => resourcesApi.list(clientId),
   })
 
   const createMut = useMutation({
     mutationFn: (data: ClientResourceCreate) => resourcesApi.create(clientId, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["client-resources", clientId] })
+      qc.invalidateQueries({ queryKey: clientKeys.resources(clientId) })
       setShowForm(false)
       toast.success("Recurso creado")
     },
@@ -60,7 +62,7 @@ export function ResourceList({ clientId }: Props) {
     mutationFn: ({ id, data }: { id: number; data: Partial<ClientResourceCreate> }) =>
       resourcesApi.update(clientId, id, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["client-resources", clientId] })
+      qc.invalidateQueries({ queryKey: clientKeys.resources(clientId) })
       setEditing(null)
       setShowForm(false)
       toast.success("Recurso actualizado")
@@ -71,7 +73,7 @@ export function ResourceList({ clientId }: Props) {
   const deleteMut = useMutation({
     mutationFn: (id: number) => resourcesApi.delete(clientId, id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["client-resources", clientId] })
+      qc.invalidateQueries({ queryKey: clientKeys.resources(clientId) })
       setDeleteTarget(null)
       toast.success("Recurso eliminado")
     },
@@ -211,15 +213,14 @@ function ResourceForm({
         </div>
         <div>
           <Label>Tipo</Label>
-          <select
+          <Select
             value={resourceType}
             onChange={(e) => setResourceType(e.target.value as ResourceType)}
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             {RESOURCE_TYPES.map((t) => (
               <option key={t.value} value={t.value}>{t.label}</option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
       <div>

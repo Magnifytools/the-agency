@@ -1,15 +1,13 @@
 """AI Client Advisor: generates actionable recommendations based on client data."""
 from __future__ import annotations
 
-import json
 import logging
 from datetime import date, datetime
 
-import anthropic
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.config import settings
+from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 from backend.db.models import (
     Client, Task, TaskStatus, TimeEntry, CommunicationLog,
     ClientContact, BillingEvent,
@@ -49,9 +47,6 @@ async def get_client_advice(
     client_id: int,
 ) -> list[dict]:
     """Gather client context and call Claude for recommendations."""
-    if not settings.ANTHROPIC_API_KEY:
-        raise ValueError("ANTHROPIC_API_KEY no configurada")
-
     # Gather context
     client_result = await db.execute(select(Client).where(Client.id == client_id))
     client = client_result.scalar_one_or_none()
@@ -93,23 +88,18 @@ async def get_client_advice(
     )
     last_comm_date = last_comm_result.scalar()
 
-    # Hours this month
+    # Hours this month (subquery avoids fetching IDs into Python)
     first_of_month = today.replace(day=1)
-    task_ids_result = await db.execute(
-        select(Task.id).where(Task.client_id == client_id)
-    )
-    task_ids = [r[0] for r in task_ids_result.all()]
+    task_subq = select(Task.id).where(Task.client_id == client_id).scalar_subquery()
 
-    hours_this_month = 0.0
-    if task_ids:
-        hours_result = await db.execute(
-            select(func.sum(TimeEntry.minutes)).where(
-                TimeEntry.task_id.in_(task_ids),
-                TimeEntry.minutes.isnot(None),
-                TimeEntry.date >= datetime.combine(first_of_month, datetime.min.time()),
-            )
+    hours_result = await db.execute(
+        select(func.sum(TimeEntry.minutes)).where(
+            TimeEntry.task_id.in_(task_subq),
+            TimeEntry.minutes.isnot(None),
+            TimeEntry.date >= datetime.combine(first_of_month, datetime.min.time()),
         )
-        hours_this_month = round((hours_result.scalar() or 0) / 60, 1)
+    )
+    hours_this_month = round((hours_result.scalar() or 0) / 60, 1)
 
     # Billing info
     billing_info = ""
@@ -145,7 +135,7 @@ async def get_client_advice(
 
     logger.info("Generating AI advice for client %d: %s", client_id, client.name)
 
-    ai_client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    ai_client = get_anthropic_client()
     message = await ai_client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=2048,
@@ -153,21 +143,7 @@ async def get_client_advice(
         messages=[{"role": "user", "content": user_prompt}],
     )
 
-    raw_text = message.content[0].text.strip()
-    if raw_text.startswith("```"):
-        lines = raw_text.split("\n")
-        if lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        raw_text = "\n".join(lines)
-
-    try:
-        content = json.loads(raw_text)
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse AI advice response: %s", raw_text[:200])
-        raise ValueError(f"Respuesta de IA no valida: {e}") from e
-
+    content = parse_claude_json(message)
     recommendations = content.get("recommendations", [])
     logger.info("Generated %d recommendations for client %d", len(recommendations), client_id)
 

@@ -1,7 +1,14 @@
 from __future__ import annotations
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel
+
+
+class ProfitabilityStatus(str, Enum):
+    profitable = "profitable"
+    at_risk = "at_risk"
+    unprofitable = "unprofitable"
 
 
 class DashboardOverview(BaseModel):
@@ -25,7 +32,7 @@ class ClientProfitability(BaseModel):
     estimated_minutes: int
     actual_minutes: int
     variance_minutes: int
-    status: str  # profitable / at_risk / unprofitable
+    status: ProfitabilityStatus
 
 
 class ProfitabilityResponse(BaseModel):
@@ -105,3 +112,27 @@ class FinancialSettingsUpdate(BaseModel):
     ai_model: Optional[str] = None
     ai_api_url: Optional[str] = None
     ai_api_key: Optional[str] = None
+
+
+class TeamBreakdownItem(BaseModel):
+    user_id: int
+    full_name: str
+    hours: float
+    cost: float
+
+
+class ClientDashboardResponse(BaseModel):
+    hours_this_month: float
+    hours_last_month: float
+    hours_trend_pct: float
+    total_cost_this_month: float
+    monthly_fee: float
+    monthly_budget: float
+    margin: float
+    margin_pct: float
+    profitability_status: ProfitabilityStatus
+    tasks_by_status: dict[str, int]
+    tasks_overdue: int
+    tasks_due_this_week: int
+    monthly_hours_breakdown: dict[str, float]
+    team_breakdown: list[TeamBreakdownItem]

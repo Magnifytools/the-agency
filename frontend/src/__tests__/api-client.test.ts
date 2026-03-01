@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { CSRF_COOKIE_NAME } from "@/lib/api"
 
 // Mock sonner before importing api
 vi.mock("sonner", () => ({
@@ -8,14 +9,18 @@ vi.mock("sonner", () => ({
   },
 }))
 
+const clearCsrfCookie = () => {
+  document.cookie = `${CSRF_COOKIE_NAME}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`
+}
+
 describe("API Client", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    document.cookie = "agency_csrf_token=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/"
+    clearCsrfCookie()
   })
 
   afterEach(() => {
-    document.cookie = "agency_csrf_token=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/"
+    clearCsrfCookie()
     vi.restoreAllMocks()
   })
 
@@ -27,10 +32,10 @@ describe("API Client", () => {
   })
 
   it("request interceptor adds CSRF header when cookie exists", () => {
-    document.cookie = "agency_csrf_token=test-csrf-token;path=/"
+    document.cookie = `${CSRF_COOKIE_NAME}=test-csrf-token;path=/`
     const match = document.cookie
       .split("; ")
-      .find((row) => row.startsWith("agency_csrf_token="))
+      .find((row) => row.startsWith(`${CSRF_COOKIE_NAME}=`))
     const csrfToken = match ? decodeURIComponent(match.split("=")[1]) : null
     const headers: Record<string, string> = {}
     if (csrfToken) {
@@ -43,7 +48,7 @@ describe("API Client", () => {
   it("request interceptor does not add CSRF header when no cookie", () => {
     const match = document.cookie
       .split("; ")
-      .find((row) => row.startsWith("agency_csrf_token="))
+      .find((row) => row.startsWith(`${CSRF_COOKIE_NAME}=`))
     const csrfToken = match ? decodeURIComponent(match.split("=")[1]) : null
     const headers: Record<string, string> = {}
     if (csrfToken) {

@@ -11,6 +11,7 @@ Endpoints:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
@@ -165,27 +166,44 @@ async def generate_batch(
     if not clients:
         raise HTTPException(status_code=404, detail="No active clients found")
 
-    digests = []
+    # Collect data sequentially (shares DB session), then generate AI content concurrently
+    client_data: list[tuple] = []
     for client in clients:
         try:
             raw_data = await collect_digest_data(db, client.id, period_start, period_end)
-            content = await generate_digest_content(raw_data, tone)
-
-            digest = WeeklyDigest(
-                client_id=client.id,
-                period_start=period_start,
-                period_end=period_end,
-                status=DigestStatus.draft,
-                tone=tone,
-                content=content,
-                raw_context=raw_data,
-                generated_at=datetime.utcnow(),
-                created_by=current_user.id,
-            )
-            db.add(digest)
-            digests.append(digest)
+            client_data.append((client, raw_data))
         except Exception:
-            logger.exception("Batch digest generation failed for client_id=%s", client.id)
+            logger.exception("Batch data collection failed for client_id=%s", client.id)
+
+    sem = asyncio.Semaphore(5)
+
+    async def _generate(raw_data: dict) -> dict:
+        async with sem:
+            return await generate_digest_content(raw_data, tone)
+
+    ai_results = await asyncio.gather(
+        *[_generate(raw_data) for _, raw_data in client_data],
+        return_exceptions=True,
+    )
+
+    digests = []
+    for (client, raw_data), result in zip(client_data, ai_results):
+        if isinstance(result, Exception):
+            logger.exception("Batch digest generation failed for client_id=%s: %s", client.id, result)
+            continue
+        digest = WeeklyDigest(
+            client_id=client.id,
+            period_start=period_start,
+            period_end=period_end,
+            status=DigestStatus.draft,
+            tone=tone,
+            content=result,
+            raw_context=raw_data,
+            generated_at=datetime.utcnow(),
+            created_by=current_user.id,
+        )
+        db.add(digest)
+        digests.append(digest)
 
     if digests:
         await db.commit()

@@ -5,19 +5,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
-from backend.db.models import User, Client, ClientResource
+from backend.db.models import User, ClientResource
 from backend.schemas.resource import ResourceCreate, ResourceUpdate, ResourceResponse
-from backend.api.deps import get_current_user, require_module
+from backend.api.deps import get_current_user, require_module, get_client_or_404
 
 router = APIRouter(prefix="/api/clients/{client_id}/resources", tags=["resources"])
-
-
-async def _get_client(client_id: int, db: AsyncSession) -> Client:
-    result = await db.execute(select(Client).where(Client.id == client_id))
-    client = result.scalar_one_or_none()
-    if client is None:
-        raise HTTPException(status_code=404, detail="Client not found")
-    return client
 
 
 @router.get("", response_model=list[ResourceResponse])
@@ -26,7 +18,6 @@ async def list_resources(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients")),
 ):
-    await _get_client(client_id, db)
     result = await db.execute(
         select(ClientResource)
         .where(ClientResource.client_id == client_id)
@@ -42,7 +33,7 @@ async def create_resource(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients", write=True)),
 ):
-    await _get_client(client_id, db)
+    await get_client_or_404(client_id, db)
     resource = ClientResource(client_id=client_id, **body.model_dump())
     db.add(resource)
     await db.commit()

@@ -105,6 +105,8 @@ import type {
   NotificationItem,
 } from "./types"
 
+export const CSRF_COOKIE_NAME = "agency_csrf_token"
+
 const api = axios.create({
   baseURL: "/api",
   timeout: 30_000,
@@ -121,7 +123,7 @@ function getCookie(name: string): string | null {
 }
 
 api.interceptors.request.use((config) => {
-  const csrfToken = getCookie("agency_csrf_token")
+  const csrfToken = getCookie(CSRF_COOKIE_NAME)
   if (csrfToken) {
     config.headers["X-CSRF-Token"] = csrfToken
   }

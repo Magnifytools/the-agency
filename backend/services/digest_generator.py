@@ -5,13 +5,10 @@ structured JSON content ready for the WeeklyDigest model.
 """
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 
-import anthropic
-
-from backend.config import settings
+from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 from backend.db.models import DigestTone
 
 logger = logging.getLogger(__name__)
@@ -157,12 +154,7 @@ async def generate_digest_content(
 
     Raises ValueError if API key is missing or response is invalid.
     """
-    if not settings.ANTHROPIC_API_KEY:
-        raise ValueError(
-            "ANTHROPIC_API_KEY no configurada. Agrega la clave en el archivo .env"
-        )
-
-    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    client = get_anthropic_client()
 
     user_prompt = _build_user_prompt(raw_data, tone)
 
@@ -179,24 +171,7 @@ async def generate_digest_content(
         messages=[{"role": "user", "content": user_prompt}],
     )
 
-    # Extract the text content
-    raw_text = message.content[0].text.strip()
-
-    # Clean potential markdown wrapping
-    if raw_text.startswith("```"):
-        # Remove ```json ... ``` wrapper
-        lines = raw_text.split("\n")
-        if lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        raw_text = "\n".join(lines)
-
-    try:
-        content = json.loads(raw_text)
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse Claude response as JSON: %s", raw_text[:200])
-        raise ValueError(f"La respuesta de Claude no es JSON valido: {e}") from e
+    content = parse_claude_json(message)
 
     # Validate minimal structure
     if "sections" not in content:

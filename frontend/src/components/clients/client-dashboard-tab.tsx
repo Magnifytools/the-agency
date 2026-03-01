@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { TrendingUp, TrendingDown, Clock, DollarSign, AlertTriangle, CheckCircle2, BarChart3 } from "lucide-react"
 import { clientDashboardApi } from "@/lib/api"
+import { clientKeys } from "@/lib/query-keys"
 import type { Client } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -17,7 +18,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 export function ClientDashboardTab({ client }: Props) {
   const { data: dash, isLoading } = useQuery({
-    queryKey: ["client-dashboard", client.id],
+    queryKey: clientKeys.dashboard(client.id),
     queryFn: () => clientDashboardApi.get(client.id),
     staleTime: 60_000,
   })

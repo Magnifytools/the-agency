@@ -8,12 +8,9 @@ A team member pastes their raw daily update text and the AI extracts:
 """
 from __future__ import annotations
 
-import json
 import logging
 
-import anthropic
-
-from backend.config import settings
+from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 
 logger = logging.getLogger(__name__)
 
@@ -63,12 +60,7 @@ async def parse_daily_update(raw_text: str) -> dict:
     Returns the parsed dict with projects, general tasks, and tomorrow plans.
     Raises ValueError if API key is missing or response is invalid.
     """
-    if not settings.ANTHROPIC_API_KEY:
-        raise ValueError(
-            "ANTHROPIC_API_KEY no configurada. Agrega la clave en el archivo .env"
-        )
-
-    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    client = get_anthropic_client()
 
     logger.info("Parsing daily update (%d chars)", len(raw_text))
 
@@ -79,22 +71,7 @@ async def parse_daily_update(raw_text: str) -> dict:
         messages=[{"role": "user", "content": raw_text}],
     )
 
-    raw_response = message.content[0].text.strip()
-
-    # Clean potential markdown wrapping
-    if raw_response.startswith("```"):
-        lines = raw_response.split("\n")
-        if lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        raw_response = "\n".join(lines)
-
-    try:
-        content = json.loads(raw_response)
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse Claude response as JSON: %s", raw_response[:200])
-        raise ValueError(f"La respuesta de Claude no es JSON valido: {e}") from e
+    content = parse_claude_json(message)
 
     # Validate and normalize structure
     result = {

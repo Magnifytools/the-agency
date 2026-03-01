@@ -45,12 +45,14 @@ def _build_redis_client() -> "redis.Redis | None":
         return None
 
 
+_shared_redis: "redis.Redis | None" = _build_redis_client()
+
+
 class _SlidingWindowLimiter:
     def __init__(self, prefix: str, detail_fn: Callable[[int, int], str]) -> None:
         self._prefix = prefix
         self._detail_fn = detail_fn
         self._requests: dict[str, list[float]] = defaultdict(list)
-        self._redis = _build_redis_client()
 
     def _raise_limit(self, max_requests: int, window_seconds: int) -> None:
         raise HTTPException(
@@ -61,21 +63,20 @@ class _SlidingWindowLimiter:
     def _check_memory(self, key: str, max_requests: int, window_seconds: int) -> None:
         now = time.monotonic()
         cutoff = now - window_seconds
-        self._requests[key] = [t for t in self._requests[key] if t > cutoff]
-        if len(self._requests[key]) >= max_requests:
+        pruned = [t for t in self._requests[key] if t > cutoff]
+        if len(pruned) >= max_requests:
+            self._requests[key] = pruned
             self._raise_limit(max_requests, window_seconds)
-        self._requests[key].append(now)
+        pruned.append(now)
+        self._requests[key] = pruned
 
-    def _check_redis(self, key: str, max_requests: int, window_seconds: int) -> None:
-        if self._redis is None:
-            raise RuntimeError("redis not configured")
-
+    def _check_redis(self, redis_client: "redis.Redis", key: str, max_requests: int, window_seconds: int) -> None:
         now = time.time()
         cutoff = now - window_seconds
         redis_key = f"{self._prefix}:{key}"
 
         # Prune old entries and read current size.
-        pipe = self._redis.pipeline()
+        pipe = redis_client.pipeline()
         pipe.zremrangebyscore(redis_key, 0, cutoff)
         pipe.zcard(redis_key)
         _, current_count = pipe.execute()
@@ -85,22 +86,23 @@ class _SlidingWindowLimiter:
 
         # Append current request and keep key ttl bounded to window.
         member = f"{now}:{uuid.uuid4().hex}"
-        pipe = self._redis.pipeline()
+        pipe = redis_client.pipeline()
         pipe.zadd(redis_key, {member: now})
         pipe.expire(redis_key, window_seconds + 10)
         pipe.execute()
 
     def check(self, key: str | int, max_requests: int, window_seconds: int) -> None:
+        global _shared_redis
         normalized = str(key)
-        if self._redis is not None:
+        if _shared_redis is not None:
             try:
-                self._check_redis(normalized, max_requests, window_seconds)
+                self._check_redis(_shared_redis, normalized, max_requests, window_seconds)
                 return
             except HTTPException:
                 raise
             except Exception as exc:  # pragma: no cover - depends on runtime infra
                 logger.warning("Redis limiter fallback to memory (%s): %s", self._prefix, exc)
-                self._redis = None
+                _shared_redis = None
         self._check_memory(normalized, max_requests, window_seconds)
 
 

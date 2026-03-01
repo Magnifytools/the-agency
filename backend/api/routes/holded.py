@@ -19,8 +19,8 @@ from backend.schemas.holded import (
     HoldedInvoiceResponse, HoldedExpenseResponse,
     HoldedDashboardResponse, MonthlyFinancials,
     HoldedConfigResponse, TestConnectionResponse,
-    HoldedInvoicePageResponse, HoldedExpensePageResponse,
 )
+from backend.schemas.pagination import PaginatedResponse
 
 router = APIRouter(prefix="/api/holded", tags=["holded"])
 logger = logging.getLogger(__name__)
@@ -359,7 +359,7 @@ async def sync_logs(
 # ── Data endpoints (read from cache) ──────────────────────
 
 
-@router.get("/invoices", response_model=HoldedInvoicePageResponse)
+@router.get("/invoices", response_model=PaginatedResponse[HoldedInvoiceResponse])
 async def list_invoices(
     client_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
@@ -403,7 +403,7 @@ async def get_invoice_pdf(
         raise HTTPException(status_code=502, detail=f"Error descargando PDF: {e.detail}")
 
 
-@router.get("/expenses", response_model=HoldedExpensePageResponse)
+@router.get("/expenses", response_model=PaginatedResponse[HoldedExpenseResponse])
 async def list_expenses(
     category: Optional[str] = Query(None),
     date_from: Optional[date] = Query(None),

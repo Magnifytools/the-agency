@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from dateutil.relativedelta import relativedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -8,43 +9,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import User, Client, BillingEvent, BillingEventType, BillingCycle
-from backend.schemas.billing_event import BillingEventCreate, BillingEventResponse
-from backend.api.deps import get_current_user, require_module
+from backend.schemas.billing_event import BillingEventCreate, BillingEventResponse, BillingStatusResponse
+from backend.api.deps import get_current_user, require_module, get_client_or_404
 
 router = APIRouter(prefix="/api/clients/{client_id}/billing", tags=["billing-events"])
 
 
-async def _get_client(client_id: int, db: AsyncSession) -> Client:
-    result = await db.execute(select(Client).where(Client.id == client_id))
-    client = result.scalar_one_or_none()
-    if client is None:
-        raise HTTPException(status_code=404, detail="Client not found")
-    return client
+_CYCLE_DELTAS = {
+    BillingCycle.monthly: relativedelta(months=1),
+    BillingCycle.bimonthly: relativedelta(months=2),
+    BillingCycle.quarterly: relativedelta(months=3),
+    BillingCycle.annual: relativedelta(years=1),
+}
 
 
 def _calc_next_invoice_date(current: date, cycle: BillingCycle) -> date:
     """Calculate the next invoice date based on billing cycle."""
-    if cycle == BillingCycle.monthly:
-        if current.month == 12:
-            return current.replace(year=current.year + 1, month=1)
-        return current.replace(month=current.month + 1)
-    elif cycle == BillingCycle.bimonthly:
-        month = current.month + 2
-        year = current.year
-        if month > 12:
-            month -= 12
-            year += 1
-        return current.replace(year=year, month=month)
-    elif cycle == BillingCycle.quarterly:
-        month = current.month + 3
-        year = current.year
-        if month > 12:
-            month -= 12
-            year += 1
-        return current.replace(year=year, month=month)
-    elif cycle == BillingCycle.annual:
-        return current.replace(year=current.year + 1)
-    return current
+    delta = _CYCLE_DELTAS.get(cycle)
+    return current + delta if delta else current
 
 
 @router.get("", response_model=list[BillingEventResponse])
@@ -53,7 +35,6 @@ async def list_billing_events(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients")),
 ):
-    await _get_client(client_id, db)
     result = await db.execute(
         select(BillingEvent)
         .where(BillingEvent.client_id == client_id)
@@ -70,7 +51,7 @@ async def create_billing_event(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients", write=True)),
 ):
-    await _get_client(client_id, db)
+    await get_client_or_404(client_id, db)
     event = BillingEvent(client_id=client_id, **body.model_dump())
     db.add(event)
     await db.commit()
@@ -78,13 +59,13 @@ async def create_billing_event(
     return event
 
 
-@router.get("/status")
+@router.get("/status", response_model=BillingStatusResponse)
 async def billing_status(
     client_id: int,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients")),
 ):
-    client = await _get_client(client_id, db)
+    client = await get_client_or_404(client_id, db)
     today = date.today()
     days_until = None
     is_overdue = False
@@ -124,7 +105,7 @@ async def mark_invoiced(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients", write=True)),
 ):
-    client = await _get_client(client_id, db)
+    client = await get_client_or_404(client_id, db)
     today = date.today()
 
     # Create billing event
@@ -155,7 +136,7 @@ async def mark_paid(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients", write=True)),
 ):
-    client = await _get_client(client_id, db)
+    client = await get_client_or_404(client_id, db)
     event = BillingEvent(
         client_id=client_id,
         event_type=BillingEventType.payment_received,

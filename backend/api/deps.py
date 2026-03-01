@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.security import decode_access_token
 from backend.config import settings
 from backend.db.database import get_db
-from backend.db.models import User, UserRole
+from backend.db.models import User, UserRole, Client
 
 security = HTTPBearer(auto_error=False)
 
@@ -69,3 +69,12 @@ def require_module(module: str, write: bool = False):
         )
 
     return checker
+
+
+async def get_client_or_404(client_id: int, db: AsyncSession) -> Client:
+    """Fetch a client by ID or raise 404."""
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return client

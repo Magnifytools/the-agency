@@ -71,7 +71,10 @@ async def list_tasks(
         if assigned_to == "unassigned":
             base = base.where(Task.assigned_to.is_(None))
         else:
-            base = base.where(Task.assigned_to == int(assigned_to))
+            try:
+                base = base.where(Task.assigned_to == int(assigned_to))
+            except ValueError:
+                raise HTTPException(status_code=422, detail="assigned_to must be 'unassigned' or a valid user ID")
     if priority is not None:
         base = base.where(Task.priority == priority)
     if overdue:

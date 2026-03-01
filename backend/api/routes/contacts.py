@@ -5,19 +5,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
-from backend.db.models import User, Client, ClientContact
+from backend.db.models import User, ClientContact
 from backend.schemas.contact import ContactCreate, ContactUpdate, ContactResponse
-from backend.api.deps import get_current_user, require_module
+from backend.api.deps import get_current_user, require_module, get_client_or_404
 
 router = APIRouter(prefix="/api/clients/{client_id}/contacts", tags=["contacts"])
-
-
-async def _get_client(client_id: int, db: AsyncSession) -> Client:
-    result = await db.execute(select(Client).where(Client.id == client_id))
-    client = result.scalar_one_or_none()
-    if client is None:
-        raise HTTPException(status_code=404, detail="Client not found")
-    return client
 
 
 @router.get("", response_model=list[ContactResponse])
@@ -26,7 +18,6 @@ async def list_contacts(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients")),
 ):
-    await _get_client(client_id, db)
     result = await db.execute(
         select(ClientContact)
         .where(ClientContact.client_id == client_id)
@@ -42,7 +33,7 @@ async def create_contact(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients", write=True)),
 ):
-    await _get_client(client_id, db)
+    await get_client_or_404(client_id, db)
 
     # If setting as primary, unset other primaries for this client
     if body.is_primary:
