@@ -416,6 +416,35 @@ export interface WeeklyTimesheet {
   }[]
 }
 
+export interface AdminActiveTimer {
+  id: number
+  user_id: number
+  user_name: string
+  user_email: string
+  task_id: number | null
+  task_title: string | null
+  client_name: string | null
+  started_at: string
+  elapsed_seconds: number
+}
+
+export interface ProjectTeamBreakdown {
+  user_id: number
+  user_name: string
+  total_minutes: number
+  entries_count: number
+}
+
+export interface ProjectTimeReport {
+  project_id: number
+  project_name: string
+  client_id: number
+  client_name: string
+  total_minutes: number
+  entries_count: number
+  team_breakdown: ProjectTeamBreakdown[]
+}
+
 // Client Summary
 export interface ClientSummary {
   client: Client

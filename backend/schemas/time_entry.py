@@ -53,3 +53,34 @@ class ActiveTimerResponse(BaseModel):
     started_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class AdminActiveTimerResponse(BaseModel):
+    id: int
+    user_id: int
+    user_name: str
+    user_email: str
+    task_id: Optional[int] = None
+    task_title: Optional[str] = None
+    client_name: Optional[str] = None
+    started_at: datetime
+    elapsed_seconds: int
+
+    model_config = {"from_attributes": True}
+
+
+class ProjectTeamBreakdown(BaseModel):
+    user_id: int
+    user_name: str
+    total_minutes: int
+    entries_count: int
+
+
+class ProjectTimeReport(BaseModel):
+    project_id: int
+    project_name: str
+    client_id: int
+    client_name: str
+    total_minutes: int
+    entries_count: int
+    team_breakdown: list[ProjectTeamBreakdown]

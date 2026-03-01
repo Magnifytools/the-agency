@@ -16,6 +16,8 @@ import type {
   TimeEntryCreate,
   ActiveTimer,
   WeeklyTimesheet,
+  AdminActiveTimer,
+  ProjectTimeReport,
   DashboardOverview,
   ProfitabilityResponse,
   TeamMemberSummary,
@@ -211,6 +213,12 @@ export const timeEntriesApi = {
   update: (id: number, data: { minutes?: number; notes?: string; task_id?: number }) =>
     api.put<TimeEntry>(`/time-entries/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/time-entries/${id}`).then((r) => r.data),
+  exportCsv: (params?: { date_from?: string; date_to?: string; user_id?: number; client_id?: number; project_id?: number }) =>
+    api.get("/time-entries/export", { params, responseType: "blob" }).then((r) => r.data),
+  byProject: (params?: { date_from?: string; date_to?: string; client_id?: number }) =>
+    api.get<ProjectTimeReport[]>("/time-entries/by-project", { params }).then((r) => r.data),
+  adminTimers: () =>
+    api.get<AdminActiveTimer[]>("/admin/timers/active").then((r) => r.data),
 }
 
 // Timer

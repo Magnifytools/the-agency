@@ -8,7 +8,9 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
-from backend.db.models import TimeEntry, Task, User, UserRole
+from fastapi.responses import StreamingResponse
+
+from backend.db.models import TimeEntry, Task, User, UserRole, Project, Client
 from backend.schemas.time_entry import (
     TimeEntryCreate,
     TimeEntryUpdate,
@@ -16,8 +18,12 @@ from backend.schemas.time_entry import (
     TimerStartRequest,
     TimerStopRequest,
     ActiveTimerResponse,
+    AdminActiveTimerResponse,
+    ProjectTimeReport,
+    ProjectTeamBreakdown,
 )
-from backend.api.deps import get_current_user, require_module
+from backend.api.deps import get_current_user, require_admin, require_module
+from backend.services.csv_utils import build_csv_response
 
 router = APIRouter(tags=["time-entries"])
 
@@ -143,6 +149,150 @@ async def weekly_timesheet(
         "days": day_keys,
         "users": list(user_map.values()),
     }
+
+
+@router.get("/api/time-entries/export")
+async def export_time_entries_csv(
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
+    user_id: Optional[int] = Query(None),
+    client_id: Optional[int] = Query(None),
+    project_id: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("timesheet")),
+):
+    query = select(TimeEntry).where(TimeEntry.minutes.isnot(None))
+    # Members can only export their own entries
+    if current_user.role != UserRole.admin:
+        query = query.where(TimeEntry.user_id == current_user.id)
+    elif user_id is not None:
+        query = query.where(TimeEntry.user_id == user_id)
+    if date_from is not None:
+        query = query.where(TimeEntry.date >= date_from.replace(tzinfo=None))
+    if date_to is not None:
+        query = query.where(TimeEntry.date <= date_to.replace(tzinfo=None))
+    if client_id is not None:
+        query = query.join(TimeEntry.task).where(Task.client_id == client_id)
+    if project_id is not None:
+        if client_id is None:
+            query = query.join(TimeEntry.task)
+        query = query.where(Task.project_id == project_id)
+    query = query.order_by(TimeEntry.date.desc())
+    result = await db.execute(query)
+    entries = result.scalars().all()
+
+    header = ["Fecha", "Usuario", "Horas", "Minutos", "Tarea", "Proyecto", "Cliente", "Notas"]
+    rows = []
+    for e in entries:
+        task = e.task
+        rows.append([
+            e.date.strftime("%Y-%m-%d"),
+            e.user.full_name if e.user else "",
+            round((e.minutes or 0) / 60, 2),
+            e.minutes or 0,
+            task.title if task else "",
+            task.project.name if task and task.project else "",
+            task.client.name if task and task.client else "",
+            e.notes or "",
+        ])
+    return build_csv_response("time-entries.csv", header, rows)
+
+
+@router.get("/api/time-entries/by-project", response_model=list[ProjectTimeReport])
+async def time_entries_by_project(
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
+    client_id: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("timesheet")),
+):
+    query = select(TimeEntry).where(
+        TimeEntry.minutes.isnot(None),
+        TimeEntry.task_id.isnot(None),
+    )
+    if date_from is not None:
+        query = query.where(TimeEntry.date >= date_from.replace(tzinfo=None))
+    if date_to is not None:
+        query = query.where(TimeEntry.date <= date_to.replace(tzinfo=None))
+    if client_id is not None:
+        query = query.join(TimeEntry.task).where(Task.client_id == client_id)
+    result = await db.execute(query)
+    entries = result.scalars().all()
+
+    # Group by project, then by user
+    project_map: dict[int, dict] = {}
+    for e in entries:
+        task = e.task
+        if not task or not task.project_id:
+            continue
+        project = task.project
+        if not project:
+            continue
+        pid = project.id
+        if pid not in project_map:
+            project_map[pid] = {
+                "project_id": pid,
+                "project_name": project.name,
+                "client_id": task.client_id,
+                "client_name": task.client.name if task.client else "",
+                "total_minutes": 0,
+                "entries_count": 0,
+                "team": {},
+            }
+        pm = project_map[pid]
+        pm["total_minutes"] += e.minutes or 0
+        pm["entries_count"] += 1
+        uid = e.user_id
+        if uid not in pm["team"]:
+            pm["team"][uid] = {
+                "user_id": uid,
+                "user_name": e.user.full_name if e.user else "",
+                "total_minutes": 0,
+                "entries_count": 0,
+            }
+        pm["team"][uid]["total_minutes"] += e.minutes or 0
+        pm["team"][uid]["entries_count"] += 1
+
+    reports = []
+    for pm in sorted(project_map.values(), key=lambda x: x["total_minutes"], reverse=True):
+        reports.append(ProjectTimeReport(
+            project_id=pm["project_id"],
+            project_name=pm["project_name"],
+            client_id=pm["client_id"],
+            client_name=pm["client_name"],
+            total_minutes=pm["total_minutes"],
+            entries_count=pm["entries_count"],
+            team_breakdown=[
+                ProjectTeamBreakdown(**t) for t in sorted(pm["team"].values(), key=lambda x: x["total_minutes"], reverse=True)
+            ],
+        ))
+    return reports
+
+
+@router.get("/api/admin/timers/active", response_model=list[AdminActiveTimerResponse])
+async def admin_active_timers(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    result = await db.execute(
+        select(TimeEntry).where(TimeEntry.minutes.is_(None))
+    )
+    entries = result.scalars().all()
+    now = datetime.utcnow()
+    return [
+        AdminActiveTimerResponse(
+            id=e.id,
+            user_id=e.user_id,
+            user_name=e.user.full_name if e.user else "",
+            user_email=e.user.email if e.user else "",
+            task_id=e.task_id,
+            task_title=e.task.title if e.task else e.notes,
+            client_name=e.task.client.name if e.task and e.task.client else None,
+            started_at=e.started_at,
+            elapsed_seconds=int((now - e.started_at).total_seconds()) if e.started_at else 0,
+        )
+        for e in entries
+    ]
 
 
 @router.put("/api/time-entries/{entry_id}", response_model=TimeEntryResponse)
