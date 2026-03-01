@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { FileText, Plus, Sparkles, Loader2 } from "lucide-react"
+import { FileText, Plus, Sparkles, Loader2, Calendar } from "lucide-react"
 import { toast } from "sonner"
 import { reportsApi } from "@/lib/api"
 import { clientKeys } from "@/lib/query-keys"
@@ -8,17 +8,27 @@ import type { ReportNarrative } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Select } from "@/components/ui/select"
 import { getErrorMessage } from "@/lib/utils"
 
 interface Props {
   clientId: number
   clientName: string
+  engineProjectId?: number | null
 }
 
-export function ClientReportsTab({ clientId, clientName }: Props) {
+const MONTHS = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+]
+
+export function ClientReportsTab({ clientId, clientName, engineProjectId }: Props) {
   const qc = useQueryClient()
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [narrative, setNarrative] = useState<ReportNarrative | null>(null)
+  const now = new Date()
+  const [monthlyYear, setMonthlyYear] = useState(now.getFullYear())
+  const [monthlyMonth, setMonthlyMonth] = useState(now.getMonth() + 1)
 
   const { data: reports = [], isLoading } = useQuery({
     queryKey: clientKeys.reports(clientId),
@@ -39,6 +49,20 @@ export function ClientReportsTab({ clientId, clientName }: Props) {
     onError: (e) => toast.error(getErrorMessage(e)),
   })
 
+  const monthlyMut = useMutation({
+    mutationFn: () =>
+      reportsApi.generateClientMonthly({
+        client_id: clientId,
+        year: monthlyYear,
+        month: monthlyMonth,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: clientKeys.reports(clientId) })
+      toast.success("Informe mensual SEO generado")
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  })
+
   const narrativeMut = useMutation({
     mutationFn: (id: number) => reportsApi.aiNarrative(id),
     onSuccess: (data) => setNarrative(data),
@@ -49,19 +73,55 @@ export function ClientReportsTab({ clientId, clientName }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="text-lg font-semibold">Informes de {clientName}</h3>
-        <Button
-          size="sm"
-          onClick={() => generateMut.mutate()}
-          disabled={generateMut.isPending}
-        >
-          {generateMut.isPending ? (
-            <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Generando...</>
-          ) : (
-            <><Plus className="h-4 w-4 mr-1" /> Generar informe mensual</>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => generateMut.mutate()}
+            disabled={generateMut.isPending}
+          >
+            {generateMut.isPending ? (
+              <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Generando...</>
+            ) : (
+              <><Plus className="h-4 w-4 mr-1" /> Informe de estado</>
+            )}
+          </Button>
+          {engineProjectId && (
+            <div className="flex items-center gap-1">
+              <Select
+                value={monthlyMonth.toString()}
+                onChange={(e) => setMonthlyMonth(Number(e.target.value))}
+                className="w-28 text-xs"
+              >
+                {MONTHS.map((m, i) => (
+                  <option key={i} value={i + 1}>{m}</option>
+                ))}
+              </Select>
+              <Select
+                value={monthlyYear.toString()}
+                onChange={(e) => setMonthlyYear(Number(e.target.value))}
+                className="w-20 text-xs"
+              >
+                {[now.getFullYear() - 1, now.getFullYear()].map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </Select>
+              <Button
+                size="sm"
+                onClick={() => monthlyMut.mutate()}
+                disabled={monthlyMut.isPending}
+              >
+                {monthlyMut.isPending ? (
+                  <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Generando...</>
+                ) : (
+                  <><Calendar className="h-4 w-4 mr-1" /> Informe mensual SEO</>
+                )}
+              </Button>
+            </div>
           )}
-        </Button>
+        </div>
       </div>
 
       {reports.length === 0 ? (
@@ -81,7 +141,9 @@ export function ClientReportsTab({ clientId, clientName }: Props) {
                     <div className="flex items-center gap-2">
                       <FileText className="h-4 w-4 text-muted-foreground" />
                       <span className="font-medium">{report.title}</span>
-                      <Badge variant="secondary" className="text-[10px]">{report.type}</Badge>
+                      <Badge variant={report.type === "client_monthly" ? "default" : "secondary"} className="text-[10px]">
+                        {report.type === "client_monthly" ? "Informe mensual" : report.type}
+                      </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       {new Date(report.generated_at).toLocaleDateString("es-ES", {

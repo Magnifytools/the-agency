@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 import httpx
 
 from backend.config import settings
@@ -46,6 +48,36 @@ async def get_engine_project_metrics(project_id: int, _: User = Depends(get_curr
     if resp.status_code != 200:
         raise HTTPException(status_code=resp.status_code, detail="Error fetching Engine metrics")
     return resp.json()
+
+
+@router.get("/projects/{project_id}/report-data")
+async def get_engine_report_data(
+    project_id: int,
+    from_date: Optional[str] = Query(None),
+    to_date: Optional[str] = Query(None),
+    _: User = Depends(get_current_user),
+):
+    """Proxy: get structured report data from Engine for monthly report generation."""
+    params: dict[str, str] = {}
+    if from_date:
+        params["from_date"] = from_date
+    if to_date:
+        params["to_date"] = to_date
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            _engine_url(f"/projects/{project_id}/report-data"),
+            headers=_engine_headers(),
+            params=params,
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=resp.status_code, detail="Error fetching Engine report data")
+    return resp.json()
+
+
+@router.get("/config")
+async def get_engine_config(_: User = Depends(get_current_user)):
+    """Return Engine frontend URL for deep-linking."""
+    return {"engine_frontend_url": settings.ENGINE_FRONTEND_URL}
 
 
 @router.post("/sync")

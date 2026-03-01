@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     ENGINE_SERVICE_KEY: Optional[str] = None
     ENGINE_SYNC_INTERVAL_HOURS: int = 6
     ENGINE_SYNC_ENABLED: bool = True
+    ENGINE_FRONTEND_URL: Optional[str] = None
 
     model_config = {"env_file": str(Path(__file__).resolve().parent.parent / ".env")}
 

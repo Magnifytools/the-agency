@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { dashboardApi, discordApi, tasksApi, timeEntriesApi, digestsApi, clientsApi, leadsApi, proposalsApi } from "@/lib/api"
+import { dashboardApi, discordApi, tasksApi, timeEntriesApi, digestsApi, clientsApi, leadsApi, proposalsApi, engineApi } from "@/lib/api"
 import type { PricingOption } from "@/lib/types"
 import { useAuth } from "@/context/auth-context"
 import { MetricCard } from "@/components/dashboard/metric-card"
@@ -9,6 +9,7 @@ import { InsightsPanel } from "@/components/pm/insights-panel"
 import { DailyBriefingButton } from "@/components/pm/daily-briefing"
 import { OverdueTasks } from "@/components/dashboard/overdue-tasks"
 import { DigestTracker } from "@/components/dashboard/digest-tracker"
+import { EngineAlertsWidget } from "@/components/dashboard/engine-alerts-widget"
 import { LeadFollowups } from "@/components/dashboard/lead-followups"
 import { MonthlyCloseChecklist } from "@/components/dashboard/monthly-close-checklist"
 import { TeamSummaryTable } from "@/components/dashboard/team-summary-table"
@@ -19,7 +20,7 @@ import { Select } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { InfoTooltip } from "@/components/ui/tooltip"
-import { Users, CheckSquare, Clock, DollarSign, Send, Eye, FileText } from "lucide-react"
+import { Users, CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
 import { Link } from "react-router-dom"
 import { InboxWidget } from "@/components/dashboard/inbox-widget"
@@ -82,6 +83,11 @@ export default function DashboardPage() {
     queryKey: ["clients-all-active"],
     queryFn: () => clientsApi.listAll("active"),
     enabled: !!user,
+  })
+  const { data: engineConfig } = useQuery({
+    queryKey: ["engine-config"],
+    queryFn: () => engineApi.getConfig(),
+    staleTime: 10 * 60_000,
   })
   const { data: leadReminders } = useQuery({
     queryKey: ["lead-reminders"],
@@ -308,6 +314,7 @@ export default function DashboardPage() {
 
       {isAdmin && allOverdueTasks && allOverdueTasks.length > 0 && <OverdueTasks tasks={allOverdueTasks} showAssigned />}
       <DigestTracker clientsMissing={clientsMissingDigest} />
+      <EngineAlertsWidget clients={allClients || []} />
       {leadReminders && <LeadFollowups reminders={leadReminders} />}
 
       {/* Proposals pipeline */}
@@ -383,9 +390,27 @@ export default function DashboardPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {profitability.clients.map((c) => (
+                  {profitability.clients.map((c) => {
+                    const linkedClient = (allClients || []).find((cl) => cl.id === c.client_id)
+                    const enginePid = linkedClient?.engine_project_id
+                    return (
                     <TableRow key={c.client_id}>
-                      <TableCell className="font-medium">{c.client_name}</TableCell>
+                      <TableCell className="font-medium">
+                        <span className="flex items-center gap-1.5">
+                          {c.client_name}
+                          {enginePid && engineConfig?.engine_frontend_url && (
+                            <a
+                              href={`${engineConfig.engine_frontend_url}/p/${enginePid}/dashboard`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Abrir en Engine"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground hover:text-brand" />
+                            </a>
+                          )}
+                        </span>
+                      </TableCell>
                       <TableCell className="mono">{c.budget.toLocaleString("es-ES")}€</TableCell>
                       <TableCell className="mono">{c.cost.toLocaleString("es-ES")}€</TableCell>
                       <TableCell className="mono">{Math.round((c.estimated_minutes || 0) / 60)}h</TableCell>
@@ -394,7 +419,8 @@ export default function DashboardPage() {
                       <TableCell className="mono">{c.margin.toLocaleString("es-ES")}€ ({c.margin_percent}%)</TableCell>
                       <TableCell>{profitBadge(c.status)}</TableCell>
                     </TableRow>
-                  ))}
+                    )
+                  })}
                 </TableBody>
               </Table>
             </CardContent>

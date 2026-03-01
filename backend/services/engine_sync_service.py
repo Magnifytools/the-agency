@@ -64,6 +64,25 @@ async def sync_engine_metrics() -> dict:
                     client.engine_clicks_30d = data.get("clicks_30d")
                     client.engine_impressions_30d = data.get("impressions_30d")
                     client.engine_metrics_synced_at = datetime.now(timezone.utc)
+
+                    # Fetch summary data
+                    try:
+                        summary_url = f"{base}/api/integration/projects/{client.engine_project_id}/summary"
+                        s_resp = await http.get(summary_url, headers=headers)
+                        client.engine_summary_data = s_resp.json() if s_resp.status_code == 200 else None
+                    except Exception:
+                        logger.warning("Engine sync: summary fetch failed for client %d", client.id)
+                        client.engine_summary_data = None
+
+                    # Fetch alerts data
+                    try:
+                        alerts_url = f"{base}/api/integration/projects/{client.engine_project_id}/alerts"
+                        a_resp = await http.get(alerts_url, headers=headers)
+                        client.engine_alerts_data = a_resp.json() if a_resp.status_code == 200 else None
+                    except Exception:
+                        logger.warning("Engine sync: alerts fetch failed for client %d", client.id)
+                        client.engine_alerts_data = None
+
                     synced += 1
                 except Exception:
                     logger.exception(

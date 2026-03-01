@@ -17,6 +17,7 @@ const REPORT_TYPES: { value: ReportType; label: string; icon: typeof FileText }[
   { value: "client_status", label: "Estado de cliente", icon: Building2 },
   { value: "weekly_summary", label: "Resumen semanal", icon: Calendar },
   { value: "project_status", label: "Estado de proyecto", icon: FolderKanban },
+  { value: "client_monthly", label: "Informe mensual", icon: FileText },
 ]
 
 const AUDIENCE_LABELS: Record<string, string> = {

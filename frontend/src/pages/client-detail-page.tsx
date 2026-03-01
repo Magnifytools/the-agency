@@ -1,11 +1,11 @@
 import { useState } from "react"
 import { useParams, Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { clientsApi, timeEntriesApi, projectsApi, holdedApi, clientHealthApi } from "@/lib/api"
+import { clientsApi, timeEntriesApi, projectsApi, holdedApi, clientHealthApi, engineApi } from "@/lib/api"
 import type { TaskStatus, Client } from "@/lib/types"
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
-import { Pencil, Check, X } from "lucide-react"
+import { Pencil, Check, X, ExternalLink } from "lucide-react"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -25,6 +25,7 @@ import { ClientAiAdvisor } from "@/components/clients/client-ai-advisor"
 import { ClientReportsTab } from "@/components/clients/client-reports-tab"
 import { ClientSettingsTab } from "@/components/clients/client-settings-tab"
 import { EngineMetricsWidget } from "@/components/clients/engine-metrics-widget"
+import { EngineSeoTab } from "@/components/clients/engine-seo-tab"
 import { useAuth } from "@/context/auth-context"
 import { holdedKeys } from "@/lib/query-keys"
 
@@ -210,7 +211,7 @@ export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const clientId = Number(id)
   const [timeLogTaskId, setTimeLogTaskId] = useState<{ id: number; title: string } | null>(null)
-  const [activeTab, setActiveTab] = useState<"actividad" | "tareas" | "proyectos" | "comunicaciones" | "contactos" | "panel" | "tiempo" | "facturacion" | "recursos" | "informes" | "ajustes" | "facturas">("actividad")
+  const [activeTab, setActiveTab] = useState<"actividad" | "tareas" | "proyectos" | "comunicaciones" | "contactos" | "panel" | "tiempo" | "facturacion" | "recursos" | "seo" | "informes" | "ajustes" | "facturas">("actividad")
 
   const { data: summary, isLoading } = useQuery({
     queryKey: ["client-summary", clientId],
@@ -237,6 +238,12 @@ export default function ClientDetailPage() {
     queryKey: holdedKeys.clientInvoices(clientId),
     queryFn: () => holdedApi.clientInvoices(clientId),
     enabled: !!clientId && holdedEnabled,
+  })
+
+  const { data: engineConfig } = useQuery({
+    queryKey: ["engine-config"],
+    queryFn: () => engineApi.getConfig(),
+    staleTime: 10 * 60_000,
   })
 
   const { data: health } = useQuery({
@@ -287,6 +294,18 @@ export default function ClientDetailPage() {
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold uppercase tracking-wide">{client.name}</h2>
             {statusBadge(client.status)}
+            {client.engine_project_id && engineConfig?.engine_frontend_url && (
+              <a
+                href={`${engineConfig.engine_frontend_url}/p/${client.engine_project_id}/dashboard`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Abrir en Engine"
+              >
+                <Button variant="ghost" size="icon" className="h-7 w-7">
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              </a>
+            )}
           </div>
           {client.company && <p className="text-muted-foreground">{client.company}</p>}
         </div>
@@ -350,7 +369,7 @@ export default function ClientDetailPage() {
 
       {/* Tabs */}
       <div className="flex items-center space-x-1 bg-muted/30 p-1 w-fit rounded-lg border border-border overflow-x-auto">
-        {(["actividad", "tareas", "proyectos", "panel", "comunicaciones", "contactos", "tiempo", "facturacion", "recursos", "informes", ...(holdedEnabled ? ["facturas" as const] : []), "ajustes"] as const).map((tab) => (
+        {(["actividad", "tareas", "proyectos", "panel", "comunicaciones", "contactos", "tiempo", "facturacion", "recursos", ...(client.engine_project_id ? ["seo" as const] : []), "informes", ...(holdedEnabled ? ["facturas" as const] : []), "ajustes"] as const).map((tab) => (
           <Button
             key={tab}
             variant={activeTab === tab ? "default" : "ghost"}
@@ -553,6 +572,9 @@ export default function ClientDetailPage() {
         </Card>
       )}
 
+      {/* Tab: SEO */}
+      {activeTab === "seo" && <EngineSeoTab client={client} />}
+
       {/* Tab: Recursos */}
       {activeTab === "recursos" && (
         <Card>
@@ -571,7 +593,7 @@ export default function ClientDetailPage() {
       {activeTab === "informes" && (
         <Card>
           <CardContent className="p-6">
-            <ClientReportsTab clientId={clientId} clientName={client.name} />
+            <ClientReportsTab clientId={clientId} clientName={client.name} engineProjectId={client.engine_project_id} />
           </CardContent>
         </Card>
       )}

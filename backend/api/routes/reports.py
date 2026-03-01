@@ -6,6 +6,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from jinja2 import Environment, BaseLoader
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -336,5 +337,182 @@ async def get_report_narrative_pdf(
         report,
         executive_summary=body.executive_summary,
         scqa_sections=body.scqa_sections,
+    )
+    return Response(content=html, media_type="text/html")
+
+
+# ---------------------------------------------------------------------------
+# Client Monthly Report (Engine + Agency data)
+# ---------------------------------------------------------------------------
+
+class ClientMonthlyRequest(BaseModel):
+    client_id: int
+    year: int
+    month: int
+
+
+@router.post("/generate-client-monthly", response_model=ReportResponse)
+async def generate_client_monthly(
+    body: ClientMonthlyRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("reports", write=True)),
+):
+    """Generate a monthly SEO report for a client using Engine + Agency data."""
+    from backend.services.monthly_report_service import generate_client_monthly_report
+
+    try:
+        report = await generate_client_monthly_report(
+            db,
+            client_id=body.client_id,
+            year=body.year,
+            month=body.month,
+            user_id=current_user.id,
+        )
+        return _to_response(report)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Error generating client monthly report")
+        raise HTTPException(status_code=502, detail="Error generando informe mensual")
+
+
+MONTHLY_PDF_HTML_TEMPLATE = """\
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ title }}</title>
+<style>
+  @page { size: A4; margin: 20mm 18mm 20mm 18mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #1a1a1a; line-height: 1.6; font-size: 14px; }
+  .cover { page-break-after: always; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 90vh; text-align: center; }
+  .cover-logo { font-size: 42px; font-weight: 800; letter-spacing: -1px; color: #111; margin-bottom: 8px; }
+  .cover-logo span { color: #6366f1; }
+  .cover-subtitle { font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 48px; }
+  .cover-title { font-size: 28px; font-weight: 700; color: #111; margin-bottom: 12px; max-width: 500px; }
+  .cover-meta { font-size: 14px; color: #666; margin-bottom: 6px; }
+  .cover-badge { display: inline-block; padding: 4px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-top: 20px; background: #ede9fe; color: #6d28d9; }
+  .content { padding: 0; }
+  .kpi-table { width: 100%; border-collapse: collapse; margin-bottom: 28px; }
+  .kpi-table th { text-align: left; padding: 8px 12px; background: #f5f3ff; color: #6366f1; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #e5e7eb; }
+  .kpi-table td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
+  .kpi-table .number { text-align: right; font-variant-numeric: tabular-nums; }
+  .trend-up { color: #059669; font-weight: 600; }
+  .trend-down { color: #dc2626; font-weight: 600; }
+  .trend-neutral { color: #6b7280; }
+  .section { margin-bottom: 24px; }
+  .section h3 { font-size: 16px; font-weight: 700; color: #111; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 2px solid #e5e7eb; }
+  .section-content { font-size: 14px; color: #333; white-space: pre-line; }
+  .exec-summary { background: #f5f3ff; border-left: 4px solid #6366f1; padding: 16px 20px; margin-bottom: 28px; border-radius: 0 8px 8px 0; }
+  .exec-summary h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #6366f1; margin-bottom: 6px; }
+  .exec-summary p { font-size: 14px; color: #333; }
+  .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 11px; color: #999; }
+  .footer a { color: #6366f1; text-decoration: none; }
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .cover { min-height: 100vh; }
+  }
+</style>
+</head>
+<body>
+  <div class="cover">
+    <div class="cover-logo">MAGNIFY<span>.</span></div>
+    <div class="cover-subtitle">Digital Marketing Agency</div>
+    <div class="cover-title">Informe Mensual SEO</div>
+    <div class="cover-meta">{{ client_name }}</div>
+    <div class="cover-meta">{{ period }}</div>
+    <div class="cover-badge">Informe mensual</div>
+  </div>
+
+  <div class="content">
+    {% if executive_summary %}
+    <div class="exec-summary">
+      <h3>Resumen Ejecutivo</h3>
+      <p>{{ executive_summary }}</p>
+    </div>
+    {% endif %}
+
+    {% if kpi_table %}
+    <table class="kpi-table">
+      <thead>
+        <tr>
+          <th>M&eacute;trica</th>
+          <th class="number">Actual</th>
+          <th class="number">Anterior</th>
+          <th class="number">Variaci&oacute;n</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for kpi in kpi_table %}
+        <tr>
+          <td>{{ kpi.metric }}</td>
+          <td class="number">{{ kpi.current if kpi.current is not none else '-' }}</td>
+          <td class="number">{{ kpi.previous if kpi.previous is not none else '-' }}</td>
+          <td class="number {% if kpi.change_pct is not none %}{% if kpi.change_pct > 0 %}trend-up{% elif kpi.change_pct < 0 %}trend-down{% else %}trend-neutral{% endif %}{% endif %}">
+            {% if kpi.change_pct is not none %}{{ '+' if kpi.change_pct > 0 else '' }}{{ kpi.change_pct }}%{% else %}-{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% for s in sections %}
+    <div class="section">
+      <h3>{{ s.title }}</h3>
+      <div class="section-content">{{ s.content }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="footer">
+    <a href="https://magnify.ing">magnify.ing</a> &middot; Generado por The Agency &middot; {{ date }}
+  </div>
+</body>
+</html>
+"""
+
+_monthly_template = _jinja_env.from_string(MONTHLY_PDF_HTML_TEMPLATE)
+
+
+@router.get("/client-monthly/{report_id}/pdf")
+async def get_monthly_report_pdf(
+    report_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("reports")),
+):
+    """Render monthly report as printable HTML."""
+    result = await db.execute(
+        select(GeneratedReport).where(GeneratedReport.id == report_id)
+    )
+    report = result.scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    if current_user.role != UserRole.admin and report.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your report")
+
+    content = json.loads(report.content)
+    sections = content.get("sections", [])
+    summary = content.get("summary", "")
+    kpi_table = content.get("kpi_table", [])
+
+    months = [
+        "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+    ]
+    period = ""
+    if report.period_start and report.period_end:
+        period = f"{months[report.period_start.month - 1]} {report.period_start.year}"
+
+    html = _monthly_template.render(
+        title=report.title,
+        client_name=report.client.name if report.client else "",
+        period=period,
+        date=datetime.utcnow().strftime("%d/%m/%Y"),
+        executive_summary=summary,
+        kpi_table=kpi_table,
+        sections=sections,
     )
     return Response(content=html, media_type="text/html")

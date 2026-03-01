@@ -67,6 +67,8 @@ export interface Client {
   engine_clicks_30d: number | null
   engine_impressions_30d: number | null
   engine_metrics_synced_at: string | null
+  engine_summary_data: Record<string, any> | null
+  engine_alerts_data: { alerts: EngineAlert[] } | null
   // Revenue intelligence
   business_model: string | null
   aov: number | null
@@ -831,7 +833,16 @@ export interface InvestmentCalculateResponse {
 }
 
 // Reports
-export type ReportType = "client_status" | "weekly_summary" | "project_status"
+// Engine Alert
+export interface EngineAlert {
+  severity: string
+  type: string
+  title: string
+  detail: string | null
+  detected_at: string
+}
+
+export type ReportType = "client_status" | "weekly_summary" | "project_status" | "client_monthly"
 export type ReportPeriod = "week" | "month"
 export type ReportAudience = "executive" | "marketing" | "operational"
 

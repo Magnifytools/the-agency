@@ -288,6 +288,8 @@ class Client(TimestampMixin, Base):
     engine_clicks_30d = Column(Integer, nullable=True)
     engine_impressions_30d = Column(Integer, nullable=True)
     engine_metrics_synced_at = Column(DateTime(timezone=True), nullable=True)
+    engine_summary_data = Column(JSON, nullable=True)
+    engine_alerts_data = Column(JSON, nullable=True)
 
     tasks = relationship("Task", back_populates="client", lazy="selectin")
     projects = relationship("Project", back_populates="client", lazy="selectin")
@@ -728,6 +730,7 @@ class ReportType(str, enum.Enum):
     client_status = "client_status"
     weekly_summary = "weekly_summary"
     project_status = "project_status"
+    client_monthly = "client_monthly"
 
 
 class ReportAudience(str, enum.Enum):

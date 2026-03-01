@@ -384,6 +384,9 @@ export const reportsApi = {
       const url = URL.createObjectURL(blob)
       window.open(url, "_blank")
     }),
+  generateClientMonthly: (data: { client_id: number; year: number; month: number }) =>
+    api.post<Report>("/reports/generate-client-monthly", data).then((r) => r.data),
+  monthlyPdfUrl: (id: number) => `/api/reports/client-monthly/${id}/pdf`,
 }
 
 // Service Templates
@@ -743,6 +746,10 @@ export const engineApi = {
     api.get<EngineProject[]>("/engine/projects").then((r) => r.data),
   getMetrics: (projectId: number) =>
     api.get<EngineMetrics>(`/engine/projects/${projectId}/metrics`).then((r) => r.data),
+  getReportData: (projectId: number, from?: string, to?: string) =>
+    api.get(`/engine/projects/${projectId}/report-data`, { params: { from_date: from, to_date: to } }).then((r) => r.data),
+  getConfig: () =>
+    api.get<{ engine_frontend_url: string | null }>("/engine/config").then((r) => r.data),
   triggerSync: () =>
     api.post<{ synced: number; failed: number }>("/engine/sync").then((r) => r.data),
 }

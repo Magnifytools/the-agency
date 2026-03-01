@@ -9,6 +9,7 @@ class ReportType(str, Enum):
     client_status = "client_status"
     weekly_summary = "weekly_summary"
     project_status = "project_status"
+    client_monthly = "client_monthly"
 
 
 class ReportPeriod(str, Enum):

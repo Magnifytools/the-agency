@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { clientsApi, clientHealthApi } from "@/lib/api"
+import { clientsApi, clientHealthApi, engineApi } from "@/lib/api"
 import type { Client, ClientCreate, ClientStatus, ClientHealthScore } from "@/lib/types"
 import { usePagination } from "@/hooks/use-pagination"
 import { Pagination } from "@/components/ui/pagination"
@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { Plus, Pencil, Trash2, Users, Heart, Loader2 } from "lucide-react"
+import { Plus, Pencil, Trash2, Users, Heart, Loader2, ExternalLink } from "lucide-react"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
@@ -49,6 +49,12 @@ export default function ClientsPage() {
   const [editing, setEditing] = useState<Client | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [bulkStatus, setBulkStatus] = useState("")
+
+  const { data: engineConfig } = useQuery({
+    queryKey: ["engine-config"],
+    queryFn: () => engineApi.getConfig(),
+    staleTime: 10 * 60_000,
+  })
 
   const { data, isLoading } = useQuery({
     queryKey: ["clients", tab, page, pageSize],
@@ -224,9 +230,22 @@ export default function ClientsPage() {
                   />
                 </TableCell>
                 <TableCell className="font-medium">
-                  <Link to={`/clients/${c.id}`} className="hover:underline text-brand">
-                    {c.name}
-                  </Link>
+                  <span className="flex items-center gap-1.5">
+                    <Link to={`/clients/${c.id}`} className="hover:underline text-brand">
+                      {c.name}
+                    </Link>
+                    {c.engine_project_id && engineConfig?.engine_frontend_url && (
+                      <a
+                        href={`${engineConfig.engine_frontend_url}/p/${c.engine_project_id}/dashboard`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Abrir en Engine"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 text-muted-foreground hover:text-brand" />
+                      </a>
+                    )}
+                  </span>
                 </TableCell>
                 <TableCell>{c.company || "-"}</TableCell>
                 <TableCell>{c.email || "-"}</TableCell>
