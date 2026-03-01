@@ -833,12 +833,14 @@ export interface InvestmentCalculateResponse {
 // Reports
 export type ReportType = "client_status" | "weekly_summary" | "project_status"
 export type ReportPeriod = "week" | "month"
+export type ReportAudience = "executive" | "marketing" | "operational"
 
 export interface ReportRequest {
   type: ReportType
   client_id?: number | null
   project_id?: number | null
   period?: ReportPeriod
+  audience?: ReportAudience | null
 }
 
 export interface ReportSection {
@@ -857,11 +859,19 @@ export interface Report {
   project_name: string | null
   sections: ReportSection[]
   summary: string
+  audience: string | null
+}
+
+export interface ReportSCQASection {
+  key: string
+  title: string
+  content: string
 }
 
 export interface ReportNarrative {
   narrative: string
   executive_summary: string
+  scqa_sections?: ReportSCQASection[]
 }
 
 // Growth Operations

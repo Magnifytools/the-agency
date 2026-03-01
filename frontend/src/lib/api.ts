@@ -374,6 +374,13 @@ export const reportsApi = {
     api.delete(`/reports/${id}`).then((r) => r.data),
   aiNarrative: (id: number) =>
     api.post<ReportNarrative>(`/reports/${id}/ai-narrative`).then((r) => r.data),
+  pdfUrl: (id: number) => `/api/reports/${id}/pdf`,
+  narrativePdf: (id: number, body: { narrative: string; executive_summary: string; scqa_sections: { key: string; title: string; content: string }[] }) =>
+    api.post(`/reports/${id}/pdf`, body, { responseType: "blob" }).then((r) => {
+      const blob = new Blob([r.data], { type: "text/html" })
+      const url = URL.createObjectURL(blob)
+      window.open(url, "_blank")
+    }),
 }
 
 // Service Templates

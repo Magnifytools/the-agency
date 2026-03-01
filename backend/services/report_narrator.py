@@ -1,5 +1,5 @@
 """Report Narrator: uses Claude API to transform rule-based report sections
-into polished, narrative-style reports ready to share with clients.
+into polished, SCQA-structured narrative reports ready to share with clients.
 """
 from __future__ import annotations
 
@@ -9,7 +9,31 @@ from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """\
+AUDIENCE_ADDENDUMS = {
+    "executive": (
+        "\nAUDIENCIA: Ejecutivos / Directivos.\n"
+        "- Alto nivel, enfocado en ROI, progreso general y decisiones estratégicas.\n"
+        "- Máximo 1 página equivalente. Sin detalles operativos ni técnicos.\n"
+        "- Prioriza métricas de impacto de negocio."
+    ),
+    "marketing": (
+        "\nAUDIENCIA: Equipo de Marketing.\n"
+        "- Métricas detalladas, tendencias, comparativas con períodos anteriores.\n"
+        "- Nivel medio de detalle técnico. Incluye datos de tráfico, conversiones, SEO.\n"
+        "- Destaca oportunidades de optimización."
+    ),
+    "operational": (
+        "\nAUDIENCIA: Equipo Operativo / Gestión de Proyectos.\n"
+        "- Máximo detalle: tareas, timelines, blockers, asignaciones.\n"
+        "- Incluye estado de cada fase y próximos pasos concretos con responsables.\n"
+        "- Destaca riesgos y dependencias."
+    ),
+}
+
+
+def _build_system_prompt(audience: str | None = None) -> str:
+    """Build the system prompt, optionally tailored for a specific audience."""
+    base = """\
 Eres un redactor profesional de informes para una agencia de marketing digital (Magnify). \
 Tu trabajo es transformar datos estructurados de informes internos en narrativas claras, \
 profesionales y orientadas al cliente.
@@ -20,17 +44,34 @@ REGLAS:
 3. Destaca logros y progreso de forma positiva pero honesta.
 4. Si hay problemas o retrasos, mencionarlos con tacto y enfocados en la solución.
 5. NO inventes datos. Solo usa la información proporcionada.
-6. Estructura la respuesta en secciones con títulos.
-7. Cada sección debe ser un párrafo fluido, NO una lista de bullets (a menos que sea necesario para claridad).
-8. Incluye una introducción y un cierre motivador.
-9. Si hay datos de horas/tareas, contextualiza para que el cliente entienda el valor.
-10. Responde SOLO con el JSON, sin markdown ni explicaciones.
+6. Cada sección debe ser un párrafo fluido, NO una lista de bullets (a menos que sea necesario para claridad).
+7. Incluye una introducción y un cierre motivador.
+8. Si hay datos de horas/tareas, contextualiza para que el cliente entienda el valor.
+9. Responde SOLO con el JSON, sin markdown ni explicaciones.
+
+ESTRUCTURA (Framework SCQA):
+1. RESUMEN EJECUTIVO: 3-5 líneas con lo más importante del período.
+2. SITUACIÓN: Contexto actual, métricas clave, logros del período.
+3. COMPLICACIÓN: Desafíos encontrados, alertas, retrasos (si los hay). Si no hay complicaciones relevantes, indica brevemente que el período transcurrió sin incidencias significativas.
+4. RESPUESTA: Acciones tomadas, resultados obtenidos, cómo se abordaron los retos.
+5. PRÓXIMOS PASOS: Acciones concretas planificadas para el siguiente período.
 
 Responde con un JSON así:
 {
-  "narrative": "El texto completo del informe narrativo en formato markdown",
-  "executive_summary": "Un párrafo de 2-3 frases con lo más importante"
+  "executive_summary": "Párrafo de 2-3 frases con lo más importante",
+  "narrative": "Texto completo del informe narrativo en formato markdown con la estructura SCQA",
+  "scqa_sections": [
+    {"key": "situation", "title": "Situación", "content": "..."},
+    {"key": "complication", "title": "Complicación", "content": "..."},
+    {"key": "answer", "title": "Respuesta", "content": "..."},
+    {"key": "next_steps", "title": "Próximos Pasos", "content": "..."}
+  ]
 }"""
+
+    if audience and audience in AUDIENCE_ADDENDUMS:
+        base += AUDIENCE_ADDENDUMS[audience]
+
+    return base
 
 
 async def generate_report_narrative(
@@ -39,10 +80,11 @@ async def generate_report_narrative(
     summary: str,
     client_name: str | None = None,
     project_name: str | None = None,
+    audience: str | None = None,
 ) -> dict:
-    """Call Claude API to generate a narrative from report sections.
+    """Call Claude API to generate a SCQA narrative from report sections.
 
-    Returns dict with 'narrative' (full text) and 'executive_summary' (brief).
+    Returns dict with 'narrative', 'executive_summary', and 'scqa_sections'.
     Raises ValueError if API key is missing or response is invalid.
     """
     client = get_anthropic_client()
@@ -62,16 +104,16 @@ async def generate_report_narrative(
         context_parts.append("")
 
     user_prompt = (
-        "Transforma este informe estructurado en una narrativa profesional:\n\n"
+        "Transforma este informe estructurado en una narrativa profesional con estructura SCQA:\n\n"
         + "\n".join(context_parts)
     )
 
-    logger.info("Generating AI narrative for report: %s", report_title)
+    logger.info("Generating AI narrative for report: %s (audience=%s)", report_title, audience)
 
     message = await client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=4096,
-        system=SYSTEM_PROMPT,
+        system=_build_system_prompt(audience),
         messages=[{"role": "user", "content": user_prompt}],
     )
 
@@ -80,11 +122,13 @@ async def generate_report_narrative(
     result = {
         "narrative": content.get("narrative", ""),
         "executive_summary": content.get("executive_summary", ""),
+        "scqa_sections": content.get("scqa_sections", []),
     }
 
     if not result["narrative"]:
         raise ValueError("La narrativa generada está vacía")
 
-    logger.info("Narrative generated: %d chars", len(result["narrative"]))
+    logger.info("Narrative generated: %d chars, %d SCQA sections",
+                len(result["narrative"]), len(result["scqa_sections"]))
 
     return result

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import (
     Client, Task, Project, CommunicationLog, TimeEntry, GeneratedReport,
-    TaskStatus, ClientStatus, ProjectStatus, ReportType,
+    TaskStatus, ClientStatus, ProjectStatus, ReportType, ReportAudience,
 )
 
 
@@ -22,6 +22,7 @@ async def generate_client_status_report(
     client_id: int,
     user_id: int,
     period: str = "month",
+    audience: str | None = None,
 ) -> GeneratedReport:
     """Generate a status report for a specific client."""
     now = datetime.utcnow()
@@ -133,6 +134,7 @@ async def generate_client_status_report(
 
     # Create report
     period_name = "semana" if period == "week" else "mes"
+    audience_enum = ReportAudience(audience) if audience else None
     report = GeneratedReport(
         report_type=ReportType.client_status,
         title=f"Informe de estado - {client.name} ({period_name})",
@@ -145,6 +147,7 @@ async def generate_client_status_report(
         }),
         user_id=user_id,
         client_id=client_id,
+        audience=audience_enum,
     )
 
     db.add(report)
@@ -157,6 +160,7 @@ async def generate_client_status_report(
 async def generate_weekly_summary_report(
     db: AsyncSession,
     user_id: int,
+    audience: str | None = None,
 ) -> GeneratedReport:
     """Generate a weekly summary report for all clients."""
     now = datetime.utcnow()
@@ -235,6 +239,7 @@ async def generate_weekly_summary_report(
             "content": upcoming_content,
         })
 
+    audience_enum = ReportAudience(audience) if audience else None
     report = GeneratedReport(
         report_type=ReportType.weekly_summary,
         title=f"Resumen semanal - {now.strftime('%d/%m/%Y')}",
@@ -246,6 +251,7 @@ async def generate_weekly_summary_report(
             "summary": overview,
         }),
         user_id=user_id,
+        audience=audience_enum,
     )
 
     db.add(report)
@@ -259,6 +265,7 @@ async def generate_project_status_report(
     db: AsyncSession,
     project_id: int,
     user_id: int,
+    audience: str | None = None,
 ) -> GeneratedReport:
     """Generate a status report for a specific project."""
     now = datetime.utcnow()
@@ -353,6 +360,7 @@ async def generate_project_status_report(
             "content": traffic_summary,
         })
 
+    audience_enum = ReportAudience(audience) if audience else None
     report = GeneratedReport(
         report_type=ReportType.project_status,
         title=f"Informe de proyecto - {project.name}",
@@ -366,6 +374,7 @@ async def generate_project_status_report(
         user_id=user_id,
         project_id=project_id,
         client_id=project.client_id,
+        audience=audience_enum,
     )
 
     db.add(report)
@@ -382,17 +391,19 @@ async def generate_report(
     client_id: Optional[int] = None,
     project_id: Optional[int] = None,
     period: str = "month",
+    audience: str | None = None,
 ) -> GeneratedReport:
     """Generate a report based on type."""
+    aud = audience.value if hasattr(audience, "value") else audience
     if report_type == "client_status":
         if not client_id:
             raise ValueError("client_id required for client_status report")
-        return await generate_client_status_report(db, client_id, user_id, period)
+        return await generate_client_status_report(db, client_id, user_id, period, audience=aud)
     elif report_type == "weekly_summary":
-        return await generate_weekly_summary_report(db, user_id)
+        return await generate_weekly_summary_report(db, user_id, audience=aud)
     elif report_type == "project_status":
         if not project_id:
             raise ValueError("project_id required for project_status report")
-        return await generate_project_status_report(db, project_id, user_id)
+        return await generate_project_status_report(db, project_id, user_id, audience=aud)
     else:
         raise ValueError(f"Unknown report type: {report_type}")

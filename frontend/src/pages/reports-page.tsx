@@ -1,9 +1,9 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { FileText, Plus, Trash2, Copy, Building2, FolderKanban, Calendar, Sparkles, Loader2 } from "lucide-react"
+import { FileText, Plus, Trash2, Copy, Building2, FolderKanban, Calendar, Sparkles, Loader2, FileDown } from "lucide-react"
 import { toast } from "sonner"
 import { reportsApi, clientsApi, projectsApi } from "@/lib/api"
-import type { Report, ReportType, ReportPeriod, ReportNarrative } from "@/lib/types"
+import type { Report, ReportType, ReportPeriod, ReportAudience, ReportNarrative } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -18,12 +18,20 @@ const REPORT_TYPES: { value: ReportType; label: string; icon: typeof FileText }[
   { value: "project_status", label: "Estado de proyecto", icon: FolderKanban },
 ]
 
+const AUDIENCE_LABELS: Record<string, string> = {
+  executive: "Ejecutivo",
+  marketing: "Marketing",
+  operational: "Operativo",
+}
+
+type ViewMode = "structured" | "scqa" | "fulltext"
+
 export default function ReportsPage() {
   const queryClient = useQueryClient()
   const [generateOpen, setGenerateOpen] = useState(false)
   const [viewReport, setViewReport] = useState<Report | null>(null)
   const [narrative, setNarrative] = useState<ReportNarrative | null>(null)
-  const [showNarrative, setShowNarrative] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>("structured")
 
   const { data: reports = [], isLoading } = useQuery({
     queryKey: ["reports"],
@@ -34,7 +42,7 @@ export default function ReportsPage() {
     mutationFn: (id: number) => reportsApi.aiNarrative(id),
     onSuccess: (data) => {
       setNarrative(data)
-      setShowNarrative(true)
+      setViewMode("scqa")
       toast.success("Narrativa IA generada")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al generar narrativa")),
@@ -61,6 +69,29 @@ export default function ReportsPage() {
 
   const getTypeInfo = (type: string) => {
     return REPORT_TYPES.find((t) => t.value === type) || REPORT_TYPES[0]
+  }
+
+  const handleRequestNarrative = () => {
+    if (!viewReport) return
+    if (!narrative && !narrativeMutation.isPending) {
+      narrativeMutation.mutate(viewReport.id)
+    } else if (narrative) {
+      setViewMode("scqa")
+    }
+  }
+
+  const handleExportPdf = () => {
+    if (!viewReport) return
+    window.open(reportsApi.pdfUrl(viewReport.id), "_blank")
+  }
+
+  const handleExportNarrativePdf = () => {
+    if (!viewReport || !narrative) return
+    reportsApi.narrativePdf(viewReport.id, {
+      narrative: narrative.narrative,
+      executive_summary: narrative.executive_summary,
+      scqa_sections: narrative.scqa_sections || [],
+    })
   }
 
   return (
@@ -101,15 +132,24 @@ export default function ReportsPage() {
               <Card
                 key={report.id}
                 className="cursor-pointer hover:border-brand/50 transition-colors"
-                onClick={() => setViewReport(report)}
+                onClick={() => {
+                  setViewReport(report)
+                  setViewMode("structured")
+                  setNarrative(null)
+                }}
               >
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Icon className="h-4 w-4 text-muted-foreground" />
                       <Badge variant="outline" className="text-xs">
                         {typeInfo.label}
                       </Badge>
+                      {report.audience && (
+                        <Badge variant="outline" className="text-xs">
+                          {AUDIENCE_LABELS[report.audience] || report.audience}
+                        </Badge>
+                      )}
                     </div>
                     <Button
                       variant="ghost"
@@ -143,42 +183,62 @@ export default function ReportsPage() {
 
       {/* View Report Dialog */}
       {viewReport && (
-        <Dialog open={!!viewReport} onOpenChange={() => { setViewReport(null); setShowNarrative(false); setNarrative(null) }}>
+        <Dialog open={!!viewReport} onOpenChange={() => { setViewReport(null); setViewMode("structured"); setNarrative(null) }}>
           <DialogHeader>
             <DialogTitle>{viewReport.title}</DialogTitle>
           </DialogHeader>
 
-          {/* Toggle: Structured vs Narrative */}
-          <div className="flex gap-2 mt-4 mb-2">
+          {/* 3 View Mode Tabs */}
+          <div className="flex gap-2 mt-4 mb-2 flex-wrap">
             <Button
-              variant={!showNarrative ? "default" : "outline"}
+              variant={viewMode === "structured" ? "default" : "outline"}
               size="sm"
-              onClick={() => setShowNarrative(false)}
+              onClick={() => setViewMode("structured")}
             >
               Estructurado
             </Button>
             <Button
-              variant={showNarrative ? "default" : "outline"}
+              variant={viewMode === "scqa" ? "default" : "outline"}
               size="sm"
-              onClick={() => {
-                if (!narrative && !narrativeMutation.isPending) {
-                  narrativeMutation.mutate(viewReport.id)
-                } else {
-                  setShowNarrative(true)
-                }
-              }}
+              onClick={handleRequestNarrative}
               disabled={narrativeMutation.isPending}
             >
               {narrativeMutation.isPending ? (
                 <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generando...</>
               ) : (
-                <><Sparkles className="h-4 w-4 mr-2" />Narrativa IA</>
+                <><Sparkles className="h-4 w-4 mr-2" />Narrativa SCQA</>
               )}
             </Button>
+            {narrative && (
+              <Button
+                variant={viewMode === "fulltext" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("fulltext")}
+              >
+                Texto completo
+              </Button>
+            )}
           </div>
 
           <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-            {showNarrative && narrative ? (
+            {viewMode === "scqa" && narrative?.scqa_sections?.length ? (
+              <div>
+                <div className="bg-brand/5 rounded-lg p-4 mb-4">
+                  <h4 className="text-sm font-semibold mb-1">Resumen ejecutivo</h4>
+                  <p className="text-sm text-muted-foreground">{narrative.executive_summary}</p>
+                </div>
+                <div className="space-y-3">
+                  {narrative.scqa_sections.map((section, i) => (
+                    <div key={i} className="border rounded-lg p-4">
+                      <h4 className="font-medium text-brand mb-2">{section.title}</h4>
+                      <div className="text-sm text-muted-foreground whitespace-pre-line">
+                        {section.content}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : viewMode === "fulltext" && narrative ? (
               <div>
                 <div className="bg-brand/5 rounded-lg p-4 mb-4">
                   <h4 className="text-sm font-semibold mb-1">Resumen ejecutivo</h4>
@@ -199,23 +259,49 @@ export default function ReportsPage() {
               ))
             )}
           </div>
-          <div className="flex justify-end gap-2 mt-6">
-            <Button variant="outline" onClick={() => {
-              const text = showNarrative && narrative
-                ? narrative.narrative
-                : viewReport.sections.map((s) => `## ${s.title}\n${s.content}`).join("\n\n")
-              navigator.clipboard.writeText(text)
-              toast.success("Copiado al portapapeles")
-            }}>
-              <Copy className="h-4 w-4 mr-2" />
-              Copiar
-            </Button>
-            <Button onClick={() => { setViewReport(null); setShowNarrative(false); setNarrative(null) }}>Cerrar</Button>
+
+          <div className="flex justify-between gap-2 mt-6 flex-wrap">
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleExportPdf}>
+                <FileDown className="h-4 w-4 mr-2" />
+                PDF
+              </Button>
+              {narrative && (
+                <Button variant="outline" size="sm" onClick={handleExportNarrativePdf}>
+                  <FileDown className="h-4 w-4 mr-2" />
+                  PDF Narrativa
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => {
+                let text: string
+                if (viewMode === "fulltext" && narrative) {
+                  text = narrative.narrative
+                } else if (viewMode === "scqa" && narrative?.scqa_sections?.length) {
+                  text = narrative.scqa_sections.map((s) => `## ${s.title}\n${s.content}`).join("\n\n")
+                } else {
+                  text = viewReport.sections.map((s) => `## ${s.title}\n${s.content}`).join("\n\n")
+                }
+                navigator.clipboard.writeText(text)
+                toast.success("Copiado al portapapeles")
+              }}>
+                <Copy className="h-4 w-4 mr-2" />
+                Copiar
+              </Button>
+              <Button onClick={() => { setViewReport(null); setViewMode("structured"); setNarrative(null) }}>Cerrar</Button>
+            </div>
           </div>
         </Dialog>
       )}
     </div>
   )
+}
+
+const AUDIENCE_DESCRIPTIONS: Record<string, string> = {
+  executive: "Alto nivel, ROI, progreso general. Sin detalles operativos.",
+  marketing: "Metricas detalladas, tendencias, comparativas.",
+  operational: "Tareas, timelines, blockers, asignaciones. Maximo detalle.",
 }
 
 function GenerateReportDialog({
@@ -230,6 +316,7 @@ function GenerateReportDialog({
   const [clientId, setClientId] = useState<number | null>(null)
   const [projectId, setProjectId] = useState<number | null>(null)
   const [period, setPeriod] = useState<ReportPeriod>("month")
+  const [audience, setAudience] = useState<ReportAudience | "">("")
 
   const { data: clients = [] } = useQuery({
     queryKey: ["clients-all-active"],
@@ -260,6 +347,7 @@ function GenerateReportDialog({
       client_id: type === "client_status" ? clientId : null,
       project_id: type === "project_status" ? projectId : null,
       period,
+      audience: audience || null,
     })
   }
 
@@ -321,16 +409,32 @@ function GenerateReportDialog({
 
         {(type === "client_status" || type === "weekly_summary") && (
           <div className="space-y-2">
-            <Label>Período</Label>
+            <Label>Periodo</Label>
             <Select
               value={period}
               onChange={(e) => setPeriod(e.target.value as ReportPeriod)}
             >
-              <option value="week">Última semana</option>
-              <option value="month">Último mes</option>
+              <option value="week">Ultima semana</option>
+              <option value="month">Ultimo mes</option>
             </Select>
           </div>
         )}
+
+        <div className="space-y-2">
+          <Label>Audiencia <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+          <Select
+            value={audience}
+            onChange={(e) => setAudience(e.target.value as ReportAudience | "")}
+          >
+            <option value="">General (sin audiencia especifica)</option>
+            <option value="executive">Ejecutivo</option>
+            <option value="marketing">Marketing</option>
+            <option value="operational">Operativo</option>
+          </Select>
+          {audience && (
+            <p className="text-xs text-muted-foreground">{AUDIENCE_DESCRIPTIONS[audience]}</p>
+          )}
+        </div>
 
         <div className="flex justify-end gap-2 pt-4">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

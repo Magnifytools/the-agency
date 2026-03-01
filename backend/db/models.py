@@ -702,6 +702,12 @@ class ReportType(str, enum.Enum):
     project_status = "project_status"
 
 
+class ReportAudience(str, enum.Enum):
+    executive = "executive"
+    marketing = "marketing"
+    operational = "operational"
+
+
 class GeneratedReport(TimestampMixin, Base):
     __tablename__ = "generated_reports"
 
@@ -712,6 +718,7 @@ class GeneratedReport(TimestampMixin, Base):
     period_start = Column(DateTime, nullable=True)
     period_end = Column(DateTime, nullable=True)
     content = Column(Text, nullable=False)  # JSON string with sections and summary
+    audience = Column(Enum(ReportAudience), nullable=True)
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)

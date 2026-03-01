@@ -16,11 +16,18 @@ class ReportPeriod(str, Enum):
     month = "month"
 
 
+class ReportAudience(str, Enum):
+    executive = "executive"
+    marketing = "marketing"
+    operational = "operational"
+
+
 class ReportRequest(BaseModel):
     type: ReportType
     client_id: Optional[int] = None
     project_id: Optional[int] = None
     period: ReportPeriod = ReportPeriod.month
+    audience: Optional[ReportAudience] = None
 
 
 class ReportSection(BaseModel):
@@ -39,3 +46,10 @@ class ReportResponse(BaseModel):
     project_name: Optional[str]
     sections: list[ReportSection]
     summary: str
+    audience: Optional[str] = None
+
+
+class ReportNarrativeRequest(BaseModel):
+    narrative: str = ""
+    executive_summary: str = ""
+    scqa_sections: list[dict] = []
