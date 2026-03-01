@@ -63,7 +63,10 @@ export function TimeLogDialog({ taskId, taskTitle, open, onOpenChange }: TimeLog
     const hours = Number(fd.get("hours") || 0)
     const mins = Number(fd.get("mins") || 0)
     const totalMinutes = hours * 60 + mins
-    if (totalMinutes <= 0) return
+    if (totalMinutes <= 0) {
+      toast.error("Introduce al menos 1 minuto")
+      return
+    }
     createMutation.mutate({
       minutes: totalMinutes,
       task_id: taskId,

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 class TimeEntryCreate(BaseModel):
     minutes: int
-    task_id: int
+    task_id: Optional[int] = None
     notes: Optional[str] = None
     date: Optional[datetime] = None
 
@@ -24,7 +24,7 @@ class TimeEntryResponse(BaseModel):
     started_at: Optional[datetime] = None
     date: datetime
     notes: Optional[str] = None
-    task_id: int
+    task_id: Optional[int] = None
     user_id: int
     created_at: datetime
     updated_at: datetime

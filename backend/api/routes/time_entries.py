@@ -46,6 +46,14 @@ async def create_time_entry(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("timesheet", write=True)),
 ):
+    if body.minutes <= 0:
+        raise HTTPException(status_code=422, detail="Los minutos deben ser mayores a 0")
+
+    if body.task_id is not None:
+        task_result = await db.execute(select(Task).where(Task.id == body.task_id))
+        if task_result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+
     entry = TimeEntry(
         minutes=body.minutes,
         task_id=body.task_id,
@@ -252,7 +260,7 @@ async def stop_timer(
 
     now = datetime.utcnow()
     elapsed = (now - entry.started_at).total_seconds()
-    entry.minutes = max(1, round(elapsed / 60))
+    entry.minutes = max(1, min(480, round(elapsed / 60)))  # Cap at 8 hours
     if body.notes:
         entry.notes = body.notes
     await db.commit()

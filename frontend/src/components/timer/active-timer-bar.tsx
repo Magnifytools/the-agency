@@ -23,7 +23,7 @@ export function ActiveTimerBar() {
   const { data: timer } = useQuery({
     queryKey: ["active-timer"],
     queryFn: () => timerApi.active(),
-    refetchInterval: 30_000,
+    refetchInterval: 10_000,
   })
 
   useEffect(() => {
