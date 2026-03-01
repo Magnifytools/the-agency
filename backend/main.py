@@ -35,8 +35,29 @@ async def _engine_sync_loop():
         await asyncio.sleep(settings.ENGINE_SYNC_INTERVAL_HOURS * 3600)
 
 
+async def _ensure_columns():
+    """Add columns that were added to models after initial create_all."""
+    from sqlalchemy import text
+    from backend.db.database import engine
+
+    stmts = [
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_project_id INTEGER",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_content_count INTEGER",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_keyword_count INTEGER",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_avg_position DOUBLE PRECISION",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_clicks_30d INTEGER",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_impressions_30d INTEGER",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_metrics_synced_at TIMESTAMPTZ",
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS engine_project_id INTEGER",
+    ]
+    async with engine.begin() as conn:
+        for sql in stmts:
+            await conn.execute(text(sql))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await _ensure_columns()
     task = None
     if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL:
         task = asyncio.create_task(_engine_sync_loop())
