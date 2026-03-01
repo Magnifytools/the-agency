@@ -1,6 +1,6 @@
 # The Agency — Estado Completo del Proyecto
 
-> Generado: 2026-03-01 | Owner: David | 57 commits | Deploy: Railway (auto desde main)
+> Generado: 2026-03-01 | Owner: David | 60 commits | Deploy: Railway (auto desde main)
 > URL prod: https://agency.magnifytools.com
 
 ---
@@ -41,7 +41,7 @@ Plataforma interna para gestionar una agencia de marketing digital (Magnify). Cu
 ```
 the-agency/
 ├── backend/
-│   ├── main.py                    # App FastAPI, CORS, lifespan, 14 routers
+│   ├── main.py                    # App FastAPI, CORS, lifespan, 37 routers
 │   ├── config.py                  # Settings desde .env (Pydantic)
 │   ├── api/
 │   │   ├── deps.py                # get_current_user, require_admin, require_module
@@ -147,9 +147,12 @@ the-agency/
 
 ### Time Tracking
 - CRUD `/api/time-entries`
-- `POST /api/time-entries/timer/start` — Iniciar timer
-- `POST /api/time-entries/timer/stop` — Parar timer
-- `GET /api/time-entries/timer/active` — Timer activo
+- `POST /api/timer/start` — Iniciar timer
+- `POST /api/timer/stop` — Parar timer (cap 8h)
+- `GET /api/timer/active` — Timer activo del usuario
+- `GET /api/admin/timers/active` — Todos los timers activos (admin)
+- `GET /api/time-entries/export` — Export CSV con filtros
+- `GET /api/time-entries/by-project` — Reporting agrupado por proyecto
 
 ### Pipeline de Ventas
 - CRUD `/api/leads` + actividades + `POST /api/leads/{id}/convert`
@@ -330,6 +333,9 @@ react 19.2, react-dom, react-router-dom 7.13, @tanstack/react-query 5.90, axios,
 ## 12. Git History Reciente (últimos 20)
 
 ```
+800d177 fix: add missing Engine integration columns on startup
+dd7d5f6 feat: add admin active timers, CSV export, and project reporting to timesheet
+fd17b51 fix: time tracking bugs + update project docs and sprint roadmap
 e6e4a60 refactor: code quality, reuse and efficiency improvements
 a17615f fix: add logging.basicConfig so lifespan logs appear in production
 46c46e8 feat: add periodic Engine metrics sync with local cache
@@ -361,7 +367,7 @@ bc218aa Audit remediation Fases 1-3: seed security, DDL hardening, error boundar
 - Auth JWT con roles y permisos por módulo
 - Dashboard ejecutivo con métricas, rentabilidad, inbox
 - Pipeline ventas (leads → propuestas → clientes)
-- Time tracking con timer en tiempo real + resumen semanal
+- Time tracking con timer en tiempo real + resumen semanal + admin timers + CSV export + reporting por proyecto
 - Comunicaciones con log, followups y email drafting IA
 - 5 integraciones IA (dailys, digests, email, reports, client advisor)
 - Infraestructura IA compartida (singleton client, JSON parser, rate limiter)
@@ -385,10 +391,7 @@ bc218aa Audit remediation Fases 1-3: seed security, DDL hardening, error boundar
 - **bcrypt 4.1.3 pinned** por incompatibilidad passlib (warning cosmético)
 - **Sin Alembic migrations** — DDL en lifespan, funcional pero no ideal para producción
 - **Módulos financieros custom** (income, expenses, taxes, forecasts) serán reemplazados por Holded
-- **Time tracking: task_id schema** — task_id debería ser Optional en create/response schemas
-
-### Pendiente (Sprint 5-9)
-- **Sprint 5**: Hardening time tracking + UX práctica para usuarios
+### Pendiente (Sprint 6-9)
 - **Sprint 6**: PM Intelligence (insights IA proactivos + daily briefing)
 - **Sprint 7**: Propuestas SCQA avanzadas + modelos de inversión SEO
 - **Sprint 8**: Reporting SCQA + export PDF profesional
