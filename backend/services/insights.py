@@ -7,7 +7,9 @@ Analyzes current state of clients, projects, tasks and communications
 to generate actionable insights for the PM.
 """
 
+import logging
 from datetime import datetime, timedelta
+
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +18,9 @@ from backend.db.models import (
     TaskStatus, ClientStatus, ProjectStatus,
     InsightType, InsightPriority, InsightStatus,
 )
+from backend.services.ai_utils import get_anthropic_client, parse_claude_json
+
+logger = logging.getLogger(__name__)
 
 
 class AlertThresholds:
@@ -48,6 +53,138 @@ async def get_user_thresholds(db: AsyncSession, user_id: Optional[int]) -> Alert
                 max_tasks_per_week=settings.max_tasks_per_week,
             )
     return AlertThresholds()
+
+
+async def _enhance_insights_with_ai(
+    insights: list[PMInsight],
+    user_id: Optional[int],
+) -> Optional[PMInsight]:
+    """Use Claude to enhance suggested_action on each insight and optionally
+    return a strategic ``suggestion`` insight.
+
+    On any failure the original insights are left untouched and ``None`` is
+    returned so the caller can gracefully degrade.
+    """
+    if not insights:
+        return None
+
+    try:
+        client = get_anthropic_client()
+    except ValueError:
+        logger.debug("Anthropic client not configured; skipping AI enhancement")
+        return None
+
+    serialized = []
+    for i, ins in enumerate(insights):
+        serialized.append({
+            "index": i,
+            "type": ins.insight_type.value,
+            "priority": ins.priority.value,
+            "title": ins.title,
+            "description": ins.description,
+            "suggested_action": ins.suggested_action,
+        })
+
+    prompt = (
+        "Eres un PM senior experto en gestión de agencias de marketing digital.\n"
+        "Te paso una lista de insights detectados automáticamente. Para cada uno:\n"
+        "1. Mejora el campo suggested_action con una recomendación concreta, "
+        "específica y accionable (1-2 oraciones en español).\n"
+        "2. Opcionalmente genera UNA recomendación estratégica general que "
+        "conecte los insights entre sí.\n\n"
+        "Responde SOLO con JSON válido con este esquema:\n"
+        "{\n"
+        '  "enhanced_actions": { "<index>": "nueva suggested_action", ... },\n'
+        '  "overall_suggestion": "texto estratégico o null"\n'
+        "}\n\n"
+        f"Insights:\n{serialized}"
+    )
+
+    try:
+        message = await client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        data = parse_claude_json(message)
+    except Exception:
+        logger.warning("AI enhancement failed; keeping original insights", exc_info=True)
+        return None
+
+    # Apply enhanced actions in-place
+    enhanced = data.get("enhanced_actions", {})
+    for idx_str, action in enhanced.items():
+        idx = int(idx_str)
+        if 0 <= idx < len(insights) and isinstance(action, str) and action.strip():
+            insights[idx].suggested_action = action.strip()
+
+    # Build optional strategic suggestion insight
+    overall = data.get("overall_suggestion")
+    if overall and isinstance(overall, str) and overall.strip():
+        now = datetime.utcnow()
+        return PMInsight(
+            insight_type=InsightType.suggestion,
+            priority=InsightPriority.low,
+            title="💡 Recomendación estratégica del día",
+            description=overall.strip(),
+            suggested_action=None,
+            status=InsightStatus.active,
+            generated_at=now,
+            expires_at=now + timedelta(days=1),
+            user_id=user_id,
+        )
+    return None
+
+
+async def _generate_ai_briefing_suggestion(
+    priorities: list[dict],
+    alerts: list[dict],
+    followups: list[dict],
+) -> Optional[str]:
+    """Ask Claude for a contextual daily briefing suggestion.
+
+    Returns the suggestion text, or ``None`` on any failure so the caller
+    can fall back to the rule-based suggestion.
+    """
+    try:
+        client = get_anthropic_client()
+    except ValueError:
+        return None
+
+    context = {
+        "tasks_today": len(priorities),
+        "overdue": len(alerts),
+        "followups": len(followups),
+        "details": {
+            "priorities": priorities[:5],
+            "alerts": alerts[:5],
+            "followups": followups[:5],
+        },
+    }
+
+    prompt = (
+        "Eres un PM senior. Basándote en el contexto del día de un gestor de "
+        "agencia, genera UNA sugerencia breve y accionable en español "
+        "(máximo 2 oraciones) para ayudarle a priorizar su jornada.\n\n"
+        "Responde SOLO con JSON válido: {\"suggestion\": \"texto\"}\n\n"
+        f"Contexto:\n{context}"
+    )
+
+    try:
+        message = await client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=256,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        data = parse_claude_json(message)
+    except Exception:
+        logger.warning("AI briefing suggestion failed; using fallback", exc_info=True)
+        return None
+
+    suggestion = data.get("suggestion")
+    if isinstance(suggestion, str) and suggestion.strip():
+        return suggestion.strip()
+    return None
 
 
 async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> list[PMInsight]:
@@ -277,6 +414,11 @@ async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> 
         )
         new_insights.append(insight)
 
+    # Enhance insights with AI (best-effort; originals kept on failure)
+    ai_suggestion = await _enhance_insights_with_ai(new_insights, user_id)
+    if ai_suggestion is not None:
+        new_insights.append(ai_suggestion)
+
     # Save all new insights
     for insight in new_insights:
         db.add(insight)
@@ -358,14 +500,17 @@ async def get_daily_briefing(db: AsyncSession, user_id: Optional[int] = None) ->
     else:
         greeting = "Buenas noches 👋"
 
-    # Simple suggestion based on state
-    suggestion = None
-    if len(alerts) > 3:
-        suggestion = "Tienes varias tareas vencidas. Considera dedicar tiempo a ponerte al día."
-    elif len(priorities) == 0 and len(alerts) == 0:
-        suggestion = "¡Buen trabajo! No tienes urgencias pendientes. Aprovecha para planificar."
-    elif len(followups) > 0:
-        suggestion = "Recuerda hacer seguimiento de tus comunicaciones pendientes."
+    # Try AI-powered suggestion first, fall back to rule-based
+    suggestion = await _generate_ai_briefing_suggestion(priorities, alerts, followups)
+
+    if suggestion is None:
+        # Rule-based fallback
+        if len(alerts) > 3:
+            suggestion = "Tienes varias tareas vencidas. Considera dedicar tiempo a ponerte al día."
+        elif len(priorities) == 0 and len(alerts) == 0:
+            suggestion = "¡Buen trabajo! No tienes urgencias pendientes. Aprovecha para planificar."
+        elif len(followups) > 0:
+            suggestion = "Recuerda hacer seguimiento de tus comunicaciones pendientes."
 
     return {
         "date": now.strftime("%Y-%m-%d"),

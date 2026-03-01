@@ -13,6 +13,7 @@ from backend.schemas.insight import InsightResponse, DailyBriefingResponse
 from backend.schemas.alert_settings import AlertSettingsResponse, AlertSettingsUpdate
 from backend.services.insights import generate_insights, get_daily_briefing
 from backend.api.deps import get_current_user, require_module
+from backend.core.rate_limiter import ai_limiter
 from backend.db.models import UserRole
 
 router = APIRouter(prefix="/api/pm", tags=["pm"])
@@ -86,6 +87,8 @@ async def trigger_generate_insights(
     Generate new insights based on current state.
     This clears old active insights for THIS USER and creates fresh ones.
     """
+    ai_limiter.check(current_user.id, max_requests=5, window_seconds=60)
+
     # F-04: only clear insights belonging to current user
     old_insights = await db.execute(
         select(PMInsight).where(
@@ -161,6 +164,7 @@ async def get_briefing(
     current_user: User = Depends(require_module("pm")),
 ):
     """Get the daily briefing summary."""
+    ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
     briefing = await get_daily_briefing(db, user_id=current_user.id)
     return DailyBriefingResponse(**briefing)
 
