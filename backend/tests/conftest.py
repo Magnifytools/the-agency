@@ -8,6 +8,7 @@ if "asyncpg" not in sys.modules:
     sys.modules["asyncpg"] = MagicMock()
 
 import pytest  # noqa: E402
+import pytest_asyncio  # noqa: E402
 from httpx import AsyncClient, ASGITransport  # noqa: E402
 
 from backend.main import app  # noqa: E402
@@ -49,7 +50,7 @@ def member_user():
     return user
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def admin_client(admin_user):
     mock_db = AsyncMock()
 
@@ -64,7 +65,7 @@ async def admin_client(admin_user):
     app.dependency_overrides.clear()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def member_client(member_user):
     mock_db = AsyncMock()
 
