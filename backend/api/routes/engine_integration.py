@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,6 +13,7 @@ from backend.api.deps import get_current_user, require_admin
 from backend.db.models import User
 
 router = APIRouter(prefix="/api/engine", tags=["engine-integration"])
+logger = logging.getLogger(__name__)
 
 
 def _engine_headers() -> dict[str, str]:
@@ -30,8 +32,15 @@ def _engine_url(path: str) -> str:
 @router.get("/projects")
 async def list_engine_projects(_: User = Depends(get_current_user)):
     """Proxy: list all Engine projects."""
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.get(_engine_url("/projects"), headers=_engine_headers())
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(_engine_url("/projects"), headers=_engine_headers())
+    except httpx.TimeoutException as exc:
+        logger.warning("Engine projects request timed out: %s", exc)
+        raise HTTPException(status_code=504, detail="Engine request timed out") from exc
+    except httpx.RequestError as exc:
+        logger.warning("Engine projects request failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Engine service unavailable") from exc
     if resp.status_code != 200:
         raise HTTPException(status_code=resp.status_code, detail="Error fetching Engine projects")
     return resp.json()
@@ -40,11 +49,18 @@ async def list_engine_projects(_: User = Depends(get_current_user)):
 @router.get("/projects/{project_id}/metrics")
 async def get_engine_project_metrics(project_id: int, _: User = Depends(get_current_user)):
     """Proxy: get SEO metrics for an Engine project."""
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.get(
-            _engine_url(f"/projects/{project_id}/metrics"),
-            headers=_engine_headers(),
-        )
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                _engine_url(f"/projects/{project_id}/metrics"),
+                headers=_engine_headers(),
+            )
+    except httpx.TimeoutException as exc:
+        logger.warning("Engine metrics request timed out (project %s): %s", project_id, exc)
+        raise HTTPException(status_code=504, detail="Engine request timed out") from exc
+    except httpx.RequestError as exc:
+        logger.warning("Engine metrics request failed (project %s): %s", project_id, exc)
+        raise HTTPException(status_code=502, detail="Engine service unavailable") from exc
     if resp.status_code != 200:
         raise HTTPException(status_code=resp.status_code, detail="Error fetching Engine metrics")
     return resp.json()

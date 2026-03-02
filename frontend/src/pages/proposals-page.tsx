@@ -115,6 +115,10 @@ const emptyPricing: PricingOption = {
 const DAVID_RATE = 50
 const NACHO_RATE = 30
 
+function isNonEmptyString(value: unknown): value is string {
+    return typeof value === "string" && value.trim().length > 0
+}
+
 function RoiPreviewStep({ form }: { form: WizardForm }) {
     const [result, setResult] = useState<InvestmentCalculateResponse | null>(null)
     const [loading, setLoading] = useState(false)
@@ -220,7 +224,6 @@ export default function ProposalsPage() {
     const [roiLoading, setRoiLoading] = useState(false)
 
     // Auto-open wizard when navigating from lead detail
-    /* eslint-disable react-hooks/set-state-in-effect -- One-time hydration of wizard state from router payload */
     useEffect(() => {
         const state = location.state as { createFromLead?: { id: number; company_name: string; contact_name?: string; service_interest?: string; estimated_value?: number } } | null
         if (state?.createFromLead) {
@@ -239,7 +242,6 @@ export default function ProposalsPage() {
             window.history.replaceState({}, document.title)
         }
     }, [location.state])
-    /* eslint-enable react-hooks/set-state-in-effect */
 
     // --- Queries ---
     const { data: proposals = [] } = useQuery({
@@ -682,18 +684,18 @@ export default function ProposalsPage() {
                                     </h3>
                                     <div className="space-y-4">
                                         {/* Executive Summary - highlighted callout */}
-                                        {gc.executive_summary && (
+                                        {isNonEmptyString(gc.executive_summary) && (
                                             <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-4">
                                                 <p className="text-xs font-medium text-blue-400 uppercase tracking-wide mb-2">Resumen ejecutivo</p>
-                                                <p className="text-sm font-medium">{String(gc.executive_summary)}</p>
+                                                <p className="text-sm font-medium">{gc.executive_summary}</p>
                                             </div>
                                         )}
 
                                         {/* Null Case - warning style */}
-                                        {gc.null_case && (
+                                        {isNonEmptyString(gc.null_case) && (
                                             <div className="bg-orange-500/5 border-l-2 border-orange-500 rounded-r-lg p-4">
                                                 <p className="text-xs font-medium text-orange-400 uppercase tracking-wide mb-2">Escenario sin acción</p>
-                                                <p className="text-sm">{String(gc.null_case)}</p>
+                                                <p className="text-sm">{gc.null_case}</p>
                                             </div>
                                         )}
 
