@@ -1517,6 +1517,48 @@ export interface SearchResults {
   leads: { id: number; company_name: string; contact_name: string | null; status: string }[]
 }
 
+// --- Agency Vault ---
+
+export type AssetCategory = "email" | "domain" | "hosting" | "tool"
+export type HostingType = "shared" | "vps" | "dedicated" | "cloud" | "other"
+
+export interface AgencyAsset {
+  id: number
+  category: AssetCategory
+  name: string
+  value: string | null
+  provider: string | null
+  url: string | null
+  notes: string | null
+  associated_domain: string | null
+  registrar: string | null
+  expiry_date: string | null
+  auto_renew: boolean
+  dns_provider: string | null
+  hosting_type: HostingType | null
+  tool_category: string | null
+  monthly_cost: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AgencyAssetCreate {
+  category: AssetCategory
+  name: string
+  value?: string | null
+  provider?: string | null
+  url?: string | null
+  notes?: string | null
+  associated_domain?: string | null
+  registrar?: string | null
+  expiry_date?: string | null
+  auto_renew?: boolean
+  dns_provider?: string | null
+  hosting_type?: HostingType | null
+  tool_category?: string | null
+  monthly_cost?: number | null
+}
+
 // --- Daily Updates ---
 
 export type DailyUpdateStatus = "draft" | "sent"

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/context/auth-context"
 import { holdedApi } from "@/lib/api"
 import { holdedKeys } from "@/lib/query-keys"
-import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList, Gauge, BarChart3, Search } from "lucide-react"
+import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList, Gauge, BarChart3, Search, Archive } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
 import { NotificationBell } from "@/components/layout/notification-bell"
@@ -70,6 +70,13 @@ export function AppLayout() {
     ]
     return items.filter((item) => hasPermission(item.module))
   }, [hasPermission])
+
+  const agencyNav = useMemo(() => {
+    if (!isAdmin) return []
+    return [
+      { to: "/vault", label: "Vault", icon: Archive },
+    ]
+  }, [isAdmin])
 
   const adminNav = useMemo(() => {
     if (!isAdmin) return []
@@ -212,6 +219,28 @@ export function AppLayout() {
                 ))}
               </div>
             ) : null}
+
+            {/* Agency Nav */}
+            {agencyNav.length > 0 && (
+              <div className="mt-8 flex flex-col gap-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">La Agencia</p>
+                {agencyNav.map((item) => (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={cn(
+                      "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
+                      isActive(item.to)
+                        ? "bg-brand/10 text-brand"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    <item.icon className={cn("h-[18px] w-[18px] transition-colors", isActive(item.to) ? "text-brand" : "text-muted-foreground group-hover:text-foreground")} />
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            )}
 
             {/* Admin Nav */}
             {adminNav.length > 0 && (

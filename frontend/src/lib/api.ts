@@ -110,6 +110,9 @@ import type {
   NotificationItem,
   InvestmentCalculateRequest,
   InvestmentCalculateResponse,
+  AgencyAsset,
+  AgencyAssetCreate,
+  AssetCategory,
 } from "./types"
 
 export const CSRF_COOKIE_NAME = "agency_csrf_token"
@@ -717,6 +720,18 @@ export const evidenceApi = {
 export const searchApi = {
   search: (q: string) =>
     api.get<SearchResults>("/search", { params: { q } }).then((r) => r.data),
+}
+
+// --- Agency Vault ---
+export const vaultApi = {
+  list: (category?: AssetCategory) =>
+    api.get<AgencyAsset[]>(`/vault/assets${category ? `?category=${category}` : ""}`).then((r) => r.data),
+  create: (data: AgencyAssetCreate) =>
+    api.post<AgencyAsset>("/vault/assets", data).then((r) => r.data),
+  update: (id: number, data: Partial<AgencyAssetCreate>) =>
+    api.put<AgencyAsset>(`/vault/assets/${id}`, data).then((r) => r.data),
+  delete: (id: number) =>
+    api.delete(`/vault/assets/${id}`),
 }
 
 // --- Engine Integration ---

@@ -1132,6 +1132,37 @@ class DailyUpdate(TimestampMixin, Base):
     user = relationship("User", lazy="selectin")
 
 
+class AssetCategory(str, enum.Enum):
+    email = "email"
+    domain = "domain"
+    hosting = "hosting"
+    tool = "tool"
+
+
+class AgencyAsset(TimestampMixin, Base):
+    __tablename__ = "agency_assets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    category = Column(Enum(AssetCategory), nullable=False, index=True)
+    name = Column(String(200), nullable=False)
+    value = Column(String(500))          # email address or domain name
+    provider = Column(String(200))
+    url = Column(String(500))
+    notes = Column(Text)
+    # Email
+    associated_domain = Column(String(200))
+    # Domain
+    registrar = Column(String(200))
+    expiry_date = Column(Date)
+    auto_renew = Column(Boolean, default=False)
+    dns_provider = Column(String(200))
+    # Hosting
+    hosting_type = Column(String(50))    # shared, vps, dedicated, cloud, other
+    # Tool / Hosting
+    tool_category = Column(String(100))
+    monthly_cost = Column(Numeric(10, 2))
+
+
 class Notification(TimestampMixin, Base):
     __tablename__ = "notifications"
 
