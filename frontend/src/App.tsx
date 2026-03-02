@@ -74,6 +74,7 @@ export default function App() {
             >
               <Route path="/dashboard" element={<Suspense fallback={<PageLoader />}><DashboardPage /></Suspense>} />
               <Route path="/executive" element={<Suspense fallback={<PageLoader />}><ExecutiveDashboardPage /></Suspense>} />
+              <Route path="/pipeline" element={<Navigate to="/leads" replace />} />
               <Route path="/leads" element={<Suspense fallback={<PageLoader />}><LeadsPage /></Suspense>} />
               <Route path="/leads/:id" element={<Suspense fallback={<PageLoader />}><LeadDetailPage /></Suspense>} />
               <Route path="/clients" element={<Suspense fallback={<PageLoader />}><ClientsPage /></Suspense>} />

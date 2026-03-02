@@ -232,7 +232,7 @@ export default function ClientsPage() {
                 <TableCell className="font-medium">
                   <span className="flex items-center gap-1.5">
                     <Link to={`/clients/${c.id}`} className="hover:underline text-brand">
-                      {c.name}
+                      {c.name || 'Sin nombre'}
                     </Link>
                     {c.engine_project_id && engineConfig?.engine_frontend_url && (
                       <a
