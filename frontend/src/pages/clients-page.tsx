@@ -241,8 +241,12 @@ export default function ClientsPage() {
                         rel="noopener noreferrer"
                         title="Abrir en Engine"
                         onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-0.5"
                       >
-                        <ExternalLink className="h-3.5 w-3.5 text-muted-foreground hover:text-brand" />
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 gap-0.5">
+                          <ExternalLink className="h-3 w-3" />
+                          Engine
+                        </Badge>
                       </a>
                     )}
                   </span>

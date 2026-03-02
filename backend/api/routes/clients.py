@@ -30,6 +30,8 @@ async def list_clients(
     base = select(Client)
     if status_filter:
         base = base.where(Client.status == status_filter)
+    else:
+        base = base.where(Client.status != ClientStatus.finished)
 
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
 
