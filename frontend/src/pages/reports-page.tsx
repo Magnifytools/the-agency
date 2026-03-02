@@ -321,11 +321,14 @@ function GenerateReportDialog({
   const [projectId, setProjectId] = useState<number | null>(null)
   const [period, setPeriod] = useState<ReportPeriod>("month")
   const [audience, setAudience] = useState<ReportAudience | "">("")
+  const now = new Date()
+  const [monthlyMonth, setMonthlyMonth] = useState(now.getMonth() + 1)
+  const [monthlyYear, setMonthlyYear] = useState(now.getFullYear())
 
   const { data: clients = [] } = useQuery({
     queryKey: ["clients-all-active"],
     queryFn: () => clientsApi.listAll("active"),
-    enabled: open && type === "client_status",
+    enabled: open && (type === "client_status" || type === "client_monthly"),
   })
 
   const { data: projects = [] } = useQuery({
@@ -335,7 +338,7 @@ function GenerateReportDialog({
   })
 
   const generateMutation = useMutation({
-    mutationFn: reportsApi.generate,
+    mutationFn: (params: Parameters<typeof reportsApi.generate>[0]) => reportsApi.generate(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reports"] })
       toast.success("Informe generado")
@@ -344,15 +347,32 @@ function GenerateReportDialog({
     onError: (err) => toast.error(getErrorMessage(err, "Error al generar informe")),
   })
 
+  const monthlyMutation = useMutation({
+    mutationFn: reportsApi.generateClientMonthly,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reports"] })
+      toast.success("Informe mensual SEO generado")
+      onOpenChange(false)
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al generar informe mensual")),
+  })
+
+  const isPending = generateMutation.isPending || monthlyMutation.isPending
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    generateMutation.mutate({
-      type,
-      client_id: type === "client_status" ? clientId : null,
-      project_id: type === "project_status" ? projectId : null,
-      period,
-      audience: audience || null,
-    })
+    if (type === "client_monthly") {
+      if (!clientId) return
+      monthlyMutation.mutate({ client_id: clientId, year: monthlyYear, month: monthlyMonth })
+    } else {
+      generateMutation.mutate({
+        type,
+        client_id: type === "client_status" ? clientId : null,
+        project_id: type === "project_status" ? projectId : null,
+        period,
+        audience: audience || null,
+      })
+    }
   }
 
   return (
@@ -375,7 +395,7 @@ function GenerateReportDialog({
           </Select>
         </div>
 
-        {type === "client_status" && (
+        {(type === "client_status" || type === "client_monthly") && (
           <div className="space-y-2">
             <Label>Cliente</Label>
             <Select
@@ -408,6 +428,24 @@ function GenerateReportDialog({
                 </option>
               ))}
             </Select>
+          </div>
+        )}
+
+        {type === "client_monthly" && (
+          <div className="space-y-2">
+            <Label>Periodo</Label>
+            <div className="flex gap-2">
+              <Select value={monthlyMonth.toString()} onChange={(e) => setMonthlyMonth(Number(e.target.value))}>
+                {["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"].map((m, i) => (
+                  <option key={i} value={i + 1}>{m}</option>
+                ))}
+              </Select>
+              <Select value={monthlyYear.toString()} onChange={(e) => setMonthlyYear(Number(e.target.value))}>
+                {[now.getFullYear() - 1, now.getFullYear()].map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </Select>
+            </div>
           </div>
         )}
 
@@ -444,8 +482,8 @@ function GenerateReportDialog({
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={generateMutation.isPending}>
-            {generateMutation.isPending ? "Generando..." : "Generar"}
+          <Button type="submit" disabled={isPending}>
+            {isPending ? "Generando..." : "Generar"}
           </Button>
         </div>
       </form>

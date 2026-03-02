@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from jinja2 import Environment, BaseLoader
@@ -285,7 +285,7 @@ def _render_report_html(
         title=report.title,
         client_name=report.client.name if report.client else None,
         project_name=report.project.name if report.project else None,
-        date=datetime.utcnow().strftime("%d/%m/%Y"),
+        date=datetime.now(timezone.utc).strftime("%d/%m/%Y"),
         period_start=report.period_start.strftime("%d/%m/%Y") if report.period_start else None,
         period_end=report.period_end.strftime("%d/%m/%Y") if report.period_end else None,
         audience=audience,
@@ -358,6 +358,9 @@ async def generate_client_monthly(
     current_user: User = Depends(require_module("reports", write=True)),
 ):
     """Generate a monthly SEO report for a client using Engine + Agency data."""
+    if not (1 <= body.month <= 12) or not (2000 <= body.year <= 2100):
+        raise HTTPException(status_code=400, detail="Mes o año inválido")
+
     from backend.services.monthly_report_service import generate_client_monthly_report
 
     try:
@@ -510,7 +513,7 @@ async def get_monthly_report_pdf(
         title=report.title,
         client_name=report.client.name if report.client else "",
         period=period,
-        date=datetime.utcnow().strftime("%d/%m/%Y"),
+        date=datetime.now(timezone.utc).strftime("%d/%m/%Y"),
         executive_summary=summary,
         kpi_table=kpi_table,
         sections=sections,

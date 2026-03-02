@@ -11,7 +11,6 @@ import {
   Eye,
   TrendingUp,
   TrendingDown,
-  ArrowUpRight,
   AlertTriangle,
   AlertCircle,
   CheckCircle,
@@ -224,8 +223,9 @@ export function EngineSeoTab({ client }: Props) {
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">SEO Health</p>
               <div className="flex items-center gap-2 mt-1">
                 <span className={`text-2xl font-bold ${
-                  (summary.seo_health?.score ?? 0) >= 70 ? "text-green-600" :
-                  (summary.seo_health?.score ?? 0) >= 40 ? "text-amber-500" : "text-red-500"
+                  summary.seo_health?.score == null ? "text-muted-foreground" :
+                  summary.seo_health.score >= 70 ? "text-green-600" :
+                  summary.seo_health.score >= 40 ? "text-amber-500" : "text-red-500"
                 }`}>
                   {summary.seo_health?.score ?? "-"}
                 </span>

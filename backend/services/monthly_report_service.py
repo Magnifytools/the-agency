@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.config import settings
 from backend.db.models import (
     Client, GeneratedReport, ReportType,
-    Task, TaskStatus, TimeEntry, Communication,
+    Task, TaskStatus, TimeEntry, CommunicationLog,
 )
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 
@@ -91,10 +91,10 @@ async def generate_client_monthly_report(
     completed_tasks = completed_tasks_result.scalar() or 0
 
     comms_result = await db.execute(
-        select(func.count(Communication.id)).where(
-            Communication.client_id == client_id,
-            Communication.occurred_at >= from_date,
-            Communication.occurred_at <= to_date,
+        select(func.count(CommunicationLog.id)).where(
+            CommunicationLog.client_id == client_id,
+            CommunicationLog.occurred_at >= from_date,
+            CommunicationLog.occurred_at <= to_date,
         )
     )
     communications_count = comms_result.scalar() or 0

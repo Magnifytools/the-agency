@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useParams, Link } from "react-router-dom"
+import { useParams, Link, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { clientsApi, timeEntriesApi, projectsApi, holdedApi, clientHealthApi, engineApi } from "@/lib/api"
 import type { TaskStatus, Client } from "@/lib/types"
@@ -210,8 +210,13 @@ export default function ClientDetailPage() {
   const { isAdmin } = useAuth()
   const { id } = useParams<{ id: string }>()
   const clientId = Number(id)
+  const [searchParams] = useSearchParams()
   const [timeLogTaskId, setTimeLogTaskId] = useState<{ id: number; title: string } | null>(null)
-  const [activeTab, setActiveTab] = useState<"actividad" | "tareas" | "proyectos" | "comunicaciones" | "contactos" | "panel" | "tiempo" | "facturacion" | "recursos" | "seo" | "informes" | "ajustes" | "facturas">("actividad")
+
+  const validTabs = ["actividad", "tareas", "proyectos", "comunicaciones", "contactos", "panel", "tiempo", "facturacion", "recursos", "seo", "informes", "ajustes", "facturas"] as const
+  type Tab = (typeof validTabs)[number]
+  const initialTab = validTabs.includes(searchParams.get("tab") as Tab) ? (searchParams.get("tab") as Tab) : "actividad"
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab)
 
   const { data: summary, isLoading } = useQuery({
     queryKey: ["client-summary", clientId],

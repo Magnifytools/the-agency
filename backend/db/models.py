@@ -16,6 +16,7 @@ from sqlalchemy import (
     JSON,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -288,8 +289,8 @@ class Client(TimestampMixin, Base):
     engine_clicks_30d = Column(Integer, nullable=True)
     engine_impressions_30d = Column(Integer, nullable=True)
     engine_metrics_synced_at = Column(DateTime(timezone=True), nullable=True)
-    engine_summary_data = Column(JSON, nullable=True)
-    engine_alerts_data = Column(JSON, nullable=True)
+    engine_summary_data = Column(JSONB, nullable=True)
+    engine_alerts_data = Column(JSONB, nullable=True)
 
     tasks = relationship("Task", back_populates="client", lazy="selectin")
     projects = relationship("Project", back_populates="client", lazy="selectin")
