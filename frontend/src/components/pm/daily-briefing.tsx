@@ -19,6 +19,7 @@ export function DailyBriefingDialog({
   const { data: briefing, isLoading } = useQuery({
     queryKey: ["daily-briefing"],
     queryFn: () => pmApi.dailyBriefing(),
+    enabled: open,
   })
 
   const shareMutation = useMutation({
