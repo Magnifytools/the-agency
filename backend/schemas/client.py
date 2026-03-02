@@ -79,6 +79,8 @@ class ClientResponse(BaseModel):
     engine_clicks_30d: Optional[int] = None
     engine_impressions_30d: Optional[int] = None
     engine_metrics_synced_at: Optional[datetime] = None
+    engine_summary_data: Optional[dict] = None
+    engine_alerts_data: Optional[dict] = None
     # Revenue intelligence
     business_model: Optional[str] = None
     aov: Optional[float] = None

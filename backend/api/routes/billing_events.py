@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from typing import Optional
 from dateutil.relativedelta import relativedelta
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -132,7 +133,7 @@ async def mark_invoiced(
 @router.post("/mark-paid", response_model=BillingEventResponse)
 async def mark_paid(
     client_id: int,
-    amount: float | None = None,
+    amount: Optional[float] = None,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients", write=True)),
 ):

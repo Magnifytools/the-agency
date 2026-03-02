@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date as date_type, datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -84,9 +85,9 @@ async def submit_daily(
 
 @router.get("", response_model=list[DailyUpdateResponse])
 async def list_dailys(
-    user_id: int | None = Query(None),
-    date_from: str | None = Query(None, description="YYYY-MM-DD"),
-    date_to: str | None = Query(None, description="YYYY-MM-DD"),
+    user_id: Optional[int] = Query(None),
+    date_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),

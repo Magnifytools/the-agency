@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from jinja2 import Environment, BaseLoader
@@ -66,7 +67,7 @@ async def create_report(
 @router.get("", response_model=list[ReportResponse])
 async def list_reports(
     limit: int = 20,
-    client_id: int | None = None,
+    client_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("reports")),
 ):
