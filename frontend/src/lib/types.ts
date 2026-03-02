@@ -67,7 +67,7 @@ export interface Client {
   engine_clicks_30d: number | null
   engine_impressions_30d: number | null
   engine_metrics_synced_at: string | null
-  engine_summary_data: Record<string, any> | null
+  engine_summary_data: EngineSummaryData | null
   engine_alerts_data: { alerts: EngineAlert[] } | null
   // Revenue intelligence
   business_model: string | null
@@ -834,6 +834,26 @@ export interface InvestmentCalculateResponse {
 
 // Reports
 // Engine Alert
+export interface EngineSummaryData {
+  project_id: number
+  project_name: string
+  domain: string
+  content_count: number
+  indexed_count: number
+  keywords_top3: number
+  keywords_top10: number
+  keywords_top20: number
+  clicks_30d: number
+  impressions_30d: number
+  clicks_previous_30d: number
+  impressions_previous_30d: number
+  clicks_change_pct: number
+  avg_position: number | null
+  trend: string
+  seo_health: { score: number; trend: string } | null
+  recent_changes: { severity?: string; type?: string; title: string; detail?: string; detected_at?: string }[]
+}
+
 export interface EngineAlert {
   severity: string
   type: string

@@ -71,6 +71,8 @@ async def sync_engine_metrics() -> dict:
                         s_resp = await http.get(summary_url, headers=headers)
                         if s_resp.status_code == 200:
                             client.engine_summary_data = s_resp.json()
+                        else:
+                            logger.warning("Engine sync: summary HTTP %d for client %d", s_resp.status_code, client.id)
                     except Exception:
                         logger.warning("Engine sync: summary fetch failed for client %d", client.id)
 
@@ -80,6 +82,8 @@ async def sync_engine_metrics() -> dict:
                         a_resp = await http.get(alerts_url, headers=headers)
                         if a_resp.status_code == 200:
                             client.engine_alerts_data = a_resp.json()
+                        else:
+                            logger.warning("Engine sync: alerts HTTP %d for client %d", a_resp.status_code, client.id)
                     except Exception:
                         logger.warning("Engine sync: alerts fetch failed for client %d", client.id)
 

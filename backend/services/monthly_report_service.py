@@ -72,8 +72,8 @@ async def generate_client_monthly_report(
         .join(Task, TimeEntry.task_id == Task.id)
         .where(
             Task.client_id == client_id,
-            TimeEntry.date >= from_date,
-            TimeEntry.date <= to_date,
+            TimeEntry.date >= period_start,
+            TimeEntry.date <= period_end,
         )
         .group_by(TimeEntry.user_id)
     )
@@ -93,8 +93,8 @@ async def generate_client_monthly_report(
     comms_result = await db.execute(
         select(func.count(CommunicationLog.id)).where(
             CommunicationLog.client_id == client_id,
-            CommunicationLog.occurred_at >= from_date,
-            CommunicationLog.occurred_at <= to_date,
+            CommunicationLog.occurred_at >= period_start,
+            CommunicationLog.occurred_at <= period_end,
         )
     )
     communications_count = comms_result.scalar() or 0

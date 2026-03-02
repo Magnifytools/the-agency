@@ -52,9 +52,9 @@ export function EngineAlertsWidget({ clients }: Props) {
       </CardHeader>
       <CardContent>
         <div className="space-y-2">
-          {displayed.map((alert, i) => (
+          {displayed.map((alert) => (
             <Link
-              key={i}
+              key={`${alert.clientId}-${alert.type}-${alert.detected_at}`}
               to={`/clients/${alert.clientId}?tab=seo`}
               className="flex items-start gap-3 p-2 rounded-md border hover:bg-muted/50 transition-colors"
             >

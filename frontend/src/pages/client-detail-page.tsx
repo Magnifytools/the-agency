@@ -210,13 +210,14 @@ export default function ClientDetailPage() {
   const { isAdmin } = useAuth()
   const { id } = useParams<{ id: string }>()
   const clientId = Number(id)
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [timeLogTaskId, setTimeLogTaskId] = useState<{ id: number; title: string } | null>(null)
 
   const validTabs = ["actividad", "tareas", "proyectos", "comunicaciones", "contactos", "panel", "tiempo", "facturacion", "recursos", "seo", "informes", "ajustes", "facturas"] as const
   type Tab = (typeof validTabs)[number]
-  const initialTab = validTabs.includes(searchParams.get("tab") as Tab) ? (searchParams.get("tab") as Tab) : "actividad"
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab)
+  const tabParam = searchParams.get("tab") as Tab
+  const activeTab = validTabs.includes(tabParam) ? tabParam : "actividad"
+  const setActiveTab = (tab: Tab) => setSearchParams({ tab }, { replace: true })
 
   const { data: summary, isLoading } = useQuery({
     queryKey: ["client-summary", clientId],
@@ -578,7 +579,7 @@ export default function ClientDetailPage() {
       )}
 
       {/* Tab: SEO */}
-      {activeTab === "seo" && <EngineSeoTab client={client} />}
+      {activeTab === "seo" && client.engine_project_id && <EngineSeoTab client={client} />}
 
       {/* Tab: Recursos */}
       {activeTab === "recursos" && (

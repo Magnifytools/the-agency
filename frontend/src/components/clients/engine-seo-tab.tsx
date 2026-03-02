@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { engineApi, clientsApi } from "@/lib/api"
-import type { Client, EngineAlert } from "@/lib/types"
+import type { Client, EngineAlert, EngineSummaryData } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -153,7 +153,7 @@ export function EngineSeoTab({ client }: Props) {
     )
   }
 
-  const summary = client.engine_summary_data
+  const summary: EngineSummaryData | null = client.engine_summary_data
   const alerts = client.engine_alerts_data?.alerts || []
 
   // Linked but no data yet
@@ -257,8 +257,8 @@ export function EngineSeoTab({ client }: Props) {
             </div>
           ) : (
             <div className="space-y-2">
-              {alerts.slice(0, 5).map((alert: EngineAlert, i: number) => (
-                <div key={i} className="flex items-start gap-3 p-2 rounded-md border">
+              {alerts.slice(0, 5).map((alert: EngineAlert) => (
+                <div key={`${alert.type}-${alert.detected_at}`} className="flex items-start gap-3 p-2 rounded-md border">
                   <SeverityIcon severity={alert.severity} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -287,8 +287,8 @@ export function EngineSeoTab({ client }: Props) {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {(summary.recent_changes as any[]).slice(0, 5).map((change: any, i: number) => (
-                <div key={i} className="flex items-start gap-3 text-sm">
+              {summary.recent_changes.slice(0, 5).map((change) => (
+                <div key={`${change.type}-${change.detected_at}`} className="flex items-start gap-3 text-sm">
                   <SeverityIcon severity={change.severity || "info"} />
                   <div className="flex-1">
                     <p className="font-medium">{change.title}</p>

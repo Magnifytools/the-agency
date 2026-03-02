@@ -462,21 +462,23 @@ function GenerateReportDialog({
           </div>
         )}
 
-        <div className="space-y-2">
-          <Label>Audiencia <span className="text-muted-foreground font-normal">(opcional)</span></Label>
-          <Select
-            value={audience}
-            onChange={(e) => setAudience(e.target.value as ReportAudience | "")}
-          >
-            <option value="">General (sin audiencia especifica)</option>
-            <option value="executive">Ejecutivo</option>
-            <option value="marketing">Marketing</option>
-            <option value="operational">Operativo</option>
-          </Select>
-          {audience && (
-            <p className="text-xs text-muted-foreground">{AUDIENCE_DESCRIPTIONS[audience]}</p>
-          )}
-        </div>
+        {type !== "client_monthly" && (
+          <div className="space-y-2">
+            <Label>Audiencia <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+            <Select
+              value={audience}
+              onChange={(e) => setAudience(e.target.value as ReportAudience | "")}
+            >
+              <option value="">General (sin audiencia especifica)</option>
+              <option value="executive">Ejecutivo</option>
+              <option value="marketing">Marketing</option>
+              <option value="operational">Operativo</option>
+            </Select>
+            {audience && (
+              <p className="text-xs text-muted-foreground">{AUDIENCE_DESCRIPTIONS[audience]}</p>
+            )}
+          </div>
+        )}
 
         <div className="flex justify-end gap-2 pt-4">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
