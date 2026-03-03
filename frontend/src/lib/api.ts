@@ -113,6 +113,8 @@ import type {
   AgencyAsset,
   AgencyAssetCreate,
   AssetCategory,
+  IndustryNewsItem,
+  IndustryNewsCreate,
 } from "./types"
 
 export const CSRF_COOKIE_NAME = "agency_csrf_token"
@@ -193,6 +195,7 @@ export const clientsApi = {
   update: (id: number, data: Partial<ClientCreate>) =>
     api.put<Client>(`/clients/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete<Client>(`/clients/${id}`).then((r) => r.data),
+  hardDelete: (id: number) => api.delete(`/clients/${id}/hard`),
   summary: (id: number) => api.get<ClientSummary>(`/clients/${id}/summary`).then((r) => r.data),
   aiAdvice: (id: number) =>
     api.post<{ recommendations: Array<{ priority: "high" | "medium" | "low"; category: string; title: string; description: string; action: string }> }>(`/clients/${id}/ai-advice`).then((r) => r.data),
@@ -732,6 +735,18 @@ export const vaultApi = {
     api.put<AgencyAsset>(`/vault/assets/${id}`, data).then((r) => r.data),
   delete: (id: number) =>
     api.delete(`/vault/assets/${id}`),
+}
+
+// --- Industry News ---
+export const newsApi = {
+  list: () =>
+    api.get<IndustryNewsItem[]>("/news").then((r) => r.data),
+  create: (data: IndustryNewsCreate) =>
+    api.post<IndustryNewsItem>("/news", data).then((r) => r.data),
+  update: (id: number, data: Partial<IndustryNewsCreate>) =>
+    api.put<IndustryNewsItem>(`/news/${id}`, data).then((r) => r.data),
+  delete: (id: number) =>
+    api.delete(`/news/${id}`),
 }
 
 // --- Engine Integration ---

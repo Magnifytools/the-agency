@@ -14,7 +14,8 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { Plus, Pencil, Trash2, Users, Heart, Loader2, ExternalLink } from "lucide-react"
+import { Plus, Pencil, MoreVertical, Users, Heart, Loader2, ExternalLink } from "lucide-react"
+import { useAuth } from "@/context/auth-context"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
@@ -43,11 +44,14 @@ const statusBadge = (status: ClientStatus) => {
 
 export default function ClientsPage() {
   const queryClient = useQueryClient()
+  const { isAdmin } = useAuth()
   const { page, pageSize, setPage, reset } = usePagination(25)
   const [tab, setTab] = useState<ClientStatus | "all">("all")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [hardDeleteId, setHardDeleteId] = useState<number | null>(null)
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null)
   const [bulkStatus, setBulkStatus] = useState("")
 
   const { data: engineConfig } = useQuery({
@@ -109,9 +113,18 @@ export default function ClientsPage() {
     mutationFn: (id: number) => clientsApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] })
-      toast.success("Cliente archivado")
+      toast.success("Cliente finalizado")
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al archivar cliente")),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al finalizar cliente")),
+  })
+
+  const hardDeleteMutation = useMutation({
+    mutationFn: (id: number) => clientsApi.hardDelete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clients"] })
+      toast.success("Cliente eliminado permanentemente")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar cliente")),
   })
 
   const closeDialog = () => {
@@ -151,7 +164,7 @@ export default function ClientsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" onClick={() => openMenuId !== null && setOpenMenuId(null)}>
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold uppercase tracking-wide">Clientes</h2>
@@ -186,14 +199,14 @@ export default function ClientsPage() {
               <TableHead>Empresa</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Contrato</TableHead>
-              <TableHead>Presupuesto</TableHead>
+              {isAdmin && <TableHead>Presupuesto</TableHead>}
               <TableHead>Estado</TableHead>
               <TableHead>Salud</TableHead>
               <TableHead className="w-24">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={9} />)}
+            {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={isAdmin ? 9 : 8} />)}
           </TableBody>
         </Table>
       ) : (
@@ -212,7 +225,7 @@ export default function ClientsPage() {
               <TableHead>Empresa</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Contrato</TableHead>
-              <SortableTableHead sortKey="monthly_budget" currentSort={clientSortConfig} onSort={requestClientSort}>Presupuesto</SortableTableHead>
+              {isAdmin && <SortableTableHead sortKey="monthly_budget" currentSort={clientSortConfig} onSort={requestClientSort}>Presupuesto</SortableTableHead>}
               <TableHead>Estado</TableHead>
               <TableHead>Salud</TableHead>
               <TableHead className="w-24">Acciones</TableHead>
@@ -254,7 +267,7 @@ export default function ClientsPage() {
                 <TableCell>{c.company || "-"}</TableCell>
                 <TableCell>{c.email || "-"}</TableCell>
                 <TableCell>{c.contract_type === "monthly" ? "Mensual" : "Puntual"}</TableCell>
-                <TableCell className="mono">{c.monthly_budget != null ? `${c.monthly_budget}€` : "-"}</TableCell>
+                {isAdmin && <TableCell className="mono">{c.monthly_budget != null ? `${c.monthly_budget}€` : "-"}</TableCell>}
                 <TableCell>{statusBadge(c.status)}</TableCell>
                 <TableCell>
                   {(() => {
@@ -273,9 +286,33 @@ export default function ClientsPage() {
                     <Button variant="ghost" size="icon" onClick={() => openEdit(c)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => setDeleteId(c.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="relative">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setOpenMenuId(openMenuId === c.id ? null : c.id)}
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                      {openMenuId === c.id && (
+                        <div className="absolute right-0 top-full z-50 mt-1 w-52 rounded-md border bg-background shadow-md">
+                          <button
+                            className="flex w-full items-center px-3 py-2 text-left text-sm hover:bg-accent"
+                            onClick={() => { setDeleteId(c.id); setOpenMenuId(null) }}
+                          >
+                            Finalizar
+                          </button>
+                          {isAdmin && (
+                            <button
+                              className="flex w-full items-center px-3 py-2 text-left text-sm text-destructive hover:bg-accent"
+                              onClick={() => { setHardDeleteId(c.id); setOpenMenuId(null) }}
+                            >
+                              Borrar permanentemente
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </TableCell>
               </TableRow>
@@ -323,16 +360,18 @@ export default function ClientsPage() {
                 <option value="one_time">Puntual</option>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="monthly_budget">Presupuesto mensual (€)</Label>
-              <Input
-                id="monthly_budget"
-                name="monthly_budget"
-                type="number"
-                step="0.01"
-                defaultValue={editing?.monthly_budget ?? ""}
-              />
-            </div>
+            {isAdmin && (
+              <div className="space-y-2">
+                <Label htmlFor="monthly_budget">Presupuesto mensual (€)</Label>
+                <Input
+                  id="monthly_budget"
+                  name="monthly_budget"
+                  type="number"
+                  step="0.01"
+                  defaultValue={editing?.monthly_budget ?? ""}
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="status">Estado</Label>
               <Select id="status" name="status" defaultValue={editing?.status ?? "active"}>
@@ -355,17 +394,32 @@ export default function ClientsPage() {
         </form>
       </Dialog>
 
-      {/* Delete Confirm */}
+      {/* Finalizar Confirm */}
       <ConfirmDialog
         open={deleteId !== null}
         onOpenChange={(open) => !open && setDeleteId(null)}
-        title="Archivar cliente"
-        description="El cliente se marcara como finalizado. Sus tareas no se eliminaran."
-        confirmLabel="Archivar"
+        title="Finalizar cliente"
+        description="El cliente se marcará como finalizado. Sus tareas y datos no se eliminarán."
+        confirmLabel="Finalizar"
         onConfirm={() => {
           if (deleteId !== null) {
             deleteMutation.mutate(deleteId)
             setDeleteId(null)
+          }
+        }}
+      />
+
+      {/* Hard Delete Confirm */}
+      <ConfirmDialog
+        open={hardDeleteId !== null}
+        onOpenChange={(open) => !open && setHardDeleteId(null)}
+        title="Borrar cliente permanentemente"
+        description="Se eliminarán el cliente y TODOS sus datos (proyectos, tareas, contactos, comunicaciones...). Esta acción no se puede deshacer."
+        confirmLabel="Borrar permanentemente"
+        onConfirm={() => {
+          if (hardDeleteId !== null) {
+            hardDeleteMutation.mutate(hardDeleteId)
+            setHardDeleteId(null)
           }
         }}
       />

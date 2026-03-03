@@ -3,15 +3,22 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete, update, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
-from backend.db.models import Client, ClientStatus, Task, TimeEntry, User
+from backend.db.models import (
+    Client, ClientStatus, Task, TimeEntry, User,
+    Project, ProjectPhase, ProjectEvidence,
+    ClientContact, ClientResource, BillingEvent,
+    CommunicationLog, WeeklyDigest, Invoice, InvoiceItem,
+    PMInsight, GrowthIdea, Proposal, Event, Lead,
+    GeneratedReport, Income, HoldedInvoiceCache,
+)
 from backend.schemas.client import ClientCreate, ClientUpdate, ClientResponse
 from backend.schemas.pagination import PaginatedResponse
-from backend.api.deps import get_current_user, require_module
+from backend.api.deps import get_current_user, require_module, require_admin
 from backend.services.client_health import compute_health, compute_health_batch
 
 logger = logging.getLogger(__name__)
@@ -145,6 +152,95 @@ async def delete_client(
     await db.commit()
     await db.refresh(client)
     return client
+
+
+@router.delete("/{client_id}/hard", status_code=204)
+async def hard_delete_client(
+    client_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    # Collect IDs needed for cascade operations
+    project_ids = list((await db.execute(
+        select(Project.id).where(Project.client_id == client_id)
+    )).scalars())
+    task_ids = list((await db.execute(
+        select(Task.id).where(Task.client_id == client_id)
+    )).scalars())
+    invoice_ids = list((await db.execute(
+        select(Invoice.id).where(Invoice.client_id == client_id)
+    )).scalars())
+
+    # Step 1: Nullify nullable FKs referencing this client's data
+    await db.execute(update(Proposal).where(Proposal.client_id == client_id).values(client_id=None))
+    if project_ids:
+        await db.execute(update(Proposal).where(Proposal.converted_project_id.in_(project_ids)).values(converted_project_id=None))
+
+    await db.execute(update(Event).where(Event.client_id == client_id).values(client_id=None))
+    if project_ids:
+        await db.execute(update(Event).where(Event.project_id.in_(project_ids)).values(project_id=None))
+
+    await db.execute(update(Lead).where(Lead.converted_client_id == client_id).values(converted_client_id=None))
+
+    await db.execute(update(GeneratedReport).where(GeneratedReport.client_id == client_id).values(client_id=None))
+    if project_ids:
+        await db.execute(update(GeneratedReport).where(GeneratedReport.project_id.in_(project_ids)).values(project_id=None))
+
+    await db.execute(update(Income).where(Income.client_id == client_id).values(client_id=None))
+    await db.execute(update(HoldedInvoiceCache).where(HoldedInvoiceCache.client_id == client_id).values(client_id=None))
+
+    # PMInsight: delete rows associated with this client, its tasks, or its projects
+    pm_conditions = [PMInsight.client_id == client_id]
+    if task_ids:
+        pm_conditions.append(PMInsight.task_id.in_(task_ids))
+    if project_ids:
+        pm_conditions.append(PMInsight.project_id.in_(project_ids))
+    await db.execute(delete(PMInsight).where(or_(*pm_conditions)))
+
+    # GrowthIdea: nullify task/project references
+    if task_ids:
+        await db.execute(update(GrowthIdea).where(GrowthIdea.task_id.in_(task_ids)).values(task_id=None))
+    if project_ids:
+        await db.execute(update(GrowthIdea).where(GrowthIdea.project_id.in_(project_ids)).values(project_id=None))
+
+    # Task self-referential depends_on
+    if task_ids:
+        await db.execute(update(Task).where(Task.depends_on.in_(task_ids)).values(depends_on=None))
+
+    # InvoiceItem.task_id (nullable)
+    if task_ids:
+        await db.execute(update(InvoiceItem).where(InvoiceItem.task_id.in_(task_ids)).values(task_id=None))
+
+    # Step 2: Delete rows that depend on tasks/projects/invoices (children first)
+    if task_ids:
+        await db.execute(delete(TimeEntry).where(TimeEntry.task_id.in_(task_ids)))
+    if invoice_ids:
+        await db.execute(delete(InvoiceItem).where(InvoiceItem.invoice_id.in_(invoice_ids)))
+    if project_ids:
+        await db.execute(delete(ProjectEvidence).where(ProjectEvidence.project_id.in_(project_ids)))
+
+    # Step 3: Delete tables with NOT NULL client_id (in dependency order)
+    # CommunicationLog before ClientContact (contact_id FK)
+    await db.execute(delete(CommunicationLog).where(CommunicationLog.client_id == client_id))
+    await db.execute(delete(ClientContact).where(ClientContact.client_id == client_id))
+    await db.execute(delete(ClientResource).where(ClientResource.client_id == client_id))
+    await db.execute(delete(BillingEvent).where(BillingEvent.client_id == client_id))
+    await db.execute(delete(WeeklyDigest).where(WeeklyDigest.client_id == client_id))
+    # Task before ProjectPhase and Project
+    await db.execute(delete(Task).where(Task.client_id == client_id))
+    if project_ids:
+        await db.execute(delete(ProjectPhase).where(ProjectPhase.project_id.in_(project_ids)))
+    await db.execute(delete(Project).where(Project.client_id == client_id))
+    await db.execute(delete(Invoice).where(Invoice.client_id == client_id))
+
+    # Step 4: Delete the client
+    await db.delete(client)
+    await db.commit()
 
 
 @router.get("/{client_id}/summary")

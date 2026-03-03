@@ -1625,3 +1625,22 @@ export interface DiscordSendResponse {
   message: string
   date?: string
 }
+
+// --- Industry News ---
+
+export interface IndustryNewsItem {
+  id: number
+  title: string
+  published_date: string
+  content: string | null
+  url: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface IndustryNewsCreate {
+  title: string
+  published_date: string
+  content?: string | null
+  url?: string | null
+}

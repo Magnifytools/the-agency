@@ -22,6 +22,10 @@ export const vaultKeys = {
   assets: (category?: string) => ["vault-assets", category ?? "all"] as const,
 }
 
+export const newsKeys = {
+  all: () => ["industry-news"] as const,
+}
+
 export function isHoldedQueryKey(queryKey: readonly unknown[]): boolean {
   const key = queryKey[0]
   return typeof key === "string" && key.startsWith("holded-")

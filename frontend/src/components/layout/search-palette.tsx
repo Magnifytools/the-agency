@@ -94,7 +94,6 @@ export function SearchPalette({ open, onOpenChange }: Props) {
   }
 
   // Group items by type for section headers
-  let currentIdx = 0
   const sections: { type: string; items: typeof allItems }[] = []
   for (const type of ["client", "project", "task", "lead"]) {
     const items = allItems.filter((i) => i.type === type)

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/context/auth-context"
 import { holdedApi } from "@/lib/api"
 import { holdedKeys } from "@/lib/query-keys"
-import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList, Gauge, BarChart3, Search, Archive } from "lucide-react"
+import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList, Gauge, BarChart3, Search, Archive, Megaphone } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
 import { NotificationBell } from "@/components/layout/notification-bell"
@@ -72,10 +72,11 @@ export function AppLayout() {
   }, [hasPermission])
 
   const agencyNav = useMemo(() => {
-    if (!isAdmin) return []
-    return [
-      { to: "/vault", label: "Vault", icon: Archive },
+    const items: { to: string; label: string; icon: typeof Archive; adminOnly?: boolean }[] = [
+      { to: "/news", label: "Noticias", icon: Megaphone },
+      { to: "/vault", label: "Vault", icon: Archive, adminOnly: true },
     ]
+    return items.filter((item) => !item.adminOnly || isAdmin)
   }, [isAdmin])
 
   const adminNav = useMemo(() => {

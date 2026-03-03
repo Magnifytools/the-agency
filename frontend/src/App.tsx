@@ -41,6 +41,7 @@ const DailysPage = lazy(() => import("@/pages/dailys-page"))
 const CapacityPage = lazy(() => import("@/pages/capacity-page"))
 const ExecutiveDashboardPage = lazy(() => import("@/pages/executive-dashboard-page"))
 const AgencyVaultPage = lazy(() => import("@/pages/agency-vault-page"))
+const IndustryNewsPage = lazy(() => import("@/pages/industry-news-page"))
 
 function PageLoader() {
   return (
@@ -104,6 +105,7 @@ export default function App() {
               {/* Holded Finance */}
               <Route path="/finance-holded" element={<Suspense fallback={<PageLoader />}><HoldedFinancePage /></Suspense>} />
               {/* Agency */}
+              <Route path="/news" element={<Suspense fallback={<PageLoader />}><IndustryNewsPage /></Suspense>} />
               <Route path="/vault" element={<Suspense fallback={<PageLoader />}><AgencyVaultPage /></Suspense>} />
               {/* Discord */}
               <Route path="/discord" element={<Suspense fallback={<PageLoader />}><DiscordSettingsPage /></Suspense>} />

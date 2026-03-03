@@ -1163,6 +1163,16 @@ class AgencyAsset(TimestampMixin, Base):
     monthly_cost = Column(Numeric(10, 2))
 
 
+class IndustryNews(TimestampMixin, Base):
+    __tablename__ = "industry_news"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(300), nullable=False)
+    content = Column(Text, nullable=True)
+    url = Column(String(500), nullable=True)
+    published_date = Column(Date, nullable=False)
+
+
 class Notification(TimestampMixin, Base):
     __tablename__ = "notifications"
 

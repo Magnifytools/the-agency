@@ -11,7 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from backend.config import settings
 from backend.api.routes import (
@@ -21,7 +21,7 @@ from backend.api.routes import (
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
     service_templates, dailys, contacts, activity, notifications, resources,
     billing_events, client_dashboard, engine_integration, investments,
-    evidence, search, agency_vault,
+    evidence, search, agency_vault, industry_news,
 )
 
 
@@ -62,6 +62,7 @@ async def _ensure_columns():
         "CREATE TABLE IF NOT EXISTS project_evidence (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id), phase_id INTEGER REFERENCES project_phases(id), title VARCHAR(200) NOT NULL, url TEXT NOT NULL, evidence_type VARCHAR(20) DEFAULT 'other', description TEXT, created_by INTEGER REFERENCES users(id), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
         "CREATE TABLE IF NOT EXISTS agency_assets (id SERIAL PRIMARY KEY, category VARCHAR(10) NOT NULL, name VARCHAR(200) NOT NULL, value VARCHAR(500), provider VARCHAR(200), url VARCHAR(500), notes TEXT, associated_domain VARCHAR(200), registrar VARCHAR(200), expiry_date DATE, auto_renew BOOLEAN DEFAULT FALSE, dns_provider VARCHAR(200), hosting_type VARCHAR(50), tool_category VARCHAR(100), monthly_cost NUMERIC(10,2), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
         "CREATE INDEX IF NOT EXISTS ix_agency_assets_category ON agency_assets (category)",
+        "CREATE TABLE IF NOT EXISTS industry_news (id SERIAL PRIMARY KEY, title VARCHAR(300) NOT NULL, content TEXT, url VARCHAR(500), published_date DATE NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
     ]
     async with engine.begin() as conn:
         for sql in stmts:
@@ -158,6 +159,20 @@ class CsrfProtectionMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(CsrfProtectionMiddleware)
 
+
+class HttpsRedirectMiddleware(BaseHTTPMiddleware):
+    """Redirect HTTP to HTTPS in production (Railway sets X-Forwarded-Proto)."""
+    async def dispatch(self, request: Request, call_next):
+        if settings.AUTH_COOKIE_SECURE:
+            proto = request.headers.get("X-Forwarded-Proto", "https")
+            if proto == "http":
+                url = str(request.url).replace("http://", "https://", 1)
+                return RedirectResponse(url, status_code=301)
+        return await call_next(request)
+
+
+app.add_middleware(HttpsRedirectMiddleware)
+
 app.include_router(auth.router)
 app.include_router(clients.router)
 app.include_router(tasks.router)
@@ -199,6 +214,7 @@ app.include_router(investments.router)
 app.include_router(evidence.router)
 app.include_router(search.router)
 app.include_router(agency_vault.router)
+app.include_router(industry_news.router)
 
 # Serve frontend static files in production
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"

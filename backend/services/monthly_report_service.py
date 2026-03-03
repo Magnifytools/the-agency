@@ -15,6 +15,7 @@ from backend.config import settings
 from backend.db.models import (
     Client, GeneratedReport, ReportType,
     Task, TaskStatus, TimeEntry, CommunicationLog,
+    IndustryNews,
 )
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 
@@ -99,6 +100,26 @@ async def generate_client_monthly_report(
     )
     communications_count = comms_result.scalar() or 0
 
+    # 4b. Fetch industry news for the period
+    news_result = await db.execute(
+        select(IndustryNews)
+        .where(
+            IndustryNews.published_date >= period_start.date(),
+            IndustryNews.published_date <= period_end.date(),
+        )
+        .order_by(IndustryNews.published_date.desc())
+    )
+    news_items = news_result.scalars().all()
+    news_data = [
+        {
+            "title": n.title,
+            "published_date": n.published_date.isoformat(),
+            "content": n.content,
+            "url": n.url,
+        }
+        for n in news_items
+    ]
+
     # 5. Build AI prompt
     kpis = engine_data.get("kpis", {})
     month_name = [
@@ -125,6 +146,11 @@ TRABAJO REALIZADO (de Agency):
 - Horas dedicadas: {round(total_minutes / 60, 1)}h
 - Tareas completadas: {completed_tasks}
 - Comunicaciones: {communications_count}
+
+NOTICIAS RELEVANTES DEL SECTOR:
+{chr(10).join(f'- {n["title"]} ({n["published_date"]}): {n["content"] or "Sin detalle"}' for n in news_data) if news_data else 'No hay noticias del sector en este periodo.'}
+
+Si hay noticias relevantes del sector, mencionalas brevemente en el informe cuando sea pertinente (por ejemplo, actualizaciones de Google que afecten al rendimiento).
 
 Responde en JSON con esta estructura exacta:
 {{
@@ -182,6 +208,7 @@ Escribe en espanol profesional. Se conciso pero informativo. Usa los datos reale
             "completed_tasks": completed_tasks,
             "communications": communications_count,
         },
+        "news_data": news_data,
     }, ensure_ascii=False)
 
     # 8. Save report
