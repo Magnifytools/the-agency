@@ -138,22 +138,6 @@ async def update_client(
     return client
 
 
-@router.delete("/{client_id}", response_model=ClientResponse)
-async def delete_client(
-    client_id: int,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("clients", write=True)),
-):
-    result = await db.execute(select(Client).where(Client.id == client_id))
-    client = result.scalar_one_or_none()
-    if client is None:
-        raise HTTPException(status_code=404, detail="Client not found")
-    client.status = ClientStatus.finished
-    await db.commit()
-    await db.refresh(client)
-    return client
-
-
 @router.delete("/{client_id}/hard", status_code=204)
 async def hard_delete_client(
     client_id: int,
@@ -241,6 +225,22 @@ async def hard_delete_client(
     # Step 4: Delete the client
     await db.delete(client)
     await db.commit()
+
+
+@router.delete("/{client_id}", response_model=ClientResponse)
+async def delete_client(
+    client_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("clients", write=True)),
+):
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    client.status = ClientStatus.finished
+    await db.commit()
+    await db.refresh(client)
+    return client
 
 
 @router.get("/{client_id}/summary")

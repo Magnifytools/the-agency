@@ -195,7 +195,7 @@ export const clientsApi = {
   update: (id: number, data: Partial<ClientCreate>) =>
     api.put<Client>(`/clients/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete<Client>(`/clients/${id}`).then((r) => r.data),
-  hardDelete: (id: number) => api.delete(`/clients/${id}/hard`),
+  hardDelete: (id: number) => api.delete(`/clients/${id}/hard`).then((r) => r.data),
   summary: (id: number) => api.get<ClientSummary>(`/clients/${id}/summary`).then((r) => r.data),
   aiAdvice: (id: number) =>
     api.post<{ recommendations: Array<{ priority: "high" | "medium" | "low"; category: string; title: string; description: string; action: string }> }>(`/clients/${id}/ai-advice`).then((r) => r.data),
@@ -734,7 +734,7 @@ export const vaultApi = {
   update: (id: number, data: Partial<AgencyAssetCreate>) =>
     api.put<AgencyAsset>(`/vault/assets/${id}`, data).then((r) => r.data),
   delete: (id: number) =>
-    api.delete(`/vault/assets/${id}`),
+    api.delete(`/vault/assets/${id}`).then((r) => r.data),
 }
 
 // --- Industry News ---
@@ -746,7 +746,7 @@ export const newsApi = {
   update: (id: number, data: Partial<IndustryNewsCreate>) =>
     api.put<IndustryNewsItem>(`/news/${id}`, data).then((r) => r.data),
   delete: (id: number) =>
-    api.delete(`/news/${id}`),
+    api.delete(`/news/${id}`).then((r) => r.data),
 }
 
 // --- Engine Integration ---
