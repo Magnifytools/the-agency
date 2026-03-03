@@ -5,10 +5,9 @@ from collections import defaultdict
 
 import httpx
 from sqlalchemy import select, and_
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import TimeEntry, Task, User
+from backend.db.models import TimeEntry
 from backend.config import settings
 
 
@@ -19,12 +18,7 @@ async def generate_daily_summary(db: AsyncSession, date: datetime) -> str:
     end = naive.replace(hour=23, minute=59, second=59, microsecond=999999)
 
     result = await db.execute(
-        select(TimeEntry)
-        .options(
-            selectinload(TimeEntry.user),
-            selectinload(TimeEntry.task).selectinload(Task.client),
-        )
-        .where(
+        select(TimeEntry).where(
             and_(
                 TimeEntry.minutes.isnot(None),
                 TimeEntry.date >= start,

@@ -12,3 +12,6 @@ frontend/dist/
 .vite/
 .DS_Store
 *.xlsx
+
+output/
+.claude/

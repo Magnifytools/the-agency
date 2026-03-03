@@ -130,14 +130,15 @@ export default function DashboardPage() {
     enabled: !!user && user.role === "member",
     refetchInterval: 30_000,
   })
-  const today = new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const today = now.toISOString().slice(0, 10)
   const { data: todayDailys } = useQuery({
     queryKey: ["daily-today", user?.id, today],
     queryFn: () => dailysApi.list({ user_id: user!.id, date_from: today, date_to: today, limit: 1 }),
     enabled: !!user && user.role === "member",
   })
   const todayDaily = todayDailys?.[0]
-  const showDailyReminder = !todayDaily && new Date().getHours() >= 17
+  const showDailyReminder = !todayDaily && now.getHours() >= 17
 
   // ─── Admin queries ──────────────────────────────────────────
   const { data: allOverdueTasks } = useQuery({
@@ -410,17 +411,17 @@ export default function DashboardPage() {
                     <button
                       onClick={() => markDoneMutation.mutate(t.id)}
                       disabled={markDoneMutation.isPending}
-                      className="w-5 h-5 rounded-full border-2 border-border hover:border-green-400 hover:bg-green-400/10 flex items-center justify-center flex-shrink-0 transition-colors"
+                      className="group w-5 h-5 rounded-full border-2 border-border hover:border-green-400 hover:bg-green-400/10 flex items-center justify-center flex-shrink-0 transition-colors"
                       title="Marcar como completada"
                     >
-                      <Check className="h-3 w-3 text-transparent hover:text-green-400" />
+                      <Check className="h-3 w-3 text-transparent group-hover:text-green-400 transition-colors" />
                     </button>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{t.title}</p>
                       {t.client_name && <p className="text-xs text-muted-foreground">{t.client_name}</p>}
                     </div>
                     {t.due_date && (
-                      <span className={`text-xs mono flex-shrink-0 ${new Date(t.due_date) < new Date() ? "text-red-400" : "text-muted-foreground"}`}>
+                      <span className={`text-xs mono flex-shrink-0 ${new Date(t.due_date) < now ? "text-red-400" : "text-muted-foreground"}`}>
                         {new Date(t.due_date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
                       </span>
                     )}
@@ -464,7 +465,7 @@ export default function DashboardPage() {
                     <span className="text-sm flex-1 truncate">{t.title}</span>
                     {t.client_name && <span className="text-xs text-muted-foreground hidden group-hover:block">{t.client_name}</span>}
                     {t.due_date && (
-                      <span className={`text-xs mono flex-shrink-0 ${new Date(t.due_date) < new Date() ? "text-red-400" : "text-muted-foreground"}`}>
+                      <span className={`text-xs mono flex-shrink-0 ${new Date(t.due_date) < now ? "text-red-400" : "text-muted-foreground"}`}>
                         {new Date(t.due_date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
                       </span>
                     )}

@@ -1,9 +1,12 @@
 from __future__ import annotations
 from typing import Optional
 
+import logging
 from datetime import datetime, timezone
 
 import httpx
+
+logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -189,7 +192,8 @@ async def send_daily_summary(
     try:
         summary = await generate_daily_summary(db, d)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error generando resumen: {exc}")
+        logger.error("Error generating daily summary: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Error al generar el resumen diario")
     success = await _send_discord_message(url, summary)
 
     if success:
