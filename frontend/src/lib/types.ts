@@ -75,6 +75,7 @@ export interface Client {
   conversion_rate: number | null
   ltv: number | null
   seo_maturity_level: string | null
+  is_internal: boolean
   created_at: string
   updated_at: string
 }
@@ -105,6 +106,7 @@ export interface ClientCreate {
   conversion_rate?: number | null
   ltv?: number | null
   seo_maturity_level?: string | null
+  is_internal?: boolean
 }
 
 export interface ClientContact {

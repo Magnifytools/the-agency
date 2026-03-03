@@ -67,6 +67,7 @@ async def _ensure_columns():
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN NOT NULL DEFAULT FALSE",
         # Unique partial index to prevent concurrent active timers per user
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_one_active_timer ON time_entries (user_id) WHERE minutes IS NULL",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_internal BOOLEAN NOT NULL DEFAULT FALSE",
     ]
     async with engine.begin() as conn:
         for sql in stmts:

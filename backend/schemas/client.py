@@ -16,6 +16,7 @@ class ClientCreate(BaseModel):
     monthly_budget: Optional[float] = Field(None, ge=0)
     status: ClientStatus = ClientStatus.active
     notes: Optional[str] = None
+    is_internal: bool = False
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
     billing_cycle: Optional[BillingCycle] = None
@@ -40,6 +41,7 @@ class ClientUpdate(BaseModel):
     monthly_budget: Optional[float] = Field(None, ge=0)
     status: Optional[ClientStatus] = None
     notes: Optional[str] = None
+    is_internal: Optional[bool] = None
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
     billing_cycle: Optional[BillingCycle] = None
@@ -87,6 +89,7 @@ class ClientResponse(BaseModel):
     conversion_rate: Optional[float] = None
     ltv: Optional[float] = None
     seo_maturity_level: Optional[str] = None
+    is_internal: bool = False
     created_at: datetime
     updated_at: datetime
 

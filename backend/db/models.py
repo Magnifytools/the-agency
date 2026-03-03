@@ -276,6 +276,8 @@ class Client(TimestampMixin, Base):
     next_invoice_date = Column(Date, nullable=True)
     last_invoiced_date = Column(Date, nullable=True)
     engine_project_id = Column(Integer, nullable=True)
+    # Internal flag
+    is_internal = Column(Boolean, nullable=False, default=False)
     # Revenue intelligence
     business_model = Column(String(50), nullable=True)  # ecommerce, saas, lead_gen, media
     aov = Column(Float, nullable=True)  # Average Order Value EUR

@@ -156,6 +156,7 @@ export default function ClientsPage() {
       monthly_budget: fd.get("monthly_budget") ? Number(fd.get("monthly_budget")) : null,
       status: (fd.get("status") as ClientStatus) || "active",
       notes: (fd.get("notes") as string) || null,
+      is_internal: fd.get("is_internal") === "on",
     }
     if (editing) {
       updateMutation.mutate({ id: editing.id, data })
@@ -284,6 +285,11 @@ export default function ClientsPage() {
                     <Link to={`/clients/${c.id}`} className="hover:underline text-brand">
                       {c.name || 'Sin nombre'}
                     </Link>
+                    {c.is_internal && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-purple-500/50 text-purple-400">
+                        Interno
+                      </Badge>
+                    )}
                     {c.engine_project_id && engineConfig?.engine_frontend_url && (
                       <a
                         href={`${engineConfig.engine_frontend_url}/p/${c.engine_project_id}/dashboard`}
@@ -421,6 +427,18 @@ export default function ClientsPage() {
           <div className="space-y-2">
             <Label htmlFor="notes">Notas</Label>
             <Textarea id="notes" name="notes" defaultValue={editing?.notes ?? ""} />
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="is_internal"
+              name="is_internal"
+              defaultChecked={editing?.is_internal ?? false}
+              className="rounded border-border"
+            />
+            <Label htmlFor="is_internal" className="cursor-pointer text-sm font-normal">
+              Cliente interno (Magnify)
+            </Label>
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={closeDialog}>
