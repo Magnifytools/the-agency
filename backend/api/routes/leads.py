@@ -324,6 +324,8 @@ async def convert_to_client(
         raise HTTPException(status_code=404, detail="Lead no encontrado")
     if current_user.role != UserRole.admin and lead.assigned_to != current_user.id:
         raise HTTPException(status_code=403, detail="No tienes acceso a este lead")
+    if lead.status == LeadStatus.lost:
+        raise HTTPException(status_code=400, detail="No se puede convertir un lead perdido")
     if lead.status == LeadStatus.won:
         raise HTTPException(status_code=400, detail="Este lead ya fue convertido")
     if lead.converted_client_id:

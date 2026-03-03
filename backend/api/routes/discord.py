@@ -186,7 +186,10 @@ async def send_daily_summary(
     else:
         d = datetime.now(timezone.utc)
 
-    summary = await generate_daily_summary(db, d)
+    try:
+        summary = await generate_daily_summary(db, d)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error generando resumen: {exc}")
     success = await _send_discord_message(url, summary)
 
     if success:

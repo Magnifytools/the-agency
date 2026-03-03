@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Optional
 
 from datetime import date, datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from backend.db.models import ContractType, ClientStatus, BillingCycle
 
 
@@ -13,7 +13,7 @@ class ClientCreate(BaseModel):
     company: Optional[str] = None
     website: Optional[str] = None
     contract_type: ContractType = ContractType.monthly
-    monthly_budget: Optional[float] = None
+    monthly_budget: Optional[float] = Field(None, ge=0)
     status: ClientStatus = ClientStatus.active
     notes: Optional[str] = None
     ga4_property_id: Optional[str] = None
@@ -37,7 +37,7 @@ class ClientUpdate(BaseModel):
     company: Optional[str] = None
     website: Optional[str] = None
     contract_type: Optional[ContractType] = None
-    monthly_budget: Optional[float] = None
+    monthly_budget: Optional[float] = Field(None, ge=0)
     status: Optional[ClientStatus] = None
     notes: Optional[str] = None
     ga4_property_id: Optional[str] = None

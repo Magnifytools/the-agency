@@ -65,6 +65,8 @@ async def _ensure_columns():
         "CREATE INDEX IF NOT EXISTS ix_agency_assets_category ON agency_assets (category)",
         "CREATE TABLE IF NOT EXISTS industry_news (id SERIAL PRIMARY KEY, title VARCHAR(300) NOT NULL, content TEXT, url VARCHAR(500), published_date DATE NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN NOT NULL DEFAULT FALSE",
+        # Unique partial index to prevent concurrent active timers per user
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_one_active_timer ON time_entries (user_id) WHERE minutes IS NULL",
     ]
     async with engine.begin() as conn:
         for sql in stmts:

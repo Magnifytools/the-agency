@@ -2,12 +2,12 @@ from __future__ import annotations
 from typing import Optional
 
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from backend.db.models import TaskStatus, TaskPriority
 
 
 class TaskCreate(BaseModel):
-    title: str
+    title: str = Field(..., max_length=500)
     description: Optional[str] = None
     status: TaskStatus = TaskStatus.pending
     priority: TaskPriority = TaskPriority.medium
@@ -24,7 +24,7 @@ class TaskCreate(BaseModel):
 
 
 class TaskUpdate(BaseModel):
-    title: Optional[str] = None
+    title: Optional[str] = Field(None, max_length=500)
     description: Optional[str] = None
     status: Optional[TaskStatus] = None
     priority: Optional[TaskPriority] = None

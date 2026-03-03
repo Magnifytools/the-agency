@@ -60,6 +60,7 @@ class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     project_type: Optional[str] = None
+    is_recurring: Optional[bool] = None
     start_date: Optional[datetime] = None
     target_end_date: Optional[datetime] = None
     actual_end_date: Optional[datetime] = None

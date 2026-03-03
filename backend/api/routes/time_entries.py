@@ -5,6 +5,7 @@ from datetime import datetime, timezone, timedelta, date as date_type
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, and_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
@@ -374,9 +375,16 @@ async def start_timer(
         notes=body.notes
     )
     db.add(entry)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya hay un timer activo. Detén el actual antes de iniciar otro.",
+        )
     await db.refresh(entry)
-    
+
     # Reload relation if it was tied to a task
     if task:
         await db.refresh(entry, ["task"])
