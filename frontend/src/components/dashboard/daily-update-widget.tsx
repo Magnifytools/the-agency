@@ -29,13 +29,19 @@ export function DailyUpdateWidget({ userId, readOnly = false }: DailyUpdateWidge
   const submitMutation = useMutation({
     mutationFn: async (rawText: string) => {
       const daily = await dailysApi.submit({ raw_text: rawText })
+      let discordSent = false
       try {
         await dailysApi.sendDiscord(daily.id)
+        discordSent = true
       } catch {}
-      return daily
+      return { daily, discordSent }
     },
-    onSuccess: () => {
-      toast.success("Daily enviado a Discord ✓")
+    onSuccess: ({ discordSent }) => {
+      if (discordSent) {
+        toast.success("Daily guardado y publicado en Discord ✓")
+      } else {
+        toast.success("Daily guardado", { description: "Discord no configurado o no disponible." })
+      }
       setText("")
       setExpanded(false)
       queryClient.invalidateQueries({ queryKey: ["daily-today", userId] })

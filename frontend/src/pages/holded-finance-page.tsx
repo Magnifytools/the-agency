@@ -55,7 +55,12 @@ export default function HoldedFinancePage() {
     mutationFn: () => holdedApi.syncAll(),
     onSuccess: (results) => {
       const ok = results.filter((r) => r.status === "success").length
-      toast.success(`Sincronizacion completada: ${ok}/${results.length} exitosos`)
+      const failed = results.length - ok
+      if (failed === 0) {
+        toast.success(`Sincronización completada: ${ok}/${results.length} exitosos`)
+      } else {
+        toast.warning(`Sincronización parcial: ${ok}/${results.length} exitosos, ${failed} con error`)
+      }
       void invalidateHoldedQueries()
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al sincronizar")),
