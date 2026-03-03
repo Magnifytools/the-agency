@@ -19,6 +19,7 @@ import { useAuth } from "@/context/auth-context"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { InfoTooltip } from "@/components/ui/tooltip"
 import { BulkActionBar } from "@/components/ui/bulk-action-bar"
 import { EmptyTableState } from "@/components/ui/empty-state"
 import { SkeletonTableRow } from "@/components/ui/skeleton"
@@ -201,7 +202,25 @@ export default function ClientsPage() {
               <TableHead>Contrato</TableHead>
               {isAdmin && <TableHead>Presupuesto</TableHead>}
               <TableHead>Estado</TableHead>
-              <TableHead>Salud</TableHead>
+              <TableHead>
+                <span className="inline-flex items-center gap-1">
+                  Salud
+                  <InfoTooltip
+                    content={
+                      <div className="space-y-1.5">
+                        <p className="font-semibold">Puntuación de salud del cliente (0–100)</p>
+                        <p className="text-muted-foreground">Combina 5 factores: comunicación reciente, tareas completadas, digests enviados, rentabilidad y followups pendientes.</p>
+                        <div className="flex flex-col gap-0.5 pt-0.5">
+                          <span className="text-green-600 font-medium">● ≥ 70 — Saludable</span>
+                          <span className="text-amber-500 font-medium">● 40–69 — Atención</span>
+                          <span className="text-red-500 font-medium">● &lt; 40 — En riesgo</span>
+                        </div>
+                        <p className="text-muted-foreground text-[11px] pt-0.5">Pasa el ratón sobre la puntuación para ver el desglose.</p>
+                      </div>
+                    }
+                  />
+                </span>
+              </TableHead>
               <TableHead className="w-24">Acciones</TableHead>
             </TableRow>
           </TableHeader>
@@ -227,7 +246,25 @@ export default function ClientsPage() {
               <TableHead>Contrato</TableHead>
               {isAdmin && <SortableTableHead sortKey="monthly_budget" currentSort={clientSortConfig} onSort={requestClientSort}>Presupuesto</SortableTableHead>}
               <TableHead>Estado</TableHead>
-              <TableHead>Salud</TableHead>
+              <TableHead>
+                <span className="inline-flex items-center gap-1">
+                  Salud
+                  <InfoTooltip
+                    content={
+                      <div className="space-y-1.5">
+                        <p className="font-semibold">Puntuación de salud del cliente (0–100)</p>
+                        <p className="text-muted-foreground">Combina 5 factores: comunicación reciente, tareas completadas, digests enviados, rentabilidad y followups pendientes.</p>
+                        <div className="flex flex-col gap-0.5 pt-0.5">
+                          <span className="text-green-600 font-medium">● ≥ 70 — Saludable</span>
+                          <span className="text-amber-500 font-medium">● 40–69 — Atención</span>
+                          <span className="text-red-500 font-medium">● &lt; 40 — En riesgo</span>
+                        </div>
+                        <p className="text-muted-foreground text-[11px] pt-0.5">Pasa el ratón sobre la puntuación para ver el desglose.</p>
+                      </div>
+                    }
+                  />
+                </span>
+              </TableHead>
               <TableHead className="w-24">Acciones</TableHead>
             </TableRow>
           </TableHeader>

@@ -46,6 +46,7 @@ class ProjectCreate(BaseModel):
     name: str
     description: Optional[str] = None
     project_type: Optional[str] = None
+    is_recurring: bool = False
     start_date: Optional[datetime] = None
     target_end_date: Optional[datetime] = None
     budget_hours: Optional[float] = None
@@ -75,6 +76,7 @@ class ProjectResponse(BaseModel):
     name: str
     description: Optional[str]
     project_type: Optional[str]
+    is_recurring: bool = False
     start_date: Optional[datetime]
     target_end_date: Optional[datetime]
     actual_end_date: Optional[datetime]
@@ -99,6 +101,7 @@ class ProjectListResponse(BaseModel):
     id: int
     name: str
     project_type: Optional[str]
+    is_recurring: bool = False
     start_date: Optional[datetime]
     target_end_date: Optional[datetime]
     status: str
@@ -112,6 +115,17 @@ class ProjectListResponse(BaseModel):
     completed_task_count: int = 0
 
     model_config = {"from_attributes": True}
+
+
+class ProjectExtract(BaseModel):
+    name: str
+    description: Optional[str] = None
+    project_type: Optional[str] = None
+    is_recurring: bool = False
+    budget_amount: Optional[float] = None
+    start_date: Optional[str] = None
+    target_end_date: Optional[str] = None
+    client_name: Optional[str] = None
 
 
 # --- Project Templates ---

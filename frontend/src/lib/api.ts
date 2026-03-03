@@ -29,6 +29,7 @@ import type {
   Project,
   ProjectListItem,
   ProjectCreate,
+  ProjectDraft,
   ProjectTemplate,
   ProjectPhase,
   Communication,
@@ -325,6 +326,11 @@ export const projectsApi = {
   templates: () => api.get<Record<string, ProjectTemplate>>("/projects/templates").then((r) => r.data),
   createFromTemplate: (client_id: number, template_key: string, start_date?: string) =>
     api.post<Project>("/projects/from-template", null, { params: { client_id, template_key, start_date } }).then((r) => r.data),
+  extractFromPdf: (file: File) => {
+    const form = new FormData()
+    form.append("file", file)
+    return api.post<ProjectDraft>("/projects/extract-from-pdf", form).then((r) => r.data)
+  },
   tasks: (id: number) => api.get(`/projects/${id}/tasks`).then((r) => r.data),
   createPhase: (project_id: number, data: { name: string; order_index: number; start_date?: string; due_date?: string }) =>
     api.post<ProjectPhase>(`/projects/${project_id}/phases`, data).then((r) => r.data),

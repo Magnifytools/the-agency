@@ -546,6 +546,17 @@ export interface ProjectTemplate {
   task_count: number
 }
 
+export interface ProjectDraft {
+  name: string
+  description?: string
+  project_type?: string
+  is_recurring?: boolean
+  budget_amount?: number
+  start_date?: string
+  target_end_date?: string
+  client_name?: string
+}
+
 // Communications
 export type CommunicationChannel = "email" | "call" | "meeting" | "whatsapp" | "slack" | "other"
 export type CommunicationDirection = "inbound" | "outbound"

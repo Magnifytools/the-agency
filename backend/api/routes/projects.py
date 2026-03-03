@@ -1,8 +1,9 @@
 from __future__ import annotations
 from typing import Optional
 
+import base64
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +11,7 @@ from backend.db.database import get_db
 from backend.db.models import Project, ProjectPhase, Task, TaskStatus, PhaseStatus, ProjectStatus
 from backend.schemas.project import (
     ProjectCreate,
+    ProjectExtract,
     ProjectUpdate,
     ProjectResponse,
     ProjectListResponse,
@@ -20,6 +22,20 @@ from backend.schemas.project import (
 )
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module
+from backend.services.ai_utils import get_anthropic_client, parse_claude_json
+
+EXTRACT_PROMPT = """Extrae la información de esta propuesta comercial y responde SOLO con un JSON válido:
+{
+  "name": "nombre del proyecto/servicio (breve, máx 60 chars)",
+  "description": "resumen del alcance en 2-3 frases",
+  "project_type": "uno de: seo_audit | content_strategy | linkbuilding | technical_seo | custom",
+  "is_recurring": true si es retención/servicio mensual, false si es proyecto puntual,
+  "budget_amount": importe numérico sin símbolo o null,
+  "start_date": "YYYY-MM-DD" o null,
+  "target_end_date": "YYYY-MM-DD" o null,
+  "client_name": "nombre de la empresa cliente"
+}
+Sin texto adicional. Solo el JSON."""
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -44,6 +60,7 @@ def _build_project_response(project: Project) -> ProjectResponse:
         name=project.name,
         description=project.description,
         project_type=project.project_type,
+        is_recurring=project.is_recurring,
         start_date=project.start_date,
         target_end_date=project.target_end_date,
         actual_end_date=project.actual_end_date,
@@ -109,6 +126,7 @@ async def list_projects(
                 id=p.id,
                 name=p.name,
                 project_type=p.project_type,
+                is_recurring=p.is_recurring,
                 start_date=p.start_date,
                 target_end_date=p.target_end_date,
                 status=p.status.value,
@@ -123,6 +141,35 @@ async def list_projects(
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 
 
+@router.post("/extract-from-pdf", response_model=ProjectExtract)
+async def extract_project_from_pdf(
+    file: UploadFile = File(...),
+    _: object = Depends(require_module("projects", write=True)),
+):
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(400, "Solo se aceptan archivos PDF")
+    content = await file.read()
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(400, "El archivo no puede superar 20MB")
+    pdf_b64 = base64.b64encode(content).decode()
+    client = get_anthropic_client()
+    message = await client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": [
+            {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64}},
+            {"type": "text", "text": EXTRACT_PROMPT},
+        ]}],
+    )
+    try:
+        data = parse_claude_json(message)
+        return ProjectExtract(**data)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    except Exception as e:
+        raise HTTPException(422, f"No se pudieron extraer los datos del PDF: {e}")
+
+
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 async def create_project(
     body: ProjectCreate,
@@ -133,6 +180,7 @@ async def create_project(
         name=body.name,
         description=body.description,
         project_type=body.project_type,
+        is_recurring=body.is_recurring,
         start_date=body.start_date,
         target_end_date=body.target_end_date,
         budget_hours=body.budget_hours,

@@ -1,10 +1,10 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
-import { Plus, FolderKanban, Calendar, Trash2, Repeat } from "lucide-react"
+import { Plus, FolderKanban, Calendar, Trash2, Repeat, FileUp } from "lucide-react"
 import { toast } from "sonner"
 import { projectsApi, clientsApi } from "@/lib/api"
-import type { ProjectListItem, ProjectStatus } from "@/lib/types"
+import type { ProjectListItem, ProjectStatus, ProjectDraft } from "@/lib/types"
 import { usePagination } from "@/hooks/use-pagination"
 import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
@@ -41,6 +41,7 @@ export default function ProjectsPage() {
   const [typeFilter, setTypeFilter] = useState<string>("")
   const [showNewDialog, setShowNewDialog] = useState(false)
   const [showTemplateDialog, setShowTemplateDialog] = useState(false)
+  const [showImportDialog, setShowImportDialog] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
 
   const { data: projectsData, isLoading } = useQuery({
@@ -85,6 +86,10 @@ export default function ProjectsPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowImportDialog(true)}>
+            <FileUp className="h-4 w-4 mr-2" />
+            Importar PDF
+          </Button>
           <Button variant="outline" onClick={() => setShowNewDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Nuevo vacío
@@ -170,6 +175,13 @@ export default function ProjectsPage() {
         onOpenChange={setShowTemplateDialog}
         clients={clients}
         templates={templates}
+      />
+
+      {/* Import from PDF Dialog */}
+      <ImportFromPdfDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        clients={clients}
       />
 
       {/* Delete Confirmation */}
@@ -455,6 +467,197 @@ function TemplateDialog({
           </Button>
         </div>
       </form>
+    </Dialog>
+  )
+}
+
+function ImportFromPdfDialog({
+  open,
+  onOpenChange,
+  clients,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  clients: { id: number; name: string }[]
+}) {
+  const queryClient = useQueryClient()
+  const [step, setStep] = useState<"upload" | "review">("upload")
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
+  const [clientId, setClientId] = useState("")
+  const [formData, setFormData] = useState<Partial<ProjectDraft>>({})
+
+  const extractMutation = useMutation({
+    mutationFn: () => {
+      if (!pdfFile) throw new Error("No file selected")
+      return projectsApi.extractFromPdf(pdfFile)
+    },
+    onSuccess: (data) => {
+      setFormData(data)
+      setStep("review")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al analizar el PDF")),
+  })
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      projectsApi.create({
+        name: formData.name ?? "",
+        client_id: parseInt(clientId),
+        description: formData.description ?? undefined,
+        project_type: formData.project_type ?? undefined,
+        is_recurring: formData.is_recurring ?? false,
+        budget_amount: formData.budget_amount ?? undefined,
+        start_date: formData.start_date ?? undefined,
+        target_end_date: formData.target_end_date ?? undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] })
+      toast.success("Proyecto creado")
+      handleClose()
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al crear proyecto")),
+  })
+
+  const handleClose = () => {
+    onOpenChange(false)
+    setStep("upload")
+    setPdfFile(null)
+    setClientId("")
+    setFormData({})
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose() }}>
+      <DialogHeader>
+        <DialogTitle>
+          {step === "upload" ? "Importar desde PDF" : "Revisar datos extraídos"}
+        </DialogTitle>
+      </DialogHeader>
+
+      {step === "upload" ? (
+        <div className="space-y-4 mt-4">
+          <div className="space-y-2">
+            <Label>Propuesta PDF *</Label>
+            <Input
+              type="file"
+              accept=".pdf"
+              onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Cliente *</Label>
+            <Select value={clientId} onChange={(e) => setClientId(e.target.value)} required>
+              <option value="">Seleccionar cliente</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button type="button" variant="outline" onClick={handleClose}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => extractMutation.mutate()}
+              disabled={!pdfFile || !clientId || extractMutation.isPending}
+            >
+              {extractMutation.isPending ? "Analizando..." : "Analizar propuesta"}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4 mt-4">
+          <div className="space-y-2">
+            <Label>Nombre del proyecto *</Label>
+            <Input
+              value={formData.name ?? ""}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Descripción</Label>
+            <Input
+              value={formData.description ?? ""}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Tipo</Label>
+              <Select
+                value={formData.project_type ?? ""}
+                onChange={(e) => setFormData({ ...formData, project_type: e.target.value })}
+              >
+                <option value="">Sin tipo</option>
+                <option value="seo_audit">Auditoría SEO</option>
+                <option value="content_strategy">Estrategia de contenido</option>
+                <option value="linkbuilding">Link building</option>
+                <option value="technical_seo">SEO técnico</option>
+                <option value="custom">Personalizado</option>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Presupuesto (€)</Label>
+              <Input
+                type="number"
+                value={formData.budget_amount ?? ""}
+                onChange={(e) => setFormData({ ...formData, budget_amount: e.target.value ? parseFloat(e.target.value) : undefined })}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Fecha inicio</Label>
+              <Input
+                type="date"
+                value={formData.start_date ?? ""}
+                onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Fecha fin objetivo</Label>
+              <Input
+                type="date"
+                value={formData.target_end_date ?? ""}
+                onChange={(e) => setFormData({ ...formData, target_end_date: e.target.value })}
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              id="is_recurring_import"
+              type="checkbox"
+              checked={formData.is_recurring ?? false}
+              onChange={(e) => setFormData({ ...formData, is_recurring: e.target.checked })}
+              className="h-4 w-4"
+            />
+            <Label htmlFor="is_recurring_import">Servicio recurrente (retención mensual)</Label>
+          </div>
+          <div className="p-3 bg-muted/50 rounded-lg text-sm text-muted-foreground">
+            Cliente: <span className="text-foreground font-medium">{clients.find(c => c.id === parseInt(clientId))?.name}</span>
+            {formData.client_name && formData.client_name !== clients.find(c => c.id === parseInt(clientId))?.name && (
+              <span> · Detectado en PDF: {formData.client_name}</span>
+            )}
+          </div>
+          <div className="flex justify-between gap-2 pt-4">
+            <Button type="button" variant="outline" onClick={() => setStep("upload")}>
+              ← Volver
+            </Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={handleClose}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => createMutation.mutate()}
+                disabled={!formData.name || createMutation.isPending}
+              >
+                {createMutation.isPending ? "Creando..." : "Crear proyecto"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Dialog>
   )
 }

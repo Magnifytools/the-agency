@@ -165,7 +165,7 @@ export function AppLayout() {
           </button>
 
           {/* Main Nav */}
-          <div className="flex flex-col gap-1.5 flex-1">
+          <div className="flex flex-col gap-1.5 flex-1 overflow-y-auto min-h-0">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">Workspace</p>
             {mainNav.map((item) => (
               <Link
