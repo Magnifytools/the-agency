@@ -20,7 +20,7 @@ import { Select } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { InfoTooltip } from "@/components/ui/tooltip"
-import { Users, CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink, Play, Square, Check, UserCog } from "lucide-react"
+import { Users, CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink, Play, Square, Check, UserCog, AlertTriangle, MessageSquare } from "lucide-react"
 import { toast } from "sonner"
 import { Link } from "react-router-dom"
 import { InboxWidget } from "@/components/dashboard/inbox-widget"
@@ -130,6 +130,14 @@ export default function DashboardPage() {
     enabled: !!user && user.role === "member",
     refetchInterval: 30_000,
   })
+  const today = new Date().toISOString().slice(0, 10)
+  const { data: todayDailys } = useQuery({
+    queryKey: ["daily-today", user?.id, today],
+    queryFn: () => dailysApi.list({ user_id: user!.id, date_from: today, date_to: today, limit: 1 }),
+    enabled: !!user && user.role === "member",
+  })
+  const todayDaily = todayDailys?.[0]
+  const showDailyReminder = !todayDaily && new Date().getHours() >= 17
 
   // ─── Admin queries ──────────────────────────────────────────
   const { data: allOverdueTasks } = useQuery({
@@ -306,7 +314,38 @@ export default function DashboardPage() {
 
       {/* Worker Dashboard */}
       {!isAdmin && user && (
-        <div className="space-y-6">
+        <div className="space-y-4">
+
+          {/* Overdue banner — always at top, impossible to ignore */}
+          {myOverdueTasks && myOverdueTasks.length > 0 && (
+            <div className="flex items-center gap-4 bg-red-500/10 border border-red-500/40 rounded-xl px-5 py-4">
+              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-red-500/20 flex-shrink-0">
+                <span className="text-red-400 font-bold text-lg">{myOverdueTasks.length}</span>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-red-400">
+                  {myOverdueTasks.length === 1 ? "Tienes 1 tarea vencida" : `Tienes ${myOverdueTasks.length} tareas vencidas`}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {myOverdueTasks.slice(0, 2).map((t) => t.title).join(" · ")}
+                  {myOverdueTasks.length > 2 ? ` · +${myOverdueTasks.length - 2} más` : ""}
+                </p>
+              </div>
+              <Link to="/tasks" className="text-xs text-red-400 hover:underline flex-shrink-0">Ver todas →</Link>
+            </div>
+          )}
+
+          {/* Daily reminder banner after 17:00 */}
+          {showDailyReminder && (
+            <div className="flex items-center gap-4 bg-amber-500/10 border border-amber-500/40 rounded-xl px-5 py-4">
+              <MessageSquare className="h-5 w-5 text-amber-400 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-amber-400">Aún no has enviado el daily de hoy</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Antes de cerrar, cuéntale al equipo qué has hecho</p>
+              </div>
+            </div>
+          )}
+
           {/* Active timer */}
           {activeTimer && (
             <Card className="border-brand/30 bg-brand/5">
@@ -350,104 +389,112 @@ export default function DashboardPage() {
           <DailyUpdateWidget userId={user.id} />
           <DeberesWidget userId={user.id} />
 
-          {myOverdueTasks && myOverdueTasks.length > 0 && (
-            <OverdueTasks tasks={myOverdueTasks} title={`Mis tareas vencidas (${myOverdueTasks.length})`} />
-          )}
-          {myInProgressTasks && myInProgressTasks.length > 0 && (
-            <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm">Mis tareas en curso</CardTitle></CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Tarea</TableHead>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Fecha límite</TableHead>
-                      <TableHead className="w-16"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {myInProgressTasks.map((t) => (
-                      <TableRow key={t.id}>
-                        <TableCell className="font-medium">{t.title}</TableCell>
-                        <TableCell>{t.client_name || "-"}</TableCell>
-                        <TableCell className="mono">{t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : "-"}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            {activeTimer?.task_id === t.id ? (
-                              <span className="text-brand text-xs font-medium">● timer</span>
-                            ) : (
-                              <button
-                                onClick={() => startTimerMutation.mutate(t.id)}
-                                disabled={startTimerMutation.isPending || !!activeTimer}
-                                className="p-1.5 text-muted-foreground hover:text-brand hover:bg-brand/10 rounded-md transition-colors disabled:opacity-40"
-                                title="Iniciar timer"
-                              >
-                                <Play className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => markDoneMutation.mutate(t.id)}
-                              disabled={markDoneMutation.isPending}
-                              className="p-1.5 text-muted-foreground hover:text-green-400 hover:bg-green-400/10 rounded-md transition-colors"
-                              title="Marcar como completada"
-                            >
-                              <Check className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
+          {/* Las 3 de hoy — tareas en curso como tarjetas visuales */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">En curso hoy</p>
+              {myInProgressTasks && myInProgressTasks.length > 3 && (
+                <p className="text-xs text-amber-400 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  {myInProgressTasks.length} tareas activas — enfócate en menos
+                </p>
+              )}
+            </div>
+            {myInProgressTasks && myInProgressTasks.length > 0 ? (
+              <div className="space-y-2">
+                {myInProgressTasks.slice(0, 5).map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3 hover:border-brand/30 transition-colors"
+                  >
+                    <button
+                      onClick={() => markDoneMutation.mutate(t.id)}
+                      disabled={markDoneMutation.isPending}
+                      className="w-5 h-5 rounded-full border-2 border-border hover:border-green-400 hover:bg-green-400/10 flex items-center justify-center flex-shrink-0 transition-colors"
+                      title="Marcar como completada"
+                    >
+                      <Check className="h-3 w-3 text-transparent hover:text-green-400" />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{t.title}</p>
+                      {t.client_name && <p className="text-xs text-muted-foreground">{t.client_name}</p>}
+                    </div>
+                    {t.due_date && (
+                      <span className={`text-xs mono flex-shrink-0 ${new Date(t.due_date) < new Date() ? "text-red-400" : "text-muted-foreground"}`}>
+                        {new Date(t.due_date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                      </span>
+                    )}
+                    {activeTimer?.task_id === t.id ? (
+                      <span className="text-brand text-xs font-medium flex items-center gap-1 flex-shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />timer
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => startTimerMutation.mutate(t.id)}
+                        disabled={startTimerMutation.isPending || !!activeTimer}
+                        className="p-1.5 text-muted-foreground hover:text-brand hover:bg-brand/10 rounded-lg transition-colors disabled:opacity-40 flex-shrink-0"
+                        title="Iniciar timer"
+                      >
+                        <Play className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="border border-dashed border-border rounded-xl p-5 text-center">
+                <p className="text-sm text-muted-foreground">Sin tareas en curso</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Ve a <Link to="/tasks" className="text-brand hover:underline">Tareas</Link> y pon en curso las de hoy
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Pendientes — lista compacta */}
           {myPendingTasks && myPendingTasks.length > 0 && (
-            <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm">Mis tareas pendientes</CardTitle></CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Tarea</TableHead>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Fecha límite</TableHead>
-                      <TableHead className="w-16"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {myPendingTasks.map((t) => (
-                      <TableRow key={t.id}>
-                        <TableCell className="font-medium">{t.title}</TableCell>
-                        <TableCell>{t.client_name || "-"}</TableCell>
-                        <TableCell className="mono">{t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : "-"}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => startTimerMutation.mutate(t.id)}
-                              disabled={startTimerMutation.isPending || !!activeTimer}
-                              className="p-1.5 text-muted-foreground hover:text-brand hover:bg-brand/10 rounded-md transition-colors disabled:opacity-40"
-                              title="Iniciar timer"
-                            >
-                              <Play className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={() => markDoneMutation.mutate(t.id)}
-                              disabled={markDoneMutation.isPending}
-                              className="p-1.5 text-muted-foreground hover:text-green-400 hover:bg-green-400/10 rounded-md transition-colors"
-                              title="Marcar como completada"
-                            >
-                              <Check className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Pendientes ({myPendingTasks.length})
+              </p>
+              <div className="space-y-1">
+                {myPendingTasks.slice(0, 8).map((t) => (
+                  <div key={t.id} className="flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-muted/50 transition-colors group">
+                    <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 flex-shrink-0" />
+                    <span className="text-sm flex-1 truncate">{t.title}</span>
+                    {t.client_name && <span className="text-xs text-muted-foreground hidden group-hover:block">{t.client_name}</span>}
+                    {t.due_date && (
+                      <span className={`text-xs mono flex-shrink-0 ${new Date(t.due_date) < new Date() ? "text-red-400" : "text-muted-foreground"}`}>
+                        {new Date(t.due_date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                      </span>
+                    )}
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                      <button
+                        onClick={() => startTimerMutation.mutate(t.id)}
+                        disabled={startTimerMutation.isPending || !!activeTimer}
+                        className="p-1 text-muted-foreground hover:text-brand rounded transition-colors disabled:opacity-40"
+                        title="Iniciar timer"
+                      >
+                        <Play className="h-3 w-3" />
+                      </button>
+                      <button
+                        onClick={() => markDoneMutation.mutate(t.id)}
+                        disabled={markDoneMutation.isPending}
+                        className="p-1 text-muted-foreground hover:text-green-400 rounded transition-colors"
+                        title="Marcar como completada"
+                      >
+                        <Check className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {myPendingTasks.length > 8 && (
+                  <Link to="/tasks" className="block text-xs text-muted-foreground hover:text-brand px-4 py-1.5">
+                    +{myPendingTasks.length - 8} más en Tareas →
+                  </Link>
+                )}
+              </div>
+            </div>
           )}
         </div>
       )}
