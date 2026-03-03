@@ -10,6 +10,7 @@ logging.basicConfig(level=logging.INFO)
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
@@ -87,6 +88,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="The Agency", version="1.0.0", lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 cors_origins = ["http://localhost:5177"]
 if extra := os.environ.get("CORS_ORIGINS"):
