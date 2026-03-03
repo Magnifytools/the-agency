@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { dashboardApi, discordApi, tasksApi, timeEntriesApi, digestsApi, clientsApi, leadsApi, proposalsApi, engineApi } from "@/lib/api"
+import { dashboardApi, discordApi, tasksApi, timeEntriesApi, timerApi, usersApi, dailysApi, digestsApi, clientsApi, leadsApi, proposalsApi, engineApi } from "@/lib/api"
 import type { PricingOption } from "@/lib/types"
 import { useAuth } from "@/context/auth-context"
 import { MetricCard } from "@/components/dashboard/metric-card"
@@ -20,10 +20,12 @@ import { Select } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { InfoTooltip } from "@/components/ui/tooltip"
-import { Users, CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink } from "lucide-react"
+import { Users, CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink, Play, Square, Check, UserCog } from "lucide-react"
 import { toast } from "sonner"
 import { Link } from "react-router-dom"
 import { InboxWidget } from "@/components/dashboard/inbox-widget"
+import { DailyUpdateWidget } from "@/components/dashboard/daily-update-widget"
+import { DeberesWidget } from "@/components/dashboard/deberes-widget"
 import { getErrorMessage } from "@/lib/utils"
 import { SkeletonCard } from "@/components/ui/skeleton"
 
@@ -48,6 +50,7 @@ export default function DashboardPage() {
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [previewOpen, setPreviewOpen] = useState(false)
+  const [viewAsUserId, setViewAsUserId] = useState<number | null>(null)
   const queryClient = useQueryClient()
 
   const params = { year, month }
@@ -121,6 +124,12 @@ export default function DashboardPage() {
     queryFn: () => timeEntriesApi.weekly(),
     enabled: !!user && user.role === "member",
   })
+  const { data: activeTimer } = useQuery({
+    queryKey: ["active-timer"],
+    queryFn: () => timerApi.active(),
+    enabled: !!user && user.role === "member",
+    refetchInterval: 30_000,
+  })
 
   // ─── Admin queries ──────────────────────────────────────────
   const { data: allOverdueTasks } = useQuery({
@@ -128,6 +137,33 @@ export default function DashboardPage() {
     queryFn: () => tasksApi.listAll({ overdue: true }),
     enabled: !!user && user.role === "admin",
   })
+  const { data: allUsers } = useQuery({
+    queryKey: ["users-all"],
+    queryFn: () => usersApi.listAll(),
+    enabled: isAdmin,
+  })
+  const memberUsers = (allUsers || []).filter((u) => u.role === "member")
+  const { data: viewAsInProgress } = useQuery({
+    queryKey: ["viewas-tasks-in-progress", viewAsUserId],
+    queryFn: () => tasksApi.listAll({ assigned_to: viewAsUserId!, status: "in_progress" }),
+    enabled: isAdmin && !!viewAsUserId,
+  })
+  const { data: viewAsPending } = useQuery({
+    queryKey: ["viewas-tasks-pending", viewAsUserId],
+    queryFn: () => tasksApi.listAll({ assigned_to: viewAsUserId!, status: "pending" }),
+    enabled: isAdmin && !!viewAsUserId,
+  })
+  const { data: viewAsOverdue } = useQuery({
+    queryKey: ["viewas-tasks-overdue", viewAsUserId],
+    queryFn: () => tasksApi.listAll({ assigned_to: viewAsUserId!, overdue: true }),
+    enabled: isAdmin && !!viewAsUserId,
+  })
+  const { data: viewAsWeekly } = useQuery({
+    queryKey: ["weekly-timesheet-viewas"],
+    queryFn: () => timeEntriesApi.weekly(),
+    enabled: isAdmin && !!viewAsUserId,
+  })
+  const viewAsUser = memberUsers.find((u) => u.id === viewAsUserId)
   const { data: preview, refetch: fetchPreview } = useQuery({
     queryKey: ["discord-preview"],
     queryFn: () => discordApi.preview(),
@@ -149,6 +185,32 @@ export default function DashboardPage() {
     mutationFn: (payload: Record<string, number>) => dashboardApi.updateFinancialSettings(payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dashboard-financial-settings"] }),
     onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar los guardarraíles")),
+  })
+  const markDoneMutation = useMutation({
+    mutationFn: (taskId: number) => tasksApi.update(taskId, { status: "completed" }),
+    onSuccess: () => {
+      toast.success("Tarea completada")
+      queryClient.invalidateQueries({ queryKey: ["my-tasks-in-progress", user?.id] })
+      queryClient.invalidateQueries({ queryKey: ["my-tasks-pending", user?.id] })
+      queryClient.invalidateQueries({ queryKey: ["my-tasks-overdue", user?.id] })
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al completar la tarea")),
+  })
+  const startTimerMutation = useMutation({
+    mutationFn: (taskId: number) => timerApi.start({ task_id: taskId }),
+    onSuccess: () => {
+      toast.success("Timer iniciado")
+      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al iniciar el timer")),
+  })
+  const stopTimerMutation = useMutation({
+    mutationFn: () => timerApi.stop(),
+    onSuccess: () => {
+      toast.success("Timer parado")
+      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al parar el timer")),
   })
 
   // ─── Computed ───────────────────────────────────────────────
@@ -221,6 +283,18 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-2">
           <DailyBriefingButton />
+          {isAdmin && memberUsers.length > 0 && (
+            <Select
+              value={viewAsUserId ?? ""}
+              onChange={(e) => setViewAsUserId(e.target.value ? Number(e.target.value) : null)}
+              className="w-44"
+            >
+              <option value="">Ver dashboard de...</option>
+              {memberUsers.map((u) => (
+                <option key={u.id} value={u.id}>{u.full_name}</option>
+              ))}
+            </Select>
+          )}
           <Select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="w-40">
             {MONTHS.map((m, i) => (<option key={i} value={i + 1}>{m}</option>))}
           </Select>
@@ -233,6 +307,35 @@ export default function DashboardPage() {
       {/* Worker Dashboard */}
       {!isAdmin && user && (
         <div className="space-y-6">
+          {/* Active timer */}
+          {activeTimer && (
+            <Card className="border-brand/30 bg-brand/5">
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full bg-brand animate-pulse" />
+                    <div>
+                      <p className="text-sm font-medium text-brand">Timer activo</p>
+                      <p className="text-xs text-muted-foreground">
+                        {activeTimer.task_title || "Sin tarea asignada"}
+                        {activeTimer.client_name ? ` · ${activeTimer.client_name}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => stopTimerMutation.mutate()}
+                    disabled={stopTimerMutation.isPending}
+                  >
+                    <Square className="h-3 w-3 mr-1.5" />
+                    Parar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {weeklyTimesheet && (() => {
             const myRow = weeklyTimesheet.users.find((u: { user_id: number; total_minutes: number }) => u.user_id === user.id)
             const totalHours = myRow ? Math.round(myRow.total_minutes / 60 * 10) / 10 : 0
@@ -243,6 +346,10 @@ export default function DashboardPage() {
               </div>
             )
           })()}
+
+          <DailyUpdateWidget userId={user.id} />
+          <DeberesWidget userId={user.id} />
+
           {myOverdueTasks && myOverdueTasks.length > 0 && (
             <OverdueTasks tasks={myOverdueTasks} title={`Mis tareas vencidas (${myOverdueTasks.length})`} />
           )}
@@ -251,13 +358,44 @@ export default function DashboardPage() {
               <CardHeader className="pb-2"><CardTitle className="text-sm">Mis tareas en curso</CardTitle></CardHeader>
               <CardContent>
                 <Table>
-                  <TableHeader><TableRow><TableHead>Tarea</TableHead><TableHead>Cliente</TableHead><TableHead>Fecha limite</TableHead></TableRow></TableHeader>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tarea</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Fecha límite</TableHead>
+                      <TableHead className="w-16"></TableHead>
+                    </TableRow>
+                  </TableHeader>
                   <TableBody>
                     {myInProgressTasks.map((t) => (
                       <TableRow key={t.id}>
                         <TableCell className="font-medium">{t.title}</TableCell>
                         <TableCell>{t.client_name || "-"}</TableCell>
                         <TableCell className="mono">{t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : "-"}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            {activeTimer?.task_id === t.id ? (
+                              <span className="text-brand text-xs font-medium">● timer</span>
+                            ) : (
+                              <button
+                                onClick={() => startTimerMutation.mutate(t.id)}
+                                disabled={startTimerMutation.isPending || !!activeTimer}
+                                className="p-1.5 text-muted-foreground hover:text-brand hover:bg-brand/10 rounded-md transition-colors disabled:opacity-40"
+                                title="Iniciar timer"
+                              >
+                                <Play className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => markDoneMutation.mutate(t.id)}
+                              disabled={markDoneMutation.isPending}
+                              className="p-1.5 text-muted-foreground hover:text-green-400 hover:bg-green-400/10 rounded-md transition-colors"
+                              title="Marcar como completada"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -270,9 +408,100 @@ export default function DashboardPage() {
               <CardHeader className="pb-2"><CardTitle className="text-sm">Mis tareas pendientes</CardTitle></CardHeader>
               <CardContent>
                 <Table>
-                  <TableHeader><TableRow><TableHead>Tarea</TableHead><TableHead>Cliente</TableHead><TableHead>Fecha limite</TableHead></TableRow></TableHeader>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tarea</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Fecha límite</TableHead>
+                      <TableHead className="w-16"></TableHead>
+                    </TableRow>
+                  </TableHeader>
                   <TableBody>
                     {myPendingTasks.map((t) => (
+                      <TableRow key={t.id}>
+                        <TableCell className="font-medium">{t.title}</TableCell>
+                        <TableCell>{t.client_name || "-"}</TableCell>
+                        <TableCell className="mono">{t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : "-"}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => startTimerMutation.mutate(t.id)}
+                              disabled={startTimerMutation.isPending || !!activeTimer}
+                              className="p-1.5 text-muted-foreground hover:text-brand hover:bg-brand/10 rounded-md transition-colors disabled:opacity-40"
+                              title="Iniciar timer"
+                            >
+                              <Play className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => markDoneMutation.mutate(t.id)}
+                              disabled={markDoneMutation.isPending}
+                              className="p-1.5 text-muted-foreground hover:text-green-400 hover:bg-green-400/10 rounded-md transition-colors"
+                              title="Marcar como completada"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Admin: view as member */}
+      {isAdmin && viewAsUserId && viewAsUser && (
+        <div className="space-y-6 border border-brand/20 rounded-xl p-5 bg-brand/5">
+          <div className="flex items-center gap-2">
+            <UserCog className="h-4 w-4 text-brand" />
+            <span className="text-sm font-semibold text-brand">Vista de {viewAsUser.full_name}</span>
+            <span className="text-xs text-muted-foreground ml-auto">solo lectura</span>
+          </div>
+          {viewAsWeekly && (() => {
+            const row = viewAsWeekly.users.find((u: { user_id: number; total_minutes: number }) => u.user_id === viewAsUserId)
+            const hours = row ? Math.round(row.total_minutes / 60 * 10) / 10 : 0
+            return (
+              <div className="grid grid-cols-2 gap-4">
+                <MetricCard icon={Clock} label="Horas esta semana" value={`${hours}h`} tooltip="Horas de esta semana." />
+                <MetricCard icon={CheckSquare} label="Tareas en curso" value={viewAsInProgress?.length ?? 0} subtitle={`${viewAsPending?.length ?? 0} pendientes`} tooltip="Tareas en curso." />
+              </div>
+            )
+          })()}
+          <DailyUpdateWidget userId={viewAsUserId} readOnly />
+          <DeberesWidget userId={viewAsUserId} />
+          {viewAsOverdue && viewAsOverdue.length > 0 && (
+            <OverdueTasks tasks={viewAsOverdue} title={`Tareas vencidas (${viewAsOverdue.length})`} />
+          )}
+          {viewAsInProgress && viewAsInProgress.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Tareas en curso</CardTitle></CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader><TableRow><TableHead>Tarea</TableHead><TableHead>Cliente</TableHead><TableHead>Fecha límite</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {viewAsInProgress.map((t) => (
+                      <TableRow key={t.id}>
+                        <TableCell className="font-medium">{t.title}</TableCell>
+                        <TableCell>{t.client_name || "-"}</TableCell>
+                        <TableCell className="mono">{t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : "-"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+          {viewAsPending && viewAsPending.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Tareas pendientes</CardTitle></CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader><TableRow><TableHead>Tarea</TableHead><TableHead>Cliente</TableHead><TableHead>Fecha límite</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {viewAsPending.map((t) => (
                       <TableRow key={t.id}>
                         <TableCell className="font-medium">{t.title}</TableCell>
                         <TableCell>{t.client_name || "-"}</TableCell>
