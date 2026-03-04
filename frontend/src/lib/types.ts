@@ -1562,6 +1562,12 @@ export interface AgencyAsset {
   hosting_type: HostingType | null
   tool_category: string | null
   monthly_cost: number | null
+  // Credentials
+  username: string | null
+  password: string | null
+  is_active: boolean | null
+  subscription_type: string | null
+  purpose: string | null
   created_at: string
   updated_at: string
 }
@@ -1581,6 +1587,12 @@ export interface AgencyAssetCreate {
   hosting_type?: HostingType | null
   tool_category?: string | null
   monthly_cost?: number | null
+  // Credentials
+  username?: string | null
+  password?: string | null
+  is_active?: boolean | null
+  subscription_type?: string | null
+  purpose?: string | null
 }
 
 // --- Daily Updates ---

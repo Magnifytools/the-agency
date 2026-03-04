@@ -87,6 +87,12 @@ async def _ensure_columns():
     updated_at TIMESTAMPTZ DEFAULT NOW()
 )""",
         "CREATE INDEX IF NOT EXISTS ix_client_documents_client_id ON client_documents(client_id)",
+        # Agency Vault credential fields
+        "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS username VARCHAR(200)",
+        "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS password VARCHAR(500)",
+        "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS is_active BOOLEAN",
+        "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS subscription_type VARCHAR(50)",
+        "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS purpose VARCHAR(200)",
     ]
     async with engine.begin() as conn:
         for sql in stmts:

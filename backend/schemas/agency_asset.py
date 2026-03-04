@@ -22,6 +22,12 @@ class AssetCreate(BaseModel):
     hosting_type: Optional[str] = None
     tool_category: Optional[str] = None
     monthly_cost: Optional[Decimal] = None
+    # Credentials
+    username: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
+    subscription_type: Optional[str] = None
+    purpose: Optional[str] = None
 
 
 class AssetUpdate(BaseModel):
@@ -38,6 +44,12 @@ class AssetUpdate(BaseModel):
     hosting_type: Optional[str] = None
     tool_category: Optional[str] = None
     monthly_cost: Optional[Decimal] = None
+    # Credentials
+    username: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
+    subscription_type: Optional[str] = None
+    purpose: Optional[str] = None
 
 
 class AssetResponse(BaseModel):
@@ -56,6 +68,12 @@ class AssetResponse(BaseModel):
     hosting_type: Optional[str] = None
     tool_category: Optional[str] = None
     monthly_cost: Optional[Decimal] = None
+    # Credentials
+    username: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
+    subscription_type: Optional[str] = None
+    purpose: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

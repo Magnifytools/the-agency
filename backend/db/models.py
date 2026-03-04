@@ -1180,6 +1180,12 @@ class AgencyAsset(TimestampMixin, Base):
     # Tool / Hosting
     tool_category = Column(String(100))
     monthly_cost = Column(Numeric(10, 2))
+    # Credentials (tools + emails)
+    username = Column(String(200))        # login email / user for the tool
+    password = Column(String(500))        # password (stored plain, vault is admin-only)
+    is_active = Column(Boolean)           # Activa: True/False/None
+    subscription_type = Column(String(50))  # Gratuita, Mensual, Anual, etc.
+    purpose = Column(String(200))         # Uso: Contacto general, Cuentas herramientas...
 
 
 class IndustryNews(TimestampMixin, Base):

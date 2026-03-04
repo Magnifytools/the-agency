@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { Archive, Plus, Pencil, Trash2, Mail, Globe, Server, Wrench } from "lucide-react"
+import { Archive, Plus, Pencil, Trash2, Mail, Globe, Server, Wrench, Eye, EyeOff } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { cn } from "@/lib/utils"
@@ -34,6 +34,8 @@ const HOSTING_TYPES: { value: HostingType; label: string }[] = [
   { value: "other", label: "Otro" },
 ]
 
+const SUBSCRIPTION_TYPES = ["Gratuita", "Mensual", "Anual", "De pago", "Trial"]
+
 const emptyForm: AgencyAssetCreate = {
   category: "email",
   name: "",
@@ -49,6 +51,11 @@ const emptyForm: AgencyAssetCreate = {
   hosting_type: null,
   tool_category: "",
   monthly_cost: null,
+  username: "",
+  password: "",
+  is_active: null,
+  subscription_type: "",
+  purpose: "",
 }
 
 export default function AgencyVaultPage() {
@@ -128,6 +135,11 @@ export default function AgencyVaultPage() {
       hosting_type: asset.hosting_type,
       tool_category: asset.tool_category ?? "",
       monthly_cost: asset.monthly_cost,
+      username: asset.username ?? "",
+      password: asset.password ?? "",
+      is_active: asset.is_active,
+      subscription_type: asset.subscription_type ?? "",
+      purpose: asset.purpose ?? "",
     })
     setDialogOpen(true)
   }
@@ -253,21 +265,49 @@ export default function AgencyVaultPage() {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label>Contraseña</Label>
+                  <Input
+                    value={formData.password ?? ""}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    placeholder="••••••••"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Uso / Propósito</Label>
+                  <Input
+                    value={formData.purpose ?? ""}
+                    onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
+                    placeholder="Contacto general, Cuentas herramientas..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>URL de acceso</Label>
+                  <Input
+                    value={formData.url ?? ""}
+                    onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                    placeholder="https://webmail.proveedor.com"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
                   <Label>Proveedor</Label>
                   <Input
                     value={formData.provider ?? ""}
                     onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
-                    placeholder="Google Workspace, Zoho..."
+                    placeholder="Google Workspace, Siteground..."
                   />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Dominio asociado</Label>
-                <Input
-                  value={formData.associated_domain ?? ""}
-                  onChange={(e) => setFormData({ ...formData, associated_domain: e.target.value })}
-                  placeholder="dominio.com"
-                />
+                <div className="space-y-2">
+                  <Label>Dominio asociado</Label>
+                  <Input
+                    value={formData.associated_domain ?? ""}
+                    onChange={(e) => setFormData({ ...formData, associated_domain: e.target.value })}
+                    placeholder="dominio.com"
+                  />
+                </div>
               </div>
             </>
           )}
@@ -374,19 +414,41 @@ export default function AgencyVaultPage() {
             <>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
+                  <Label>Usuario / Email</Label>
+                  <Input
+                    value={formData.username ?? ""}
+                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    placeholder="digital@magnify.ing"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Contraseña</Label>
+                  <Input
+                    value={formData.password ?? ""}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    placeholder="••••••••"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Suscripción</Label>
+                  <Select
+                    value={formData.subscription_type ?? ""}
+                    onChange={(e) => setFormData({ ...formData, subscription_type: e.target.value || null })}
+                  >
+                    <option value="">Sin especificar</option>
+                    {SUBSCRIPTION_TYPES.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-2">
                   <Label>Categoría</Label>
                   <Input
                     value={formData.tool_category ?? ""}
                     onChange={(e) => setFormData({ ...formData, tool_category: e.target.value })}
                     placeholder="SEO, Analytics, Diseño..."
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Proveedor</Label>
-                  <Input
-                    value={formData.provider ?? ""}
-                    onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
-                    placeholder="Google, Ahrefs..."
                   />
                 </div>
               </div>
@@ -411,6 +473,15 @@ export default function AgencyVaultPage() {
                   />
                 </div>
               </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={formData.is_active ?? false}
+                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                  className="rounded border-border"
+                />
+                Activa
+              </label>
             </>
           )}
 
@@ -449,6 +520,25 @@ export default function AgencyVaultPage() {
   )
 }
 
+// --- Password reveal field ---
+function PasswordField({ password }: { password: string }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="flex items-center gap-1 mt-0.5">
+      <p className="text-xs font-mono text-muted-foreground truncate flex-1">
+        {show ? password : "••••••••••••"}
+      </p>
+      <button
+        onClick={() => setShow((v) => !v)}
+        className="p-0.5 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+        title={show ? "Ocultar" : "Mostrar contraseña"}
+      >
+        {show ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+      </button>
+    </div>
+  )
+}
+
 // --- Asset Card per category ---
 
 function AssetCard({
@@ -472,6 +562,12 @@ function AssetCard({
           {asset.value && (
             <p className="text-sm text-muted-foreground truncate mt-0.5">{asset.value}</p>
           )}
+          {asset.username && asset.username !== asset.value && (
+            <p className="text-xs text-muted-foreground truncate mt-0.5">👤 {asset.username}</p>
+          )}
+          {asset.password && (
+            <PasswordField password={asset.password} />
+          )}
         </div>
         {isAdmin && (
           <div className="flex gap-1 flex-shrink-0">
@@ -488,8 +584,9 @@ function AssetCard({
       <div className="flex flex-wrap gap-2 text-xs">
         {category === "email" && (
           <>
+            {asset.purpose && <Badge variant="secondary">{asset.purpose}</Badge>}
             {asset.provider && <Badge variant="outline">{asset.provider}</Badge>}
-            {asset.associated_domain && <Badge variant="secondary">{asset.associated_domain}</Badge>}
+            {asset.associated_domain && <Badge variant="outline">{asset.associated_domain}</Badge>}
           </>
         )}
 
@@ -518,8 +615,11 @@ function AssetCard({
 
         {category === "tool" && (
           <>
+            {asset.is_active != null && (
+              <Badge variant={asset.is_active ? "success" : "outline"}>{asset.is_active ? "Activa" : "Inactiva"}</Badge>
+            )}
+            {asset.subscription_type && <Badge variant="secondary">{asset.subscription_type}</Badge>}
             {asset.tool_category && <Badge variant="outline">{asset.tool_category}</Badge>}
-            {asset.provider && <Badge variant="secondary">{asset.provider}</Badge>}
             {asset.monthly_cost != null && (
               <Badge variant="default">{Number(asset.monthly_cost).toFixed(2)} /mes</Badge>
             )}
@@ -527,7 +627,18 @@ function AssetCard({
         )}
       </div>
 
-      {asset.url && (
+      {asset.url && category === "email" && (
+        <a
+          href={asset.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-brand hover:underline truncate"
+        >
+          🔗 {asset.url}
+        </a>
+      )}
+
+      {asset.url && category !== "email" && (
         <a
           href={asset.url}
           target="_blank"
