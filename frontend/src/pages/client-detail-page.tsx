@@ -26,6 +26,7 @@ import { ClientReportsTab } from "@/components/clients/client-reports-tab"
 import { ClientSettingsTab } from "@/components/clients/client-settings-tab"
 import { EngineMetricsWidget } from "@/components/clients/engine-metrics-widget"
 import { EngineSeoTab } from "@/components/clients/engine-seo-tab"
+import { CoreUpdatesTab } from "@/components/clients/core-updates-tab"
 import { useAuth } from "@/context/auth-context"
 import { holdedKeys } from "@/lib/query-keys"
 
@@ -213,7 +214,7 @@ export default function ClientDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [timeLogTaskId, setTimeLogTaskId] = useState<{ id: number; title: string } | null>(null)
 
-  const validTabs = ["actividad", "tareas", "proyectos", "comunicaciones", "contactos", "panel", "tiempo", "facturacion", "recursos", "seo", "informes", "ajustes", "facturas"] as const
+  const validTabs = ["actividad", "tareas", "proyectos", "comunicaciones", "contactos", "panel", "tiempo", "facturacion", "recursos", "seo", "core-updates", "informes", "ajustes", "facturas"] as const
   type Tab = (typeof validTabs)[number]
   const tabParam = searchParams.get("tab") as Tab
   const activeTab = validTabs.includes(tabParam) ? tabParam : "actividad"
@@ -375,7 +376,7 @@ export default function ClientDetailPage() {
 
       {/* Tabs */}
       <div className="flex items-center space-x-1 bg-muted/30 p-1 w-fit rounded-lg border border-border overflow-x-auto">
-        {(["actividad", "tareas", "proyectos", "panel", "comunicaciones", "contactos", "tiempo", "facturacion", "recursos", ...(client.engine_project_id ? ["seo" as const] : []), "informes", ...(holdedEnabled ? ["facturas" as const] : []), "ajustes"] as const).map((tab) => (
+        {(["actividad", "tareas", "proyectos", "panel", "comunicaciones", "contactos", "tiempo", "facturacion", "recursos", ...(client.engine_project_id ? ["seo" as const, "core-updates" as const] : []), "informes", ...(holdedEnabled ? ["facturas" as const] : []), "ajustes"] as const).map((tab) => (
           <Button
             key={tab}
             variant={activeTab === tab ? "default" : "ghost"}
@@ -580,6 +581,9 @@ export default function ClientDetailPage() {
 
       {/* Tab: SEO */}
       {activeTab === "seo" && client.engine_project_id && <EngineSeoTab client={client} />}
+
+      {/* Tab: Core Updates */}
+      {activeTab === "core-updates" && client.engine_project_id && <CoreUpdatesTab client={client} />}
 
       {/* Tab: Recursos */}
       {activeTab === "recursos" && (

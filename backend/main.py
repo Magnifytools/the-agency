@@ -22,7 +22,7 @@ from backend.api.routes import (
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
     service_templates, dailys, contacts, activity, notifications, resources,
     billing_events, client_dashboard, engine_integration, investments,
-    evidence, search, agency_vault, industry_news,
+    evidence, search, agency_vault, industry_news, core_updates,
 )
 
 
@@ -221,6 +221,7 @@ app.include_router(evidence.router)
 app.include_router(search.router)
 app.include_router(agency_vault.router)
 app.include_router(industry_news.router)
+app.include_router(core_updates.router)
 
 # Serve frontend static files in production
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"

@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     ENGINE_SYNC_INTERVAL_HOURS: int = 6
     ENGINE_SYNC_ENABLED: bool = True
     ENGINE_FRONTEND_URL: Optional[str] = None
+    VOYAGE_API_KEY: Optional[str] = None
 
     model_config = {"env_file": str(Path(__file__).resolve().parent.parent / ".env")}
 
