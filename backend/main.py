@@ -101,13 +101,13 @@ async def _ensure_columns():
 
 async def _ensure_seed_users():
     """Ensure seed users exist with the correct password (fixes deployed DB after password change)."""
-    from backend.db.database import AsyncSessionFactory
+    from backend.db.database import async_session
     from backend.core.security import hash_password
     from backend.db.models import User
     from sqlalchemy import select
     admin_pw = os.environ.get("SEED_ADMIN_PASSWORD", "Magnify2026!")
     member_pw = os.environ.get("SEED_MEMBER_PASSWORD", "Magnify2026!")
-    async with AsyncSessionFactory() as session:
+    async with async_session() as session:
         for email, pw in [("david@magnify.ing", admin_pw), ("nacho@magnify.ing", member_pw)]:
             result = await session.execute(select(User).where(User.email == email))
             user = result.scalar_one_or_none()
