@@ -76,8 +76,19 @@ export interface Client {
   ltv: number | null
   seo_maturity_level: string | null
   is_internal: boolean
+  context?: string | null
   created_at: string
   updated_at: string
+}
+
+export interface ClientDocument {
+  id: number
+  client_id: number
+  name: string
+  description?: string | null
+  mime_type: string
+  size_bytes: number
+  created_at: string
 }
 
 export interface ClientCreate {

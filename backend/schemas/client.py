@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Optional
 
 from datetime import date, datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from backend.db.models import ContractType, ClientStatus, BillingCycle
 
 
@@ -55,6 +55,7 @@ class ClientUpdate(BaseModel):
     conversion_rate: Optional[float] = None
     ltv: Optional[float] = None
     seo_maturity_level: Optional[str] = None
+    context: Optional[str] = None
 
 
 class ClientResponse(BaseModel):
@@ -90,7 +91,19 @@ class ClientResponse(BaseModel):
     ltv: Optional[float] = None
     seo_maturity_level: Optional[str] = None
     is_internal: bool = False
+    context: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ClientDocumentResponse(BaseModel):
+    id: int
+    client_id: int
+    name: str
+    description: Optional[str] = None
+    mime_type: str
+    size_bytes: int
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)

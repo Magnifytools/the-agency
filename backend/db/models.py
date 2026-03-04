@@ -14,6 +14,7 @@ from sqlalchemy import (
     ForeignKey,
     Boolean,
     JSON,
+    LargeBinary,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -278,6 +279,8 @@ class Client(TimestampMixin, Base):
     engine_project_id = Column(Integer, nullable=True)
     # Internal flag
     is_internal = Column(Boolean, nullable=False, default=False)
+    # Narrative context / dossier
+    context = Column(Text, nullable=True)
     # Revenue intelligence
     business_model = Column(String(50), nullable=True)  # ecommerce, saas, lead_gen, media
     aov = Column(Float, nullable=True)  # Average Order Value EUR
@@ -533,6 +536,20 @@ class ClientResource(TimestampMixin, Base):
     notes = Column(Text, nullable=True)
 
     client = relationship("Client", back_populates="resources", lazy="selectin")
+
+
+class ClientDocument(TimestampMixin, Base):
+    __tablename__ = "client_documents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    mime_type = Column(String(100), nullable=False, default="application/octet-stream")
+    size_bytes = Column(Integer, nullable=False)
+    content = Column(LargeBinary, nullable=False)
+
+    client = relationship("Client", lazy="noload")
 
 
 class EvidenceType(str, enum.Enum):

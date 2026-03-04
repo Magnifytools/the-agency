@@ -7,6 +7,7 @@ import type {
   PaginatedResponse,
   Client,
   ClientCreate,
+  ClientDocument,
   ClientSummary,
   Task,
   TaskCreate,
@@ -202,6 +203,20 @@ export const clientsApi = {
     api.post<{ recommendations: Array<{ priority: "high" | "medium" | "low"; category: string; title: string; description: string; action: string }> }>(`/clients/${id}/ai-advice`).then((r) => r.data),
   recentTimeEntries: (id: number, limit = 10) =>
     api.get<Array<{ id: number; date: string; minutes: number; notes: string | null; task_title: string | null; user_name: string | null }>>(`/clients/${id}/recent-time-entries`, { params: { limit } }).then((r) => r.data),
+  documents: {
+    list: (clientId: number) =>
+      api.get<ClientDocument[]>(`/clients/${clientId}/documents`).then((r) => r.data),
+    upload: (clientId: number, file: File, description?: string) => {
+      const form = new FormData()
+      form.append("file", file)
+      if (description) form.append("description", description)
+      return api.post<ClientDocument>(`/clients/${clientId}/documents`, form).then((r) => r.data)
+    },
+    downloadUrl: (clientId: number, docId: number) =>
+      `/api/clients/${clientId}/documents/${docId}/download`,
+    delete: (clientId: number, docId: number) =>
+      api.delete(`/clients/${clientId}/documents/${docId}`),
+  },
 }
 
 // Tasks

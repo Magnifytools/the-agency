@@ -74,6 +74,19 @@ async def _ensure_columns():
         "CREATE INDEX IF NOT EXISTS ix_time_entries_task_date ON time_entries (task_id, date DESC)",
         "CREATE INDEX IF NOT EXISTS ix_comm_logs_client_occurred ON communication_logs (client_id, occurred_at DESC)",
         "CREATE INDEX IF NOT EXISTS ix_projects_client_status ON projects (client_id, status)",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS context TEXT",
+        """CREATE TABLE IF NOT EXISTS client_documents (
+    id SERIAL PRIMARY KEY,
+    client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    mime_type VARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
+    size_bytes INTEGER NOT NULL,
+    content BYTEA NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+)""",
+        "CREATE INDEX IF NOT EXISTS ix_client_documents_client_id ON client_documents(client_id)",
     ]
     async with engine.begin() as conn:
         for sql in stmts:

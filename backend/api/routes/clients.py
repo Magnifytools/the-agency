@@ -2,7 +2,8 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy import select, func, delete, update, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,9 +15,9 @@ from backend.db.models import (
     ClientContact, ClientResource, BillingEvent,
     CommunicationLog, WeeklyDigest, Invoice, InvoiceItem,
     PMInsight, GrowthIdea, Proposal, Event, Lead,
-    GeneratedReport, Income, HoldedInvoiceCache,
+    GeneratedReport, Income, HoldedInvoiceCache, ClientDocument,
 )
-from backend.schemas.client import ClientCreate, ClientUpdate, ClientResponse
+from backend.schemas.client import ClientCreate, ClientUpdate, ClientResponse, ClientDocumentResponse
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module, require_admin
 from backend.services.client_health import compute_health, compute_health_batch
@@ -337,3 +338,78 @@ async def get_ai_advice(
         return {"recommendations": recommendations}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{client_id}/documents", response_model=list[ClientDocumentResponse])
+async def list_documents(
+    client_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("clients")),
+):
+    result = await db.execute(
+        select(ClientDocument).where(ClientDocument.client_id == client_id)
+        .order_by(ClientDocument.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.post("/{client_id}/documents", response_model=ClientDocumentResponse, status_code=201)
+async def upload_document(
+    client_id: int,
+    file: UploadFile = File(...),
+    description: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("clients", write=True)),
+):
+    content = await file.read()
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(400, "Archivo demasiado grande (máx 20 MB)")
+    doc = ClientDocument(
+        client_id=client_id,
+        name=file.filename or "documento",
+        description=description,
+        mime_type=file.content_type or "application/octet-stream",
+        size_bytes=len(content),
+        content=content,
+    )
+    db.add(doc)
+    await db.commit()
+    await db.refresh(doc)
+    return doc
+
+
+@router.get("/{client_id}/documents/{doc_id}/download")
+async def download_document(
+    client_id: int,
+    doc_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("clients")),
+):
+    result = await db.execute(
+        select(ClientDocument).where(ClientDocument.id == doc_id, ClientDocument.client_id == client_id)
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(404, "Documento no encontrado")
+    return Response(
+        content=doc.content,
+        media_type=doc.mime_type,
+        headers={"Content-Disposition": f'attachment; filename="{doc.name}"'},
+    )
+
+
+@router.delete("/{client_id}/documents/{doc_id}", status_code=204)
+async def delete_document(
+    client_id: int,
+    doc_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("clients", write=True)),
+):
+    result = await db.execute(
+        select(ClientDocument).where(ClientDocument.id == doc_id, ClientDocument.client_id == client_id)
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(404, "Documento no encontrado")
+    await db.delete(doc)
+    await db.commit()

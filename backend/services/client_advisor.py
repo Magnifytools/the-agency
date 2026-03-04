@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 from backend.db.models import (
     Client, Task, TaskStatus, TimeEntry, CommunicationLog,
-    ClientContact, BillingEvent,
+    ClientContact, BillingEvent, ClientDocument,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ REGLAS:
 5. Si un area esta bien, no inventes problemas. Solo reporta lo relevante.
 6. NO inventes datos. Solo usa lo que esta en el contexto proporcionado.
 7. Responde SOLO con el JSON, sin markdown ni explicaciones.
+8. Si se proporciona HISTORIA Y CONTEXTO DEL CLIENTE, usala como fuente principal. Es la informacion mas valiosa para las recomendaciones.
 
 Responde con un JSON asi:
 {
@@ -127,6 +128,21 @@ async def get_client_advice(
         context_parts.append(f"Facturacion: {billing_info}")
     if client.notes:
         context_parts.append(f"Notas: {client.notes[:300]}")
+
+    # Historia y contexto narrativo (la info más valiosa)
+    if client.context:
+        context_parts.append(f"\nHISTORIA Y CONTEXTO DEL CLIENTE:\n{client.context}")
+
+    # Documentos adjuntos
+    doc_result = await db.execute(
+        select(ClientDocument.name, ClientDocument.description)
+        .where(ClientDocument.client_id == client_id)
+        .order_by(ClientDocument.created_at.desc()).limit(10)
+    )
+    docs = doc_result.all()
+    if docs:
+        doc_lines = "\n".join(f"- {d.name}" + (f": {d.description}" if d.description else "") for d in docs)
+        context_parts.append(f"\nDOCUMENTOS ADJUNTOS:\n{doc_lines}")
 
     user_prompt = (
         "Analiza los datos de este cliente y dame 3-5 recomendaciones accionables:\n\n"
