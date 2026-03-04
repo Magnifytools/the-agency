@@ -1,5 +1,4 @@
 from __future__ import annotations
-from typing import Optional
 from datetime import date, datetime
 from pydantic import BaseModel
 

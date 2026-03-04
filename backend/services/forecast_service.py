@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
 
@@ -128,23 +129,23 @@ async def calculate_runway(db: AsyncSession) -> dict:
         balance_source = "manual"
         balance_date = latest_snapshot.date.isoformat()
     else:
-        r = await db.execute(
-            select(func.coalesce(func.sum(Income.amount), 0))
-            .where(extract("year", Income.date) == year)
+        ri, re, rt = await asyncio.gather(
+            db.execute(
+                select(func.coalesce(func.sum(Income.amount), 0))
+                .where(extract("year", Income.date) == year)
+            ),
+            db.execute(
+                select(func.coalesce(func.sum(Expense.amount), 0))
+                .where(extract("year", Expense.date) == year)
+            ),
+            db.execute(
+                select(func.coalesce(func.sum(Tax.tax_amount), 0))
+                .where(Tax.year == year, Tax.status == "pagado")
+            ),
         )
-        ytd_income = float(r.scalar())
-
-        r = await db.execute(
-            select(func.coalesce(func.sum(Expense.amount), 0))
-            .where(extract("year", Expense.date) == year)
-        )
-        ytd_expenses = float(r.scalar())
-
-        r = await db.execute(
-            select(func.coalesce(func.sum(Tax.tax_amount), 0))
-            .where(Tax.year == year, Tax.status == "pagado")
-        )
-        ytd_taxes_paid = float(r.scalar())
+        ytd_income = float(ri.scalar())
+        ytd_expenses = float(re.scalar())
+        ytd_taxes_paid = float(rt.scalar())
 
         cash = ytd_income - ytd_expenses - ytd_taxes_paid
         balance_source = "calculated"

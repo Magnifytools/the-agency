@@ -191,18 +191,19 @@ async def _generate_overdue_income_insights(
     db: AsyncSession, user_id: Optional[int], now: datetime
 ) -> list[PMInsight]:
     """Generate insights for pending income entries overdue >15 days."""
-    from datetime import date as date_type
     today = now.date()
 
     result = await db.execute(
         select(
             Income.client_id,
+            Client.name.label("client_name"),
             func.sum(Income.amount).label("total_amount"),
             func.min(Income.date).label("oldest_date"),
             func.min(Income.due_date).label("oldest_due_date"),
         )
+        .join(Client, Income.client_id == Client.id, isouter=True)
         .where(Income.status == "pendiente")
-        .group_by(Income.client_id)
+        .group_by(Income.client_id, Client.name)
     )
 
     insights = []
@@ -214,13 +215,7 @@ async def _generate_overdue_income_insights(
         if days_pending <= 15:
             continue
 
-        client_name = f"Cliente #{row.client_id}"
-        if row.client_id:
-            cr = await db.execute(select(Client).where(Client.id == row.client_id))
-            client = cr.scalar_one_or_none()
-            if client:
-                client_name = client.name
-
+        client_name = row.client_name or f"Cliente #{row.client_id}"
         insight = PMInsight(
             insight_type=InsightType.overdue,
             priority=InsightPriority.high,
