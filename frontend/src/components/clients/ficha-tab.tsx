@@ -1,6 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { debounce } from "lodash-es"
 import { BookOpen, User, Mail, Phone, FileText, Download, Trash2, Upload, File as FileIcon } from "lucide-react"
 import { clientsApi, contactsApi } from "@/lib/api"
 import type { Client, ClientDocument } from "@/lib/types"
@@ -46,6 +45,7 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle")
   const [deleteDocId, setDeleteDocId] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     setContextValue(client.context ?? "")
@@ -60,19 +60,13 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
     },
   })
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const debouncedSave = useCallback(
-    debounce((v: string) => {
-      setSaveStatus("saving")
-      updateMut.mutate(v)
-    }, 1500),
-    []
-  )
-
   const handleContextChange = (v: string) => {
     setContextValue(v)
     setSaveStatus("saving")
-    debouncedSave(v)
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      updateMut.mutate(v)
+    }, 1500)
   }
 
   const { data: contacts = [] } = useQuery({

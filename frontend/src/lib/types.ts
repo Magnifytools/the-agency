@@ -118,6 +118,7 @@ export interface ClientCreate {
   ltv?: number | null
   seo_maturity_level?: string | null
   is_internal?: boolean
+  context?: string | null
 }
 
 export interface ClientContact {

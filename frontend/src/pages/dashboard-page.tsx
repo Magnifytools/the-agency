@@ -130,8 +130,7 @@ export default function DashboardPage() {
     enabled: !!user && user.role === "member",
     refetchInterval: 30_000,
   })
-  const now = new Date()
-  const today = now.toISOString().slice(0, 10)
+  const today = new Date().toISOString().slice(0, 10)
   const { data: todayDailys } = useQuery({
     queryKey: ["daily-today", user?.id, today],
     queryFn: () => dailysApi.list({ user_id: user!.id, date_from: today, date_to: today, limit: 1 }),
