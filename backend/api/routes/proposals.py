@@ -1,5 +1,7 @@
 from __future__ import annotations
+import asyncio
 import logging
+from io import BytesIO
 from typing import Any, Optional
 from datetime import datetime, date, timedelta
 
@@ -724,12 +726,20 @@ async def generate_proposal_pdf(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("proposals")),
 ):
-    """Generate a print-ready HTML page for the proposal.
+    """Generate a binary PDF for the proposal (application/pdf)."""
+    result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
+    prop = result.scalar_one_or_none()
+    if not prop:
+        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
 
-    Returns HTML that the browser can print/save as PDF via Ctrl+P.
-    The page includes @media print styles for clean A4 output.
-    """
-    return await _render_proposal_html(proposal_id, db)
+    loop = asyncio.get_event_loop()
+    pdf_bytes = await loop.run_in_executor(None, _build_pdf, prop)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="propuesta-{proposal_id}.pdf"'},
+    )
 
 
 @router.get("/{proposal_id}/pdf")
@@ -739,11 +749,216 @@ async def get_proposal_pdf(
     _: User = Depends(require_module("proposals")),
 ):
     """Render proposal as print-ready HTML. Uses standard Bearer auth."""
-    return await _render_proposal_html(proposal_id, db)
+    html_content = await _build_proposal_html(proposal_id, db)
+    return Response(content=html_content, media_type="text/html")
 
 
-async def _render_proposal_html(proposal_id: int, db: AsyncSession) -> Response:
-    """Render proposal as print-ready HTML page."""
+# ── PDF builder (fpdf2, pure Python, no system deps) ──────────────────────────
+
+_SERVICE_LABELS = {
+    "seo_sprint": "SEO Sprint — Puesta a punto",
+    "migration": "Supervision de migracion web",
+    "market_study": "Estudio estrategico de mercado SEO",
+    "consulting_retainer": "Consultoria SEO estrategica",
+    "partnership_retainer": "Partnership SEO integral",
+    "brand_audit": "Brand Visibility Audit",
+    "custom": "Propuesta personalizada",
+}
+
+
+def _safe(text: str) -> str:
+    """Strip characters outside latin-1 so fpdf2 (built-in fonts) won't crash."""
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
+
+def _build_pdf(prop: "Proposal") -> bytes:  # type: ignore[name-defined]
+    from fpdf import FPDF
+
+    content = prop.generated_content or {}
+    pricing_raw = prop.pricing_options or []
+    pricing = [p for p in pricing_raw if isinstance(p, dict)]
+    service_label = _SERVICE_LABELS.get(
+        prop.service_type.value if prop.service_type else "custom",
+        "Propuesta de servicios",
+    )
+    date_str = (prop.created_at or datetime.utcnow()).strftime("%d/%m/%Y")
+    company = _safe(prop.company_name or "Cliente")
+
+    pdf = FPDF(unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.set_margins(20, 15, 20)
+
+    # ── Cover ──────────────────────────────────────────────────────────────
+    pdf.add_page()
+    pdf.set_y(80)
+
+    pdf.set_font("Helvetica", "B", 32)
+    pdf.cell(0, 12, "MAGNIFY", align="C", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(10)
+    pdf.set_font("Helvetica", "", 14)
+    pdf.cell(0, 8, _safe(service_label), align="C", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(6)
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.cell(0, 10, company, align="C", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(30)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 6, date_str, align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(0, 0, 0)
+
+    # ── Content pages ──────────────────────────────────────────────────────
+    def _header():
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(50, 50, 50)
+        pdf.cell(0, 5, "MAGNIFY", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_draw_color(30, 30, 30)
+        pdf.line(pdf.l_margin, pdf.get_y(), 210 - pdf.r_margin, pdf.get_y())
+        pdf.ln(4)
+        pdf.set_text_color(0, 0, 0)
+
+    def _section(title: str):
+        pdf.ln(4)
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(0, 8, _safe(title), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_draw_color(180, 180, 180)
+        pdf.line(pdf.l_margin, pdf.get_y(), 210 - pdf.r_margin, pdf.get_y())
+        pdf.ln(3)
+
+    def _paragraph(text: str):
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 5, _safe(str(text)))
+        pdf.ln(2)
+
+    def _box(text: str, bg: tuple = (240, 244, 255)):
+        pdf.set_fill_color(*bg)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 5, _safe(str(text)), fill=True, border=1)
+        pdf.ln(3)
+
+    pdf.add_page()
+    _header()
+
+    for key, label in [
+        ("executive_summary", None),
+        ("situation", "Situacion actual"),
+        ("problem", "El reto"),
+        ("opportunity", "La oportunidad"),
+    ]:
+        val = content.get(key)
+        if not val:
+            continue
+        if label:
+            _section(label)
+        if key == "executive_summary":
+            _box(val)
+        else:
+            _paragraph(val)
+
+    if content.get("null_case"):
+        _box(f"Si no se actua: {content['null_case']}", bg=(255, 248, 240))
+
+    _section("Nuestra propuesta")
+    if content.get("approach"):
+        _paragraph(content["approach"])
+
+    if content.get("phases"):
+        _section("Fases del proyecto")
+        for phase in content["phases"]:
+            if not isinstance(phase, dict):
+                continue
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.cell(0, 6, _safe(f"{phase.get('name', '')}  —  {phase.get('duration', '')}"), new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "", 9)
+            if phase.get("outcome"):
+                pdf.cell(0, 5, _safe(f"  -> {phase['outcome']}"), new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(1)
+
+    if content.get("success_metrics"):
+        _section("Metricas de exito")
+        col_w = [50, 30, 35, 55]
+        headers = ["Metrica", "Actual", "Objetivo 12m", "Impacto"]
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_fill_color(245, 245, 245)
+        for i, h in enumerate(headers):
+            pdf.cell(col_w[i], 6, h, border=1, fill=True)
+        pdf.ln()
+        pdf.set_font("Helvetica", "", 9)
+        for m in content["success_metrics"]:
+            if not isinstance(m, dict):
+                continue
+            row = [m.get("metric", ""), m.get("current", ""), m.get("target_12m", ""), m.get("impact", "")]
+            for i, cell in enumerate(row):
+                pdf.cell(col_w[i], 6, _safe(str(cell)), border=1)
+            pdf.ln()
+        pdf.ln(3)
+
+    for key, label in [
+        ("includes", "Que incluye"),
+        ("excludes", "Que no incluye"),
+    ]:
+        val = content.get(key)
+        if val:
+            _section(label)
+            _paragraph(val)
+
+    # ── Pricing page ───────────────────────────────────────────────────────
+    if pricing:
+        pdf.add_page()
+        _header()
+        _section("Inversion")
+        for opt in pricing:
+            name = _safe(opt.get("name", ""))
+            price = opt.get("price", 0)
+            recurring = opt.get("is_recurring", False)
+            recommended = opt.get("recommended", False)
+            desc = _safe(opt.get("description", ""))
+            ideal = _safe(opt.get("ideal_for", ""))
+
+            pdf.set_font("Helvetica", "B", 12)
+            price_str = f"{price:,.0f}".replace(",", ".") + (" EUR/mes" if recurring else " EUR")
+            label_str = f"[RECOMENDADA]  " if recommended else ""
+            pdf.cell(0, 7, label_str + name, new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "B", 14)
+            pdf.cell(0, 8, price_str, new_x="LMARGIN", new_y="NEXT")
+            if desc:
+                pdf.set_font("Helvetica", "", 9)
+                pdf.multi_cell(0, 5, desc)
+            if ideal:
+                pdf.set_font("Helvetica", "I", 9)
+                pdf.cell(0, 5, f"Ideal para: {ideal}", new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(5)
+
+        pdf.set_font("Helvetica", "", 8)
+        pdf.set_text_color(100, 100, 100)
+        pdf.multi_cell(0, 4, "Proyectos: 50% al inicio, 50% a la entrega. Retainers: mensual, sin permanencia, 30 dias de aviso.")
+        pdf.set_text_color(0, 0, 0)
+
+    for key, label in [
+        ("credibility", "Sobre Magnify"),
+        ("cases", None),
+        ("next_steps", "Siguientes pasos"),
+    ]:
+        val = content.get(key)
+        if not val:
+            continue
+        if label:
+            _section(label)
+        _paragraph(val)
+
+    pdf.ln(8)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 5, "David Carrasco", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.cell(0, 4, "david@magnify.ing  |  magnify.ing", new_x="LMARGIN", new_y="NEXT")
+
+    return bytes(pdf.output())
+
+
+async def _build_proposal_html(proposal_id: int, db: AsyncSession) -> str:
+    """Render the proposal Jinja2 template and return the HTML string."""
     result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
     prop = result.scalar_one_or_none()
     if not prop:
@@ -779,16 +994,11 @@ async def _render_proposal_html(proposal_id: int, db: AsyncSession) -> Response:
 
     env = Environment(loader=BaseLoader(), autoescape=True)
     template = env.from_string(PDF_HTML_TEMPLATE)
-    html_content = template.render(
+    return template.render(
         title=prop.title,
         company_name=prop.company_name or "Cliente",
         service_label=service_label,
         date_str=(prop.created_at or datetime.utcnow()).strftime("%d de %B de %Y"),
         content=content,
         pricing=pricing_safe,
-    )
-
-    return Response(
-        content=html_content,
-        media_type="text/html",
     )

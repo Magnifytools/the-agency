@@ -197,7 +197,7 @@ async def send_daily_summary(
     success = await _send_discord_message(url, summary)
 
     if success:
-        ds.last_sent_at = datetime.now(timezone.utc)
+        ds.last_sent_at = datetime.utcnow()
         await db.commit()
         return DiscordSendResponse(
             success=True,
@@ -245,7 +245,7 @@ async def send_digest_to_discord(
     success = await _send_discord_message(url, rendered)
 
     if success:
-        ds.last_sent_at = datetime.now(timezone.utc)
+        ds.last_sent_at = datetime.utcnow()
         await db.commit()
         return DiscordSendResponse(
             success=True,

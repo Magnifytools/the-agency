@@ -92,8 +92,9 @@
   }
 
   h1, h2 {
-    font-family: var(--font-display);
-    font-weight: 400;
+    font-family: 'PP Neue Montreal', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.01em;
   }
 
   ::selection {
@@ -119,12 +120,12 @@
     background-color: #242424;
   }
   .kpi-value {
-    font-family: var(--font-display);
+    font-family: 'PP Neue Montreal', -apple-system, BlinkMacSystemFont, sans-serif;
     font-size: 2.5rem;
-    font-weight: 400;
+    font-weight: 700;
     line-height: 1;
     color: #FFFFFF;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
     font-variant-numeric: tabular-nums;
   }
   .section-label {

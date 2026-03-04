@@ -139,7 +139,7 @@ export function AppLayout() {
 
       <div className="flex flex-1 overflow-hidden pb-[60px] md:pb-0">
         {/* Sidebar (Desktop) */}
-        <aside className="hidden md:flex w-[260px] flex-col flex-shrink-0 border-r border-border py-8 px-5 gap-10 bg-card/50">
+        <aside className="hidden md:flex w-[260px] flex-col flex-shrink-0 border-r border-border py-6 px-4 gap-6 bg-card/50">
           {/* Brand */}
           <div className="flex items-center gap-3 pl-1">
             <svg width="28" height="28" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
@@ -288,7 +288,7 @@ export function AppLayout() {
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 overflow-auto p-4 md:p-8 lg:px-10 bg-background/50 relative">
+        <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 bg-background/50 relative">
           <Outlet />
         </main>
       </div>
