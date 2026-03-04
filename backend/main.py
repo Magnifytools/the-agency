@@ -119,7 +119,10 @@ async def _ensure_seed_users():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await _ensure_columns()
-    await _ensure_seed_users()
+    try:
+        await _ensure_seed_users()
+    except Exception as e:
+        logging.error("_ensure_seed_users failed (non-fatal): %s", e)
     task = None
     if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL:
         task = asyncio.create_task(_engine_sync_loop())
