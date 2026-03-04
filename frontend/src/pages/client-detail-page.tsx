@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useParams, Link, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { clientsApi, timeEntriesApi, projectsApi, holdedApi, clientHealthApi, engineApi } from "@/lib/api"
+import { clientsApi, projectsApi, holdedApi, clientHealthApi, engineApi } from "@/lib/api"
 import type { TaskStatus, Client } from "@/lib/types"
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
@@ -262,14 +262,8 @@ export default function ClientDetailPage() {
 
   const { data: recentEntries = [] } = useQuery({
     queryKey: ["time-entries-client", clientId],
-    queryFn: async () => {
-      if (!summary?.tasks.length) return []
-      const allEntries = await Promise.all(
-        summary.tasks.slice(0, 10).map((t) => timeEntriesApi.list({ task_id: t.id }))
-      )
-      return allEntries.flat().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10)
-    },
-    enabled: !!summary?.tasks.length,
+    queryFn: () => clientsApi.recentTimeEntries(clientId),
+    enabled: !!clientId,
   })
 
   if (isLoading) return (

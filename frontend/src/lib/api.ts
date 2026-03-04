@@ -200,6 +200,8 @@ export const clientsApi = {
   summary: (id: number) => api.get<ClientSummary>(`/clients/${id}/summary`).then((r) => r.data),
   aiAdvice: (id: number) =>
     api.post<{ recommendations: Array<{ priority: "high" | "medium" | "low"; category: string; title: string; description: string; action: string }> }>(`/clients/${id}/ai-advice`).then((r) => r.data),
+  recentTimeEntries: (id: number, limit = 10) =>
+    api.get<Array<{ id: number; date: string; minutes: number; notes: string | null; task_title: string | null; user_name: string | null }>>(`/clients/${id}/recent-time-entries`, { params: { limit } }).then((r) => r.data),
 }
 
 // Tasks

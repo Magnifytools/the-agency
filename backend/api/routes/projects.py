@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
 from backend.db.models import Project, ProjectPhase, Task, TaskStatus, PhaseStatus, ProjectStatus
@@ -38,6 +39,15 @@ EXTRACT_PROMPT = """Extrae la información de esta propuesta comercial y respond
 Sin texto adicional. Solo el JSON."""
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
+
+
+def _project_load_options():
+    """Eager loading options for Project queries that need tasks/phases/client."""
+    return [
+        selectinload(Project.client),
+        selectinload(Project.phases),
+        selectinload(Project.tasks).selectinload(Task.assigned_user),
+    ]
 
 
 def calculate_progress(tasks: list) -> int:
@@ -113,9 +123,14 @@ async def list_projects(
 
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
 
-    query = base.order_by(Project.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+    query = (
+        base.options(*_project_load_options())
+        .order_by(Project.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
     result = await db.execute(query)
-    projects = result.scalars().all()
+    projects = result.scalars().unique().all()
 
     items = []
     for p in projects:
@@ -189,7 +204,11 @@ async def create_project(
     )
     db.add(project)
     await db.commit()
-    await db.refresh(project)
+
+    result = await db.execute(
+        select(Project).options(*_project_load_options()).where(Project.id == project.id)
+    )
+    project = result.scalar_one()
 
     return _build_project_response(project)
 
@@ -263,7 +282,11 @@ async def create_project_from_template(
         db.add(task)
 
     await db.commit()
-    await db.refresh(project)
+
+    result = await db.execute(
+        select(Project).options(*_project_load_options()).where(Project.id == project.id)
+    )
+    project = result.scalar_one()
 
     return _build_project_response(project)
 
@@ -274,7 +297,9 @@ async def get_project(
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_module("projects")),
 ):
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    result = await db.execute(
+        select(Project).options(*_project_load_options()).where(Project.id == project_id)
+    )
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -289,7 +314,9 @@ async def update_project(
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_module("projects", write=True)),
 ):
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    result = await db.execute(
+        select(Project).options(*_project_load_options()).where(Project.id == project_id)
+    )
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -316,7 +343,9 @@ async def delete_project(
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_module("projects", write=True)),
 ):
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    result = await db.execute(
+        select(Project).options(selectinload(Project.tasks)).where(Project.id == project_id)
+    )
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -466,7 +495,9 @@ async def get_project_tasks(
     _user=Depends(require_module("projects")),
 ):
     """Get all tasks for a project, grouped by phase."""
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    result = await db.execute(
+        select(Project).options(*_project_load_options()).where(Project.id == project_id)
+    )
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")

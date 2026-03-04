@@ -68,6 +68,12 @@ async def _ensure_columns():
         # Unique partial index to prevent concurrent active timers per user
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_one_active_timer ON time_entries (user_id) WHERE minutes IS NULL",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_internal BOOLEAN NOT NULL DEFAULT FALSE",
+        # Composite indexes for hot query patterns
+        "CREATE INDEX IF NOT EXISTS ix_tasks_client_status ON tasks (client_id, status)",
+        "CREATE INDEX IF NOT EXISTS ix_tasks_project_status ON tasks (project_id, status)",
+        "CREATE INDEX IF NOT EXISTS ix_time_entries_task_date ON time_entries (task_id, date DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_comm_logs_client_occurred ON communication_logs (client_id, occurred_at DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_projects_client_status ON projects (client_id, status)",
     ]
     async with engine.begin() as conn:
         for sql in stmts:

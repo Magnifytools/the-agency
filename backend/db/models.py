@@ -294,13 +294,13 @@ class Client(TimestampMixin, Base):
     engine_summary_data = Column(JSONB, nullable=True)
     engine_alerts_data = Column(JSONB, nullable=True)
 
-    tasks = relationship("Task", back_populates="client", lazy="selectin")
-    projects = relationship("Project", back_populates="client", lazy="selectin")
-    communications = relationship("CommunicationLog", back_populates="client", lazy="selectin", order_by="CommunicationLog.occurred_at.desc()")
-    contacts = relationship("ClientContact", back_populates="client", lazy="selectin", order_by="ClientContact.is_primary.desc()")
-    incomes = relationship("Income", back_populates="client", lazy="selectin")
-    resources = relationship("ClientResource", back_populates="client", lazy="selectin", order_by="ClientResource.label")
-    billing_events = relationship("BillingEvent", back_populates="client", lazy="selectin", order_by="BillingEvent.event_date.desc()")
+    tasks = relationship("Task", back_populates="client", lazy="noload")
+    projects = relationship("Project", back_populates="client", lazy="noload")
+    communications = relationship("CommunicationLog", back_populates="client", lazy="noload", order_by="CommunicationLog.occurred_at.desc()")
+    contacts = relationship("ClientContact", back_populates="client", lazy="noload", order_by="ClientContact.is_primary.desc()")
+    incomes = relationship("Income", back_populates="client", lazy="noload")
+    resources = relationship("ClientResource", back_populates="client", lazy="noload", order_by="ClientResource.label")
+    billing_events = relationship("BillingEvent", back_populates="client", lazy="noload", order_by="BillingEvent.event_date.desc()")
 
 
 class TaskCategory(TimestampMixin, Base):
@@ -337,7 +337,7 @@ class Project(TimestampMixin, Base):
     client = relationship("Client", back_populates="projects", lazy="selectin")
     phases = relationship("ProjectPhase", back_populates="project", lazy="selectin", order_by="ProjectPhase.order_index")
     tasks = relationship("Task", back_populates="project", lazy="selectin")
-    evidence = relationship("ProjectEvidence", back_populates="project", lazy="selectin", order_by="ProjectEvidence.created_at.desc()")
+    evidence = relationship("ProjectEvidence", back_populates="project", lazy="noload", order_by="ProjectEvidence.created_at.desc()")
 
 
 class ProjectPhase(TimestampMixin, Base):
@@ -481,7 +481,7 @@ class Task(TimestampMixin, Base):
     client = relationship("Client", back_populates="tasks", lazy="selectin")
     category = relationship("TaskCategory", back_populates="tasks", lazy="selectin")
     assigned_user = relationship("User", back_populates="tasks", lazy="selectin")
-    time_entries = relationship("TimeEntry", back_populates="task", lazy="selectin")
+    time_entries = relationship("TimeEntry", back_populates="task", lazy="noload")
     project = relationship("Project", back_populates="tasks", lazy="selectin")
     phase = relationship("ProjectPhase", back_populates="tasks", lazy="selectin")
     dependency = relationship("Task", remote_side="Task.id", lazy="selectin")

@@ -254,16 +254,24 @@ async def get_client_summary(
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    # Fetch tasks
+    # Fetch tasks with relationships needed for _task_to_response
+    from sqlalchemy.orm import selectinload
     tasks_result = await db.execute(
-        select(Task).where(Task.client_id == client_id).order_by(Task.created_at.desc())
+        select(Task).options(
+            selectinload(Task.client),
+            selectinload(Task.category),
+            selectinload(Task.assigned_user),
+            selectinload(Task.project),
+            selectinload(Task.phase),
+        ).where(Task.client_id == client_id).order_by(Task.created_at.desc())
     )
-    tasks = tasks_result.scalars().all()
+    tasks = tasks_result.scalars().unique().all()
 
-    # Aggregate time
+    # Aggregate time via subquery (avoids building huge IN list)
+    task_ids_subq = select(Task.id).where(Task.client_id == client_id).scalar_subquery()
     time_result = await db.execute(
         select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
-            TimeEntry.task_id.in_([t.id for t in tasks]),
+            TimeEntry.task_id.in_(task_ids_subq),
             TimeEntry.minutes.isnot(None),
         )
     )
@@ -283,6 +291,37 @@ async def get_client_summary(
         "total_actual_minutes": total_actual,
         "total_tracked_minutes": total_tracked_minutes,
     }
+
+
+@router.get("/{client_id}/recent-time-entries")
+async def get_recent_time_entries(
+    client_id: int,
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("clients")),
+):
+    """Recent time entries for a client, single query instead of N parallel fetches."""
+    from sqlalchemy.orm import selectinload
+    result = await db.execute(
+        select(TimeEntry)
+        .join(Task, TimeEntry.task_id == Task.id)
+        .options(selectinload(TimeEntry.task), selectinload(TimeEntry.user))
+        .where(Task.client_id == client_id, TimeEntry.minutes.isnot(None))
+        .order_by(TimeEntry.date.desc())
+        .limit(limit)
+    )
+    entries = result.scalars().unique().all()
+    return [
+        {
+            "id": e.id,
+            "date": e.date.isoformat() if e.date else None,
+            "minutes": e.minutes,
+            "notes": e.notes,
+            "task_title": e.task.title if e.task else None,
+            "user_name": e.user.full_name if e.user else None,
+        }
+        for e in entries
+    ]
 
 
 @router.post("/{client_id}/ai-advice")
