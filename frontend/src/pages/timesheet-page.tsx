@@ -6,11 +6,11 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Select } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban } from "lucide-react"
+import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Building2 } from "lucide-react"
 import { EmptyTableState } from "@/components/ui/empty-state"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
-import type { ProjectTimeReport } from "@/lib/types"
+import type { ProjectTimeReport, ClientTimeReport } from "@/lib/types"
 
 function getMonday(date: Date) {
   const d = new Date(date)
@@ -66,6 +66,37 @@ function ProjectReportRow({ project }: { project: ProjectTimeReport }) {
   )
 }
 
+const fmtEur = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
+
+function ClientReportRow({ client }: { client: ClientTimeReport }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <>
+      <TableRow className="cursor-pointer hover:bg-muted/50" onClick={() => setExpanded(!expanded)}>
+        <TableCell className="font-medium">
+          <span className="inline-flex items-center gap-1">
+            {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            {client.client_name}
+          </span>
+        </TableCell>
+        <TableCell className="text-right mono">{formatMinutes(client.total_minutes)}</TableCell>
+        <TableCell className="text-right mono">{fmtEur(client.cost_eur)}</TableCell>
+        <TableCell className="text-right">{client.entries_count}</TableCell>
+        <TableCell className="text-right">{client.team_breakdown.length}</TableCell>
+      </TableRow>
+      {expanded && client.team_breakdown.map((t) => (
+        <TableRow key={t.user_id} className="bg-muted/30">
+          <TableCell className="pl-10 text-sm text-muted-foreground">{t.user_name}</TableCell>
+          <TableCell className="text-right mono text-sm">{formatMinutes(t.total_minutes)}</TableCell>
+          <TableCell className="text-right mono text-sm">{fmtEur(t.cost_eur)}</TableCell>
+          <TableCell />
+          <TableCell />
+        </TableRow>
+      ))}
+    </>
+  )
+}
+
 export default function TimesheetPage() {
   const { user, isAdmin } = useAuth()
   const queryClient = useQueryClient()
@@ -108,6 +139,12 @@ export default function TimesheetPage() {
   const { data: projectReport = [], isLoading: projectLoading } = useQuery({
     queryKey: ["time-entries-by-project", weekStart, weekEnd],
     queryFn: () => timeEntriesApi.byProject({ date_from: weekStart + "T00:00:00Z", date_to: weekEnd + "T23:59:59Z" }),
+  })
+
+  // Client report
+  const { data: clientReport = [], isLoading: clientLoading } = useQuery({
+    queryKey: ["time-entries-by-client", weekStart, weekEnd],
+    queryFn: () => timeEntriesApi.byClient({ date_from: weekStart + "T00:00:00Z", date_to: weekEnd + "T23:59:59Z" }),
   })
 
   const updateMutation = useMutation({
@@ -284,6 +321,41 @@ export default function TimesheetPage() {
                       {(() => { const m = u.total_minutes || 0; const h = Math.floor(m / 60); const min = m % 60; return h > 0 ? (min > 0 ? `${h}h ${min}m` : `${h}h`) : (min > 0 ? `${min}m` : "—") })()}
                     </TableCell>
                   </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Client Report */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Building2 className="h-5 w-5" />
+            Por Cliente
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">Horas y coste agrupados por cliente para la semana seleccionada.</p>
+        </CardHeader>
+        <CardContent>
+          {clientLoading ? (
+            <div className="text-sm text-muted-foreground">Cargando...</div>
+          ) : clientReport.length === 0 ? (
+            <EmptyTableState colSpan={5} icon={Building2} title="Sin datos por cliente" description="No hay registros de tiempo en esta semana." />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead className="text-right">Horas</TableHead>
+                  <TableHead className="text-right">Coste €</TableHead>
+                  <TableHead className="text-right">Registros</TableHead>
+                  <TableHead className="text-right">Personas</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {clientReport.map((c) => (
+                  <ClientReportRow key={c.client_id ?? "null"} client={c} />
                 ))}
               </TableBody>
             </Table>

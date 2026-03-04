@@ -84,6 +84,7 @@ export default function IncomePage() {
       vat_amount: parseFloat(fd.get("vat_amount") as string) || 0,
       status: (fd.get("status") as IncomeCreate["status"]) || "cobrado",
       notes: (fd.get("notes") as string) || "",
+      due_date: (fd.get("due_date") as string) || null,
     }
     if (editing) {
       updateMut.mutate({ id: editing.id, data })
@@ -191,7 +192,10 @@ export default function IncomePage() {
             <div><Label>Tipo IVA (%)</Label><Input name="vat_rate" type="number" step="0.01" defaultValue={editing?.vat_rate ?? 21} onChange={(e) => setVatCalc(v => ({ ...v, rate: parseFloat(e.target.value) || 0 }))} /></div>
             <div><Label>IVA importe (auto)</Label><Input name="vat_amount" type="number" step="0.01" value={computedVat} readOnly className="bg-muted cursor-default" onChange={() => {}} /></div>
           </div>
-          <div><Label>Notas</Label><Input name="notes" defaultValue={editing?.notes || ""} /></div>
+          <div className="grid grid-cols-2 gap-4">
+            <div><Label>Fecha vencimiento <span className="text-muted-foreground text-xs">(opcional)</span></Label><Input name="due_date" type="date" defaultValue={editing?.due_date || ""} /></div>
+            <div><Label>Notas</Label><Input name="notes" defaultValue={editing?.notes || ""} /></div>
+          </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); setEditing(null) }}>Cancelar</Button>
             <Button type="submit">{editing ? "Guardar" : "Crear"}</Button>

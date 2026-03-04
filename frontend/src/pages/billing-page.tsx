@@ -15,6 +15,7 @@ interface BillingRow {
   hours: number
   cost: number
   budget: number
+  invoiced: number
   margin: number
 }
 
@@ -82,34 +83,46 @@ export default function BillingPage() {
                       <TableHead>Horas</TableHead>
                       <TableHead>Coste</TableHead>
                       <TableHead>Presupuesto</TableHead>
+                      <TableHead>Facturado</TableHead>
                       <TableHead>Margen</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.map((row) => (
-                      <TableRow key={row.client_id}>
-                        <TableCell className="font-medium">{row.client_name}</TableCell>
-                        <TableCell className="mono">{row.hours}h</TableCell>
-                        <TableCell className="mono">{row.cost.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</TableCell>
-                        <TableCell className="mono">{row.budget.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</TableCell>
-                        <TableCell className="mono">{row.margin.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</TableCell>
-                      </TableRow>
-                    ))}
+                    {data.map((row) => {
+                      const hasInvoiced = row.invoiced > 0
+                      return (
+                        <TableRow key={row.client_id}>
+                          <TableCell className="font-medium">{row.client_name}</TableCell>
+                          <TableCell className="mono">{row.hours}h</TableCell>
+                          <TableCell className="mono">{row.cost.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</TableCell>
+                          <TableCell className="mono">{row.budget.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</TableCell>
+                          <TableCell className="mono">{hasInvoiced ? row.invoiced.toLocaleString("es-ES", { style: "currency", currency: "EUR" }) : <span className="text-muted-foreground">—</span>}</TableCell>
+                          <TableCell className="mono">
+                            {row.margin.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                            {!hasInvoiced && <span className="text-muted-foreground text-xs ml-1">(est.)</span>}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>
               <div className="md:hidden space-y-3">
-                {data.map((row) => (
-                  <div key={row.client_id} className="rounded-lg border border-border p-3 space-y-2">
-                    <p className="font-medium text-sm">{row.client_name}</p>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <p className="mono">Horas: {row.hours}h</p>
-                      <p className="mono">Coste: {row.cost.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>
-                      <p className="mono">Presupuesto: {row.budget.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>
-                      <p className="mono">Margen: {row.margin.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>
+                {data.map((row) => {
+                  const hasInvoiced = row.invoiced > 0
+                  return (
+                    <div key={row.client_id} className="rounded-lg border border-border p-3 space-y-2">
+                      <p className="font-medium text-sm">{row.client_name}</p>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <p className="mono">Horas: {row.hours}h</p>
+                        <p className="mono">Coste: {row.cost.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>
+                        <p className="mono">Presupuesto: {row.budget.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>
+                        {hasInvoiced && <p className="mono">Facturado: {row.invoiced.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>}
+                        <p className="mono">Margen: {row.margin.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}{!hasInvoiced && " (est.)"}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </>
           )}

@@ -84,3 +84,19 @@ class ProjectTimeReport(BaseModel):
     total_minutes: int
     entries_count: int
     team_breakdown: list[ProjectTeamBreakdown]
+
+
+class ClientTeamBreakdown(BaseModel):
+    user_id: int
+    user_name: str
+    total_minutes: int
+    cost_eur: float
+
+
+class ClientTimeReport(BaseModel):
+    client_id: Optional[int]
+    client_name: str
+    total_minutes: int
+    entries_count: int
+    cost_eur: float
+    team_breakdown: list[ClientTeamBreakdown]

@@ -22,7 +22,7 @@ from backend.api.routes import (
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
     service_templates, dailys, contacts, activity, notifications, resources,
     billing_events, client_dashboard, engine_integration, investments,
-    evidence, search, agency_vault, industry_news, core_updates,
+    evidence, search, agency_vault, industry_news, core_updates, balance,
 )
 
 
@@ -93,6 +93,17 @@ async def _ensure_columns():
         "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS is_active BOOLEAN",
         "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS subscription_type VARCHAR(50)",
         "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS purpose VARCHAR(200)",
+        # Income due_date for overdue alerts
+        "ALTER TABLE income ADD COLUMN IF NOT EXISTS due_date DATE",
+        # Balance snapshots for manual bank balance tracking
+        """CREATE TABLE IF NOT EXISTS balance_snapshots (
+    id SERIAL PRIMARY KEY,
+    date DATE NOT NULL,
+    amount DOUBLE PRECISION NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)""",
     ]
     async with engine.begin() as conn:
         for sql in stmts:
@@ -268,6 +279,7 @@ app.include_router(search.router)
 app.include_router(agency_vault.router)
 app.include_router(industry_news.router)
 app.include_router(core_updates.router)
+app.include_router(balance.router)
 
 # Serve frontend static files in production
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"

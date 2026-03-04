@@ -22,6 +22,9 @@ import type {
   WeeklyTimesheet,
   AdminActiveTimer,
   ProjectTimeReport,
+  ClientTimeReport,
+  BalanceSnapshot,
+  BalanceSnapshotCreate,
   DashboardOverview,
   ProfitabilityResponse,
   TeamMemberSummary,
@@ -246,6 +249,8 @@ export const timeEntriesApi = {
     api.get("/time-entries/export", { params, responseType: "blob" }).then((r) => r.data),
   byProject: (params?: { date_from?: string; date_to?: string; client_id?: number }) =>
     api.get<ProjectTimeReport[]>("/time-entries/by-project", { params }).then((r) => r.data),
+  byClient: (params?: { date_from?: string; date_to?: string }) =>
+    api.get<ClientTimeReport[]>("/time-entries/by-client", { params }).then((r) => r.data),
   adminTimers: () =>
     api.get<AdminActiveTimer[]>("/admin/timers/active").then((r) => r.data),
 }
@@ -299,6 +304,13 @@ export const billingApi = {
     api.get("/billing/export", { params: { ...params, format: "json" } }).then((r) => r.data),
   exportCsv: (params: { year: number; month: number }) =>
     api.get("/billing/export", { params: { ...params, format: "csv" }, responseType: "blob" }).then((r) => r.data),
+}
+
+// Balance Snapshots
+export const balanceApi = {
+  latest: () => api.get<BalanceSnapshot | null>("/finance/balance/latest").then((r) => r.data),
+  create: (data: BalanceSnapshotCreate) => api.post<BalanceSnapshot>("/finance/balance", data).then((r) => r.data),
+  list: () => api.get<BalanceSnapshot[]>("/finance/balance").then((r) => r.data),
 }
 
 // Discord

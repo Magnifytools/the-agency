@@ -942,6 +942,7 @@ class Income(TimestampMixin, Base):
     vat_amount = Column(Float, nullable=False, default=0.0)
     status = Column(String(50), nullable=False, default="cobrado")  # pendiente, cobrado
     notes = Column(Text, nullable=False, default="")
+    due_date = Column(Date, nullable=True)
 
     client = relationship("Client", back_populates="incomes", lazy="selectin")
 
@@ -1196,6 +1197,15 @@ class IndustryNews(TimestampMixin, Base):
     content = Column(Text, nullable=True)
     url = Column(String(500), nullable=True)
     published_date = Column(Date, nullable=False)
+
+
+class BalanceSnapshot(TimestampMixin, Base):
+    __tablename__ = "balance_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(Date, nullable=False)
+    amount = Column(Float, nullable=False)
+    notes = Column(Text, nullable=False, default="")
 
 
 class Notification(TimestampMixin, Base):

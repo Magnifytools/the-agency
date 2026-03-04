@@ -6,7 +6,7 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy import select, extract, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import Forecast, Income, Expense, Tax
+from backend.db.models import Forecast, Income, Expense, Tax, BalanceSnapshot
 
 
 async def calculate_historical_averages(db: AsyncSession, lookback: int = 6) -> dict:
@@ -113,25 +113,43 @@ async def calculate_runway(db: AsyncSession) -> dict:
     today = date.today()
     year = today.year
 
+    # Check for a recent manual balance snapshot (within 45 days)
+    cutoff = today - timedelta(days=45)
     r = await db.execute(
-        select(func.coalesce(func.sum(Income.amount), 0))
-        .where(extract("year", Income.date) == year)
+        select(BalanceSnapshot)
+        .where(BalanceSnapshot.date >= cutoff)
+        .order_by(BalanceSnapshot.date.desc())
+        .limit(1)
     )
-    ytd_income = float(r.scalar())
+    latest_snapshot = r.scalars().first()
 
-    r = await db.execute(
-        select(func.coalesce(func.sum(Expense.amount), 0))
-        .where(extract("year", Expense.date) == year)
-    )
-    ytd_expenses = float(r.scalar())
+    if latest_snapshot:
+        cash = latest_snapshot.amount
+        balance_source = "manual"
+        balance_date = latest_snapshot.date.isoformat()
+    else:
+        r = await db.execute(
+            select(func.coalesce(func.sum(Income.amount), 0))
+            .where(extract("year", Income.date) == year)
+        )
+        ytd_income = float(r.scalar())
 
-    r = await db.execute(
-        select(func.coalesce(func.sum(Tax.tax_amount), 0))
-        .where(Tax.year == year, Tax.status == "pagado")
-    )
-    ytd_taxes_paid = float(r.scalar())
+        r = await db.execute(
+            select(func.coalesce(func.sum(Expense.amount), 0))
+            .where(extract("year", Expense.date) == year)
+        )
+        ytd_expenses = float(r.scalar())
 
-    cash = ytd_income - ytd_expenses - ytd_taxes_paid
+        r = await db.execute(
+            select(func.coalesce(func.sum(Tax.tax_amount), 0))
+            .where(Tax.year == year, Tax.status == "pagado")
+        )
+        ytd_taxes_paid = float(r.scalar())
+
+        cash = ytd_income - ytd_expenses - ytd_taxes_paid
+        balance_source = "calculated"
+        balance_date = None
+
     averages = await calculate_historical_averages(db)
     monthly_burn = averages["avg_expenses"]
     runway_months = round(cash / monthly_burn, 1) if monthly_burn > 0 else None
@@ -145,6 +163,8 @@ async def calculate_runway(db: AsyncSession) -> dict:
         "avg_monthly_burn": monthly_burn,
         "runway_months": runway_months,
         "runway_date": runway_date,
+        "source": balance_source,
+        "balance_date": balance_date,
     }
 
 

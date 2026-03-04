@@ -15,6 +15,7 @@ class IncomeCreate(BaseModel):
     vat_amount: float = 0.0
     status: str = "cobrado"
     notes: str = ""
+    due_date: Optional[date] = None
 
 
 class IncomeUpdate(BaseModel):
@@ -28,6 +29,7 @@ class IncomeUpdate(BaseModel):
     vat_amount: Optional[float] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+    due_date: Optional[date] = None
 
 
 class IncomeResponse(BaseModel):
@@ -43,6 +45,7 @@ class IncomeResponse(BaseModel):
     vat_amount: float
     status: str
     notes: str
+    due_date: Optional[date] = None
     created_at: datetime
     updated_at: datetime
 

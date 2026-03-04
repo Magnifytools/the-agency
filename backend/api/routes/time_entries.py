@@ -22,6 +22,8 @@ from backend.schemas.time_entry import (
     AdminActiveTimerResponse,
     ProjectTimeReport,
     ProjectTeamBreakdown,
+    ClientTimeReport,
+    ClientTeamBreakdown,
 )
 from backend.api.deps import get_current_user, require_admin, require_module
 from backend.services.csv_utils import build_csv_response
@@ -265,6 +267,80 @@ async def time_entries_by_project(
             entries_count=pm["entries_count"],
             team_breakdown=[
                 ProjectTeamBreakdown(**t) for t in sorted(pm["team"].values(), key=lambda x: x["total_minutes"], reverse=True)
+            ],
+        ))
+    return reports
+
+
+@router.get("/api/time-entries/by-client", response_model=list[ClientTimeReport])
+async def time_entries_by_client(
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("timesheet")),
+):
+    query = select(TimeEntry).where(
+        TimeEntry.minutes.isnot(None),
+        TimeEntry.task_id.isnot(None),
+    )
+    if date_from is not None:
+        query = query.where(TimeEntry.date >= date_from.replace(tzinfo=None))
+    if date_to is not None:
+        query = query.where(TimeEntry.date <= date_to.replace(tzinfo=None))
+    result = await db.execute(query)
+    entries = result.scalars().all()
+
+    # Group by client
+    client_map: dict = {}
+    for e in entries:
+        task = e.task
+        if not task:
+            continue
+        cid = task.client_id
+        cname = task.client.name if task.client else "Sin cliente"
+        if cid not in client_map:
+            client_map[cid] = {
+                "client_id": cid,
+                "client_name": cname,
+                "total_minutes": 0,
+                "entries_count": 0,
+                "cost_eur": 0.0,
+                "team": {},
+            }
+        cm = client_map[cid]
+        mins = e.minutes or 0
+        rate = (e.user.hourly_rate or 0) if e.user else 0
+        cost = mins * rate / 60
+        cm["total_minutes"] += mins
+        cm["entries_count"] += 1
+        cm["cost_eur"] += cost
+        uid = e.user_id
+        if uid not in cm["team"]:
+            cm["team"][uid] = {
+                "user_id": uid,
+                "user_name": e.user.full_name if e.user else "",
+                "total_minutes": 0,
+                "cost_eur": 0.0,
+            }
+        cm["team"][uid]["total_minutes"] += mins
+        cm["team"][uid]["cost_eur"] += cost
+
+    reports = []
+    for cm in sorted(client_map.values(), key=lambda x: x["total_minutes"], reverse=True):
+        reports.append(ClientTimeReport(
+            client_id=cm["client_id"],
+            client_name=cm["client_name"],
+            total_minutes=cm["total_minutes"],
+            entries_count=cm["entries_count"],
+            cost_eur=round(cm["cost_eur"], 2),
+            team_breakdown=[
+                ClientTeamBreakdown(
+                    user_id=t["user_id"],
+                    user_name=t["user_name"],
+                    total_minutes=t["total_minutes"],
+                    cost_eur=round(t["cost_eur"], 2),
+                )
+                for t in sorted(cm["team"].values(), key=lambda x: x["total_minutes"], reverse=True)
             ],
         ))
     return reports

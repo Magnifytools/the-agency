@@ -1034,6 +1034,7 @@ export interface Income {
   vat_amount: number
   status: IncomeStatus
   notes: string
+  due_date?: string | null
   created_at: string
   updated_at: string
 }
@@ -1048,6 +1049,22 @@ export interface IncomeCreate {
   vat_rate?: number
   vat_amount?: number
   status?: IncomeStatus
+  notes?: string
+  due_date?: string | null
+}
+
+export interface BalanceSnapshot {
+  id: number
+  date: string
+  amount: number
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
+export interface BalanceSnapshotCreate {
+  date: string
+  amount: number
   notes?: string
 }
 
@@ -1183,6 +1200,24 @@ export interface RunwayResponse {
   avg_monthly_burn: number
   runway_months: number | null
   runway_date: string | null
+  source?: "manual" | "calculated"
+  balance_date?: string | null
+}
+
+export interface ClientTeamBreakdown {
+  user_id: number
+  user_name: string
+  total_minutes: number
+  cost_eur: number
+}
+
+export interface ClientTimeReport {
+  client_id: number | null
+  client_name: string
+  total_minutes: number
+  entries_count: number
+  cost_eur: number
+  team_breakdown: ClientTeamBreakdown[]
 }
 
 export interface FinancialInsight {

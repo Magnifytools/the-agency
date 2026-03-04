@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   financeAdvisorApi,
   financeForecastsApi,
@@ -7,6 +7,7 @@ import {
   clientHealthApi,
   capacityApi,
   leadsApi,
+  balanceApi,
 } from "@/lib/api"
 import { MetricCard } from "@/components/dashboard/metric-card"
 import { RevenueTrendChart } from "@/components/dashboard/revenue-trend-chart"
@@ -15,7 +16,15 @@ import { CapacityBars } from "@/components/dashboard/capacity-bars"
 import { PipelineCard } from "@/components/dashboard/pipeline-card"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Select } from "@/components/ui/select"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Link } from "react-router-dom"
+import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
+import type { BalanceSnapshotCreate } from "@/lib/types"
 import {
   BarChart,
   Bar,
@@ -40,6 +49,8 @@ const fmt = (n: number) => n.toLocaleString("es-ES", { style: "currency", curren
 export default function ExecutiveDashboardPage() {
   const [year, setYear] = useState(now.getFullYear())
   const month = now.getMonth() + 1
+  const [balanceDialogOpen, setBalanceDialogOpen] = useState(false)
+  const qc = useQueryClient()
 
   // Financial overview (current month)
   const { data: overview } = useQuery({
@@ -83,6 +94,33 @@ export default function ExecutiveDashboardPage() {
     queryFn: () => leadsApi.pipelineSummary(),
   })
 
+  // Manual balance snapshot
+  const { data: latestBalance } = useQuery({
+    queryKey: ["balance-latest"],
+    queryFn: () => balanceApi.latest(),
+  })
+
+  const createBalanceMut = useMutation({
+    mutationFn: (data: BalanceSnapshotCreate) => balanceApi.create(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["balance-latest"] })
+      qc.invalidateQueries({ queryKey: ["exec-runway"] })
+      setBalanceDialogOpen(false)
+      toast.success("Saldo actualizado")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al guardar saldo")),
+  })
+
+  function handleBalanceSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    createBalanceMut.mutate({
+      date: fd.get("date") as string,
+      amount: parseFloat(fd.get("amount") as string) || 0,
+      notes: (fd.get("notes") as string) || "",
+    })
+  }
+
   // YTD totals from vsActual
   const ytd = vsActual
     ? vsActual.reduce(
@@ -124,6 +162,35 @@ export default function ExecutiveDashboardPage() {
           ))}
         </Select>
       </div>
+
+      {/* Saldo Bancario Manual */}
+      <Card className="border-border/60">
+        <CardContent className="pt-4 pb-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Saldo Real (Banco)</p>
+              {latestBalance ? (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-2xl font-bold">{fmt(latestBalance.amount)}</span>
+                  <Badge variant="secondary">Manual</Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(latestBalance.date + "T12:00:00").toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xl text-muted-foreground">Sin datos</span>
+                  <Badge variant="secondary">Calculado</Badge>
+                </div>
+              )}
+              {latestBalance?.notes && <p className="text-xs text-muted-foreground mt-1">{latestBalance.notes}</p>}
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setBalanceDialogOpen(true)}>
+              Actualizar
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* KPI Row — clickable cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -170,7 +237,7 @@ export default function ExecutiveDashboardPage() {
               icon={Clock}
               label="Runway"
               value={runway.runway_months != null ? `${runway.runway_months}m` : "∞"}
-              subtitle={fmt(runway.current_cash)}
+              subtitle={`${fmt(runway.current_cash)} · ${runway.source === "manual" ? "Manual" : "Est."}`}
               tooltip="Meses de operación con cash actual y gasto medio"
             />
           </Link>
@@ -293,6 +360,22 @@ export default function ExecutiveDashboardPage() {
           </Card>
         )}
       </div>
+
+      {/* Balance Dialog */}
+      <Dialog open={balanceDialogOpen} onOpenChange={setBalanceDialogOpen}>
+        <DialogHeader><DialogTitle>Actualizar saldo bancario</DialogTitle></DialogHeader>
+        <form onSubmit={handleBalanceSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div><Label>Fecha</Label><Input name="date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} required /></div>
+            <div><Label>Saldo (€)</Label><Input name="amount" type="number" step="0.01" placeholder="2984.00" required /></div>
+          </div>
+          <div><Label>Nota <span className="text-muted-foreground text-xs">(opcional)</span></Label><Input name="notes" placeholder="Saldo BBVA lunes" /></div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setBalanceDialogOpen(false)}>Cancelar</Button>
+            <Button type="submit">Guardar</Button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   )
 }

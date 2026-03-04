@@ -14,7 +14,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import (
-    Client, Task, Project, CommunicationLog, PMInsight, AlertSettings,
+    Client, Task, Project, CommunicationLog, PMInsight, AlertSettings, Income,
     TaskStatus, ClientStatus, ProjectStatus,
     InsightType, InsightPriority, InsightStatus,
 )
@@ -185,6 +185,57 @@ async def _generate_ai_briefing_suggestion(
     if isinstance(suggestion, str) and suggestion.strip():
         return suggestion.strip()
     return None
+
+
+async def _generate_overdue_income_insights(
+    db: AsyncSession, user_id: Optional[int], now: datetime
+) -> list[PMInsight]:
+    """Generate insights for pending income entries overdue >15 days."""
+    from datetime import date as date_type
+    today = now.date()
+
+    result = await db.execute(
+        select(
+            Income.client_id,
+            func.sum(Income.amount).label("total_amount"),
+            func.min(Income.date).label("oldest_date"),
+            func.min(Income.due_date).label("oldest_due_date"),
+        )
+        .where(Income.status == "pendiente")
+        .group_by(Income.client_id)
+    )
+
+    insights = []
+    for row in result.all():
+        ref_date = row.oldest_due_date if row.oldest_due_date else row.oldest_date
+        if ref_date is None:
+            continue
+        days_pending = (today - ref_date).days
+        if days_pending <= 15:
+            continue
+
+        client_name = f"Cliente #{row.client_id}"
+        if row.client_id:
+            cr = await db.execute(select(Client).where(Client.id == row.client_id))
+            client = cr.scalar_one_or_none()
+            if client:
+                client_name = client.name
+
+        insight = PMInsight(
+            insight_type=InsightType.overdue,
+            priority=InsightPriority.high,
+            title=f"💰 {int(row.total_amount or 0)}€ pendiente de cobro con {client_name}",
+            description=f"Llevan {days_pending} días sin cobrar.",
+            suggested_action="Enviar recordatorio de pago al cliente.",
+            status=InsightStatus.active,
+            generated_at=now,
+            expires_at=now + timedelta(days=7),
+            user_id=user_id,
+            client_id=row.client_id,
+        )
+        insights.append(insight)
+
+    return insights
 
 
 async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> list[PMInsight]:
@@ -413,6 +464,10 @@ async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> 
             user_id=user_id,
         )
         new_insights.append(insight)
+
+    # Overdue income alerts (>15 days pending)
+    overdue_income = await _generate_overdue_income_insights(db, user_id, now)
+    new_insights.extend(overdue_income)
 
     # Enhance insights with AI (best-effort; originals kept on failure)
     ai_suggestion = await _enhance_insights_with_ai(new_insights, user_id)

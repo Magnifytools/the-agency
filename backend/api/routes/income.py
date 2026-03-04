@@ -36,6 +36,7 @@ def _income_response(item: Income) -> IncomeResponse:
         vat_amount=item.vat_amount,
         status=item.status,
         notes=item.notes,
+        due_date=item.due_date,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
