@@ -13,19 +13,20 @@ import { Textarea } from "@/components/ui/textarea"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import {
-  LayoutGrid, List, Plus, DollarSign, Calendar,
-  GripVertical, Trophy, X as XIcon, Target
+  LayoutGrid, List, Plus, Calendar,
+  GripVertical, Trophy, X as XIcon, Target, Trash2
 } from "lucide-react"
 import { EmptyTableState } from "@/components/ui/empty-state"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
 
 const PIPELINE_STAGES: { key: LeadStatus; label: string; color: string }[] = [
   { key: "new", label: "Nuevo", color: "bg-blue-500" },
   { key: "contacted", label: "Contactado", color: "bg-cyan-500" },
-  { key: "discovery", label: "Discovery", color: "bg-violet-500" },
+  { key: "discovery", label: "Descubrimiento", color: "bg-violet-500" },
   { key: "proposal", label: "Propuesta", color: "bg-amber-500" },
-  { key: "negotiation", label: "Negociacion", color: "bg-orange-500" },
+  { key: "negotiation", label: "Negociación", color: "bg-orange-500" },
 ]
 
 const CLOSED_STAGES: { key: LeadStatus; label: string; color: string }[] = [
@@ -38,7 +39,7 @@ const SOURCE_LABELS: Record<LeadSource, string> = {
   referral: "Referencia",
   linkedin: "LinkedIn",
   conference: "Conferencia",
-  cold_outreach: "Cold Outreach",
+  cold_outreach: "Prospección",
   other: "Otro",
 }
 
@@ -65,6 +66,7 @@ export default function LeadsPage() {
   const [filterStatus, setFilterStatus] = useState<string>("")
   const [filterSource, setFilterSource] = useState<string>("")
   const [filterAssigned, setFilterAssigned] = useState<string>("")
+  const [deleteLeadId, setDeleteLeadId] = useState<number | null>(null)
 
   // Drag state
   const dragLeadRef = useRef<Lead | null>(null)
@@ -95,6 +97,17 @@ export default function LeadsPage() {
       qc.invalidateQueries({ queryKey: ["leads"] })
       qc.invalidateQueries({ queryKey: ["pipeline-summary"] })
     },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => leadsApi.delete(id),
+    onSuccess: () => {
+      toast.success("Lead eliminado")
+      qc.invalidateQueries({ queryKey: ["leads"] })
+      qc.invalidateQueries({ queryKey: ["pipeline-summary"] })
+      setDeleteLeadId(null)
+    },
+    onError: () => toast.error("Error al eliminar lead"),
   })
 
   const convertMutation = useMutation({
@@ -142,7 +155,7 @@ export default function LeadsPage() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Pipeline</h2>
           <p className="text-muted-foreground text-sm mt-1">
-            {pipelineSummary ? `${pipelineSummary.total_leads} leads · ${formatValue(pipelineSummary.total_value)} pipeline` : <span className="inline-block animate-pulse bg-muted rounded h-4 w-40" />}
+            {pipelineSummary ? `${pipelineSummary.total_leads} leads · ${formatValue(pipelineSummary.total_value)} pipeline` : "—"}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -245,6 +258,7 @@ export default function LeadsPage() {
                   <TableHead>Fuente</TableHead>
                   <TableHead>Followup</TableHead>
                   <TableHead>Asignado</TableHead>
+                  {isAdmin && <TableHead className="w-10"></TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -268,10 +282,20 @@ export default function LeadsPage() {
                         : "-"}
                     </TableCell>
                     <TableCell>{lead.assigned_user_name || "-"}</TableCell>
+                    {isAdmin && (
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <button
+                          className="text-muted-foreground hover:text-destructive p-1 rounded"
+                          onClick={() => setDeleteLeadId(lead.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
                 {!isLoading && leads.length === 0 && (
-                  <EmptyTableState colSpan={8} icon={Target} title="Pipeline vacío" description="Añade leads y sigue su progreso por etapas del funnel." />
+                  <EmptyTableState colSpan={isAdmin ? 9 : 8} icon={Target} title="Pipeline vacío" description="Añade leads y sigue su progreso por etapas del funnel." />
                 )}
               </TableBody>
             </Table>
@@ -298,7 +322,7 @@ export default function LeadsPage() {
               Vas a marcar <strong>{showLostDialog?.company_name}</strong> como perdido.
             </p>
             <div>
-              <Label>Razon de perdida</Label>
+              <Label>Razón de pérdida</Label>
               <Textarea
                 value={lostReason}
                 onChange={(e) => setLostReason(e.target.value)}
@@ -314,6 +338,15 @@ export default function LeadsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Delete Lead Dialog */}
+      <ConfirmDialog
+        open={deleteLeadId !== null}
+        title="Eliminar lead"
+        description="Esta acción no se puede deshacer. El lead y su historial serán eliminados permanentemente."
+        onConfirm={() => deleteLeadId && deleteMutation.mutate(deleteLeadId)}
+        onOpenChange={(o) => { if (!o) setDeleteLeadId(null) }}
+      />
+
       {/* Convert Dialog */}
       <Dialog open={!!showConvertDialog} onOpenChange={(o) => { if (!o) setShowConvertDialog(null) }}>
         <DialogContent>
@@ -322,7 +355,7 @@ export default function LeadsPage() {
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Se creara un nuevo cliente con los datos de <strong>{showConvertDialog?.company_name}</strong>.
+              Se creará un nuevo cliente con los datos de <strong>{showConvertDialog?.company_name}</strong>.
             </p>
             <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1">
               <p><span className="text-muted-foreground">Empresa:</span> {showConvertDialog?.company_name}</p>
@@ -427,8 +460,8 @@ function LeadCard({
       )}
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {lead.estimated_value != null && (
-          <span className="flex items-center gap-1 text-xs text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded">
-            <DollarSign className="h-3 w-3" />{formatValue(lead.estimated_value, lead.currency)}
+          <span className="text-xs text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded">
+            {formatValue(lead.estimated_value, lead.currency)}
           </span>
         )}
         {lead.service_interest && (
@@ -455,9 +488,9 @@ function LeadStatusBadge({ status }: { status: LeadStatus }) {
   const map: Record<LeadStatus, { label: string; variant: "secondary" | "warning" | "success" | "destructive" }> = {
     new: { label: "Nuevo", variant: "secondary" },
     contacted: { label: "Contactado", variant: "secondary" },
-    discovery: { label: "Discovery", variant: "warning" },
+    discovery: { label: "Descubrimiento", variant: "warning" },
     proposal: { label: "Propuesta", variant: "warning" },
-    negotiation: { label: "Negociacion", variant: "warning" },
+    negotiation: { label: "Negociación", variant: "warning" },
     won: { label: "Ganado", variant: "success" },
     lost: { label: "Perdido", variant: "destructive" },
   }

@@ -99,7 +99,7 @@ export default function ExpensesPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Fecha</TableHead>
-                <TableHead>Descripcion</TableHead>
+                <TableHead>Descripción</TableHead>
                 <TableHead>Categoria</TableHead>
                 <TableHead>Proveedor</TableHead>
                 <TableHead className="text-right">Importe</TableHead>
@@ -140,7 +140,7 @@ export default function ExpensesPage() {
             <div><Label>Fecha</Label><Input name="date" type="date" defaultValue={editing?.date || new Date().toISOString().slice(0, 10)} required /></div>
             <div><Label>Importe</Label><Input name="amount" type="number" step="0.01" defaultValue={editing?.amount || ""} required /></div>
           </div>
-          <div><Label>Descripcion</Label><Input name="description" defaultValue={editing?.description || ""} required /></div>
+          <div><Label>Descripción</Label><Input name="description" defaultValue={editing?.description || ""} required /></div>
           <div className="grid grid-cols-2 gap-4">
             <div><Label>Categoria</Label>
               <Select name="category_id" defaultValue={editing?.category_id?.toString() || ""}>

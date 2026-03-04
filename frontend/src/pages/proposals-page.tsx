@@ -1175,7 +1175,7 @@ export default function ProposalsPage() {
                                     <Textarea
                                         value={form.situation}
                                         onChange={(e) => setForm((prev) => ({ ...prev, situation: e.target.value }))}
-                                        placeholder="¿Como esta el cliente ahora? ¿Que tiene implementado?"
+                                        placeholder="¿Cómo está el cliente ahora? ¿Qué tiene implementado?"
                                         className="min-h-[80px]"
                                     />
                                 </div>
@@ -1184,7 +1184,7 @@ export default function ProposalsPage() {
                                     <Textarea
                                         value={form.problem}
                                         onChange={(e) => setForm((prev) => ({ ...prev, problem: e.target.value }))}
-                                        placeholder="¿Que problema tiene? ¿Que no esta funcionando?"
+                                        placeholder="¿Qué problema tiene? ¿Qué no está funcionando?"
                                         className="min-h-[80px]"
                                     />
                                 </div>
@@ -1193,7 +1193,7 @@ export default function ProposalsPage() {
                                     <Textarea
                                         value={form.cost_of_inaction}
                                         onChange={(e) => setForm((prev) => ({ ...prev, cost_of_inaction: e.target.value }))}
-                                        placeholder="¿Que pasa si el cliente no hace nada?"
+                                        placeholder="¿Qué pasa si el cliente no hace nada?"
                                         className="min-h-[60px]"
                                     />
                                 </div>
@@ -1233,14 +1233,14 @@ export default function ProposalsPage() {
                                 <div className="flex justify-between items-center">
                                     <p className="text-sm text-muted-foreground">Define las opciones de precio. Marca una como recomendada.</p>
                                     <Button size="sm" variant="outline" onClick={addPricingOption}>
-                                        <Plus className="w-4 h-4 mr-1" /> Opcion
+                                        <Plus className="w-4 h-4 mr-1" /> Opción
                                     </Button>
                                 </div>
 
                                 {form.pricing_options.length === 0 && (
                                     <div className="text-center py-8 text-muted-foreground">
                                         <Euro className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                                        <p>No hay opciones de precio. Anade al menos una.</p>
+                                        <p>No hay opciones de precio. Añade al menos una.</p>
                                     </div>
                                 )}
 
@@ -1248,7 +1248,7 @@ export default function ProposalsPage() {
                                     <div key={i} className={`rounded-lg border p-4 space-y-3 ${opt.recommended ? "border-brand bg-brand/5" : "border-border"}`}>
                                         <div className="flex justify-between items-start">
                                             <div className="flex items-center gap-3">
-                                                <span className="text-sm font-medium">Opcion {i + 1}</span>
+                                                <span className="text-sm font-medium">Opción {i + 1}</span>
                                                 <label className="flex items-center gap-1.5 text-xs cursor-pointer">
                                                     <input
                                                         type="checkbox"
@@ -1292,11 +1292,11 @@ export default function ProposalsPage() {
                                             </div>
                                         </div>
                                         <div className="space-y-1">
-                                            <Label className="text-xs">Descripcion</Label>
+                                            <Label className="text-xs">Descripción</Label>
                                             <Input
                                                 value={opt.description}
                                                 onChange={(e) => updatePricing(i, "description", e.target.value)}
-                                                placeholder="¿Que incluye esta opcion?"
+                                                placeholder="¿Qué incluye esta opción?"
                                             />
                                         </div>
                                         <div className="space-y-1">

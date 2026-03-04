@@ -24,6 +24,21 @@ from backend.schemas.lead import (
 
 router = APIRouter(prefix="/api/leads", tags=["leads"])
 
+_STATUS_LABELS: dict[str, str] = {
+    "new": "Nuevo",
+    "contacted": "Contactado",
+    "qualified": "Cualificado",
+    "discovery": "Descubrimiento",
+    "proposal": "Propuesta",
+    "negotiation": "Negociación",
+    "won": "Ganado",
+    "lost": "Perdido",
+    "on_hold": "En espera",
+}
+
+def _status_label(value: str) -> str:
+    return _STATUS_LABELS.get(value, value)
+
 
 def _lead_to_response(lead: Lead) -> LeadResponse:
     return LeadResponse(
@@ -248,7 +263,7 @@ async def update_lead(
             lead_id=lead.id,
             user_id=current_user.id,
             activity_type=LeadActivityType.status_change,
-            title=f"Estado cambiado: {old_status.value} → {update_data['status'].value if hasattr(update_data['status'], 'value') else update_data['status']}",
+            title=f"Estado cambiado: {_status_label(old_status.value)} → {_status_label(update_data['status'].value if hasattr(update_data['status'], 'value') else update_data['status'])}",
         )
         db.add(activity)
 

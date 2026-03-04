@@ -58,7 +58,7 @@ async def create_growth_idea(
 ):
     idea_dict = idea_in.model_dump()
     # Calculate initial ICE score
-    idea_dict["ice_score"] = idea_in.impact * idea_in.confidence * idea_in.ease
+    idea_dict["ice_score"] = round((idea_in.impact + idea_in.confidence + idea_in.ease) / 3)
     
     new_idea = GrowthIdea(**idea_dict)
     db.add(new_idea)
@@ -87,7 +87,7 @@ async def update_growth_idea(
             
         # Recalculate ICE score if any of the components changed
         if "impact" in update_data or "confidence" in update_data or "ease" in update_data:
-            idea.ice_score = idea.impact * idea.confidence * idea.ease
+            idea.ice_score = round((idea.impact + idea.confidence + idea.ease) / 3)
 
         await db.commit()
         await db.refresh(idea)

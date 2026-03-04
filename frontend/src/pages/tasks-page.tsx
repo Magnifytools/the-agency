@@ -582,7 +582,7 @@ export default function TasksPage() {
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="description">Descripcion</Label>
+            <Label htmlFor="description">Descripción</Label>
             <Textarea id="description" name="description" defaultValue={editing?.description ?? ""} />
           </div>
           <div className="flex justify-end gap-2">

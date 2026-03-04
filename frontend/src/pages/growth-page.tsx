@@ -32,8 +32,8 @@ const STATUS_LABELS: Record<GrowthStatus, string> = {
 }
 
 function iceColor(score: number) {
-    if (score >= 500) return "text-success font-bold"
-    if (score >= 200) return "text-brand font-semibold"
+    if (score >= 8) return "text-success font-bold"
+    if (score >= 5) return "text-brand font-semibold"
     return "text-muted-foreground"
 }
 
@@ -104,7 +104,7 @@ export default function GrowthPage() {
         createMutation.mutate(formData as GrowthIdeaCreate)
     }
 
-    const computedIce = (formData.impact || 5) * (formData.confidence || 5) * (formData.ease || 5)
+    const computedIce = +((((formData.impact || 5) + (formData.confidence || 5) + (formData.ease || 5)) / 3).toFixed(1))
 
     return (
         <div className="space-y-6 max-w-7xl mx-auto">

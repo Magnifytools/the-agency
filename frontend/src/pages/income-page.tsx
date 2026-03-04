@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { financeIncomeApi, clientsApi } from "@/lib/api"
 import type { Income, IncomeCreate } from "@/lib/types"
@@ -33,6 +33,13 @@ export default function IncomePage() {
   const [editing, setEditing] = useState<Income | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [filters, setFilters] = useState<{ type?: string; status?: string }>({})
+  const [vatCalc, setVatCalc] = useState<{ amount: number; rate: number }>({ amount: 0, rate: 21 })
+
+  useEffect(() => {
+    setVatCalc({ amount: editing?.amount ?? 0, rate: editing?.vat_rate ?? 21 })
+  }, [dialogOpen])
+
+  const computedVat = +(vatCalc.amount * vatCalc.rate / 100).toFixed(2)
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["finance-income", filters],
@@ -112,7 +119,7 @@ export default function IncomePage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Fecha</TableHead>
-                <TableHead>Descripcion</TableHead>
+                <TableHead>Descripción</TableHead>
                 <TableHead>Cliente</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead className="text-right">Importe</TableHead>
@@ -123,7 +130,7 @@ export default function IncomePage() {
             <TableBody>
               {items.map(item => (
                 <TableRow key={item.id}>
-                  <TableCell>{item.date}</TableCell>
+                  <TableCell>{new Date(item.date + "T12:00:00").toLocaleDateString("es-ES")}</TableCell>
                   <TableCell>{item.description}</TableCell>
                   <TableCell>{item.client_name || "-"}</TableCell>
                   <TableCell><Badge variant="secondary">{item.type}</Badge></TableCell>
@@ -156,9 +163,9 @@ export default function IncomePage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div><Label>Fecha</Label><Input name="date" type="date" defaultValue={editing?.date || new Date().toISOString().slice(0, 10)} required /></div>
-            <div><Label>Importe</Label><Input name="amount" type="number" step="0.01" defaultValue={editing?.amount || ""} required /></div>
+            <div><Label>Importe</Label><Input name="amount" type="number" step="0.01" defaultValue={editing?.amount || ""} onChange={(e) => setVatCalc(v => ({ ...v, amount: parseFloat(e.target.value) || 0 }))} required /></div>
           </div>
-          <div><Label>Descripcion</Label><Input name="description" defaultValue={editing?.description || ""} required /></div>
+          <div><Label>Descripción</Label><Input name="description" defaultValue={editing?.description || ""} required /></div>
           <div className="grid grid-cols-2 gap-4">
             <div><Label>Tipo</Label>
               <Select name="type" defaultValue={editing?.type || "factura"}>
@@ -181,8 +188,8 @@ export default function IncomePage() {
             <div><Label>N. Factura</Label><Input name="invoice_number" defaultValue={editing?.invoice_number || ""} /></div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div><Label>Tipo IVA (%)</Label><Input name="vat_rate" type="number" step="0.01" defaultValue={editing?.vat_rate ?? 21} /></div>
-            <div><Label>IVA importe</Label><Input name="vat_amount" type="number" step="0.01" defaultValue={editing?.vat_amount ?? 0} /></div>
+            <div><Label>Tipo IVA (%)</Label><Input name="vat_rate" type="number" step="0.01" defaultValue={editing?.vat_rate ?? 21} onChange={(e) => setVatCalc(v => ({ ...v, rate: parseFloat(e.target.value) || 0 }))} /></div>
+            <div><Label>IVA importe (auto)</Label><Input name="vat_amount" type="number" step="0.01" value={computedVat} readOnly className="bg-muted cursor-default" onChange={() => {}} /></div>
           </div>
           <div><Label>Notas</Label><Input name="notes" defaultValue={editing?.notes || ""} /></div>
           <div className="flex justify-end gap-2">

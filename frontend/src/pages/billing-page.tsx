@@ -90,9 +90,9 @@ export default function BillingPage() {
                       <TableRow key={row.client_id}>
                         <TableCell className="font-medium">{row.client_name}</TableCell>
                         <TableCell className="mono">{row.hours}h</TableCell>
-                        <TableCell className="mono">{row.cost.toFixed(2)}€</TableCell>
-                        <TableCell className="mono">{row.budget.toFixed(2)}€</TableCell>
-                        <TableCell className="mono">{row.margin.toFixed(2)}€</TableCell>
+                        <TableCell className="mono">{row.cost.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</TableCell>
+                        <TableCell className="mono">{row.budget.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</TableCell>
+                        <TableCell className="mono">{row.margin.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -104,9 +104,9 @@ export default function BillingPage() {
                     <p className="font-medium text-sm">{row.client_name}</p>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <p className="mono">Horas: {row.hours}h</p>
-                      <p className="mono">Coste: {row.cost.toFixed(2)}€</p>
-                      <p className="mono">Presupuesto: {row.budget.toFixed(2)}€</p>
-                      <p className="mono">Margen: {row.margin.toFixed(2)}€</p>
+                      <p className="mono">Coste: {row.cost.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>
+                      <p className="mono">Presupuesto: {row.budget.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>
+                      <p className="mono">Margen: {row.margin.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>
                     </div>
                   </div>
                 ))}

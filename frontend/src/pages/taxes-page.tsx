@@ -100,7 +100,7 @@ export default function TaxesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Impuestos</h1>
-          <p className="text-muted-foreground">Gestion fiscal - Ano {year}</p>
+          <p className="text-muted-foreground">Gestión fiscal - Año {year}</p>
         </div>
         <div className="flex gap-2">
           <Select value={year.toString()} onChange={(e) => setYear(parseInt(e.target.value))}>
@@ -198,7 +198,7 @@ export default function TaxesPage() {
           <div className="grid grid-cols-3 gap-4">
             <div><Label>Modelo</Label><Input name="model" defaultValue={editing?.model || ""} placeholder="303" /></div>
             <div><Label>Periodo</Label><Input name="period" defaultValue={editing?.period || ""} placeholder="Q1" /></div>
-            <div><Label>Ano</Label><Input name="year" type="number" defaultValue={editing?.year || currentYear} /></div>
+            <div><Label>Año</Label><Input name="year" type="number" defaultValue={editing?.year || currentYear} /></div>
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div><Label>Base imponible</Label><Input name="base_amount" type="number" step="0.01" defaultValue={editing?.base_amount || 0} /></div>

@@ -25,9 +25,9 @@ const STATUS_ORDER: LeadStatus[] = ["new", "contacted", "discovery", "proposal",
 const STATUS_LABELS: Record<LeadStatus, string> = {
   new: "Nuevo",
   contacted: "Contactado",
-  discovery: "Discovery",
+  discovery: "Descubrimiento",
   proposal: "Propuesta",
-  negotiation: "Negociacion",
+  negotiation: "Negociación",
   won: "Ganado",
   lost: "Perdido",
 }
@@ -48,7 +48,7 @@ const ACTIVITY_LABELS: Record<LeadActivityType, string> = {
   email_sent: "Email enviado",
   email_received: "Email recibido",
   call: "Llamada",
-  meeting: "Reunion",
+  meeting: "Reunión",
   proposal_sent: "Propuesta enviada",
   status_change: "Cambio de estado",
   followup_set: "Followup programado",
@@ -501,9 +501,9 @@ function LeadStatusBadge({ status }: { status: LeadStatus }) {
   const map: Record<LeadStatus, { label: string; variant: "secondary" | "warning" | "success" | "destructive" }> = {
     new: { label: "Nuevo", variant: "secondary" },
     contacted: { label: "Contactado", variant: "secondary" },
-    discovery: { label: "Discovery", variant: "warning" },
+    discovery: { label: "Descubrimiento", variant: "warning" },
     proposal: { label: "Propuesta", variant: "warning" },
-    negotiation: { label: "Negociacion", variant: "warning" },
+    negotiation: { label: "Negociación", variant: "warning" },
     won: { label: "Ganado", variant: "success" },
     lost: { label: "Perdido", variant: "destructive" },
   }

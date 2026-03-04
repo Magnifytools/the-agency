@@ -197,7 +197,7 @@ function InsightCard({
             <p className={`font-medium ${compact ? "text-sm" : ""}`}>{insight.title}</p>
             {!compact && (
               <Badge variant={PRIORITY_BADGES[insight.priority]} className="text-[10px]">
-                {insight.priority}
+                {{ high: "Alta", medium: "Media", low: "Baja" }[insight.priority] ?? insight.priority}
               </Badge>
             )}
           </div>

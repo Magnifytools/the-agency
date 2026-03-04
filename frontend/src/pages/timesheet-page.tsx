@@ -277,11 +277,11 @@ export default function TimesheetPage() {
                     <TableCell className="font-medium">{u.full_name}</TableCell>
                     {days.map((d) => (
                       <TableCell key={d} className="text-right mono">
-                        {Math.round((u.daily_minutes[d] || 0) / 60)}h
+                        {(() => { const m = u.daily_minutes[d] || 0; if (!m) return "—"; const h = Math.floor(m / 60); const min = m % 60; return h > 0 ? (min > 0 ? `${h}h ${min}m` : `${h}h`) : `${min}m` })()}
                       </TableCell>
                     ))}
                     <TableCell className="text-right mono font-semibold">
-                      {Math.round((u.total_minutes || 0) / 60)}h
+                      {(() => { const m = u.total_minutes || 0; const h = Math.floor(m / 60); const min = m % 60; return h > 0 ? (min > 0 ? `${h}h ${min}m` : `${h}h`) : (min > 0 ? `${min}m` : "—") })()}
                     </TableCell>
                   </TableRow>
                 ))}
