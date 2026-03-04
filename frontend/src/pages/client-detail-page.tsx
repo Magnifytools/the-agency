@@ -343,7 +343,7 @@ export default function ClientDetailPage() {
           <Card className={health.risk_level === "at_risk" ? "border-red-300 bg-red-50/50" : health.risk_level === "warning" ? "border-amber-300 bg-amber-50/50" : ""}>
             <CardContent className="p-4">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                <Heart className="h-3 w-3" /> Salud
+                <Heart className="h-3 w-3 flex-shrink-0" /> <span className="truncate">Salud</span>
               </p>
               <p className={`kpi-value mt-1 ${health.risk_level === "healthy" ? "text-green-600" : health.risk_level === "warning" ? "text-amber-500" : "text-red-500"}`}>
                 {health.score}/100

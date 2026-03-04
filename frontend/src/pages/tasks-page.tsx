@@ -399,7 +399,7 @@ export default function TasksPage() {
                     />
                   </TableCell>
                   <TableCell className="font-medium">{t.title}</TableCell>
-                  <TableCell>{t.client_name || "-"}</TableCell>
+                  <TableCell>{t.client_name ?? (t.client_id != null ? <span className="text-muted-foreground">(eliminado)</span> : "-")}</TableCell>
                   <TableCell>{priorityBadge(t.priority)}</TableCell>
                   <TableCell className={qaFilter === "unassigned" && QA_unassigned ? "text-destructive font-bold" : ""}>
                     {t.assigned_user_name || (QA_unassigned && qaFilter === "unassigned" ? "⚠️ Faltante" : "-")}

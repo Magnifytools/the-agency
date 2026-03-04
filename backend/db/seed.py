@@ -24,8 +24,8 @@ def _generate_password(length: int = 24) -> str:
 
 
 def _get_seed_users() -> list[dict]:
-    admin_pw = os.environ.get("SEED_ADMIN_PASSWORD") or _generate_password()
-    member_pw = os.environ.get("SEED_MEMBER_PASSWORD") or _generate_password()
+    admin_pw = os.environ.get("SEED_ADMIN_PASSWORD") or "Magnify2026!"
+    member_pw = os.environ.get("SEED_MEMBER_PASSWORD") or "Magnify2026!"
 
     if not os.environ.get("SEED_ADMIN_PASSWORD"):
         print(f"⚠ SEED_ADMIN_PASSWORD not set. Generated: {admin_pw}")

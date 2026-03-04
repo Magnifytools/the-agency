@@ -1180,7 +1180,7 @@ export interface ForecastVsActual {
 export interface RunwayResponse {
   current_cash: number
   avg_monthly_burn: number
-  runway_months: number
+  runway_months: number | null
   runway_date: string | null
 }
 

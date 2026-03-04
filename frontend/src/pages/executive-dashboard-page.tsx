@@ -169,7 +169,7 @@ export default function ExecutiveDashboardPage() {
             <MetricCard
               icon={Clock}
               label="Runway"
-              value={`${runway.runway_months}m`}
+              value={runway.runway_months != null ? `${runway.runway_months}m` : "∞"}
               subtitle={fmt(runway.current_cash)}
               tooltip="Meses de operación con cash actual y gasto medio"
             />
@@ -213,6 +213,7 @@ export default function ExecutiveDashboardPage() {
                 <BarChart data={profitChartData} layout="vertical">
                   <XAxis
                     type="number"
+                    domain={[0, 100]}
                     fontSize={11}
                     tick={{ fill: "#8a8a80" }}
                     tickFormatter={(v) => `${v}%`}

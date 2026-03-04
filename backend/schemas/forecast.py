@@ -51,5 +51,5 @@ class ForecastVsActual(BaseModel):
 class RunwayResponse(BaseModel):
     current_cash: float
     avg_monthly_burn: float
-    runway_months: float
+    runway_months: Optional[float] = None
     runway_date: Optional[date] = None

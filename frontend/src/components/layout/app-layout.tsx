@@ -50,7 +50,7 @@ export function AppLayout() {
       { to: "/digests", label: "Digests", icon: Newspaper, module: "digests" },
       { to: "/reports", label: "Informes", icon: FileText, module: "reports" },
       { to: "/proposals", label: "Presupuestos", icon: ScrollText, module: "proposals" },
-      { to: "/billing", label: "Facturacion", icon: CreditCard, module: "billing" },
+      { to: "/billing", label: "Facturación", icon: CreditCard, module: "billing" },
     ]
     return items.filter((item) => {
       if (item.adminOnly && !isAdmin) return false

@@ -134,10 +134,10 @@ async def calculate_runway(db: AsyncSession) -> dict:
     cash = ytd_income - ytd_expenses - ytd_taxes_paid
     averages = await calculate_historical_averages(db)
     monthly_burn = averages["avg_expenses"]
-    runway_months = round(cash / monthly_burn, 1) if monthly_burn > 0 else 99
+    runway_months = round(cash / monthly_burn, 1) if monthly_burn > 0 else None
 
     runway_date = None
-    if monthly_burn > 0 and runway_months < 99:
+    if runway_months is not None:
         runway_date = (today + timedelta(days=int(runway_months * 30))).isoformat()
 
     return {
