@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import traceback
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,6 +12,8 @@ from backend.db.database import get_db
 from backend.db.models import User, AgencyAsset, AssetCategory
 from backend.schemas.agency_asset import AssetCreate, AssetUpdate, AssetResponse
 from backend.api.deps import get_current_user, require_admin
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/vault/assets", tags=["agency-vault"])
 
@@ -33,11 +37,15 @@ async def create_asset(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    asset = AgencyAsset(**body.model_dump())
-    db.add(asset)
-    await db.commit()
-    await db.refresh(asset)
-    return asset
+    try:
+        asset = AgencyAsset(**body.model_dump())
+        db.add(asset)
+        await db.commit()
+        await db.refresh(asset)
+        return asset
+    except Exception as e:
+        logger.error("vault create_asset error: %s\n%s", e, traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
 
 @router.put("/{asset_id}", response_model=AssetResponse)
