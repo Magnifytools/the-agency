@@ -1162,7 +1162,7 @@ class AgencyAsset(TimestampMixin, Base):
     __tablename__ = "agency_assets"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    category = Column(Enum(AssetCategory), nullable=False, index=True)
+    category = Column(Enum(AssetCategory, native_enum=False), nullable=False, index=True)
     name = Column(String(200), nullable=False)
     value = Column(String(500))          # email address or domain name
     provider = Column(String(200))
