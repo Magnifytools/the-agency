@@ -13,7 +13,7 @@ import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare, Loader2, CalendarDays } from "lucide-react"
+import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare, Loader2, CalendarDays, ChevronDown, ChevronUp } from "lucide-react"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
@@ -76,6 +76,8 @@ export default function TasksPage() {
 
   // Checklist state
   const [newChecklistText, setNewChecklistText] = useState("")
+  // Dialog — collapsible assignment fields
+  const [showAssignmentFields, setShowAssignmentFields] = useState(true)
 
   const { data: tasksData, isLoading } = useQuery({
     queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, page, pageSize],
@@ -560,111 +562,148 @@ export default function TasksPage() {
           <DialogTitle>{editing ? "Editar tarea" : "Nueva tarea"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2 col-span-2">
-              <Label htmlFor="title">Titulo *</Label>
-              <Input id="title" name="title" defaultValue={editing?.title ?? ""} required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="client_id">Cliente *</Label>
-              <Select id="client_id" name="client_id" defaultValue={editing?.client_id ?? ""} required>
-                <option value="">Seleccionar...</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="category_id">Categoria</Label>
-              <Select id="category_id" name="category_id" defaultValue={editing?.category_id ?? ""}>
-                <option value="">Sin categoria</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="assigned_to">Asignado a</Label>
-              <Select id="assigned_to" name="assigned_to" defaultValue={editing?.assigned_to ?? ""}>
-                <option value="">Sin asignar</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.full_name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="status">Estado</Label>
-              <Select id="status" name="status" defaultValue={editing?.status ?? "pending"}>
-                <option value="pending">Pendiente</option>
-                <option value="in_progress">En curso</option>
-                <option value="completed">Completada</option>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="priority">Prioridad</Label>
-              <Select id="priority" name="priority" defaultValue={editing?.priority ?? "medium"}>
-                <option value="urgent">Urgente</option>
-                <option value="high">Alta</option>
-                <option value="medium">Media</option>
-                <option value="low">Baja</option>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="estimated_minutes">Minutos estimados</Label>
-              <Input
-                id="estimated_minutes"
-                name="estimated_minutes"
-                type="number"
-                defaultValue={editing?.estimated_minutes ?? ""}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="actual_minutes">Minutos reales</Label>
-              <Input
-                id="actual_minutes"
-                name="actual_minutes"
-                type="number"
-                defaultValue={editing?.actual_minutes ?? ""}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="due_date">Fecha limite</Label>
-              <Input
-                id="due_date"
-                name="due_date"
-                type="date"
-                defaultValue={editing?.due_date ? editing.due_date.split("T")[0] : ""}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="depends_on">Depende de <span className="text-xs text-muted-foreground">(opcional)</span></Label>
-              <Select id="depends_on" name="depends_on" defaultValue={editing?.depends_on ?? ""}>
-                <option value="">Sin dependencia</option>
-                {allTasks
-                  .filter((t) => t.id !== editing?.id)
-                  .map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.title.length > 40 ? t.title.slice(0, 40) + "…" : t.title}
-                    </option>
-                  ))}
-              </Select>
-            </div>
+          {/* Title */}
+          <div className="space-y-2">
+            <Label htmlFor="title">Titulo *</Label>
+            <Input id="title" name="title" defaultValue={editing?.title ?? ""} required />
           </div>
+
+          {/* Description — prominent, tall */}
           <div className="space-y-2">
             <Label htmlFor="description">Descripción</Label>
-            <Textarea id="description" name="description" defaultValue={editing?.description ?? ""} />
+            <Textarea
+              id="description"
+              name="description"
+              defaultValue={editing?.description ?? ""}
+              rows={6}
+              className="resize-y min-h-[120px]"
+              placeholder="Contenido de la nota o descripción de la tarea..."
+            />
           </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={closeDialog}>
-              Cancelar
-            </Button>
-            <Button type="submit">{editing ? "Guardar" : "Crear"}</Button>
+
+          {/* Datos de asignación — collapsible */}
+          <div className="border border-border/60 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+              onClick={() => setShowAssignmentFields((v) => !v)}
+            >
+              <span>Datos de asignación</span>
+              {showAssignmentFields
+                ? <ChevronUp className="h-4 w-4" />
+                : <ChevronDown className="h-4 w-4" />}
+            </button>
+            {/* Fields stay in DOM (so form values are always submitted) but hidden visually */}
+            <div className={showAssignmentFields ? "p-3 pt-2 border-t border-border/60" : "hidden"}>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="client_id" className="text-xs">Cliente *</Label>
+                  <Select id="client_id" name="client_id" defaultValue={editing?.client_id ?? ""} required>
+                    <option value="">Seleccionar...</option>
+                    {clients.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="category_id" className="text-xs">Categoría</Label>
+                  <Select id="category_id" name="category_id" defaultValue={editing?.category_id ?? ""}>
+                    <option value="">Sin categoría</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="assigned_to" className="text-xs">Asignado a</Label>
+                  <Select id="assigned_to" name="assigned_to" defaultValue={editing?.assigned_to ?? ""}>
+                    <option value="">Sin asignar</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>{u.full_name}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="status" className="text-xs">Estado</Label>
+                  <Select id="status" name="status" defaultValue={editing?.status ?? "pending"}>
+                    <option value="pending">Pendiente</option>
+                    <option value="in_progress">En curso</option>
+                    <option value="completed">Completada</option>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="priority" className="text-xs">Prioridad</Label>
+                  <Select id="priority" name="priority" defaultValue={editing?.priority ?? "medium"}>
+                    <option value="urgent">Urgente</option>
+                    <option value="high">Alta</option>
+                    <option value="medium">Media</option>
+                    <option value="low">Baja</option>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="estimated_minutes" className="text-xs">Minutos estimados</Label>
+                  <Input
+                    id="estimated_minutes"
+                    name="estimated_minutes"
+                    type="number"
+                    defaultValue={editing?.estimated_minutes ?? ""}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="actual_minutes" className="text-xs">Minutos reales</Label>
+                  <Input
+                    id="actual_minutes"
+                    name="actual_minutes"
+                    type="number"
+                    defaultValue={editing?.actual_minutes ?? ""}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="due_date" className="text-xs">Fecha límite</Label>
+                  <Input
+                    id="due_date"
+                    name="due_date"
+                    type="date"
+                    defaultValue={editing?.due_date ? editing.due_date.split("T")[0] : ""}
+                  />
+                </div>
+                <div className="space-y-1.5 col-span-2">
+                  <Label htmlFor="depends_on" className="text-xs">Depende de <span className="text-muted-foreground">(opcional)</span></Label>
+                  <Select id="depends_on" name="depends_on" defaultValue={editing?.depends_on ?? ""}>
+                    <option value="">Sin dependencia</option>
+                    {allTasks
+                      .filter((t) => t.id !== editing?.id)
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.title.length > 50 ? t.title.slice(0, 50) + "…" : t.title}
+                        </option>
+                      ))}
+                  </Select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center gap-2">
+            {editing && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5"
+                onClick={() => { setDeleteId(editing.id); closeDialog() }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Eliminar
+              </Button>
+            )}
+            <div className="flex gap-2 ml-auto">
+              <Button type="button" variant="outline" onClick={closeDialog}>
+                Cancelar
+              </Button>
+              <Button type="submit">{editing ? "Guardar" : "Crear"}</Button>
+            </div>
           </div>
         </form>
 

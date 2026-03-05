@@ -2,9 +2,15 @@ import type { Task, TaskStatus } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Pencil, CheckCircle2, Circle, Clock, AlertTriangle, ArrowRight, CalendarX } from "lucide-react"
+import { Pencil, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
+
+const STATUS_CONFIG: Record<TaskStatus, { label: string; cls: string }> = {
+  pending:     { label: "Pendiente",  cls: "text-muted-foreground border-border/60 bg-muted/30" },
+  in_progress: { label: "En curso",   cls: "text-amber-600 border-amber-400/60 bg-amber-50/40" },
+  completed:   { label: "Completada", cls: "text-green-600 border-green-400/60 bg-green-50/40" },
+}
 
 interface Props {
   tasks: Task[]
@@ -110,31 +116,31 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
               <Card
                 key={task.id}
                 className={cn(
-                  "group hover:shadow-sm transition-all",
+                  "group hover:shadow-sm transition-all cursor-pointer",
                   isOverdue && "border-red-200 bg-red-50/30",
                   isInProgress && !isOverdue && "border-amber-200 bg-amber-50/30"
                 )}
+                onClick={() => onOpenEdit(task)}
               >
                 <CardContent className="p-3 flex items-center gap-3">
-                  {/* Status toggle */}
-                  <button
-                    className="shrink-0"
-                    onClick={() =>
-                      onStatusChange(
-                        task.id,
-                        task.status === "pending" ? "in_progress" : "completed"
-                      )
-                    }
-                    title={task.status === "pending" ? "Iniciar" : "Completar"}
-                  >
-                    {isInProgress ? (
-                      <div className="h-5 w-5 rounded-full border-2 border-amber-400 flex items-center justify-center">
-                        <ArrowRight className="h-3 w-3 text-amber-500" />
-                      </div>
-                    ) : (
-                      <Circle className="h-5 w-5 text-muted-foreground/40 hover:text-brand transition-colors" />
+                  {/* Status dropdown */}
+                  <select
+                    value={task.status}
+                    onChange={(e) => {
+                      e.stopPropagation()
+                      onStatusChange(task.id, e.target.value as TaskStatus)
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    title="Cambiar estado"
+                    className={cn(
+                      "shrink-0 text-[10px] rounded-md border px-1.5 py-1 h-7 cursor-pointer font-medium transition-colors",
+                      STATUS_CONFIG[task.status]?.cls ?? STATUS_CONFIG.pending.cls
                     )}
-                  </button>
+                  >
+                    <option value="pending">Pendiente</option>
+                    <option value="in_progress">En curso</option>
+                    <option value="completed">Completada</option>
+                  </select>
 
                   {/* Content */}
                   <div className="flex-1 min-w-0">
@@ -168,7 +174,7 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                    onClick={() => onOpenEdit(task)}
+                    onClick={(e) => { e.stopPropagation(); onOpenEdit(task) }}
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
@@ -187,10 +193,17 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
           </p>
           <div className="space-y-1">
             {completedToday.map((task) => (
-              <div key={task.id} className="flex items-center gap-2 py-1.5 px-2 rounded text-muted-foreground">
+              <div key={task.id} className="flex items-center gap-2 py-1.5 px-2 rounded text-muted-foreground group/done">
                 <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                <span className="text-sm line-through truncate">{task.title}</span>
-                {task.client_name && <span className="text-[10px] ml-auto shrink-0">{task.client_name}</span>}
+                <span className="text-sm line-through truncate flex-1">{task.title}</span>
+                {task.client_name && <span className="text-[10px] shrink-0">{task.client_name}</span>}
+                <button
+                  title="Reabrir tarea"
+                  className="opacity-0 group-hover/done:opacity-100 transition-opacity shrink-0 text-muted-foreground hover:text-amber-600"
+                  onClick={() => onStatusChange(task.id, "pending")}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                </button>
               </div>
             ))}
           </div>

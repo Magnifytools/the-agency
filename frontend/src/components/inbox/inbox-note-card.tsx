@@ -152,22 +152,6 @@ export function InboxNoteCard({ note }: Props) {
           <div className="mt-3 pt-3 border-t border-border/30 space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Proyecto</label>
-                <Select
-                  value={String(note.project_id ?? "")}
-                  onChange={(e) => {
-                    const val = e.target.value
-                    updateMutation.mutate({ project_id: val ? Number(val) : null })
-                  }}
-                  className="text-xs"
-                >
-                  <option value="">Sin proyecto</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </Select>
-              </div>
-              <div>
                 <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Cliente</label>
                 <Select
                   value={String(note.client_id ?? "")}
@@ -180,6 +164,22 @@ export function InboxNoteCard({ note }: Props) {
                   <option value="">Sin cliente</option>
                   {clients.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Proyecto</label>
+                <Select
+                  value={String(note.project_id ?? "")}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    updateMutation.mutate({ project_id: val ? Number(val) : null })
+                  }}
+                  className="text-xs"
+                >
+                  <option value="">Sin proyecto</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </Select>
               </div>
@@ -330,21 +330,21 @@ function ConvertToTaskDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Proyecto</label>
-              <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="text-sm">
-                <option value="">Sin proyecto</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </Select>
-            </div>
-
-            <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Cliente</label>
               <Select value={clientId} onChange={(e) => setClientId(e.target.value)} className="text-sm">
                 <option value="">Sin cliente</option>
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </Select>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Proyecto</label>
+              <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="text-sm">
+                <option value="">Sin proyecto</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </Select>
             </div>
