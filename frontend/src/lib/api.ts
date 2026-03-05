@@ -120,6 +120,8 @@ import type {
   AssetCategory,
   IndustryNewsItem,
   IndustryNewsCreate,
+  InboxNote,
+  InboxNoteCreate,
 } from "./types"
 
 export const CSRF_COOKIE_NAME = "agency_csrf_token"
@@ -826,4 +828,25 @@ export const engineApi = {
     metric?: string
   }) =>
     api.post(`/engine/projects/${projectId}/core-updates/analyze`, body, { timeout: 300_000 }).then((r) => r.data),
+}
+
+// ── Inbox Quick Capture ────────────────────────────────────
+
+export const inboxApi = {
+  list: (params?: { status?: string; limit?: number; offset?: number }) =>
+    api.get<InboxNote[]>("/inbox", { params }).then((r) => r.data),
+  count: () =>
+    api.get<{ count: number }>("/inbox/count").then((r) => r.data),
+  create: (data: InboxNoteCreate) =>
+    api.post<InboxNote>("/inbox", data).then((r) => r.data),
+  update: (id: number, data: Partial<InboxNoteCreate> & { status?: string; resolved_as?: string; resolved_entity_id?: number }) =>
+    api.put<InboxNote>(`/inbox/${id}`, data).then((r) => r.data),
+  delete: (id: number) =>
+    api.delete(`/inbox/${id}`).then((r) => r.data),
+  classify: (id: number) =>
+    api.post<InboxNote>(`/inbox/${id}/classify`).then((r) => r.data),
+  convertToTask: (id: number, data?: { title?: string; project_id?: number; client_id?: number; priority?: string; assigned_to?: number }) =>
+    api.post<{ ok: boolean; task_id: number; note: InboxNote }>(`/inbox/${id}/convert-to-task`, data).then((r) => r.data),
+  dismiss: (id: number) =>
+    api.post<InboxNote>(`/inbox/${id}/dismiss`).then((r) => r.data),
 }

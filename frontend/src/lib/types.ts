@@ -1716,3 +1716,40 @@ export interface IndustryNewsCreate {
   content?: string | null
   url?: string | null
 }
+
+// ── Inbox Quick Capture ────────────────────────────────────
+
+export type InboxNoteStatus = "pending" | "classified" | "processed" | "dismissed"
+
+export interface AISuggestion {
+  suggested_project: { id: number | null; name: string; confidence: number } | null
+  suggested_client: { id: number | null; name: string; confidence: number } | null
+  suggested_action: "create_task" | "add_communication" | "link_to_project"
+  suggested_title: string
+  suggested_priority: "low" | "medium" | "high" | "urgent"
+  reasoning: string
+}
+
+export interface InboxNote {
+  id: number
+  user_id: number
+  raw_text: string
+  source: string
+  status: InboxNoteStatus
+  project_id: number | null
+  client_id: number | null
+  project_name: string | null
+  client_name: string | null
+  resolved_as: string | null
+  resolved_entity_id: number | null
+  ai_suggestion: AISuggestion | null
+  created_at: string
+  updated_at: string
+}
+
+export interface InboxNoteCreate {
+  raw_text: string
+  source?: string
+  project_id?: number | null
+  client_id?: number | null
+}

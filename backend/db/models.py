@@ -1222,3 +1222,32 @@ class Notification(TimestampMixin, Base):
     entity_id = Column(Integer, nullable=True)
 
     user = relationship("User", lazy="selectin")
+
+
+# ── Inbox Quick Capture ────────────────────────────────────
+
+
+class InboxNoteStatus(str, enum.Enum):
+    pending = "pending"
+    classified = "classified"
+    processed = "processed"
+    dismissed = "dismissed"
+
+
+class InboxNote(TimestampMixin, Base):
+    __tablename__ = "inbox_notes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    raw_text = Column(Text, nullable=False)
+    source = Column(String(20), nullable=False, default="dashboard")
+    status = Column(Enum(InboxNoteStatus), nullable=False, default=InboxNoteStatus.pending)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
+    resolved_as = Column(String(20), nullable=True)
+    resolved_entity_id = Column(Integer, nullable=True)
+    ai_suggestion = Column(JSONB, nullable=True)
+
+    user = relationship("User", lazy="selectin")
+    project = relationship("Project", lazy="selectin")
+    client = relationship("Client", lazy="selectin")

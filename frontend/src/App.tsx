@@ -42,6 +42,7 @@ const CapacityPage = lazy(() => import("@/pages/capacity-page"))
 const ExecutiveDashboardPage = lazy(() => import("@/pages/executive-dashboard-page"))
 const AgencyVaultPage = lazy(() => import("@/pages/agency-vault-page"))
 const IndustryNewsPage = lazy(() => import("@/pages/industry-news-page"))
+const InboxPage = lazy(() => import("@/pages/inbox-page"))
 
 function PageLoader() {
   return (
@@ -107,6 +108,7 @@ export default function App() {
               {/* Agency */}
               <Route path="/news" element={<Suspense fallback={<PageLoader />}><IndustryNewsPage /></Suspense>} />
               <Route path="/vault" element={<Suspense fallback={<PageLoader />}><AgencyVaultPage /></Suspense>} />
+              <Route path="/inbox" element={<Suspense fallback={<PageLoader />}><InboxPage /></Suspense>} />
               {/* Discord */}
               <Route path="/discord" element={<Suspense fallback={<PageLoader />}><DiscordSettingsPage /></Suspense>} />
             </Route>

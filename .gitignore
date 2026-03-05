@@ -20,3 +20,4 @@ output/
 !chrome-extension/dist/
 !chrome-extension/dist/**
 chrome-extension/dist/key.pem
+.agency-extension-key.pem

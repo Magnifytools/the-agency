@@ -1,24 +1,30 @@
 import { Link, useLocation, Outlet } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/context/auth-context"
-import { holdedApi } from "@/lib/api"
-import { holdedKeys } from "@/lib/query-keys"
-import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList, Gauge, BarChart3, Search, Archive, Megaphone } from "lucide-react"
+import { holdedApi, inboxApi } from "@/lib/api"
+import { holdedKeys, inboxKeys } from "@/lib/query-keys"
+import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList, Gauge, BarChart3, Search, Archive, Megaphone, Inbox } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
 import { NotificationBell } from "@/components/layout/notification-bell"
 import { SearchPalette } from "@/components/layout/search-palette"
+import { QuickCaptureDialog } from "@/components/inbox/quick-capture-dialog"
 import { useMemo, useState, useEffect, useCallback } from "react"
 
 export function AppLayout() {
   const { user, logout, hasPermission, isAdmin } = useAuth()
   const location = useLocation()
   const [searchOpen, setSearchOpen] = useState(false)
+  const [captureOpen, setCaptureOpen] = useState(false)
 
   const handleSearchKeydown = useCallback((e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "k") {
       e.preventDefault()
       setSearchOpen((o) => !o)
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === "j") {
+      e.preventDefault()
+      setCaptureOpen((o) => !o)
     }
   }, [])
 
@@ -26,6 +32,12 @@ export function AppLayout() {
     document.addEventListener("keydown", handleSearchKeydown)
     return () => document.removeEventListener("keydown", handleSearchKeydown)
   }, [handleSearchKeydown])
+
+  const { data: inboxCount } = useQuery({
+    queryKey: inboxKeys.count(),
+    queryFn: inboxApi.count,
+    refetchInterval: 60_000,
+  })
 
   const { data: holdedConfig } = useQuery({
     queryKey: holdedKeys.config(),
@@ -47,6 +59,7 @@ export function AppLayout() {
       { to: "/growth", label: "Growth", icon: Rocket, module: "growth" },
       { to: "/timesheet", label: "Timesheet", icon: Clock, module: "timesheet" },
       { to: "/dailys", label: "Dailys", icon: ClipboardList },
+      { to: "/inbox", label: "Inbox", icon: Inbox, module: "tasks" },
       { to: "/digests", label: "Digests", icon: Newspaper, module: "digests" },
       { to: "/reports", label: "Informes", icon: FileText, module: "reports" },
       { to: "/proposals", label: "Presupuestos", icon: ScrollText, module: "proposals" },
@@ -180,6 +193,11 @@ export function AppLayout() {
               >
                 <item.icon className={cn("h-[18px] w-[18px] transition-colors", isActive(item.to) ? "text-brand" : "text-muted-foreground group-hover:text-foreground")} />
                 {item.label}
+                {item.to === "/inbox" && (inboxCount?.count ?? 0) > 0 && (
+                  <span className="ml-auto text-[10px] font-semibold bg-brand/15 text-brand px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                    {inboxCount!.count}
+                  </span>
+                )}
               </Link>
             ))}
 
@@ -313,6 +331,7 @@ export function AppLayout() {
       </nav>
 
       <SearchPalette open={searchOpen} onOpenChange={setSearchOpen} />
+      <QuickCaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
     </div>
   )
 }
