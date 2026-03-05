@@ -189,60 +189,70 @@ function InsightCard({
 
   const link = getLink()
 
-  return (
+  const cardContent = (
+    <div className="flex items-start gap-3">
+      <div className={`p-1.5 rounded-lg ${insight.priority === "high" ? "bg-red-500/10" : "bg-secondary"}`}>
+        <Icon className={`h-4 w-4 ${insight.priority === "high" ? "text-red-400" : "text-muted-foreground"}`} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className={`font-medium ${compact ? "text-sm" : ""}`}>{insight.title}</p>
+          {!compact && (
+            <Badge variant={PRIORITY_BADGES[insight.priority]} className="text-[10px]">
+              {{ high: "Alta", medium: "Media", low: "Baja" }[insight.priority] ?? insight.priority}
+            </Badge>
+          )}
+        </div>
+        {!compact && (
+          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{insight.description}</p>
+        )}
+        {!compact && insight.suggested_action && (
+          <p className="text-xs text-brand mt-2">{insight.suggested_action}</p>
+        )}
+        {insight.client_name && (
+          <p className="text-xs text-muted-foreground mt-1">{insight.client_name}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {link && (
+          <div
+            className="p-1.5 rounded-md hover:bg-brand/10 text-muted-foreground hover:text-brand"
+            title="Ver y actuar"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </div>
+        )}
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAct() }}
+          className="p-1.5 rounded-md hover:bg-green-500/10 text-muted-foreground hover:text-green-400"
+          title="Marcar como actuado"
+        >
+          <Check className="h-4 w-4" />
+        </button>
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDismiss() }}
+          className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+          title="Descartar"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  )
+
+  return link ? (
+    <Link
+      to={link}
+      onClick={onAct}
+      className={`block p-3 rounded-lg border border-border bg-card border-l-4 ${PRIORITY_COLORS[insight.priority]} group hover:shadow-sm transition-shadow cursor-pointer`}
+    >
+      {cardContent}
+    </Link>
+  ) : (
     <div
       className={`p-3 rounded-lg border border-border bg-card border-l-4 ${PRIORITY_COLORS[insight.priority]} group`}
     >
-      <div className="flex items-start gap-3">
-        <div className={`p-1.5 rounded-lg ${insight.priority === "high" ? "bg-red-500/10" : "bg-secondary"}`}>
-          <Icon className={`h-4 w-4 ${insight.priority === "high" ? "text-red-400" : "text-muted-foreground"}`} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className={`font-medium ${compact ? "text-sm" : ""}`}>{insight.title}</p>
-            {!compact && (
-              <Badge variant={PRIORITY_BADGES[insight.priority]} className="text-[10px]">
-                {{ high: "Alta", medium: "Media", low: "Baja" }[insight.priority] ?? insight.priority}
-              </Badge>
-            )}
-          </div>
-          {!compact && (
-            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{insight.description}</p>
-          )}
-          {!compact && insight.suggested_action && (
-            <p className="text-xs text-brand mt-2">{insight.suggested_action}</p>
-          )}
-          {insight.client_name && (
-            <p className="text-xs text-muted-foreground mt-1">{insight.client_name}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {link && (
-            <Link
-              to={link}
-              onClick={onAct}
-              className="p-1.5 rounded-md hover:bg-brand/10 text-muted-foreground hover:text-brand"
-              title="Ver y actuar"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Link>
-          )}
-          <button
-            onClick={onAct}
-            className="p-1.5 rounded-md hover:bg-green-500/10 text-muted-foreground hover:text-green-400"
-            title="Marcar como actuado"
-          >
-            <Check className="h-4 w-4" />
-          </button>
-          <button
-            onClick={onDismiss}
-            className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-            title="Descartar"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
+      {cardContent}
     </div>
   )
 }
