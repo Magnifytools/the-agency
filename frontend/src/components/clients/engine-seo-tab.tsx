@@ -19,6 +19,7 @@ import {
   Link2,
 } from "lucide-react"
 import { toast } from "sonner"
+import { formatTimeAgo } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
 
 interface Props {
@@ -31,14 +32,6 @@ function formatNumber(n: number): string {
   return n.toLocaleString("es-ES")
 }
 
-function timeAgo(isoDate: string): string {
-  const diff = Date.now() - new Date(isoDate).getTime()
-  const hours = Math.floor(diff / 3_600_000)
-  if (hours < 1) return "hace menos de 1h"
-  if (hours < 24) return `hace ${hours}h`
-  const days = Math.floor(hours / 24)
-  return `hace ${days}d`
-}
 
 function DeltaBadge({ value, invert }: { value: number | null; invert?: boolean }) {
   if (value == null) return null
@@ -310,7 +303,7 @@ export function EngineSeoTab({ client }: Props) {
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>
           {client.engine_metrics_synced_at
-            ? `Ultima sincronizacion: ${timeAgo(client.engine_metrics_synced_at)}`
+            ? `Ultima sincronizacion: ${formatTimeAgo(client.engine_metrics_synced_at)}`
             : "Sin datos de sincronizacion"}
         </span>
         <Button variant="ghost" size="sm" onClick={handleRefresh} disabled={refreshing}>
