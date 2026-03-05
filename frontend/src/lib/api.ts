@@ -12,6 +12,7 @@ import type {
   Task,
   TaskCreate,
   TaskCategory,
+  ChecklistItem,
   TokenResponse,
   User,
   UserCreate,
@@ -236,6 +237,15 @@ export const tasksApi = {
   update: (id: number, data: Partial<TaskCreate>) =>
     api.put<Task>(`/tasks/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/tasks/${id}`).then((r) => r.data),
+  checklist: {
+    list: (taskId: number) => api.get<ChecklistItem[]>(`/tasks/${taskId}/checklist`).then((r) => r.data),
+    create: (taskId: number, text: string) =>
+      api.post<ChecklistItem>(`/tasks/${taskId}/checklist`, { text }).then((r) => r.data),
+    update: (taskId: number, itemId: number, data: Partial<{ text: string; is_done: boolean }>) =>
+      api.put<ChecklistItem>(`/tasks/${taskId}/checklist/${itemId}`, data).then((r) => r.data),
+    delete: (taskId: number, itemId: number) =>
+      api.delete(`/tasks/${taskId}/checklist/${itemId}`).then((r) => r.data),
+  },
 }
 
 // Time Entries
@@ -375,6 +385,7 @@ export const projectsApi = {
     return api.post<ProjectDraft>("/projects/extract-from-pdf", form).then((r) => r.data)
   },
   tasks: (id: number) => api.get(`/projects/${id}/tasks`).then((r) => r.data),
+  burndown: (id: number) => api.get(`/projects/${id}/burndown`).then((r) => r.data),
   createPhase: (project_id: number, data: { name: string; order_index: number; start_date?: string; due_date?: string }) =>
     api.post<ProjectPhase>(`/projects/${project_id}/phases`, data).then((r) => r.data),
   updatePhase: (phase_id: number, data: { name?: string; status?: string }) =>
@@ -467,6 +478,8 @@ export const proposalsApi = {
   generate: (id: number) => api.post<Proposal>(`/proposals/${id}/generate`).then((r) => r.data),
   pdf: (id: number) => api.get(`/proposals/${id}/pdf`, { responseType: "blob" }).then((r) => r.data),
   pdfUrl: (id: number) => `/api/proposals/${id}/pdf`,
+  sendEmail: (id: number, data: { to_email: string; message?: string }) =>
+    api.post(`/proposals/${id}/send-email`, data).then((r) => r.data),
 }
 
 // Investments

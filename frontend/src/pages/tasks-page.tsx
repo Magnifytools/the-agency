@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { tasksApi, clientsApi, categoriesApi, usersApi } from "@/lib/api"
-import type { Task, TaskCreate, TaskStatus, TaskPriority } from "@/lib/types"
+import type { Task, TaskCreate, TaskStatus, TaskPriority, ChecklistItem } from "@/lib/types"
 import { usePagination } from "@/hooks/use-pagination"
 import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
@@ -13,7 +13,7 @@ import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare, Loader2 } from "lucide-react"
+import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare, Loader2, CalendarDays } from "lucide-react"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
@@ -25,6 +25,7 @@ import { TimeLogDialog } from "@/components/timer/time-log-dialog"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { MyDayView } from "@/components/tasks/my-day-view"
 import { KanbanBoard } from "@/components/tasks/kanban-board"
+import { TaskCalendarView } from "@/components/tasks/task-calendar-view"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 
@@ -54,7 +55,10 @@ export default function TasksPage() {
   const [editing, setEditing] = useState<Task | null>(null)
   const [timeLogTask, setTimeLogTask] = useState<Task | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
-  const [view, setView] = useState<"my_day" | "sprint" | "all">("my_day")
+  const [view, setView] = useState<"my_day" | "sprint" | "all" | "calendar">("my_day")
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }
+  })
 
   // Filters
   const [filterClient, setFilterClient] = useState<string>("")
@@ -69,6 +73,9 @@ export default function TasksPage() {
     urlQaFilter ?? "none"
   )
   const [bulkStatus, setBulkStatus] = useState("")
+
+  // Checklist state
+  const [newChecklistText, setNewChecklistText] = useState("")
 
   const { data: tasksData, isLoading } = useQuery({
     queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, page, pageSize],
@@ -173,9 +180,31 @@ export default function TasksPage() {
     onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar tarea")),
   })
 
+
+  // Checklist query — enabled only when editing an existing task
+  const { data: checklistItems = [], refetch: refetchChecklist } = useQuery({
+    queryKey: ["task-checklist", editing?.id],
+    queryFn: () => tasksApi.checklist.list(editing!.id),
+    enabled: !!editing?.id,
+  })
+
+  const addChecklistMut = useMutation({
+    mutationFn: (text: string) => tasksApi.checklist.create(editing!.id, text),
+    onSuccess: () => { refetchChecklist(); setNewChecklistText("") },
+  })
+  const toggleChecklistMut = useMutation({
+    mutationFn: ({ id, is_done }: { id: number; is_done: boolean }) =>
+      tasksApi.checklist.update(editing!.id, id, { is_done }),
+    onSuccess: () => { refetchChecklist(); queryClient.invalidateQueries({ queryKey: ["tasks"] }) },
+  })
+  const deleteChecklistMut = useMutation({
+    mutationFn: (id: number) => tasksApi.checklist.delete(editing!.id, id),
+    onSuccess: () => refetchChecklist(),
+  })
   const closeDialog = () => {
     setDialogOpen(false)
     setEditing(null)
+    setNewChecklistText("")
   }
 
   const openCreate = () => {
@@ -330,6 +359,14 @@ export default function TasksPage() {
         >
           <List className="w-4 h-4 mr-2" /> Todas
         </Button>
+        <Button
+          variant={view === "calendar" ? "default" : "ghost"}
+          size="sm"
+          className="flex-1 sm:w-32"
+          onClick={() => setView("calendar")}
+        >
+          <CalendarDays className="w-4 h-4 mr-2" /> Calendario
+        </Button>
       </div>
 
       {/* Table & Planner */}
@@ -406,6 +443,9 @@ export default function TasksPage() {
                   </TableCell>
                   <TableCell className="font-medium">
                     {t.title}
+                    {t.checklist_count > 0 && (
+                      <span className="ml-2 text-xs text-muted-foreground">&#9745; {t.checklist_count}</span>
+                    )}
                     {t.dependency_title && (
                       <span className="ml-2 text-xs text-muted-foreground">⟶ {t.dependency_title.length > 20 ? t.dependency_title.slice(0, 20) + "…" : t.dependency_title}</span>
                     )}
@@ -499,6 +539,17 @@ export default function TasksPage() {
         <KanbanBoard
           tasks={tasks}
           onStatusChange={(taskId, newStatus) => updateMutation.mutate({ id: taskId, data: { status: newStatus } })}
+          onOpenEdit={openEdit}
+        />
+      )}
+
+      {!isLoading && view === "calendar" && (
+        <TaskCalendarView
+          tasks={allTasks}
+          year={calMonth.year}
+          month={calMonth.month}
+          onPrev={() => setCalMonth(({ year, month }) => month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 })}
+          onNext={() => setCalMonth(({ year, month }) => month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 })}
           onOpenEdit={openEdit}
         />
       )}
@@ -616,6 +667,53 @@ export default function TasksPage() {
             <Button type="submit">{editing ? "Guardar" : "Crear"}</Button>
           </div>
         </form>
+
+        {/* Subtasks / Checklist — only shown when editing an existing task */}
+        {editing && (
+          <div className="mt-4 border-t pt-4 space-y-3">
+            <p className="text-sm font-semibold">
+              Subtasks ({checklistItems.filter(i => i.is_done).length}/{checklistItems.length})
+            </p>
+            <div className="space-y-1.5">
+              {checklistItems.map((item) => (
+                <div key={item.id} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={item.is_done}
+                    onChange={(e) => toggleChecklistMut.mutate({ id: item.id, is_done: e.target.checked })}
+                    className="rounded border-border"
+                  />
+                  <span className={`text-sm flex-1 ${item.is_done ? "line-through text-muted-foreground" : ""}`}>
+                    {item.text}
+                  </span>
+                  <Button variant="ghost" size="icon" className="h-6 w-6"
+                    onClick={() => deleteChecklistMut.mutate(item.id)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Input
+                value={newChecklistText}
+                onChange={(e) => setNewChecklistText(e.target.value)}
+                placeholder="Añadir subtask..."
+                className="text-sm h-8"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newChecklistText.trim()) {
+                    e.preventDefault()
+                    addChecklistMut.mutate(newChecklistText.trim())
+                  }
+                }}
+              />
+              <Button size="sm" variant="outline" className="h-8"
+                onClick={() => newChecklistText.trim() && addChecklistMut.mutate(newChecklistText.trim())}
+                disabled={!newChecklistText.trim()}>
+                <Plus className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+        )}
       </Dialog>
 
       {/* Time Log Dialog */}

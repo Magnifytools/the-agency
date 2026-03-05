@@ -489,6 +489,19 @@ class Task(TimestampMixin, Base):
     project = relationship("Project", back_populates="tasks", lazy="selectin")
     phase = relationship("ProjectPhase", back_populates="tasks", lazy="selectin")
     dependency = relationship("Task", remote_side="Task.id", lazy="selectin")
+    checklist_items = relationship("TaskChecklist", back_populates="task", lazy="selectin", cascade="all, delete-orphan", order_by="TaskChecklist.order_index")
+
+
+class TaskChecklist(TimestampMixin, Base):
+    __tablename__ = "task_checklists"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    text = Column(String(500), nullable=False)
+    is_done = Column(Boolean, nullable=False, default=False)
+    order_index = Column(Integer, nullable=False, default=0)
+
+    task = relationship("Task", back_populates="checklist_items", lazy="noload")
 
 
 class TimeEntry(TimestampMixin, Base):

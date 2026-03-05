@@ -7,6 +7,7 @@ from datetime import datetime, date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from jinja2 import Environment, BaseLoader
@@ -751,6 +752,81 @@ async def get_proposal_pdf(
     """Render proposal as print-ready HTML. Uses standard Bearer auth."""
     html_content = await _build_proposal_html(proposal_id, db)
     return Response(content=html_content, media_type="text/html")
+
+
+# ── Send by email ───────────────────────────────────────────
+
+
+class ProposalEmailRequest(BaseModel):
+    to_email: str
+    message: Optional[str] = None
+
+
+@router.post("/{proposal_id}/send-email")
+async def send_proposal_email(
+    proposal_id: int,
+    body: ProposalEmailRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("proposals", write=True)),
+):
+    """Send a proposal by email."""
+    from backend.services.email_service import send_email
+    from backend.config import settings
+
+    r = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
+    prop = r.scalar_one_or_none()
+    if not prop:
+        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+
+    # Check SMTP configured
+    if not settings.SMTP_HOST:
+        raise HTTPException(
+            status_code=400,
+            detail="SMTP no configurado. Añade SMTP_HOST, SMTP_USER, SMTP_PASSWORD y SMTP_FROM a las variables de entorno."
+        )
+
+    company = prop.company_name or (prop.client.name if prop.client else "tu empresa")
+    subject = f"Propuesta de servicios — {company}"
+
+    custom_msg = f"<p>{body.message}</p>" if body.message else ""
+    html = f"""
+    <html><body style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
+    <h2 style="color: #1a1a1a;">Propuesta de servicios para {company}</h2>
+    {custom_msg}
+    <p>Adjunto encontrarás nuestra propuesta detallada.</p>
+    <p>Quedo a tu disposición para cualquier consulta.</p>
+    <br>
+    <p style="color: #666;">— {current_user.full_name}<br>Magnify Agency</p>
+    </body></html>
+    """
+    text = f"Propuesta de servicios para {company}\n\n{body.message or ''}\n\nAdjunto encontrarás nuestra propuesta.\n\n— {current_user.full_name}"
+
+    # Try to generate PDF attachment
+    pdf_bytes = None
+    try:
+        loop = asyncio.get_event_loop()
+        pdf_bytes = await loop.run_in_executor(None, _build_pdf, prop)
+    except Exception:
+        pdf_bytes = None
+
+    ok = await send_email(
+        to=body.to_email,
+        subject=subject,
+        body_html=html,
+        body_text=text,
+        attachment_bytes=pdf_bytes,
+        attachment_name=f"propuesta-{company.lower().replace(' ', '-')}.pdf",
+    )
+
+    if not ok:
+        raise HTTPException(status_code=500, detail="Error al enviar el email. Verifica la configuración SMTP.")
+
+    # Mark as sent
+    prop.sent_at = datetime.utcnow()
+    prop.status = ProposalStatus.sent
+    await db.commit()
+
+    return {"ok": True, "to": body.to_email}
 
 
 # ── PDF builder (fpdf2, pure Python, no system deps) ──────────────────────────

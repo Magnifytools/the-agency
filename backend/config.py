@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     ENGINE_FRONTEND_URL: Optional[str] = None
     VOYAGE_API_KEY: Optional[str] = None
 
+    # SMTP email
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_FROM: Optional[str] = None
+    SMTP_FROM_NAME: str = "Magnify Agency"
+
     model_config = {"env_file": str(Path(__file__).resolve().parent.parent / ".env")}
 
     @model_validator(mode="after")

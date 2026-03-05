@@ -6,7 +6,7 @@ import { es } from "date-fns/locale"
 import {
     FileText, Plus, Trash2, Download, ArrowLeft, Copy, Sparkles,
     Send, CheckCircle, XCircle, ChevronRight, ChevronLeft,
-    Building2, Euro, AlertTriangle, Calculator, TrendingUp
+    Building2, Euro, AlertTriangle, Calculator, TrendingUp, Mail
 } from "lucide-react"
 import { proposalsApi, serviceTemplatesApi, leadsApi, clientsApi, investmentsApi } from "@/lib/api"
 import type {
@@ -223,6 +223,11 @@ export default function ProposalsPage() {
     })
     const [roiLoading, setRoiLoading] = useState(false)
 
+    // Email modal state
+    const [emailModal, setEmailModal] = useState<number | null>(null)
+    const [emailTo, setEmailTo] = useState("")
+    const [emailMsg, setEmailMsg] = useState("")
+
     // Auto-open wizard when navigating from lead detail
     useEffect(() => {
         const state = location.state as { createFromLead?: { id: number; company_name: string; contact_name?: string; service_interest?: string; estimated_value?: number } } | null
@@ -340,6 +345,19 @@ export default function ProposalsPage() {
             toast.success("Propuesta convertida a proyecto")
         },
         onError: (err) => toast.error(getErrorMessage(err, "Error al convertir")),
+    })
+
+    const sendEmailMut = useMutation({
+        mutationFn: ({ id, to_email, message }: { id: number; to_email: string; message: string }) =>
+            proposalsApi.sendEmail(id, { to_email, message }),
+        onSuccess: () => {
+            toast.success("Propuesta enviada por email")
+            setEmailModal(null)
+            setEmailTo("")
+            setEmailMsg("")
+            queryClient.invalidateQueries({ queryKey: ["proposals"] })
+        },
+        onError: (err) => toast.error(getErrorMessage(err, "Error al enviar email")),
     })
 
     // --- Wizard helpers ---
@@ -572,6 +590,9 @@ export default function ProposalsPage() {
                         )}
                         <Button size="sm" variant="outline" onClick={() => openPdf(p.id)}>
                             <Download className="w-4 h-4 mr-1" /> PDF
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setEmailModal(p.id)} title="Enviar por email">
+                            <Mail className="w-4 h-4 mr-1" /> Enviar email
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => setRoiDialogOpen(true)}>
                             <Calculator className="w-4 h-4 mr-1" /> Calculadora ROI
@@ -960,6 +981,9 @@ export default function ProposalsPage() {
                                                 <div className="flex justify-end gap-1">
                                                     <Button variant="ghost" size="sm" onClick={(e) => openPdf(p.id, e)} title="PDF">
                                                         <Download className="w-4 h-4 text-brand" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setEmailModal(p.id) }} title="Enviar por email">
+                                                        <Mail className="h-4 w-4" />
                                                     </Button>
                                                     {p.status === "draft" && (
                                                         <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setDeleteId(p.id) }}>
@@ -1619,6 +1643,32 @@ export default function ProposalsPage() {
                             </DialogFooter>
                         </div>
                     )}
+                </DialogContent>
+            </Dialog>
+
+            {/* ========== EMAIL DIALOG ========== */}
+            <Dialog open={emailModal !== null} onOpenChange={(o) => !o && setEmailModal(null)}>
+                <DialogHeader><DialogTitle>Enviar propuesta por email</DialogTitle></DialogHeader>
+                <DialogContent>
+                    <div className="space-y-4 p-4">
+                        <div>
+                            <Label>Email destinatario</Label>
+                            <Input value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="cliente@empresa.com" type="email" />
+                        </div>
+                        <div>
+                            <Label>Mensaje <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+                            <Textarea value={emailMsg} onChange={(e) => setEmailMsg(e.target.value)} placeholder="Mensaje personalizado..." rows={3} />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <Button variant="outline" onClick={() => setEmailModal(null)}>Cancelar</Button>
+                            <Button
+                                onClick={() => emailModal && sendEmailMut.mutate({ id: emailModal, to_email: emailTo, message: emailMsg })}
+                                disabled={!emailTo || sendEmailMut.isPending}
+                            >
+                                {sendEmailMut.isPending ? "Enviando..." : "Enviar"}
+                            </Button>
+                        </div>
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>

@@ -111,6 +111,17 @@ async def _ensure_columns():
         # Lead pipeline fields
         "ALTER TABLE leads ADD COLUMN IF NOT EXISTS estimated_close_date DATE",
         "ALTER TABLE leads ADD COLUMN IF NOT EXISTS probability INTEGER",
+        # Task checklists
+        """CREATE TABLE IF NOT EXISTS task_checklists (
+    id SERIAL PRIMARY KEY,
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    text VARCHAR(500) NOT NULL,
+    is_done BOOLEAN NOT NULL DEFAULT FALSE,
+    order_index INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)""",
+        "CREATE INDEX IF NOT EXISTS ix_task_checklists_task_id ON task_checklists (task_id)",
     ]
     async with engine.begin() as conn:
         for sql in stmts:

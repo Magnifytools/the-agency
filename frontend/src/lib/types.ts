@@ -306,6 +306,17 @@ export interface Task {
   project_name: string | null
   phase_name: string | null
   dependency_title: string | null
+  checklist_count: number
+}
+
+export interface ChecklistItem {
+  id: number
+  task_id: number
+  text: string
+  is_done: boolean
+  order_index: number
+  created_at: string
+  updated_at: string
 }
 
 export interface TaskCreate {

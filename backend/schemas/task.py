@@ -66,5 +66,6 @@ class TaskResponse(BaseModel):
     project_name: Optional[str] = None
     phase_name: Optional[str] = None
     dependency_title: Optional[str] = None
+    checklist_count: int = 0
 
     model_config = {"from_attributes": True}

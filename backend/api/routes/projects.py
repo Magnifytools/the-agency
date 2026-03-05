@@ -316,6 +316,66 @@ async def get_project(
     return _build_project_response(project, hours_used=hours_used)
 
 
+@router.get("/{project_id}/burndown")
+async def project_burndown(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(require_module("projects")),
+):
+    """Return burndown data: completed tasks per day since project start."""
+    # Verify project exists and get start date + total task count
+    r = await db.execute(
+        select(Project).where(Project.id == project_id)
+    )
+    project = r.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Get all tasks for the project
+    r_tasks = await db.execute(
+        select(Task.id, Task.status, Task.updated_at)
+        .where(Task.project_id == project_id)
+    )
+    all_tasks = r_tasks.all()
+    total = len(all_tasks)
+    if total == 0:
+        return {"total_tasks": 0, "points": []}
+
+    # Completed tasks grouped by date
+    from collections import defaultdict
+    completed_by_date: dict = defaultdict(int)
+    for t in all_tasks:
+        if t.status == TaskStatus.completed and t.updated_at:
+            day = t.updated_at.date() if hasattr(t.updated_at, 'date') else t.updated_at
+            if hasattr(day, 'date'):
+                day = day.date()
+            completed_by_date[day.isoformat()] += 1
+
+    # Build cumulative series from project start
+    from datetime import date, timedelta
+    start = project.start_date.date() if project.start_date and hasattr(project.start_date, 'date') else (project.created_at.date() if hasattr(project.created_at, 'date') else date.today())
+    end = date.today()
+
+    points = []
+    cumulative = 0
+    current = start
+    while current <= end:
+        key = current.isoformat()
+        cumulative += completed_by_date.get(key, 0)
+        ideal_pct = min(1.0, (current - start).days / max(1, (end - start).days))
+        points.append({
+            "date": key,
+            "completed": cumulative,
+            "remaining": total - cumulative,
+            "ideal": round(total * ideal_pct),
+        })
+        current += timedelta(days=1)
+        if len(points) > 180:  # cap at 6 months
+            break
+
+    return {"total_tasks": total, "points": points}
+
+
 @router.put("/{project_id}", response_model=ProjectResponse)
 async def update_project(
     project_id: int,

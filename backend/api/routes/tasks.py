@@ -8,8 +8,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
-from backend.db.models import Task, TaskStatus, TaskPriority, User
+from backend.db.models import Task, TaskStatus, TaskPriority, User, TaskChecklist
 from backend.schemas.task import TaskCreate, TaskUpdate, TaskResponse
+from backend.schemas.task_checklist import ChecklistItemCreate, ChecklistItemUpdate, ChecklistItemResponse
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module
 
@@ -42,6 +43,7 @@ def _task_to_response(task: Task) -> TaskResponse:
         project_name=task.project.name if task.project else None,
         phase_name=task.phase.name if task.phase else None,
         dependency_title=task.dependency.title if task.dependency else None,
+        checklist_count=len(task.checklist_items) if task.checklist_items else 0,
     )
 
 
@@ -213,3 +215,71 @@ async def delete_task(
         await db.rollback()
         logger.error("Error eliminando tarea %d: %s", task_id, e)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
+# ── Checklist endpoints ───────────────────────────────────────────────────────
+
+@router.get("/{task_id}/checklist", response_model=list[ChecklistItemResponse])
+async def list_checklist(
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    r = await db.execute(
+        select(TaskChecklist)
+        .where(TaskChecklist.task_id == task_id)
+        .order_by(TaskChecklist.order_index)
+    )
+    return [ChecklistItemResponse.model_validate(i) for i in r.scalars().all()]
+
+
+@router.post("/{task_id}/checklist", response_model=ChecklistItemResponse, status_code=201)
+async def create_checklist_item(
+    task_id: int,
+    data: ChecklistItemCreate,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    item = TaskChecklist(task_id=task_id, **data.model_dump())
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return ChecklistItemResponse.model_validate(item)
+
+
+@router.put("/{task_id}/checklist/{item_id}", response_model=ChecklistItemResponse)
+async def update_checklist_item(
+    task_id: int,
+    item_id: int,
+    data: ChecklistItemUpdate,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    r = await db.execute(
+        select(TaskChecklist).where(TaskChecklist.id == item_id, TaskChecklist.task_id == task_id)
+    )
+    item = r.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item no encontrado")
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(item, field, value)
+    await db.commit()
+    await db.refresh(item)
+    return ChecklistItemResponse.model_validate(item)
+
+
+@router.delete("/{task_id}/checklist/{item_id}", status_code=204)
+async def delete_checklist_item(
+    task_id: int,
+    item_id: int,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    r = await db.execute(
+        select(TaskChecklist).where(TaskChecklist.id == item_id, TaskChecklist.task_id == task_id)
+    )
+    item = r.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item no encontrado")
+    await db.delete(item)
+    await db.commit()

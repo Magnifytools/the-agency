@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useParams, Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 import {
   Calendar,
   CheckCircle2,
@@ -69,6 +70,12 @@ export default function ProjectDetailPage() {
   const { data: tasksData } = useQuery({
     queryKey: ["project-tasks", id],
     queryFn: () => projectsApi.tasks(parseInt(id!)),
+    enabled: !!id,
+  })
+
+  const { data: burndown } = useQuery({
+    queryKey: ["project-burndown", id],
+    queryFn: () => projectsApi.burndown(parseInt(id!)),
     enabled: !!id,
   })
 
@@ -265,6 +272,32 @@ export default function ProjectDetailPage() {
                 style={{ width: `${Math.min(100, ((project.hours_used ?? 0) / project.budget_hours) * 100)}%` }}
               />
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Burndown Chart */}
+      {burndown && burndown.total_tasks > 0 && burndown.points.length > 1 && (
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm font-medium mb-3">Burndown de tareas</p>
+            <ResponsiveContainer width="100%" height={160}>
+              <LineChart
+                data={burndown.points.filter((_: unknown, i: number) => i % Math.max(1, Math.floor(burndown.points.length / 30)) === 0)}
+                margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
+              >
+                <XAxis dataKey="date" fontSize={9} tick={{ fill: "#8a8a80" }}
+                  tickFormatter={(v: string) => { const d = new Date(v + "T12:00:00"); return `${d.getDate()}/${d.getMonth()+1}` }} />
+                <YAxis fontSize={9} tick={{ fill: "#8a8a80" }} />
+                <Tooltip
+                  formatter={(value: number, name: string) => [value, name === "remaining" ? "Restantes" : "Ideal"]}
+                  labelFormatter={(v: string) => new Date(v + "T12:00:00").toLocaleDateString("es-ES")}
+                  contentStyle={{ backgroundColor: "#2a2a28", border: "1px solid rgba(254,230,48,0.3)", color: "#f5f5f0", fontSize: 11, borderRadius: 8 }}
+                />
+                <Line type="monotone" dataKey="remaining" stroke="#FEE630" dot={false} strokeWidth={2} name="remaining" />
+                <Line type="monotone" dataKey="ideal" stroke="#6b7280" dot={false} strokeWidth={1} strokeDasharray="4 2" name="ideal" />
+              </LineChart>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
       )}
