@@ -3,7 +3,7 @@ import type { Task, TaskStatus } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Pencil, Clock, AlertTriangle, User, GripVertical } from "lucide-react"
+import { Pencil, Clock, AlertTriangle, User, GripVertical, UserX, CalendarX } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface Props {
@@ -120,6 +120,8 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
             <div className="space-y-2">
               {colTasks.map((task) => {
                 const isOverdue = task.due_date && new Date(task.due_date) < now && task.status !== "completed"
+                const isUnassigned = !task.assigned_to && task.status !== "completed"
+                const noDate = !task.due_date && task.status !== "completed"
 
                 return (
                   <Card
@@ -181,6 +183,18 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
                         {task.due_date && !isOverdue && (
                           <span className="text-[10px] text-muted-foreground">
                             {new Date(task.due_date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                          </span>
+                        )}
+                        {isUnassigned && (
+                          <span className="text-[10px] text-orange-500 flex items-center gap-0.5 font-medium">
+                            <UserX className="h-2.5 w-2.5" />
+                            Sin responsable
+                          </span>
+                        )}
+                        {noDate && (
+                          <span className="text-[10px] text-muted-foreground/70 flex items-center gap-0.5">
+                            <CalendarX className="h-2.5 w-2.5" />
+                            Sin fecha
                           </span>
                         )}
                       </div>

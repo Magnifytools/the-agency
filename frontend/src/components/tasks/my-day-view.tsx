@@ -2,7 +2,7 @@ import type { Task, TaskStatus } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Pencil, CheckCircle2, Circle, Clock, AlertTriangle, ArrowRight } from "lucide-react"
+import { Pencil, CheckCircle2, Circle, Clock, AlertTriangle, ArrowRight, CalendarX } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
 
@@ -149,10 +149,15 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
                           <Clock className="h-2.5 w-2.5" />{formatMinutes(task.estimated_minutes)}
                         </span>
                       )}
-                      {task.due_date && (
+                      {task.due_date ? (
                         <span className={cn("flex items-center gap-0.5", isOverdue && "text-red-500 font-medium")}>
                           {isOverdue && <AlertTriangle className="h-2.5 w-2.5" />}
                           {new Date(task.due_date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-0.5 text-muted-foreground/60">
+                          <CalendarX className="h-2.5 w-2.5" />
+                          Sin fecha
                         </span>
                       )}
                     </div>
