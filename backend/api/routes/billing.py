@@ -180,6 +180,7 @@ async def export_billing(
                 TimeEntry.minutes.isnot(None),
                 TimeEntry.date >= start,
                 TimeEntry.date <= end,
+                Client.is_internal.is_(False),
             )
         )
         .group_by(Client.id)
@@ -256,6 +257,7 @@ async def export_billing_pdf(
                 TimeEntry.minutes.isnot(None),
                 TimeEntry.date >= start,
                 TimeEntry.date <= end,
+                Client.is_internal.is_(False),
             )
         )
         .group_by(Client.id)
