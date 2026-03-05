@@ -65,5 +65,6 @@ class TaskResponse(BaseModel):
     assigned_user_name: Optional[str] = None
     project_name: Optional[str] = None
     phase_name: Optional[str] = None
+    dependency_title: Optional[str] = None
 
     model_config = {"from_attributes": True}

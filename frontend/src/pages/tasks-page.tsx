@@ -202,6 +202,7 @@ export default function TasksPage() {
       client_id: Number(fd.get("client_id")),
       category_id: fd.get("category_id") ? Number(fd.get("category_id")) : null,
       assigned_to: fd.get("assigned_to") ? Number(fd.get("assigned_to")) : null,
+      depends_on: fd.get("depends_on") ? Number(fd.get("depends_on")) : null,
     }
     if (editing) {
       updateMutation.mutate({ id: editing.id, data })
@@ -403,7 +404,12 @@ export default function TasksPage() {
                       className="rounded border-border"
                     />
                   </TableCell>
-                  <TableCell className="font-medium">{t.title}</TableCell>
+                  <TableCell className="font-medium">
+                    {t.title}
+                    {t.dependency_title && (
+                      <span className="ml-2 text-xs text-muted-foreground">⟶ {t.dependency_title.length > 20 ? t.dependency_title.slice(0, 20) + "…" : t.dependency_title}</span>
+                    )}
+                  </TableCell>
                   <TableCell>{t.client_name ?? (t.client_id != null ? <span className="text-muted-foreground">(eliminado)</span> : "-")}</TableCell>
                   <TableCell>{priorityBadge(t.priority)}</TableCell>
                   <TableCell className={qaFilter === "unassigned" && QA_unassigned ? "text-destructive font-bold" : ""}>
@@ -584,6 +590,19 @@ export default function TasksPage() {
                 type="date"
                 defaultValue={editing?.due_date ? editing.due_date.split("T")[0] : ""}
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="depends_on">Depende de <span className="text-xs text-muted-foreground">(opcional)</span></Label>
+              <Select id="depends_on" name="depends_on" defaultValue={editing?.depends_on ?? ""}>
+                <option value="">Sin dependencia</option>
+                {allTasks
+                  .filter((t) => t.id !== editing?.id)
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.title.length > 40 ? t.title.slice(0, 40) + "…" : t.title}
+                    </option>
+                  ))}
+              </Select>
             </div>
           </div>
           <div className="space-y-2">

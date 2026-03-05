@@ -15,7 +15,8 @@ from backend.db.models import (
     ClientContact, ClientResource, BillingEvent,
     CommunicationLog, WeeklyDigest, Invoice, InvoiceItem,
     PMInsight, GrowthIdea, Proposal, Event, Lead,
-    GeneratedReport, Income, HoldedInvoiceCache, ClientDocument,
+    GeneratedReport, Income, Expense, HoldedInvoiceCache, ClientDocument,
+    BalanceSnapshot,
 )
 from backend.schemas.client import ClientCreate, ClientUpdate, ClientResponse, ClientDocumentResponse
 from backend.schemas.pagination import PaginatedResponse
@@ -413,3 +414,83 @@ async def delete_document(
         raise HTTPException(404, "Documento no encontrado")
     await db.delete(doc)
     await db.commit()
+
+
+@router.get("/{client_id}/what-if", tags=["clients"])
+async def what_if_lose_client(
+    client_id: int,
+    db: AsyncSession = Depends(get_db),
+    _user = Depends(require_module("clients")),
+):
+    """Estimate financial impact of losing a client."""
+    from datetime import date, timedelta
+
+    # Check client exists
+    r = await db.execute(select(Client).where(Client.id == client_id))
+    client = r.scalar_one_or_none()
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    # Average monthly revenue from this client (last 6 months)
+    six_months_ago = date.today() - timedelta(days=180)
+    r_inc = await db.execute(
+        select(func.coalesce(func.sum(Income.amount), 0))
+        .where(Income.client_id == client_id, Income.date >= six_months_ago)
+    )
+    total_6m = float(r_inc.scalar() or 0)
+    avg_monthly = round(total_6m / 6, 2)
+
+    # Total company revenue last 6 months (for percentage)
+    r_total = await db.execute(
+        select(func.coalesce(func.sum(Income.amount), 0))
+        .where(Income.date >= six_months_ago)
+    )
+    total_company_6m = float(r_total.scalar() or 0)
+    pct_of_total = round((total_6m / total_company_6m * 100) if total_company_6m > 0 else 0, 1)
+
+    # Average monthly burn (last 3 months expenses)
+    three_months_ago = date.today() - timedelta(days=90)
+    r_burn = await db.execute(
+        select(func.coalesce(func.sum(Expense.amount), 0))
+        .where(Expense.date >= three_months_ago)
+    )
+    burn_3m = float(r_burn.scalar() or 0)
+    avg_burn = round(burn_3m / 3, 2)
+
+    # Latest cash balance
+    r_bal = await db.execute(
+        select(BalanceSnapshot.amount).order_by(BalanceSnapshot.date.desc()).limit(1)
+    )
+    cash = float(r_bal.scalar() or 0)
+
+    # Runway with vs without client
+    if avg_burn > 0 and cash > 0:
+        r_total_income_3m = await db.execute(
+            select(func.coalesce(func.sum(Income.amount), 0))
+            .where(Income.date >= three_months_ago)
+        )
+        total_income_3m = float(r_total_income_3m.scalar() or 0)
+        avg_total_income = round(total_income_3m / 3, 2)
+        avg_client_income = round(total_6m / 6, 2)
+
+        net_monthly_without = (avg_total_income - avg_client_income) - avg_burn
+
+        runway_current = round(cash / avg_burn, 1)
+        if net_monthly_without < 0:
+            runway_without = round(cash / abs(net_monthly_without), 1)
+        else:
+            runway_without = None  # sustainable
+    else:
+        runway_current = None
+        runway_without = None
+
+    return {
+        "client_id": client_id,
+        "client_name": client.name,
+        "avg_monthly_revenue": avg_monthly,
+        "annual_revenue_estimate": round(avg_monthly * 12, 2),
+        "pct_of_total_revenue": pct_of_total,
+        "runway_current": runway_current,
+        "runway_without_client": runway_without,
+        "monthly_impact": round(avg_monthly, 2),
+    }

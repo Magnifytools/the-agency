@@ -9,6 +9,7 @@ import { Pencil, Check, X, ExternalLink } from "lucide-react"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Clock, Heart } from "lucide-react"
 import { Breadcrumb } from "@/components/ui/breadcrumb"
@@ -214,6 +215,7 @@ export default function ClientDetailPage() {
   const clientId = Number(id)
   const [searchParams, setSearchParams] = useSearchParams()
   const [timeLogTaskId, setTimeLogTaskId] = useState<{ id: number; title: string } | null>(null)
+  const [whatIfOpen, setWhatIfOpen] = useState(false)
 
   const validTabs = ["ficha", "actividad", "tareas", "proyectos", "comunicaciones", "contactos", "panel", "tiempo", "facturacion", "recursos", "seo", "core-updates", "informes", "ajustes", "facturas"] as const
   type Tab = (typeof validTabs)[number]
@@ -267,6 +269,12 @@ export default function ClientDetailPage() {
     enabled: !!clientId,
   })
 
+  const { data: whatIfData, isLoading: whatIfLoading } = useQuery({
+    queryKey: ["client-what-if", clientId],
+    queryFn: () => clientsApi.whatIf(clientId),
+    enabled: whatIfOpen && !!clientId,
+  })
+
   if (isLoading) return (
     <div className="space-y-6">
       <Skeleton className="h-5 w-48" />
@@ -291,7 +299,7 @@ export default function ClientDetailPage() {
         { label: "Clientes", href: "/clients" },
         { label: client.name },
       ]} />
-      <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold uppercase tracking-wide">{client.name}</h2>
@@ -311,6 +319,9 @@ export default function ClientDetailPage() {
           </div>
           {client.company && <p className="text-muted-foreground">{client.company}</p>}
         </div>
+        <Button variant="outline" size="sm" onClick={() => setWhatIfOpen(true)}>
+          ¿Y si pierdo este cliente?
+        </Button>
       </div>
 
       {/* Summary Cards */}
@@ -666,6 +677,43 @@ export default function ClientDetailPage() {
           onOpenChange={(open) => !open && setTimeLogTaskId(null)}
         />
       )}
+
+      {/* What-If Modal */}
+      <Dialog open={whatIfOpen} onOpenChange={setWhatIfOpen}>
+        <DialogHeader>
+          <DialogTitle>Impacto financiero — {client?.name}</DialogTitle>
+        </DialogHeader>
+        {whatIfLoading && <p className="p-4 text-muted-foreground">Calculando...</p>}
+        {whatIfData && (
+          <div className="p-4 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Ingreso mensual medio</p>
+                <p className="text-2xl font-bold">{whatIfData.avg_monthly_revenue.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">% del total de ingresos</p>
+                <p className="text-2xl font-bold">{whatIfData.pct_of_total_revenue}%</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Ingreso anual estimado</p>
+                <p className="text-xl font-bold">{whatIfData.annual_revenue_estimate.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Runway sin este cliente</p>
+                <p className={`text-xl font-bold ${whatIfData.runway_without_client != null && whatIfData.runway_without_client < 6 ? "text-red-500" : "text-green-500"}`}>
+                  {whatIfData.runway_without_client != null ? `${whatIfData.runway_without_client} meses` : "∞"}
+                </p>
+              </div>
+            </div>
+            {whatIfData.pct_of_total_revenue > 30 && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+                Este cliente representa mas del 30% de tus ingresos. Alta concentracion de riesgo.
+              </div>
+            )}
+          </div>
+        )}
+      </Dialog>
     </div>
   )
 }

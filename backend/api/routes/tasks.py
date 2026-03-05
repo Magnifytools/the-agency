@@ -41,6 +41,7 @@ def _task_to_response(task: Task) -> TaskResponse:
         assigned_user_name=task.assigned_user.full_name if task.assigned_user else None,
         project_name=task.project.name if task.project else None,
         phase_name=task.phase.name if task.phase else None,
+        dependency_title=task.dependency.title if task.dependency else None,
     )
 
 

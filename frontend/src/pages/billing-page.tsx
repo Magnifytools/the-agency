@@ -44,6 +44,14 @@ export default function BillingPage() {
     }
   }
 
+  const downloadPdf = async () => {
+    try {
+      await billingApi.exportPdf({ year, month })
+    } catch (err) {
+      toast.error(getErrorMessage(err, "No se pudo generar el PDF"))
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -59,6 +67,7 @@ export default function BillingPage() {
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
+          <Button variant="outline" onClick={downloadPdf} className="w-full sm:w-auto">Exportar PDF</Button>
           <Button onClick={downloadCsv} className="w-full sm:w-auto">Descargar CSV</Button>
         </div>
       </div>

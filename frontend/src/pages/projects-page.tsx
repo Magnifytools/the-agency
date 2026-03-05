@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { EmptyState } from "@/components/ui/empty-state"
 import { getErrorMessage } from "@/lib/utils"
 
 
@@ -138,15 +139,13 @@ export default function ProjectsPage() {
           ))}
         </div>
       ) : (typeFilter ? projects.filter(p => typeFilter === "recurring" ? p.is_recurring : !p.is_recurring) : projects).length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <FolderKanban className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">No hay proyectos</p>
-            <Button className="mt-4" onClick={() => setShowTemplateDialog(true)}>
-              Crear primer proyecto
-            </Button>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={FolderKanban}
+          title="Sin proyectos todavia"
+          description={statusFilter ? "No hay proyectos con este estado. Prueba a cambiar el filtro o crea uno nuevo." : "Organiza el trabajo en proyectos con fases y tareas. Puedes empezar desde una plantilla o importar una propuesta."}
+          actionLabel="Crear desde plantilla"
+          onAction={() => setShowTemplateDialog(true)}
+        />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {(typeFilter ? projects.filter(p => typeFilter === "recurring" ? p.is_recurring : !p.is_recurring) : projects).map((project) => (

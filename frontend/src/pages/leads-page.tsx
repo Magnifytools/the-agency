@@ -16,7 +16,7 @@ import {
   LayoutGrid, List, Plus, Calendar,
   GripVertical, Trophy, X as XIcon, Target, Trash2
 } from "lucide-react"
-import { EmptyTableState } from "@/components/ui/empty-state"
+import { EmptyTableState, EmptyState } from "@/components/ui/empty-state"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
@@ -200,7 +200,16 @@ export default function LeadsPage() {
       )}
 
       {/* Kanban View */}
-      {view === "kanban" && (
+      {view === "kanban" && !isLoading && leads.length === 0 && (
+        <EmptyState
+          icon={Target}
+          title="Pipeline vacio"
+          description="Registra tus primeros leads y sigue su progreso a traves del funnel de ventas. Arrastra las tarjetas entre columnas para avanzar etapas."
+          actionLabel="Nuevo lead"
+          onAction={() => setShowCreate(true)}
+        />
+      )}
+      {view === "kanban" && (leads.length > 0 || isLoading) && (
         <div className="flex gap-4 overflow-x-auto pb-4">
           {PIPELINE_STAGES.map((stage) => (
             <KanbanColumn

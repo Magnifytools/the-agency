@@ -305,6 +305,7 @@ export interface Task {
   assigned_user_name: string | null
   project_name: string | null
   phase_name: string | null
+  dependency_title: string | null
 }
 
 export interface TaskCreate {

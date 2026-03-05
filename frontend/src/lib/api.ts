@@ -208,6 +208,7 @@ export const clientsApi = {
     api.post<{ recommendations: Array<{ priority: "high" | "medium" | "low"; category: string; title: string; description: string; action: string }> }>(`/clients/${id}/ai-advice`).then((r) => r.data),
   recentTimeEntries: (id: number, limit = 10) =>
     api.get<Array<{ id: number; date: string; minutes: number; notes: string | null; task_title: string | null; user_name: string | null }>>(`/clients/${id}/recent-time-entries`, { params: { limit } }).then((r) => r.data),
+  whatIf: (clientId: number) => api.get(`/clients/${clientId}/what-if`).then((r) => r.data),
   documents: {
     list: (clientId: number) =>
       api.get<ClientDocument[]>(`/clients/${clientId}/documents`).then((r) => r.data),
@@ -306,6 +307,17 @@ export const billingApi = {
     api.get("/billing/export", { params: { ...params, format: "json" } }).then((r) => r.data),
   exportCsv: (params: { year: number; month: number }) =>
     api.get("/billing/export", { params: { ...params, format: "csv" }, responseType: "blob" }).then((r) => r.data),
+  exportPdf: (params: { year: number; month: number }) =>
+    api.get("/billing/export-pdf", { params, responseType: "blob" }).then((r) => {
+      const url = window.URL.createObjectURL(new Blob([r.data], { type: "application/pdf" }))
+      const link = document.createElement("a")
+      link.href = url
+      link.setAttribute("download", `facturacion-${params.year}-${String(params.month).padStart(2, "0")}.pdf`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    }),
 }
 
 // Balance Snapshots
