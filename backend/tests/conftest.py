@@ -17,8 +17,7 @@ from backend.db.database import get_db  # noqa: E402
 from backend.db.models import User, UserRole, UserPermission  # noqa: E402
 
 
-@pytest.fixture
-def admin_user():
+def _make_admin():
     user = MagicMock(spec=User)
     user.id = 1
     user.email = "admin@test.com"
@@ -27,12 +26,12 @@ def admin_user():
     user.is_active = True
     user.hourly_rate = 40.0
     user.weekly_hours = 40.0
+    user.preferences = None
     user.permissions = []
     return user
 
 
-@pytest.fixture
-def member_user():
+def _make_member():
     user = MagicMock(spec=User)
     user.id = 2
     user.email = "member@test.com"
@@ -41,7 +40,7 @@ def member_user():
     user.is_active = True
     user.hourly_rate = 30.0
     user.weekly_hours = 40.0
-    # Add a permission for clients module
+    user.preferences = None
     perm = MagicMock(spec=UserPermission)
     perm.module = "clients"
     perm.can_read = True
@@ -50,9 +49,36 @@ def member_user():
     return user
 
 
+@pytest.fixture
+def admin_user():
+    return _make_admin()
+
+
+@pytest.fixture
+def member_user():
+    return _make_member()
+
+
+def _make_mock_db():
+    """AsyncMock DB where execute() returns a MagicMock (not AsyncMock).
+
+    AsyncMock child attributes are also AsyncMock — calling them returns
+    un-awaited coroutines, causing serialization errors in routes that do
+    `result.scalar()` or `result.scalars().all()`. Using MagicMock for the
+    execute return value avoids that.
+    """
+    mock_db = AsyncMock()
+    execute_result = MagicMock()
+    execute_result.scalar.return_value = 0
+    execute_result.scalars.return_value.all.return_value = []
+    execute_result.scalars.return_value.first.return_value = None
+    mock_db.execute.return_value = execute_result
+    return mock_db
+
+
 @pytest_asyncio.fixture
 async def admin_client(admin_user):
-    mock_db = AsyncMock()
+    mock_db = _make_mock_db()
 
     app.dependency_overrides[get_current_user] = lambda: admin_user
     app.dependency_overrides[get_db] = lambda: mock_db
@@ -67,7 +93,7 @@ async def admin_client(admin_user):
 
 @pytest_asyncio.fixture
 async def member_client(member_user):
-    mock_db = AsyncMock()
+    mock_db = _make_mock_db()
 
     app.dependency_overrides[get_current_user] = lambda: member_user
     app.dependency_overrides[get_db] = lambda: mock_db
