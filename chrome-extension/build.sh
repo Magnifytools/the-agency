@@ -11,14 +11,16 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-KEY="$SCRIPT_DIR/dist/key.pem"
+PARENT_DIR="$(dirname "$SCRIPT_DIR")"
+# Key must live OUTSIDE the extension folder (Chrome rejects if key is inside)
+KEY="$PARENT_DIR/.agency-extension-key.pem"
 CRX="$SCRIPT_DIR/dist/agency-manager.crx"
 EXT_DIR="$SCRIPT_DIR"
 
 if [ ! -f "$KEY" ]; then
-  echo "ERROR: dist/key.pem not found."
+  echo "ERROR: .agency-extension-key.pem not found at $KEY"
   echo "Generate it once with:"
-  echo "  openssl genrsa 2048 | openssl pkcs8 -topk8 -nocrypt -out dist/key.pem"
+  echo "  openssl genrsa 2048 | openssl pkcs8 -topk8 -nocrypt -out ../.agency-extension-key.pem"
   exit 1
 fi
 
@@ -35,8 +37,11 @@ else
   exit 1
 fi
 
+# Remove key.pem from inside extension dir if it snuck in (Chrome rejects if present)
+rm -f "$EXT_DIR/dist/key.pem"
+
 # Pack the extension (Chrome puts the .crx next to the folder)
-"$CHROME" --pack-extension="$EXT_DIR" --pack-extension-key="$KEY" 2>/dev/null || true
+"$CHROME" --pack-extension="$EXT_DIR" --pack-extension-key="$KEY" 2>&1 || true
 
 # Chrome creates the .crx one level up
 BUILT_CRX="$(dirname "$EXT_DIR")/chrome-extension.crx"
