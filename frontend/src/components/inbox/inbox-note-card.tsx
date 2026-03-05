@@ -66,7 +66,7 @@ export function InboxNoteCard({ note }: Props) {
         {/* Header: text + time */}
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-foreground leading-relaxed">{note.raw_text}</p>
+            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{note.raw_text}</p>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                 <Clock className="w-3 h-3" />

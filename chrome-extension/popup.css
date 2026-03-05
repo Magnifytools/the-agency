@@ -163,12 +163,12 @@ button {
 
 #note-text::placeholder { color: #52525b; }
 
-/* Project selector */
+/* Assignment selector */
 .project-row {
   margin-top: 10px;
 }
 
-#project-select {
+#assign-select {
   width: 100%;
   padding: 8px 10px;
   background: #18181b;
@@ -188,14 +188,23 @@ button {
   transition: border-color 0.15s;
 }
 
-#project-select:focus {
+#assign-select:focus {
   border-color: #FFD600;
   color: #e4e4e7;
 }
 
-#project-select option {
+#assign-select option,
+#assign-select optgroup {
   background: #18181b;
   color: #e4e4e7;
+}
+
+#assign-select optgroup {
+  font-weight: 600;
+  color: #71717a;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .actions {

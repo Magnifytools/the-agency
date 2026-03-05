@@ -19,7 +19,7 @@ const noteText = document.getElementById("note-text");
 const captureBtn = document.getElementById("capture-btn");
 const btnText = document.getElementById("btn-text");
 const btnLoading = document.getElementById("btn-loading");
-const projectSelect = document.getElementById("project-select");
+const assignSelect = document.getElementById("assign-select");
 const successMsg = document.getElementById("success-msg");
 const captureError = document.getElementById("capture-error");
 const inboxBar = document.getElementById("inbox-bar");
@@ -32,7 +32,6 @@ let token = "";
 
 // ── Init ──────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
-  // Load saved config
   const stored = await chrome.storage.local.get([
     STORAGE_KEYS.token,
     STORAGE_KEYS.email,
@@ -41,7 +40,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   token = stored[STORAGE_KEYS.token] || "";
   if (stored[STORAGE_KEYS.email]) emailInput.value = stored[STORAGE_KEYS.email];
 
-  // Check if we have a valid token
   if (token) {
     const valid = await verifyToken();
     if (valid) {
@@ -67,12 +65,10 @@ function showCaptureView() {
 
   openInbox.href = `${API_URL}/inbox`;
 
-  // Enable/disable capture button based on text
   noteText.addEventListener("input", () => {
     captureBtn.disabled = !noteText.value.trim();
   });
 
-  // Cmd+Enter to capture
   noteText.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
@@ -80,8 +76,7 @@ function showCaptureView() {
     }
   });
 
-  // Load projects and inbox count
-  loadProjects();
+  loadProjectsAndClients();
   loadInboxCount();
 }
 
@@ -108,15 +103,12 @@ loginForm.addEventListener("submit", async (e) => {
     const data = await res.json();
     token = data.access_token;
 
-    // Save
     await chrome.storage.local.set({
       [STORAGE_KEYS.token]: token,
       [STORAGE_KEYS.email]: emailInput.value,
     });
 
-    // Notify background
     chrome.runtime.sendMessage({ type: "AUTH_UPDATE", token });
-
     showCaptureView();
   } catch (err) {
     loginError.textContent = err.message;
@@ -135,27 +127,53 @@ async function verifyToken() {
   }
 }
 
-// ── Projects ──────────────────────────────────────────────
-async function loadProjects() {
+// ── Projects + Clients (combined selector) ────────────────
+async function loadProjectsAndClients() {
   try {
-    const res = await fetch(`${API_URL}/api/projects?limit=100&status=active`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const [projRes, clientRes] = await Promise.all([
+      fetch(`${API_URL}/api/projects?limit=100&status=active`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      fetch(`${API_URL}/api/clients?limit=100&status=active`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    ]);
 
-    if (!res.ok) return;
+    // Projects group
+    if (projRes.ok) {
+      const projData = await projRes.json();
+      const projects = projData.items || projData;
+      if (projects.length > 0) {
+        const grp = document.createElement("optgroup");
+        grp.label = "Proyectos";
+        projects.forEach((p) => {
+          const opt = document.createElement("option");
+          opt.value = `project:${p.id}`;
+          opt.textContent = p.name;
+          grp.appendChild(opt);
+        });
+        assignSelect.appendChild(grp);
+      }
+    }
 
-    const data = await res.json();
-    // API returns paginated: { items: [...], total: N }
-    const projects = data.items || data;
-
-    projects.forEach((p) => {
-      const opt = document.createElement("option");
-      opt.value = p.id;
-      opt.textContent = p.name;
-      projectSelect.appendChild(opt);
-    });
+    // Clients group
+    if (clientRes.ok) {
+      const clientData = await clientRes.json();
+      const clients = clientData.items || clientData;
+      if (clients.length > 0) {
+        const grp = document.createElement("optgroup");
+        grp.label = "Clientes";
+        clients.forEach((c) => {
+          const opt = document.createElement("option");
+          opt.value = `client:${c.id}`;
+          opt.textContent = c.name;
+          grp.appendChild(opt);
+        });
+        assignSelect.appendChild(grp);
+      }
+    }
   } catch {
-    // silently ignore — projects are optional
+    // silently ignore — assignment is optional
   }
 }
 
@@ -166,7 +184,6 @@ async function captureNote() {
   const text = noteText.value.trim();
   if (!text) return;
 
-  // UI loading state
   captureBtn.disabled = true;
   btnText.classList.add("hidden");
   btnLoading.classList.remove("hidden");
@@ -179,9 +196,12 @@ async function captureNote() {
     source: "chrome_extension",
   };
 
-  const selectedProject = projectSelect.value;
-  if (selectedProject) {
-    body.project_id = parseInt(selectedProject, 10);
+  // Parse selector value: "project:123" or "client:456"
+  const selected = assignSelect.value;
+  if (selected) {
+    const [type, id] = selected.split(":");
+    if (type === "project") body.project_id = parseInt(id, 10);
+    else if (type === "client") body.client_id = parseInt(id, 10);
   }
 
   try {
@@ -195,7 +215,6 @@ async function captureNote() {
     });
 
     if (res.status === 401) {
-      // Token expired
       token = "";
       await chrome.storage.local.remove(STORAGE_KEYS.token);
       showLoginView();
@@ -207,17 +226,26 @@ async function captureNote() {
       throw new Error(errData.detail || `Error ${res.status}`);
     }
 
-    // Success
+    // Success — reset form but do NOT auto-close
     noteText.value = "";
     captureBtn.disabled = true;
+
+    // Dynamic success text
+    const successText = document.getElementById("success-text");
+    if (selected) {
+      successText.textContent = "Nota capturada y asignada ✓";
+    } else {
+      successText.textContent = "Nota capturada — IA clasificando...";
+    }
     successMsg.classList.remove("hidden");
     loadInboxCount();
 
-    // Notify background to update badge
     chrome.runtime.sendMessage({ type: "NOTE_CREATED" });
 
-    // Auto-close after 2s
-    setTimeout(() => window.close(), 2000);
+    // Hide success after 3s so user can send another note
+    setTimeout(() => {
+      successMsg.classList.add("hidden");
+    }, 3000);
   } catch (err) {
     captureError.textContent = err.message || "Error al enviar. Comprueba tu conexion.";
     captureError.classList.remove("hidden");

@@ -120,20 +120,25 @@ async def create_inbox_note(
     if not text:
         raise HTTPException(status_code=400, detail="El texto no puede estar vacio")
 
+    # If user already assigned project/client, skip AI classification
+    already_assigned = body.project_id is not None or body.client_id is not None
+    initial_status = InboxNoteStatus.classified if already_assigned else InboxNoteStatus.pending
+
     note = InboxNote(
         user_id=user.id,
         raw_text=text,
         source=body.source,
         project_id=body.project_id,
         client_id=body.client_id,
-        status=InboxNoteStatus.pending,
+        status=initial_status,
     )
     db.add(note)
     await db.commit()
     await db.refresh(note)
 
-    # Fire-and-forget AI classification
-    asyncio.create_task(_classify_note_background(note.id))
+    # Only run AI classification if user didn't pre-assign
+    if not already_assigned:
+        asyncio.create_task(_classify_note_background(note.id))
 
     return _to_response(note)
 
