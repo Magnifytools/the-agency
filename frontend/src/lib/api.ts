@@ -167,11 +167,17 @@ api.interceptors.response.use(
           window.location.href = "/login"
         }
       } else if (status === 403) {
+        // GET 403: silencioso — PermissionRoute ya redirige antes de que llegue aquí
+        // Mutation 403: aviso al usuario
         if (!isGetRequest) {
           toast.error("No tienes permisos para esta acción")
         }
       } else if (status >= 500) {
-        if (!isGetRequest) {
+        // Silenciar errores de shell global (inbox, badges) para no contaminar la UI
+        const isShellRequest =
+          requestUrl.includes("/inbox/count") ||
+          requestUrl.includes("/holded/config")
+        if (!isGetRequest && !isShellRequest) {
           toast.error("Error del servidor. Intenta de nuevo.")
         }
       }

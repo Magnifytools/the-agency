@@ -7,7 +7,6 @@ import { ProtectedRoute } from "@/components/layout/protected-route"
 import { PermissionRoute } from "@/components/layout/permission-route"
 import { AppLayout } from "@/components/layout/app-layout"
 import { ErrorBoundary } from "@/components/ui/error-boundary"
-import { Loader2 } from "lucide-react"
 
 // Eagerly loaded (always needed)
 import LoginPage from "@/pages/login"
@@ -48,15 +47,29 @@ const SettingsPage = lazy(() => import("@/pages/settings-page"))
 
 function PageLoader() {
   return (
-    <div className="flex items-center justify-center h-64">
-      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    <div className="space-y-4 p-6 animate-pulse">
+      <div className="h-7 w-48 rounded bg-muted" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="h-24 rounded-lg bg-muted" />
+        ))}
+      </div>
+      <div className="h-64 rounded-lg bg-muted" />
     </div>
   )
 }
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 30_000, retry: 1 },
+    queries: {
+      staleTime: 30_000,
+      retry: (failureCount, error) => {
+        // No reintentar en errores de permisos o not found
+        const status = (error as { response?: { status?: number } })?.response?.status
+        if (status === 403 || status === 404 || status === 401) return false
+        return failureCount < 1
+      },
+    },
   },
 })
 

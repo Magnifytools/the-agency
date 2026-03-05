@@ -32,6 +32,9 @@ export function AppLayout() {
     queryKey: inboxKeys.count(),
     queryFn: inboxApi.count,
     refetchInterval: 60_000,
+    retry: false,
+    staleTime: 30_000,
+    // Si falla, simplemente no hay badge — no bloquear la shell
   })
 
   const { data: holdedConfig } = useQuery({
