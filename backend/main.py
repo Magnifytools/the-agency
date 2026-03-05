@@ -39,6 +39,27 @@ async def _engine_sync_loop():
         await asyncio.sleep(settings.ENGINE_SYNC_INTERVAL_HOURS * 3600)
 
 
+async def _holded_sync_loop():
+    """Sync Holded contacts, invoices and expenses every 6 hours."""
+    from backend.api.routes.holded import sync_contacts, sync_invoices, sync_expenses
+    from backend.db.database import async_session
+
+    await asyncio.sleep(300)  # 5 min initial delay to let DB settle
+    while True:
+        logging.info("Holded auto-sync starting…")
+        try:
+            async with async_session() as session:
+                for fn in (sync_contacts, sync_invoices, sync_expenses):
+                    try:
+                        await fn(session=session, user=None)
+                    except Exception as e:
+                        logging.error("Holded auto-sync %s error: %s", fn.__name__, e)
+            logging.info("Holded auto-sync complete.")
+        except Exception as e:
+            logging.error("Holded auto-sync session error: %s", e)
+        await asyncio.sleep(6 * 3600)  # every 6 hours
+
+
 async def _ensure_columns():
     """Add columns that were added to models after initial create_all."""
     from sqlalchemy import text
@@ -135,6 +156,10 @@ async def lifespan(app: FastAPI):
     if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL:
         task = asyncio.create_task(_engine_sync_loop())
         logging.info("Engine sync started (interval: %dh)", settings.ENGINE_SYNC_INTERVAL_HOURS)
+    holded_task = None
+    if settings.HOLDED_API_KEY:
+        holded_task = asyncio.create_task(_holded_sync_loop())
+        logging.info("Holded auto-sync started (every 6h).")
     logging.info("Startup ready.")
     yield
     if task:
