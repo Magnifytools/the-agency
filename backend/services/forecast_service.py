@@ -170,30 +170,52 @@ async def calculate_runway(db: AsyncSession) -> dict:
 
 
 async def get_vs_actual(db: AsyncSession, year: int) -> list[dict]:
-    r = await db.execute(
-        select(Forecast)
-        .where(extract("year", Forecast.month) == year)
-        .order_by(Forecast.month)
+    today = date.today()
+    if year < today.year:
+        max_month = 12
+    elif year == today.year:
+        max_month = today.month
+    else:
+        return []
+
+    # Batch query: actual income grouped by month
+    r_inc = await db.execute(
+        select(
+            extract("month", Income.date).label("month"),
+            func.coalesce(func.sum(Income.amount), 0).label("total"),
+        )
+        .where(extract("year", Income.date) == year)
+        .group_by(extract("month", Income.date))
     )
-    forecasts = r.scalars().all()
+    income_by_month = {int(row.month): float(row.total) for row in r_inc.all()}
+
+    # Batch query: actual expenses grouped by month
+    r_exp = await db.execute(
+        select(
+            extract("month", Expense.date).label("month"),
+            func.coalesce(func.sum(Expense.amount), 0).label("total"),
+        )
+        .where(extract("year", Expense.date) == year)
+        .group_by(extract("month", Expense.date))
+    )
+    expenses_by_month = {int(row.month): float(row.total) for row in r_exp.all()}
+
+    # Prefetch all forecasts for this year
+    r_fc = await db.execute(
+        select(Forecast).where(extract("year", Forecast.month) == year)
+    )
+    forecast_map = {f.month.month: f for f in r_fc.scalars().all()}
+
     result = []
-    for f in forecasts:
-        m = f.month.month
-        r = await db.execute(
-            select(func.coalesce(func.sum(Income.amount), 0))
-            .where(extract("year", Income.date) == year, extract("month", Income.date) == m)
-        )
-        actual_income = float(r.scalar())
-        r = await db.execute(
-            select(func.coalesce(func.sum(Expense.amount), 0))
-            .where(extract("year", Expense.date) == year, extract("month", Expense.date) == m)
-        )
-        actual_expenses = float(r.scalar())
+    for m in range(1, max_month + 1):
+        actual_income = income_by_month.get(m, 0.0)
+        actual_expenses = expenses_by_month.get(m, 0.0)
+        f = forecast_map.get(m)
         result.append({
-            "month": f.month.isoformat(),
-            "projected_income": f.projected_income,
-            "projected_expenses": f.projected_expenses,
-            "projected_profit": f.projected_profit,
+            "month": date(year, m, 1).isoformat(),
+            "projected_income": f.projected_income if f else 0,
+            "projected_expenses": f.projected_expenses if f else 0,
+            "projected_profit": f.projected_profit if f else 0,
             "actual_income": round(actual_income, 2),
             "actual_expenses": round(actual_expenses, 2),
             "actual_profit": round(actual_income - actual_expenses, 2),

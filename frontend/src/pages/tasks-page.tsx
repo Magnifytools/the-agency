@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { tasksApi, clientsApi, categoriesApi, usersApi } from "@/lib/api"
 import type { Task, TaskCreate, TaskStatus, TaskPriority } from "@/lib/types"
@@ -47,6 +48,7 @@ const formatMinutes = (mins: number) => {
 
 export default function TasksPage() {
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
   const { page, pageSize, setPage, reset } = usePagination(25)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Task | null>(null)
@@ -61,8 +63,11 @@ export default function TasksPage() {
   const [filterPriority, setFilterPriority] = useState<string>("")
   const [filterAssigned, setFilterAssigned] = useState<string>("")
 
-  // QA Health Filters
-  const [qaFilter, setQaFilter] = useState<"none" | "unassigned" | "no_date" | "no_estimate" | "overdue">("none")
+  // QA Health Filters — initialise from URL param if present
+  const urlQaFilter = searchParams.get("qaFilter") as "none" | "unassigned" | "no_date" | "no_estimate" | "overdue" | null
+  const [qaFilter, setQaFilter] = useState<"none" | "unassigned" | "no_date" | "no_estimate" | "overdue">(
+    urlQaFilter ?? "none"
+  )
   const [bulkStatus, setBulkStatus] = useState("")
 
   const { data: tasksData, isLoading } = useQuery({

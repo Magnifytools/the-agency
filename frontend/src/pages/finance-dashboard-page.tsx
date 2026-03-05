@@ -86,7 +86,9 @@ export default function FinanceDashboardPage() {
               </div>
               <div className="flex justify-between border-t pt-2">
                 <span className="font-medium">Runway estimado</span>
-                <span className="text-xl font-bold">{runway.runway_months} meses</span>
+                <span className="text-xl font-bold">
+                  {runway.runway_months != null ? `${runway.runway_months} meses` : "∞"}
+                </span>
               </div>
             </div>
           </Card>

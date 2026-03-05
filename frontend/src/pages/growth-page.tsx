@@ -112,7 +112,7 @@ export default function GrowthPage() {
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
                         <Rocket className="h-6 w-6 text-brand" />
-                        Growth Operations
+                        Operaciones de Growth
                     </h1>
                     <p className="text-muted-foreground text-sm mt-1">
                         {ideas.length} ideas · Priorización ICE y gestión de experimentos
@@ -157,7 +157,7 @@ export default function GrowthPage() {
                             <TableHead className="text-center">I</TableHead>
                             <TableHead className="text-center">C</TableHead>
                             <TableHead className="text-center">E</TableHead>
-                            <TableHead className="text-center font-bold">ICE Score</TableHead>
+                            <TableHead className="text-center font-bold">Puntuación ICE</TableHead>
                             <TableHead>Estado</TableHead>
                             <TableHead className="text-right"></TableHead>
                         </TableRow>

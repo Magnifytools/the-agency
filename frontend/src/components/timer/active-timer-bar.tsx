@@ -19,6 +19,7 @@ export function ActiveTimerBar() {
   const queryClient = useQueryClient()
   const [elapsed, setElapsed] = useState("")
   const [omniInput, setOmniInput] = useState("")
+  const [reminderShown, setReminderShown] = useState(false)
 
   const { data: timer } = useQuery({
     queryKey: ["active-timer"],
@@ -35,6 +36,23 @@ export function ActiveTimerBar() {
     }, 1000)
     return () => clearInterval(interval)
   }, [timer?.started_at])
+
+  useEffect(() => {
+    if (!timer?.started_at) {
+      setReminderShown(false)
+      return
+    }
+    const check = () => {
+      const secs = Math.floor((Date.now() - new Date(timer.started_at).getTime()) / 1000)
+      if (secs > 14400 && !reminderShown) {
+        toast.warning("¡Llevas más de 4 horas con el timer activo! ¿Sigue corriendo?")
+        setReminderShown(true)
+      }
+    }
+    check()
+    const interval = setInterval(check, 60_000)
+    return () => clearInterval(interval)
+  }, [timer?.started_at, reminderShown])
 
   const startMutation = useMutation({
     mutationFn: (notes: string) => timerApi.start({ notes }),

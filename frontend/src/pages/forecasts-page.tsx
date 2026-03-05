@@ -110,7 +110,9 @@ export default function ForecastsPage() {
           </Card>
           <Card className="p-4">
             <p className="text-sm text-muted-foreground">Runway</p>
-            <p className="text-2xl font-bold">{runway.runway_months} meses</p>
+            <p className="text-2xl font-bold">
+              {runway.runway_months != null ? `${runway.runway_months} meses` : "∞"}
+            </p>
           </Card>
         </div>
       )}

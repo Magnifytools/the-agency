@@ -106,7 +106,7 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-base">Revenue Intelligence</CardTitle>
+        <CardTitle className="text-base">Inteligencia de Negocio</CardTitle>
         {!editing ? (
           <Button variant="ghost" size="sm" onClick={() => {
             setForm({

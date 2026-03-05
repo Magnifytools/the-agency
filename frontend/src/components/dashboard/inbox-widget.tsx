@@ -53,7 +53,7 @@ export function InboxWidget() {
                     <div className="p-1.5 bg-brand/10 rounded-md">
                         <InboxIcon className="w-4 h-4 text-brand" />
                     </div>
-                    Inbox Triage
+                    Clasificación de Inbox
                     <span className="ml-auto text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                         {inboxNotes.length} items
                     </span>

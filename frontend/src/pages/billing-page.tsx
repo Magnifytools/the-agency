@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip } from "@/components/ui/tooltip"
 import { billingApi } from "@/lib/api"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
@@ -90,6 +91,7 @@ export default function BillingPage() {
                   <TableBody>
                     {data.map((row) => {
                       const hasInvoiced = row.invoiced > 0
+                      const zeroCost = row.cost === 0 && row.margin > 0
                       return (
                         <TableRow key={row.client_id}>
                           <TableCell className="font-medium">{row.client_name}</TableCell>
@@ -98,8 +100,15 @@ export default function BillingPage() {
                           <TableCell className="mono">{row.budget.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</TableCell>
                           <TableCell className="mono">{hasInvoiced ? row.invoiced.toLocaleString("es-ES", { style: "currency", currency: "EUR" }) : <span className="text-muted-foreground">—</span>}</TableCell>
                           <TableCell className="mono">
-                            {row.margin.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
-                            {!hasInvoiced && <span className="text-muted-foreground text-xs ml-1">(est.)</span>}
+                            <span className="flex items-center gap-1.5">
+                              {row.margin.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                              {!hasInvoiced && <span className="text-muted-foreground text-xs">(est.)</span>}
+                              {zeroCost && (
+                                <Tooltip content="No se han registrado costes de equipo. El margen real puede ser menor." side="top">
+                                  <span className="cursor-help text-amber-500">⚠️</span>
+                                </Tooltip>
+                              )}
+                            </span>
                           </TableCell>
                         </TableRow>
                       )
@@ -110,6 +119,7 @@ export default function BillingPage() {
               <div className="md:hidden space-y-3">
                 {data.map((row) => {
                   const hasInvoiced = row.invoiced > 0
+                  const zeroCost = row.cost === 0 && row.margin > 0
                   return (
                     <div key={row.client_id} className="rounded-lg border border-border p-3 space-y-2">
                       <p className="font-medium text-sm">{row.client_name}</p>
@@ -118,7 +128,10 @@ export default function BillingPage() {
                         <p className="mono">Coste: {row.cost.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>
                         <p className="mono">Presupuesto: {row.budget.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>
                         {hasInvoiced && <p className="mono">Facturado: {row.invoiced.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>}
-                        <p className="mono">Margen: {row.margin.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}{!hasInvoiced && " (est.)"}</p>
+                        <p className="mono flex items-center gap-1">
+                          Margen: {row.margin.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}{!hasInvoiced && " (est.)"}
+                          {zeroCost && <span className="text-amber-500" title="No se han registrado costes de equipo. El margen real puede ser menor.">⚠️</span>}
+                        </p>
                       </div>
                     </div>
                   )

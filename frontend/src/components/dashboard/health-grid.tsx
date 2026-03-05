@@ -1,5 +1,6 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip } from "@/components/ui/tooltip"
 import type { ClientHealthScore } from "@/lib/types"
 
 interface HealthGridProps {
@@ -26,7 +27,21 @@ export function HealthGrid({ data }: HealthGridProps) {
               <Badge variant={cfg.variant} className="shrink-0">{cfg.label}</Badge>
             </div>
             <div className="flex items-center gap-3">
-              <div className="text-2xl font-bold">{client.score}</div>
+              <Tooltip
+                content={
+                  <div className="space-y-1 text-xs">
+                    <p className="font-semibold mb-1.5">Factores del score</p>
+                    <p>Comunicación: <strong>{client.factors.communication}</strong>/25</p>
+                    <p>Tareas: <strong>{client.factors.tasks}</strong>/25</p>
+                    <p>Rentabilidad: <strong>{client.factors.profitability}</strong>/20</p>
+                    <p>Digests: <strong>{client.factors.digests}</strong>/15</p>
+                    <p>Seguimientos: <strong>{client.factors.followups}</strong>/15</p>
+                  </div>
+                }
+                side="top"
+              >
+                <div className="text-2xl font-bold cursor-help">{client.score}</div>
+              </Tooltip>
               <div className="flex-1">
                 <div className="h-2 rounded-full bg-muted overflow-hidden">
                   <div

@@ -8,9 +8,10 @@ interface MetricCardProps {
   value: string | number
   subtitle?: string
   tooltip?: string
+  delta?: number
 }
 
-export function MetricCard({ icon: Icon, label, value, subtitle, tooltip }: MetricCardProps) {
+export function MetricCard({ icon: Icon, label, value, subtitle, tooltip, delta }: MetricCardProps) {
   return (
     <Card>
       <CardContent className="p-6">
@@ -21,7 +22,12 @@ export function MetricCard({ icon: Icon, label, value, subtitle, tooltip }: Metr
               {tooltip && <InfoTooltip content={tooltip} />}
             </p>
             <p className="kpi-value">{value}</p>
-            {subtitle && <p className="text-xs text-muted-foreground mt-2 mono">{subtitle}</p>}
+            {delta !== undefined && (
+              <p className={`text-xs mt-1 font-medium ${delta >= 0 ? "text-green-500" : "text-red-500"}`}>
+                {delta >= 0 ? "↑" : "↓"} {Math.abs(delta).toLocaleString("es-ES", { style: "currency", currency: "EUR" })} vs mes ant.
+              </p>
+            )}
+            {subtitle && <p className="text-xs text-muted-foreground mt-1 mono">{subtitle}</p>}
           </div>
           <div className="p-2.5 rounded-[10px] bg-brand/10">
             <Icon className="h-5 w-5 text-brand" />

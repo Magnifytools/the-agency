@@ -1,15 +1,16 @@
+import { Link } from "react-router-dom"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 
 const CLOSE_ITEMS = [
-  { key: "reviewed_numbers", label: "Revisar ingresos, gastos y cashflow del mes" },
-  { key: "reviewed_margin", label: "Margen claro por cliente y global" },
-  { key: "reviewed_cash_buffer", label: "Colchón de caja (≥ 3 meses)" },
-  { key: "reviewed_reinvestment", label: "Plan de reinversión con ROI (captación/retención)" },
-  { key: "reviewed_debt", label: "Líneas de crédito y deuda bajo control" },
-  { key: "reviewed_taxes", label: "Impuestos y obligaciones fiscales al día" },
-  { key: "reviewed_personal", label: "Nóminas y pagos personales revisados" },
+  { key: "reviewed_numbers", label: "Revisar ingresos, gastos y cashflow del mes", link: "/finance" },
+  { key: "reviewed_margin", label: "Margen claro por cliente y global", link: "/executive" },
+  { key: "reviewed_cash_buffer", label: "Colchón de caja (≥ 3 meses)", link: "/finance" },
+  { key: "reviewed_reinvestment", label: "Plan de reinversión con ROI (captación/retención)", link: null },
+  { key: "reviewed_debt", label: "Líneas de crédito y deuda bajo control", link: null },
+  { key: "reviewed_taxes", label: "Impuestos y obligaciones fiscales al día", link: "/finance/taxes" },
+  { key: "reviewed_personal", label: "Nóminas y pagos personales revisados", link: null },
 ]
 
 interface MonthlyCloseChecklistProps {
@@ -76,7 +77,18 @@ export function MonthlyCloseChecklist({
                 onChange={(e) => onUpdate({ [item.key]: e.target.checked })}
                 className="mt-1"
               />
-              <span className="text-sm">{item.label}</span>
+              <span className="text-sm flex-1">
+                {item.label}
+                {item.link && (
+                  <Link
+                    to={item.link}
+                    className="ml-1.5 text-xs text-brand hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    →
+                  </Link>
+                )}
+              </span>
             </label>
           ))}
         </div>

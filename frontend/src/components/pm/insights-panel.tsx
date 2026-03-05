@@ -179,6 +179,11 @@ function InsightCard({
     if (insight.task_id) return `/tasks?id=${insight.task_id}`
     if (insight.project_id) return `/projects/${insight.project_id}`
     if (insight.client_id) return `/clients/${insight.client_id}`
+    if (insight.insight_type === "quality") {
+      if (insight.title.includes("responsable")) return "/tasks?qaFilter=unassigned"
+      if (insight.title.includes("estimado")) return "/tasks?qaFilter=no_estimate"
+      if (insight.title.includes("fecha")) return "/tasks?qaFilter=no_date"
+    }
     return null
   }
 

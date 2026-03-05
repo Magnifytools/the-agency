@@ -144,6 +144,31 @@ export default function ExecutiveDashboardPage() {
         }))
     : []
 
+  // Clients with no recorded costs (margin may be misleading)
+  const zeroCostClients = profitability
+    ? profitability.clients.filter((c) => c.cost === 0 && c.margin_percent >= 95)
+    : []
+
+  // Month-over-month delta from vsActual
+  const prevMonth = month === 1 ? 12 : month - 1
+  const prevYear = month === 1 ? year - 1 : year
+  const currentMonthRow = vsActual?.find((r) => {
+    const d = new Date(r.month + "T12:00:00")
+    return d.getFullYear() === year && d.getMonth() + 1 === month
+  })
+  const prevMonthRow = vsActual?.find((r) => {
+    const d = new Date(r.month + "T12:00:00")
+    return d.getFullYear() === prevYear && d.getMonth() + 1 === prevMonth
+  })
+  const momDelta =
+    currentMonthRow && prevMonthRow
+      ? {
+          income: currentMonthRow.actual_income - prevMonthRow.actual_income,
+          expenses: currentMonthRow.actual_expenses - prevMonthRow.actual_expenses,
+          profit: currentMonthRow.actual_profit - prevMonthRow.actual_profit,
+        }
+      : null
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -202,6 +227,7 @@ export default function ExecutiveDashboardPage() {
                 label="Ingresos mes"
                 value={fmt(overview.total_income_month)}
                 tooltip="Total facturado este mes"
+                delta={momDelta?.income}
               />
             </Link>
             <Link to="/finance/expenses" className="hover:ring-1 hover:ring-brand/30 rounded-xl transition-all">
@@ -210,6 +236,7 @@ export default function ExecutiveDashboardPage() {
                 label="Gastos mes"
                 value={fmt(overview.total_expenses_month)}
                 tooltip="Total gastos este mes"
+                delta={momDelta?.expenses}
               />
             </Link>
             <Link to="/finance" className="hover:ring-1 hover:ring-brand/30 rounded-xl transition-all">
@@ -219,6 +246,7 @@ export default function ExecutiveDashboardPage() {
                 value={fmt(overview.net_profit_month)}
                 subtitle={overview.net_profit_month >= 0 ? "positivo" : "negativo"}
                 tooltip="Ingresos - gastos del mes"
+                delta={momDelta?.profit}
               />
             </Link>
             <Link to="/finance" className="hover:ring-1 hover:ring-brand/30 rounded-xl transition-all">
@@ -276,6 +304,14 @@ export default function ExecutiveDashboardPage() {
               <CardTitle>Margen por cliente (%)</CardTitle>
             </CardHeader>
             <CardContent>
+              {zeroCostClients.length > 0 && (
+                <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                  <span className="mt-0.5">⚠️</span>
+                  <span>
+                    <strong>{zeroCostClients.map((c) => c.client_name).join(", ")}</strong>: No se han registrado costes de equipo. El margen real puede ser menor.
+                  </span>
+                </div>
+              )}
               <ResponsiveContainer width="100%" height={Math.max(200, profitChartData.length * 40)}>
                 <BarChart data={profitChartData} layout="vertical">
                   <XAxis
