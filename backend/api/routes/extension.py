@@ -6,7 +6,8 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter
-from fastapi.responses import Response, FileResponse, HTTPException
+from fastapi import HTTPException
+from fastapi.responses import Response, FileResponse
 
 logger = logging.getLogger(__name__)
 
