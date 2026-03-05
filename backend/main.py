@@ -57,7 +57,7 @@ async def _holded_sync_loop():
             logging.info("Holded auto-sync complete.")
         except Exception as e:
             logging.error("Holded auto-sync session error: %s", e)
-        await asyncio.sleep(6 * 3600)  # every 6 hours
+        await asyncio.sleep(24 * 3600)  # every 24 hours
 
 
 async def _ensure_columns():
