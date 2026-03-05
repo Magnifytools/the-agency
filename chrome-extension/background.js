@@ -52,7 +52,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!rawText.trim()) return;
 
   try {
-    const res = await fetch(`${apiUrl}/api/inbox`, {
+    const res = await fetch(`${API_URL}/api/inbox`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -65,9 +65,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     });
 
     if (res.ok) {
-      showNotification("Nota capturada", "IA clasificando en segundo plano...");
-      // Update badge
-      updateBadge(apiUrl, token);
+      showNotification("✓ Nota capturada", "IA clasificando en segundo plano...");
+      updateBadge(token);
     } else if (res.status === 401) {
       showNotification(
         "Sesion expirada",
@@ -131,15 +130,11 @@ chrome.runtime.onStartup.addListener(async () => {
 
 // ── Notifications helper ──────────────────────────────────
 function showNotification(title, message) {
-  // Use a self-closing notification approach via the popup badge
-  // Since chrome.notifications requires the "notifications" permission,
-  // we keep it lightweight with badge + console
-  console.log(`[Agency Manager] ${title}: ${message}`);
-
-  // Flash badge briefly
-  chrome.action.setBadgeText({ text: "!" });
-  chrome.action.setBadgeBackgroundColor({ color: "#22c55e" });
-  setTimeout(() => {
-    chrome.action.setBadgeText({ text: "" });
-  }, 3000);
+  chrome.notifications.create({
+    type: "basic",
+    iconUrl: "icons/icon48.png",
+    title,
+    message,
+    priority: 1,
+  });
 }

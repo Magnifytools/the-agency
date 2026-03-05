@@ -22,6 +22,7 @@ const btnLoading = document.getElementById("btn-loading");
 const includeUrl = document.getElementById("include-url");
 const pageInfo = document.getElementById("page-info");
 const successMsg = document.getElementById("success-msg");
+const captureError = document.getElementById("capture-error");
 const inboxBar = document.getElementById("inbox-bar");
 const inboxCount = document.getElementById("inbox-count");
 const openInbox = document.getElementById("open-inbox");
@@ -163,6 +164,7 @@ async function captureNote() {
   btnText.classList.add("hidden");
   btnLoading.classList.remove("hidden");
   successMsg.classList.add("hidden");
+  captureError.classList.add("hidden");
 
   try {
     const res = await fetch(`${API_URL}/api/inbox`, {
@@ -195,8 +197,8 @@ async function captureNote() {
     // Auto-close after 2s
     setTimeout(() => window.close(), 2000);
   } catch (err) {
-    loginError.textContent = err.message;
-    loginError.classList.remove("hidden");
+    captureError.textContent = err.message || "Error al enviar. Comprueba tu conexión.";
+    captureError.classList.remove("hidden");
   } finally {
     captureBtn.disabled = false;
     btnText.classList.remove("hidden");
