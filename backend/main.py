@@ -143,8 +143,8 @@ async def _ensure_columns():
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )""",
         "CREATE INDEX IF NOT EXISTS ix_task_checklists_task_id ON task_checklists (task_id)",
-        # Inbox notes (quick-capture)
-        "CREATE TYPE IF NOT EXISTS inboxnotestatus AS ENUM ('pending', 'classified', 'processed', 'dismissed')",
+        # Inbox notes (quick-capture) — enum type must use DO block (no IF NOT EXISTS syntax)
+        "DO $$ BEGIN CREATE TYPE inboxnotestatus AS ENUM ('pending','classified','processed','dismissed'); EXCEPTION WHEN duplicate_object THEN NULL; END $$",
         """CREATE TABLE IF NOT EXISTS inbox_notes (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),
