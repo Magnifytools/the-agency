@@ -211,17 +211,26 @@ export default function TasksPage() {
 
   const openCreate = () => {
     setEditing(null)
+    setShowAssignmentFields(true)
     setDialogOpen(true)
   }
 
   const openEdit = (task: Task) => {
     setEditing(task)
+    setShowAssignmentFields(true)
     setDialogOpen(true)
   }
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
+    const clientIdStr = fd.get("client_id") as string
+    if (!clientIdStr) {
+      // client_id may be inside the collapsed section — expand it and alert
+      setShowAssignmentFields(true)
+      toast.error("Selecciona un cliente antes de guardar")
+      return
+    }
     const data: TaskCreate = {
       title: fd.get("title") as string,
       description: (fd.get("description") as string) || null,
@@ -230,7 +239,7 @@ export default function TasksPage() {
       estimated_minutes: fd.get("estimated_minutes") ? Number(fd.get("estimated_minutes")) : null,
       actual_minutes: fd.get("actual_minutes") ? Number(fd.get("actual_minutes")) : null,
       due_date: (fd.get("due_date") as string) || null,
-      client_id: Number(fd.get("client_id")),
+      client_id: Number(clientIdStr),
       category_id: fd.get("category_id") ? Number(fd.get("category_id")) : null,
       assigned_to: fd.get("assigned_to") ? Number(fd.get("assigned_to")) : null,
       depends_on: fd.get("depends_on") ? Number(fd.get("depends_on")) : null,
@@ -598,7 +607,7 @@ export default function TasksPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="client_id" className="text-xs">Cliente *</Label>
-                  <Select id="client_id" name="client_id" defaultValue={editing?.client_id ?? ""} required>
+                  <Select id="client_id" name="client_id" defaultValue={editing?.client_id ?? ""}>
                     <option value="">Seleccionar...</option>
                     {clients.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
