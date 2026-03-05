@@ -15,3 +15,8 @@ frontend/dist/
 
 output/
 .claude/
+
+# Chrome extension — allow dist artifacts but never the private key
+!chrome-extension/dist/
+!chrome-extension/dist/**
+chrome-extension/dist/key.pem
