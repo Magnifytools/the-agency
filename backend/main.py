@@ -143,6 +143,25 @@ async def _ensure_columns():
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )""",
         "CREATE INDEX IF NOT EXISTS ix_task_checklists_task_id ON task_checklists (task_id)",
+        # Inbox notes (quick-capture)
+        "CREATE TYPE IF NOT EXISTS inboxnotestatus AS ENUM ('pending', 'classified', 'processed', 'dismissed')",
+        """CREATE TABLE IF NOT EXISTS inbox_notes (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    raw_text TEXT NOT NULL,
+    source VARCHAR(20) NOT NULL DEFAULT 'dashboard',
+    status inboxnotestatus NOT NULL DEFAULT 'pending',
+    project_id INTEGER REFERENCES projects(id),
+    client_id INTEGER REFERENCES clients(id),
+    resolved_as VARCHAR(20),
+    resolved_entity_id INTEGER,
+    ai_suggestion JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)""",
+        "CREATE INDEX IF NOT EXISTS ix_inbox_notes_user_id ON inbox_notes (user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_inbox_notes_project_id ON inbox_notes (project_id)",
+        "CREATE INDEX IF NOT EXISTS ix_inbox_notes_client_id ON inbox_notes (client_id)",
     ]
     async with engine.begin() as conn:
         for sql in stmts:

@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/vault/assets", tags=["agency-vault"])
 async def list_assets(
     category: Optional[AssetCategory] = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
 ):
     query = select(AgencyAsset).order_by(AgencyAsset.name)
     if category:
