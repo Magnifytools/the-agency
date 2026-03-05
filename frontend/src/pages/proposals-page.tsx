@@ -119,6 +119,28 @@ function isNonEmptyString(value: unknown): value is string {
     return typeof value === "string" && value.trim().length > 0
 }
 
+function generateEmailDraft(p: Proposal): { subject: string; body: string } {
+    const contact = p.contact_name || p.company_name
+    const mainPrice = p.pricing_options?.find(o => o.recommended)?.price ?? p.pricing_options?.[0]?.price
+    const priceStr = mainPrice ? `${mainPrice.toLocaleString("es-ES")} €` : null
+    const subject = `Propuesta ${p.title} — ${p.company_name}`
+    const body = [
+        `Hola ${contact},`,
+        "",
+        `Te adjunto la propuesta que hemos preparado para ${p.company_name}: "${p.title}".`,
+        "",
+        p.situation ? `Contexto: ${p.situation}` : null,
+        p.opportunity ? `Oportunidad: ${p.opportunity}` : null,
+        priceStr ? `Inversión: ${priceStr}` : null,
+        p.valid_until ? `Válida hasta: ${new Date(p.valid_until).toLocaleDateString("es-ES")}` : null,
+        "",
+        "Quedo a tu disposición para resolver cualquier duda o concertar una llamada.",
+        "",
+        "Un saludo,",
+    ].filter(l => l !== null).join("\n")
+    return { subject, body }
+}
+
 function RoiPreviewStep({ form }: { form: WizardForm }) {
     const [result, setResult] = useState<InvestmentCalculateResponse | null>(null)
     const [loading, setLoading] = useState(false)
@@ -223,10 +245,8 @@ export default function ProposalsPage() {
     })
     const [roiLoading, setRoiLoading] = useState(false)
 
-    // Email modal state
+    // Email draft modal state
     const [emailModal, setEmailModal] = useState<number | null>(null)
-    const [emailTo, setEmailTo] = useState("")
-    const [emailMsg, setEmailMsg] = useState("")
 
     // Auto-open wizard when navigating from lead detail
     useEffect(() => {
@@ -347,18 +367,8 @@ export default function ProposalsPage() {
         onError: (err) => toast.error(getErrorMessage(err, "Error al convertir")),
     })
 
-    const sendEmailMut = useMutation({
-        mutationFn: ({ id, to_email, message }: { id: number; to_email: string; message: string }) =>
-            proposalsApi.sendEmail(id, { to_email, message }),
-        onSuccess: () => {
-            toast.success("Propuesta enviada por email")
-            setEmailModal(null)
-            setEmailTo("")
-            setEmailMsg("")
-            queryClient.invalidateQueries({ queryKey: ["proposals"] })
-        },
-        onError: (err) => toast.error(getErrorMessage(err, "Error al enviar email")),
-    })
+    const draftProposal = emailModal != null ? proposals.find(p => p.id === emailModal) : null
+    const emailDraft = draftProposal ? generateEmailDraft(draftProposal) : null
 
     // --- Wizard helpers ---
     const openCreate = () => {
@@ -1646,29 +1656,39 @@ export default function ProposalsPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* ========== EMAIL DIALOG ========== */}
+            {/* ========== EMAIL DRAFT DIALOG ========== */}
             <Dialog open={emailModal !== null} onOpenChange={(o) => !o && setEmailModal(null)}>
-                <DialogHeader><DialogTitle>Enviar propuesta por email</DialogTitle></DialogHeader>
                 <DialogContent>
-                    <div className="space-y-4 p-4">
-                        <div>
-                            <Label>Email destinatario</Label>
-                            <Input value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="cliente@empresa.com" type="email" />
+                    <DialogHeader><DialogTitle>Borrador de email</DialogTitle></DialogHeader>
+                    {emailDraft && (
+                        <div className="space-y-4 p-1">
+                            <div>
+                                <Label className="text-xs text-muted-foreground">Asunto</Label>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <Input readOnly value={emailDraft.subject} className="font-medium" />
+                                    <Button variant="ghost" size="icon" className="shrink-0" onClick={() => { navigator.clipboard.writeText(emailDraft.subject); toast.success("Asunto copiado") }}>
+                                        <Copy className="w-4 h-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                            <div>
+                                <Label className="text-xs text-muted-foreground">Cuerpo</Label>
+                                <div className="relative mt-1">
+                                    <Textarea readOnly value={emailDraft.body} rows={10} className="font-mono text-xs resize-none" />
+                                    <Button variant="ghost" size="icon" className="absolute top-1 right-1" onClick={() => { navigator.clipboard.writeText(emailDraft.body); toast.success("Texto copiado") }}>
+                                        <Copy className="w-4 h-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground">Copia el texto, pégalo en tu cliente de email y adjunta el PDF de la propuesta.</p>
+                            <div className="flex justify-end gap-2">
+                                <Button variant="outline" onClick={() => setEmailModal(null)}>Cerrar</Button>
+                                <Button onClick={() => { navigator.clipboard.writeText(`Asunto: ${emailDraft.subject}\n\n${emailDraft.body}`); toast.success("Email completo copiado") }}>
+                                    <Copy className="w-4 h-4 mr-1" /> Copiar todo
+                                </Button>
+                            </div>
                         </div>
-                        <div>
-                            <Label>Mensaje <span className="text-muted-foreground text-xs">(opcional)</span></Label>
-                            <Textarea value={emailMsg} onChange={(e) => setEmailMsg(e.target.value)} placeholder="Mensaje personalizado..." rows={3} />
-                        </div>
-                        <div className="flex justify-end gap-2">
-                            <Button variant="outline" onClick={() => setEmailModal(null)}>Cancelar</Button>
-                            <Button
-                                onClick={() => emailModal && sendEmailMut.mutate({ id: emailModal, to_email: emailTo, message: emailMsg })}
-                                disabled={!emailTo || sendEmailMut.isPending}
-                            >
-                                {sendEmailMut.isPending ? "Enviando..." : "Enviar"}
-                            </Button>
-                        </div>
-                    </div>
+                    )}
                 </DialogContent>
             </Dialog>
         </div>

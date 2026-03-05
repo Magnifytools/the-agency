@@ -100,6 +100,13 @@ export function TaskCalendarView({ tasks, year, month, onPrev, onNext, onOpenEdi
           </div>
         ))}
       </div>
+
+      {/* Empty state when no tasks have a due_date in this month */}
+      {Object.keys(tasksByDay).length === 0 && (
+        <p className="text-center text-sm text-muted-foreground py-4">
+          No hay tareas con fecha en {MONTHS[month]}. Asigna una fecha de entrega a tus tareas para verlas aquí.
+        </p>
+      )}
     </div>
   )
 }

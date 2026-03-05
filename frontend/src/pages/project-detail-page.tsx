@@ -250,16 +250,17 @@ export default function ProjectDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Hours Consumption Bar */}
-      {project.budget_hours != null && project.budget_hours > 0 && (
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Horas consumidas</span>
-              <span className="text-sm text-muted-foreground">
-                {project.hours_used ?? 0}h / {project.budget_hours}h
-              </span>
-            </div>
+      {/* Hours Consumption */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium">Horas consumidas</span>
+            <span className="text-sm text-muted-foreground">
+              {project.hours_used ?? 0}h
+              {project.budget_hours != null && project.budget_hours > 0 ? ` / ${project.budget_hours}h` : " · sin presupuesto"}
+            </span>
+          </div>
+          {project.budget_hours != null && project.budget_hours > 0 ? (
             <div className="h-2 bg-secondary rounded-full overflow-hidden">
               <div
                 className={`h-full transition-all ${
@@ -272,11 +273,20 @@ export default function ProjectDetailPage() {
                 style={{ width: `${Math.min(100, ((project.hours_used ?? 0) / project.budget_hours) * 100)}%` }}
               />
             </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Configura las horas presupuestadas en la edición del proyecto para ver el consumo.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Burndown Chart */}
+      {burndown && burndown.total_tasks === 0 && (
+        <Card>
+          <CardContent className="p-4 text-center text-sm text-muted-foreground">
+            Añade tareas al proyecto para ver el burndown.
           </CardContent>
         </Card>
       )}
-
-      {/* Burndown Chart */}
       {burndown && burndown.total_tasks > 0 && burndown.points.length > 1 && (
         <Card>
           <CardContent className="p-4">
