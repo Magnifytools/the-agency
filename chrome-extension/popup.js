@@ -1,4 +1,4 @@
-// Agency Manager - Quick Capture Extension
+// The Agency - Quick Capture Extension
 // Popup script
 
 const API_URL = "https://agency.magnifytools.com";
@@ -19,8 +19,7 @@ const noteText = document.getElementById("note-text");
 const captureBtn = document.getElementById("capture-btn");
 const btnText = document.getElementById("btn-text");
 const btnLoading = document.getElementById("btn-loading");
-const includeUrl = document.getElementById("include-url");
-const pageInfo = document.getElementById("page-info");
+const projectSelect = document.getElementById("project-select");
 const successMsg = document.getElementById("success-msg");
 const captureError = document.getElementById("capture-error");
 const inboxBar = document.getElementById("inbox-bar");
@@ -29,15 +28,10 @@ const openInbox = document.getElementById("open-inbox");
 const settingsBtn = document.getElementById("settings-btn");
 
 // ── State ─────────────────────────────────────────────────
-let currentTab = null;
 let token = "";
 
 // ── Init ──────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
-  // Get current tab info
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  currentTab = tab;
-
   // Load saved config
   const stored = await chrome.storage.local.get([
     STORAGE_KEYS.token,
@@ -71,12 +65,6 @@ function showCaptureView() {
   captureView.classList.remove("hidden");
   noteText.focus();
 
-  // Show page info
-  if (currentTab) {
-    const host = new URL(currentTab.url || "about:blank").hostname || "nueva pestana";
-    pageInfo.textContent = host;
-  }
-
   openInbox.href = `${API_URL}/inbox`;
 
   // Enable/disable capture button based on text
@@ -92,7 +80,8 @@ function showCaptureView() {
     }
   });
 
-  // Load inbox count
+  // Load projects and inbox count
+  loadProjects();
   loadInboxCount();
 }
 
@@ -146,18 +135,36 @@ async function verifyToken() {
   }
 }
 
+// ── Projects ──────────────────────────────────────────────
+async function loadProjects() {
+  try {
+    const res = await fetch(`${API_URL}/api/projects?limit=100&status=active`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!res.ok) return;
+
+    const data = await res.json();
+    // API returns paginated: { items: [...], total: N }
+    const projects = data.items || data;
+
+    projects.forEach((p) => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name;
+      projectSelect.appendChild(opt);
+    });
+  } catch {
+    // silently ignore — projects are optional
+  }
+}
+
 // ── Capture ───────────────────────────────────────────────
 captureBtn.addEventListener("click", () => captureNote());
 
 async function captureNote() {
   const text = noteText.value.trim();
   if (!text) return;
-
-  // Build raw_text with optional URL context
-  let rawText = text;
-  if (includeUrl.checked && currentTab?.url) {
-    rawText += `\n\n[Fuente: ${currentTab.title || currentTab.url}]\n${currentTab.url}`;
-  }
 
   // UI loading state
   captureBtn.disabled = true;
@@ -166,6 +173,17 @@ async function captureNote() {
   successMsg.classList.add("hidden");
   captureError.classList.add("hidden");
 
+  // Build body
+  const body = {
+    raw_text: text,
+    source: "chrome_extension",
+  };
+
+  const selectedProject = projectSelect.value;
+  if (selectedProject) {
+    body.project_id = parseInt(selectedProject, 10);
+  }
+
   try {
     const res = await fetch(`${API_URL}/api/inbox`, {
       method: "POST",
@@ -173,10 +191,7 @@ async function captureNote() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        raw_text: rawText,
-        source: "chrome_extension",
-      }),
+      body: JSON.stringify(body),
     });
 
     if (res.status === 401) {
@@ -187,20 +202,27 @@ async function captureNote() {
       return;
     }
 
-    if (!res.ok) throw new Error("Error al enviar");
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || `Error ${res.status}`);
+    }
 
     // Success
     noteText.value = "";
+    captureBtn.disabled = true;
     successMsg.classList.remove("hidden");
     loadInboxCount();
+
+    // Notify background to update badge
+    chrome.runtime.sendMessage({ type: "NOTE_CREATED" });
 
     // Auto-close after 2s
     setTimeout(() => window.close(), 2000);
   } catch (err) {
-    captureError.textContent = err.message || "Error al enviar. Comprueba tu conexión.";
+    captureError.textContent = err.message || "Error al enviar. Comprueba tu conexion.";
     captureError.classList.remove("hidden");
   } finally {
-    captureBtn.disabled = false;
+    captureBtn.disabled = !noteText.value.trim();
     btnText.classList.remove("hidden");
     btnLoading.classList.add("hidden");
   }
@@ -217,6 +239,8 @@ async function loadInboxCount() {
       if (data.count > 0) {
         inboxCount.textContent = data.count;
         inboxBar.classList.remove("hidden");
+      } else {
+        inboxBar.classList.add("hidden");
       }
     }
   } catch {
@@ -235,5 +259,6 @@ openInbox.addEventListener("click", (e) => {
 settingsBtn.addEventListener("click", async () => {
   token = "";
   await chrome.storage.local.remove(STORAGE_KEYS.token);
+  chrome.runtime.sendMessage({ type: "AUTH_UPDATE", token: "" });
   showLoginView();
 });

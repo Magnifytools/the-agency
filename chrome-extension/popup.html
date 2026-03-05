@@ -11,7 +11,7 @@
   <div id="login-view" class="view hidden">
     <div class="header">
       <div class="logo">A</div>
-      <h1>Agency Manager</h1>
+      <h1>The Agency</h1>
     </div>
     <form id="login-form">
       <input type="email" id="email" placeholder="Email" required>
@@ -28,22 +28,23 @@
         <div class="logo-sm">A</div>
         <span class="title">Quick Capture</span>
       </div>
-      <button id="settings-btn" class="icon-btn" title="Configuracion">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      <button id="settings-btn" class="icon-btn" title="Cerrar sesion">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       </button>
     </div>
 
     <div class="capture-area">
-      <textarea id="note-text" placeholder="Escribe tu nota rapida..." rows="4" autofocus></textarea>
+      <textarea id="note-text" placeholder="Escribe tu nota rapida... (⌘+Enter para enviar)" rows="4" autofocus></textarea>
       <p id="capture-error" class="error hidden"></p>
-      <div class="meta-row">
-        <span id="page-info" class="page-info"></span>
+
+      <div class="project-row">
+        <select id="project-select">
+          <option value="">Sin proyecto (IA adivinará)</option>
+        </select>
       </div>
+
       <div class="actions">
-        <label class="checkbox-label">
-          <input type="checkbox" id="include-url" checked>
-          <span>Incluir URL</span>
-        </label>
+        <span class="hint">⌘+Enter</span>
         <button id="capture-btn" class="primary-btn" disabled>
           <span id="btn-text">Capturar</span>
           <span id="btn-loading" class="hidden">Enviando...</span>
@@ -60,7 +61,7 @@
     <!-- Inbox count -->
     <div id="inbox-bar" class="inbox-bar hidden">
       <span>Inbox: <strong id="inbox-count">0</strong> notas pendientes</span>
-      <a id="open-inbox" href="#" class="link">Abrir inbox</a>
+      <a id="open-inbox" href="#" class="link">Abrir inbox →</a>
     </div>
   </div>
 

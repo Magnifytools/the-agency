@@ -81,10 +81,20 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
-// ── Auth update from popup ────────────────────────────────
-chrome.runtime.onMessage.addListener((msg) => {
+// ── Messages from popup ───────────────────────────────────
+chrome.runtime.onMessage.addListener(async (msg) => {
   if (msg.type === "AUTH_UPDATE") {
-    updateBadge(msg.token);
+    if (msg.token) {
+      updateBadge(msg.token);
+    } else {
+      chrome.action.setBadgeText({ text: "" });
+    }
+  }
+  if (msg.type === "NOTE_CREATED") {
+    const stored = await chrome.storage.local.get([STORAGE_KEYS.token]);
+    if (stored[STORAGE_KEYS.token]) {
+      updateBadge(stored[STORAGE_KEYS.token]);
+    }
   }
 });
 

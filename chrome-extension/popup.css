@@ -89,6 +89,7 @@ button {
   color: #ef4444;
   font-size: 12px;
   text-align: center;
+  margin-top: 4px;
 }
 
 /* Capture view */
@@ -162,19 +163,39 @@ button {
 
 #note-text::placeholder { color: #52525b; }
 
-.meta-row {
-  margin-top: 8px;
-  display: flex;
-  align-items: center;
+/* Project selector */
+.project-row {
+  margin-top: 10px;
 }
 
-.page-info {
-  font-size: 11px;
-  color: #52525b;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
+#project-select {
+  width: 100%;
+  padding: 8px 10px;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  color: #a1a1aa;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+  transition: border-color 0.15s;
+}
+
+#project-select:focus {
+  border-color: #FFD600;
+  color: #e4e4e7;
+}
+
+#project-select option {
+  background: #18181b;
+  color: #e4e4e7;
 }
 
 .actions {
@@ -184,17 +205,9 @@ button {
   justify-content: space-between;
 }
 
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: #a1a1aa;
-  cursor: pointer;
-}
-
-.checkbox-label input[type="checkbox"] {
-  accent-color: #FFD600;
+.hint {
+  font-size: 11px;
+  color: #52525b;
 }
 
 .primary-btn {
@@ -241,14 +254,3 @@ button {
 }
 
 .link:hover { text-decoration: underline; }
-
-.kbd {
-  display: inline-block;
-  padding: 1px 5px;
-  background: #27272a;
-  border: 1px solid #3f3f46;
-  border-radius: 4px;
-  font-size: 11px;
-  color: #71717a;
-  font-family: monospace;
-}
