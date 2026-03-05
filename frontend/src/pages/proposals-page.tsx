@@ -247,6 +247,7 @@ export default function ProposalsPage() {
 
     // Email draft modal state
     const [emailModal, setEmailModal] = useState<number | null>(null)
+    const [toEmail, setToEmail] = useState("")
 
     // Auto-open wizard when navigating from lead detail
     useEffect(() => {
@@ -365,6 +366,17 @@ export default function ProposalsPage() {
             toast.success("Propuesta convertida a proyecto")
         },
         onError: (err) => toast.error(getErrorMessage(err, "Error al convertir")),
+    })
+
+    const sendEmailMut = useMutation({
+        mutationFn: ({ id, to_email }: { id: number; to_email: string }) =>
+            proposalsApi.sendEmail(id, { to_email }),
+        onSuccess: () => {
+            toast.success("Email enviado correctamente")
+            setEmailModal(null)
+            setToEmail("")
+        },
+        onError: (err) => toast.error(getErrorMessage(err, "Error al enviar email")),
     })
 
     const draftProposal = emailModal != null ? proposals.find(p => p.id === emailModal) : null
@@ -1657,11 +1669,21 @@ export default function ProposalsPage() {
             </Dialog>
 
             {/* ========== EMAIL DRAFT DIALOG ========== */}
-            <Dialog open={emailModal !== null} onOpenChange={(o) => !o && setEmailModal(null)}>
+            <Dialog open={emailModal !== null} onOpenChange={(o) => { if (!o) { setEmailModal(null); setToEmail("") } }}>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>Borrador de email</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>Enviar propuesta por email</DialogTitle></DialogHeader>
                     {emailDraft && (
                         <div className="space-y-4 p-1">
+                            <div>
+                                <Label className="text-xs text-muted-foreground">Destinatario</Label>
+                                <Input
+                                    type="email"
+                                    placeholder="cliente@empresa.com"
+                                    value={toEmail}
+                                    onChange={(e) => setToEmail(e.target.value)}
+                                    className="mt-1"
+                                />
+                            </div>
                             <div>
                                 <Label className="text-xs text-muted-foreground">Asunto</Label>
                                 <div className="flex items-center gap-2 mt-1">
@@ -1672,19 +1694,22 @@ export default function ProposalsPage() {
                                 </div>
                             </div>
                             <div>
-                                <Label className="text-xs text-muted-foreground">Cuerpo</Label>
+                                <Label className="text-xs text-muted-foreground">Cuerpo del mensaje</Label>
                                 <div className="relative mt-1">
-                                    <Textarea readOnly value={emailDraft.body} rows={10} className="font-mono text-xs resize-none" />
+                                    <Textarea readOnly value={emailDraft.body} rows={8} className="font-mono text-xs resize-none" />
                                     <Button variant="ghost" size="icon" className="absolute top-1 right-1" onClick={() => { navigator.clipboard.writeText(emailDraft.body); toast.success("Texto copiado") }}>
                                         <Copy className="w-4 h-4" />
                                     </Button>
                                 </div>
                             </div>
-                            <p className="text-xs text-muted-foreground">Copia el texto, pégalo en tu cliente de email y adjunta el PDF de la propuesta.</p>
                             <div className="flex justify-end gap-2">
-                                <Button variant="outline" onClick={() => setEmailModal(null)}>Cerrar</Button>
-                                <Button onClick={() => { navigator.clipboard.writeText(`Asunto: ${emailDraft.subject}\n\n${emailDraft.body}`); toast.success("Email completo copiado") }}>
-                                    <Copy className="w-4 h-4 mr-1" /> Copiar todo
+                                <Button variant="outline" onClick={() => { setEmailModal(null); setToEmail("") }}>Cancelar</Button>
+                                <Button
+                                    disabled={!toEmail.trim() || sendEmailMut.isPending}
+                                    onClick={() => emailModal !== null && sendEmailMut.mutate({ id: emailModal, to_email: toEmail.trim() })}
+                                >
+                                    <Mail className="w-4 h-4 mr-1" />
+                                    {sendEmailMut.isPending ? "Enviando…" : "Enviar"}
                                 </Button>
                             </div>
                         </div>
