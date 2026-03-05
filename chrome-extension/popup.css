@@ -7,7 +7,7 @@
 body {
   width: 360px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: #0a0a0b;
+  background: #0a0a0a;
   color: #e4e4e7;
   font-size: 13px;
 }
@@ -23,14 +23,15 @@ body {
 .logo {
   width: 48px;
   height: 48px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: #0a0a0a;
+  border: 1.5px solid #27272a;
   border-radius: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
-  color: white;
+  color: #FFD600;
   margin-bottom: 8px;
 }
 
@@ -62,7 +63,7 @@ input[type="password"] {
 }
 
 input:focus {
-  border-color: #6366f1;
+  border-color: #FFD600;
 }
 
 button {
@@ -74,15 +75,15 @@ button {
 #login-btn {
   width: 100%;
   padding: 10px;
-  background: #6366f1;
-  color: white;
+  background: #FFD600;
+  color: #0a0a0a;
   border: none;
   border-radius: 8px;
-  font-weight: 600;
+  font-weight: 700;
   transition: background 0.15s;
 }
 
-#login-btn:hover { background: #4f46e5; }
+#login-btn:hover { background: #e6c200; }
 
 .error {
   color: #ef4444;
@@ -108,14 +109,15 @@ button {
 .logo-sm {
   width: 24px;
   height: 24px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: #0a0a0a;
+  border: 1px solid #27272a;
   border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  color: white;
+  color: #FFD600;
 }
 
 .title {
@@ -156,7 +158,7 @@ button {
   transition: border-color 0.15s;
 }
 
-#note-text:focus { border-color: #6366f1; }
+#note-text:focus { border-color: #FFD600; }
 
 #note-text::placeholder { color: #52525b; }
 
@@ -192,21 +194,21 @@ button {
 }
 
 .checkbox-label input[type="checkbox"] {
-  accent-color: #6366f1;
+  accent-color: #FFD600;
 }
 
 .primary-btn {
   padding: 8px 20px;
-  background: #6366f1;
-  color: white;
+  background: #FFD600;
+  color: #0a0a0a;
   border: none;
   border-radius: 8px;
-  font-weight: 600;
+  font-weight: 700;
   transition: all 0.15s;
 }
 
-.primary-btn:hover:not(:disabled) { background: #4f46e5; }
-.primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.primary-btn:hover:not(:disabled) { background: #e6c200; }
+.primary-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* Success */
 .success {
@@ -227,20 +229,19 @@ button {
   justify-content: space-between;
   padding: 10px 16px;
   border-top: 1px solid #27272a;
-  background: #18181b;
+  background: #111111;
   font-size: 12px;
   color: #a1a1aa;
 }
 
 .link {
-  color: #818cf8;
+  color: #FFD600;
   text-decoration: none;
   font-size: 12px;
 }
 
 .link:hover { text-decoration: underline; }
 
-/* Keyboard shortcut hint */
 .kbd {
   display: inline-block;
   padding: 1px 5px;
