@@ -12,6 +12,18 @@ Dejar la aplicación en estado "production-safe" para operación diaria, elimina
 3. Bloqueos/estados de carga que degradan la experiencia.
 4. Huecos funcionales para los 3 perfiles de uso: usuario operativo, coach financiero y project manager.
 
+## Estado actualizado (verificación extra del 2026-03-05)
+
+Tras una segunda pasada en vivo el mismo día:
+
+1. `GET /api/inbox/count` ya responde `200` en admin y miembro.
+2. `GET /api/vault/assets` ya responde `403` para miembro.
+3. La prioridad cambia de \"apagar incendios\" a \"consolidar UX/permisos y cerrar política RBAC\".
+
+Referencia de delta:
+
+1. `/Users/david/Public/Código/the-agency/docs/auditoria-pasada6-live-delta-2026-03-05.md`
+
 ## 2) Evidencia base (auditoría live)
 
 Artefactos de auditoría:
