@@ -26,6 +26,12 @@ export const newsKeys = {
   all: () => ["industry-news"] as const,
 }
 
+export const inboxKeys = {
+  all: () => ["inbox-notes"] as const,
+  list: (status?: string) => ["inbox-notes", status ?? "all"] as const,
+  count: () => ["inbox-count"] as const,
+}
+
 export function isHoldedQueryKey(queryKey: readonly unknown[]): boolean {
   const key = queryKey[0]
   return typeof key === "string" && key.startsWith("holded-")

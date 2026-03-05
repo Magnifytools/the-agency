@@ -1,0 +1,344 @@
+"""Inbox quick-capture API endpoints."""
+from __future__ import annotations
+
+import asyncio
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.db.database import get_db, async_session
+from backend.db.models import (
+    InboxNote, InboxNoteStatus, Project, ProjectStatus, Client, ClientStatus,
+    Task, TaskStatus, TaskPriority,
+)
+from backend.api.deps import get_current_user
+from backend.schemas.inbox import (
+    InboxNoteCreate, InboxNoteUpdate, InboxNoteResponse, ConvertToTaskBody,
+)
+from backend.core.rate_limiter import ai_limiter
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/inbox", tags=["inbox"])
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _to_response(note: InboxNote) -> InboxNoteResponse:
+    """Convert ORM model to response, populating relationship names."""
+    return InboxNoteResponse(
+        id=note.id,
+        user_id=note.user_id,
+        raw_text=note.raw_text,
+        source=note.source,
+        status=note.status,
+        project_id=note.project_id,
+        client_id=note.client_id,
+        project_name=note.project.name if note.project else None,
+        client_name=note.client.name if note.client else None,
+        resolved_as=note.resolved_as,
+        resolved_entity_id=note.resolved_entity_id,
+        ai_suggestion=note.ai_suggestion,
+        created_at=note.created_at,
+        updated_at=note.updated_at,
+    )
+
+
+async def _get_note_or_404(
+    note_id: int, user_id: int, db: AsyncSession,
+) -> InboxNote:
+    """Fetch an inbox note ensuring ownership."""
+    result = await db.execute(
+        select(InboxNote).where(InboxNote.id == note_id, InboxNote.user_id == user_id)
+    )
+    note = result.scalar_one_or_none()
+    if not note:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    return note
+
+
+async def _fetch_context(db: AsyncSession) -> tuple[list[dict], list[dict]]:
+    """Fetch active projects and clients for AI classification context."""
+    proj_coro = db.execute(
+        select(Project.id, Project.name, Client.name.label("client_name"))
+        .join(Client, Project.client_id == Client.id)
+        .where(Project.status == ProjectStatus.active)
+        .order_by(Project.name)
+    )
+    cli_coro = db.execute(
+        select(Client.id, Client.name)
+        .where(Client.status == ClientStatus.active)
+        .order_by(Client.name)
+    )
+    proj_result, cli_result = await asyncio.gather(proj_coro, cli_coro)
+    projects = [{"id": r.id, "name": r.name, "client_name": r.client_name} for r in proj_result.all()]
+    clients = [{"id": r.id, "name": r.name} for r in cli_result.all()]
+    return projects, clients
+
+
+async def _classify_note_background(note_id: int) -> None:
+    """Run AI classification in background (fire-and-forget)."""
+    from backend.services.inbox_classifier import classify_inbox_note
+
+    try:
+        async with async_session() as db:
+            result = await db.execute(select(InboxNote).where(InboxNote.id == note_id))
+            note = result.scalar_one_or_none()
+            if not note or note.status != InboxNoteStatus.pending:
+                return
+
+            projects, clients = await _fetch_context(db)
+            if not projects and not clients:
+                logger.info("No active projects/clients for classification, skipping note %d", note_id)
+                return
+
+            suggestion = await classify_inbox_note(note.raw_text, projects, clients)
+            note.ai_suggestion = suggestion
+            note.status = InboxNoteStatus.classified
+            await db.commit()
+            logger.info("Classified inbox note %d -> %s", note_id, suggestion.get("suggested_action"))
+    except Exception as e:
+        logger.error("Background classification failed for note %d: %s", note_id, e)
+
+
+# ---------------------------------------------------------------------------
+# POST / — Create note
+# ---------------------------------------------------------------------------
+
+@router.post("", response_model=InboxNoteResponse, status_code=201)
+async def create_inbox_note(
+    body: InboxNoteCreate,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Capture a quick note. AI classification fires in background."""
+    text = body.raw_text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="El texto no puede estar vacio")
+
+    note = InboxNote(
+        user_id=user.id,
+        raw_text=text,
+        source=body.source,
+        project_id=body.project_id,
+        client_id=body.client_id,
+        status=InboxNoteStatus.pending,
+    )
+    db.add(note)
+    await db.commit()
+    await db.refresh(note)
+
+    # Fire-and-forget AI classification
+    asyncio.create_task(_classify_note_background(note.id))
+
+    return _to_response(note)
+
+
+# ---------------------------------------------------------------------------
+# GET / — List notes
+# ---------------------------------------------------------------------------
+
+@router.get("")
+async def list_inbox_notes(
+    status: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+) -> list[InboxNoteResponse]:
+    """List inbox notes for the current user, optionally filtered by status."""
+    q = select(InboxNote).where(InboxNote.user_id == user.id)
+
+    if status:
+        statuses = [s.strip() for s in status.split(",") if s.strip()]
+        valid = [s for s in statuses if s in InboxNoteStatus.__members__]
+        if valid:
+            q = q.where(InboxNote.status.in_(valid))
+
+    q = q.order_by(InboxNote.created_at.desc()).limit(limit).offset(offset)
+    result = await db.execute(q)
+    return [_to_response(n) for n in result.scalars().all()]
+
+
+# ---------------------------------------------------------------------------
+# GET /count — Unprocessed count (for sidebar badge)
+# ---------------------------------------------------------------------------
+
+@router.get("/count")
+async def inbox_count(
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+) -> dict:
+    """Get count of pending + classified inbox notes."""
+    result = await db.execute(
+        select(func.count(InboxNote.id)).where(
+            InboxNote.user_id == user.id,
+            InboxNote.status.in_([InboxNoteStatus.pending, InboxNoteStatus.classified]),
+        )
+    )
+    return {"count": result.scalar() or 0}
+
+
+# ---------------------------------------------------------------------------
+# PUT /{id} — Update note
+# ---------------------------------------------------------------------------
+
+@router.put("/{note_id}", response_model=InboxNoteResponse)
+async def update_inbox_note(
+    note_id: int,
+    body: InboxNoteUpdate,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Update an inbox note (text, status, associations)."""
+    note = await _get_note_or_404(note_id, user.id, db)
+
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(note, field, value)
+
+    await db.commit()
+    await db.refresh(note)
+    return _to_response(note)
+
+
+# ---------------------------------------------------------------------------
+# DELETE /{id}
+# ---------------------------------------------------------------------------
+
+@router.delete("/{note_id}")
+async def delete_inbox_note(
+    note_id: int,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+) -> dict:
+    """Delete an inbox note."""
+    note = await _get_note_or_404(note_id, user.id, db)
+    await db.delete(note)
+    await db.commit()
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# POST /{id}/classify — Trigger AI classification
+# ---------------------------------------------------------------------------
+
+@router.post("/{note_id}/classify", response_model=InboxNoteResponse)
+async def classify_note(
+    note_id: int,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Run (or re-run) AI classification on a note."""
+    from backend.services.inbox_classifier import classify_inbox_note
+
+    ai_limiter.check(user.id, max_requests=20, window_seconds=60)
+
+    note = await _get_note_or_404(note_id, user.id, db)
+    projects, clients = await _fetch_context(db)
+
+    try:
+        suggestion = await classify_inbox_note(note.raw_text, projects, clients)
+        note.ai_suggestion = suggestion
+        note.status = InboxNoteStatus.classified
+        await db.commit()
+        await db.refresh(note)
+    except Exception as e:
+        logger.error("Classification failed for note %d: %s", note_id, e)
+        raise HTTPException(status_code=502, detail="Error al clasificar con IA")
+
+    return _to_response(note)
+
+
+# ---------------------------------------------------------------------------
+# POST /{id}/convert-to-task — Create task from note
+# ---------------------------------------------------------------------------
+
+@router.post("/{note_id}/convert-to-task")
+async def convert_to_task(
+    note_id: int,
+    body: ConvertToTaskBody | None = None,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+) -> dict:
+    """Convert an inbox note into a real task."""
+    note = await _get_note_or_404(note_id, user.id, db)
+    body = body or ConvertToTaskBody()
+
+    # Resolve fields: explicit > AI suggestion > defaults
+    ai = note.ai_suggestion or {}
+
+    title = body.title or ai.get("suggested_title") or note.raw_text[:200]
+    project_id = body.project_id or note.project_id
+    client_id = body.client_id or note.client_id
+
+    # Infer client from AI suggestion if not set
+    if not client_id and ai.get("suggested_client"):
+        client_id = ai["suggested_client"].get("id")
+    # Infer project from AI suggestion if not set
+    if not project_id and ai.get("suggested_project"):
+        project_id = ai["suggested_project"].get("id")
+    # Infer client from project
+    if project_id and not client_id:
+        proj = await db.execute(select(Project.client_id).where(Project.id == project_id))
+        row = proj.first()
+        if row:
+            client_id = row.client_id
+
+    if not client_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Se necesita un cliente para crear la tarea. Asigna uno manualmente.",
+        )
+
+    priority_str = body.priority or ai.get("suggested_priority", "medium")
+    try:
+        priority = TaskPriority(priority_str)
+    except ValueError:
+        priority = TaskPriority.medium
+
+    task = Task(
+        title=title,
+        description=note.raw_text,
+        status=TaskStatus.pending,
+        priority=priority,
+        client_id=client_id,
+        project_id=project_id,
+        assigned_to=body.assigned_to or user.id,
+    )
+    db.add(task)
+
+    note.status = InboxNoteStatus.processed
+    note.resolved_as = "task"
+
+    await db.flush()
+    note.resolved_entity_id = task.id
+    await db.commit()
+
+    return {
+        "ok": True,
+        "task_id": task.id,
+        "note": _to_response(note).model_dump(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /{id}/dismiss
+# ---------------------------------------------------------------------------
+
+@router.post("/{note_id}/dismiss", response_model=InboxNoteResponse)
+async def dismiss_note(
+    note_id: int,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Dismiss an inbox note."""
+    note = await _get_note_or_404(note_id, user.id, db)
+    note.status = InboxNoteStatus.dismissed
+    note.resolved_as = "dismissed"
+    await db.commit()
+    await db.refresh(note)
+    return _to_response(note)
