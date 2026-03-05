@@ -369,9 +369,6 @@ export default function ProposalsPage() {
         onError: (err) => toast.error(getErrorMessage(err, "Error al convertir")),
     })
 
-    const draftProposal = emailModal != null ? proposals.find(p => p.id === emailModal) : null
-    const emailDraft = draftProposal ? generateEmailDraft(draftProposal) : null
-
     // --- Email modal helpers ---
     const openEmailModal = async (id: number) => {
         setEmailModal(id)

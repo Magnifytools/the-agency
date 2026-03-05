@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import {
   CheckSquare, X, RefreshCw, Loader2, FolderKanban,
-  Users, ArrowRight, Clock, Sparkles,
+  Users, Clock, Sparkles,
 } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage, formatTimeAgo } from "@/lib/utils"
@@ -22,10 +22,11 @@ const priorityColors: Record<string, string> = {
   low: "bg-green-500/10 text-green-500 border-green-500/20",
 }
 
-const actionLabels: Record<string, string> = {
-  create_task: "Crear tarea",
-  add_communication: "Registrar comunicacion",
-  link_to_project: "Vincular a proyecto",
+const priorityLabels: Record<string, string> = {
+  urgent: "Urgente",
+  high: "Alta",
+  medium: "Media",
+  low: "Baja",
 }
 
 interface Props {
@@ -41,6 +42,25 @@ export function InboxNoteCard({ note }: Props) {
     queryClient.invalidateQueries({ queryKey: inboxKeys.all() })
     queryClient.invalidateQueries({ queryKey: inboxKeys.count() })
   }
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ["projects-active-list"],
+    queryFn: () => projectsApi.listAll({ status: "active" }),
+    staleTime: 60_000,
+  })
+
+  const { data: clients = [] } = useQuery({
+    queryKey: ["clients-active-list"],
+    queryFn: () => clientsApi.listAll("active"),
+    staleTime: 60_000,
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: (data: { project_id?: number | null; client_id?: number | null }) =>
+      inboxApi.update(note.id, data),
+    onSuccess: () => invalidateAll(),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar")),
+  })
 
   const classifyMutation = useMutation({
     mutationFn: () => inboxApi.classify(note.id),
@@ -113,15 +133,9 @@ export function InboxNoteCard({ note }: Props) {
                   <span className="opacity-60">{Math.round(ai.suggested_client.confidence * 100)}%</span>
                 </span>
               )}
-              {ai.suggested_action && (
-                <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-muted text-muted-foreground border border-border/50">
-                  <ArrowRight className="w-3 h-3" />
-                  {actionLabels[ai.suggested_action] ?? ai.suggested_action}
-                </span>
-              )}
               {ai.suggested_priority && (
                 <span className={`inline-flex items-center text-[11px] px-2 py-1 rounded-lg border ${priorityColors[ai.suggested_priority] ?? priorityColors.medium}`}>
-                  {ai.suggested_priority}
+                  {priorityLabels[ai.suggested_priority] ?? ai.suggested_priority}
                 </span>
               )}
             </div>
@@ -133,46 +147,82 @@ export function InboxNoteCard({ note }: Props) {
           </div>
         )}
 
-        {/* Actions */}
+        {/* Assignment + Actions */}
         {(note.status === "classified" || note.status === "pending") && (
-          <div className="mt-3 pt-3 border-t border-border/30 flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="default"
-              className="h-7 text-xs gap-1.5 px-3"
-              onClick={() => setConvertOpen(true)}
-            >
-              <CheckSquare className="w-3 h-3" />
-              Crear tarea
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-xs gap-1.5 px-3"
-              onClick={() => classifyMutation.mutate()}
-              disabled={classifyMutation.isPending}
-            >
-              {classifyMutation.isPending ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <RefreshCw className="w-3 h-3" />
-              )}
-              {note.status === "pending" ? "Clasificar" : "Reclasificar"}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-xs gap-1.5 px-3 text-muted-foreground hover:text-destructive"
-              onClick={() => dismissMutation.mutate()}
-              disabled={dismissMutation.isPending}
-            >
-              {dismissMutation.isPending ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <X className="w-3 h-3" />
-              )}
-              Descartar
-            </Button>
+          <div className="mt-3 pt-3 border-t border-border/30 space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Proyecto</label>
+                <Select
+                  value={String(note.project_id ?? "")}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    updateMutation.mutate({ project_id: val ? Number(val) : null })
+                  }}
+                  className="text-xs"
+                >
+                  <option value="">Sin proyecto</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Cliente</label>
+                <Select
+                  value={String(note.client_id ?? "")}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    updateMutation.mutate({ client_id: val ? Number(val) : null })
+                  }}
+                  className="text-xs"
+                >
+                  <option value="">Sin cliente</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="default"
+                className="h-7 text-xs gap-1.5 px-3"
+                onClick={() => setConvertOpen(true)}
+              >
+                <CheckSquare className="w-3 h-3" />
+                Crear tarea
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs gap-1.5 px-3"
+                onClick={() => classifyMutation.mutate()}
+                disabled={classifyMutation.isPending}
+              >
+                {classifyMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3 h-3" />
+                )}
+                {note.status === "pending" ? "Clasificar IA" : "Reclasificar IA"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs gap-1.5 px-3 text-muted-foreground hover:text-destructive"
+                onClick={() => dismissMutation.mutate()}
+                disabled={dismissMutation.isPending}
+              >
+                {dismissMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <X className="w-3 h-3" />
+                )}
+                Descartar
+              </Button>
+            </div>
           </div>
         )}
       </div>
