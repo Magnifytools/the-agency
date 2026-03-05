@@ -509,6 +509,12 @@ export const financeExpensesApi = {
   update: (id: number, data: Partial<ExpenseCreate>) =>
     api.put<Expense>(`/finance/expenses/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/finance/expenses/${id}`).then((r) => r.data),
+  generateRecurring: (year?: number, month?: number) =>
+    api.post<{ created: number; skipped: number; month: string }>(
+      "/finance/expenses/generate-recurring",
+      null,
+      { params: { year, month } }
+    ).then((r) => r.data),
 }
 
 export const financeExpenseCategoriesApi = {

@@ -133,10 +133,22 @@ export default function AdvisorPage() {
       )}
 
       {insights.length === 0 && tasks.length === 0 && overview && (
-        <Card className="p-8 text-center text-muted-foreground">
-          <CheckCircle2 className="h-12 w-12 mx-auto mb-3 text-green-500" />
-          <p className="text-lg font-medium">Todo en orden</p>
-          <p>No hay alertas ni tareas pendientes.</p>
+        <Card className="p-8 text-muted-foreground">
+          <div className="flex flex-col items-center mb-6">
+            <CheckCircle2 className="h-12 w-12 mb-3 text-green-500" />
+            <p className="text-lg font-medium">Todo en orden</p>
+            <p className="text-sm">No hay alertas ni tareas pendientes.</p>
+          </div>
+          <div className="border-t pt-6 space-y-3">
+            <p className="text-sm font-semibold text-foreground">Consejos proactivos</p>
+            <ul className="space-y-2 text-sm list-disc list-inside">
+              <li>Revisa el margen por cliente en el Dashboard Ejecutivo al final de cada mes.</li>
+              <li>Asegúrate de que el colchón de caja cubre al menos 3 meses de gastos.</li>
+              <li>Registra los costes de equipo para que el margen sea preciso.</li>
+              <li>Actualiza el saldo bancario semanalmente para un runway fiable.</li>
+              <li>Cierra los leads ganados/perdidos para mantener el pipeline limpio.</li>
+            </ul>
+          </div>
         </Card>
       )}
     </div>

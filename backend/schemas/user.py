@@ -17,6 +17,7 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     hourly_rate: Optional[float] = None
     role: Optional[UserRole] = None
+    preferences: Optional[dict] = None
 
 
 class UserListResponse(BaseModel):

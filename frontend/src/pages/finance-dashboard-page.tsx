@@ -1,11 +1,16 @@
 import { useQuery } from "@tanstack/react-query"
 import { financeAdvisorApi, financeForecastsApi, financeTaxesApi } from "@/lib/api"
-import { Card } from "@/components/ui/card"
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { TrendingUp, TrendingDown, DollarSign, Calculator, Calendar } from "lucide-react"
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
+} from "recharts"
 
 const fmt = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
 const currentYear = new Date().getFullYear()
+
+const MONTH_SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 
 export default function FinanceDashboardPage() {
   const { data: overview } = useQuery({
@@ -16,6 +21,11 @@ export default function FinanceDashboardPage() {
   const { data: runway } = useQuery({
     queryKey: ["finance-runway"],
     queryFn: () => financeForecastsApi.runway(),
+  })
+
+  const { data: vsActual } = useQuery({
+    queryKey: ["finance-vs-actual", currentYear],
+    queryFn: () => financeForecastsApi.vsActual(currentYear),
   })
 
   const { data: taxSummary } = useQuery({
@@ -114,6 +124,42 @@ export default function FinanceDashboardPage() {
           </Card>
         )}
       </div>
+
+      {/* Cashflow Chart */}
+      {vsActual && vsActual.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Cashflow mensual {currentYear}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart
+                data={vsActual.map((r: Record<string, number | string>) => {
+                  const d = new Date(String(r.month) + "T12:00:00")
+                  return {
+                    mes: MONTH_SHORT[d.getMonth()],
+                    Ingresos: r.actual_income,
+                    Gastos: r.actual_expenses,
+                    Beneficio: r.actual_profit,
+                  }
+                })}
+                margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
+              >
+                <XAxis dataKey="mes" fontSize={11} tick={{ fill: "#8a8a80" }} />
+                <YAxis fontSize={11} tick={{ fill: "#8a8a80" }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip
+                  formatter={(value) => fmt(Number(value))}
+                  contentStyle={{ backgroundColor: "#2a2a28", border: "1px solid rgba(254,230,48,0.3)", color: "#f5f5f0", fontSize: 12, borderRadius: 8 }}
+                />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="Ingresos" fill="#22c55e" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="Gastos" fill="#ef4444" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="Beneficio" fill="#FEE630" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
 
       {upcomingDeadlines.length > 0 && (
         <Card className="p-5">

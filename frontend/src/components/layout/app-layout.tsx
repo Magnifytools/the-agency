@@ -3,13 +3,15 @@ import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/context/auth-context"
 import { holdedApi, inboxApi } from "@/lib/api"
 import { holdedKeys, inboxKeys } from "@/lib/query-keys"
-import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList, Gauge, BarChart3, Search, Archive, Megaphone, Inbox } from "lucide-react"
+import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList, Gauge, BarChart3, Search, Archive, Megaphone, Inbox, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
 import { NotificationBell } from "@/components/layout/notification-bell"
 import { SearchPalette } from "@/components/layout/search-palette"
 import { QuickCaptureDialog } from "@/components/inbox/quick-capture-dialog"
-import { useMemo, useState, useEffect, useCallback } from "react"
+import { ShortcutsHelpModal } from "@/components/shortcuts/shortcuts-help-modal"
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
+import { useMemo, useState, useCallback } from "react"
 
 export function AppLayout() {
   const { user, logout, hasPermission, isAdmin } = useAuth()
@@ -17,21 +19,14 @@ export function AppLayout() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [captureOpen, setCaptureOpen] = useState(false)
 
-  const handleSearchKeydown = useCallback((e: KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-      e.preventDefault()
-      setSearchOpen((o) => !o)
-    }
-    if ((e.metaKey || e.ctrlKey) && e.key === "j") {
-      e.preventDefault()
-      setCaptureOpen((o) => !o)
-    }
-  }, [])
-
-  useEffect(() => {
-    document.addEventListener("keydown", handleSearchKeydown)
-    return () => document.removeEventListener("keydown", handleSearchKeydown)
-  }, [handleSearchKeydown])
+  const handleSearch = useCallback(() => setSearchOpen((o) => !o), [])
+  const handleCapture = useCallback(() => setCaptureOpen((o) => !o), [])
+  const userShortcuts = useMemo(() => user?.preferences?.shortcuts ?? {}, [user?.preferences?.shortcuts])
+  const { shortcuts, isHelpOpen, setIsHelpOpen } = useKeyboardShortcuts({
+    userOverrides: userShortcuts,
+    onSearch: handleSearch,
+    onCapture: handleCapture,
+  })
 
   const { data: inboxCount } = useQuery({
     queryKey: inboxKeys.count(),
@@ -282,6 +277,22 @@ export function AppLayout() {
                 ))}
               </div>
             )}
+
+            {/* Settings */}
+            <div className="mt-4">
+              <Link
+                to="/settings"
+                className={cn(
+                  "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
+                  isActive("/settings")
+                    ? "bg-brand/10 text-brand"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Settings className={cn("h-[18px] w-[18px] transition-colors", isActive("/settings") ? "text-brand" : "text-muted-foreground group-hover:text-foreground")} />
+                Configuración
+              </Link>
+            </div>
           </div>
 
           {/* User info at bottom */}
@@ -332,6 +343,7 @@ export function AppLayout() {
 
       <SearchPalette open={searchOpen} onOpenChange={setSearchOpen} />
       <QuickCaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
+      <ShortcutsHelpModal open={isHelpOpen} onOpenChange={setIsHelpOpen} shortcuts={shortcuts} />
     </div>
   )
 }

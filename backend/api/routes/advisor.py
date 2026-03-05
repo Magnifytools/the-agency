@@ -13,7 +13,7 @@ from backend.db.database import get_db
 from backend.db.models import (
     Income, Expense, Tax, FinancialInsight, AdvisorTask,
     AdvisorAiBrief, AdvisorAiBriefPayload, FinancialSettings,
-    MonthlyClose, User,
+    MonthlyClose, User, Client, ClientStatus, BalanceSnapshot,
 )
 from backend.schemas.advisor import (
     FinancialInsightResponse, AdvisorTaskCreate, AdvisorTaskResponse,
@@ -93,6 +93,61 @@ async def _build_insights(db: AsyncSession) -> list[dict]:
                 "description": "Considera revisar gastos o ajustar precios.",
                 "severity": "warning",
             })
+
+    # Runway < 6 months (estimate from last 3 months burn rate + latest balance)
+    try:
+        from datetime import timedelta as _td
+        three_months_ago = date(y, m, 1) - _td(days=90)
+        r_burn = await db.execute(
+            select(func.coalesce(func.sum(Expense.amount), 0))
+            .where(Expense.date >= three_months_ago, Expense.date < date(y, m, 1))
+        )
+        total_burn_3m = float(r_burn.scalar() or 0)
+        avg_monthly_burn = total_burn_3m / 3 if total_burn_3m > 0 else 0
+
+        if avg_monthly_burn > 0:
+            # Try to get latest manual balance snapshot
+            r_bal = await db.execute(
+                select(BalanceSnapshot.amount).order_by(BalanceSnapshot.date.desc()).limit(1)
+            )
+            cash = float(r_bal.scalar() or 0)
+            if cash > 0:
+                runway_months = round(cash / avg_monthly_burn, 1)
+                if runway_months < 6:
+                    severity = "critical" if runway_months < 3 else "warning"
+                    insights.append({
+                        "type": "alerta",
+                        "title": f"Runway limitado: {runway_months:.0f} {'mes' if runway_months < 2 else 'meses'}",
+                        "description": f"Con {cash:.0f}€ en caja y gasto medio de {avg_monthly_burn:.0f}€/mes, actúa pronto.",
+                        "severity": severity,
+                    })
+    except Exception:
+        pass
+
+    # Clients with no invoice in the last 30 days (batch query)
+    from datetime import timedelta as td
+    cutoff = now.date() - td(days=30)
+    r_no_invoice = await db.execute(
+        select(Client.id, Client.name)
+        .where(Client.status == ClientStatus.active)
+        .where(
+            ~Client.id.in_(
+                select(Income.client_id)
+                .where(Income.date >= cutoff, Income.client_id.isnot(None))
+                .scalar_subquery()
+            )
+        )
+    )
+    no_invoice_clients = r_no_invoice.all()
+    if no_invoice_clients:
+        names = ", ".join(c.name for c in no_invoice_clients[:3])
+        extra = f" y {len(no_invoice_clients) - 3} más" if len(no_invoice_clients) > 3 else ""
+        insights.append({
+            "type": "consejo",
+            "title": "Clientes sin factura reciente",
+            "description": f"{names}{extra} no tienen ingresos registrados en los últimos 30 días.",
+            "severity": "warning",
+        })
 
     return insights
 

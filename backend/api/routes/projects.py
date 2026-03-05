@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
-from backend.db.models import Project, ProjectPhase, Task, TaskStatus, PhaseStatus, ProjectStatus
+from backend.db.models import Project, ProjectPhase, Task, TaskStatus, PhaseStatus, ProjectStatus, TimeEntry
 from backend.schemas.project import (
     ProjectCreate,
     ProjectExtract,
@@ -58,7 +58,7 @@ def calculate_progress(tasks: list) -> int:
     return int((completed / len(tasks)) * 100)
 
 
-def _build_project_response(project: Project) -> ProjectResponse:
+def _build_project_response(project: Project, hours_used: Optional[float] = None) -> ProjectResponse:
     """Build a ProjectResponse from a Project model with eagerly loaded relationships."""
     task_count = len(project.tasks) if project.tasks else 0
     completed_count = (
@@ -98,6 +98,7 @@ def _build_project_response(project: Project) -> ProjectResponse:
         ],
         task_count=task_count,
         completed_task_count=completed_count,
+        hours_used=hours_used,
         created_at=project.created_at,
         updated_at=project.updated_at,
     )
@@ -304,7 +305,15 @@ async def get_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    return _build_project_response(project)
+    # Compute hours used via TimeEntry → Task → Project
+    h_result = await db.execute(
+        select(func.coalesce(func.sum(TimeEntry.minutes), 0))
+        .join(Task, TimeEntry.task_id == Task.id)
+        .where(Task.project_id == project_id, TimeEntry.minutes.isnot(None))
+    )
+    hours_used = round(float(h_result.scalar() or 0) / 60, 2)
+
+    return _build_project_response(project, hours_used=hours_used)
 
 
 @router.put("/{project_id}", response_model=ProjectResponse)

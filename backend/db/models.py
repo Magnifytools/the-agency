@@ -243,6 +243,7 @@ class User(TimestampMixin, Base):
     weekly_hours = Column(Float, nullable=False, default=40.0)
     is_active = Column(Boolean, nullable=False, default=True)
     invited_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    preferences = Column(JSONB, nullable=True, server_default="{}")
 
     tasks = relationship("Task", back_populates="assigned_user", lazy="selectin", foreign_keys="[Task.assigned_to]")
     permissions = relationship("UserPermission", back_populates="user", lazy="selectin", cascade="all, delete-orphan")
@@ -890,6 +891,8 @@ class Lead(TimestampMixin, Base):
     next_followup_date = Column(Date, nullable=True)
     next_followup_notes = Column(Text, nullable=True)
     last_contacted_at = Column(DateTime, nullable=True)
+    estimated_close_date = Column(Date, nullable=True)
+    probability = Column(Integer, nullable=True)  # 0-100
 
     # Conversion
     converted_client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)

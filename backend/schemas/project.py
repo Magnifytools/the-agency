@@ -92,6 +92,7 @@ class ProjectResponse(BaseModel):
     phases: list[ProjectPhaseResponse] = []
     task_count: int = 0
     completed_task_count: int = 0
+    hours_used: Optional[float] = None
     created_at: datetime
     updated_at: datetime
 

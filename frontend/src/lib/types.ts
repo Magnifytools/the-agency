@@ -27,6 +27,7 @@ export interface User {
   hourly_rate: number | null
   is_active: boolean
   permissions: UserPermission[]
+  preferences?: { shortcuts?: Record<string, string> } | null
 }
 
 export interface UserCreate {
@@ -518,6 +519,7 @@ export interface Project {
   phases: ProjectPhase[]
   task_count: number
   completed_task_count: number
+  hours_used: number | null
   created_at: string
   updated_at: string
 }
@@ -1395,6 +1397,8 @@ export interface Lead {
   converted_client_id: number | null
   converted_at: string | null
   lost_reason: string | null
+  estimated_close_date: string | null
+  probability: number | null
   created_at: string
   updated_at: string
 }
@@ -1445,6 +1449,7 @@ export interface PipelineSummary {
   stages: PipelineStageSummary[]
   total_leads: number
   total_value: number
+  weighted_value: number
 }
 
 export interface LeadReminder {

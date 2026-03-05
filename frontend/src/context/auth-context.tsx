@@ -10,6 +10,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   hasPermission: (module: string, write?: boolean) => boolean
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -37,6 +38,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }
 
+  const refreshUser = async () => {
+    const me = await authApi.me()
+    setUser(me)
+  }
+
   const isAdmin = user?.role === "admin"
 
   const hasPermission = useCallback(
@@ -52,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isAuthenticated: !!user, isLoading, isAdmin, login, logout, hasPermission }}
+      value={{ user, isAuthenticated: !!user, isLoading, isAdmin, login, logout, hasPermission, refreshUser }}
     >
       {children}
     </AuthContext.Provider>

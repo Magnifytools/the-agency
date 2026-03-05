@@ -21,6 +21,15 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
+const SOURCE_LABELS: Record<string, string> = {
+  website: "Web",
+  referral: "Referencia",
+  linkedin: "LinkedIn",
+  conference: "Conferencia",
+  cold_outreach: "Prospección",
+  other: "Otro",
+}
+
 const STATUS_ORDER: LeadStatus[] = ["new", "contacted", "discovery", "proposal", "negotiation", "won", "lost"]
 const STATUS_LABELS: Record<LeadStatus, string> = {
   new: "Nuevo",
@@ -300,7 +309,34 @@ export default function LeadDetailPage() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Fuente</p>
-                <p className="text-sm mt-1">{lead.source}</p>
+                <p className="text-sm mt-1">{SOURCE_LABELS[lead.source] ?? lead.source}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Probabilidad</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    defaultValue={lead.probability ?? ""}
+                    placeholder="–"
+                    onBlur={(e) => {
+                      const val = e.target.value === "" ? null : Number(e.target.value)
+                      updateMutation.mutate({ probability: val })
+                    }}
+                    className="w-20 rounded border border-border bg-background px-2 py-1 text-sm"
+                  />
+                  <span className="text-sm text-muted-foreground">%</span>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Cierre estimado</p>
+                <input
+                  type="date"
+                  defaultValue={lead.estimated_close_date ?? ""}
+                  onBlur={(e) => updateMutation.mutate({ estimated_close_date: e.target.value || null })}
+                  className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm"
+                />
               </div>
               {lead.industry && (
                 <div>

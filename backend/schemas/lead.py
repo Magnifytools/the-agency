@@ -25,6 +25,8 @@ class LeadCreate(BaseModel):
     current_website_traffic: Optional[str] = None
     next_followup_date: Optional[date] = None
     next_followup_notes: Optional[str] = None
+    estimated_close_date: Optional[date] = None
+    probability: Optional[int] = None  # 0-100
 
 
 class LeadUpdate(BaseModel):
@@ -48,6 +50,8 @@ class LeadUpdate(BaseModel):
     next_followup_notes: Optional[str] = None
     last_contacted_at: Optional[datetime] = None
     lost_reason: Optional[str] = None
+    estimated_close_date: Optional[date] = None
+    probability: Optional[int] = None
 
 
 class LeadResponse(BaseModel):
@@ -75,6 +79,8 @@ class LeadResponse(BaseModel):
     converted_client_id: Optional[int] = None
     converted_at: Optional[datetime] = None
     lost_reason: Optional[str] = None
+    estimated_close_date: Optional[date] = None
+    probability: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -114,6 +120,7 @@ class PipelineSummary(BaseModel):
     stages: list[PipelineStageSummary]
     total_leads: int
     total_value: Decimal = Decimal("0")
+    weighted_value: Decimal = Decimal("0")
 
 
 class LeadReminderResponse(BaseModel):

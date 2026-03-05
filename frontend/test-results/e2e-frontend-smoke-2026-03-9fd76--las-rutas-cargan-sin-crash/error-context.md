@@ -1,0 +1,187 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e5]:
+      - textbox "¿En qué estás trabajando? (ej. Estrategia Cliente X)" [ref=e6]
+      - button [disabled]:
+        - img
+    - generic [ref=e7]:
+      - complementary [ref=e8]:
+        - generic [ref=e9]:
+          - img [ref=e10]
+          - generic [ref=e13]:
+            - generic [ref=e14]: The Agency
+            - generic [ref=e15]: by Magnify
+        - button "Buscar ⌘K" [ref=e16]:
+          - img [ref=e17]
+          - generic [ref=e20]: Buscar
+          - generic [ref=e21]: ⌘K
+        - generic [ref=e22]:
+          - paragraph [ref=e23]: Workspace
+          - link "Dashboard" [ref=e24] [cursor=pointer]:
+            - /url: /dashboard
+            - img [ref=e25]
+            - text: Dashboard
+          - link "Ejecutivo" [ref=e30] [cursor=pointer]:
+            - /url: /executive
+            - img [ref=e31]
+            - text: Ejecutivo
+          - link "Clientes" [ref=e33] [cursor=pointer]:
+            - /url: /clients
+            - img [ref=e34]
+            - text: Clientes
+          - link "Pipeline" [ref=e39] [cursor=pointer]:
+            - /url: /leads
+            - img [ref=e40]
+            - text: Pipeline
+          - link "Proyectos" [ref=e44] [cursor=pointer]:
+            - /url: /projects
+            - img [ref=e45]
+            - text: Proyectos
+          - link "Tareas" [ref=e47] [cursor=pointer]:
+            - /url: /tasks
+            - img [ref=e48]
+            - text: Tareas
+          - link "Growth" [ref=e51] [cursor=pointer]:
+            - /url: /growth
+            - img [ref=e52]
+            - text: Growth
+          - link "Timesheet" [ref=e57] [cursor=pointer]:
+            - /url: /timesheet
+            - img [ref=e58]
+            - text: Timesheet
+          - link "Dailys" [ref=e61] [cursor=pointer]:
+            - /url: /dailys
+            - img [ref=e62]
+            - text: Dailys
+          - link "Inbox" [ref=e65] [cursor=pointer]:
+            - /url: /inbox
+            - img [ref=e66]
+            - text: Inbox
+          - link "Digests" [ref=e69] [cursor=pointer]:
+            - /url: /digests
+            - img [ref=e70]
+            - text: Digests
+          - link "Informes" [ref=e73] [cursor=pointer]:
+            - /url: /reports
+            - img [ref=e74]
+            - text: Informes
+          - link "Presupuestos" [ref=e77] [cursor=pointer]:
+            - /url: /proposals
+            - img [ref=e78]
+            - text: Presupuestos
+          - link "Facturación" [ref=e81] [cursor=pointer]:
+            - /url: /billing
+            - img [ref=e82]
+            - text: Facturación
+          - generic [ref=e84]:
+            - paragraph [ref=e85]: Finanzas
+            - link "Resumen" [ref=e86] [cursor=pointer]:
+              - /url: /finance
+              - img [ref=e87]
+              - text: Resumen
+            - link "Ingresos" [ref=e90] [cursor=pointer]:
+              - /url: /finance/income
+              - img [ref=e91]
+              - text: Ingresos
+            - link "Gastos" [ref=e94] [cursor=pointer]:
+              - /url: /finance/expenses
+              - img [ref=e95]
+              - text: Gastos
+            - link "Impuestos" [ref=e98] [cursor=pointer]:
+              - /url: /finance/taxes
+              - img [ref=e99]
+              - text: Impuestos
+            - link "Previsiones" [ref=e101] [cursor=pointer]:
+              - /url: /finance/forecasts
+              - img [ref=e102]
+              - text: Previsiones
+            - link "Asesor" [ref=e105] [cursor=pointer]:
+              - /url: /finance/advisor
+              - img [ref=e106]
+              - text: Asesor
+            - link "Importar" [ref=e114] [cursor=pointer]:
+              - /url: /finance/import
+              - img [ref=e115]
+              - text: Importar
+          - generic [ref=e118]:
+            - paragraph [ref=e119]: La Agencia
+            - link "Noticias" [ref=e120] [cursor=pointer]:
+              - /url: /news
+              - img [ref=e121]
+              - text: Noticias
+            - link "Vault" [ref=e124] [cursor=pointer]:
+              - /url: /vault
+              - img [ref=e125]
+              - text: Vault
+          - generic [ref=e128]:
+            - paragraph [ref=e129]: Admin
+            - link "Capacidad" [ref=e130] [cursor=pointer]:
+              - /url: /capacity
+              - img [ref=e131]
+              - text: Capacidad
+            - link "Equipo" [ref=e134] [cursor=pointer]:
+              - /url: /users
+              - img [ref=e135]
+              - text: Equipo
+            - link "Discord" [ref=e147] [cursor=pointer]:
+              - /url: /discord
+              - img [ref=e148]
+              - text: Discord
+        - generic [ref=e151]:
+          - generic [ref=e152]:
+            - paragraph [ref=e153]: David Carrasco
+            - paragraph [ref=e154]: david@magnify.ing
+          - generic [ref=e155]:
+            - button "Notificaciones" [ref=e157]:
+              - img [ref=e158]
+            - button "Cerrar sesion" [ref=e161]:
+              - img [ref=e162]
+      - main [ref=e165]:
+        - generic [ref=e166]:
+          - generic [ref=e167]:
+            - heading "Capacidad del equipo" [level=2] [ref=e168]
+            - paragraph [ref=e169]: Carga de trabajo semanal por miembro — basado en tiempo estimado de tareas activas
+          - generic [ref=e170]:
+            - generic [ref=e172]:
+              - paragraph [ref=e173]: Miembros
+              - paragraph [ref=e174]: "2"
+            - generic [ref=e176]:
+              - paragraph [ref=e177]: Disponibles
+              - paragraph [ref=e178]: "2"
+            - generic [ref=e180]:
+              - paragraph [ref=e181]: Sobrecargados
+              - paragraph [ref=e182]: "0"
+          - generic [ref=e183]:
+            - generic [ref=e185]:
+              - generic [ref=e186]:
+                - generic [ref=e187]:
+                  - img [ref=e189]
+                  - generic [ref=e194]:
+                    - text: David Carrasco
+                    - generic [ref=e195]: 0 tareas
+                - generic [ref=e196]:
+                  - generic [ref=e197]: 0m / 40h
+                  - generic [ref=e198]: Disponible
+              - generic [ref=e201]:
+                - generic [ref=e202]: 0%
+                - generic [ref=e203]: 0%
+                - generic [ref=e204]: 100%
+            - generic [ref=e206]:
+              - generic [ref=e207]:
+                - generic [ref=e208]:
+                  - img [ref=e210]
+                  - generic [ref=e215]:
+                    - text: Nacho
+                    - generic [ref=e216]: 0 tareas
+                - generic [ref=e217]:
+                  - generic [ref=e218]: 0m / 40h
+                  - generic [ref=e219]: Disponible
+              - generic [ref=e222]:
+                - generic [ref=e223]: 0%
+                - generic [ref=e224]: 0%
+                - generic [ref=e225]: 100%
+  - region "Notifications alt+T"
+```

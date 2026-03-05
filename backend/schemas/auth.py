@@ -30,5 +30,6 @@ class UserResponse(BaseModel):
     hourly_rate: Optional[float] = None
     is_active: bool = True
     permissions: list[PermissionResponse] = []
+    preferences: Optional[dict] = None
 
     model_config = {"from_attributes": True}

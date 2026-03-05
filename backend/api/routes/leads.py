@@ -66,6 +66,8 @@ def _lead_to_response(lead: Lead) -> LeadResponse:
         converted_client_id=lead.converted_client_id,
         converted_at=lead.converted_at,
         lost_reason=lead.lost_reason,
+        estimated_close_date=lead.estimated_close_date,
+        probability=lead.probability,
         created_at=lead.created_at,
         updated_at=lead.updated_at,
     )
@@ -115,7 +117,23 @@ async def pipeline_summary(
         total_leads += row.count
         total_value += Decimal(str(row.total_value))
 
-    return PipelineSummary(stages=stages, total_leads=total_leads, total_value=total_value)
+    # Weighted pipeline value: sum(estimated_value * probability / 100) for active leads
+    wq = select(
+        sa_func.coalesce(
+            sa_func.sum(Lead.estimated_value * Lead.probability / 100), 0
+        ).label("weighted")
+    ).where(Lead.probability.isnot(None), Lead.estimated_value.isnot(None))
+    if current_user.role != UserRole.admin:
+        wq = wq.where(Lead.assigned_to == current_user.id)
+    wr = await db.execute(wq)
+    weighted_value = Decimal(str(wr.scalar() or 0))
+
+    return PipelineSummary(
+        stages=stages,
+        total_leads=total_leads,
+        total_value=total_value,
+        weighted_value=weighted_value,
+    )
 
 
 # --- Reminders ---

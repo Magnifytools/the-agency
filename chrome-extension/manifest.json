@@ -33,10 +33,10 @@
   "commands": {
     "_execute_action": {
       "suggested_key": {
-        "default": "Ctrl+Shift+J",
-        "mac": "Command+Shift+J"
+        "default": "Ctrl+Shift+Space",
+        "mac": "Command+Shift+Space"
       },
-      "description": "Abrir captura rapida"
+      "description": "Abrir Agency Manager"
     }
   }
 }

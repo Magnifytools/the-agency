@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from typing import Optional
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
+from calendar import monthrange
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy import select
@@ -126,3 +127,59 @@ async def delete_expense(
         raise HTTPException(status_code=404, detail="Gasto no encontrado")
     await db.delete(item)
     await db.commit()
+
+
+@router.post("/generate-recurring", status_code=status.HTTP_200_OK)
+async def generate_recurring_expenses(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_module("finance_expenses", write=True)),
+):
+    """Generate copies of recurring expenses for the given month (defaults to current month)."""
+    now = datetime.utcnow()
+    y = year or now.year
+    m = month or now.month
+    _, last_day = monthrange(y, m)
+    target_date = date(y, m, 1)
+
+    # Get all recurring expenses (use first day of target month as date)
+    r = await db.execute(select(Expense).where(Expense.is_recurring.is_(True)))
+    templates = r.scalars().all()
+
+    created = 0
+    skipped = 0
+    for tmpl in templates:
+        # Check if already exists for this month (same description + category + month)
+        existing = await db.execute(
+            select(Expense).where(
+                Expense.is_recurring.is_(True),
+                Expense.description == tmpl.description,
+                Expense.category_id == tmpl.category_id,
+                Expense.date >= date(y, m, 1),
+                Expense.date <= date(y, m, last_day),
+                Expense.id != tmpl.id,
+            )
+        )
+        if existing.scalars().first():
+            skipped += 1
+            continue
+
+        new_expense = Expense(
+            date=target_date,
+            description=tmpl.description,
+            amount=tmpl.amount,
+            category_id=tmpl.category_id,
+            is_recurring=True,
+            recurrence_period=tmpl.recurrence_period,
+            vat_rate=tmpl.vat_rate,
+            vat_amount=tmpl.vat_amount,
+            is_deductible=tmpl.is_deductible,
+            supplier=tmpl.supplier,
+            notes=f"[Automático] {tmpl.notes or ''}".strip(),
+        )
+        db.add(new_expense)
+        created += 1
+
+    await db.commit()
+    return {"created": created, "skipped": skipped, "month": f"{y}-{m:02d}"}

@@ -243,6 +243,32 @@ export default function ProjectDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Hours Consumption Bar */}
+      {project.budget_hours != null && project.budget_hours > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">Horas consumidas</span>
+              <span className="text-sm text-muted-foreground">
+                {project.hours_used ?? 0}h / {project.budget_hours}h
+              </span>
+            </div>
+            <div className="h-2 bg-secondary rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all ${
+                  (project.hours_used ?? 0) / project.budget_hours > 0.9
+                    ? "bg-red-500"
+                    : (project.hours_used ?? 0) / project.budget_hours > 0.7
+                    ? "bg-amber-500"
+                    : "bg-brand"
+                }`}
+                style={{ width: `${Math.min(100, ((project.hours_used ?? 0) / project.budget_hours) * 100)}%` }}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Tab Toggle: Tasks / Evidence */}
       <div className="flex items-center space-x-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
         <Button

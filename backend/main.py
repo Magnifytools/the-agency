@@ -106,6 +106,11 @@ async def _ensure_columns():
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )""",
+        # User preferences (keyboard shortcuts, etc.)
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT '{}'",
+        # Lead pipeline fields
+        "ALTER TABLE leads ADD COLUMN IF NOT EXISTS estimated_close_date DATE",
+        "ALTER TABLE leads ADD COLUMN IF NOT EXISTS probability INTEGER",
     ]
     async with engine.begin() as conn:
         for sql in stmts:

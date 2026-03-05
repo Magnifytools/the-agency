@@ -29,6 +29,11 @@ export function PipelineCard({ data }: PipelineCardProps) {
         </div>
         <span className="text-sm text-muted-foreground">{data.total_leads} leads totales</span>
       </div>
+      {data.weighted_value > 0 && (
+        <div className="text-xs text-muted-foreground">
+          Pipeline ponderado: <span className="font-mono font-medium text-foreground">{fmt(data.weighted_value)}</span>
+        </div>
+      )}
 
       {/* Segmented bar */}
       {totalActive > 0 && (

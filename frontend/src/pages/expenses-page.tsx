@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { financeExpensesApi, financeExpenseCategoriesApi } from "@/lib/api"
+import { RefreshCw } from "lucide-react"
 import type { Expense, ExpenseCreate } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -50,6 +51,15 @@ export default function ExpensesPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-expenses"] }); setDeleteId(null); toast.success("Gasto eliminado") },
   })
 
+  const generateRecurringMut = useMutation({
+    mutationFn: () => financeExpensesApi.generateRecurring(),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["finance-expenses"] })
+      toast.success(`${data.created} gastos recurrentes generados (${data.skipped} ya existían)`)
+    },
+    onError: () => toast.error("Error al generar gastos recurrentes"),
+  })
+
   const total = items.reduce((s, i) => s + i.amount, 0)
   const recurring = items.filter(i => i.is_recurring).reduce((s, i) => s + i.amount, 0)
 
@@ -83,7 +93,16 @@ export default function ExpensesPage() {
           <h1 className="text-2xl font-bold">Gastos</h1>
           <p className="text-muted-foreground">Total: {fmt(total)} | Recurrentes: {fmt(recurring)} ({items.length} registros)</p>
         </div>
-        <Button onClick={() => { setEditing(null); setDialogOpen(true) }}><Plus className="h-4 w-4 mr-1" />Nuevo gasto</Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => generateRecurringMut.mutate()}
+            disabled={generateRecurringMut.isPending}
+          >
+            <RefreshCw className="h-4 w-4 mr-1" />Generar recurrentes
+          </Button>
+          <Button onClick={() => { setEditing(null); setDialogOpen(true) }}><Plus className="h-4 w-4 mr-1" />Nuevo gasto</Button>
+        </div>
       </div>
 
       <div className="flex gap-2">
