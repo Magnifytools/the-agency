@@ -247,6 +247,8 @@ export default function ProposalsPage() {
 
     // Email draft modal state
     const [emailModal, setEmailModal] = useState<number | null>(null)
+    const [aiDraft, setAiDraft] = useState<{ subject: string; body: string } | null>(null)
+    const [aiDraftLoading, setAiDraftLoading] = useState(false)
 
     // Auto-open wizard when navigating from lead detail
     useEffect(() => {
@@ -369,6 +371,23 @@ export default function ProposalsPage() {
 
     const draftProposal = emailModal != null ? proposals.find(p => p.id === emailModal) : null
     const emailDraft = draftProposal ? generateEmailDraft(draftProposal) : null
+
+    // --- Email modal helpers ---
+    const openEmailModal = async (id: number) => {
+        setEmailModal(id)
+        setAiDraft(null)
+        setAiDraftLoading(true)
+        try {
+            const draft = await proposalsApi.draftEmail(id)
+            setAiDraft({ subject: draft.subject, body: draft.body })
+        } catch {
+            // Fallback: generate locally
+            const p = proposals.find(pr => pr.id === id)
+            if (p) setAiDraft(generateEmailDraft(p))
+        } finally {
+            setAiDraftLoading(false)
+        }
+    }
 
     // --- Wizard helpers ---
     const openCreate = () => {
@@ -601,7 +620,7 @@ export default function ProposalsPage() {
                         <Button size="sm" variant="outline" onClick={() => openPdf(p.id)}>
                             <Download className="w-4 h-4 mr-1" /> PDF
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => setEmailModal(p.id)} title="Enviar por email">
+                        <Button size="sm" variant="outline" onClick={() => openEmailModal(p.id)} title="Enviar por email">
                             <Mail className="w-4 h-4 mr-1" /> Enviar email
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => setRoiDialogOpen(true)}>
@@ -992,7 +1011,7 @@ export default function ProposalsPage() {
                                                     <Button variant="ghost" size="sm" onClick={(e) => openPdf(p.id, e)} title="PDF">
                                                         <Download className="w-4 h-4 text-brand" />
                                                     </Button>
-                                                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setEmailModal(p.id) }} title="Enviar por email">
+                                                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); openEmailModal(p.id) }} title="Enviar por email">
                                                         <Mail className="h-4 w-4" />
                                                     </Button>
                                                     {p.status === "draft" && (
@@ -1659,14 +1678,24 @@ export default function ProposalsPage() {
             {/* ========== EMAIL DRAFT DIALOG ========== */}
             <Dialog open={emailModal !== null} onOpenChange={(o) => !o && setEmailModal(null)}>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>Borrador de email</DialogTitle></DialogHeader>
-                    {emailDraft && (
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            Borrador de email
+                            <span className="text-xs font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Generado con IA</span>
+                        </DialogTitle>
+                    </DialogHeader>
+                    {aiDraftLoading ? (
+                        <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
+                            <div className="h-6 w-6 rounded-full border-2 border-brand border-t-transparent animate-spin" />
+                            <p className="text-sm">Redactando con IA…</p>
+                        </div>
+                    ) : aiDraft ? (
                         <div className="space-y-4 p-1">
                             <div>
                                 <Label className="text-xs text-muted-foreground">Asunto</Label>
                                 <div className="flex items-center gap-2 mt-1">
-                                    <Input readOnly value={emailDraft.subject} className="font-medium" />
-                                    <Button variant="ghost" size="icon" className="shrink-0" onClick={() => { navigator.clipboard.writeText(emailDraft.subject); toast.success("Asunto copiado") }}>
+                                    <Input readOnly value={aiDraft.subject} className="font-medium" />
+                                    <Button variant="ghost" size="icon" className="shrink-0" onClick={() => { navigator.clipboard.writeText(aiDraft.subject); toast.success("Asunto copiado") }}>
                                         <Copy className="w-4 h-4" />
                                     </Button>
                                 </div>
@@ -1674,8 +1703,8 @@ export default function ProposalsPage() {
                             <div>
                                 <Label className="text-xs text-muted-foreground">Cuerpo</Label>
                                 <div className="relative mt-1">
-                                    <Textarea readOnly value={emailDraft.body} rows={10} className="font-mono text-xs resize-none" />
-                                    <Button variant="ghost" size="icon" className="absolute top-1 right-1" onClick={() => { navigator.clipboard.writeText(emailDraft.body); toast.success("Texto copiado") }}>
+                                    <Textarea readOnly value={aiDraft.body} rows={10} className="text-xs resize-none" />
+                                    <Button variant="ghost" size="icon" className="absolute top-1 right-1" onClick={() => { navigator.clipboard.writeText(aiDraft.body); toast.success("Texto copiado") }}>
                                         <Copy className="w-4 h-4" />
                                     </Button>
                                 </div>
@@ -1683,12 +1712,12 @@ export default function ProposalsPage() {
                             <p className="text-xs text-muted-foreground">Copia el texto, pégalo en tu cliente de email y adjunta el PDF de la propuesta.</p>
                             <div className="flex justify-end gap-2">
                                 <Button variant="outline" onClick={() => setEmailModal(null)}>Cerrar</Button>
-                                <Button onClick={() => { navigator.clipboard.writeText(`Asunto: ${emailDraft.subject}\n\n${emailDraft.body}`); toast.success("Email completo copiado") }}>
+                                <Button onClick={() => { navigator.clipboard.writeText(`Asunto: ${aiDraft.subject}\n\n${aiDraft.body}`); toast.success("Email completo copiado") }}>
                                     <Copy className="w-4 h-4 mr-1" /> Copiar todo
                                 </Button>
                             </div>
                         </div>
-                    )}
+                    ) : null}
                 </DialogContent>
             </Dialog>
         </div>

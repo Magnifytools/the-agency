@@ -757,6 +757,54 @@ async def get_proposal_pdf(
 # ── Send by email ───────────────────────────────────────────
 
 
+@router.post("/{proposal_id}/draft-email")
+async def draft_proposal_email(
+    proposal_id: int,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_module("proposals")),
+):
+    """Generate an AI-written email draft for sending a proposal."""
+    from backend.services.email_drafter import draft_email
+
+    r = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
+    prop = r.scalar_one_or_none()
+    if not prop:
+        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+
+    # Build context for the email drafter
+    pricing = prop.pricing_options or []
+    recommended = next((p for p in pricing if p.get("recommended")), pricing[0] if pricing else None)
+    price_str = f"{recommended['price']:,.0f} €" if recommended and recommended.get("price") else None
+
+    context_parts = []
+    if prop.situation:
+        context_parts.append(f"Situación actual: {prop.situation}")
+    if prop.opportunity:
+        context_parts.append(f"Oportunidad: {prop.opportunity}")
+    if prop.generated_content and isinstance(prop.generated_content, dict):
+        exec_summary = prop.generated_content.get("executive_summary")
+        if exec_summary:
+            context_parts.append(f"Resumen ejecutivo de la propuesta: {exec_summary}")
+    if price_str:
+        context_parts.append(f"Inversión propuesta: {price_str}")
+    if prop.valid_until:
+        context_parts.append(f"Válida hasta: {prop.valid_until.strftime('%d/%m/%Y')}")
+
+    purpose = f"enviar propuesta '{prop.title}' a {prop.company_name}"
+
+    try:
+        result = await draft_email(
+            client_name=prop.company_name or "el cliente",
+            contact_name=prop.contact_name,
+            purpose=purpose,
+            project_context="\n".join(context_parts) if context_parts else None,
+        )
+        return result
+    except Exception as e:
+        logger.error("Error drafting proposal email: %s", e)
+        raise HTTPException(status_code=502, detail="Error generando el borrador con IA")
+
+
 class ProposalEmailRequest(BaseModel):
     to_email: str
     message: Optional[str] = None

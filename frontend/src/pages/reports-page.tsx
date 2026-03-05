@@ -158,6 +158,7 @@ export default function ReportsPage() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      disabled={deleteMutation.isPending}
                       onClick={(e) => {
                         e.stopPropagation()
                         deleteMutation.mutate(report.id)

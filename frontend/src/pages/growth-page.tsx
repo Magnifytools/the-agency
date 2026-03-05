@@ -101,7 +101,14 @@ export default function GrowthPage() {
     const handleCreate = (e: React.FormEvent) => {
         e.preventDefault()
         if (!formData.title) return
-        createMutation.mutate(formData as GrowthIdeaCreate)
+        const impact = Number(formData.impact) || 5
+        const confidence = Number(formData.confidence) || 5
+        const ease = Number(formData.ease) || 5
+        if (impact < 1 || impact > 10 || confidence < 1 || confidence > 10 || ease < 1 || ease > 10) {
+            toast.error("Los valores ICE deben estar entre 1 y 10")
+            return
+        }
+        createMutation.mutate({ ...formData, impact, confidence, ease } as GrowthIdeaCreate)
     }
 
     const computedIce = +((((formData.impact || 5) + (formData.confidence || 5) + (formData.ease || 5)) / 3).toFixed(1))

@@ -94,6 +94,8 @@ export default function DigestEditPage() {
       setPreviewOpen(true)
       setPreviewContent("")
       renderMutation.mutate({ format: fmt })
+    }).catch(() => {
+      toast.error("Error al guardar antes de previsualizar")
     })
   }
 

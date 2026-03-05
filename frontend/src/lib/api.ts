@@ -484,6 +484,8 @@ export const proposalsApi = {
   generate: (id: number) => api.post<Proposal>(`/proposals/${id}/generate`).then((r) => r.data),
   pdf: (id: number) => api.get(`/proposals/${id}/pdf`, { responseType: "blob" }).then((r) => r.data),
   pdfUrl: (id: number) => `/api/proposals/${id}/pdf`,
+  draftEmail: (id: number) =>
+    api.post<{ subject: string; body: string; tone: string; suggested_followup: string | null }>(`/proposals/${id}/draft-email`).then((r) => r.data),
   sendEmail: (id: number, data: { to_email: string; message?: string }) =>
     api.post(`/proposals/${id}/send-email`, data).then((r) => r.data),
 }
