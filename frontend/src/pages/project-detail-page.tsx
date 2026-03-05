@@ -300,8 +300,9 @@ export default function ProjectDetailPage() {
                   tickFormatter={(v: string) => { const d = new Date(v + "T12:00:00"); return `${d.getDate()}/${d.getMonth()+1}` }} />
                 <YAxis fontSize={9} tick={{ fill: "#8a8a80" }} />
                 <Tooltip
-                  formatter={(value: number, name: string) => [value, name === "remaining" ? "Restantes" : "Ideal"]}
-                  labelFormatter={(v: string) => new Date(v + "T12:00:00").toLocaleDateString("es-ES")}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  formatter={((value: unknown, name: unknown) => [value, name === "remaining" ? "Restantes" : "Ideal"]) as any}
+                  labelFormatter={(v) => new Date(String(v) + "T12:00:00").toLocaleDateString("es-ES")}
                   contentStyle={{ backgroundColor: "#2a2a28", border: "1px solid rgba(254,230,48,0.3)", color: "#f5f5f0", fontSize: 11, borderRadius: 8 }}
                 />
                 <Line type="monotone" dataKey="remaining" stroke="#FEE630" dot={false} strokeWidth={2} name="remaining" />

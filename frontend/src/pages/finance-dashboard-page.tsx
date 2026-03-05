@@ -134,7 +134,7 @@ export default function FinanceDashboardPage() {
           <CardContent>
             <ResponsiveContainer width="100%" height={220}>
               <BarChart
-                data={vsActual.map((r: Record<string, number | string>) => {
+                data={vsActual.map((r) => {
                   const d = new Date(String(r.month) + "T12:00:00")
                   return {
                     mes: MONTH_SHORT[d.getMonth()],
