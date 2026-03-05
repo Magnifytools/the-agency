@@ -26,7 +26,7 @@ from backend.schemas.dashboard import (
     FinancialSettingsResponse,
     FinancialSettingsUpdate,
 )
-from backend.api.deps import get_current_user, require_module
+from backend.api.deps import get_current_user, require_module, require_admin
 from backend.services.csv_utils import build_csv_response
 from backend.services.report_period import (
     MAX_REPORT_YEAR,
@@ -438,7 +438,7 @@ async def update_financial_settings(
 @router.get("/capacity")
 async def get_capacity(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("dashboard")),
+    _: User = Depends(require_admin),
 ):
     """Team capacity: assigned hours vs available hours per active member."""
     users_result = await db.execute(

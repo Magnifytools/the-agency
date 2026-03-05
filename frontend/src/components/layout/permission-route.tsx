@@ -1,5 +1,5 @@
-import { Navigate } from "react-router-dom"
 import { useAuth } from "@/context/auth-context"
+import { AccessDenied } from "@/components/layout/access-denied"
 
 interface PermissionRouteProps {
   children: React.ReactNode
@@ -10,7 +10,7 @@ interface PermissionRouteProps {
 
 /**
  * Guards a route by role or module permission.
- * Redirects to /dashboard if unauthorized.
+ * Shows an AccessDenied page in-place if unauthorized (no silent redirect).
  */
 export function PermissionRoute({
   children,
@@ -23,11 +23,11 @@ export function PermissionRoute({
   if (isLoading) return null
 
   if (adminOnly && !isAdmin) {
-    return <Navigate to="/dashboard" replace />
+    return <AccessDenied />
   }
 
   if (module && !hasPermission(module, write)) {
-    return <Navigate to="/dashboard" replace />
+    return <AccessDenied />
   }
 
   return <>{children}</>
