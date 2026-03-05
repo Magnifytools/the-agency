@@ -23,6 +23,7 @@ from backend.api.routes import (
     service_templates, dailys, contacts, activity, notifications, resources,
     billing_events, client_dashboard, engine_integration, investments,
     evidence, search, agency_vault, industry_news, core_updates, balance,
+    inbox,
 )
 
 
@@ -110,30 +111,9 @@ async def _ensure_columns():
             await conn.execute(text(sql))
 
 
-async def _ensure_seed_users():
-    """Ensure seed users exist with the correct password (fixes deployed DB after password change)."""
-    from backend.db.database import async_session
-    from backend.core.security import hash_password
-    from backend.db.models import User
-    from sqlalchemy import select
-    admin_pw = os.environ.get("SEED_ADMIN_PASSWORD", "Magnify2026!")
-    member_pw = os.environ.get("SEED_MEMBER_PASSWORD", "Magnify2026!")
-    async with async_session() as session:
-        for email, pw in [("david@magnify.ing", admin_pw), ("nacho@magnify.ing", member_pw)]:
-            result = await session.execute(select(User).where(User.email == email))
-            user = result.scalar_one_or_none()
-            if user:
-                user.hashed_password = hash_password(pw)
-        await session.commit()
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await _ensure_columns()
-    try:
-        await _ensure_seed_users()
-    except Exception as e:
-        logging.error("_ensure_seed_users failed (non-fatal): %s", e)
     task = None
     if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL:
         task = asyncio.create_task(_engine_sync_loop())
@@ -280,6 +260,7 @@ app.include_router(agency_vault.router)
 app.include_router(industry_news.router)
 app.include_router(core_updates.router)
 app.include_router(balance.router)
+app.include_router(inbox.router)
 
 # Serve frontend static files in production
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
