@@ -100,8 +100,6 @@ loginForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   loginError.classList.add("hidden");
 
-  apiUrl = apiUrlInput.value.replace(/\/+$/, "");
-
   try {
     const res = await fetch(`${API_URL}/api/auth/login`, {
       method: "POST",
