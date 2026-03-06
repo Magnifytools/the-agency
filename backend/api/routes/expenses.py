@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from calendar import monthrange
 
@@ -49,6 +49,8 @@ async def list_expenses(
     date_to: Optional[date] = Query(None),
     category_id: Optional[int] = Query(None),
     is_recurring: Optional[bool] = Query(None),
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("finance_expenses")),
 ):
@@ -61,7 +63,7 @@ async def list_expenses(
         q = q.where(Expense.category_id == category_id)
     if is_recurring is not None:
         q = q.where(Expense.is_recurring.is_(is_recurring))
-    q = q.order_by(Expense.date.desc())
+    q = q.order_by(Expense.date.desc()).limit(limit).offset(offset)
     r = await db.execute(q)
     return [_expense_response(i) for i in r.scalars().all()]
 
@@ -137,7 +139,7 @@ async def generate_recurring_expenses(
     _user: User = Depends(require_module("finance_expenses", write=True)),
 ):
     """Generate copies of recurring expenses for the given month (defaults to current month)."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     y = year or now.year
     m = month or now.month
     _, last_day = monthrange(y, m)

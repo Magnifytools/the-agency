@@ -49,6 +49,8 @@ async def list_income(
     client_id: Optional[int] = Query(None),
     type: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("finance_income")),
 ):
@@ -63,7 +65,7 @@ async def list_income(
         q = q.where(Income.type == type)
     if status:
         q = q.where(Income.status == status)
-    q = q.order_by(Income.date.desc())
+    q = q.order_by(Income.date.desc()).limit(limit).offset(offset)
     r = await db.execute(q)
     return [_income_response(i) for i in r.scalars().all()]
 
