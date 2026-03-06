@@ -376,6 +376,14 @@ async def project_burndown(
     return {"total_tasks": total, "points": points}
 
 
+_UPDATABLE_PROJECT_FIELDS = {
+    "name", "description", "project_type", "is_recurring",
+    "start_date", "target_end_date", "actual_end_date",
+    "status", "progress_percent", "budget_hours", "budget_amount",
+    "gsc_url", "ga4_property_id",
+}
+
+
 @router.put("/{project_id}", response_model=ProjectResponse)
 async def update_project(
     project_id: int,
@@ -392,6 +400,8 @@ async def update_project(
 
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
+        if field not in _UPDATABLE_PROJECT_FIELDS:
+            continue
         if field == "status" and value:
             value = ProjectStatus(value)
         setattr(project, field, value)

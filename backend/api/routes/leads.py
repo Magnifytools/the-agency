@@ -255,6 +255,16 @@ async def get_lead(
     return LeadDetailResponse(**resp.model_dump(), activities=activities)
 
 
+_UPDATABLE_LEAD_FIELDS = {
+    "company_name", "contact_name", "email", "phone", "website",
+    "linkedin_url", "status", "source", "assigned_to",
+    "estimated_value", "service_interest", "currency", "notes",
+    "industry", "company_size", "current_website_traffic",
+    "next_followup_date", "next_followup_notes", "last_contacted_at",
+    "lost_reason", "estimated_close_date", "probability",
+}
+
+
 @router.put("/{lead_id}", response_model=LeadResponse)
 async def update_lead(
     lead_id: int,
@@ -273,6 +283,8 @@ async def update_lead(
     update_data = data.model_dump(exclude_unset=True)
 
     for key, value in update_data.items():
+        if key not in _UPDATABLE_LEAD_FIELDS:
+            continue
         setattr(lead, key, value)
 
     # Auto-create status_change activity

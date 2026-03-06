@@ -185,6 +185,12 @@ async def get_communication(
     return _to_response(comm)
 
 
+_UPDATABLE_COMMUNICATION_FIELDS = {
+    "channel", "direction", "subject", "summary", "contact_name",
+    "occurred_at", "requires_followup", "followup_date", "followup_notes",
+}
+
+
 @router.put("/communications/{comm_id}", response_model=CommunicationResponse)
 async def update_communication(
     comm_id: int,
@@ -202,6 +208,8 @@ async def update_communication(
 
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
+        if field not in _UPDATABLE_COMMUNICATION_FIELDS:
+            continue
         if field == "channel" and value:
             value = CommunicationChannel(value)
         elif field == "direction" and value:

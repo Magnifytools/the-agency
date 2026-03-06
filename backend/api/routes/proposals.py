@@ -144,6 +144,16 @@ async def get_proposal(
     return _to_response(prop)
 
 
+_UPDATABLE_PROPOSAL_FIELDS = {
+    "title", "lead_id", "client_id", "contact_name", "company_name",
+    "service_type", "situation", "problem", "cost_of_inaction",
+    "opportunity", "approach", "relevant_cases", "pricing_options",
+    "internal_hours_david", "internal_hours_nacho",
+    "internal_cost_estimate", "estimated_margin_percent",
+    "generated_content", "valid_until", "status", "response_notes",
+}
+
+
 @router.put("/{proposal_id}", response_model=ProposalResponse)
 async def update_proposal(
     proposal_id: int,
@@ -166,6 +176,8 @@ async def update_proposal(
         ]
 
     for key, value in update_data.items():
+        if key not in _UPDATABLE_PROPOSAL_FIELDS:
+            continue
         setattr(prop, key, value)
 
     await db.commit()

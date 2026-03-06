@@ -576,7 +576,7 @@ async def test_connection(
 async def client_invoices(
     client_id: int,
     session: AsyncSession = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(require_admin),
 ):
     """Invoices for a specific client (by holded link)."""
     r = await session.execute(

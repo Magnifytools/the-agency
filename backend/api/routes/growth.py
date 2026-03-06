@@ -67,6 +67,14 @@ async def create_growth_idea(
     return GrowthIdeaResponse.model_validate(new_idea)
 
 
+_UPDATABLE_GROWTH_IDEA_FIELDS = {
+    "title", "description", "funnel_stage", "target_kpi", "status",
+    "impact", "confidence", "ease",
+    "experiment_start_date", "experiment_end_date",
+    "results_notes", "is_successful", "project_id", "task_id",
+}
+
+
 @router.put("/api/growth/{idea_id}", response_model=GrowthIdeaResponse)
 async def update_growth_idea(
     idea_id: int,
@@ -80,9 +88,11 @@ async def update_growth_idea(
         raise HTTPException(status_code=404, detail="Idea no encontrada")
 
     update_data = idea_in.model_dump(exclude_unset=True)
-    
+
     if update_data:
         for field, value in update_data.items():
+            if field not in _UPDATABLE_GROWTH_IDEA_FIELDS:
+                continue
             setattr(idea, field, value)
             
         # Recalculate ICE score if any of the components changed

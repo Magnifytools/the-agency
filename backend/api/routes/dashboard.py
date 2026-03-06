@@ -412,7 +412,7 @@ def _financial_settings_response(record: FinancialSettings) -> FinancialSettings
 async def update_financial_settings(
     body: FinancialSettingsUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("dashboard", write=True)),
+    _: User = Depends(require_admin),
 ):
     record = await _get_or_create_financial_settings(db)
     updates = body.model_dump(exclude_unset=True)

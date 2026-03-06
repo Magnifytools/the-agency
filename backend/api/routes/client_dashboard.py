@@ -12,7 +12,7 @@ from backend.db.models import (
     User, Client, Task, TaskStatus, TimeEntry, TaskCategory,
 )
 from backend.schemas.dashboard import ClientDashboardResponse, ProfitabilityStatus
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, require_module
 
 router = APIRouter(prefix="/api/clients/{client_id}/dashboard", tags=["client-dashboard"])
 
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/clients/{client_id}/dashboard", tags=["client-da
 async def client_dashboard(
     client_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("clients")),
 ):
     today = date.today()
     first_of_month = today.replace(day=1)

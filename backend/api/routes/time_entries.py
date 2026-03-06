@@ -106,7 +106,7 @@ async def list_time_entries(
 async def weekly_timesheet(
     week_start: Optional[date_type] = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("timesheet")),
+    current_user: User = Depends(require_module("timesheet")),
 ):
     today = datetime.now(timezone.utc).date()
     if week_start is None:
@@ -114,9 +114,12 @@ async def weekly_timesheet(
     start_dt = datetime.combine(week_start, datetime.min.time())
     end_dt = start_dt + timedelta(days=7)
 
-    # Load users
-    result = await db.execute(select(User).order_by(User.full_name))
-    users = result.scalars().all()
+    # Load users — non-admin only sees themselves
+    if current_user.role == UserRole.admin:
+        result = await db.execute(select(User).order_by(User.full_name))
+        users = result.scalars().all()
+    else:
+        users = [current_user]
 
     days = [(week_start + timedelta(days=i)) for i in range(7)]
     day_keys = [d.isoformat() for d in days]
@@ -130,14 +133,16 @@ async def weekly_timesheet(
             "total_minutes": 0,
         }
 
-    # Fetch time entries within range
-    result = await db.execute(
-        select(TimeEntry).where(
-            TimeEntry.minutes.isnot(None),
-            TimeEntry.date >= start_dt,
-            TimeEntry.date < end_dt,
-        )
+    # Fetch time entries within range — non-admin filtered to own entries
+    entry_query = select(TimeEntry).where(
+        TimeEntry.minutes.isnot(None),
+        TimeEntry.date >= start_dt,
+        TimeEntry.date < end_dt,
     )
+    if current_user.role != UserRole.admin:
+        entry_query = entry_query.where(TimeEntry.user_id == current_user.id)
+
+    result = await db.execute(entry_query)
     entries = result.scalars().all()
 
     for entry in entries:
