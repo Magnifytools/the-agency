@@ -20,9 +20,8 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error }
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    const label = this.props.section ?? "Unknown"
-    console.error(`[ErrorBoundary:${label}]`, error, info.componentStack)
+  componentDidCatch(_error: Error, _info: ErrorInfo) {
+    // Error logged internally by React; no console.error in production
   }
 
   handleRetry = () => {
@@ -38,7 +37,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <AlertTriangle className="h-10 w-10 text-amber-500" />
           <h3 className="text-lg font-semibold">Algo salió mal</h3>
           <p className="text-sm text-muted-foreground max-w-md">
-            {this.state.error?.message ?? "Error inesperado"}
+            Ha ocurrido un error inesperado. Intenta recargar la página.
           </p>
           <button
             onClick={this.handleRetry}

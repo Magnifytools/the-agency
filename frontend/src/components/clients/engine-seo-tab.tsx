@@ -72,7 +72,7 @@ function LinkProjectDialog({ client }: { client: Client }) {
       toast.success("Proyecto vinculado correctamente")
       setOpen(false)
     },
-    onError: () => toast.error("Error al vincular proyecto"),
+    onError: (err: any) => toast.error(err?.response?.data?.detail || "Error al vincular proyecto"),
   })
 
   if (!open) {
@@ -124,8 +124,7 @@ export function EngineSeoTab({ client }: Props) {
       await engineApi.triggerSync()
       queryClient.invalidateQueries({ queryKey: ["client-summary", client.id] })
       toast.success("Sincronizado correctamente")
-    } catch (err) {
-      console.error(err)
+    } catch {
       toast.error("Error al sincronizar")
     } finally {
       setRefreshing(false)

@@ -1,7 +1,7 @@
 """Client dashboard API — aggregated KPIs per client."""
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select, func, extract, and_
@@ -36,7 +36,7 @@ async def client_dashboard(
     tasks_by_status = {row[0].value: row[1] for row in task_result.all()}
 
     # Overdue tasks
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     overdue_result = await db.execute(
         select(func.count(Task.id)).where(
             Task.client_id == client_id,

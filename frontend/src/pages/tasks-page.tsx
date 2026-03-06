@@ -115,25 +115,39 @@ export default function TasksPage() {
 
   const bulkStatusMutation = useMutation({
     mutationFn: async ({ ids, status }: { ids: number[]; status: string }) => {
-      await Promise.all(ids.map((id) => tasksApi.update(id, { status: status as TaskStatus })))
+      const results = await Promise.allSettled(ids.map((id) => tasksApi.update(id, { status: status as TaskStatus })))
+      const fulfilled = results.filter((r) => r.status === "fulfilled").length
+      const rejected = results.length - fulfilled
+      return { fulfilled, rejected }
     },
-    onSuccess: () => {
+    onSuccess: ({ fulfilled, rejected }) => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] })
       clearTaskSelection()
       setBulkStatus("")
-      toast.success("Tareas actualizadas")
+      if (rejected === 0) {
+        toast.success(`${fulfilled} tareas actualizadas`)
+      } else {
+        toast.warning(`${fulfilled} actualizadas, ${rejected} fallaron`)
+      }
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar tareas")),
   })
 
   const bulkDeleteMutation = useMutation({
     mutationFn: async (ids: number[]) => {
-      await Promise.all(ids.map((id) => tasksApi.delete(id)))
+      const results = await Promise.allSettled(ids.map((id) => tasksApi.delete(id)))
+      const fulfilled = results.filter((r) => r.status === "fulfilled").length
+      const rejected = results.length - fulfilled
+      return { fulfilled, rejected }
     },
-    onSuccess: () => {
+    onSuccess: ({ fulfilled, rejected }) => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] })
       clearTaskSelection()
-      toast.success("Tareas eliminadas")
+      if (rejected === 0) {
+        toast.success(`${fulfilled} tareas eliminadas`)
+      } else {
+        toast.warning(`${fulfilled} eliminadas, ${rejected} fallaron`)
+      }
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar tareas")),
   })

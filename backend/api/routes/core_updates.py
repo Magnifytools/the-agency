@@ -1,12 +1,16 @@
 """Core Update analysis endpoint — keyword shift analyzer."""
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from backend.api.deps import get_current_user
 from backend.db.models import User
 from backend.services.core_update_service import run_core_update_analysis
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/engine", tags=["core-updates"])
 
@@ -39,5 +43,6 @@ async def analyze_core_update(
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en analisis: {e}")
+    except Exception:
+        logger.exception("Error en análisis de core update para proyecto %s", project_id)
+        raise HTTPException(status_code=500, detail="Error interno en análisis de core update")

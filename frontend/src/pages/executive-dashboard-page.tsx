@@ -44,9 +44,8 @@ import {
   Target,
 } from "lucide-react"
 
-const now = new Date()
-
 export default function ExecutiveDashboardPage() {
+  const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const month = now.getMonth() + 1
   const [balanceDialogOpen, setBalanceDialogOpen] = useState(false)

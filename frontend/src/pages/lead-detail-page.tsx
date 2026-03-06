@@ -114,7 +114,7 @@ export default function LeadDetailPage() {
       toast.success(`Lead convertido a cliente: ${data.client_name}`)
       navigate(`/clients/${data.client_id}`)
     },
-    onError: () => toast.error("Error al convertir"),
+    onError: (err: any) => toast.error(err?.response?.data?.detail || "Error al convertir"),
   })
 
   const handleAdvanceStage = () => {

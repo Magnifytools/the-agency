@@ -81,6 +81,8 @@ async def list_proposals(
     lead_id: Optional[int] = Query(None),
     client_id: Optional[int] = Query(None),
     service_type: Optional[ServiceType] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("proposals")),
 ):
@@ -93,7 +95,7 @@ async def list_proposals(
         query = query.where(Proposal.client_id == client_id)
     if service_type:
         query = query.where(Proposal.service_type == service_type)
-    query = query.order_by(Proposal.created_at.desc())
+    query = query.order_by(Proposal.created_at.desc()).limit(limit).offset(offset)
 
     result = await db.execute(query)
     return [_to_response(p) for p in result.scalars().all()]

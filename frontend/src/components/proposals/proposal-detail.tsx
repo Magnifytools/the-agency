@@ -130,8 +130,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
         try {
             const draft = await proposalsApi.draftEmail(id)
             setAiDraft({ subject: draft.subject, body: draft.body })
-        } catch (err) {
-            console.error(err)
+        } catch {
             const contact = p.contact_name || p.company_name
             const mainPrice = p.pricing_options?.find(o => o.recommended)?.price ?? p.pricing_options?.[0]?.price
             const priceStr = mainPrice ? `${mainPrice.toLocaleString("es-ES")} €` : null

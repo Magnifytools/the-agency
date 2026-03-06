@@ -107,7 +107,7 @@ export default function LeadsPage() {
       qc.invalidateQueries({ queryKey: ["pipeline-summary"] })
       setDeleteLeadId(null)
     },
-    onError: () => toast.error("Error al eliminar lead"),
+    onError: (err: any) => toast.error(err?.response?.data?.detail || "Error al eliminar lead"),
   })
 
   const convertMutation = useMutation({
@@ -118,7 +118,7 @@ export default function LeadsPage() {
       qc.invalidateQueries({ queryKey: ["pipeline-summary"] })
       setShowConvertDialog(null)
     },
-    onError: () => toast.error("Error al convertir lead"),
+    onError: (err: any) => toast.error(err?.response?.data?.detail || "Error al convertir lead"),
   })
 
   const handleDrop = (lead: Lead, newStatus: LeadStatus) => {
@@ -531,7 +531,7 @@ function CreateLeadDialog({
       onOpenChange(false)
       setForm({ company_name: "" })
     },
-    onError: () => toast.error("Error al crear lead"),
+    onError: (err: any) => toast.error(err?.response?.data?.detail || "Error al crear lead"),
   })
 
   return (

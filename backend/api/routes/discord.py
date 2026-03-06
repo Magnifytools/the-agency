@@ -2,11 +2,16 @@ from __future__ import annotations
 from typing import Optional
 
 import logging
+import re
 from datetime import datetime, timezone
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+DISCORD_WEBHOOK_RE = re.compile(
+    r"^https://(discord\.com|discordapp\.com)/api/webhooks/\d+/.+$"
+)
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -132,6 +137,11 @@ async def update_discord_settings(
     ds = await _get_or_create_settings(db)
 
     if payload.webhook_url is not None:
+        if payload.webhook_url.strip() and not DISCORD_WEBHOOK_RE.match(payload.webhook_url):
+            raise HTTPException(
+                status_code=400,
+                detail="URL de webhook inválida. Debe ser una URL de webhook de Discord válida.",
+            )
         ds.webhook_url = payload.webhook_url
     if payload.auto_daily_summary is not None:
         ds.auto_daily_summary = payload.auto_daily_summary
@@ -197,7 +207,7 @@ async def send_daily_summary(
     success = await _send_discord_message(url, summary)
 
     if success:
-        ds.last_sent_at = datetime.utcnow()
+        ds.last_sent_at = datetime.now(timezone.utc)
         await db.commit()
         return DiscordSendResponse(
             success=True,
@@ -245,7 +255,7 @@ async def send_digest_to_discord(
     success = await _send_discord_message(url, rendered)
 
     if success:
-        ds.last_sent_at = datetime.utcnow()
+        ds.last_sent_at = datetime.now(timezone.utc)
         await db.commit()
         return DiscordSendResponse(
             success=True,

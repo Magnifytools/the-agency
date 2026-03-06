@@ -25,6 +25,7 @@ export function ActiveTimerBar() {
     queryKey: ["active-timer"],
     queryFn: () => timerApi.active(),
     refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
   })
 
   useEffect(() => {

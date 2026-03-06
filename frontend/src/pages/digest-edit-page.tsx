@@ -104,8 +104,7 @@ export default function DigestEditPage() {
     try {
       await navigator.clipboard.writeText(previewContent)
       toast.success("Copiado al portapapeles")
-    } catch (err) {
-      console.error(err)
+    } catch {
       toast.error("Error al copiar")
     }
   }

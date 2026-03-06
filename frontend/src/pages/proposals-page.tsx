@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useLocation } from "react-router-dom"
 import { format } from "date-fns"
 import {
@@ -41,6 +41,7 @@ type View = "list" | "detail"
 
 export default function ProposalsPage() {
     const location = useLocation()
+    const queryClient = useQueryClient()
     const [view, setView] = useState<View>("list")
     const [selectedId, setSelectedId] = useState<number | null>(null)
     const [editingId, setEditingId] = useState<number | null>(null)
@@ -91,6 +92,17 @@ export default function ProposalsPage() {
     const { data: clients = [] } = useQuery({
         queryKey: ["clients-all-active"],
         queryFn: () => clientsApi.listAll("active"),
+    })
+
+    const deleteProposalMutation = useMutation({
+        mutationFn: (id: number) => proposalsApi.delete(id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["proposals"] })
+            setDeleteId(null)
+            if (view === "detail") { setView("list"); setSelectedId(null) }
+            toast.success("Propuesta eliminada")
+        },
+        onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar")),
     })
 
     const selectedProposal = useMemo(() => {
@@ -155,8 +167,7 @@ export default function ProposalsPage() {
         try {
             const draft = await proposalsApi.draftEmail(id)
             setAiDraft({ subject: draft.subject, body: draft.body })
-        } catch (err) {
-            console.error(err)
+        } catch {
             const p = proposals.find(pr => pr.id === id)
             if (p) {
                 const contact = p.contact_name || p.company_name
@@ -343,11 +354,7 @@ export default function ProposalsPage() {
                 description="Solo se pueden eliminar propuestas en borrador. Esta acción no se puede deshacer."
                 onConfirm={() => {
                     if (deleteId) {
-                        proposalsApi.delete(deleteId).then(() => {
-                            setDeleteId(null)
-                            if (view === "detail") { setView("list"); setSelectedId(null) }
-                            toast.success("Propuesta eliminada")
-                        }).catch((err) => toast.error(getErrorMessage(err, "Error al eliminar")))
+                        deleteProposalMutation.mutate(deleteId)
                     }
                 }}
             />

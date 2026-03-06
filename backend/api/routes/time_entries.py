@@ -499,6 +499,8 @@ async def stop_timer(
     entry = result.scalar_one_or_none()
     if entry is None:
         raise HTTPException(status_code=404, detail="No hay timer activo")
+    if not entry.started_at:
+        raise HTTPException(status_code=400, detail="Timer has no start time")
 
     now = datetime.utcnow()
     elapsed = (now - entry.started_at).total_seconds()

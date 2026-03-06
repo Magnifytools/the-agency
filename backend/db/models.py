@@ -16,6 +16,7 @@ from sqlalchemy import (
     Boolean,
     JSON,
     LargeBinary,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -703,6 +704,9 @@ class AuditLog(TimestampMixin, Base):
 
 class MonthlyClose(TimestampMixin, Base):
     __tablename__ = "monthly_closes"
+    __table_args__ = (
+        UniqueConstraint("year", "month", name="uq_monthly_close_period"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     year = Column(Integer, nullable=False)
@@ -1236,7 +1240,7 @@ class BalanceSnapshot(TimestampMixin, Base):
     __tablename__ = "balance_snapshots"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    date = Column(Date, nullable=False)
+    date = Column(Date, nullable=False, unique=True)
     amount = Column(Numeric(12, 2), nullable=False)
     notes = Column(Text, nullable=False, default="")
 

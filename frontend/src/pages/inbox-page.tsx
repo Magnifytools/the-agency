@@ -26,12 +26,14 @@ export default function InboxPage() {
     queryKey: [...inboxKeys.list(currentFilter ?? "all")],
     queryFn: () => inboxApi.list({ status: currentFilter, limit: 100 }),
     refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
   })
 
   const { data: countData } = useQuery({
     queryKey: inboxKeys.count(),
     queryFn: inboxApi.count,
     refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   })
 
   const activeCount = countData?.count ?? 0

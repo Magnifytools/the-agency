@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,11 +18,12 @@ router = APIRouter(prefix="/api/news", tags=["industry-news"])
 
 @router.get("", response_model=list[IndustryNewsResponse])
 async def list_news(
+    limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(IndustryNews).order_by(IndustryNews.published_date.desc())
+        select(IndustryNews).order_by(IndustryNews.published_date.desc()).limit(limit)
     )
     return result.scalars().all()
 

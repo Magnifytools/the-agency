@@ -129,6 +129,7 @@ export default function DashboardPage() {
     queryFn: () => timerApi.active(),
     enabled: !!user && user.role === "member",
     refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   })
   const today = new Date().toISOString().slice(0, 10)
   const { data: todayDailys } = useQuery({

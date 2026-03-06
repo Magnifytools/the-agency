@@ -93,7 +93,7 @@ function RoiPreviewStep({ form }: { form: WizardForm }) {
 
     const hasRequiredFields = form.business_model && form.aov && form.conversion_rate && form.ltv && form.current_monthly_traffic
 
-    useEffect(() => {
+    const calculateRoi = () => {
         if (!hasRequiredFields) return
 
         let monthlyInvestment: number | undefined
@@ -118,8 +118,13 @@ function RoiPreviewStep({ form }: { form: WizardForm }) {
         }).then(setResult).catch(err => {
             setError(getErrorMessage(err))
         }).finally(() => setLoading(false))
+    }
+
+    // Auto-calculate on mount when fields are available
+    useEffect(() => {
+        calculateRoi()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [])
+    }, [form.business_model, form.aov, form.conversion_rate, form.ltv, form.current_monthly_traffic, form.seo_maturity_level])
 
     if (!hasRequiredFields) {
         return (
@@ -312,8 +317,8 @@ export function ProposalWizard({
                     ltv: form.ltv ? Number(form.ltv) : null,
                     seo_maturity_level: form.seo_maturity_level || null,
                 })
-            } catch (err) {
-                console.error(err)
+            } catch {
+                // Client data save is best-effort; proposal creation continues
             }
         }
 

@@ -261,7 +261,8 @@ export function InsightsBadge() {
   const { data: count } = useQuery({
     queryKey: ["insight-count"],
     queryFn: () => pmApi.insightCount(),
-    refetchInterval: 60000, // Refresh every minute
+    refetchInterval: 60000,
+    refetchIntervalInBackground: false, // Don't poll when tab is in background
   })
 
   if (!count || count.total === 0) return null

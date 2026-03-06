@@ -33,7 +33,7 @@ export function DailyUpdateWidget({ userId, readOnly = false }: DailyUpdateWidge
       try {
         await dailysApi.sendDiscord(daily.id)
         discordSent = true
-      } catch (err) { console.error(err) }
+      } catch { /* Discord send is best-effort */ }
       return { daily, discordSent }
     },
     onSuccess: ({ discordSent }) => {

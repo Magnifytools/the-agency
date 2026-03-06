@@ -15,6 +15,7 @@ export function NotificationBell() {
     queryKey: ["notifications-unread-count"],
     queryFn: () => notificationsApi.unreadCount(),
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   })
 
   const { data: notifications } = useQuery({
@@ -66,7 +67,9 @@ export function NotificationBell() {
 
   const handleNotifClick = (notif: { id: number; link_url: string | null; is_read: boolean }) => {
     if (!notif.is_read) markReadMutation.mutate(notif.id)
-    if (notif.link_url) navigate(notif.link_url)
+    if (notif.link_url && notif.link_url.startsWith("/")) {
+      navigate(notif.link_url)
+    }
     setOpen(false)
   }
 

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func, update, and_
@@ -126,7 +126,7 @@ async def generate_notification_checks(
     """Generate notifications for overdue tasks and lead followups due."""
     created = 0
     today = date.today()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # 1. Overdue tasks assigned to this user
     try:

@@ -79,12 +79,19 @@ async def get_engine_report_data(
         params["from_date"] = from_date
     if to_date:
         params["to_date"] = to_date
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(
-            _engine_url(f"/projects/{project_id}/report-data"),
-            headers=_engine_headers(),
-            params=params,
-        )
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(
+                _engine_url(f"/projects/{project_id}/report-data"),
+                headers=_engine_headers(),
+                params=params,
+            )
+    except httpx.TimeoutException as exc:
+        logger.warning("Engine report-data request timed out (project %s): %s", project_id, exc)
+        raise HTTPException(status_code=504, detail="Engine request timed out") from exc
+    except httpx.RequestError as exc:
+        logger.warning("Engine report-data request failed (project %s): %s", project_id, exc)
+        raise HTTPException(status_code=502, detail="Engine service unavailable") from exc
     if resp.status_code != 200:
         raise HTTPException(status_code=resp.status_code, detail="Error fetching Engine report data")
     return resp.json()

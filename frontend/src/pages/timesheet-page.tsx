@@ -133,6 +133,7 @@ export default function TimesheetPage() {
     queryFn: () => timeEntriesApi.adminTimers(),
     enabled: isAdmin,
     refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
   })
 
   // Project report

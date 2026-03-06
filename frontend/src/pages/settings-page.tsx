@@ -90,8 +90,7 @@ export default function SettingsPage() {
       })
       await refreshUser()
       toast.success("Atajos guardados")
-    } catch (err) {
-      console.error(err)
+    } catch {
       toast.error("Error al guardar los atajos")
     } finally {
       setSaving(false)

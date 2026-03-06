@@ -16,6 +16,7 @@ export function TimerButton({ taskId }: TimerButtonProps) {
     queryKey: ["active-timer"],
     queryFn: () => timerApi.active(),
     refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
   })
 
   const isThisTaskRunning = timer?.task_id === taskId

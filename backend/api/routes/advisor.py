@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select, extract, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from backend.db.database import get_db
 from backend.db.models import (
@@ -122,7 +125,7 @@ async def _build_insights(db: AsyncSession) -> list[dict]:
                         "severity": severity,
                     })
     except Exception:
-        pass
+        logger.exception("Error building runway insight")
 
     # Clients with no invoice in the last 30 days (batch query)
     from datetime import timedelta as td
@@ -322,7 +325,7 @@ async def create_task(
 
 
 class TaskStatusUpdate(BaseModel):
-    status: str
+    status: Literal["open", "done"]
 
 
 @router.put("/tasks/{task_id}")

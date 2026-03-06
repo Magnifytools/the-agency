@@ -8,7 +8,7 @@ to generate actionable insights for the PM.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -121,7 +121,7 @@ async def _enhance_insights_with_ai(
     # Build optional strategic suggestion insight
     overall = data.get("overall_suggestion")
     if overall and isinstance(overall, str) and overall.strip():
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         return PMInsight(
             insight_type=InsightType.suggestion,
             priority=InsightPriority.low,
@@ -239,19 +239,21 @@ async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> 
     Returns list of newly created insights.
     Uses user's alert settings for thresholds.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     new_insights = []
 
     # Get user's thresholds
     thresholds = await get_user_thresholds(db, user_id)
 
     # 1. Overdue tasks (due_date < today and not completed)
-    overdue_tasks = await db.execute(
+    overdue_q = (
         select(Task)
         .where(Task.due_date < now)
         .where(Task.status != TaskStatus.completed)
-        .order_by(Task.due_date.asc())
     )
+    if user_id is not None:
+        overdue_q = overdue_q.where(Task.assigned_to == user_id)
+    overdue_tasks = await db.execute(overdue_q.order_by(Task.due_date.asc()))
     overdue_list = list(overdue_tasks.scalars().all())
 
     if overdue_list:
@@ -281,13 +283,15 @@ async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> 
     # 2. Tasks due soon (based on user threshold)
     soon_start = now
     soon_end = now + timedelta(days=thresholds.days_before_deadline)
-    upcoming_tasks = await db.execute(
+    upcoming_q = (
         select(Task)
         .where(Task.due_date >= soon_start)
         .where(Task.due_date <= soon_end)
         .where(Task.status != TaskStatus.completed)
-        .order_by(Task.due_date.asc())
     )
+    if user_id is not None:
+        upcoming_q = upcoming_q.where(Task.assigned_to == user_id)
+    upcoming_tasks = await db.execute(upcoming_q.order_by(Task.due_date.asc()))
     upcoming_list = list(upcoming_tasks.scalars().all())
 
     for task in upcoming_list[:5]:  # Limit to 5
@@ -486,7 +490,7 @@ async def get_daily_briefing(db: AsyncSession, user_id: Optional[int] = None) ->
     """
     Generate a daily briefing summary.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = today_start + timedelta(days=1)
 

@@ -79,13 +79,20 @@ export default function ClientsPage() {
 
   const bulkClientStatusMutation = useMutation({
     mutationFn: async ({ ids, status }: { ids: number[]; status: string }) => {
-      await Promise.all(ids.map((id) => clientsApi.update(id, { status: status as ClientCreate["status"] })))
+      const results = await Promise.allSettled(ids.map((id) => clientsApi.update(id, { status: status as ClientCreate["status"] })))
+      const fulfilled = results.filter((r) => r.status === "fulfilled").length
+      const rejected = results.length - fulfilled
+      return { fulfilled, rejected }
     },
-    onSuccess: () => {
+    onSuccess: ({ fulfilled, rejected }) => {
       queryClient.invalidateQueries({ queryKey: ["clients"] })
       clearClientSelection()
       setBulkStatus("")
-      toast.success("Clientes actualizados")
+      if (rejected === 0) {
+        toast.success(`${fulfilled} clientes actualizados`)
+      } else {
+        toast.warning(`${fulfilled} actualizados, ${rejected} fallaron`)
+      }
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar clientes")),
   })
