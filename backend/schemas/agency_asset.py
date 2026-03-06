@@ -68,9 +68,9 @@ class AssetResponse(BaseModel):
     hosting_type: Optional[str] = None
     tool_category: Optional[str] = None
     monthly_cost: Optional[Decimal] = None
-    # Credentials
+    # Credentials — password never serialized in responses
     username: Optional[str] = None
-    password: Optional[str] = None
+    has_password: bool = False
     is_active: Optional[bool] = None
     subscription_type: Optional[str] = None
     purpose: Optional[str] = None

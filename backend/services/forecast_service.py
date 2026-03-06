@@ -7,7 +7,7 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy import select, extract, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import Forecast, Income, Expense, Tax, BalanceSnapshot
+from backend.db.models import Forecast, Income, Expense, Tax, BalanceSnapshot, FinancialSettings
 
 
 async def calculate_historical_averages(db: AsyncSession, lookback: int = 6) -> dict:
@@ -75,13 +75,23 @@ async def generate_forecasts(db: AsyncSession, months_ahead: int = 6) -> list[Fo
     proj_income = max(averages["avg_income"], recurring["recurring_income"])
     proj_expenses = max(averages["avg_expenses"], recurring["recurring_expenses"])
 
+    # Load tax rates from financial settings (fallback to sensible defaults)
+    fs_result = await db.execute(select(FinancialSettings).limit(1))
+    fs = fs_result.scalars().first()
+    vat_rate = float(fs.default_vat_rate) if fs and fs.default_vat_rate else 21.0
+    corp_tax_rate = float(fs.corporate_tax_rate) if fs and fs.corporate_tax_rate else 25.0
+
     today = date.today()
     results = []
     for i in range(1, months_ahead + 1):
         month_date = (today + relativedelta(months=i)).replace(day=1)
         confidence = round(max(0.3, 0.85 - (i - 1) * 0.1), 2)
-        proj_taxes = round(proj_income * 0.21 * 0.25, 2)
-        proj_profit = round(proj_income - proj_expenses - proj_taxes, 2)
+        # VAT reserve: approximate net VAT payable (income VAT - expense VAT)
+        proj_vat_reserve = round((proj_income - proj_expenses) * (vat_rate / 100), 2)
+        # Corporate tax on projected profit (only if positive)
+        proj_corporate_tax = round(max(proj_income - proj_expenses, 0) * (corp_tax_rate / 100), 2)
+        proj_taxes = round(max(proj_vat_reserve, 0) + proj_corporate_tax, 2)
+        proj_profit = round(proj_income - proj_expenses - proj_corporate_tax, 2)
 
         r = await db.execute(select(Forecast).where(Forecast.month == month_date))
         existing = r.scalars().first()

@@ -380,7 +380,7 @@ async def export_monthly_close(
 @router.get("/financial-settings", response_model=FinancialSettingsResponse)
 async def get_financial_settings(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("dashboard")),
+    _: User = Depends(require_admin),
 ):
     record = await _get_or_create_financial_settings(db)
     return _financial_settings_response(record)

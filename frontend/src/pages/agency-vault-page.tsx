@@ -136,7 +136,7 @@ export default function AgencyVaultPage() {
       tool_category: asset.tool_category ?? "",
       monthly_cost: asset.monthly_cost,
       username: asset.username ?? "",
-      password: asset.password ?? "",
+      password: "",  // never pre-filled from API — only set when updating
       is_active: asset.is_active,
       subscription_type: asset.subscription_type ?? "",
       purpose: asset.purpose ?? "",
@@ -522,16 +522,34 @@ export default function AgencyVaultPage() {
   )
 }
 
-// --- Password reveal field ---
-function PasswordField({ password }: { password: string }) {
+// --- Password reveal field (fetches on demand) ---
+function PasswordField({ assetId }: { assetId: number }) {
   const [show, setShow] = useState(false)
+  const [password, setPassword] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const handleToggle = async () => {
+    if (!show && password === null) {
+      setLoading(true)
+      try {
+        const res = await vaultApi.getPassword(assetId)
+        setPassword(res.password ?? "")
+      } catch {
+        setPassword("(error al obtener)")
+      } finally {
+        setLoading(false)
+      }
+    }
+    setShow((v) => !v)
+  }
+
   return (
     <div className="flex items-center gap-1 mt-0.5">
       <p className="text-xs font-mono text-muted-foreground truncate flex-1">
-        {show ? password : "••••••••••••"}
+        {loading ? "Cargando..." : show && password !== null ? password : "••••••••••••"}
       </p>
       <button
-        onClick={() => setShow((v) => !v)}
+        onClick={handleToggle}
         className="p-0.5 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
         title={show ? "Ocultar" : "Mostrar contraseña"}
       >
@@ -567,8 +585,8 @@ function AssetCard({
           {asset.username && asset.username !== asset.value && (
             <p className="text-xs text-muted-foreground truncate mt-0.5">👤 {asset.username}</p>
           )}
-          {asset.password && (
-            <PasswordField password={asset.password} />
+          {asset.has_password && (
+            <PasswordField assetId={asset.id} />
           )}
         </div>
         {isAdmin && (

@@ -305,8 +305,8 @@ Todas usan `anthropic==0.49.0` con modelo `claude-sonnet-4-20250514`.
 
 | Email | Password | Rol |
 |-------|----------|-----|
-| david@magnify.ing | Magnify2026! | admin |
-| nacho@magnify.ing | Magnify2026! | member |
+| david@magnify.ing | (env: SEED_ADMIN_PASSWORD) | admin |
+| nacho@magnify.ing | (env: SEED_MEMBER_PASSWORD) | member |
 
 ---
 

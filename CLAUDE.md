@@ -41,7 +41,7 @@ npx tsc --noEmit                   # Type check only
 Vite proxies `/api` requests to `localhost:8004` in dev mode.
 
 ### Seed Data
-- Users: `david@magnify.ing` / `Magnify2026!` (admin), `nacho@magnify.ing` / `Magnify2026!` (member)
+- Users: `david@magnify.ing` (admin), `nacho@magnify.ing` (member). Passwords via env vars `SEED_ADMIN_PASSWORD` / `SEED_MEMBER_PASSWORD`.
 - 8 SEO task categories pre-seeded
 - 8 expense categories pre-seeded
 

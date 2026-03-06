@@ -811,6 +811,8 @@ export const vaultApi = {
     api.put<AgencyAsset>(`/vault/assets/${id}`, data).then((r) => r.data),
   delete: (id: number) =>
     api.delete(`/vault/assets/${id}`).then((r) => r.data),
+  getPassword: (id: number) =>
+    api.get<{ password: string | null }>(`/vault/assets/${id}/password`).then((r) => r.data),
 }
 
 // --- Industry News ---

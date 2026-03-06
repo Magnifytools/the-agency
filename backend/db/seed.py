@@ -36,11 +36,11 @@ def _get_seed_users() -> list[dict]:
             raise RuntimeError("SEED_MEMBER_PASSWORD must be set in production — refusing to use a known default password")
     else:
         if not admin_pw:
-            admin_pw = "Magnify2026!"
-            print(f"⚠ SEED_ADMIN_PASSWORD not set. Using dev default: {admin_pw}")
+            admin_pw = "LocalDev2026!"
+            print("⚠ SEED_ADMIN_PASSWORD not set. Using dev default.")
         if not member_pw:
-            member_pw = "Magnify2026!"
-            print(f"⚠ SEED_MEMBER_PASSWORD not set. Using dev default: {member_pw}")
+            member_pw = "LocalDev2026!"
+            print("⚠ SEED_MEMBER_PASSWORD not set. Using dev default.")
 
     return [
         {

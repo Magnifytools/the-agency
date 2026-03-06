@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.database import get_db
 from backend.db.models import Client, Task, TimeEntry, User, Income
 from backend.api.deps import require_module
+from backend.config import settings
 from backend.services.csv_utils import build_csv_response
 from backend.services.report_period import (
     MAX_REPORT_YEAR,
@@ -168,7 +169,7 @@ async def export_billing(
             Client.name,
             Client.monthly_budget,
             func.coalesce(func.sum(TimeEntry.minutes), 0).label("total_minutes"),
-            func.coalesce(func.sum(TimeEntry.minutes * User.hourly_rate / 60), 0).label("total_cost"),
+            func.coalesce(func.sum(TimeEntry.minutes * func.coalesce(User.hourly_rate, settings.DEFAULT_HOURLY_RATE) / 60), 0).label("total_cost"),
             invoiced_subq.label("invoiced"),
         )
         .select_from(TimeEntry)
@@ -245,7 +246,7 @@ async def export_billing_pdf(
             Client.name,
             Client.monthly_budget,
             func.coalesce(func.sum(TimeEntry.minutes), 0).label("total_minutes"),
-            func.coalesce(func.sum(TimeEntry.minutes * User.hourly_rate / 60), 0).label("total_cost"),
+            func.coalesce(func.sum(TimeEntry.minutes * func.coalesce(User.hourly_rate, settings.DEFAULT_HOURLY_RATE) / 60), 0).label("total_cost"),
             invoiced_subq.label("invoiced"),
         )
         .select_from(TimeEntry)

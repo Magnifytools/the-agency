@@ -288,9 +288,9 @@ export interface AgencyAsset {
   hosting_type: HostingType | null
   tool_category: string | null
   monthly_cost: number | null
-  // Credentials
+  // Credentials — password never returned in list responses
   username: string | null
-  password: string | null
+  has_password: boolean
   is_active: boolean | null
   subscription_type: string | null
   purpose: string | null

@@ -2,9 +2,9 @@ import { expect, test } from "@playwright/test";
 
 const BASE_URL = process.env.FRONTEND_URL || "http://127.0.0.1:5177";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "david@magnify.ing";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Magnify2026!";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "LocalDev2026!";
 const MEMBER_EMAIL = process.env.MEMBER_EMAIL || "nacho@magnify.ing";
-const MEMBER_PASSWORD = process.env.MEMBER_PASSWORD || "Magnify2026!";
+const MEMBER_PASSWORD = process.env.MEMBER_PASSWORD || "LocalDev2026!";
 
 const ROUTES = [
   "/login",
