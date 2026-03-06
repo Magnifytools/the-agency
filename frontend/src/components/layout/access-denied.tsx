@@ -14,9 +14,11 @@ export function AccessDenied() {
           No tienes permisos para ver esta sección.
         </p>
       </div>
-      <Button asChild variant="outline" size="sm">
-        <Link to="/dashboard">Volver al dashboard</Link>
-      </Button>
+      <Link to="/dashboard">
+        <Button variant="outline" size="sm">
+          Volver al dashboard
+        </Button>
+      </Link>
     </div>
   )
 }

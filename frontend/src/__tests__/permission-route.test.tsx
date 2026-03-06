@@ -13,7 +13,7 @@ vi.mock("@/context/auth-context", () => ({
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function renderRoute(props: Parameters<typeof PermissionRoute>[0]) {
+function renderRoute(props: Omit<Parameters<typeof PermissionRoute>[0], "children">) {
   return render(
     <MemoryRouter>
       <PermissionRoute {...props}>

@@ -167,7 +167,7 @@ function ResumenTab({ connected }: { connected: boolean }) {
       {chartData.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Ingresos vs Gastos (ultimos 6 meses)</CardTitle>
+            <CardTitle>Ingresos vs Gastos (últimos 6 meses)</CardTitle>
           </CardHeader>
           <CardContent className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
