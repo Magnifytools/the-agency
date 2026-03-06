@@ -13,6 +13,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { formatCurrency } from "@/lib/format"
 
 const TYPES = [
   { label: "Factura", value: "factura" },
@@ -24,8 +25,6 @@ const STATUSES = [
   { label: "Cobrado", value: "cobrado" },
   { label: "Pendiente", value: "pendiente" },
 ]
-
-const fmt = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
 
 export default function IncomePage() {
   const qc = useQueryClient()
@@ -98,7 +97,7 @@ export default function IncomePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Ingresos</h1>
-          <p className="text-muted-foreground">Total: {fmt(total)} ({items.length} registros)</p>
+          <p className="text-muted-foreground">Total: {formatCurrency(total)} ({items.length} registros)</p>
         </div>
         <Button onClick={() => { setEditing(null); setDialogOpen(true) }}><Plus className="h-4 w-4 mr-1" />Nuevo ingreso</Button>
       </div>
@@ -135,7 +134,7 @@ export default function IncomePage() {
                   <TableCell>{item.description}</TableCell>
                   <TableCell>{item.client_name || "-"}</TableCell>
                   <TableCell><Badge variant="secondary">{item.type}</Badge></TableCell>
-                  <TableCell className="text-right font-mono">{fmt(item.amount)}</TableCell>
+                  <TableCell className="text-right font-mono">{formatCurrency(item.amount)}</TableCell>
                   <TableCell>
                     <Badge variant={item.status === "cobrado" ? "success" : "warning"}>
                       {item.status === "cobrado" ? "Cobrado" : "Pendiente"}

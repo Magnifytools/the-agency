@@ -6,8 +6,7 @@ import { TrendingUp, TrendingDown, DollarSign, Calculator, Calendar } from "luci
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
 } from "recharts"
-
-const fmt = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
+import { formatCurrency } from "@/lib/format"
 const currentYear = new Date().getFullYear()
 
 const MONTH_SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
@@ -55,20 +54,20 @@ export default function FinanceDashboardPage() {
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
               <TrendingUp className="h-4 w-4 text-green-500" />Ingresos mes
             </div>
-            <p className="text-2xl font-bold">{fmt(overview.total_income_month)}</p>
+            <p className="text-2xl font-bold">{formatCurrency(overview.total_income_month)}</p>
           </Card>
           <Card className="p-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
               <TrendingDown className="h-4 w-4 text-red-500" />Gastos mes
             </div>
-            <p className="text-2xl font-bold">{fmt(overview.total_expenses_month)}</p>
+            <p className="text-2xl font-bold">{formatCurrency(overview.total_expenses_month)}</p>
           </Card>
           <Card className="p-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
               <DollarSign className="h-4 w-4" />Beneficio neto
             </div>
             <p className={`text-2xl font-bold ${overview.net_profit_month < 0 ? "text-red-600" : "text-green-600"}`}>
-              {fmt(overview.net_profit_month)}
+              {formatCurrency(overview.net_profit_month)}
             </p>
             <p className="text-xs text-muted-foreground">Margen: {overview.margin_pct.toFixed(1)}%</p>
           </Card>
@@ -76,7 +75,7 @@ export default function FinanceDashboardPage() {
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
               <Calculator className="h-4 w-4 text-amber-500" />Impuestos pend.
             </div>
-            <p className="text-2xl font-bold text-amber-600">{fmt(overview.pending_taxes)}</p>
+            <p className="text-2xl font-bold text-amber-600">{formatCurrency(overview.pending_taxes)}</p>
           </Card>
         </div>
       )}
@@ -88,11 +87,11 @@ export default function FinanceDashboardPage() {
             <div className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Cash disponible</span>
-                <span className="font-mono font-medium">{fmt(runway.current_cash)}</span>
+                <span className="font-mono font-medium">{formatCurrency(runway.current_cash)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Gasto mensual medio</span>
-                <span className="font-mono font-medium">{fmt(runway.avg_monthly_burn)}</span>
+                <span className="font-mono font-medium">{formatCurrency(runway.avg_monthly_burn)}</span>
               </div>
               <div className="flex justify-between border-t pt-2">
                 <span className="font-medium">Runway estimado</span>
@@ -110,15 +109,15 @@ export default function FinanceDashboardPage() {
             <div className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Pendiente</span>
-                <span className="font-mono font-medium text-amber-600">{fmt(taxSummary.total_pending)}</span>
+                <span className="font-mono font-medium text-amber-600">{formatCurrency(taxSummary.total_pending)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Pagado</span>
-                <span className="font-mono font-medium text-green-600">{fmt(taxSummary.total_paid)}</span>
+                <span className="font-mono font-medium text-green-600">{formatCurrency(taxSummary.total_paid)}</span>
               </div>
               <div className="flex justify-between border-t pt-2">
                 <span className="font-medium">Total</span>
-                <span className="font-mono font-bold">{fmt(taxSummary.total)}</span>
+                <span className="font-mono font-bold">{formatCurrency(taxSummary.total)}</span>
               </div>
             </div>
           </Card>
@@ -148,7 +147,7 @@ export default function FinanceDashboardPage() {
                 <XAxis dataKey="mes" fontSize={11} tick={{ fill: "#8a8a80" }} />
                 <YAxis fontSize={11} tick={{ fill: "#8a8a80" }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip
-                  formatter={(value) => fmt(Number(value))}
+                  formatter={(value) => formatCurrency(Number(value))}
                   contentStyle={{ backgroundColor: "#2a2a28", border: "1px solid rgba(254,230,48,0.3)", color: "#f5f5f0", fontSize: 12, borderRadius: 8 }}
                 />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -175,7 +174,7 @@ export default function FinanceDashboardPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-muted-foreground">{d.due_date as string}</span>
-                  {d.tax_amount != null && <span className="font-mono">{fmt(d.tax_amount as number)}</span>}
+                  {d.tax_amount != null && <span className="font-mono">{formatCurrency(d.tax_amount as number)}</span>}
                 </div>
               </div>
             ))}

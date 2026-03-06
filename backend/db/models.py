@@ -2,6 +2,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (
+    CheckConstraint,
     Column,
     Integer,
     String,
@@ -946,6 +947,10 @@ class ExpenseCategory(TimestampMixin, Base):
 
 class Income(TimestampMixin, Base):
     __tablename__ = "income"
+    __table_args__ = (
+        CheckConstraint("amount >= 0", name="ck_income_amount_non_negative"),
+        CheckConstraint("vat_rate >= 0 AND vat_rate <= 100", name="ck_income_vat_rate_range"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     date = Column(Date, nullable=False)
@@ -965,6 +970,10 @@ class Income(TimestampMixin, Base):
 
 class Expense(TimestampMixin, Base):
     __tablename__ = "expenses"
+    __table_args__ = (
+        CheckConstraint("amount >= 0", name="ck_expense_amount_non_negative"),
+        CheckConstraint("vat_rate >= 0 AND vat_rate <= 100", name="ck_expense_vat_rate_range"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     date = Column(Date, nullable=False)
@@ -984,6 +993,10 @@ class Expense(TimestampMixin, Base):
 
 class Tax(TimestampMixin, Base):
     __tablename__ = "taxes"
+    __table_args__ = (
+        CheckConstraint("base_amount >= 0", name="ck_tax_base_amount_non_negative"),
+        CheckConstraint("tax_amount >= 0", name="ck_tax_tax_amount_non_negative"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)

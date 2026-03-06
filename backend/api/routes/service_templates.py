@@ -53,7 +53,15 @@ async def update_service_template(
     if not template:
         raise HTTPException(status_code=404, detail="Template no encontrado")
 
-    for field, value in body.model_dump(exclude_unset=True).items():
+    _UPDATABLE_TEMPLATE_FIELDS = {
+        "name", "description", "is_recurring", "price_range_min",
+        "price_range_max", "default_phases", "default_includes",
+        "default_excludes", "prompt_context",
+    }
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field not in _UPDATABLE_TEMPLATE_FIELDS:
+            continue
         if field == "default_phases" and value is not None:
             # Convert PhaseItem list to dicts for JSON storage
             value = [p.model_dump() if hasattr(p, "model_dump") else p for p in value]

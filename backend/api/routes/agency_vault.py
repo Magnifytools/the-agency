@@ -65,7 +65,16 @@ async def update_asset(
     if asset is None:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    for field, value in body.model_dump(exclude_unset=True).items():
+    _UPDATABLE_ASSET_FIELDS = {
+        "name", "value", "provider", "url", "notes", "associated_domain",
+        "registrar", "expiry_date", "auto_renew", "dns_provider",
+        "hosting_type", "tool_category", "monthly_cost", "username",
+        "password", "is_active", "subscription_type", "purpose",
+    }
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field not in _UPDATABLE_ASSET_FIELDS:
+            continue
         if field == "password" and value:
             value = encrypt_vault_secret(value)
         setattr(asset, field, value)

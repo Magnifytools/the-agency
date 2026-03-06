@@ -1,4 +1,5 @@
 import type { PipelineSummary } from "@/lib/types"
+import { formatCurrency } from "@/lib/format"
 
 interface PipelineCardProps {
   data: PipelineSummary
@@ -14,8 +15,6 @@ const stageLabels: Record<string, { label: string; color: string }> = {
   lost: { label: "Perdido", color: "bg-red-500" },
 }
 
-const fmt = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
-
 export function PipelineCard({ data }: PipelineCardProps) {
   const activeStages = data.stages.filter((s) => s.status !== "won" && s.status !== "lost")
   const totalActive = activeStages.reduce((sum, s) => sum + s.count, 0)
@@ -24,14 +23,14 @@ export function PipelineCard({ data }: PipelineCardProps) {
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
         <div>
-          <span className="text-2xl font-bold text-brand">{fmt(data.total_value)}</span>
+          <span className="text-2xl font-bold text-brand">{formatCurrency(data.total_value)}</span>
           <span className="text-xs text-muted-foreground ml-2">valor pipeline</span>
         </div>
         <span className="text-sm text-muted-foreground">{data.total_leads} leads totales</span>
       </div>
       {data.weighted_value > 0 && (
         <div className="text-xs text-muted-foreground">
-          Pipeline ponderado: <span className="font-mono font-medium text-foreground">{fmt(data.weighted_value)}</span>
+          Pipeline ponderado: <span className="font-mono font-medium text-foreground">{formatCurrency(data.weighted_value)}</span>
         </div>
       )}
 
@@ -65,7 +64,7 @@ export function PipelineCard({ data }: PipelineCardProps) {
               </div>
               <div className="flex items-center gap-4">
                 <span className="text-muted-foreground">{stage.count}</span>
-                <span className="font-mono w-24 text-right">{fmt(stage.total_value)}</span>
+                <span className="font-mono w-24 text-right">{formatCurrency(stage.total_value)}</span>
               </div>
             </div>
           )

@@ -133,7 +133,7 @@ export default function IndustryNewsPage() {
           <p className="text-muted-foreground text-sm">
             {isAdmin
               ? "Crea la primera noticia del sector para que se incluya automáticamente en los informes mensuales."
-              : "No hay noticias del sector registradas aun."}
+              : "No hay noticias del sector registradas aún."}
           </p>
         </Card>
       ) : (

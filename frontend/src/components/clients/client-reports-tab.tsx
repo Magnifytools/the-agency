@@ -126,7 +126,7 @@ export function ClientReportsTab({ clientId, clientName, engineProjectId }: Prop
 
       {reports.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">
-          No hay informes generados para este cliente. Pulsa el boton para crear uno.
+          No hay informes generados para este cliente. Pulsa el botón para crear uno.
         </p>
       ) : (
         <div className="space-y-3">

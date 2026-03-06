@@ -14,8 +14,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
-
-const fmt = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
+import { formatCurrency } from "@/lib/format"
 
 export default function ExpensesPage() {
   const qc = useQueryClient()
@@ -91,7 +90,7 @@ export default function ExpensesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Gastos</h1>
-          <p className="text-muted-foreground">Total: {fmt(total)} | Recurrentes: {fmt(recurring)} ({items.length} registros)</p>
+          <p className="text-muted-foreground">Total: {formatCurrency(total)} | Recurrentes: {formatCurrency(recurring)} ({items.length} registros)</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -133,7 +132,7 @@ export default function ExpensesPage() {
                   <TableCell>{item.description}</TableCell>
                   <TableCell>{item.category_name || "-"}</TableCell>
                   <TableCell>{item.supplier || "-"}</TableCell>
-                  <TableCell className="text-right font-mono">{fmt(item.amount)}</TableCell>
+                  <TableCell className="text-right font-mono">{formatCurrency(item.amount)}</TableCell>
                   <TableCell>
                     {item.is_recurring && <Badge variant="secondary">Recurrente</Badge>}
                     {item.is_deductible && <Badge variant="success" className="ml-1">Deducible</Badge>}

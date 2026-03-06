@@ -127,8 +127,17 @@ async def update_client(
     client = result.scalar_one_or_none()
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(client, field, value)
+    _UPDATABLE_CLIENT_FIELDS = {
+        "name", "email", "phone", "company", "website", "contract_type",
+        "monthly_budget", "status", "notes", "is_internal", "ga4_property_id",
+        "gsc_url", "billing_cycle", "billing_day", "next_invoice_date",
+        "last_invoiced_date", "engine_project_id", "business_model", "aov",
+        "conversion_rate", "ltv", "seo_maturity_level", "context",
+    }
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field in _UPDATABLE_CLIENT_FIELDS:
+            setattr(client, field, value)
     try:
         await db.commit()
     except IntegrityError:
@@ -382,8 +391,8 @@ async def upload_document(
     ext = os.path.splitext(filename.lower())[1]
     if ext not in _ALLOWED_EXTENSIONS:
         raise HTTPException(400, f"Extensión no permitida: {ext or '(sin extensión)'}")
-    if file.content_type and file.content_type not in _ALLOWED_MIME_TYPES:
-        raise HTTPException(400, f"Tipo de archivo no permitido: {file.content_type}")
+    if not file.content_type or file.content_type not in _ALLOWED_MIME_TYPES:
+        raise HTTPException(400, f"Tipo de archivo no permitido: {file.content_type or '(sin tipo)'}")
     content = await file.read()
     if len(content) > 20 * 1024 * 1024:
         raise HTTPException(400, "Archivo demasiado grande (máx 20 MB)")

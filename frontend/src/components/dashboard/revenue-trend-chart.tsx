@@ -9,6 +9,7 @@ import {
   CartesianGrid,
 } from "recharts"
 import type { ForecastVsActual } from "@/lib/types"
+import { formatCompact } from "@/lib/format"
 
 const MONTH_LABELS = [
   "Ene", "Feb", "Mar", "Abr", "May", "Jun",
@@ -32,8 +33,6 @@ export function RevenueTrendChart({ data }: RevenueTrendChartProps) {
     }
   })
 
-  const fmt = (v: number) => `${(v / 1000).toFixed(1)}k`
-
   return (
     <ResponsiveContainer width="100%" height={320}>
       <LineChart data={chartData}>
@@ -45,7 +44,7 @@ export function RevenueTrendChart({ data }: RevenueTrendChartProps) {
         />
         <YAxis
           fontSize={11}
-          tickFormatter={fmt}
+          tickFormatter={formatCompact}
           tick={{ fill: "#8a8a80" }}
         />
         <Tooltip

@@ -316,7 +316,7 @@ export function AppLayout() {
                 <button
                   onClick={() => void logout()}
                   className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
-                  title="Cerrar sesion"
+                  title="Cerrar sesión"
                 >
                   <LogOut className="h-4 w-4" />
                 </button>

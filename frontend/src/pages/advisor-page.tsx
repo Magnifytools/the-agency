@@ -5,8 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { AlertTriangle, Bell, CheckCircle2, ListTodo } from "lucide-react"
 import { toast } from "sonner"
-
-const fmt = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
+import { formatCurrency } from "@/lib/format"
 
 export default function AdvisorPage() {
   const qc = useQueryClient()
@@ -59,16 +58,16 @@ export default function AdvisorPage() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <Card className="p-4">
             <p className="text-xs text-muted-foreground">Ingresos mes</p>
-            <p className="text-xl font-bold">{fmt(overview.total_income_month)}</p>
+            <p className="text-xl font-bold">{formatCurrency(overview.total_income_month)}</p>
           </Card>
           <Card className="p-4">
             <p className="text-xs text-muted-foreground">Gastos mes</p>
-            <p className="text-xl font-bold">{fmt(overview.total_expenses_month)}</p>
+            <p className="text-xl font-bold">{formatCurrency(overview.total_expenses_month)}</p>
           </Card>
           <Card className="p-4">
             <p className="text-xs text-muted-foreground">Beneficio neto</p>
             <p className={`text-xl font-bold ${overview.net_profit_month < 0 ? "text-red-600" : "text-green-600"}`}>
-              {fmt(overview.net_profit_month)}
+              {formatCurrency(overview.net_profit_month)}
             </p>
           </Card>
           <Card className="p-4">
@@ -77,7 +76,7 @@ export default function AdvisorPage() {
           </Card>
           <Card className="p-4">
             <p className="text-xs text-muted-foreground">Impuestos pend.</p>
-            <p className="text-xl font-bold text-amber-600">{fmt(overview.pending_taxes)}</p>
+            <p className="text-xl font-bold text-amber-600">{formatCurrency(overview.pending_taxes)}</p>
           </Card>
         </div>
       )}

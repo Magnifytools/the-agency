@@ -59,8 +59,11 @@ async def update_resource(
     if resource is None:
         raise HTTPException(status_code=404, detail="Resource not found")
 
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(resource, field, value)
+    _UPDATABLE_RESOURCE_FIELDS = {"label", "url", "resource_type", "notes"}
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field in _UPDATABLE_RESOURCE_FIELDS:
+            setattr(resource, field, value)
     await db.commit()
     await db.refresh(resource)
     return resource

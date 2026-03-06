@@ -242,10 +242,10 @@ export default function LeadDetailPage() {
         <div className="lg:col-span-2 space-y-6">
           {/* Contact Info */}
           <Card>
-            <CardHeader><CardTitle className="text-base">Informacion de contacto</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Información de contacto</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-2 gap-4">
               <InfoRow icon={Mail} label="Email" value={lead.email} link={lead.email ? `mailto:${lead.email}` : undefined} />
-              <InfoRow icon={Phone} label="Telefono" value={lead.phone} />
+              <InfoRow icon={Phone} label="Teléfono" value={lead.phone} />
               <InfoRow icon={Globe} label="Website" value={lead.website} link={lead.website || undefined} />
               <InfoRow icon={Linkedin} label="LinkedIn" value={lead.linkedin_url ? "Ver perfil" : null} link={lead.linkedin_url || undefined} />
             </CardContent>

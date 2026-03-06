@@ -162,8 +162,15 @@ async def update_task(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     old_assigned_to = task.assigned_to
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(task, field, value)
+    _UPDATABLE_TASK_FIELDS = {
+        "title", "description", "status", "priority", "estimated_minutes",
+        "actual_minutes", "start_date", "due_date", "client_id", "category_id",
+        "assigned_to", "project_id", "phase_id", "depends_on",
+    }
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field in _UPDATABLE_TASK_FIELDS:
+            setattr(task, field, value)
     try:
         await db.commit()
     except IntegrityError:

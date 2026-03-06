@@ -212,8 +212,14 @@ async def update_inbox_note(
     """Update an inbox note (text, status, associations)."""
     note = await _get_note_or_404(note_id, user.id, db)
 
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(note, field, value)
+    _UPDATABLE_NOTE_FIELDS = {
+        "raw_text", "status", "project_id", "client_id",
+        "resolved_as", "resolved_entity_id",
+    }
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field in _UPDATABLE_NOTE_FIELDS:
+            setattr(note, field, value)
 
     await db.commit()
     await db.refresh(note)

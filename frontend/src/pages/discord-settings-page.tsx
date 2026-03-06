@@ -108,7 +108,7 @@ export default function DiscordSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            Estado de conexion
+            Estado de conexión
             {settings?.webhook_configured ? (
               <Badge variant="success">Conectado</Badge>
             ) : (
@@ -120,10 +120,10 @@ export default function DiscordSettingsPage() {
           <div className="grid gap-2 text-sm">
             {settings?.last_sent_at ? (
               <p className="text-muted-foreground">
-                Ultimo envio: {new Date(settings.last_sent_at).toLocaleString("es-ES")}
+                Último envío: {new Date(settings.last_sent_at).toLocaleString("es-ES")}
               </p>
             ) : (
-              <p className="text-muted-foreground">No se ha enviado ningun mensaje aun</p>
+              <p className="text-muted-foreground">No se ha enviado ningún mensaje aún</p>
             )}
           </div>
         </CardContent>
@@ -184,7 +184,7 @@ export default function DiscordSettingsPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="summary-time">Hora de envio</Label>
+            <Label htmlFor="summary-time">Hora de envío</Label>
             <Input
               id="summary-time"
               type="time"
@@ -216,7 +216,7 @@ export default function DiscordSettingsPage() {
           ) : (
             <CheckCircle className="w-4 h-4 mr-2" />
           )}
-          Guardar configuracion
+          Guardar configuración
         </Button>
       </div>
     </div>

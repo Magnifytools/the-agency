@@ -43,8 +43,11 @@ async def update_category(
     cat = result.scalar_one_or_none()
     if cat is None:
         raise HTTPException(status_code=404, detail="Category not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(cat, field, value)
+    _UPDATABLE_CATEGORY_FIELDS = {"name", "default_minutes"}
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field in _UPDATABLE_CATEGORY_FIELDS:
+            setattr(cat, field, value)
     await db.commit()
     await db.refresh(cat)
     return cat

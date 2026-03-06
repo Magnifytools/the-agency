@@ -24,6 +24,7 @@ import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { formatCurrency } from "@/lib/format"
 import type { BalanceSnapshotCreate } from "@/lib/types"
 import {
   BarChart,
@@ -44,7 +45,6 @@ import {
 } from "lucide-react"
 
 const now = new Date()
-const fmt = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
 
 export default function ExecutiveDashboardPage() {
   const [year, setYear] = useState(now.getFullYear())
@@ -177,7 +177,7 @@ export default function ExecutiveDashboardPage() {
           <h2 className="text-2xl font-bold uppercase tracking-wide">Dashboard Ejecutivo</h2>
           {ytd && (
             <p className="text-sm text-muted-foreground mt-1">
-              YTD {year}: {fmt(ytd.income)} ingresos, {fmt(ytd.profit)} beneficio
+              YTD {year}: {formatCurrency(ytd.income)} ingresos, {formatCurrency(ytd.profit)} beneficio
             </p>
           )}
         </div>
@@ -196,7 +196,7 @@ export default function ExecutiveDashboardPage() {
               <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Saldo Real (Banco)</p>
               {latestBalance ? (
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-2xl font-bold">{fmt(latestBalance.amount)}</span>
+                  <span className="text-2xl font-bold">{formatCurrency(latestBalance.amount)}</span>
                   <Badge variant="secondary">Manual</Badge>
                   <span className="text-xs text-muted-foreground">
                     {new Date(latestBalance.date + "T12:00:00").toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
@@ -225,7 +225,7 @@ export default function ExecutiveDashboardPage() {
               <MetricCard
                 icon={TrendingUp}
                 label="Ingresos mes"
-                value={fmt(overview.total_income_month)}
+                value={formatCurrency(overview.total_income_month)}
                 tooltip="Total facturado este mes"
                 delta={momDelta?.income}
               />
@@ -234,7 +234,7 @@ export default function ExecutiveDashboardPage() {
               <MetricCard
                 icon={TrendingDown}
                 label="Gastos mes"
-                value={fmt(overview.total_expenses_month)}
+                value={formatCurrency(overview.total_expenses_month)}
                 tooltip="Total gastos este mes"
                 delta={momDelta?.expenses}
               />
@@ -243,7 +243,7 @@ export default function ExecutiveDashboardPage() {
               <MetricCard
                 icon={DollarSign}
                 label="Beneficio neto"
-                value={fmt(overview.net_profit_month)}
+                value={formatCurrency(overview.net_profit_month)}
                 subtitle={overview.net_profit_month >= 0 ? "positivo" : "negativo"}
                 tooltip="Ingresos - gastos del mes"
                 delta={momDelta?.profit}
@@ -265,7 +265,7 @@ export default function ExecutiveDashboardPage() {
               icon={Clock}
               label="Runway"
               value={runway.runway_months != null ? `${runway.runway_months}m` : "∞"}
-              subtitle={`${fmt(runway.current_cash)} · ${runway.source === "manual" ? "Manual" : "Est."}`}
+              subtitle={`${formatCurrency(runway.current_cash)} · ${runway.source === "manual" ? "Manual" : "Est."}`}
               tooltip="Meses de operación con cash actual y gasto medio"
             />
           </Link>
@@ -275,7 +275,7 @@ export default function ExecutiveDashboardPage() {
             <MetricCard
               icon={Target}
               label="Pipeline"
-              value={fmt(pipeline.total_value)}
+              value={formatCurrency(pipeline.total_value)}
               subtitle={`${pipeline.total_leads} ${pipeline.total_leads === 1 ? "lead" : "leads"}`}
               tooltip="Valor total de leads activos en el pipeline"
             />

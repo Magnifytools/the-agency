@@ -10,6 +10,7 @@ import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Buildi
 import { EmptyTableState } from "@/components/ui/empty-state"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { formatCurrency } from "@/lib/format"
 import type { ProjectTimeReport, ClientTimeReport } from "@/lib/types"
 
 function getMonday(date: Date) {
@@ -66,7 +67,6 @@ function ProjectReportRow({ project }: { project: ProjectTimeReport }) {
   )
 }
 
-const fmtEur = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
 
 function ClientReportRow({ client }: { client: ClientTimeReport }) {
   const [expanded, setExpanded] = useState(false)
@@ -80,7 +80,7 @@ function ClientReportRow({ client }: { client: ClientTimeReport }) {
           </span>
         </TableCell>
         <TableCell className="text-right mono">{formatMinutes(client.total_minutes)}</TableCell>
-        <TableCell className="text-right mono">{fmtEur(client.cost_eur)}</TableCell>
+        <TableCell className="text-right mono">{formatCurrency(client.cost_eur)}</TableCell>
         <TableCell className="text-right">{client.entries_count}</TableCell>
         <TableCell className="text-right">{client.team_breakdown.length}</TableCell>
       </TableRow>
@@ -88,7 +88,7 @@ function ClientReportRow({ client }: { client: ClientTimeReport }) {
         <TableRow key={t.user_id} className="bg-muted/30">
           <TableCell className="pl-10 text-sm text-muted-foreground">{t.user_name}</TableCell>
           <TableCell className="text-right mono text-sm">{formatMinutes(t.total_minutes)}</TableCell>
-          <TableCell className="text-right mono text-sm">{fmtEur(t.cost_eur)}</TableCell>
+          <TableCell className="text-right mono text-sm">{formatCurrency(t.cost_eur)}</TableCell>
           <TableCell />
           <TableCell />
         </TableRow>

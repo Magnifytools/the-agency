@@ -69,8 +69,11 @@ async def update_news(
     if item is None:
         raise HTTPException(status_code=404, detail="News item not found")
 
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(item, field, value)
+    _UPDATABLE_NEWS_FIELDS = {"title", "published_date", "content", "url"}
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field in _UPDATABLE_NEWS_FIELDS:
+            setattr(item, field, value)
     await db.commit()
     await db.refresh(item)
     return item

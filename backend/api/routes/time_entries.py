@@ -386,8 +386,11 @@ async def update_time_entry(
     # F-05: members can only edit their own entries
     if current_user.role != UserRole.admin and entry.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your time entry")
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(entry, field, value)
+    _UPDATABLE_TIME_ENTRY_FIELDS = {"minutes", "notes", "task_id"}
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field in _UPDATABLE_TIME_ENTRY_FIELDS:
+            setattr(entry, field, value)
     await db.commit()
     await db.refresh(entry)
     return _entry_to_response(entry)

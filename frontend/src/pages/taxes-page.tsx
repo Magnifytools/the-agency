@@ -14,8 +14,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Plus, Pencil, Trash2, Calculator } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
-
-const fmt = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
+import { formatCurrency } from "@/lib/format"
 const currentYear = new Date().getFullYear()
 
 const statusBadge = (status: string) => {
@@ -117,15 +116,15 @@ export default function TaxesPage() {
         <div className="grid grid-cols-3 gap-4">
           <Card className="p-4">
             <p className="text-sm text-muted-foreground">Pendiente</p>
-            <p className="text-2xl font-bold text-amber-600">{fmt(summary.total_pending)}</p>
+            <p className="text-2xl font-bold text-amber-600">{formatCurrency(summary.total_pending)}</p>
           </Card>
           <Card className="p-4">
             <p className="text-sm text-muted-foreground">Pagado</p>
-            <p className="text-2xl font-bold text-green-600">{fmt(summary.total_paid)}</p>
+            <p className="text-2xl font-bold text-green-600">{formatCurrency(summary.total_paid)}</p>
           </Card>
           <Card className="p-4">
             <p className="text-sm text-muted-foreground">Total</p>
-            <p className="text-2xl font-bold">{fmt(summary.total)}</p>
+            <p className="text-2xl font-bold">{formatCurrency(summary.total)}</p>
           </Card>
         </div>
       )}
@@ -142,7 +141,7 @@ export default function TaxesPage() {
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-sm">{item.due_date as string}</span>
-                {item.tax_amount != null && <span className="font-mono">{fmt(item.tax_amount as number)}</span>}
+                {item.tax_amount != null && <span className="font-mono">{formatCurrency(item.tax_amount as number)}</span>}
                 {statusBadge(item.status as string)}
               </div>
             </div>
@@ -173,9 +172,9 @@ export default function TaxesPage() {
                   <TableCell><Badge variant="secondary">{tax.model}</Badge></TableCell>
                   <TableCell>{tax.period}</TableCell>
                   <TableCell>{tax.name}</TableCell>
-                  <TableCell className="text-right font-mono">{fmt(tax.base_amount)}</TableCell>
+                  <TableCell className="text-right font-mono">{formatCurrency(tax.base_amount)}</TableCell>
                   <TableCell className="text-right">{tax.tax_rate}%</TableCell>
-                  <TableCell className="text-right font-mono">{fmt(tax.tax_amount)}</TableCell>
+                  <TableCell className="text-right font-mono">{formatCurrency(tax.tax_amount)}</TableCell>
                   <TableCell>{statusBadge(tax.status)}</TableCell>
                   <TableCell>{tax.due_date || "-"}</TableCell>
                   <TableCell>

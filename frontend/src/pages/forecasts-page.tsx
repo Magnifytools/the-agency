@@ -13,8 +13,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Plus, Pencil, Trash2, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
-
-const fmt = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
+import { formatCurrency } from "@/lib/format"
 const currentYear = new Date().getFullYear()
 
 export default function ForecastsPage() {
@@ -102,11 +101,11 @@ export default function ForecastsPage() {
         <div className="grid grid-cols-3 gap-4">
           <Card className="p-4">
             <p className="text-sm text-muted-foreground">Cash disponible</p>
-            <p className="text-2xl font-bold">{fmt(runway.current_cash)}</p>
+            <p className="text-2xl font-bold">{formatCurrency(runway.current_cash)}</p>
           </Card>
           <Card className="p-4">
             <p className="text-sm text-muted-foreground">Gasto mensual medio</p>
-            <p className="text-2xl font-bold">{fmt(runway.avg_monthly_burn)}</p>
+            <p className="text-2xl font-bold">{formatCurrency(runway.avg_monthly_burn)}</p>
           </Card>
           <Card className="p-4">
             <p className="text-sm text-muted-foreground">Runway</p>
@@ -137,12 +136,12 @@ export default function ForecastsPage() {
                 {vsActual.map((row) => (
                   <TableRow key={row.month}>
                     <TableCell>{row.month}</TableCell>
-                    <TableCell className="text-right font-mono">{fmt(row.projected_income)}</TableCell>
-                    <TableCell className="text-right font-mono">{fmt(row.actual_income)}</TableCell>
-                    <TableCell className="text-right font-mono">{fmt(row.projected_expenses)}</TableCell>
-                    <TableCell className="text-right font-mono">{fmt(row.actual_expenses)}</TableCell>
-                    <TableCell className="text-right font-mono">{fmt(row.projected_profit)}</TableCell>
-                    <TableCell className={`text-right font-mono ${row.actual_profit < 0 ? "text-red-600" : ""}`}>{fmt(row.actual_profit)}</TableCell>
+                    <TableCell className="text-right font-mono">{formatCurrency(row.projected_income)}</TableCell>
+                    <TableCell className="text-right font-mono">{formatCurrency(row.actual_income)}</TableCell>
+                    <TableCell className="text-right font-mono">{formatCurrency(row.projected_expenses)}</TableCell>
+                    <TableCell className="text-right font-mono">{formatCurrency(row.actual_expenses)}</TableCell>
+                    <TableCell className="text-right font-mono">{formatCurrency(row.projected_profit)}</TableCell>
+                    <TableCell className={`text-right font-mono ${row.actual_profit < 0 ? "text-red-600" : ""}`}>{formatCurrency(row.actual_profit)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -171,10 +170,10 @@ export default function ForecastsPage() {
                 {forecasts.map(f => (
                   <TableRow key={f.id}>
                     <TableCell>{f.month}</TableCell>
-                    <TableCell className="text-right font-mono">{fmt(f.projected_income)}</TableCell>
-                    <TableCell className="text-right font-mono">{fmt(f.projected_expenses)}</TableCell>
-                    <TableCell className="text-right font-mono">{fmt(f.projected_taxes)}</TableCell>
-                    <TableCell className={`text-right font-mono ${f.projected_profit < 0 ? "text-red-600" : ""}`}>{fmt(f.projected_profit)}</TableCell>
+                    <TableCell className="text-right font-mono">{formatCurrency(f.projected_income)}</TableCell>
+                    <TableCell className="text-right font-mono">{formatCurrency(f.projected_expenses)}</TableCell>
+                    <TableCell className="text-right font-mono">{formatCurrency(f.projected_taxes)}</TableCell>
+                    <TableCell className={`text-right font-mono ${f.projected_profit < 0 ? "text-red-600" : ""}`}>{formatCurrency(f.projected_profit)}</TableCell>
                     <TableCell className="text-right">{(f.confidence * 100).toFixed(0)}%</TableCell>
                     <TableCell>
                       <div className="flex gap-1">

@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { holdedApi } from "@/lib/api"
+import { formatCurrency } from "@/lib/format"
 import { holdedKeys, isHoldedQueryKey } from "@/lib/query-keys"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -27,10 +28,6 @@ const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
   { key: "gastos", label: "Gastos", icon: Receipt },
   { key: "config", label: "Configuración", icon: Settings },
 ]
-
-function formatCurrency(v: number, currency = "EUR") {
-  return new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(v)
-}
 
 function formatDate(d: string | null) {
   if (!d) return "-"
@@ -81,7 +78,7 @@ export default function HoldedFinancePage() {
               </Badge>
             ) : (
               <Badge variant="secondary" className="flex items-center gap-1">
-                <WifiOff className="h-3 w-3" /> Sin conexion
+                <WifiOff className="h-3 w-3" /> Sin conexión
               </Badge>
             )}
             {config?.last_sync_invoices?.completed_at && (
@@ -139,7 +136,7 @@ function ResumenTab({ connected }: { connected: boolean }) {
     retry: false,
   })
 
-  if (!connected) return <div className="text-muted-foreground">Configura la conexion con Holded para ver el resumen.</div>
+  if (!connected) return <div className="text-muted-foreground">Configura la conexión con Holded para ver el resumen.</div>
   if (isLoading) return <div className="text-muted-foreground">Cargando...</div>
   if (error) return <div className="text-red-500 text-sm">Error al cargar datos. <button className="underline ml-1" onClick={() => refetch()}>Reintentar</button></div>
   if (!dashboard) return null
@@ -617,7 +614,7 @@ function ConfigTab({ onInvalidateHolded }: { onInvalidateHolded: () => Promise<u
         toast.error(result.message)
       }
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al probar conexion")),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al probar conexión")),
   })
 
   const syncContactsMutation = useMutation({
@@ -634,7 +631,7 @@ function ConfigTab({ onInvalidateHolded }: { onInvalidateHolded: () => Promise<u
       {/* Connection status */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Estado de conexion</CardTitle>
+          <CardTitle className="text-sm">Estado de conexión</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
@@ -657,7 +654,7 @@ function ConfigTab({ onInvalidateHolded }: { onInvalidateHolded: () => Promise<u
               onClick={() => testMutation.mutate()}
               disabled={testMutation.isPending || !config?.api_key_configured}
             >
-              {testMutation.isPending ? "Probando..." : "Probar conexion"}
+              {testMutation.isPending ? "Probando..." : "Probar conexión"}
             </Button>
             <Button
               variant="outline"

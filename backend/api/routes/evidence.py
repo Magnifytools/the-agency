@@ -73,8 +73,11 @@ async def update_evidence(
     if evidence is None:
         raise HTTPException(status_code=404, detail="Evidence not found")
 
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(evidence, field, value)
+    _UPDATABLE_EVIDENCE_FIELDS = {"title", "url", "evidence_type", "phase_id", "description"}
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field in _UPDATABLE_EVIDENCE_FIELDS:
+            setattr(evidence, field, value)
     await db.commit()
     await db.refresh(evidence)
     return _to_response(evidence)
