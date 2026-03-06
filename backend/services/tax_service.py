@@ -23,7 +23,8 @@ def _quarter_months(quarter: int) -> tuple[int, int]:
     return start, start + 2
 
 
-async def _income_vat_for_quarter(db: AsyncSession, year: int, quarter: int) -> float:
+async def _income_vat_for_quarter(db: AsyncSession, year: int, quarter: int) -> tuple[float, float]:
+    """Return (vat_total, base_total) for income in the quarter."""
     m_start, m_end = _quarter_months(quarter)
     r = await db.execute(
         select(Income).where(
@@ -33,16 +34,22 @@ async def _income_vat_for_quarter(db: AsyncSession, year: int, quarter: int) -> 
         )
     )
     rows = r.scalars().all()
-    total = Decimal("0")
+    vat_total = Decimal("0")
+    base_total = Decimal("0")
     for row in rows:
+        base_total += Decimal(str(row.amount or 0))
         if row.vat_amount and row.vat_amount > 0:
-            total += Decimal(str(row.vat_amount or 0))
+            vat_total += Decimal(str(row.vat_amount or 0))
         else:
-            total += Decimal(str(row.amount or 0)) * Decimal(str(row.vat_rate or 0)) / Decimal("100")
-    return float(total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+            vat_total += Decimal(str(row.amount or 0)) * Decimal(str(row.vat_rate or 0)) / Decimal("100")
+    return (
+        float(vat_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        float(base_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+    )
 
 
-async def _expense_vat_for_quarter(db: AsyncSession, year: int, quarter: int) -> float:
+async def _expense_vat_for_quarter(db: AsyncSession, year: int, quarter: int) -> tuple[float, float]:
+    """Return (vat_total, base_total) for deductible expenses in the quarter."""
     m_start, m_end = _quarter_months(quarter)
     r = await db.execute(
         select(Expense).where(
@@ -53,18 +60,23 @@ async def _expense_vat_for_quarter(db: AsyncSession, year: int, quarter: int) ->
         )
     )
     rows = r.scalars().all()
-    total = Decimal("0")
+    vat_total = Decimal("0")
+    base_total = Decimal("0")
     for row in rows:
+        base_total += Decimal(str(row.amount or 0))
         if row.vat_amount and row.vat_amount > 0:
-            total += Decimal(str(row.vat_amount or 0))
+            vat_total += Decimal(str(row.vat_amount or 0))
         else:
-            total += Decimal(str(row.amount or 0)) * Decimal(str(row.vat_rate or 0)) / Decimal("100")
-    return float(total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+            vat_total += Decimal(str(row.amount or 0)) * Decimal(str(row.vat_rate or 0)) / Decimal("100")
+    return (
+        float(vat_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        float(base_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+    )
 
 
 async def calculate_iva_quarterly(db: AsyncSession, year: int, quarter: int) -> dict:
-    repercutido = await _income_vat_for_quarter(db, year, quarter)
-    soportado = await _expense_vat_for_quarter(db, year, quarter)
+    repercutido, income_base = await _income_vat_for_quarter(db, year, quarter)
+    soportado, _expense_base = await _expense_vat_for_quarter(db, year, quarter)
     cuota = repercutido - soportado
     vat_rate = await _get_setting_float(db, "default_vat_rate", 21.0)
     return {
@@ -72,7 +84,7 @@ async def calculate_iva_quarterly(db: AsyncSession, year: int, quarter: int) -> 
         "model": "303",
         "period": f"Q{quarter}",
         "year": year,
-        "base_amount": round(repercutido, 2),
+        "base_amount": round(income_base, 2),  # base imponible (ingresos sin IVA)
         "tax_rate": vat_rate,
         "tax_amount": round(cuota, 2),
     }
