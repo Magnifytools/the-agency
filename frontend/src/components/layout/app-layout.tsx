@@ -146,6 +146,12 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen flex-col bg-background overflow-hidden relative">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-4 focus:left-4 focus:px-4 focus:py-2 focus:bg-brand focus:text-black focus:rounded-lg focus:text-sm focus:font-semibold"
+      >
+        Ir al contenido
+      </a>
       <ActiveTimerBar />
 
       <div className="flex flex-1 overflow-hidden pb-[60px] md:pb-0">
@@ -320,7 +326,7 @@ export function AppLayout() {
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 bg-background/50 relative">
+        <main id="main-content" className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 bg-background/50 relative">
           <Outlet />
         </main>
       </div>

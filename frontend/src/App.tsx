@@ -90,44 +90,44 @@ export default function App() {
                 </ProtectedRoute>
               }
             >
-              <Route path="/dashboard" element={<Suspense fallback={<PageLoader />}><DashboardPage /></Suspense>} />
-              <Route path="/executive" element={<PermissionRoute adminOnly><Suspense fallback={<PageLoader />}><ExecutiveDashboardPage /></Suspense></PermissionRoute>} />
+              <Route path="/dashboard" element={<ErrorBoundary section="Dashboard"><Suspense fallback={<PageLoader />}><DashboardPage /></Suspense></ErrorBoundary>} />
+              <Route path="/executive" element={<PermissionRoute adminOnly><ErrorBoundary section="Executive"><Suspense fallback={<PageLoader />}><ExecutiveDashboardPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/pipeline" element={<Navigate to="/leads" replace />} />
-              <Route path="/leads" element={<PermissionRoute module="growth"><Suspense fallback={<PageLoader />}><LeadsPage /></Suspense></PermissionRoute>} />
-              <Route path="/leads/:id" element={<PermissionRoute module="growth"><Suspense fallback={<PageLoader />}><LeadDetailPage /></Suspense></PermissionRoute>} />
-              <Route path="/clients" element={<Suspense fallback={<PageLoader />}><ClientsPage /></Suspense>} />
-              <Route path="/clients/:id" element={<Suspense fallback={<PageLoader />}><ClientDetailPage /></Suspense>} />
-              <Route path="/tasks" element={<Suspense fallback={<PageLoader />}><TasksPage /></Suspense>} />
-              <Route path="/projects" element={<Suspense fallback={<PageLoader />}><ProjectsPage /></Suspense>} />
-              <Route path="/projects/:id" element={<Suspense fallback={<PageLoader />}><ProjectDetailPage /></Suspense>} />
-              <Route path="/growth" element={<Suspense fallback={<PageLoader />}><GrowthPage /></Suspense>} />
-              <Route path="/capacity" element={<PermissionRoute adminOnly><Suspense fallback={<PageLoader />}><CapacityPage /></Suspense></PermissionRoute>} />
-              <Route path="/users" element={<PermissionRoute adminOnly><Suspense fallback={<PageLoader />}><UsersPage /></Suspense></PermissionRoute>} />
-              <Route path="/timesheet" element={<Suspense fallback={<PageLoader />}><TimesheetPage /></Suspense>} />
-              <Route path="/billing" element={<PermissionRoute module="billing"><Suspense fallback={<PageLoader />}><BillingPage /></Suspense></PermissionRoute>} />
-              <Route path="/proposals" element={<PermissionRoute module="proposals"><Suspense fallback={<PageLoader />}><ProposalsPage /></Suspense></PermissionRoute>} />
-              <Route path="/digests" element={<Suspense fallback={<PageLoader />}><DigestsPage /></Suspense>} />
-              <Route path="/digests/:id/edit" element={<Suspense fallback={<PageLoader />}><DigestEditPage /></Suspense>} />
-              <Route path="/dailys" element={<Suspense fallback={<PageLoader />}><DailysPage /></Suspense>} />
-              <Route path="/reports" element={<PermissionRoute module="reports"><Suspense fallback={<PageLoader />}><ReportsPage /></Suspense></PermissionRoute>} />
+              <Route path="/leads" element={<PermissionRoute module="growth"><ErrorBoundary section="Leads"><Suspense fallback={<PageLoader />}><LeadsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/leads/:id" element={<PermissionRoute module="growth"><ErrorBoundary section="LeadDetail"><Suspense fallback={<PageLoader />}><LeadDetailPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/clients" element={<ErrorBoundary section="Clients"><Suspense fallback={<PageLoader />}><ClientsPage /></Suspense></ErrorBoundary>} />
+              <Route path="/clients/:id" element={<ErrorBoundary section="ClientDetail"><Suspense fallback={<PageLoader />}><ClientDetailPage /></Suspense></ErrorBoundary>} />
+              <Route path="/tasks" element={<ErrorBoundary section="Tasks"><Suspense fallback={<PageLoader />}><TasksPage /></Suspense></ErrorBoundary>} />
+              <Route path="/projects" element={<ErrorBoundary section="Projects"><Suspense fallback={<PageLoader />}><ProjectsPage /></Suspense></ErrorBoundary>} />
+              <Route path="/projects/:id" element={<ErrorBoundary section="ProjectDetail"><Suspense fallback={<PageLoader />}><ProjectDetailPage /></Suspense></ErrorBoundary>} />
+              <Route path="/growth" element={<ErrorBoundary section="Growth"><Suspense fallback={<PageLoader />}><GrowthPage /></Suspense></ErrorBoundary>} />
+              <Route path="/capacity" element={<PermissionRoute adminOnly><ErrorBoundary section="Capacity"><Suspense fallback={<PageLoader />}><CapacityPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/users" element={<PermissionRoute adminOnly><ErrorBoundary section="Users"><Suspense fallback={<PageLoader />}><UsersPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/timesheet" element={<ErrorBoundary section="Timesheet"><Suspense fallback={<PageLoader />}><TimesheetPage /></Suspense></ErrorBoundary>} />
+              <Route path="/billing" element={<PermissionRoute module="billing"><ErrorBoundary section="Billing"><Suspense fallback={<PageLoader />}><BillingPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/proposals" element={<PermissionRoute module="proposals"><ErrorBoundary section="Proposals"><Suspense fallback={<PageLoader />}><ProposalsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/digests" element={<ErrorBoundary section="Digests"><Suspense fallback={<PageLoader />}><DigestsPage /></Suspense></ErrorBoundary>} />
+              <Route path="/digests/:id/edit" element={<ErrorBoundary section="DigestEdit"><Suspense fallback={<PageLoader />}><DigestEditPage /></Suspense></ErrorBoundary>} />
+              <Route path="/dailys" element={<ErrorBoundary section="Dailys"><Suspense fallback={<PageLoader />}><DailysPage /></Suspense></ErrorBoundary>} />
+              <Route path="/reports" element={<PermissionRoute module="reports"><ErrorBoundary section="Reports"><Suspense fallback={<PageLoader />}><ReportsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Finance */}
-              <Route path="/finance" element={<PermissionRoute module="finance_dashboard"><Suspense fallback={<PageLoader />}><FinanceDashboardPage /></Suspense></PermissionRoute>} />
-              <Route path="/finance/income" element={<PermissionRoute module="finance_income"><Suspense fallback={<PageLoader />}><IncomePage /></Suspense></PermissionRoute>} />
-              <Route path="/finance/expenses" element={<PermissionRoute module="finance_expenses"><Suspense fallback={<PageLoader />}><ExpensesPage /></Suspense></PermissionRoute>} />
-              <Route path="/finance/taxes" element={<PermissionRoute module="finance_taxes"><Suspense fallback={<PageLoader />}><TaxesPage /></Suspense></PermissionRoute>} />
-              <Route path="/finance/forecasts" element={<PermissionRoute module="finance_forecasts"><Suspense fallback={<PageLoader />}><ForecastsPage /></Suspense></PermissionRoute>} />
-              <Route path="/finance/advisor" element={<PermissionRoute module="finance_advisor"><Suspense fallback={<PageLoader />}><AdvisorPage /></Suspense></PermissionRoute>} />
-              <Route path="/finance/import" element={<PermissionRoute module="finance_import"><Suspense fallback={<PageLoader />}><ImportPage /></Suspense></PermissionRoute>} />
+              <Route path="/finance" element={<PermissionRoute module="finance_dashboard"><ErrorBoundary section="Finance"><Suspense fallback={<PageLoader />}><FinanceDashboardPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/finance/income" element={<PermissionRoute module="finance_income"><ErrorBoundary section="Income"><Suspense fallback={<PageLoader />}><IncomePage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/finance/expenses" element={<PermissionRoute module="finance_expenses"><ErrorBoundary section="Expenses"><Suspense fallback={<PageLoader />}><ExpensesPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/finance/taxes" element={<PermissionRoute module="finance_taxes"><ErrorBoundary section="Taxes"><Suspense fallback={<PageLoader />}><TaxesPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/finance/forecasts" element={<PermissionRoute module="finance_forecasts"><ErrorBoundary section="Forecasts"><Suspense fallback={<PageLoader />}><ForecastsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/finance/advisor" element={<PermissionRoute module="finance_advisor"><ErrorBoundary section="Advisor"><Suspense fallback={<PageLoader />}><AdvisorPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/finance/import" element={<PermissionRoute module="finance_import"><ErrorBoundary section="Import"><Suspense fallback={<PageLoader />}><ImportPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Holded Finance */}
-              <Route path="/finance-holded" element={<PermissionRoute module="finance_dashboard"><Suspense fallback={<PageLoader />}><HoldedFinancePage /></Suspense></PermissionRoute>} />
+              <Route path="/finance-holded" element={<PermissionRoute module="finance_dashboard"><ErrorBoundary section="HoldedFinance"><Suspense fallback={<PageLoader />}><HoldedFinancePage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Agency */}
-              <Route path="/news" element={<Suspense fallback={<PageLoader />}><IndustryNewsPage /></Suspense>} />
-              <Route path="/vault" element={<PermissionRoute adminOnly><Suspense fallback={<PageLoader />}><AgencyVaultPage /></Suspense></PermissionRoute>} />
-              <Route path="/inbox" element={<Suspense fallback={<PageLoader />}><InboxPage /></Suspense>} />
+              <Route path="/news" element={<ErrorBoundary section="News"><Suspense fallback={<PageLoader />}><IndustryNewsPage /></Suspense></ErrorBoundary>} />
+              <Route path="/vault" element={<PermissionRoute adminOnly><ErrorBoundary section="Vault"><Suspense fallback={<PageLoader />}><AgencyVaultPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/inbox" element={<ErrorBoundary section="Inbox"><Suspense fallback={<PageLoader />}><InboxPage /></Suspense></ErrorBoundary>} />
               {/* Discord */}
-              <Route path="/discord" element={<PermissionRoute adminOnly><Suspense fallback={<PageLoader />}><DiscordSettingsPage /></Suspense></PermissionRoute>} />
+              <Route path="/discord" element={<PermissionRoute adminOnly><ErrorBoundary section="Discord"><Suspense fallback={<PageLoader />}><DiscordSettingsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Settings */}
-              <Route path="/settings" element={<Suspense fallback={<PageLoader />}><SettingsPage /></Suspense>} />
+              <Route path="/settings" element={<ErrorBoundary section="Settings"><Suspense fallback={<PageLoader />}><SettingsPage /></Suspense></ErrorBoundary>} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

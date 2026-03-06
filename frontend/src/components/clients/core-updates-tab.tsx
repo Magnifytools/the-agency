@@ -98,8 +98,7 @@ function getDefaultDates() {
   return { preStart, preEnd, postStart, postEnd }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function CustomTooltip({ active, payload }: any) {
+function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: KeywordPoint }> }) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload as KeywordPoint
   return (
