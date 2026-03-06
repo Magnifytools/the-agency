@@ -319,11 +319,11 @@ function ConvertToTaskDialog({
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Titulo</label>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Título</label>
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Titulo de la tarea"
+              placeholder="Título de la tarea"
               className="text-sm"
             />
           </div>

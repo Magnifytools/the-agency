@@ -3,13 +3,14 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import User, UserRole, UserInvitation, UserPermission
 from backend.core.security import hash_password
+from backend.core.rate_limiter import login_limiter
 from backend.schemas.invitation import (
     InvitationCreate,
     InvitationResponse,
@@ -103,9 +104,14 @@ async def create_invitation(
 @router.post("/invitations/accept", response_model=UserResponse)
 async def accept_invitation(
     body: AcceptInvitationRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Accept an invitation and create a user account."""
+    # Rate limit: 5 attempts per IP per 15 minutes (brute-force token protection)
+    client_ip = request.client.host if request.client else "unknown"
+    login_limiter.check(f"inv:{client_ip}", max_requests=5, window_seconds=900)
+
     result = await db.execute(
         select(UserInvitation).where(UserInvitation.token == body.token)
     )

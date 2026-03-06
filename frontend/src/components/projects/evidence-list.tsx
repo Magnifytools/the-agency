@@ -234,7 +234,7 @@ function EvidenceForm({
     <form onSubmit={handleSubmit} className="space-y-4 p-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <Label>Titulo *</Label>
+          <Label>Título *</Label>
           <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Informe de ranking Q1" required />
         </div>
         <div>

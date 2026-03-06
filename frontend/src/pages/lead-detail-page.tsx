@@ -438,7 +438,7 @@ export default function LeadDetailPage() {
               </Select>
             </div>
             <div>
-              <Label>Titulo *</Label>
+              <Label>Título *</Label>
               <Input
                 value={activityForm.title}
                 onChange={(e) => setActivityForm({ ...activityForm, title: e.target.value })}

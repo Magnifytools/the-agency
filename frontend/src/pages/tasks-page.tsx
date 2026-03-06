@@ -386,7 +386,7 @@ export default function TasksPage() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-10" />
-              <TableHead>Titulo</TableHead>
+              <TableHead>Título</TableHead>
               <TableHead>Cliente</TableHead>
               <TableHead>Prioridad</TableHead>
               <TableHead>Asignado</TableHead>
@@ -413,7 +413,7 @@ export default function TasksPage() {
                   className="rounded border-border"
                 />
               </TableHead>
-              <SortableTableHead sortKey="title" currentSort={taskSortConfig} onSort={requestTaskSort}>Titulo</SortableTableHead>
+              <SortableTableHead sortKey="title" currentSort={taskSortConfig} onSort={requestTaskSort}>Título</SortableTableHead>
               <SortableTableHead sortKey="client_name" currentSort={taskSortConfig} onSort={requestTaskSort}>Cliente</SortableTableHead>
               <SortableTableHead sortKey="priority" currentSort={taskSortConfig} onSort={requestTaskSort}>Prioridad</SortableTableHead>
               <TableHead>Asignado</TableHead>
@@ -573,7 +573,7 @@ export default function TasksPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Title */}
           <div className="space-y-2">
-            <Label htmlFor="title">Titulo *</Label>
+            <Label htmlFor="title">Título *</Label>
             <Input id="title" name="title" defaultValue={editing?.title ?? ""} required />
           </div>
 

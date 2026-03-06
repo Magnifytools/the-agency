@@ -1108,7 +1108,7 @@ export default function ProposalsPage() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label>Titulo *</Label>
+                                    <Label>Título *</Label>
                                     <Input
                                         value={form.title}
                                         onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}

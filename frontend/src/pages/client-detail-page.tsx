@@ -426,7 +426,7 @@ export default function ClientDetailPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Titulo</TableHead>
+                  <TableHead>Título</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Est.</TableHead>
                   <TableHead>Real</TableHead>

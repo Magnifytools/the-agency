@@ -203,7 +203,7 @@ export default function IndustryNewsPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>Titulo *</Label>
+              <Label>Título *</Label>
               <Input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}

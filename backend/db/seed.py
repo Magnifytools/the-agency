@@ -24,13 +24,23 @@ def _generate_password(length: int = 24) -> str:
 
 
 def _get_seed_users() -> list[dict]:
-    admin_pw = os.environ.get("SEED_ADMIN_PASSWORD") or "Magnify2026!"
-    member_pw = os.environ.get("SEED_MEMBER_PASSWORD") or "Magnify2026!"
+    from backend.config import _is_production
 
-    if not os.environ.get("SEED_ADMIN_PASSWORD"):
-        print(f"⚠ SEED_ADMIN_PASSWORD not set. Generated: {admin_pw}")
-    if not os.environ.get("SEED_MEMBER_PASSWORD"):
-        print(f"⚠ SEED_MEMBER_PASSWORD not set. Generated: {member_pw}")
+    admin_pw = os.environ.get("SEED_ADMIN_PASSWORD")
+    member_pw = os.environ.get("SEED_MEMBER_PASSWORD")
+
+    if _is_production():
+        if not admin_pw:
+            raise RuntimeError("SEED_ADMIN_PASSWORD must be set in production — refusing to use a known default password")
+        if not member_pw:
+            raise RuntimeError("SEED_MEMBER_PASSWORD must be set in production — refusing to use a known default password")
+    else:
+        if not admin_pw:
+            admin_pw = "Magnify2026!"
+            print(f"⚠ SEED_ADMIN_PASSWORD not set. Using dev default: {admin_pw}")
+        if not member_pw:
+            member_pw = "Magnify2026!"
+            print(f"⚠ SEED_MEMBER_PASSWORD not set. Using dev default: {member_pw}")
 
     return [
         {

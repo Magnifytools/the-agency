@@ -194,7 +194,11 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 cors_origins = ["http://localhost:5177"]
 if extra := os.environ.get("CORS_ORIGINS"):
-    cors_origins.extend(extra.split(","))
+    parsed = [o.strip() for o in extra.split(",") if o.strip()]
+    from backend.config import _is_production
+    if _is_production() and "*" in parsed:
+        raise RuntimeError("CORS_ORIGINS must not contain '*' in production — this would allow any origin with credentials")
+    cors_origins.extend(parsed)
 
 app.add_middleware(
     CORSMiddleware,
