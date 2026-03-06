@@ -458,7 +458,7 @@ function GenerateReportDialog({
               onChange={(e) => setPeriod(e.target.value as ReportPeriod)}
             >
               <option value="week">Ultima semana</option>
-              <option value="month">Ultimo mes</option>
+              <option value="month">Último mes</option>
             </Select>
           </div>
         )}

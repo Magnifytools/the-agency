@@ -86,7 +86,7 @@ export default function HoldedFinancePage() {
             )}
             {config?.last_sync_invoices?.completed_at && (
               <span className="text-xs text-muted-foreground">
-                Ultimo sync: {formatDate(config.last_sync_invoices.completed_at)}
+                Último sync: {formatDate(config.last_sync_invoices.completed_at)}
               </span>
             )}
           </div>
@@ -210,7 +210,7 @@ function ResumenTab({ connected }: { connected: boolean }) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Numero</TableHead>
+                    <TableHead>Número</TableHead>
                     <TableHead>Cliente</TableHead>
                     <TableHead>Fecha</TableHead>
                     <TableHead>Vencimiento</TableHead>
@@ -343,7 +343,7 @@ function FacturasTab({ connected }: { connected: boolean }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Numero</TableHead>
+                  <TableHead>Número</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Vencimiento</TableHead>
@@ -509,7 +509,7 @@ function GastosTab({ connected }: { connected: boolean }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Descripcion</TableHead>
+                  <TableHead>Descripción</TableHead>
                   <TableHead>Proveedor</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Categoria</TableHead>
@@ -669,7 +669,7 @@ function ConfigTab({ onInvalidateHolded }: { onInvalidateHolded: () => Promise<u
           </div>
 
           <p className="text-xs text-muted-foreground">
-            La API Key se configura en el archivo .env del servidor (HOLDED_API_KEY). La sincronizacion es manual.
+            La API Key se configura en el archivo .env del servidor (HOLDED_API_KEY). La sincronización es manual.
           </p>
         </CardContent>
       </Card>
@@ -677,7 +677,7 @@ function ConfigTab({ onInvalidateHolded }: { onInvalidateHolded: () => Promise<u
       {/* Last sync status */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Ultimo sync por tipo</CardTitle>
+          <CardTitle className="text-sm">Último sync por tipo</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-3">

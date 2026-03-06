@@ -129,7 +129,7 @@ export default function ImportPage() {
             <div className="grid grid-cols-3 gap-4">
               {["date", "amount", "description"].map(field => (
                 <div key={field}>
-                  <Label>{field === "date" ? "Fecha" : field === "amount" ? "Importe" : "Descripcion"}</Label>
+                  <Label>{field === "date" ? "Fecha" : field === "amount" ? "Importe" : "Descripción"}</Label>
                   <Select value={mapping[field] || ""} onChange={(e) => setMapping(m => ({ ...m, [field]: e.target.value }))}>
                     <option value="">-- Seleccionar --</option>
                     {preview.headers.map(h => <option key={h} value={h}>{h}</option>)}

@@ -211,7 +211,7 @@ export default function IndustryNewsPage() {
               />
             </div>
             <div>
-              <Label>Fecha de publicacion *</Label>
+              <Label>Fecha de publicación *</Label>
               <Input
                 type="date"
                 value={form.published_date}
@@ -219,11 +219,11 @@ export default function IndustryNewsPage() {
               />
             </div>
             <div>
-              <Label>Descripcion</Label>
+              <Label>Descripción</Label>
               <Textarea
                 value={form.content ?? ""}
                 onChange={(e) => setForm({ ...form, content: e.target.value })}
-                placeholder="Descripcion de la noticia..."
+                placeholder="Descripción de la noticia..."
                 rows={4}
               />
             </div>
@@ -252,7 +252,7 @@ export default function IndustryNewsPage() {
         open={deleteId !== null}
         onOpenChange={(open) => !open && setDeleteId(null)}
         title="Eliminar noticia"
-        description="Esta accion no se puede deshacer."
+        description="Esta acción no se puede deshacer."
         onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
       />
     </div>

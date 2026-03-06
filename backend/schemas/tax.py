@@ -1,7 +1,9 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Literal, Optional
 from datetime import date, datetime
 from pydantic import BaseModel
+
+TaxStatus = Literal["pendiente", "pagado", "aplazado"]
 
 
 class TaxCreate(BaseModel):
@@ -12,7 +14,7 @@ class TaxCreate(BaseModel):
     base_amount: float = 0.0
     tax_rate: float = 0.0
     tax_amount: float = 0.0
-    status: str = "pendiente"
+    status: TaxStatus = "pendiente"
     due_date: Optional[date] = None
     paid_date: Optional[date] = None
     notes: str = ""
@@ -26,7 +28,7 @@ class TaxUpdate(BaseModel):
     base_amount: Optional[float] = None
     tax_rate: Optional[float] = None
     tax_amount: Optional[float] = None
-    status: Optional[str] = None
+    status: Optional[TaxStatus] = None
     due_date: Optional[date] = None
     paid_date: Optional[date] = None
     notes: Optional[str] = None

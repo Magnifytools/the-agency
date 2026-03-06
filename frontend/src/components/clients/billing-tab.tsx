@@ -137,7 +137,7 @@ export function BillingTab({ client }: Props) {
 
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Ultimo pago</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Último pago</p>
             {status?.last_payment_date ? (
               <>
                 <p className="text-lg font-semibold mt-1">
@@ -266,7 +266,7 @@ function BillingConfigForm({ client, onSave }: { client: Client; onSave: () => v
         billing_day: day ? Number(day) : null,
         next_invoice_date: nextDate || null,
       })
-      toast.success("Configuracion guardada")
+      toast.success("Configuración guardada")
       onSave()
     } catch (err) {
       toast.error(getErrorMessage(err))

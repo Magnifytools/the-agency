@@ -27,8 +27,8 @@ const PRIORITY_BADGE: Record<string, { label: string; variant: "destructive" | "
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
-  comunicacion: "Comunicacion",
-  facturacion: "Facturacion",
+  comunicacion: "Comunicación",
+  facturacion: "Facturación",
   tareas: "Tareas",
   rentabilidad: "Rentabilidad",
   estrategia: "Estrategia",

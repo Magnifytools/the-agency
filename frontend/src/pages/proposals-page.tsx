@@ -896,7 +896,7 @@ export default function ProposalsPage() {
                     open={!!deleteId}
                     onOpenChange={(open) => !open && setDeleteId(null)}
                     title="Eliminar Propuesta"
-                    description="Solo se pueden eliminar propuestas en borrador. Esta accion no se puede deshacer."
+                    description="Solo se pueden eliminar propuestas en borrador. Esta acción no se puede deshacer."
                     onConfirm={() => deleteMutation.mutate(deleteId!)}
                 />
             </div>
@@ -1478,7 +1478,7 @@ export default function ProposalsPage() {
                 open={!!deleteId}
                 onOpenChange={(open) => !open && setDeleteId(null)}
                 title="Eliminar Propuesta"
-                description="Solo se pueden eliminar propuestas en borrador. Esta accion no se puede deshacer."
+                description="Solo se pueden eliminar propuestas en borrador. Esta acción no se puede deshacer."
                 onConfirm={() => deleteMutation.mutate(deleteId!)}
             />
 

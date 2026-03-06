@@ -779,7 +779,7 @@ export default function TasksPage() {
         open={deleteId !== null}
         onOpenChange={(open) => !open && setDeleteId(null)}
         title="Eliminar tarea"
-        description="Esta accion no se puede deshacer. Se eliminara la tarea permanentemente."
+        description="Esta acción no se puede deshacer. Se eliminará la tarea permanentemente."
         onConfirm={() => {
           if (deleteId !== null) {
             deleteMutation.mutate(deleteId)

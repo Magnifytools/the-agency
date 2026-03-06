@@ -176,7 +176,7 @@ export function ContactList({ clientId }: Props) {
         open={!!deleteTarget}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
         title="Eliminar contacto"
-        description={`Se eliminara el contacto "${deleteTarget?.name}". Esta accion no se puede deshacer.`}
+        description={`Se eliminará el contacto "${deleteTarget?.name}". Esta acción no se puede deshacer.`}
         onConfirm={() => deleteTarget && deleteMut.mutate(deleteTarget.id)}
       />
     </div>

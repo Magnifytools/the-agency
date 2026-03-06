@@ -192,7 +192,7 @@ export function EvidenceList({ projectId, phases }: Props) {
         open={!!deleteTarget}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
         title="Eliminar evidencia"
-        description={`Se eliminara "${deleteTarget?.title}". Esta accion no se puede deshacer.`}
+        description={`Se eliminará "${deleteTarget?.title}". Esta acción no se puede deshacer.`}
         onConfirm={() => deleteTarget && deleteMut.mutate(deleteTarget.id)}
       />
     </div>
@@ -263,7 +263,7 @@ function EvidenceForm({
         </Select>
       </div>
       <div>
-        <Label>Descripcion</Label>
+        <Label>Descripción</Label>
         <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Contexto o notas sobre esta evidencia..." rows={2} />
       </div>
       <div className="flex justify-end gap-2">

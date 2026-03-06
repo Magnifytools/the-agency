@@ -164,7 +164,7 @@ export default function FinanceDashboardPage() {
       {upcomingDeadlines.length > 0 && (
         <Card className="p-5">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Calendar className="h-5 w-5" />Proximos vencimientos
+            <Calendar className="h-5 w-5" />Próximos vencimientos
           </h2>
           <div className="space-y-2">
             {upcomingDeadlines.map((d: Record<string, unknown>, i: number) => (

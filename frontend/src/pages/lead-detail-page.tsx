@@ -363,7 +363,7 @@ export default function LeadDetailPage() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Proximo followup</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Próximo followup</p>
                 <Button variant="ghost" size="sm" onClick={() => {
                   setFollowupDate(lead.next_followup_date || "")
                   setFollowupNotes(lead.next_followup_notes || "")
@@ -446,7 +446,7 @@ export default function LeadDetailPage() {
               />
             </div>
             <div>
-              <Label>Descripcion</Label>
+              <Label>Descripción</Label>
               <Textarea
                 value={activityForm.description}
                 onChange={(e) => setActivityForm({ ...activityForm, description: e.target.value })}

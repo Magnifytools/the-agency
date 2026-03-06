@@ -51,17 +51,17 @@ export default function ForecastsPage() {
 
   const createMut = useMutation({
     mutationFn: (data: ForecastCreate) => financeForecastsApi.create(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-forecasts"] }); setDialogOpen(false); setEditing(null); toast.success("Prevision creada") },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-forecasts"] }); setDialogOpen(false); setEditing(null); toast.success("Previsión creada") },
   })
 
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<ForecastCreate> }) => financeForecastsApi.update(id, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-forecasts"] }); setDialogOpen(false); setEditing(null); toast.success("Prevision actualizada") },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-forecasts"] }); setDialogOpen(false); setEditing(null); toast.success("Previsión actualizada") },
   })
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => financeForecastsApi.delete(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-forecasts"] }); setDeleteId(null); toast.success("Prevision eliminada") },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-forecasts"] }); setDeleteId(null); toast.success("Previsión eliminada") },
   })
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -119,7 +119,7 @@ export default function ForecastsPage() {
 
       {vsActual.length > 0 && (
         <div>
-          <h2 className="text-lg font-semibold mb-3">Prevision vs Real</h2>
+          <h2 className="text-lg font-semibold mb-3">Previsión vs Real</h2>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -191,7 +191,7 @@ export default function ForecastsPage() {
       )}
 
       <Dialog open={dialogOpen} onOpenChange={() => { setDialogOpen(false); setEditing(null) }}>
-        <DialogHeader><DialogTitle>{editing ? "Editar prevision" : "Nueva prevision"}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{editing ? "Editar previsión" : "Nueva previsión"}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div><Label>Mes</Label><Input name="month" type="month" defaultValue={editing?.month?.slice(0, 7) || ""} required /></div>
           <div className="grid grid-cols-2 gap-4">
@@ -211,7 +211,7 @@ export default function ForecastsPage() {
         </form>
       </Dialog>
 
-      <ConfirmDialog open={deleteId !== null} title="Eliminar prevision" description="Esta accion no se puede deshacer."
+      <ConfirmDialog open={deleteId !== null} title="Eliminar previsión" description="Esta acción no se puede deshacer."
         onConfirm={() => deleteId && deleteMut.mutate(deleteId)} onOpenChange={() => setDeleteId(null)} />
     </div>
   )

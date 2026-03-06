@@ -206,7 +206,7 @@ export default function ExpensesPage() {
       <ConfirmDialog
         open={deleteId !== null}
         title="Eliminar gasto"
-        description="Esta accion no se puede deshacer."
+        description="Esta acción no se puede deshacer."
         onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
         onOpenChange={() => setDeleteId(null)}
       />

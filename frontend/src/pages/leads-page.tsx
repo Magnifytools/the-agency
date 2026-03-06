@@ -667,7 +667,7 @@ function CreateLeadDialog({
               </div>
             )}
             <div>
-              <Label>Proximo followup</Label>
+              <Label>Próximo followup</Label>
               <Input
                 type="date"
                 value={form.next_followup_date || ""}

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class InvitationCreate(BaseModel):
@@ -30,7 +30,7 @@ class InvitationCreateResponse(InvitationResponse):
 class AcceptInvitationRequest(BaseModel):
     token: str
     full_name: str
-    password: str
+    password: str = Field(min_length=8, max_length=128)
 
 
 class PermissionItem(BaseModel):

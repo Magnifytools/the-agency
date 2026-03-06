@@ -170,7 +170,7 @@ export function ResourceList({ clientId }: Props) {
         open={!!deleteTarget}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
         title="Eliminar recurso"
-        description={`Se eliminara el recurso "${deleteTarget?.label}". Esta accion no se puede deshacer.`}
+        description={`Se eliminará el recurso "${deleteTarget?.label}". Esta acción no se puede deshacer.`}
         onConfirm={() => deleteTarget && deleteMut.mutate(deleteTarget.id)}
       />
     </div>
@@ -229,7 +229,7 @@ function ResourceForm({
       </div>
       <div>
         <Label>Notas</Label>
-        <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Descripcion o contexto del recurso..." />
+        <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Descripción o contexto del recurso..." />
       </div>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onCancel}>Cancelar</Button>

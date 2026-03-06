@@ -61,7 +61,7 @@ export function EngineMetricsWidget({ client }: Props) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">Pendiente de sincronizacion</p>
+          <p className="text-sm text-muted-foreground">Pendiente de sincronización</p>
         </CardContent>
       </Card>
     )

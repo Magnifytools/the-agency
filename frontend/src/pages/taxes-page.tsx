@@ -222,7 +222,7 @@ export default function TaxesPage() {
         </form>
       </Dialog>
 
-      <ConfirmDialog open={deleteId !== null} title="Eliminar impuesto" description="Esta accion no se puede deshacer."
+      <ConfirmDialog open={deleteId !== null} title="Eliminar impuesto" description="Esta acción no se puede deshacer."
         onConfirm={() => deleteId && deleteMut.mutate(deleteId)} onOpenChange={() => setDeleteId(null)} />
     </div>
   )

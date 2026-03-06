@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Literal, Optional
 from datetime import date, datetime
 from pydantic import BaseModel
 
@@ -30,7 +30,7 @@ class AdvisorTaskResponse(BaseModel):
     source_key: str
     title: str
     description: str
-    status: str
+    status: Literal["open", "done"]
     priority: str
     due_date: Optional[date] = None
     created_at: datetime

@@ -239,7 +239,7 @@ class User(TimestampMixin, Base):
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=False)
     role = Column(Enum(UserRole), nullable=False, default=UserRole.member)
-    hourly_rate = Column(Float, nullable=True)
+    hourly_rate = Column(Numeric(10, 2), nullable=True)
     weekly_hours = Column(Float, nullable=False, default=40.0)
     is_active = Column(Boolean, nullable=False, default=True)
     invited_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
@@ -259,13 +259,13 @@ class Client(TimestampMixin, Base):
     company = Column(String(255), nullable=True)
     website = Column(String(255), nullable=True)
     contract_type = Column(Enum(ContractType), nullable=False, default=ContractType.monthly)
-    monthly_budget = Column(Float, nullable=True)
+    monthly_budget = Column(Numeric(12, 2), nullable=True)
     status = Column(Enum(ClientStatus), nullable=False, default=ClientStatus.active)
     notes = Column(Text, nullable=True)
     # Financial fields (from GF)
     cif = Column(String(50), nullable=True)
     currency = Column(String(10), nullable=False, default="EUR")
-    monthly_fee = Column(Float, nullable=True)
+    monthly_fee = Column(Numeric(12, 2), nullable=True)
     # Holded integration
     holded_contact_id = Column(String(100), nullable=True)
     vat_number = Column(String(50), nullable=True)
@@ -330,7 +330,7 @@ class Project(TimestampMixin, Base):
     status = Column(Enum(ProjectStatus), nullable=False, default=ProjectStatus.active)
     progress_percent = Column(Integer, nullable=False, default=0)
     budget_hours = Column(Float, nullable=True)
-    budget_amount = Column(Float, nullable=True)
+    budget_amount = Column(Numeric(12, 2), nullable=True)
     gsc_url = Column(String(255), nullable=True)
     ga4_property_id = Column(String(50), nullable=True)
     is_recurring = Column(Boolean, nullable=False, default=False)
@@ -431,7 +431,7 @@ class Proposal(TimestampMixin, Base):
     converted_project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
 
     # Legacy fields (kept for backward compat)
-    budget = Column(Float, nullable=True)
+    budget = Column(Numeric(12, 2), nullable=True)
     scope = Column(Text, nullable=True)
 
     # Relaciones
@@ -599,7 +599,7 @@ class BillingEvent(TimestampMixin, Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
     event_type = Column(Enum(BillingEventType), nullable=False)
-    amount = Column(Float, nullable=True)
+    amount = Column(Numeric(12, 2), nullable=True)
     invoice_number = Column(String(100), nullable=True)
     notes = Column(Text, nullable=True)
     event_date = Column(Date, nullable=False)
@@ -721,9 +721,9 @@ class FinancialSettings(TimestampMixin, Base):
     __tablename__ = "financial_settings"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    tax_reserve = Column(Float, nullable=False, default=0)
-    credit_limit = Column(Float, nullable=False, default=0)
-    credit_used = Column(Float, nullable=False, default=0)
+    tax_reserve = Column(Numeric(12, 2), nullable=False, default=0)
+    credit_limit = Column(Numeric(12, 2), nullable=False, default=0)
+    credit_used = Column(Numeric(12, 2), nullable=False, default=0)
     monthly_close_day = Column(Integer, nullable=False, default=5)
     credit_alert_pct = Column(Float, nullable=False, default=70)
     tax_reserve_target_pct = Column(Float, nullable=False, default=20)
@@ -731,7 +731,7 @@ class FinancialSettings(TimestampMixin, Base):
     default_vat_rate = Column(Float, nullable=False, default=21.0)
     corporate_tax_rate = Column(Float, nullable=False, default=25.0)
     irpf_retention_rate = Column(Float, nullable=False, default=15.0)
-    cash_start = Column(Float, nullable=False, default=0.0)
+    cash_start = Column(Numeric(12, 2), nullable=False, default=0.0)
     # Advisor thresholds
     advisor_expense_alert_pct = Column(Float, nullable=False, default=20.0)
     advisor_margin_warning_pct = Column(Float, nullable=False, default=10.0)
@@ -990,9 +990,9 @@ class Tax(TimestampMixin, Base):
     model = Column(String(50), nullable=False, default="")  # 303, 200, 111, 115
     period = Column(String(50), nullable=False, default="")  # Q1, Q2, Q3, Q4, anual
     year = Column(Integer, nullable=False)
-    base_amount = Column(Float, nullable=False, default=0.0)
+    base_amount = Column(Numeric(12, 2), nullable=False, default=0.0)
     tax_rate = Column(Float, nullable=False, default=0.0)
-    tax_amount = Column(Float, nullable=False, default=0.0)
+    tax_amount = Column(Numeric(12, 2), nullable=False, default=0.0)
     status = Column(String(50), nullable=False, default="pendiente")  # pendiente, pagado, aplazado
     due_date = Column(Date, nullable=True)
     paid_date = Column(Date, nullable=True)
@@ -1004,10 +1004,10 @@ class Forecast(TimestampMixin, Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     month = Column(Date, nullable=False)
-    projected_income = Column(Float, nullable=False, default=0.0)
-    projected_expenses = Column(Float, nullable=False, default=0.0)
-    projected_taxes = Column(Float, nullable=False, default=0.0)
-    projected_profit = Column(Float, nullable=False, default=0.0)
+    projected_income = Column(Numeric(12, 2), nullable=False, default=0.0)
+    projected_expenses = Column(Numeric(12, 2), nullable=False, default=0.0)
+    projected_taxes = Column(Numeric(12, 2), nullable=False, default=0.0)
+    projected_profit = Column(Numeric(12, 2), nullable=False, default=0.0)
     confidence = Column(Float, nullable=False, default=0.5)
     notes = Column(Text, nullable=False, default="")
 
@@ -1199,7 +1199,7 @@ class AgencyAsset(TimestampMixin, Base):
     monthly_cost = Column(Numeric(10, 2))
     # Credentials (tools + emails)
     username = Column(String(200))        # login email / user for the tool
-    password = Column(String(500))        # password (stored plain, vault is admin-only)
+    password = Column(String(500))        # password (encrypted with Fernet via security.py; vault is admin-only)
     is_active = Column(Boolean)           # Activa: True/False/None
     subscription_type = Column(String(50))  # Gratuita, Mensual, Anual, etc.
     purpose = Column(String(200))         # Uso: Contacto general, Cuentas herramientas...
@@ -1220,7 +1220,7 @@ class BalanceSnapshot(TimestampMixin, Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     date = Column(Date, nullable=False)
-    amount = Column(Float, nullable=False)
+    amount = Column(Numeric(12, 2), nullable=False)
     notes = Column(Text, nullable=False, default="")
 
 

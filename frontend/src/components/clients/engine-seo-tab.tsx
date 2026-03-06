@@ -156,7 +156,7 @@ export function EngineSeoTab({ client }: Props) {
         <CardContent className="p-6">
           <div className="text-center space-y-4 py-8">
             <Globe className="h-12 w-12 mx-auto text-muted-foreground" />
-            <p className="text-muted-foreground">Datos pendientes de sincronizacion</p>
+            <p className="text-muted-foreground">Datos pendientes de sincronización</p>
             <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
               <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
               Sincronizar ahora
@@ -303,8 +303,8 @@ export function EngineSeoTab({ client }: Props) {
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>
           {client.engine_metrics_synced_at
-            ? `Ultima sincronizacion: ${formatTimeAgo(client.engine_metrics_synced_at)}`
-            : "Sin datos de sincronizacion"}
+            ? `Última sincronización: ${formatTimeAgo(client.engine_metrics_synced_at)}`
+            : "Sin datos de sincronización"}
         </span>
         <Button variant="ghost" size="sm" onClick={handleRefresh} disabled={refreshing}>
           <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${refreshing ? "animate-spin" : ""}`} />

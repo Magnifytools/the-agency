@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import os
 from typing import Optional
 from urllib.parse import quote
 
@@ -33,7 +34,7 @@ router = APIRouter(prefix="/api/clients", tags=["clients"])
 async def list_clients(
     status_filter: Optional[ClientStatus] = Query(None, alias="status"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=1, le=1000),
+    page_size: int = Query(25, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients")),
 ):
@@ -372,6 +373,15 @@ async def upload_document(
         "text/plain", "text/csv",
         "application/zip",
     }
+    _ALLOWED_EXTENSIONS = {
+        ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp",
+        ".doc", ".docx", ".xls", ".xlsx",
+        ".txt", ".csv", ".zip",
+    }
+    filename = file.filename or ""
+    ext = os.path.splitext(filename.lower())[1]
+    if ext not in _ALLOWED_EXTENSIONS:
+        raise HTTPException(400, f"Extensión no permitida: {ext or '(sin extensión)'}")
     if file.content_type and file.content_type not in _ALLOWED_MIME_TYPES:
         raise HTTPException(400, f"Tipo de archivo no permitido: {file.content_type}")
     content = await file.read()

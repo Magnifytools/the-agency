@@ -169,10 +169,33 @@ async def _ensure_columns():
         "ALTER TABLE expenses ALTER COLUMN vat_amount TYPE NUMERIC(12,2)",
         "ALTER TABLE invoices ALTER COLUMN amount TYPE NUMERIC(12,2)",
         "ALTER TABLE invoice_items ALTER COLUMN unit_price TYPE NUMERIC(12,2)",
+        # M1 round 2: remaining monetary Float fields
+        "ALTER TABLE users ALTER COLUMN hourly_rate TYPE NUMERIC(10,2)",
+        "ALTER TABLE clients ALTER COLUMN monthly_budget TYPE NUMERIC(12,2)",
+        "ALTER TABLE clients ALTER COLUMN monthly_fee TYPE NUMERIC(12,2)",
+        "ALTER TABLE projects ALTER COLUMN budget_amount TYPE NUMERIC(12,2)",
+        "ALTER TABLE proposals ALTER COLUMN budget TYPE NUMERIC(12,2)",
+        "ALTER TABLE billing_events ALTER COLUMN amount TYPE NUMERIC(12,2)",
+        "ALTER TABLE financial_settings ALTER COLUMN tax_reserve TYPE NUMERIC(12,2)",
+        "ALTER TABLE financial_settings ALTER COLUMN credit_limit TYPE NUMERIC(12,2)",
+        "ALTER TABLE financial_settings ALTER COLUMN credit_used TYPE NUMERIC(12,2)",
+        "ALTER TABLE financial_settings ALTER COLUMN cash_start TYPE NUMERIC(12,2)",
+        "ALTER TABLE taxes ALTER COLUMN base_amount TYPE NUMERIC(12,2)",
+        "ALTER TABLE taxes ALTER COLUMN tax_amount TYPE NUMERIC(12,2)",
+        "ALTER TABLE forecasts ALTER COLUMN projected_income TYPE NUMERIC(12,2)",
+        "ALTER TABLE forecasts ALTER COLUMN projected_expenses TYPE NUMERIC(12,2)",
+        "ALTER TABLE forecasts ALTER COLUMN projected_taxes TYPE NUMERIC(12,2)",
+        "ALTER TABLE forecasts ALTER COLUMN projected_profit TYPE NUMERIC(12,2)",
+        "ALTER TABLE balance_snapshots ALTER COLUMN amount TYPE NUMERIC(12,2)",
     ]
     async with engine.begin() as conn:
         for sql in stmts:
             await conn.execute(text(sql))
+
+
+def _log_task_error(t: asyncio.Task) -> None:
+    if not t.cancelled() and (exc := t.exception()):
+        logging.error("Background task %s failed: %s", t.get_name(), exc)
 
 
 @asynccontextmanager
@@ -180,11 +203,13 @@ async def lifespan(app: FastAPI):
     await _ensure_columns()
     task = None
     if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL:
-        task = asyncio.create_task(_engine_sync_loop())
+        task = asyncio.create_task(_engine_sync_loop(), name="engine-sync")
+        task.add_done_callback(_log_task_error)
         logging.info("Engine sync started (interval: %dh)", settings.ENGINE_SYNC_INTERVAL_HOURS)
     holded_task = None
     if settings.HOLDED_API_KEY:
-        holded_task = asyncio.create_task(_holded_sync_loop())
+        holded_task = asyncio.create_task(_holded_sync_loop(), name="holded-sync")
+        holded_task.add_done_callback(_log_task_error)
         logging.info("Holded auto-sync started (every 6h).")
     logging.info("Startup ready.")
     yield
@@ -192,6 +217,12 @@ async def lifespan(app: FastAPI):
         task.cancel()
         try:
             await task
+        except asyncio.CancelledError:
+            pass
+    if holded_task:
+        holded_task.cancel()
+        try:
+            await holded_task
         except asyncio.CancelledError:
             pass
 
