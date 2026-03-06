@@ -92,7 +92,7 @@ export function InboxWidget() {
                             <div className="p-4 rounded-full bg-muted/50 border border-border border-dashed">
                                 <InboxIcon className="w-6 h-6 opacity-40" />
                             </div>
-                            <p className="text-sm">Inbox vacio. Pulsa ⌘J para capturar</p>
+                            <p className="text-sm">Inbox vacío. Pulsa ⌘J para capturar</p>
                         </div>
                     ) : (
                         inboxNotes.map((note: InboxNote) => (

@@ -132,7 +132,7 @@ export default function IndustryNewsPage() {
           <h3 className="text-lg font-semibold mb-1">Sin noticias</h3>
           <p className="text-muted-foreground text-sm">
             {isAdmin
-              ? "Crea la primera noticia del sector para que se incluya automaticamente en los informes mensuales."
+              ? "Crea la primera noticia del sector para que se incluya automáticamente en los informes mensuales."
               : "No hay noticias del sector registradas aun."}
           </p>
         </Card>

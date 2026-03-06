@@ -25,7 +25,7 @@ const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
   { key: "resumen", label: "Resumen", icon: TrendingUp },
   { key: "facturas", label: "Facturas", icon: FileText },
   { key: "gastos", label: "Gastos", icon: Receipt },
-  { key: "config", label: "Configuracion", icon: Settings },
+  { key: "config", label: "Configuración", icon: Settings },
 ]
 
 function formatCurrency(v: number, currency = "EUR") {

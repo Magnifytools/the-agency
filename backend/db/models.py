@@ -661,7 +661,7 @@ class Invoice(TimestampMixin, Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     invoice_number = Column(String(50), unique=True, nullable=False)
-    amount = Column(Float, nullable=False)
+    amount = Column(Numeric(12, 2), nullable=False)
     issued_date = Column(DateTime, nullable=False, default=func.now())
     paid = Column(Boolean, nullable=False, default=False)
     notes = Column(Text, nullable=True)
@@ -677,7 +677,7 @@ class InvoiceItem(TimestampMixin, Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     description = Column(String(255), nullable=False)
     quantity = Column(Float, nullable=False, default=1)
-    unit_price = Column(Float, nullable=False)
+    unit_price = Column(Numeric(12, 2), nullable=False)
 
     invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
     task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
@@ -950,12 +950,12 @@ class Income(TimestampMixin, Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     date = Column(Date, nullable=False)
     description = Column(String(255), nullable=False)
-    amount = Column(Float, nullable=False)
+    amount = Column(Numeric(12, 2), nullable=False)
     type = Column(String(50), nullable=False, default="factura")  # factura, recurrente, extra
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
     invoice_number = Column(String(100), nullable=False, default="")
     vat_rate = Column(Float, nullable=False, default=21.0)
-    vat_amount = Column(Float, nullable=False, default=0.0)
+    vat_amount = Column(Numeric(12, 2), nullable=False, default=0.0)
     status = Column(String(50), nullable=False, default="cobrado")  # pendiente, cobrado
     notes = Column(Text, nullable=False, default="")
     due_date = Column(Date, nullable=True)
@@ -969,12 +969,12 @@ class Expense(TimestampMixin, Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     date = Column(Date, nullable=False)
     description = Column(String(255), nullable=False)
-    amount = Column(Float, nullable=False)
+    amount = Column(Numeric(12, 2), nullable=False)
     category_id = Column(Integer, ForeignKey("expense_categories.id"), nullable=True, index=True)
     is_recurring = Column(Boolean, nullable=False, default=False)
     recurrence_period = Column(String(50), nullable=False, default="")  # mensual, trimestral, anual
     vat_rate = Column(Float, nullable=False, default=21.0)
-    vat_amount = Column(Float, nullable=False, default=0.0)
+    vat_amount = Column(Numeric(12, 2), nullable=False, default=0.0)
     is_deductible = Column(Boolean, nullable=False, default=True)
     supplier = Column(String(255), nullable=False, default="")
     notes = Column(Text, nullable=False, default="")

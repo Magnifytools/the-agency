@@ -162,6 +162,13 @@ async def _ensure_columns():
         "CREATE INDEX IF NOT EXISTS ix_inbox_notes_user_id ON inbox_notes (user_id)",
         "CREATE INDEX IF NOT EXISTS ix_inbox_notes_project_id ON inbox_notes (project_id)",
         "CREATE INDEX IF NOT EXISTS ix_inbox_notes_client_id ON inbox_notes (client_id)",
+        # M1: Migrate monetary Float columns to Numeric(12,2) for precision
+        "ALTER TABLE income ALTER COLUMN amount TYPE NUMERIC(12,2)",
+        "ALTER TABLE income ALTER COLUMN vat_amount TYPE NUMERIC(12,2)",
+        "ALTER TABLE expenses ALTER COLUMN amount TYPE NUMERIC(12,2)",
+        "ALTER TABLE expenses ALTER COLUMN vat_amount TYPE NUMERIC(12,2)",
+        "ALTER TABLE invoices ALTER COLUMN amount TYPE NUMERIC(12,2)",
+        "ALTER TABLE invoice_items ALTER COLUMN unit_price TYPE NUMERIC(12,2)",
     ]
     async with engine.begin() as conn:
         for sql in stmts:

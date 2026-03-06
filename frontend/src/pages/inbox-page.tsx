@@ -47,7 +47,7 @@ export default function InboxPage() {
           <div>
             <h1 className="text-xl font-bold text-foreground">Inbox</h1>
             <p className="text-sm text-muted-foreground">
-              {activeCount > 0 ? `${activeCount} por procesar` : "Todo al dia"}
+              {activeCount > 0 ? `${activeCount} por procesar` : "Todo al día"}
             </p>
           </div>
         </div>
@@ -87,11 +87,11 @@ export default function InboxPage() {
           </div>
           <div className="text-center">
             <p className="font-medium">
-              {activeTab === "active" ? "Inbox vacio" : "Sin notas"}
+              {activeTab === "active" ? "Inbox vacío" : "Sin notas"}
             </p>
             <p className="text-sm mt-1">
               {activeTab === "active"
-                ? "Pulsa ⌘J para capturar algo rapido"
+                ? "Pulsa ⌘J para capturar algo rápido"
                 : "No hay notas en este filtro"}
             </p>
           </div>

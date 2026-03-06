@@ -105,7 +105,7 @@ export function ClientDashboardTab({ client }: Props) {
               {dash.tasks_overdue === 0 && dash.tasks_due_this_week === 0 && (
                 <div className="flex items-center gap-1">
                   <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  <span className="text-xs text-green-500">Al dia</span>
+                  <span className="text-xs text-green-500">Al día</span>
                 </div>
               )}
             </div>

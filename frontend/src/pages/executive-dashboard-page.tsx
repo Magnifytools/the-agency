@@ -276,7 +276,7 @@ export default function ExecutiveDashboardPage() {
               icon={Target}
               label="Pipeline"
               value={fmt(pipeline.total_value)}
-              subtitle={`${pipeline.total_leads} leads`}
+              subtitle={`${pipeline.total_leads} ${pipeline.total_leads === 1 ? "lead" : "leads"}`}
               tooltip="Valor total de leads activos en el pipeline"
             />
           </Link>

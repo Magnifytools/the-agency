@@ -608,7 +608,7 @@ function AssetCard({
             {asset.provider && <Badge variant="outline">{asset.provider}</Badge>}
             {asset.hosting_type && <Badge variant="secondary">{asset.hosting_type}</Badge>}
             {asset.monthly_cost != null && (
-              <Badge variant="default">{Number(asset.monthly_cost).toFixed(2)} /mes</Badge>
+              <Badge variant="default">{Number(asset.monthly_cost).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /mes</Badge>
             )}
           </>
         )}
@@ -621,7 +621,7 @@ function AssetCard({
             {asset.subscription_type && <Badge variant="secondary">{asset.subscription_type}</Badge>}
             {asset.tool_category && <Badge variant="outline">{asset.tool_category}</Badge>}
             {asset.monthly_cost != null && (
-              <Badge variant="default">{Number(asset.monthly_cost).toFixed(2)} /mes</Badge>
+              <Badge variant="default">{Number(asset.monthly_cost).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /mes</Badge>
             )}
           </>
         )}

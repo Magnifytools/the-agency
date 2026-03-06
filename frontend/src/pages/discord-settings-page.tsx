@@ -37,7 +37,7 @@ export default function DiscordSettingsPage() {
     mutationFn: (data: Partial<DiscordSettings>) => discordApi.updateSettings(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["discord-settings"] })
-      toast.success("Configuracion guardada")
+      toast.success("Configuración guardada")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al guardar")),
   })
@@ -86,7 +86,7 @@ export default function DiscordSettingsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Discord</h1>
-          <p className="text-muted-foreground">Configuracion de integracion con Discord</p>
+          <p className="text-muted-foreground">Configuración de integración con Discord</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -160,7 +160,7 @@ export default function DiscordSettingsPage() {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Crea un webhook en Discord: Configuracion del canal → Integraciones → Webhooks → Nuevo webhook
+              Crea un webhook en Discord: Configuración del canal → Integraciones → Webhooks → Nuevo webhook
             </p>
           </div>
         </CardContent>
@@ -180,7 +180,7 @@ export default function DiscordSettingsPage() {
               onChange={(e) => setAutoSendInput(e.target.checked)}
               className="h-4 w-4 rounded border-border"
             />
-            <Label htmlFor="auto-send">Enviar resumen diario automaticamente</Label>
+            <Label htmlFor="auto-send">Enviar resumen diario automáticamente</Label>
           </div>
 
           <div className="space-y-2">

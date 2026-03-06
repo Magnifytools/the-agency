@@ -73,7 +73,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
           <div className="p-1.5 bg-brand/10 rounded-lg">
             <Inbox className="w-4 h-4 text-brand" />
           </div>
-          Captura rapida
+          Captura rápida
           <kbd className="ml-auto text-[10px] font-mono text-muted-foreground/60 bg-muted px-1.5 py-0.5 rounded border border-border">
             ⌘J
           </kbd>
@@ -86,7 +86,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Escribe lo que necesitas capturar... La IA lo clasificara automaticamente."
+          placeholder="Escribe lo que necesitas capturar... La IA lo clasificará automáticamente."
           className="min-h-[100px] rounded-xl resize-none text-sm"
           disabled={createMutation.isPending}
         />
@@ -123,7 +123,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
         <div className="flex items-center justify-between text-[11px] text-muted-foreground/60">
           <span className="flex items-center gap-1">
             <Zap className="w-3 h-3" />
-            La IA clasificara la nota automaticamente
+            La IA clasificará la nota automáticamente
           </span>
           <kbd className="font-mono bg-muted px-1.5 py-0.5 rounded border border-border">
             ⌘↩ para enviar

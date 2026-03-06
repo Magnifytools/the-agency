@@ -18,7 +18,7 @@ export function ProfitabilityChart({ data }: ProfitabilityChartProps) {
         <XAxis dataKey="name" fontSize={11} tick={{ fill: "#8a8a80" }} />
         <YAxis fontSize={11} tickFormatter={(v) => `${v}€`} tick={{ fill: "#8a8a80" }} />
         <Tooltip
-          formatter={(value) => `${Number(value).toFixed(2)}€`}
+          formatter={(value) => Number(value).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
           contentStyle={{
             backgroundColor: "#2a2a28",
             border: "1px solid rgba(254, 230, 48, 0.3)",

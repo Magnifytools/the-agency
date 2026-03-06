@@ -155,7 +155,7 @@ export default function LeadsPage() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Pipeline</h2>
           <p className="text-muted-foreground text-sm mt-1">
-            {pipelineSummary ? `${pipelineSummary.total_leads} leads · ${formatValue(pipelineSummary.total_value)} pipeline` : "—"}
+            {pipelineSummary ? `${pipelineSummary.total_leads} ${pipelineSummary.total_leads === 1 ? "lead" : "leads"} · ${formatValue(pipelineSummary.total_value)} pipeline` : "—"}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -203,7 +203,7 @@ export default function LeadsPage() {
       {view === "kanban" && !isLoading && leads.length === 0 && (
         <EmptyState
           icon={Target}
-          title="Pipeline vacio"
+          title="Pipeline vacío"
           description="Registra tus primeros leads y sigue su progreso a traves del funnel de ventas. Arrastra las tarjetas entre columnas para avanzar etapas."
           actionLabel="Nuevo lead"
           onAction={() => setShowCreate(true)}
