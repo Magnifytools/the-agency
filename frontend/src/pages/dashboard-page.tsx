@@ -526,7 +526,7 @@ export default function DashboardPage() {
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-sm">Tareas en curso</CardTitle></CardHeader>
               <CardContent>
-                <Table>
+                <Table aria-label="Tareas en curso">
                   <TableHeader><TableRow><TableHead>Tarea</TableHead><TableHead>Cliente</TableHead><TableHead>Fecha límite</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {viewAsInProgress.map((t) => (
@@ -545,7 +545,7 @@ export default function DashboardPage() {
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-sm">Tareas pendientes</CardTitle></CardHeader>
               <CardContent>
-                <Table>
+                <Table aria-label="Tareas pendientes">
                   <TableHeader><TableRow><TableHead>Tarea</TableHead><TableHead>Cliente</TableHead><TableHead>Fecha límite</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {viewAsPending.map((t) => (
@@ -652,7 +652,7 @@ export default function DashboardPage() {
           <Card>
             <CardHeader><CardTitle>Rentabilidad por cliente</CardTitle></CardHeader>
             <CardContent className="pt-4">
-              <Table>
+              <Table aria-label="Rentabilidad por cliente">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Cliente</TableHead>

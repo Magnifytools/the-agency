@@ -996,6 +996,7 @@ class Tax(TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint("base_amount >= 0", name="ck_tax_base_amount_non_negative"),
         CheckConstraint("tax_amount >= 0", name="ck_tax_tax_amount_non_negative"),
+        CheckConstraint("status IN ('pendiente', 'pagado', 'aplazado')", name="ck_tax_status"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -1039,6 +1040,9 @@ class FinancialInsight(TimestampMixin, Base):
 
 class AdvisorTask(TimestampMixin, Base):
     __tablename__ = "advisor_tasks"
+    __table_args__ = (
+        CheckConstraint("status IN ('open', 'done')", name="ck_advisor_task_status"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     source_key = Column(String(255), unique=True, nullable=False)

@@ -156,7 +156,7 @@ export function AppLayout() {
 
       <div className="flex flex-1 overflow-hidden pb-[60px] md:pb-0">
         {/* Sidebar (Desktop) */}
-        <aside className="hidden md:flex w-[260px] flex-col flex-shrink-0 border-r border-border py-6 px-4 gap-6 bg-card/50">
+        <aside className="hidden md:flex w-[260px] flex-col flex-shrink-0 border-r border-border py-6 px-4 gap-6 bg-card/50" role="complementary" aria-label="Barra lateral">
           {/* Brand */}
           <div className="flex items-center gap-3 pl-1">
             <svg width="28" height="28" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
@@ -182,12 +182,13 @@ export function AppLayout() {
           </button>
 
           {/* Main Nav */}
-          <div className="flex flex-col gap-1.5 flex-1 overflow-y-auto min-h-0">
+          <nav className="flex flex-col gap-1.5 flex-1 overflow-y-auto min-h-0" role="navigation" aria-label="Menu principal">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">Workspace</p>
             {mainNav.map((item) => (
               <Link
                 key={item.to}
                 to={item.to}
+                aria-current={isActive(item.to) ? "page" : undefined}
                 className={cn(
                   "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
                   isActive(item.to)
@@ -211,6 +212,7 @@ export function AppLayout() {
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">Finanzas</p>
                 <Link
                   to="/finance-holded"
+                  aria-current={isActive("/finance-holded") ? "page" : undefined}
                   className={cn(
                     "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
                     isActive("/finance-holded")
@@ -229,6 +231,7 @@ export function AppLayout() {
                   <Link
                     key={item.to}
                     to={item.to}
+                    aria-current={isActive(item.to) ? "page" : undefined}
                     className={cn(
                       "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
                       isActive(item.to)
@@ -251,6 +254,7 @@ export function AppLayout() {
                   <Link
                     key={item.to}
                     to={item.to}
+                    aria-current={isActive(item.to) ? "page" : undefined}
                     className={cn(
                       "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
                       isActive(item.to)
@@ -273,6 +277,7 @@ export function AppLayout() {
                   <Link
                     key={item.to}
                     to={item.to}
+                    aria-current={isActive(item.to) ? "page" : undefined}
                     className={cn(
                       "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
                       isActive(item.to)
@@ -291,6 +296,7 @@ export function AppLayout() {
             <div className="mt-4">
               <Link
                 to="/settings"
+                aria-current={isActive("/settings") ? "page" : undefined}
                 className={cn(
                   "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
                   isActive("/settings")
@@ -302,7 +308,7 @@ export function AppLayout() {
                 Configuración
               </Link>
             </div>
-          </div>
+          </nav>
 
           {/* User info at bottom */}
           <div className="mt-auto border-t border-border pt-5 px-1">
@@ -326,17 +332,18 @@ export function AppLayout() {
         </aside>
 
         {/* Main content */}
-        <main id="main-content" className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 bg-background/50 relative">
+        <main id="main-content" role="main" className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 bg-background/50 relative">
           <Outlet />
         </main>
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-[60px] bg-card/95 backdrop-blur-md border-t border-border flex items-center justify-around px-2 z-50 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.3)]">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-[60px] bg-card/95 backdrop-blur-md border-t border-border flex items-center justify-around px-2 z-50 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.3)]" aria-label="Navegacion movil">
         {mobileNav.map((item) => (
           <Link
             key={item.to}
             to={item.to}
+            aria-current={isActive(item.to) || (item.to === "/finance" && location.pathname.startsWith("/finance")) ? "page" : undefined}
             className={cn(
               "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
               isActive(item.to) || (item.to === "/finance" && location.pathname.startsWith("/finance")) ? "text-brand" : "text-muted-foreground"

@@ -1,0 +1,95 @@
+import type { TaskStatus, TaskPriority } from "./common"
+
+export interface TaskCategory {
+  id: number
+  name: string
+  default_minutes: number
+  created_at: string
+  updated_at: string
+}
+
+export interface Task {
+  id: number
+  title: string
+  description: string | null
+  status: TaskStatus
+  priority: TaskPriority
+  estimated_minutes: number | null
+  actual_minutes: number | null
+  start_date: string | null
+  due_date: string | null
+  client_id: number
+  category_id: number | null
+  assigned_to: number | null
+  project_id: number | null
+  phase_id: number | null
+  is_inbox: boolean
+  depends_on: number | null
+  created_at: string
+  updated_at: string
+  client_name: string | null
+  category_name: string | null
+  assigned_user_name: string | null
+  project_name: string | null
+  phase_name: string | null
+  dependency_title: string | null
+  checklist_count: number
+}
+
+export interface ChecklistItem {
+  id: number
+  task_id: number
+  text: string
+  is_done: boolean
+  order_index: number
+  created_at: string
+  updated_at: string
+}
+
+export interface TaskCreate {
+  title: string
+  description?: string | null
+  status?: TaskStatus
+  priority?: TaskPriority
+  estimated_minutes?: number | null
+  actual_minutes?: number | null
+  start_date?: string | null
+  due_date?: string | null
+  client_id: number
+  category_id?: number | null
+  assigned_to?: number | null
+  project_id?: number | null
+  phase_id?: number | null
+  depends_on?: number | null
+  is_inbox?: boolean
+}
+
+// Time Entries
+export interface TimeEntry {
+  id: number
+  minutes: number | null
+  started_at: string | null
+  date: string
+  notes: string | null
+  task_id: number | null
+  user_id: number
+  created_at: string
+  updated_at: string
+  task_title: string | null
+  client_name: string | null
+}
+
+export interface TimeEntryCreate {
+  minutes: number
+  task_id: number | null
+  notes?: string | null
+  date?: string | null
+}
+
+export interface ActiveTimer {
+  id: number
+  task_id: number | null
+  task_title: string | null
+  client_name: string | null
+  started_at: string
+}
