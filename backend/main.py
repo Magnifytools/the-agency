@@ -89,7 +89,6 @@ async def _ensure_columns():
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_impressions_30d INTEGER",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_metrics_synced_at TIMESTAMPTZ",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS engine_project_id INTEGER",
-        # Revenue intelligence fields
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS business_model VARCHAR(50)",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS aov DOUBLE PRECISION",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS conversion_rate DOUBLE PRECISION",
@@ -103,10 +102,8 @@ async def _ensure_columns():
         "CREATE INDEX IF NOT EXISTS ix_agency_assets_category ON agency_assets (category)",
         "CREATE TABLE IF NOT EXISTS industry_news (id SERIAL PRIMARY KEY, title VARCHAR(300) NOT NULL, content TEXT, url VARCHAR(500), published_date DATE NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN NOT NULL DEFAULT FALSE",
-        # Unique partial index to prevent concurrent active timers per user
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_one_active_timer ON time_entries (user_id) WHERE minutes IS NULL",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_internal BOOLEAN NOT NULL DEFAULT FALSE",
-        # Composite indexes for hot query patterns
         "CREATE INDEX IF NOT EXISTS ix_tasks_client_status ON tasks (client_id, status)",
         "CREATE INDEX IF NOT EXISTS ix_tasks_project_status ON tasks (project_id, status)",
         "CREATE INDEX IF NOT EXISTS ix_time_entries_task_date ON time_entries (task_id, date DESC)",
@@ -125,15 +122,12 @@ async def _ensure_columns():
     updated_at TIMESTAMPTZ DEFAULT NOW()
 )""",
         "CREATE INDEX IF NOT EXISTS ix_client_documents_client_id ON client_documents(client_id)",
-        # Agency Vault credential fields
         "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS username VARCHAR(200)",
         "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS password VARCHAR(500)",
         "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS is_active BOOLEAN",
         "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS subscription_type VARCHAR(50)",
         "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS purpose VARCHAR(200)",
-        # Income due_date for overdue alerts
         "ALTER TABLE income ADD COLUMN IF NOT EXISTS due_date DATE",
-        # Balance snapshots for manual bank balance tracking
         """CREATE TABLE IF NOT EXISTS balance_snapshots (
     id SERIAL PRIMARY KEY,
     date DATE NOT NULL,
@@ -142,12 +136,10 @@ async def _ensure_columns():
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )""",
-        # User preferences (keyboard shortcuts, etc.)
+        # Sentinel column — MUST remain last ADD COLUMN so the fast-path check above works
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT '{}'",
-        # Lead pipeline fields
         "ALTER TABLE leads ADD COLUMN IF NOT EXISTS estimated_close_date DATE",
         "ALTER TABLE leads ADD COLUMN IF NOT EXISTS probability INTEGER",
-        # Task checklists
         """CREATE TABLE IF NOT EXISTS task_checklists (
     id SERIAL PRIMARY KEY,
     task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -158,7 +150,6 @@ async def _ensure_columns():
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )""",
         "CREATE INDEX IF NOT EXISTS ix_task_checklists_task_id ON task_checklists (task_id)",
-        # Inbox notes (quick-capture) — enum type must use DO block (no IF NOT EXISTS syntax)
         "DO $$ BEGIN CREATE TYPE inboxnotestatus AS ENUM ('pending','classified','processed','dismissed'); EXCEPTION WHEN duplicate_object THEN NULL; END $$",
         """CREATE TABLE IF NOT EXISTS inbox_notes (
     id SERIAL PRIMARY KEY,
@@ -177,14 +168,12 @@ async def _ensure_columns():
         "CREATE INDEX IF NOT EXISTS ix_inbox_notes_user_id ON inbox_notes (user_id)",
         "CREATE INDEX IF NOT EXISTS ix_inbox_notes_project_id ON inbox_notes (project_id)",
         "CREATE INDEX IF NOT EXISTS ix_inbox_notes_client_id ON inbox_notes (client_id)",
-        # M1: Migrate monetary Float columns to Numeric(12,2) for precision
         "ALTER TABLE income ALTER COLUMN amount TYPE NUMERIC(12,2)",
         "ALTER TABLE income ALTER COLUMN vat_amount TYPE NUMERIC(12,2)",
         "ALTER TABLE expenses ALTER COLUMN amount TYPE NUMERIC(12,2)",
         "ALTER TABLE expenses ALTER COLUMN vat_amount TYPE NUMERIC(12,2)",
         "ALTER TABLE invoices ALTER COLUMN amount TYPE NUMERIC(12,2)",
         "ALTER TABLE invoice_items ALTER COLUMN unit_price TYPE NUMERIC(12,2)",
-        # M1 round 2: remaining monetary Float fields
         "ALTER TABLE users ALTER COLUMN hourly_rate TYPE NUMERIC(10,2)",
         "ALTER TABLE clients ALTER COLUMN monthly_budget TYPE NUMERIC(12,2)",
         "ALTER TABLE clients ALTER COLUMN monthly_fee TYPE NUMERIC(12,2)",
@@ -205,7 +194,11 @@ async def _ensure_columns():
     ]
     async with engine.begin() as conn:
         for sql in stmts:
-            await conn.execute(text(sql))
+            try:
+                await conn.execute(text(sql))
+            except Exception as exc:
+                logging.warning("DDL statement failed (may be expected): %s — %s", sql[:80], exc)
+    logging.info("_ensure_columns DDL complete.")
 
 
 def _log_task_error(t: asyncio.Task) -> None:

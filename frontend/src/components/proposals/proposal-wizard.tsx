@@ -139,7 +139,7 @@ function RoiPreviewStep({ form }: { form: WizardForm }) {
     }
 
     if (loading) {
-        return <p className="text-sm text-muted-foreground text-center py-8">Calculando modelo de inversion...</p>
+        return <p className="text-sm text-muted-foreground text-center py-8">Calculando modelo de inversión...</p>
     }
 
     if (error) {
@@ -320,8 +320,8 @@ export function ProposalWizard({
                     ltv: form.ltv ? Number(form.ltv) : null,
                     seo_maturity_level: form.seo_maturity_level || null,
                 })
-            } catch {
-                // Non-blocking
+            } catch (err) {
+                console.error(err)
             }
         }
 
@@ -559,12 +559,12 @@ export function ProposalWizard({
                             <Textarea
                                 value={form.opportunity}
                                 onChange={(e) => setForm((prev) => ({ ...prev, opportunity: e.target.value }))}
-                                placeholder="Que puede ganar? Datos de mercado, competidores..."
+                                placeholder="¿Qué puede ganar? Datos de mercado, competidores..."
                                 className="min-h-[60px]"
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label>Enfoque / Que incluye</Label>
+                            <Label>Enfoque / Qué incluye</Label>
                             <Textarea
                                 value={form.approach}
                                 onChange={(e) => setForm((prev) => ({ ...prev, approach: e.target.value }))}
@@ -577,7 +577,7 @@ export function ProposalWizard({
                             <Textarea
                                 value={form.relevant_cases}
                                 onChange={(e) => setForm((prev) => ({ ...prev, relevant_cases: e.target.value }))}
-                                placeholder="Casos de exito similares que refuercen la propuesta..."
+                                placeholder="Casos de éxito similares que refuercen la propuesta..."
                                 className="min-h-[60px]"
                             />
                         </div>
@@ -590,14 +590,14 @@ export function ProposalWizard({
                         <div className="flex justify-between items-center">
                             <p className="text-sm text-muted-foreground">Define las opciones de precio. Marca una como recomendada.</p>
                             <Button size="sm" variant="outline" onClick={addPricingOption}>
-                                <Plus className="w-4 h-4 mr-1" /> Opcion
+                                <Plus className="w-4 h-4 mr-1" /> Opción
                             </Button>
                         </div>
 
                         {form.pricing_options.length === 0 && (
                             <div className="text-center py-8 text-muted-foreground">
                                 <Euro className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                                <p>No hay opciones de precio. Anade al menos una.</p>
+                                <p>No hay opciones de precio. Añade al menos una.</p>
                             </div>
                         )}
 
@@ -605,7 +605,7 @@ export function ProposalWizard({
                             <div key={i} className={`rounded-lg border p-4 space-y-3 ${opt.recommended ? "border-brand bg-brand/5" : "border-border"}`}>
                                 <div className="flex justify-between items-start">
                                     <div className="flex items-center gap-3">
-                                        <span className="text-sm font-medium">Opcion {i + 1}</span>
+                                        <span className="text-sm font-medium">Opción {i + 1}</span>
                                         <label className="flex items-center gap-1.5 text-xs cursor-pointer">
                                             <input
                                                 type="checkbox"
@@ -649,11 +649,11 @@ export function ProposalWizard({
                                     </div>
                                 </div>
                                 <div className="space-y-1">
-                                    <Label className="text-xs">Descripcion</Label>
+                                    <Label className="text-xs">Descripción</Label>
                                     <Input
                                         value={opt.description}
                                         onChange={(e) => updatePricing(i, "description", e.target.value)}
-                                        placeholder="Que incluye esta opcion?"
+                                        placeholder="¿Qué incluye esta opción?"
                                     />
                                 </div>
                                 <div className="space-y-1">
@@ -673,7 +673,7 @@ export function ProposalWizard({
                 {wizardStep === 4 && (
                     <div className="space-y-4">
                         <p className="text-sm text-muted-foreground">
-                            Vista previa del modelo de inversion calculado con los datos de Revenue (paso 2) y Pricing (paso 4).
+                            Vista previa del modelo de inversión calculado con los datos de Revenue (paso 2) y Pricing (paso 4).
                         </p>
                         <RoiPreviewStep form={form} />
                     </div>

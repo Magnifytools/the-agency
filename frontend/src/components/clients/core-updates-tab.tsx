@@ -233,7 +233,7 @@ export function CoreUpdatesTab({ client }: Props) {
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Metrica
+                Métrica
               </label>
               <select
                 value={metric}

@@ -99,10 +99,10 @@ export function ContactList({ clientId }: Props) {
                     </div>
                   </div>
                   <div className="flex gap-1 shrink-0">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditing(c); setShowForm(true) }}>
+                    <Button variant="ghost" size="icon" aria-label="Editar contacto" className="h-7 w-7" onClick={() => { setEditing(c); setShowForm(true) }}>
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteTarget(c)}>
+                    <Button variant="ghost" size="icon" aria-label="Eliminar contacto" className="h-7 w-7 text-destructive" onClick={() => setDeleteTarget(c)}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -238,7 +238,7 @@ function ContactForm({
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ana@empresa.com" />
         </div>
         <div>
-          <Label>Telefono</Label>
+          <Label>Teléfono</Label>
           <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+34 600 000 000" />
         </div>
         <div>

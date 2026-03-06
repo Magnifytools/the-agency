@@ -164,7 +164,8 @@ export default function ProposalsPage() {
         try {
             const draft = await proposalsApi.draftEmail(id)
             setAiDraft({ subject: draft.subject, body: draft.body })
-        } catch {
+        } catch (err) {
+            console.error(err)
             const p = proposals.find(pr => pr.id === id)
             if (p) {
                 const contact = p.contact_name || p.company_name
@@ -380,7 +381,7 @@ export default function ProposalsPage() {
                                 <Label className="text-xs text-muted-foreground">Asunto</Label>
                                 <div className="flex items-center gap-2 mt-1">
                                     <Input readOnly value={aiDraft.subject} className="font-medium" />
-                                    <Button variant="ghost" size="icon" className="shrink-0" onClick={() => { navigator.clipboard.writeText(aiDraft.subject); toast.success("Asunto copiado") }}>
+                                    <Button variant="ghost" size="icon" aria-label="Copiar asunto" className="shrink-0" onClick={() => { navigator.clipboard.writeText(aiDraft.subject); toast.success("Asunto copiado") }}>
                                         <Copy className="w-4 h-4" />
                                     </Button>
                                 </div>
@@ -389,7 +390,7 @@ export default function ProposalsPage() {
                                 <Label className="text-xs text-muted-foreground">Cuerpo</Label>
                                 <div className="relative mt-1">
                                     <Textarea readOnly value={aiDraft.body} rows={10} className="text-xs resize-none" />
-                                    <Button variant="ghost" size="icon" className="absolute top-1 right-1" onClick={() => { navigator.clipboard.writeText(aiDraft.body); toast.success("Texto copiado") }}>
+                                    <Button variant="ghost" size="icon" aria-label="Copiar cuerpo" className="absolute top-1 right-1" onClick={() => { navigator.clipboard.writeText(aiDraft.body); toast.success("Texto copiado") }}>
                                         <Copy className="w-4 h-4" />
                                     </Button>
                                 </div>

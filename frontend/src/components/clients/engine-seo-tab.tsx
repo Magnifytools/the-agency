@@ -124,7 +124,8 @@ export function EngineSeoTab({ client }: Props) {
       await engineApi.triggerSync()
       queryClient.invalidateQueries({ queryKey: ["client-summary", client.id] })
       toast.success("Sincronizado correctamente")
-    } catch {
+    } catch (err) {
+      console.error(err)
       toast.error("Error al sincronizar")
     } finally {
       setRefreshing(false)

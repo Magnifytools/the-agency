@@ -103,7 +103,7 @@ export function BillingTab({ client }: Props) {
         <Card className={status?.is_overdue ? "border-red-300 bg-red-50/10" : ""}>
           <CardContent className="p-4">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-              <CalendarClock className="h-3 w-3" /> Proxima factura
+              <CalendarClock className="h-3 w-3" /> Próxima factura
             </p>
             {status?.next_invoice_date ? (
               <>
@@ -184,12 +184,12 @@ export function BillingTab({ client }: Props) {
       {/* History */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Historial de facturacion</CardTitle>
+          <CardTitle className="text-base">Historial de facturación</CardTitle>
         </CardHeader>
         <CardContent>
           {events.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-6">
-              No hay eventos de facturacion registrados
+              No hay eventos de facturación registrados
             </p>
           ) : (
             <div className="space-y-3">
@@ -224,7 +224,7 @@ export function BillingTab({ client }: Props) {
       {/* Config Dialog */}
       <Dialog open={showConfig} onOpenChange={setShowConfig}>
         <DialogHeader>
-          <DialogTitle>Configurar facturacion</DialogTitle>
+          <DialogTitle>Configurar facturación</DialogTitle>
         </DialogHeader>
         <BillingConfigForm
           client={client}
@@ -279,7 +279,7 @@ function BillingConfigForm({ client, onSave }: { client: Client; onSave: () => v
     <form onSubmit={handleSubmit} className="space-y-4 p-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <Label>Ciclo de facturacion</Label>
+          <Label>Ciclo de facturación</Label>
           <Select
             value={cycle}
             onChange={(e) => setCycle(e.target.value as BillingCycle | "")}
@@ -291,7 +291,7 @@ function BillingConfigForm({ client, onSave }: { client: Client; onSave: () => v
           </Select>
         </div>
         <div>
-          <Label>Dia de facturacion (1-28)</Label>
+          <Label>Día de facturación (1-28)</Label>
           <Input
             type="number"
             min={1}
@@ -302,7 +302,7 @@ function BillingConfigForm({ client, onSave }: { client: Client; onSave: () => v
           />
         </div>
         <div className="sm:col-span-2">
-          <Label>Proxima fecha de facturacion</Label>
+          <Label>Próxima fecha de facturación</Label>
           <Input
             type="date"
             value={nextDate}

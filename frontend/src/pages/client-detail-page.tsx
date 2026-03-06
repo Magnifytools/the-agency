@@ -311,7 +311,7 @@ export default function ClientDetailPage() {
                 rel="noopener noreferrer"
                 title="Abrir en Engine"
               >
-                <Button variant="ghost" size="icon" className="h-7 w-7">
+                <Button variant="ghost" size="icon" aria-label="Abrir en Engine" className="h-7 w-7">
                   <ExternalLink className="h-4 w-4" />
                 </Button>
               </a>

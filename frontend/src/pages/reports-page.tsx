@@ -305,8 +305,8 @@ export default function ReportsPage() {
 
 const AUDIENCE_DESCRIPTIONS: Record<string, string> = {
   executive: "Alto nivel, ROI, progreso general. Sin detalles operativos.",
-  marketing: "Metricas detalladas, tendencias, comparativas.",
-  operational: "Tareas, timelines, blockers, asignaciones. Maximo detalle.",
+  marketing: "Métricas detalladas, tendencias, comparativas.",
+  operational: "Tareas, timelines, blockers, asignaciones. Máximo detalle.",
 }
 
 function GenerateReportDialog({
@@ -457,7 +457,7 @@ function GenerateReportDialog({
               value={period}
               onChange={(e) => setPeriod(e.target.value as ReportPeriod)}
             >
-              <option value="week">Ultima semana</option>
+              <option value="week">Última semana</option>
               <option value="month">Último mes</option>
             </Select>
           </div>

@@ -116,14 +116,14 @@ export function ResourceList({ clientId }: Props) {
                     </div>
                     <div className="flex gap-1 shrink-0">
                       <a href={r.url} target="_blank" rel="noopener noreferrer">
-                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                        <Button variant="ghost" size="icon" aria-label="Abrir enlace" className="h-7 w-7">
                           <ExternalLink className="h-3.5 w-3.5" />
                         </Button>
                       </a>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditing(r); setShowForm(true) }}>
+                      <Button variant="ghost" size="icon" aria-label="Editar recurso" className="h-7 w-7" onClick={() => { setEditing(r); setShowForm(true) }}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteTarget(r)}>
+                      <Button variant="ghost" size="icon" aria-label="Eliminar recurso" className="h-7 w-7 text-destructive" onClick={() => setDeleteTarget(r)}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>

@@ -297,7 +297,8 @@ function FacturasTab({ connected }: { connected: boolean }) {
       link.click()
       link.remove()
       window.URL.revokeObjectURL(url)
-    } catch {
+    } catch (err) {
+      console.error(err)
       toast.error("Error al descargar PDF")
     }
   }

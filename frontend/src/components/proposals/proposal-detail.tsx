@@ -139,7 +139,8 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
         try {
             const draft = await proposalsApi.draftEmail(id)
             setAiDraft({ subject: draft.subject, body: draft.body })
-        } catch {
+        } catch (err) {
+            console.error(err)
             const contact = p.contact_name || p.company_name
             const mainPrice = p.pricing_options?.find(o => o.recommended)?.price ?? p.pricing_options?.[0]?.price
             const priceStr = mainPrice ? `${mainPrice.toLocaleString("es-ES")} €` : null
@@ -313,17 +314,17 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                             situation: "Situacion actual",
                             problem: "El reto",
                             cost_of_inaction: "Coste de no actuar",
-                            null_case: "Escenario sin accion",
+                            null_case: "Escenario sin acción",
                             opportunity: "La oportunidad",
                             approach: "Nuestra propuesta",
                             phases: "Fases del proyecto",
-                            includes: "Que incluye",
-                            excludes: "Que no incluye",
-                            success_metrics: "Metricas de exito",
+                            includes: "Qué incluye",
+                            excludes: "Qué no incluye",
+                            success_metrics: "Métricas de éxito",
                             credibility: "Sobre Magnify",
-                            cases: "Casos de exito",
+                            cases: "Casos de éxito",
                             next_steps: "Siguientes pasos",
-                            investment_model: "Modelo de inversion",
+                            investment_model: "Modelo de inversión",
                         }
                         return (
                         <Card>
@@ -341,19 +342,19 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
 
                                     {isNonEmptyString(gc.null_case) && (
                                         <div className="bg-orange-500/5 border-l-2 border-orange-500 rounded-r-lg p-4">
-                                            <p className="text-xs font-medium text-orange-400 uppercase tracking-wide mb-2">Escenario sin accion</p>
+                                            <p className="text-xs font-medium text-orange-400 uppercase tracking-wide mb-2">Escenario sin acción</p>
                                             <p className="text-sm">{gc.null_case}</p>
                                         </div>
                                     )}
 
                                     {Array.isArray(gc.success_metrics) && gc.success_metrics.length > 0 && (
                                         <div>
-                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Metricas de exito</p>
+                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Métricas de éxito</p>
                                             <div className="border border-border rounded-lg overflow-hidden">
-                                                <table className="w-full text-sm" aria-label="Metricas de exito">
+                                                <table className="w-full text-sm" aria-label="Métricas de éxito">
                                                     <thead>
                                                         <tr className="bg-secondary/50">
-                                                            <th className="text-left p-2 font-medium">Metrica</th>
+                                                            <th className="text-left p-2 font-medium">Métrica</th>
                                                             <th className="text-left p-2 font-medium">Actual</th>
                                                             <th className="text-left p-2 font-medium">Objetivo 12m</th>
                                                             <th className="text-left p-2 font-medium">Impacto</th>
@@ -624,9 +625,9 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                             </div>
 
                             <details className="text-sm">
-                                <summary className="cursor-pointer font-medium mb-2">Proyeccion mensual (moderado)</summary>
+                                <summary className="cursor-pointer font-medium mb-2">Proyección mensual (moderado)</summary>
                                 <div className="border border-border rounded-lg overflow-hidden">
-                                    <table className="w-full text-xs" aria-label="Proyeccion mensual">
+                                    <table className="w-full text-xs" aria-label="Proyección mensual">
                                         <thead>
                                             <tr className="bg-secondary/50">
                                                 <th className="p-1.5 text-left">Mes</th>
@@ -667,7 +668,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                                             },
                                         })
                                         queryClient.invalidateQueries({ queryKey: ["proposals"] })
-                                        toast.success("Modelo de inversion incluido en la propuesta")
+                                        toast.success("Modelo de inversión incluido en la propuesta")
                                         setRoiDialogOpen(false)
                                         setRoiResult(null)
                                     } catch (err) {
@@ -702,7 +703,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                                 <Label className="text-xs text-muted-foreground">Asunto</Label>
                                 <div className="flex items-center gap-2 mt-1">
                                     <Input readOnly value={aiDraft.subject} className="font-medium" />
-                                    <Button variant="ghost" size="icon" className="shrink-0" onClick={() => { navigator.clipboard.writeText(aiDraft.subject); toast.success("Asunto copiado") }}>
+                                    <Button variant="ghost" size="icon" aria-label="Copiar asunto" className="shrink-0" onClick={() => { navigator.clipboard.writeText(aiDraft.subject); toast.success("Asunto copiado") }}>
                                         <Copy className="w-4 h-4" />
                                     </Button>
                                 </div>
@@ -711,7 +712,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                                 <Label className="text-xs text-muted-foreground">Cuerpo</Label>
                                 <div className="relative mt-1">
                                     <Textarea readOnly value={aiDraft.body} rows={10} className="text-xs resize-none" />
-                                    <Button variant="ghost" size="icon" className="absolute top-1 right-1" onClick={() => { navigator.clipboard.writeText(aiDraft.body); toast.success("Texto copiado") }}>
+                                    <Button variant="ghost" size="icon" aria-label="Copiar cuerpo" className="absolute top-1 right-1" onClick={() => { navigator.clipboard.writeText(aiDraft.body); toast.success("Texto copiado") }}>
                                         <Copy className="w-4 h-4" />
                                     </Button>
                                 </div>

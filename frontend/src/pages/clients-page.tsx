@@ -326,13 +326,14 @@ export default function ClientsPage() {
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(c)}>
+                    <Button variant="ghost" size="icon" aria-label="Editar cliente" onClick={() => openEdit(c)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <div className="relative">
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label="Más opciones"
                         onClick={() => setOpenMenuId(openMenuId === c.id ? null : c.id)}
                       >
                         <MoreVertical className="h-4 w-4" />

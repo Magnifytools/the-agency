@@ -58,8 +58,8 @@ export function TaskCalendarView({ tasks, year, month, onPrev, onNext, onOpenEdi
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">{MONTHS[month]} {year}</h3>
         <div className="flex gap-1">
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={onPrev}><ChevronLeft className="h-4 w-4" /></Button>
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={onNext}><ChevronRight className="h-4 w-4" /></Button>
+          <Button variant="outline" size="icon" aria-label="Mes anterior" className="h-8 w-8" onClick={onPrev}><ChevronLeft className="h-4 w-4" /></Button>
+          <Button variant="outline" size="icon" aria-label="Mes siguiente" className="h-8 w-8" onClick={onNext}><ChevronRight className="h-4 w-4" /></Button>
         </div>
       </div>
 

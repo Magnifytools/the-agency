@@ -568,7 +568,7 @@ function CreateLeadDialog({
               />
             </div>
             <div>
-              <Label>Telefono</Label>
+              <Label>Teléfono</Label>
               <Input
                 value={form.phone || ""}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}

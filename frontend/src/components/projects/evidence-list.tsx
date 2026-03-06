@@ -129,14 +129,14 @@ export function EvidenceList({ projectId, phases }: Props) {
                           </div>
                           <div className="flex gap-1 shrink-0">
                             <a href={ev.url} target="_blank" rel="noopener noreferrer">
-                              <Button variant="ghost" size="icon" className="h-7 w-7">
+                              <Button variant="ghost" size="icon" aria-label="Abrir enlace" className="h-7 w-7">
                                 <ExternalLink className="h-3.5 w-3.5" />
                               </Button>
                             </a>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditing(ev); setShowForm(true) }}>
+                            <Button variant="ghost" size="icon" aria-label="Editar evidencia" className="h-7 w-7" onClick={() => { setEditing(ev); setShowForm(true) }}>
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteTarget(ev)}>
+                            <Button variant="ghost" size="icon" aria-label="Eliminar evidencia" className="h-7 w-7 text-destructive" onClick={() => setDeleteTarget(ev)}>
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </div>

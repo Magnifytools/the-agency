@@ -219,7 +219,7 @@ export default function LeadDetailPage() {
       {/* Stage Progress */}
       {lead.status !== "won" && lead.status !== "lost" && (
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={handleRetreatStage} disabled={!canRetreat}>
+          <Button variant="ghost" size="icon" aria-label="Retroceder etapa" onClick={handleRetreatStage} disabled={!canRetreat}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <div className="flex-1 flex gap-1">
@@ -230,7 +230,7 @@ export default function LeadDetailPage() {
               />
             ))}
           </div>
-          <Button variant="ghost" size="icon" onClick={handleAdvanceStage} disabled={!canAdvance}>
+          <Button variant="ghost" size="icon" aria-label="Avanzar etapa" onClick={handleAdvanceStage} disabled={!canAdvance}>
             <ChevronRight className="h-4 w-4" />
           </Button>
           <span className="text-xs text-muted-foreground ml-1">{STATUS_LABELS[lead.status]}</span>

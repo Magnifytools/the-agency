@@ -131,7 +131,7 @@ export default function UsersPage() {
                     </TableCell>
                     <TableCell className="mono">{u.hourly_rate != null ? `${u.hourly_rate}€/h` : "-"}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" onClick={() => setEditing(u)}>
+                      <Button variant="ghost" size="icon" aria-label="Editar usuario" onClick={() => setEditing(u)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
                     </TableCell>
