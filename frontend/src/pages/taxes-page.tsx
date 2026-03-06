@@ -179,8 +179,8 @@ export default function TaxesPage() {
                   <TableCell>{tax.due_date || "-"}</TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => { setEditing(tax); setDialogOpen(true) }}><Pencil className="h-3.5 w-3.5" /></Button>
-                      <Button variant="ghost" size="sm" onClick={() => setDeleteId(tax.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                      <Button variant="ghost" size="sm" aria-label="Editar" onClick={() => { setEditing(tax); setDialogOpen(true) }}><Pencil className="h-3.5 w-3.5" /></Button>
+                      <Button variant="ghost" size="sm" aria-label="Eliminar" onClick={() => setDeleteId(tax.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -200,9 +200,9 @@ export default function TaxesPage() {
             <div><Label>Año</Label><Input name="year" type="number" defaultValue={editing?.year || currentYear} /></div>
           </div>
           <div className="grid grid-cols-3 gap-4">
-            <div><Label>Base imponible</Label><Input name="base_amount" type="number" step="0.01" defaultValue={editing?.base_amount || 0} /></div>
-            <div><Label>Tipo (%)</Label><Input name="tax_rate" type="number" step="0.01" defaultValue={editing?.tax_rate || 0} /></div>
-            <div><Label>Cuota</Label><Input name="tax_amount" type="number" step="0.01" defaultValue={editing?.tax_amount || 0} /></div>
+            <div><Label>Base imponible</Label><Input name="base_amount" type="number" step="0.01" min={0} defaultValue={editing?.base_amount || 0} /></div>
+            <div><Label>Tipo (%)</Label><Input name="tax_rate" type="number" step="0.01" min={0} defaultValue={editing?.tax_rate || 0} /></div>
+            <div><Label>Cuota</Label><Input name="tax_amount" type="number" step="0.01" min={0} defaultValue={editing?.tax_amount || 0} /></div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div><Label>Estado</Label>

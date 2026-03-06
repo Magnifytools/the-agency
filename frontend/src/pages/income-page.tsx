@@ -36,7 +36,7 @@ export default function IncomePage() {
 
   useEffect(() => {
     setVatCalc({ amount: editing?.amount ?? 0, rate: editing?.vat_rate ?? 21 })
-  }, [dialogOpen])
+  }, [dialogOpen, editing])
 
   const computedVat = +(vatCalc.amount * vatCalc.rate / 100).toFixed(2)
 
@@ -142,10 +142,10 @@ export default function IncomePage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => { setEditing(item); setDialogOpen(true) }}>
+                      <Button variant="ghost" size="sm" aria-label="Editar" onClick={() => { setEditing(item); setDialogOpen(true) }}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setDeleteId(item.id)}>
+                      <Button variant="ghost" size="sm" aria-label="Eliminar" onClick={() => setDeleteId(item.id)}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
@@ -163,7 +163,7 @@ export default function IncomePage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div><Label>Fecha</Label><Input name="date" type="date" defaultValue={editing?.date || new Date().toISOString().slice(0, 10)} required /></div>
-            <div><Label>Importe</Label><Input name="amount" type="number" step="0.01" defaultValue={editing?.amount || ""} onChange={(e) => setVatCalc(v => ({ ...v, amount: parseFloat(e.target.value) || 0 }))} required /></div>
+            <div><Label>Importe</Label><Input name="amount" type="number" step="0.01" min={0} defaultValue={editing?.amount || ""} onChange={(e) => setVatCalc(v => ({ ...v, amount: parseFloat(e.target.value) || 0 }))} required /></div>
           </div>
           <div><Label>Descripción</Label><Input name="description" defaultValue={editing?.description || ""} required /></div>
           <div className="grid grid-cols-2 gap-4">
@@ -188,8 +188,8 @@ export default function IncomePage() {
             <div><Label>N. Factura</Label><Input name="invoice_number" defaultValue={editing?.invoice_number || ""} /></div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div><Label>Tipo IVA (%)</Label><Input name="vat_rate" type="number" step="0.01" defaultValue={editing?.vat_rate ?? 21} onChange={(e) => setVatCalc(v => ({ ...v, rate: parseFloat(e.target.value) || 0 }))} /></div>
-            <div><Label>IVA importe (auto)</Label><Input name="vat_amount" type="number" step="0.01" value={computedVat} readOnly className="bg-muted cursor-default" onChange={() => {}} /></div>
+            <div><Label>Tipo IVA (%)</Label><Input name="vat_rate" type="number" step="0.01" min={0} defaultValue={editing?.vat_rate ?? 21} onChange={(e) => setVatCalc(v => ({ ...v, rate: parseFloat(e.target.value) || 0 }))} /></div>
+            <div><Label>IVA importe (auto)</Label><Input name="vat_amount" type="number" step="0.01" min={0} value={computedVat} readOnly className="bg-muted cursor-default" onChange={() => {}} /></div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div><Label>Fecha vencimiento <span className="text-muted-foreground text-xs">(opcional)</span></Label><Input name="due_date" type="date" defaultValue={editing?.due_date || ""} /></div>

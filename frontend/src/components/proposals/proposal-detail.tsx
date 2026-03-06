@@ -9,7 +9,7 @@ import {
 import { proposalsApi, investmentsApi } from "@/lib/api"
 import type {
     Proposal, ProposalStatus, ProposalStatusUpdate,
-    ServiceType, InvestmentCalculateResponse, Client,
+    InvestmentCalculateResponse, Client,
 } from "@/lib/types"
 
 import { Button } from "@/components/ui/button"
@@ -23,6 +23,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { serviceTypeLabels } from "@/lib/constants"
 
 const statusConfig: Record<ProposalStatus, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning" }> = {
     draft: { label: "Borrador", variant: "secondary" },
@@ -30,16 +31,6 @@ const statusConfig: Record<ProposalStatus, { label: string; variant: "default" |
     accepted: { label: "Aceptada", variant: "success" },
     rejected: { label: "Rechazada", variant: "destructive" },
     expired: { label: "Expirada", variant: "warning" },
-}
-
-const serviceTypeLabels: Record<ServiceType, string> = {
-    seo_sprint: "SEO Sprint",
-    migration: "Migracion Web",
-    market_study: "Estudio de Mercado",
-    consulting_retainer: "Consultoria SEO",
-    partnership_retainer: "Partnership SEO",
-    brand_audit: "Brand Audit",
-    custom: "Personalizado",
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -230,7 +221,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                         <Copy className="w-4 h-4 mr-1" /> Duplicar
                     </Button>
                     {p.status === "draft" && (
-                        <Button size="sm" variant="ghost" onClick={() => setDeleteId(p.id)}>
+                        <Button size="sm" variant="ghost" aria-label="Eliminar" onClick={() => setDeleteId(p.id)}>
                             <Trash2 className="w-4 h-4 text-destructive" />
                         </Button>
                     )}
@@ -246,7 +237,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                                 <h3 className="font-semibold text-lg">Contexto de la propuesta</h3>
                                 {p.situation && (
                                     <div>
-                                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Situacion</p>
+                                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Situación</p>
                                         <p className="text-sm whitespace-pre-wrap">{p.situation}</p>
                                     </div>
                                 )}
@@ -311,7 +302,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                         const labelMap: Record<string, string> = {
                             executive_summary: "Resumen ejecutivo",
                             opening: "Apertura",
-                            situation: "Situacion actual",
+                            situation: "Situación actual",
                             problem: "El reto",
                             cost_of_inaction: "Coste de no actuar",
                             null_case: "Escenario sin acción",
@@ -522,7 +513,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                                     <Input type="number" value={roiForm.aov} onChange={e => setRoiForm(f => ({ ...f, aov: e.target.value }))} placeholder="100" />
                                 </div>
                                 <div>
-                                    <Label>Conversion (%)</Label>
+                                    <Label>Conversión (%)</Label>
                                     <Input type="number" step="0.1" value={roiForm.conversion_rate} onChange={e => setRoiForm(f => ({ ...f, conversion_rate: e.target.value }))} placeholder="2.5" />
                                 </div>
                                 <div>
@@ -530,7 +521,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                                     <Input type="number" value={roiForm.ltv} onChange={e => setRoiForm(f => ({ ...f, ltv: e.target.value }))} placeholder="200" />
                                 </div>
                                 <div>
-                                    <Label>Trafico mensual actual</Label>
+                                    <Label>Tráfico mensual actual</Label>
                                     <Input type="number" value={roiForm.current_monthly_traffic} onChange={e => setRoiForm(f => ({ ...f, current_monthly_traffic: e.target.value }))} placeholder="5000" />
                                 </div>
                                 <div>
@@ -542,7 +533,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                                     <Select value={roiForm.seo_maturity} onChange={e => setRoiForm(f => ({ ...f, seo_maturity: e.target.value }))}>
                                         <option value="">Seleccionar...</option>
                                         <option value="none">Sin SEO</option>
-                                        <option value="basic">Basico</option>
+                                        <option value="basic">Básico</option>
                                         <option value="intermediate">Intermedio</option>
                                         <option value="advanced">Avanzado</option>
                                     </Select>
@@ -613,7 +604,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                                         <div key={s.key} className="border border-border rounded-lg p-3">
                                             <p className="text-xs font-medium mb-2">{s.label}</p>
                                             <div className="space-y-1 text-xs">
-                                                <p>Trafico: <span className="font-medium text-green-400">+{s.traffic_increase.toLocaleString("es-ES")}</span></p>
+                                                <p>Tráfico: <span className="font-medium text-green-400">+{s.traffic_increase.toLocaleString("es-ES")}</span></p>
                                                 <p>Conversiones: <span className="font-medium">+{s.new_conversions}</span></p>
                                                 <p>Ingresos: <span className="font-medium">{s.revenue_increase.toLocaleString("es-ES")}\u20AC</span></p>
                                                 <p>ROI: <span className="font-bold">{s.roi_percent}%</span></p>
@@ -631,7 +622,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                                         <thead>
                                             <tr className="bg-secondary/50">
                                                 <th className="p-1.5 text-left">Mes</th>
-                                                <th className="p-1.5 text-right">Trafico</th>
+                                                <th className="p-1.5 text-right">Tráfico</th>
                                                 <th className="p-1.5 text-right">Conv.</th>
                                                 <th className="p-1.5 text-right">Ingresos</th>
                                                 <th className="p-1.5 text-right">ROI</th>

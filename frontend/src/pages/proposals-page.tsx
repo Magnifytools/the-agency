@@ -25,6 +25,7 @@ import { getErrorMessage } from "@/lib/utils"
 import { ProposalDetail } from "@/components/proposals/proposal-detail"
 import { ProposalWizard, emptyForm } from "@/components/proposals/proposal-wizard"
 import type { WizardForm } from "@/components/proposals/proposal-wizard"
+import { serviceTypeLabels } from "@/lib/constants"
 
 // --- Config ---
 const statusConfig: Record<ProposalStatus, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning" }> = {
@@ -33,16 +34,6 @@ const statusConfig: Record<ProposalStatus, { label: string; variant: "default" |
     accepted: { label: "Aceptada", variant: "success" },
     rejected: { label: "Rechazada", variant: "destructive" },
     expired: { label: "Expirada", variant: "warning" },
-}
-
-const serviceTypeLabels: Record<ServiceType, string> = {
-    seo_sprint: "SEO Sprint",
-    migration: "Migracion Web",
-    market_study: "Estudio de Mercado",
-    consulting_retainer: "Consultoria SEO",
-    partnership_retainer: "Partnership SEO",
-    brand_audit: "Brand Audit",
-    custom: "Personalizado",
 }
 
 // --- Types ---
@@ -310,14 +301,14 @@ export default function ProposalsPage() {
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-1">
-                                                    <Button variant="ghost" size="sm" onClick={(e) => openPdf(p.id, e)} title="PDF">
+                                                    <Button variant="ghost" size="sm" aria-label="Descargar PDF" onClick={(e) => openPdf(p.id, e)} title="PDF">
                                                         <Download className="w-4 h-4 text-brand" />
                                                     </Button>
-                                                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); openEmailModal(p.id) }} title="Enviar por email">
+                                                    <Button variant="ghost" size="icon" aria-label="Enviar por email" onClick={(e) => { e.stopPropagation(); openEmailModal(p.id) }} title="Enviar por email">
                                                         <Mail className="h-4 w-4" />
                                                     </Button>
                                                     {p.status === "draft" && (
-                                                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setDeleteId(p.id) }}>
+                                                        <Button variant="ghost" size="sm" aria-label="Eliminar" onClick={(e) => { e.stopPropagation(); setDeleteId(p.id) }}>
                                                             <Trash2 className="w-4 h-4 text-destructive" />
                                                         </Button>
                                                     )}
@@ -349,7 +340,7 @@ export default function ProposalsPage() {
                 open={!!deleteId}
                 onOpenChange={(open) => !open && setDeleteId(null)}
                 title="Eliminar Propuesta"
-                description="Solo se pueden eliminar propuestas en borrador. Esta accion no se puede deshacer."
+                description="Solo se pueden eliminar propuestas en borrador. Esta acción no se puede deshacer."
                 onConfirm={() => {
                     if (deleteId) {
                         proposalsApi.delete(deleteId).then(() => {

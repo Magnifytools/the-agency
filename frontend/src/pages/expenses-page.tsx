@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { financeExpensesApi, financeExpenseCategoriesApi } from "@/lib/api"
 import { RefreshCw } from "lucide-react"
@@ -22,6 +22,13 @@ export default function ExpensesPage() {
   const [editing, setEditing] = useState<Expense | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [filters, setFilters] = useState<{ category_id?: number; is_recurring?: boolean }>({})
+  const [vatCalc, setVatCalc] = useState<{ amount: number; rate: number }>({ amount: 0, rate: 21 })
+
+  useEffect(() => {
+    setVatCalc({ amount: editing?.amount ?? 0, rate: editing?.vat_rate ?? 21 })
+  }, [dialogOpen, editing])
+
+  const computedVat = +(vatCalc.amount * vatCalc.rate / 100).toFixed(2)
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["finance-expenses", filters],
@@ -73,7 +80,7 @@ export default function ExpensesPage() {
       is_recurring: fd.get("is_recurring") === "true",
       recurrence_period: (fd.get("recurrence_period") as string) || "",
       vat_rate: parseFloat(fd.get("vat_rate") as string) || 21,
-      vat_amount: parseFloat(fd.get("vat_amount") as string) || 0,
+      vat_amount: computedVat,
       is_deductible: fd.get("is_deductible") !== "false",
       supplier: (fd.get("supplier") as string) || "",
       notes: (fd.get("notes") as string) || "",
@@ -128,7 +135,7 @@ export default function ExpensesPage() {
             <TableBody>
               {items.map(item => (
                 <TableRow key={item.id}>
-                  <TableCell>{item.date}</TableCell>
+                  <TableCell>{new Date(item.date + "T12:00:00").toLocaleDateString("es-ES")}</TableCell>
                   <TableCell>{item.description}</TableCell>
                   <TableCell>{item.category_name || "-"}</TableCell>
                   <TableCell>{item.supplier || "-"}</TableCell>
@@ -139,8 +146,8 @@ export default function ExpensesPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => { setEditing(item); setDialogOpen(true) }}><Pencil className="h-3.5 w-3.5" /></Button>
-                      <Button variant="ghost" size="sm" onClick={() => setDeleteId(item.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                      <Button variant="ghost" size="sm" aria-label="Editar" onClick={() => { setEditing(item); setDialogOpen(true) }}><Pencil className="h-3.5 w-3.5" /></Button>
+                      <Button variant="ghost" size="sm" aria-label="Eliminar" onClick={() => setDeleteId(item.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -156,7 +163,7 @@ export default function ExpensesPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div><Label>Fecha</Label><Input name="date" type="date" defaultValue={editing?.date || new Date().toISOString().slice(0, 10)} required /></div>
-            <div><Label>Importe</Label><Input name="amount" type="number" step="0.01" defaultValue={editing?.amount || ""} required /></div>
+            <div><Label>Importe</Label><Input name="amount" type="number" step="0.01" min={0} defaultValue={editing?.amount || ""} onChange={(e) => setVatCalc(v => ({ ...v, amount: parseFloat(e.target.value) || 0 }))} required /></div>
           </div>
           <div><Label>Descripción</Label><Input name="description" defaultValue={editing?.description || ""} required /></div>
           <div className="grid grid-cols-2 gap-4">
@@ -191,8 +198,8 @@ export default function ExpensesPage() {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div><Label>Tipo IVA (%)</Label><Input name="vat_rate" type="number" step="0.01" defaultValue={editing?.vat_rate ?? 21} /></div>
-            <div><Label>IVA importe</Label><Input name="vat_amount" type="number" step="0.01" defaultValue={editing?.vat_amount ?? 0} /></div>
+            <div><Label>Tipo IVA (%)</Label><Input name="vat_rate" type="number" step="0.01" min={0} defaultValue={editing?.vat_rate ?? 21} onChange={(e) => setVatCalc(v => ({ ...v, rate: parseFloat(e.target.value) || 0 }))} /></div>
+            <div><Label>IVA importe (auto)</Label><Input name="vat_amount" type="number" step="0.01" min={0} value={computedVat} readOnly className="bg-muted cursor-default" onChange={() => {}} /></div>
           </div>
           <div><Label>Notas</Label><Input name="notes" defaultValue={editing?.notes || ""} /></div>
           <div className="flex justify-end gap-2">

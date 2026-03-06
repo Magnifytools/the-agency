@@ -726,16 +726,16 @@ class FinancialSettings(TimestampMixin, Base):
     credit_limit = Column(Numeric(12, 2), nullable=False, default=0)
     credit_used = Column(Numeric(12, 2), nullable=False, default=0)
     monthly_close_day = Column(Integer, nullable=False, default=5)
-    credit_alert_pct = Column(Float, nullable=False, default=70)
-    tax_reserve_target_pct = Column(Float, nullable=False, default=20)
+    credit_alert_pct = Column(Numeric(5, 2), nullable=False, default=70)
+    tax_reserve_target_pct = Column(Numeric(5, 2), nullable=False, default=20)
     # GF fields
-    default_vat_rate = Column(Float, nullable=False, default=21.0)
-    corporate_tax_rate = Column(Float, nullable=False, default=25.0)
-    irpf_retention_rate = Column(Float, nullable=False, default=15.0)
+    default_vat_rate = Column(Numeric(5, 2), nullable=False, default=21.0)
+    corporate_tax_rate = Column(Numeric(5, 2), nullable=False, default=25.0)
+    irpf_retention_rate = Column(Numeric(5, 2), nullable=False, default=15.0)
     cash_start = Column(Numeric(12, 2), nullable=False, default=0.0)
     # Advisor thresholds
-    advisor_expense_alert_pct = Column(Float, nullable=False, default=20.0)
-    advisor_margin_warning_pct = Column(Float, nullable=False, default=10.0)
+    advisor_expense_alert_pct = Column(Numeric(5, 2), nullable=False, default=20.0)
+    advisor_margin_warning_pct = Column(Numeric(5, 2), nullable=False, default=10.0)
     # AI config
     ai_provider = Column(String(50), nullable=False, default="openai-compatible")
     ai_model = Column(String(100), nullable=False, default="")
@@ -959,7 +959,7 @@ class Income(TimestampMixin, Base):
     type = Column(String(50), nullable=False, default="factura")  # factura, recurrente, extra
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
     invoice_number = Column(String(100), nullable=False, default="")
-    vat_rate = Column(Float, nullable=False, default=21.0)
+    vat_rate = Column(Numeric(5, 2), nullable=False, default=21.0)
     vat_amount = Column(Numeric(12, 2), nullable=False, default=0.0)
     status = Column(String(50), nullable=False, default="cobrado")  # pendiente, cobrado
     notes = Column(Text, nullable=False, default="")
@@ -982,7 +982,7 @@ class Expense(TimestampMixin, Base):
     category_id = Column(Integer, ForeignKey("expense_categories.id"), nullable=True, index=True)
     is_recurring = Column(Boolean, nullable=False, default=False)
     recurrence_period = Column(String(50), nullable=False, default="")  # mensual, trimestral, anual
-    vat_rate = Column(Float, nullable=False, default=21.0)
+    vat_rate = Column(Numeric(5, 2), nullable=False, default=21.0)
     vat_amount = Column(Numeric(12, 2), nullable=False, default=0.0)
     is_deductible = Column(Boolean, nullable=False, default=True)
     supplier = Column(String(255), nullable=False, default="")
@@ -1005,7 +1005,7 @@ class Tax(TimestampMixin, Base):
     period = Column(String(50), nullable=False, default="")  # Q1, Q2, Q3, Q4, anual
     year = Column(Integer, nullable=False)
     base_amount = Column(Numeric(12, 2), nullable=False, default=0.0)
-    tax_rate = Column(Float, nullable=False, default=0.0)
+    tax_rate = Column(Numeric(5, 2), nullable=False, default=0.0)
     tax_amount = Column(Numeric(12, 2), nullable=False, default=0.0)
     status = Column(String(50), nullable=False, default="pendiente")  # pendiente, pagado, aplazado
     due_date = Column(Date, nullable=True)

@@ -8,6 +8,7 @@ import { Tooltip } from "@/components/ui/tooltip"
 import { billingApi } from "@/lib/api"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { formatCurrency } from "@/lib/format"
 
 interface BillingRow {
   client_id: number
@@ -105,12 +106,12 @@ export default function BillingPage() {
                         <TableRow key={row.client_id}>
                           <TableCell className="font-medium">{row.client_name}</TableCell>
                           <TableCell className="mono">{row.hours}h</TableCell>
-                          <TableCell className="mono">{row.cost.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</TableCell>
-                          <TableCell className="mono">{row.budget.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</TableCell>
-                          <TableCell className="mono">{hasInvoiced ? row.invoiced.toLocaleString("es-ES", { style: "currency", currency: "EUR" }) : <span className="text-muted-foreground">—</span>}</TableCell>
+                          <TableCell className="mono">{formatCurrency(row.cost)}</TableCell>
+                          <TableCell className="mono">{formatCurrency(row.budget)}</TableCell>
+                          <TableCell className="mono">{hasInvoiced ? formatCurrency(row.invoiced) : <span className="text-muted-foreground">—</span>}</TableCell>
                           <TableCell className="mono">
                             <span className="flex items-center gap-1.5">
-                              {row.margin.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                              {formatCurrency(row.margin)}
                               {!hasInvoiced && <span className="text-muted-foreground text-xs">(est.)</span>}
                               {zeroCost && (
                                 <Tooltip content="No se han registrado costes de equipo. El margen real puede ser menor." side="top">
@@ -134,11 +135,11 @@ export default function BillingPage() {
                       <p className="font-medium text-sm">{row.client_name}</p>
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <p className="mono">Horas: {row.hours}h</p>
-                        <p className="mono">Coste: {row.cost.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>
-                        <p className="mono">Presupuesto: {row.budget.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>
-                        {hasInvoiced && <p className="mono">Facturado: {row.invoiced.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>}
+                        <p className="mono">Coste: {formatCurrency(row.cost)}</p>
+                        <p className="mono">Presupuesto: {formatCurrency(row.budget)}</p>
+                        {hasInvoiced && <p className="mono">Facturado: {formatCurrency(row.invoiced)}</p>}
                         <p className="mono flex items-center gap-1">
-                          Margen: {row.margin.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}{!hasInvoiced && " (est.)"}
+                          Margen: {formatCurrency(row.margin)}{!hasInvoiced && " (est.)"}
                           {zeroCost && <span className="text-amber-500" title="No se han registrado costes de equipo. El margen real puede ser menor.">⚠️</span>}
                         </p>
                       </div>

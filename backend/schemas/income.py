@@ -11,8 +11,8 @@ class IncomeCreate(BaseModel):
     type: str = "factura"
     client_id: Optional[int] = None
     invoice_number: str = ""
-    vat_rate: float = 21.0
-    vat_amount: float = 0.0
+    vat_rate: float = Field(default=21.0, ge=0, le=100)
+    vat_amount: float = Field(default=0.0, ge=0)
     status: str = "cobrado"
     notes: str = ""
     due_date: Optional[date] = None
@@ -25,8 +25,8 @@ class IncomeUpdate(BaseModel):
     type: Optional[str] = None
     client_id: Optional[int] = None
     invoice_number: Optional[str] = None
-    vat_rate: Optional[float] = None
-    vat_amount: Optional[float] = None
+    vat_rate: Optional[float] = Field(default=None, ge=0, le=100)
+    vat_amount: Optional[float] = Field(default=None, ge=0)
     status: Optional[str] = None
     notes: Optional[str] = None
     due_date: Optional[date] = None

@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { getErrorMessage } from "@/lib/utils"
+import { formatCurrency } from "@/lib/format"
 
 interface Props {
   client: Client
@@ -23,7 +24,7 @@ const BILLING_CYCLES: { value: BillingCycle; label: string }[] = [
   { value: "bimonthly", label: "Bimestral" },
   { value: "quarterly", label: "Trimestral" },
   { value: "annual", label: "Anual" },
-  { value: "one_time", label: "Unico" },
+  { value: "one_time", label: "Único" },
 ]
 
 const EVENT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
@@ -129,7 +130,7 @@ export function BillingTab({ client }: Props) {
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Fee mensual</p>
             <p className="text-lg font-semibold mt-1">
               {status?.monthly_fee != null
-                ? `${status.monthly_fee.toLocaleString("es-ES")} ${client.currency}`
+                ? formatCurrency(status.monthly_fee)
                 : "—"}
             </p>
           </CardContent>
@@ -144,7 +145,7 @@ export function BillingTab({ client }: Props) {
                   {new Date(status.last_payment_date).toLocaleDateString("es-ES")}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {status.last_payment_amount?.toLocaleString("es-ES")} {client.currency}
+                  {status.last_payment_amount != null ? formatCurrency(status.last_payment_amount) : ""}
                 </p>
               </>
             ) : (
@@ -202,7 +203,7 @@ export function BillingTab({ client }: Props) {
                       <div className="flex items-center gap-2">
                         <span className={`font-medium ${meta.color}`}>{meta.label}</span>
                         {ev.amount != null && (
-                          <span className="mono text-xs">{ev.amount.toLocaleString("es-ES")} {client.currency}</span>
+                          <span className="mono text-xs">{formatCurrency(ev.amount)}</span>
                         )}
                         {ev.invoice_number && (
                           <Badge variant="secondary" className="text-[10px]">{ev.invoice_number}</Badge>
@@ -366,7 +367,7 @@ function EventForm({
         </div>
         <div>
           <Label>Importe</Label>
-          <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+          <Input type="number" step="0.01" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
         </div>
         <div>
           <Label>Nº Factura</Label>

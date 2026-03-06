@@ -17,6 +17,8 @@ from backend.api.deps import require_module
 
 router = APIRouter(prefix="/api/finance/sync", tags=["finance-import"])
 
+MAX_CSV_ROWS = 5000
+
 
 @router.post("/preview", response_model=CsvPreviewResponse)
 async def preview_csv(
@@ -34,6 +36,8 @@ async def import_csv(
     _user: User = Depends(require_module("finance_import")),
 ):
     rows = parse_csv(body.content, body.delimiter)
+    if len(rows) > MAX_CSV_ROWS:
+        raise HTTPException(400, f"Máximo {MAX_CSV_ROWS} filas permitidas")
     imported = 0
     skipped = 0
     errors: list[str] = []

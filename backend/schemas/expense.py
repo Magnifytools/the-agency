@@ -28,8 +28,8 @@ class ExpenseCreate(BaseModel):
     category_id: Optional[int] = None
     is_recurring: bool = False
     recurrence_period: str = ""
-    vat_rate: float = 21.0
-    vat_amount: float = 0.0
+    vat_rate: float = Field(default=21.0, ge=0, le=100)
+    vat_amount: float = Field(default=0.0, ge=0)
     is_deductible: bool = True
     supplier: str = ""
     notes: str = ""
@@ -42,8 +42,8 @@ class ExpenseUpdate(BaseModel):
     category_id: Optional[int] = None
     is_recurring: Optional[bool] = None
     recurrence_period: Optional[str] = None
-    vat_rate: Optional[float] = None
-    vat_amount: Optional[float] = None
+    vat_rate: Optional[float] = Field(default=None, ge=0, le=100)
+    vat_amount: Optional[float] = Field(default=None, ge=0)
     is_deductible: Optional[bool] = None
     supplier: Optional[str] = None
     notes: Optional[str] = None

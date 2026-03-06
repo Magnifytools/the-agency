@@ -13,6 +13,9 @@ from backend.core.security import hash_password
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
+_MEMBER_UPDATABLE = {"full_name", "preferences"}
+_ADMIN_UPDATABLE = _MEMBER_UPDATABLE | {"role", "hourly_rate", "is_active", "email", "weekly_hours"}
+
 @router.get("", response_model=PaginatedResponse[UserListResponse])
 async def list_users(
     page: int = Query(1, ge=1),
@@ -97,21 +100,19 @@ async def update_user(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
 
-    data = body.model_dump(exclude_unset=True)
-
-    # Only admin can change roles
-    if "role" in data and current_user.role != UserRole.admin:
-        raise HTTPException(status_code=403, detail="Solo admin puede cambiar roles")
-
-    # Only admin can change hourly_rate
-    if "hourly_rate" in data and current_user.role != UserRole.admin:
-        raise HTTPException(status_code=403, detail="Solo admin puede cambiar el hourly rate")
-
     # Non-admin can only edit their own profile
     if current_user.role != UserRole.admin and current_user.id != user_id:
         raise HTTPException(status_code=403, detail="Solo puedes editar tu propio perfil")
 
+    data = body.model_dump(exclude_unset=True)
+    allowed = _ADMIN_UPDATABLE if current_user.role == UserRole.admin else _MEMBER_UPDATABLE
+
     for field, value in data.items():
+        if field not in allowed:
+            raise HTTPException(
+                status_code=403,
+                detail=f"No tienes permiso para modificar '{field}'",
+            )
         setattr(user, field, value)
     await db.commit()
     await db.refresh(user)

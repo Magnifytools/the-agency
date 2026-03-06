@@ -267,6 +267,7 @@ export default function AgencyVaultPage() {
                 <div className="space-y-2">
                   <Label>Contraseña</Label>
                   <Input
+                    type="password"
                     value={formData.password ?? ""}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     placeholder="••••••••"
@@ -424,6 +425,7 @@ export default function AgencyVaultPage() {
                 <div className="space-y-2">
                   <Label>Contraseña</Label>
                   <Input
+                    type="password"
                     value={formData.password ?? ""}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     placeholder="••••••••"
@@ -571,10 +573,10 @@ function AssetCard({
         </div>
         {isAdmin && (
           <div className="flex gap-1 flex-shrink-0">
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground" onClick={onEdit}>
+            <Button variant="ghost" size="sm" aria-label="Editar" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground" onClick={onEdit}>
               <Pencil className="h-3.5 w-3.5" />
             </Button>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={onDelete}>
+            <Button variant="ghost" size="sm" aria-label="Eliminar" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={onDelete}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>

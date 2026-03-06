@@ -27,6 +27,7 @@ from backend.schemas.dashboard import (
     FinancialSettingsUpdate,
 )
 from backend.api.deps import get_current_user, require_module, require_admin
+from backend.core.security import encrypt_vault_secret
 from backend.services.csv_utils import build_csv_response
 from backend.services.report_period import (
     MAX_REPORT_YEAR,
@@ -426,9 +427,12 @@ async def update_financial_settings(
             setattr(record, field, float(updates[field]))
     if "monthly_close_day" in updates:
         record.monthly_close_day = int(updates["monthly_close_day"])
-    for field in ("ai_provider", "ai_model", "ai_api_url", "ai_api_key"):
+    for field in ("ai_provider", "ai_model", "ai_api_url"):
         if field in updates:
             setattr(record, field, updates[field] or "")
+    if "ai_api_key" in updates:
+        raw_key = updates["ai_api_key"] or ""
+        record.ai_api_key = encrypt_vault_secret(raw_key) if raw_key else ""
 
     await db.commit()
     await db.refresh(record)

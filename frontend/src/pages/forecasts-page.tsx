@@ -177,8 +177,8 @@ export default function ForecastsPage() {
                     <TableCell className="text-right">{(f.confidence * 100).toFixed(0)}%</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => { setEditing(f); setDialogOpen(true) }}><Pencil className="h-3.5 w-3.5" /></Button>
-                        <Button variant="ghost" size="sm" onClick={() => setDeleteId(f.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="sm" aria-label="Editar" onClick={() => { setEditing(f); setDialogOpen(true) }}><Pencil className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="sm" aria-label="Eliminar" onClick={() => setDeleteId(f.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -194,12 +194,12 @@ export default function ForecastsPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div><Label>Mes</Label><Input name="month" type="month" defaultValue={editing?.month?.slice(0, 7) || ""} required /></div>
           <div className="grid grid-cols-2 gap-4">
-            <div><Label>Ingresos previstos</Label><Input name="projected_income" type="number" step="0.01" defaultValue={editing?.projected_income || 0} /></div>
-            <div><Label>Gastos previstos</Label><Input name="projected_expenses" type="number" step="0.01" defaultValue={editing?.projected_expenses || 0} /></div>
+            <div><Label>Ingresos previstos</Label><Input name="projected_income" type="number" step="0.01" min={0} defaultValue={editing?.projected_income || 0} /></div>
+            <div><Label>Gastos previstos</Label><Input name="projected_expenses" type="number" step="0.01" min={0} defaultValue={editing?.projected_expenses || 0} /></div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div><Label>Impuestos previstos</Label><Input name="projected_taxes" type="number" step="0.01" defaultValue={editing?.projected_taxes || 0} /></div>
-            <div><Label>Beneficio previsto</Label><Input name="projected_profit" type="number" step="0.01" defaultValue={editing?.projected_profit || 0} /></div>
+            <div><Label>Impuestos previstos</Label><Input name="projected_taxes" type="number" step="0.01" min={0} defaultValue={editing?.projected_taxes || 0} /></div>
+            <div><Label>Beneficio previsto</Label><Input name="projected_profit" type="number" step="0.01" min={0} defaultValue={editing?.projected_profit || 0} /></div>
           </div>
           <div><Label>Confianza (0-1)</Label><Input name="confidence" type="number" step="0.01" min="0" max="1" defaultValue={editing?.confidence ?? 0.5} /></div>
           <div><Label>Notas</Label><Input name="notes" defaultValue={editing?.notes || ""} /></div>

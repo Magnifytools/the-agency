@@ -18,17 +18,7 @@ import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
-
-// --- Config ---
-const serviceTypeLabels: Record<ServiceType, string> = {
-    seo_sprint: "SEO Sprint",
-    migration: "Migracion Web",
-    market_study: "Estudio de Mercado",
-    consulting_retainer: "Consultoria SEO",
-    partnership_retainer: "Partnership SEO",
-    brand_audit: "Brand Audit",
-    custom: "Personalizado",
-}
+import { serviceTypeLabels } from "@/lib/constants"
 
 export interface WizardForm {
     title: string
@@ -91,6 +81,8 @@ const emptyPricing: PricingOption = {
     recommended: false,
 }
 
+// TODO: These hourly rates should come from the API (e.g. /api/settings or /api/users/:id/rate)
+// instead of being hardcoded. Update when backend supports configurable rates.
 const DAVID_RATE = 50
 const NACHO_RATE = 30
 
@@ -133,7 +125,7 @@ function RoiPreviewStep({ form }: { form: WizardForm }) {
         return (
             <div className="text-center py-8">
                 <Calculator className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
-                <p className="text-sm text-muted-foreground">Completa los datos de Revenue (paso 2) y Pricing (paso 4) para ver la previsualizacion.</p>
+                <p className="text-sm text-muted-foreground">Completa los datos de Revenue (paso 2) y Pricing (paso 4) para ver la previsualización.</p>
             </div>
         )
     }
@@ -158,7 +150,7 @@ function RoiPreviewStep({ form }: { form: WizardForm }) {
                             <p className="text-xl font-bold">{s.roi_percent}%</p>
                             <p className="text-xs text-muted-foreground">ROI</p>
                             <div className="mt-2 space-y-1 text-xs text-left">
-                                <p>Trafico: <span className="font-medium text-green-400">+{s.traffic_increase.toLocaleString("es-ES")}</span></p>
+                                <p>Tráfico: <span className="font-medium text-green-400">+{s.traffic_increase.toLocaleString("es-ES")}</span></p>
                                 <p>Ingresos: <span className="font-medium">{s.revenue_increase.toLocaleString("es-ES")}\u20AC</span></p>
                                 {s.payback_months && <p>Payback: <span className="font-medium">mes {s.payback_months}</span></p>}
                             </div>
@@ -167,7 +159,7 @@ function RoiPreviewStep({ form }: { form: WizardForm }) {
                 ))}
             </div>
             <div className="bg-secondary/30 rounded-lg p-3 text-sm text-center">
-                <p>Break-even: <strong>mes {result.summary.break_even_month ?? "N/A"}</strong> | ROI ano 1: <strong>{result.summary.year1_roi_range}</strong> | Ingresos: <strong>{result.summary.year1_revenue_range}</strong></p>
+                <p>Break-even: <strong>mes {result.summary.break_even_month ?? "N/A"}</strong> | ROI año 1: <strong>{result.summary.year1_roi_range}</strong> | Ingresos: <strong>{result.summary.year1_revenue_range}</strong></p>
             </div>
         </div>
     )
@@ -286,7 +278,7 @@ export function ProposalWizard({
 
     const handleSave = async () => {
         if (!form.title || !form.company_name) {
-            toast.error("El titulo y la empresa son obligatorios")
+            toast.error("El título y la empresa son obligatorios")
             return
         }
 
@@ -350,7 +342,7 @@ export function ProposalWizard({
                 <div className="mb-6">
                     <h2 className="text-lg font-semibold">{editingId ? "Editar Propuesta" : "Nueva Propuesta"}</h2>
                     <div className="flex items-center gap-2 mt-4">
-                        {["Datos basicos", "Revenue", "Contexto", "Pricing", "ROI Preview", "Interno"].map((stepName, i) => (
+                        {["Datos básicos", "Revenue", "Contexto", "Pricing", "ROI Preview", "Interno"].map((stepName, i) => (
                             <div key={i} className="flex items-center gap-2">
                                 <button
                                     onClick={() => setWizardStep(i)}
@@ -415,7 +407,7 @@ export function ProposalWizard({
                         </div>
 
                         <div className="space-y-2">
-                            <Label>Titulo *</Label>
+                            <Label>Título *</Label>
                             <Input
                                 value={form.title}
                                 onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
@@ -490,7 +482,7 @@ export function ProposalWizard({
                                 <Input type="number" value={form.aov} onChange={e => setForm(f => ({ ...f, aov: e.target.value }))} placeholder="100" />
                             </div>
                             <div className="space-y-2">
-                                <Label>Tasa de conversion (%)</Label>
+                                <Label>Tasa de conversión (%)</Label>
                                 <Input type="number" step="0.1" value={form.conversion_rate} onChange={e => setForm(f => ({ ...f, conversion_rate: e.target.value }))} placeholder="2.5" />
                             </div>
                             <div className="space-y-2">
@@ -502,13 +494,13 @@ export function ProposalWizard({
                                 <Select value={form.seo_maturity_level} onChange={e => setForm(f => ({ ...f, seo_maturity_level: e.target.value }))}>
                                     <option value="">Seleccionar...</option>
                                     <option value="none">Sin SEO</option>
-                                    <option value="basic">Basico</option>
+                                    <option value="basic">Básico</option>
                                     <option value="intermediate">Intermedio</option>
                                     <option value="advanced">Avanzado</option>
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label>Trafico mensual actual</Label>
+                                <Label>Tráfico mensual actual</Label>
                                 <Input type="number" value={form.current_monthly_traffic} onChange={e => setForm(f => ({ ...f, current_monthly_traffic: e.target.value }))} placeholder="5000" />
                             </div>
                         </div>
@@ -525,10 +517,10 @@ export function ProposalWizard({
                 {wizardStep === 2 && (
                     <div className="space-y-4">
                         <p className="text-sm text-muted-foreground">
-                            Estos campos alimentan la generacion IA de la propuesta. Cuanto mas contexto, mejor resultado.
+                            Estos campos alimentan la generación IA de la propuesta. Cuanto más contexto, mejor resultado.
                         </p>
                         <div className="space-y-2">
-                            <Label>Situacion actual del cliente</Label>
+                            <Label>Situación actual del cliente</Label>
                             <Textarea
                                 value={form.situation}
                                 onChange={(e) => setForm((prev) => ({ ...prev, situation: e.target.value }))}
@@ -625,7 +617,7 @@ export function ProposalWizard({
                                             Recurrente
                                         </label>
                                     </div>
-                                    <Button variant="ghost" size="sm" onClick={() => removePricing(i)}>
+                                    <Button variant="ghost" size="sm" aria-label="Eliminar" onClick={() => removePricing(i)}>
                                         <Trash2 className="w-3.5 h-3.5 text-destructive" />
                                     </Button>
                                 </div>
@@ -635,13 +627,14 @@ export function ProposalWizard({
                                         <Input
                                             value={opt.name}
                                             onChange={(e) => updatePricing(i, "name", e.target.value)}
-                                            placeholder="Ej. Plan Basico"
+                                            placeholder="Ej. Plan Básico"
                                         />
                                     </div>
                                     <div className="space-y-1">
                                         <Label className="text-xs">Precio (\u20AC)</Label>
                                         <Input
                                             type="number"
+                                            min={0}
                                             value={opt.price || ""}
                                             onChange={(e) => updatePricing(i, "price", Number(e.target.value))}
                                             placeholder="0"
@@ -691,6 +684,7 @@ export function ProposalWizard({
                                 <Label>Horas David (\u20AC50/h)</Label>
                                 <Input
                                     type="number"
+                                    min={0}
                                     value={form.internal_hours_david ?? ""}
                                     onChange={(e) => setForm((prev) => ({
                                         ...prev,
@@ -703,6 +697,7 @@ export function ProposalWizard({
                                 <Label>Horas Nacho (\u20AC30/h)</Label>
                                 <Input
                                     type="number"
+                                    min={0}
                                     value={form.internal_hours_nacho ?? ""}
                                     onChange={(e) => setForm((prev) => ({
                                         ...prev,

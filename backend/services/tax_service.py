@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
 
 from sqlalchemy import select, extract, func
@@ -32,13 +33,13 @@ async def _income_vat_for_quarter(db: AsyncSession, year: int, quarter: int) -> 
         )
     )
     rows = r.scalars().all()
-    total = 0.0
+    total = Decimal("0")
     for row in rows:
         if row.vat_amount and row.vat_amount > 0:
-            total += row.vat_amount
+            total += Decimal(str(row.vat_amount or 0))
         else:
-            total += row.amount * (row.vat_rate or 0) / 100.0
-    return total
+            total += Decimal(str(row.amount or 0)) * Decimal(str(row.vat_rate or 0)) / Decimal("100")
+    return float(total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 async def _expense_vat_for_quarter(db: AsyncSession, year: int, quarter: int) -> float:
@@ -52,13 +53,13 @@ async def _expense_vat_for_quarter(db: AsyncSession, year: int, quarter: int) ->
         )
     )
     rows = r.scalars().all()
-    total = 0.0
+    total = Decimal("0")
     for row in rows:
         if row.vat_amount and row.vat_amount > 0:
-            total += row.vat_amount
+            total += Decimal(str(row.vat_amount or 0))
         else:
-            total += row.amount * (row.vat_rate or 0) / 100.0
-    return total
+            total += Decimal(str(row.amount or 0)) * Decimal(str(row.vat_rate or 0)) / Decimal("100")
+    return float(total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 async def calculate_iva_quarterly(db: AsyncSession, year: int, quarter: int) -> dict:
@@ -82,23 +83,23 @@ async def calculate_corporate_tax(db: AsyncSession, year: int) -> dict:
         select(func.coalesce(func.sum(Income.amount), 0))
         .where(extract("year", Income.date) == year)
     )
-    total_income = float(r.scalar())
+    total_income = Decimal(str(r.scalar()))
     r = await db.execute(
         select(func.coalesce(func.sum(Expense.amount), 0))
         .where(extract("year", Expense.date) == year)
     )
-    total_expenses = float(r.scalar())
+    total_expenses = Decimal(str(r.scalar()))
     profit = total_income - total_expenses
-    rate = await _get_setting_float(db, "corporate_tax_rate", 25.0)
-    tax = max(profit * rate / 100.0, 0)
+    rate = Decimal(str(await _get_setting_float(db, "corporate_tax_rate", 25.0)))
+    tax = max(profit * rate / Decimal("100"), Decimal("0"))
     return {
         "name": "Impuesto de Sociedades",
         "model": "200",
         "period": "anual",
         "year": year,
-        "base_amount": round(profit, 2),
-        "tax_rate": rate,
-        "tax_amount": round(tax, 2),
+        "base_amount": float(profit.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        "tax_rate": float(rate),
+        "tax_amount": float(tax.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
     }
 
 
@@ -108,7 +109,7 @@ async def calculate_irpf_quarterly(db: AsyncSession, year: int, quarter: int) ->
         select(ExpenseCategory).where(ExpenseCategory.name == "Servicios profesionales")
     )
     cat = r.scalars().first()
-    base = 0.0
+    base = Decimal("0")
     if cat:
         r = await db.execute(
             select(func.coalesce(func.sum(Expense.amount), 0)).where(
@@ -118,17 +119,17 @@ async def calculate_irpf_quarterly(db: AsyncSession, year: int, quarter: int) ->
                 Expense.category_id == cat.id,
             )
         )
-        base = float(r.scalar())
-    rate = await _get_setting_float(db, "irpf_retention_rate", 15.0)
-    tax = base * rate / 100.0
+        base = Decimal(str(r.scalar()))
+    rate = Decimal(str(await _get_setting_float(db, "irpf_retention_rate", 15.0)))
+    tax = base * rate / Decimal("100")
     return {
         "name": f"Retenciones IRPF Q{quarter}",
         "model": "111",
         "period": f"Q{quarter}",
         "year": year,
-        "base_amount": round(base, 2),
-        "tax_rate": rate,
-        "tax_amount": round(tax, 2),
+        "base_amount": float(base.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        "tax_rate": float(rate),
+        "tax_amount": float(tax.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
     }
 
 
