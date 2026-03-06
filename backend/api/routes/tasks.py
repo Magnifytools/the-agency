@@ -223,7 +223,7 @@ async def delete_task(
 async def list_checklist(
     task_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_module("tasks")),
 ):
     r = await db.execute(
         select(TaskChecklist)
@@ -238,7 +238,7 @@ async def create_checklist_item(
     task_id: int,
     data: ChecklistItemCreate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_module("tasks", write=True)),
 ):
     item = TaskChecklist(task_id=task_id, **data.model_dump())
     db.add(item)
@@ -253,7 +253,7 @@ async def update_checklist_item(
     item_id: int,
     data: ChecklistItemUpdate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_module("tasks", write=True)),
 ):
     r = await db.execute(
         select(TaskChecklist).where(TaskChecklist.id == item_id, TaskChecklist.task_id == task_id)
@@ -273,7 +273,7 @@ async def delete_checklist_item(
     task_id: int,
     item_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_module("tasks", write=True)),
 ):
     r = await db.execute(
         select(TaskChecklist).where(TaskChecklist.id == item_id, TaskChecklist.task_id == task_id)

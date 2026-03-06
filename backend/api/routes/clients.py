@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
@@ -362,6 +363,17 @@ async def upload_document(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients", write=True)),
 ):
+    _ALLOWED_MIME_TYPES = {
+        "application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "text/plain", "text/csv",
+        "application/zip",
+    }
+    if file.content_type and file.content_type not in _ALLOWED_MIME_TYPES:
+        raise HTTPException(400, f"Tipo de archivo no permitido: {file.content_type}")
     content = await file.read()
     if len(content) > 20 * 1024 * 1024:
         raise HTTPException(400, "Archivo demasiado grande (máx 20 MB)")
@@ -395,7 +407,7 @@ async def download_document(
     return Response(
         content=doc.content,
         media_type=doc.mime_type,
-        headers={"Content-Disposition": f'attachment; filename="{doc.name}"'},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(doc.name, safe='')}"},
     )
 
 

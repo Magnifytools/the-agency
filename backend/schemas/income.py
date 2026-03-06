@@ -1,13 +1,13 @@
 from __future__ import annotations
 from typing import Optional
 from datetime import date, datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class IncomeCreate(BaseModel):
     date: date
     description: str
-    amount: float
+    amount: float = Field(ge=0)
     type: str = "factura"
     client_id: Optional[int] = None
     invoice_number: str = ""
@@ -21,7 +21,7 @@ class IncomeCreate(BaseModel):
 class IncomeUpdate(BaseModel):
     date: Optional[date] = None
     description: Optional[str] = None
-    amount: Optional[float] = None
+    amount: Optional[float] = Field(default=None, ge=0)
     type: Optional[str] = None
     client_id: Optional[int] = None
     invoice_number: Optional[str] = None

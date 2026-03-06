@@ -23,6 +23,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/inbox", tags=["inbox"])
 
+# Keep references to background tasks to prevent garbage collection
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _fire_and_forget(coro) -> asyncio.Task:
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -138,7 +148,7 @@ async def create_inbox_note(
 
     # Only run AI classification if user didn't pre-assign
     if not already_assigned:
-        asyncio.create_task(_classify_note_background(note.id))
+        _fire_and_forget(_classify_note_background(note.id))
 
     return _to_response(note)
 

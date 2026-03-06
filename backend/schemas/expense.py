@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Optional
 from datetime import date, datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ExpenseCategoryCreate(BaseModel):
@@ -24,7 +24,7 @@ class ExpenseCategoryResponse(BaseModel):
 class ExpenseCreate(BaseModel):
     date: date
     description: str
-    amount: float
+    amount: float = Field(ge=0)
     category_id: Optional[int] = None
     is_recurring: bool = False
     recurrence_period: str = ""
@@ -38,7 +38,7 @@ class ExpenseCreate(BaseModel):
 class ExpenseUpdate(BaseModel):
     date: Optional[date] = None
     description: Optional[str] = None
-    amount: Optional[float] = None
+    amount: Optional[float] = Field(default=None, ge=0)
     category_id: Optional[int] = None
     is_recurring: Optional[bool] = None
     recurrence_period: Optional[str] = None

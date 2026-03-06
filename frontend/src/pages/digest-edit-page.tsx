@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import DOMPurify from "dompurify"
 import { useParams, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, Save, Eye, Copy, Loader2, Plus, Trash2 } from "lucide-react"
@@ -331,7 +332,7 @@ export default function DigestEditPage() {
           ) : (
             <div
               className="border rounded-lg max-h-[60vh] overflow-auto"
-              dangerouslySetInnerHTML={{ __html: previewContent }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewContent) }}
             />
           )}
 

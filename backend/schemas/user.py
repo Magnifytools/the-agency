@@ -7,7 +7,7 @@ from backend.db.models import UserRole
 
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=6, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
     full_name: str = Field(min_length=1, max_length=255)
     role: UserRole = UserRole.member
     hourly_rate: Optional[float] = None
@@ -17,7 +17,8 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     hourly_rate: Optional[float] = None
     role: Optional[UserRole] = None
-    preferences: Optional[dict] = None
+    # Restrict preferences to scalar values only (no nested objects)
+    preferences: Optional[dict[str, str | int | float | bool | None]] = None
 
 
 class UserListResponse(BaseModel):

@@ -17,7 +17,8 @@ async def global_search(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    pattern = f"%{q}%"
+    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{escaped}%"
 
     # Clients
     client_result = await db.execute(

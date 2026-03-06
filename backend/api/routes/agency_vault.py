@@ -10,8 +10,16 @@ from backend.db.database import get_db
 from backend.db.models import User, AgencyAsset, AssetCategory
 from backend.schemas.agency_asset import AssetCreate, AssetUpdate, AssetResponse
 from backend.api.deps import get_current_user, require_admin
+from backend.core.security import encrypt_vault_secret, decrypt_vault_secret
 
 router = APIRouter(prefix="/api/vault/assets", tags=["agency-vault"])
+
+
+def _decrypt_asset(asset: AgencyAsset) -> AgencyAsset:
+    """Decrypt the password field before returning to client."""
+    if asset.password:
+        asset.password = decrypt_vault_secret(asset.password)
+    return asset
 
 
 @router.get("", response_model=list[AssetResponse])
@@ -24,7 +32,7 @@ async def list_assets(
     if category:
         query = query.where(AgencyAsset.category == category)
     result = await db.execute(query)
-    return result.scalars().all()
+    return [_decrypt_asset(a) for a in result.scalars().all()]
 
 
 @router.post("", response_model=AssetResponse, status_code=201)
@@ -33,11 +41,14 @@ async def create_asset(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    asset = AgencyAsset(**body.model_dump())
+    data = body.model_dump()
+    if data.get("password"):
+        data["password"] = encrypt_vault_secret(data["password"])
+    asset = AgencyAsset(**data)
     db.add(asset)
     await db.commit()
     await db.refresh(asset)
-    return asset
+    return _decrypt_asset(asset)
 
 
 @router.put("/{asset_id}", response_model=AssetResponse)
@@ -55,10 +66,12 @@ async def update_asset(
         raise HTTPException(status_code=404, detail="Asset not found")
 
     for field, value in body.model_dump(exclude_unset=True).items():
+        if field == "password" and value:
+            value = encrypt_vault_secret(value)
         setattr(asset, field, value)
     await db.commit()
     await db.refresh(asset)
-    return asset
+    return _decrypt_asset(asset)
 
 
 @router.delete("/{asset_id}", status_code=204)

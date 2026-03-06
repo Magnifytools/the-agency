@@ -1,4 +1,5 @@
 import { useState } from "react"
+import DOMPurify from "dompurify"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -337,7 +338,7 @@ export default function DigestsPage() {
           ) : (
             <div
               className="border rounded-lg max-h-[60vh] overflow-auto"
-              dangerouslySetInnerHTML={{ __html: previewContent }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewContent) }}
             />
           )}
 

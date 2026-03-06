@@ -63,7 +63,7 @@ async def classify_inbox_note(
     context += "\nCLIENTES ACTIVOS:\n"
     for c in clients:
         context += f"- ID:{c['id']} \"{c['name']}\"\n"
-    context += f"\nNOTA DEL USUARIO:\n{raw_text}"
+    context += f"\n<user_note>\n{raw_text}\n</user_note>"
 
     message = await client.messages.create(
         model="claude-sonnet-4-20250514",

@@ -1,13 +1,41 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import secrets
 
 import bcrypt
+from cryptography.fernet import Fernet, InvalidToken
 from jose import JWTError, jwt
 
 from backend.config import settings
+
+
+def _vault_fernet() -> Fernet:
+    """Derive a Fernet key from SECRET_KEY using SHA-256."""
+    key_bytes = hashlib.sha256(settings.SECRET_KEY.encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(key_bytes))
+
+
+def encrypt_vault_secret(plaintext: str) -> str:
+    """Encrypt a vault secret. Returns a base64-encoded ciphertext prefixed with 'v1:'."""
+    if not plaintext:
+        return plaintext
+    token = _vault_fernet().encrypt(plaintext.encode())
+    return "v1:" + token.decode()
+
+
+def decrypt_vault_secret(ciphertext: str) -> str:
+    """Decrypt a vault secret. Falls back to returning the original value for legacy plaintext."""
+    if not ciphertext or not ciphertext.startswith("v1:"):
+        return ciphertext  # Legacy plaintext — return as-is
+    try:
+        token = ciphertext[3:].encode()
+        return _vault_fernet().decrypt(token).decode()
+    except (InvalidToken, Exception):
+        return ciphertext  # Decryption failed — return raw
 
 
 def hash_password(password: str) -> str:
