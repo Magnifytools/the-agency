@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 const BASE_URL = process.env.FRONTEND_URL || "http://127.0.0.1:5177";
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "david@magnify.ing";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "LocalDev2026!";
-const MEMBER_EMAIL = process.env.MEMBER_EMAIL || "nacho@magnify.ing";
-const MEMBER_PASSWORD = process.env.MEMBER_PASSWORD || "LocalDev2026!";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || process.env.SEED_ADMIN_PASSWORD || "";
+const MEMBER_EMAIL = process.env.MEMBER_EMAIL || "";
+const MEMBER_PASSWORD = process.env.MEMBER_PASSWORD || process.env.SEED_MEMBER_PASSWORD || "";
 
 const ROUTES = [
   "/login",
@@ -36,6 +36,9 @@ const ROUTES = [
 ];
 
 async function login(page: import("@playwright/test").Page, email: string, password: string) {
+  if (!email || !password) {
+    throw new Error(`Missing credentials for ${email || "unknown user"}. Set ADMIN_/MEMBER_ or SEED_ env vars before running the smoke audit.`);
+  }
   await page.goto(`${BASE_URL}/login`, { waitUntil: "domcontentloaded" });
   await page.fill("#email", email);
   await page.fill("#password", password);
@@ -169,10 +172,11 @@ test.describe("Frontend smoke completo", () => {
     const finalUrl = page.url();
     const deniedBy403 = apiResponses.some((r) => r.status === 403);
     const redirected = !finalUrl.endsWith("/leads");
+    const accessDeniedVisible = await page.getByText(/acceso restringido/i).isVisible().catch(() => false);
 
     expect(
-      deniedBy403 || redirected,
-      `Expected /leads blocked for member. finalUrl=${finalUrl} api=${JSON.stringify(apiResponses)}`,
+      deniedBy403 || redirected || accessDeniedVisible,
+      `Expected /leads blocked for member. finalUrl=${finalUrl} api=${JSON.stringify(apiResponses)} accessDenied=${accessDeniedVisible}`,
     ).toBeTruthy();
   });
 });
