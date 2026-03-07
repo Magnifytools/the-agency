@@ -155,7 +155,7 @@ export default function LeadsPage() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Pipeline</h2>
           <p className="text-muted-foreground text-sm mt-1">
-            {pipelineSummary ? `${pipelineSummary.total_leads} ${pipelineSummary.total_leads === 1 ? "lead" : "leads"} · ${formatValue(pipelineSummary.total_value)} pipeline` : "—"}
+            {pipelineSummary ? `${pipelineSummary.total_leads} ${pipelineSummary.total_leads === 1 ? "lead" : "leads"} · ${formatValue(pipelineSummary.total_value)} pipeline · ${formatValue(pipelineSummary.weighted_value)} ponderado` : "—"}
           </p>
         </div>
         <div className="flex items-center gap-2">
