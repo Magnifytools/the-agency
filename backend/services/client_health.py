@@ -231,7 +231,7 @@ async def compute_health_batch(
     now = _utc_now_naive()
     client_ids = [c.id for c in clients]
     client_name_map = {c.id: c.name for c in clients}
-    client_budget_map = {c.id: c.monthly_budget for c in clients}
+    client_budget_map = {c.id: float(c.monthly_budget) if c.monthly_budget is not None else None for c in clients}
 
     # --- 1. Last communication date per client ---
     last_comm_result = await db.execute(

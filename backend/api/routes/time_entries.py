@@ -314,7 +314,7 @@ async def time_entries_by_client(
             }
         cm = client_map[cid]
         mins = e.minutes or 0
-        rate = (e.user.hourly_rate or 0) if e.user else 0
+        rate = float((e.user.hourly_rate or 0) if e.user else 0)
         cost = mins * rate / 60
         cm["total_minutes"] += mins
         cm["entries_count"] += 1

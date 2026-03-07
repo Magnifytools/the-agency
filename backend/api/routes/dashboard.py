@@ -173,7 +173,7 @@ async def get_profitability(
     # Build response using dict lookups (no per-client queries)
     result = []
     for client in clients:
-        budget = client.monthly_budget or 0
+        budget = float(client.monthly_budget or 0)
         actual_minutes, cost = time_map.get(client.id, (0, 0))
         estimated_minutes = est_map.get(client.id, 0)
         variance_minutes = actual_minutes - estimated_minutes
@@ -244,7 +244,7 @@ async def get_team_summary(
     for user in users:
         total_minutes, task_count, clients_touched = metrics_map.get(user.id, (0, 0, 0))
         hours = round(total_minutes / 60, 1)
-        cost = round(hours * (user.hourly_rate or 0), 2)
+        cost = round(hours * float(user.hourly_rate or 0), 2)
 
         result.append(TeamMemberSummary(
             user_id=user.id,

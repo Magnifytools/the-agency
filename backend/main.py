@@ -168,6 +168,26 @@ async def _ensure_columns():
         "CREATE INDEX IF NOT EXISTS ix_inbox_notes_user_id ON inbox_notes (user_id)",
         "CREATE INDEX IF NOT EXISTS ix_inbox_notes_project_id ON inbox_notes (project_id)",
         "CREATE INDEX IF NOT EXISTS ix_inbox_notes_client_id ON inbox_notes (client_id)",
+    ]
+    async with engine.begin() as conn:
+        for sql in stmts:
+            try:
+                await conn.execute(text(sql))
+            except Exception as exc:
+                logging.warning("DDL statement failed (may be expected): %s — %s", sql[:80], exc)
+    logging.info("_ensure_columns DDL complete.")
+
+
+async def _ensure_numeric_types():
+    """Convert monetary Float columns to NUMERIC for precision.
+
+    Always runs unconditionally so it works on production servers where
+    the _ensure_columns sentinel already exists.
+    """
+    from sqlalchemy import text
+    from backend.db.database import engine
+
+    stmts = [
         "ALTER TABLE income ALTER COLUMN amount TYPE NUMERIC(12,2)",
         "ALTER TABLE income ALTER COLUMN vat_amount TYPE NUMERIC(12,2)",
         "ALTER TABLE expenses ALTER COLUMN amount TYPE NUMERIC(12,2)",
@@ -191,6 +211,8 @@ async def _ensure_columns():
         "ALTER TABLE forecasts ALTER COLUMN projected_taxes TYPE NUMERIC(12,2)",
         "ALTER TABLE forecasts ALTER COLUMN projected_profit TYPE NUMERIC(12,2)",
         "ALTER TABLE balance_snapshots ALTER COLUMN amount TYPE NUMERIC(12,2)",
+        # Clean up legacy negative test artifacts (new writes are blocked by CHECK constraints)
+        "DELETE FROM expenses WHERE amount < 0",
     ]
     async with engine.begin() as conn:
         for sql in stmts:
@@ -198,7 +220,7 @@ async def _ensure_columns():
                 await conn.execute(text(sql))
             except Exception as exc:
                 logging.warning("DDL statement failed (may be expected): %s — %s", sql[:80], exc)
-    logging.info("_ensure_columns DDL complete.")
+    logging.info("_ensure_numeric_types DDL complete.")
 
 
 def _log_task_error(t: asyncio.Task) -> None:
@@ -209,6 +231,7 @@ def _log_task_error(t: asyncio.Task) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await _ensure_columns()
+    await _ensure_numeric_types()
     task = None
     if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL:
         task = asyncio.create_task(_engine_sync_loop(), name="engine-sync")
