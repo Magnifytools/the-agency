@@ -284,7 +284,7 @@ def _log_task_error(t: asyncio.Task) -> None:
 async def _cleanup_qa_test_data():
     """One-time cleanup of QA test data created during E2E testing."""
     from sqlalchemy import select, delete, update, or_
-    from backend.db.database import AsyncSessionLocal
+    from backend.db.database import async_session
     from backend.db.models import (
         Client, Task, Project, ProjectPhase, ProjectEvidence,
         TimeEntry, Invoice, InvoiceItem, ClientContact, ClientResource,
@@ -292,7 +292,7 @@ async def _cleanup_qa_test_data():
         Proposal, Event, Lead, GeneratedReport, Income, HoldedInvoiceCache,
     )
 
-    async with AsyncSessionLocal() as session:
+    async with async_session() as session:
         # --- Part 1: Delete QA-LIVE test clients ---
         result = await session.execute(
             select(Client).where(Client.name.like("QA-LIVE%"))
