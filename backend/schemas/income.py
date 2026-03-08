@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 class IncomeCreate(BaseModel):
     date: date
     description: str
-    amount: float = Field(ge=0)
+    amount: float = Field(gt=0)
     type: str = "factura"
     client_id: Optional[int] = None
     invoice_number: str = ""

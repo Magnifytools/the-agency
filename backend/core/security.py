@@ -28,14 +28,14 @@ def encrypt_vault_secret(plaintext: str) -> str:
 
 
 def decrypt_vault_secret(ciphertext: str) -> str:
-    """Decrypt a vault secret. Falls back to returning the original value for legacy plaintext."""
+    """Decrypt a vault secret. Legacy plaintext (no 'v1:' prefix) is returned as-is."""
     if not ciphertext or not ciphertext.startswith("v1:"):
         return ciphertext  # Legacy plaintext — return as-is
     try:
         token = ciphertext[3:].encode()
         return _vault_fernet().decrypt(token).decode()
-    except (InvalidToken, Exception):
-        return ciphertext  # Decryption failed — return raw
+    except (InvalidToken, Exception) as exc:
+        raise ValueError("Vault decryption failed") from exc
 
 
 def hash_password(password: str) -> str:

@@ -5,13 +5,16 @@ import json
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi import HTTPException
 from fastapi.responses import Response, FileResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["extension"])
+limiter = Limiter(key_func=get_remote_address)
 
 _MANIFEST = Path(__file__).resolve().parents[3] / "chrome-extension" / "manifest.json"
 _CRX = Path(__file__).resolve().parents[3] / "chrome-extension" / "dist" / "agency-manager.crx"
@@ -35,7 +38,8 @@ def _get_extension_id() -> str | None:
 
 
 @router.get("/extension/update.xml", include_in_schema=False)
-async def extension_update_xml():
+@limiter.limit("10/minute")
+async def extension_update_xml(request: Request):
     """Chrome extension auto-update manifest."""
     ext_id = _get_extension_id()
     if not ext_id:
@@ -55,7 +59,8 @@ async def extension_update_xml():
 
 
 @router.get("/extension/agency-manager.crx", include_in_schema=False)
-async def extension_crx():
+@limiter.limit("5/minute")
+async def extension_crx(request: Request):
     """Serve the packaged Chrome extension."""
     if not _CRX.is_file():
         raise HTTPException(status_code=404, detail="CRX not built yet")

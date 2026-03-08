@@ -24,7 +24,7 @@ class ExpenseCategoryResponse(BaseModel):
 class ExpenseCreate(BaseModel):
     date: date
     description: str
-    amount: float = Field(ge=0)
+    amount: float = Field(gt=0)
     category_id: Optional[int] = None
     is_recurring: bool = False
     recurrence_period: str = ""
