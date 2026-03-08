@@ -187,8 +187,9 @@ async def seed():
         # Seed users
         users = _get_seed_users()
         for u in users:
-            existing = await session.execute(select(User).where(User.email == u["email"]))
-            if existing.scalar_one_or_none() is None:
+            result = await session.execute(select(User).where(User.email == u["email"]))
+            existing_user = result.scalar_one_or_none()
+            if existing_user is None:
                 user = User(
                     email=u["email"],
                     full_name=u["full_name"],
@@ -197,6 +198,9 @@ async def seed():
                     hashed_password=hash_password(u["password"]),
                 )
                 session.add(user)
+            else:
+                existing_user.hashed_password = hash_password(u["password"])
+                print(f"Updated password for {u['email']}")
 
         # Seed categories
         for c in CATEGORIES:
