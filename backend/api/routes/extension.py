@@ -8,13 +8,16 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi import HTTPException
 from fastapi.responses import Response, FileResponse
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+
+from backend.core.rate_limiter import _SlidingWindowLimiter
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["extension"])
-limiter = Limiter(key_func=get_remote_address)
+_ext_limiter = _SlidingWindowLimiter(
+    prefix="rate:ext",
+    detail_fn=lambda _m, _w: "Too many requests",
+)
 
 _MANIFEST = Path(__file__).resolve().parents[3] / "chrome-extension" / "manifest.json"
 _CRX = Path(__file__).resolve().parents[3] / "chrome-extension" / "dist" / "agency-manager.crx"
@@ -38,9 +41,10 @@ def _get_extension_id() -> str | None:
 
 
 @router.get("/extension/update.xml", include_in_schema=False)
-@limiter.limit("10/minute")
 async def extension_update_xml(request: Request):
     """Chrome extension auto-update manifest."""
+    client_ip = request.client.host if request.client else "unknown"
+    _ext_limiter.check(f"xml:{client_ip}", max_requests=10, window_seconds=60)
     ext_id = _get_extension_id()
     if not ext_id:
         raise HTTPException(status_code=404, detail="Extension ID not configured")
@@ -59,9 +63,10 @@ async def extension_update_xml(request: Request):
 
 
 @router.get("/extension/agency-manager.crx", include_in_schema=False)
-@limiter.limit("5/minute")
 async def extension_crx(request: Request):
     """Serve the packaged Chrome extension."""
+    client_ip = request.client.host if request.client else "unknown"
+    _ext_limiter.check(f"crx:{client_ip}", max_requests=5, window_seconds=60)
     if not _CRX.is_file():
         raise HTTPException(status_code=404, detail="CRX not built yet")
     return FileResponse(
