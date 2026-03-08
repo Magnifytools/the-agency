@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from "react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { useAuth } from "@/context/auth-context"
-import { usersApi } from "@/lib/api"
+import { usersApi, categoriesApi } from "@/lib/api"
 import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS } from "@/hooks/use-keyboard-shortcuts"
+import { Pencil, Trash2, Plus, Check, X } from "lucide-react"
 
 function formatBinding(binding: string): string {
   return binding
@@ -18,13 +20,21 @@ interface EditingState {
 }
 
 export default function SettingsPage() {
-  const { user, refreshUser } = useAuth()
+  const queryClient = useQueryClient()
+  const { user, refreshUser, isAdmin } = useAuth()
   const [bindings, setBindings] = useState<Record<string, string>>({
     ...DEFAULT_SHORTCUTS,
     ...(user?.preferences?.shortcuts ?? {}),
   })
   const [editing, setEditing] = useState<EditingState | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // Category management state
+  const [newCatName, setNewCatName] = useState("")
+  const [newCatMinutes, setNewCatMinutes] = useState(60)
+  const [editingCatId, setEditingCatId] = useState<number | null>(null)
+  const [editCatName, setEditCatName] = useState("")
+  const [editCatMinutes, setEditCatMinutes] = useState(60)
 
   // Sync with user preferences when they load
   useEffect(() => {
@@ -97,15 +107,54 @@ export default function SettingsPage() {
     }
   }
 
+  // Categories queries & mutations
+  const { data: categories = [] } = useQuery({
+    queryKey: ["task-categories"],
+    queryFn: () => categoriesApi.list(),
+    enabled: isAdmin,
+  })
+
+  const createCatMut = useMutation({
+    mutationFn: (data: { name: string; default_minutes: number }) => categoriesApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["task-categories"] })
+      setNewCatName("")
+      setNewCatMinutes(60)
+      toast.success("Categoría creada")
+    },
+    onError: () => toast.error("Error al crear categoría"),
+  })
+
+  const updateCatMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { name?: string; default_minutes?: number } }) =>
+      categoriesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["task-categories"] })
+      setEditingCatId(null)
+      toast.success("Categoría actualizada")
+    },
+    onError: () => toast.error("Error al actualizar categoría"),
+  })
+
+  const deleteCatMut = useMutation({
+    mutationFn: (id: number) => categoriesApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["task-categories"] })
+      toast.success("Categoría eliminada")
+    },
+    onError: () => toast.error("Error al eliminar. ¿Tiene tareas asociadas?"),
+  })
+
   const shortcutKeys = Object.keys(DEFAULT_SHORTCUTS)
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="mb-8">
+    <div className="max-w-2xl mx-auto space-y-8">
+      <div>
         <h1 className="text-2xl font-bold text-foreground tracking-tight">Configuración</h1>
         <p className="text-muted-foreground mt-1">Personaliza tu experiencia en The Agency</p>
       </div>
 
+      {/* Keyboard shortcuts */}
       <div className="bg-card border border-border rounded-2xl p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -179,6 +228,109 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+
+      {/* Task categories — admin only */}
+      {isAdmin && (
+        <div className="bg-card border border-border rounded-2xl p-6">
+          <div className="mb-6">
+            <h2 className="text-base font-semibold text-foreground">Categorías de tareas</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">Gestiona las categorías disponibles para clasificar tareas</p>
+          </div>
+
+          <div className="divide-y divide-border">
+            {categories.map((cat) => {
+              const isEditingThis = editingCatId === cat.id
+              return (
+                <div key={cat.id} className="flex items-center justify-between py-3 gap-4">
+                  {isEditingThis ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <input
+                        className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+                        value={editCatName}
+                        onChange={(e) => setEditCatName(e.target.value)}
+                        autoFocus
+                      />
+                      <input
+                        className="w-20 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-center"
+                        type="number"
+                        min="1"
+                        value={editCatMinutes}
+                        onChange={(e) => setEditCatMinutes(Number(e.target.value))}
+                      />
+                      <span className="text-xs text-muted-foreground">min</span>
+                      <button
+                        onClick={() => updateCatMut.mutate({ id: cat.id, data: { name: editCatName, default_minutes: editCatMinutes } })}
+                        className="p-1.5 text-green-600 hover:bg-green-50 rounded-md transition-colors"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setEditingCatId(null)}
+                        className="p-1.5 text-muted-foreground hover:bg-muted rounded-md transition-colors"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex-1">
+                        <span className="text-sm text-foreground font-medium">{cat.name}</span>
+                        <span className="text-xs text-muted-foreground ml-2">{cat.default_minutes} min</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => { setEditingCatId(cat.id); setEditCatName(cat.name); setEditCatMinutes(cat.default_minutes) }}
+                          className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => { if (confirm(`¿Eliminar "${cat.name}"?`)) deleteCatMut.mutate(cat.id) }}
+                          className="p-1.5 text-muted-foreground hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Add new category */}
+          <div className="mt-4 flex items-center gap-2">
+            <input
+              className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+              placeholder="Nueva categoría..."
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newCatName.trim()) {
+                  e.preventDefault()
+                  createCatMut.mutate({ name: newCatName.trim(), default_minutes: newCatMinutes })
+                }
+              }}
+            />
+            <input
+              className="w-20 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-center"
+              type="number"
+              min="1"
+              value={newCatMinutes}
+              onChange={(e) => setNewCatMinutes(Number(e.target.value))}
+              placeholder="min"
+            />
+            <span className="text-xs text-muted-foreground">min</span>
+            <button
+              onClick={() => newCatName.trim() && createCatMut.mutate({ name: newCatName.trim(), default_minutes: newCatMinutes })}
+              disabled={!newCatName.trim() || createCatMut.isPending}
+              className="p-1.5 bg-brand text-black rounded-md hover:bg-brand/90 transition-colors disabled:opacity-50"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

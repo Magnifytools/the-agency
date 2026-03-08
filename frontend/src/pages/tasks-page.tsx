@@ -642,6 +642,11 @@ export default function TasksPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogHeader>
           <DialogTitle>{editing ? "Editar tarea" : "Nueva tarea"}</DialogTitle>
+          {editing?.created_by_name && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Creada por {editing.created_by_name} · {new Date(editing.created_at).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}
+            </p>
+          )}
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Title */}

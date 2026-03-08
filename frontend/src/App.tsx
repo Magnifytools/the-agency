@@ -104,22 +104,22 @@ export default function App() {
               <Route path="/capacity" element={<PermissionRoute adminOnly><ErrorBoundary section="Capacity"><Suspense fallback={<PageLoader />}><CapacityPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/users" element={<PermissionRoute adminOnly><ErrorBoundary section="Users"><Suspense fallback={<PageLoader />}><UsersPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/timesheet" element={<ErrorBoundary section="Timesheet"><Suspense fallback={<PageLoader />}><TimesheetPage /></Suspense></ErrorBoundary>} />
-              <Route path="/billing" element={<PermissionRoute module="billing"><ErrorBoundary section="Billing"><Suspense fallback={<PageLoader />}><BillingPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/billing" element={<PermissionRoute adminOnly><ErrorBoundary section="Billing"><Suspense fallback={<PageLoader />}><BillingPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/proposals" element={<PermissionRoute module="proposals"><ErrorBoundary section="Proposals"><Suspense fallback={<PageLoader />}><ProposalsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/digests" element={<ErrorBoundary section="Digests"><Suspense fallback={<PageLoader />}><DigestsPage /></Suspense></ErrorBoundary>} />
               <Route path="/digests/:id/edit" element={<ErrorBoundary section="DigestEdit"><Suspense fallback={<PageLoader />}><DigestEditPage /></Suspense></ErrorBoundary>} />
               <Route path="/dailys" element={<ErrorBoundary section="Dailys"><Suspense fallback={<PageLoader />}><DailysPage /></Suspense></ErrorBoundary>} />
               <Route path="/reports" element={<PermissionRoute module="reports"><ErrorBoundary section="Reports"><Suspense fallback={<PageLoader />}><ReportsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
-              {/* Finance */}
-              <Route path="/finance" element={<PermissionRoute module="finance_dashboard"><ErrorBoundary section="Finance"><Suspense fallback={<PageLoader />}><FinanceDashboardPage /></Suspense></ErrorBoundary></PermissionRoute>} />
-              <Route path="/finance/income" element={<PermissionRoute module="finance_income"><ErrorBoundary section="Income"><Suspense fallback={<PageLoader />}><IncomePage /></Suspense></ErrorBoundary></PermissionRoute>} />
-              <Route path="/finance/expenses" element={<PermissionRoute module="finance_expenses"><ErrorBoundary section="Expenses"><Suspense fallback={<PageLoader />}><ExpensesPage /></Suspense></ErrorBoundary></PermissionRoute>} />
-              <Route path="/finance/taxes" element={<PermissionRoute module="finance_taxes"><ErrorBoundary section="Taxes"><Suspense fallback={<PageLoader />}><TaxesPage /></Suspense></ErrorBoundary></PermissionRoute>} />
-              <Route path="/finance/forecasts" element={<PermissionRoute module="finance_forecasts"><ErrorBoundary section="Forecasts"><Suspense fallback={<PageLoader />}><ForecastsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
-              <Route path="/finance/advisor" element={<PermissionRoute module="finance_advisor"><ErrorBoundary section="Advisor"><Suspense fallback={<PageLoader />}><AdvisorPage /></Suspense></ErrorBoundary></PermissionRoute>} />
-              <Route path="/finance/import" element={<PermissionRoute module="finance_import"><ErrorBoundary section="Import"><Suspense fallback={<PageLoader />}><ImportPage /></Suspense></ErrorBoundary></PermissionRoute>} />
-              {/* Holded Finance */}
-              <Route path="/finance-holded" element={<PermissionRoute module="finance_dashboard"><ErrorBoundary section="HoldedFinance"><Suspense fallback={<PageLoader />}><HoldedFinancePage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              {/* Finance — admin only */}
+              <Route path="/finance" element={<PermissionRoute adminOnly><ErrorBoundary section="Finance"><Suspense fallback={<PageLoader />}><FinanceDashboardPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/finance/income" element={<PermissionRoute adminOnly><ErrorBoundary section="Income"><Suspense fallback={<PageLoader />}><IncomePage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/finance/expenses" element={<PermissionRoute adminOnly><ErrorBoundary section="Expenses"><Suspense fallback={<PageLoader />}><ExpensesPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/finance/taxes" element={<PermissionRoute adminOnly><ErrorBoundary section="Taxes"><Suspense fallback={<PageLoader />}><TaxesPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/finance/forecasts" element={<PermissionRoute adminOnly><ErrorBoundary section="Forecasts"><Suspense fallback={<PageLoader />}><ForecastsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/finance/advisor" element={<PermissionRoute adminOnly><ErrorBoundary section="Advisor"><Suspense fallback={<PageLoader />}><AdvisorPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/finance/import" element={<PermissionRoute adminOnly><ErrorBoundary section="Import"><Suspense fallback={<PageLoader />}><ImportPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              {/* Holded Finance — admin only */}
+              <Route path="/finance-holded" element={<PermissionRoute adminOnly><ErrorBoundary section="HoldedFinance"><Suspense fallback={<PageLoader />}><HoldedFinancePage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Agency */}
               <Route path="/news" element={<ErrorBoundary section="News"><Suspense fallback={<PageLoader />}><IndustryNewsPage /></Suspense></ErrorBoundary>} />
               <Route path="/vault" element={<PermissionRoute adminOnly><ErrorBoundary section="Vault"><Suspense fallback={<PageLoader />}><AgencyVaultPage /></Suspense></ErrorBoundary></PermissionRoute>} />

@@ -281,11 +281,114 @@ def _log_task_error(t: asyncio.Task) -> None:
         logging.error("Background task %s failed: %s", t.get_name(), exc)
 
 
+async def _cleanup_qa_test_data():
+    """One-time cleanup of QA test data created during E2E testing."""
+    from sqlalchemy import select, delete, update, or_
+    from backend.db.database import AsyncSessionLocal
+    from backend.db.models import (
+        Client, Task, Project, ProjectPhase, ProjectEvidence,
+        TimeEntry, Invoice, InvoiceItem, ClientContact, ClientResource,
+        BillingEvent, CommunicationLog, WeeklyDigest, PMInsight, GrowthIdea,
+        Proposal, Event, Lead, GeneratedReport, Income, HoldedInvoiceCache,
+    )
+
+    async with AsyncSessionLocal() as session:
+        # --- Part 1: Delete QA-LIVE test clients ---
+        result = await session.execute(
+            select(Client).where(Client.name.like("QA-LIVE%"))
+        )
+        qa_clients = result.scalars().all()
+
+        if qa_clients:
+            for client in qa_clients:
+                client_id = client.id
+                project_ids = list((await session.execute(
+                    select(Project.id).where(Project.client_id == client_id)
+                )).scalars())
+                task_ids = list((await session.execute(
+                    select(Task.id).where(Task.client_id == client_id)
+                )).scalars())
+                invoice_ids = list((await session.execute(
+                    select(Invoice.id).where(Invoice.client_id == client_id)
+                )).scalars())
+
+                # Nullify nullable FKs
+                await session.execute(update(Proposal).where(Proposal.client_id == client_id).values(client_id=None))
+                if project_ids:
+                    await session.execute(update(Proposal).where(Proposal.converted_project_id.in_(project_ids)).values(converted_project_id=None))
+                await session.execute(update(Event).where(Event.client_id == client_id).values(client_id=None))
+                if project_ids:
+                    await session.execute(update(Event).where(Event.project_id.in_(project_ids)).values(project_id=None))
+                await session.execute(update(Lead).where(Lead.converted_client_id == client_id).values(converted_client_id=None))
+                await session.execute(update(GeneratedReport).where(GeneratedReport.client_id == client_id).values(client_id=None))
+                if project_ids:
+                    await session.execute(update(GeneratedReport).where(GeneratedReport.project_id.in_(project_ids)).values(project_id=None))
+                await session.execute(update(Income).where(Income.client_id == client_id).values(client_id=None))
+                await session.execute(update(HoldedInvoiceCache).where(HoldedInvoiceCache.client_id == client_id).values(client_id=None))
+
+                # PMInsight
+                pm_conditions = [PMInsight.client_id == client_id]
+                if task_ids:
+                    pm_conditions.append(PMInsight.task_id.in_(task_ids))
+                if project_ids:
+                    pm_conditions.append(PMInsight.project_id.in_(project_ids))
+                await session.execute(delete(PMInsight).where(or_(*pm_conditions)))
+
+                # GrowthIdea nullify
+                if task_ids:
+                    await session.execute(update(GrowthIdea).where(GrowthIdea.task_id.in_(task_ids)).values(task_id=None))
+                if project_ids:
+                    await session.execute(update(GrowthIdea).where(GrowthIdea.project_id.in_(project_ids)).values(project_id=None))
+
+                # Task self-referential
+                if task_ids:
+                    await session.execute(update(Task).where(Task.depends_on.in_(task_ids)).values(depends_on=None))
+                if task_ids:
+                    await session.execute(update(InvoiceItem).where(InvoiceItem.task_id.in_(task_ids)).values(task_id=None))
+
+                # Delete children
+                if task_ids:
+                    await session.execute(delete(TimeEntry).where(TimeEntry.task_id.in_(task_ids)))
+                if invoice_ids:
+                    await session.execute(delete(InvoiceItem).where(InvoiceItem.invoice_id.in_(invoice_ids)))
+                if project_ids:
+                    await session.execute(delete(ProjectEvidence).where(ProjectEvidence.project_id.in_(project_ids)))
+
+                await session.execute(delete(CommunicationLog).where(CommunicationLog.client_id == client_id))
+                await session.execute(delete(ClientContact).where(ClientContact.client_id == client_id))
+                await session.execute(delete(ClientResource).where(ClientResource.client_id == client_id))
+                await session.execute(delete(BillingEvent).where(BillingEvent.client_id == client_id))
+                await session.execute(delete(WeeklyDigest).where(WeeklyDigest.client_id == client_id))
+                await session.execute(delete(Task).where(Task.client_id == client_id))
+                if project_ids:
+                    await session.execute(delete(ProjectPhase).where(ProjectPhase.project_id.in_(project_ids)))
+                await session.execute(delete(Project).where(Project.client_id == client_id))
+                await session.execute(delete(Invoice).where(Invoice.client_id == client_id))
+                await session.delete(client)
+
+            logging.info("🧹 Cleaned up %d QA-LIVE test client(s)", len(qa_clients))
+
+        # --- Part 2: Remove duplicate task ---
+        dup_result = await session.execute(
+            select(Task).where(
+                Task.title == "Optimizar web: eliminar formulario DOM, corregir textos y footer"
+            ).order_by(Task.id.asc())
+        )
+        dup_tasks = dup_result.scalars().all()
+        if len(dup_tasks) > 1:
+            for t in dup_tasks[1:]:
+                await session.delete(t)
+            logging.info("🧹 Removed %d duplicate task(s)", len(dup_tasks) - 1)
+
+        await session.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await _ensure_columns()
     await _ensure_numeric_types()
     await _ensure_columns_v2()
+    await _cleanup_qa_test_data()
     task = None
     if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL:
         task = asyncio.create_task(_engine_sync_loop(), name="engine-sync")

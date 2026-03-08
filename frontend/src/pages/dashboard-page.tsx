@@ -65,6 +65,7 @@ export default function DashboardPage() {
   const { data: profitability } = useQuery({
     queryKey: ["dashboard-profitability", year, month],
     queryFn: () => dashboardApi.profitability(params),
+    enabled: isAdmin,
   })
   const { data: team } = useQuery({
     queryKey: ["dashboard-team", year, month],
@@ -73,10 +74,12 @@ export default function DashboardPage() {
   const { data: monthlyClose } = useQuery({
     queryKey: ["dashboard-monthly-close", year, month],
     queryFn: () => dashboardApi.monthlyClose(params),
+    enabled: isAdmin,
   })
   const { data: financialSettings } = useQuery({
     queryKey: ["dashboard-financial-settings"],
     queryFn: () => dashboardApi.financialSettings(),
+    enabled: isAdmin,
   })
   const { data: recentDigests } = useQuery({
     queryKey: ["recent-digests"],

@@ -126,7 +126,7 @@ async def get_profitability(
     year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
     month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("dashboard")),
+    _: User = Depends(require_admin),
 ):
     y, m = resolve_default_period(year, month)
     start, end = month_range_naive(y, m)
@@ -271,7 +271,7 @@ async def get_monthly_close(
     year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
     month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("dashboard")),
+    _: User = Depends(require_admin),
 ):
     y, m = resolve_default_period(year, month)
 
@@ -348,7 +348,7 @@ async def export_monthly_close(
     year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
     month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("dashboard")),
+    _: User = Depends(require_admin),
 ):
     y, m = resolve_default_period(year, month)
     r = await db.execute(

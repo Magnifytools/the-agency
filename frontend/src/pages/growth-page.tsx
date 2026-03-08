@@ -300,7 +300,7 @@ export default function GrowthPage() {
                 </DialogHeader>
                 <form onSubmit={handleCreate} className="space-y-4 mt-4">
                     <div className="space-y-2">
-                        <Label>Idea o Hipótesis</Label>
+                        <Label>Idea</Label>
                         <Input
                             value={formData.title}
                             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
