@@ -13,7 +13,7 @@ import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare, Loader2, CalendarDays, ChevronDown, ChevronUp } from "lucide-react"
+import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare, Loader2, CalendarDays, ChevronDown, ChevronUp, MessageSquare, Paperclip, Download, Send } from "lucide-react"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
@@ -60,6 +60,8 @@ export default function TasksPage() {
     const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }
   })
 
+  const [depSearch, setDepSearch] = useState("")
+
   // Filters
   const [filterClient, setFilterClient] = useState<string>("")
   const [filterCategory, setFilterCategory] = useState<string>("")
@@ -76,6 +78,9 @@ export default function TasksPage() {
 
   // Checklist state
   const [newChecklistText, setNewChecklistText] = useState("")
+  // Comments & attachments state
+  const [newCommentText, setNewCommentText] = useState("")
+  const [attachmentFileRef, setAttachmentFileRef] = useState<HTMLInputElement | null>(null)
   // Dialog — collapsible assignment fields
   const [showAssignmentFields, setShowAssignmentFields] = useState(true)
 
@@ -217,10 +222,55 @@ export default function TasksPage() {
     mutationFn: (id: number) => tasksApi.checklist.delete(editing!.id, id),
     onSuccess: () => refetchChecklist(),
   })
+  // Comments queries/mutations
+  const { data: comments = [], refetch: refetchComments } = useQuery({
+    queryKey: ["task-comments", editing?.id],
+    queryFn: () => tasksApi.comments.list(editing!.id),
+    enabled: !!editing?.id,
+  })
+  const addCommentMut = useMutation({
+    mutationFn: (text: string) => tasksApi.comments.create(editing!.id, text),
+    onSuccess: () => { refetchComments(); setNewCommentText("") },
+  })
+  const deleteCommentMut = useMutation({
+    mutationFn: (id: number) => tasksApi.comments.delete(editing!.id, id),
+    onSuccess: () => refetchComments(),
+  })
+
+  // Attachments queries/mutations
+  const { data: attachments = [], refetch: refetchAttachments } = useQuery({
+    queryKey: ["task-attachments", editing?.id],
+    queryFn: () => tasksApi.attachments.list(editing!.id),
+    enabled: !!editing?.id,
+  })
+  const uploadAttachmentMut = useMutation({
+    mutationFn: (file: File) => tasksApi.attachments.upload(editing!.id, file),
+    onSuccess: () => refetchAttachments(),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al subir archivo")),
+  })
+  const deleteAttachmentMut = useMutation({
+    mutationFn: (id: number) => tasksApi.attachments.delete(editing!.id, id),
+    onSuccess: () => refetchAttachments(),
+  })
+  const handleDownloadAttachment = async (attachmentId: number, filename: string) => {
+    try {
+      const blob = await tasksApi.attachments.download(editing!.id, attachmentId)
+      const url = URL.createObjectURL(blob as Blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Error al descargar"))
+    }
+  }
+
   const closeDialog = () => {
     setDialogOpen(false)
     setEditing(null)
     setNewChecklistText("")
+    setNewCommentText("")
   }
 
   const openCreate = () => {
@@ -257,6 +307,9 @@ export default function TasksPage() {
       category_id: fd.get("category_id") ? Number(fd.get("category_id")) : null,
       assigned_to: fd.get("assigned_to") ? Number(fd.get("assigned_to")) : null,
       depends_on: fd.get("depends_on") ? Number(fd.get("depends_on")) : null,
+      scheduled_date: (fd.get("scheduled_date") as string) || null,
+      waiting_for: (fd.get("waiting_for") as string) || null,
+      follow_up_date: (fd.get("follow_up_date") as string) || null,
     }
     if (editing) {
       updateMutation.mutate({ id: editing.id, data })
@@ -297,8 +350,11 @@ export default function TasksPage() {
         </Select>
         <Select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); reset() }} className="w-48">
           <option value="">Todos los estados</option>
+          <option value="backlog">Backlog</option>
           <option value="pending">Pendiente</option>
           <option value="in_progress">En curso</option>
+          <option value="waiting">En espera</option>
+          <option value="in_review">En revisión</option>
           <option value="completed">Completada</option>
         </Select>
         <Select value={filterPriority} onChange={(e) => { setFilterPriority(e.target.value); reset() }} className="w-48">
@@ -484,10 +540,13 @@ export default function TasksPage() {
                     <Select
                       value={t.status}
                       onChange={(e) => updateMutation.mutate({ id: t.id, data: { status: e.target.value as TaskStatus } })}
-                      className="h-7 text-xs w-28 py-0"
+                      className="h-7 text-xs w-32 py-0"
                     >
+                      <option value="backlog">Backlog</option>
                       <option value="pending">Pendiente</option>
                       <option value="in_progress">En curso</option>
+                      <option value="waiting">En espera</option>
+                      <option value="in_review">En revisión</option>
                       <option value="completed">Completada</option>
                     </Select>
                   </TableCell>
@@ -649,8 +708,11 @@ export default function TasksPage() {
                 <div className="space-y-1.5">
                   <Label htmlFor="status" className="text-xs">Estado</Label>
                   <Select id="status" name="status" defaultValue={editing?.status ?? "pending"}>
+                    <option value="backlog">Backlog</option>
                     <option value="pending">Pendiente</option>
                     <option value="in_progress">En curso</option>
+                    <option value="waiting">En espera</option>
+                    <option value="in_review">En revisión</option>
                     <option value="completed">Completada</option>
                   </Select>
                 </div>
@@ -690,15 +752,49 @@ export default function TasksPage() {
                     defaultValue={editing?.due_date ? editing.due_date.split("T")[0] : ""}
                   />
                 </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="scheduled_date" className="text-xs">Fecha planificada</Label>
+                  <Input
+                    id="scheduled_date"
+                    name="scheduled_date"
+                    type="date"
+                    defaultValue={editing?.scheduled_date ?? ""}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="waiting_for" className="text-xs">En espera de</Label>
+                  <Input
+                    id="waiting_for"
+                    name="waiting_for"
+                    defaultValue={editing?.waiting_for ?? ""}
+                    placeholder="Ej: respuesta del cliente"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="follow_up_date" className="text-xs">Fecha de seguimiento</Label>
+                  <Input
+                    id="follow_up_date"
+                    name="follow_up_date"
+                    type="date"
+                    defaultValue={editing?.follow_up_date ?? ""}
+                  />
+                </div>
                 <div className="space-y-1.5 col-span-2">
                   <Label htmlFor="depends_on" className="text-xs">Depende de <span className="text-muted-foreground">(opcional)</span></Label>
-                  <Select id="depends_on" name="depends_on" defaultValue={editing?.depends_on ?? ""}>
+                  <Input
+                    placeholder="Buscar tarea..."
+                    value={depSearch}
+                    onChange={(e) => setDepSearch(e.target.value)}
+                    className="h-7 text-xs mb-1"
+                  />
+                  <Select id="depends_on" name="depends_on" defaultValue={editing?.depends_on ?? ""} className="max-h-40">
                     <option value="">Sin dependencia</option>
                     {allTasks
                       .filter((t) => t.id !== editing?.id)
+                      .filter((t) => !depSearch || t.title.toLowerCase().includes(depSearch.toLowerCase()) || t.client_name?.toLowerCase().includes(depSearch.toLowerCase()))
                       .map((t) => (
                         <option key={t.id} value={t.id}>
-                          {t.title.length > 50 ? t.title.slice(0, 50) + "…" : t.title}
+                          {t.client_name ? `[${t.client_name}] ` : ""}{t.title.length > 50 ? t.title.slice(0, 50) + "…" : t.title}
                         </option>
                       ))}
                   </Select>
@@ -776,6 +872,105 @@ export default function TasksPage() {
             </div>
           </div>
         )}
+
+        {/* Comments — only shown when editing an existing task */}
+        {editing && (
+          <div className="mt-4 border-t pt-4 space-y-3">
+            <p className="text-sm font-semibold flex items-center gap-1.5">
+              <MessageSquare className="h-3.5 w-3.5" /> Comentarios ({comments.length})
+            </p>
+            {comments.length > 0 && (
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {comments.map((c) => (
+                  <div key={c.id} className="text-sm bg-muted/50 rounded p-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-xs">{c.user_name ?? `User #${c.user_id}`}</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(c.created_at).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                        <Button variant="ghost" size="icon" className="h-5 w-5"
+                          onClick={() => deleteCommentMut.mutate(c.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-sm whitespace-pre-wrap">{c.text}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Input
+                value={newCommentText}
+                onChange={(e) => setNewCommentText(e.target.value)}
+                placeholder="Añadir comentario..."
+                className="text-sm h-8"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && newCommentText.trim()) {
+                    e.preventDefault()
+                    addCommentMut.mutate(newCommentText.trim())
+                  }
+                }}
+              />
+              <Button size="sm" variant="outline" className="h-8"
+                onClick={() => newCommentText.trim() && addCommentMut.mutate(newCommentText.trim())}
+                disabled={!newCommentText.trim() || addCommentMut.isPending}>
+                <Send className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Attachments — only shown when editing an existing task */}
+        {editing && (
+          <div className="mt-4 border-t pt-4 space-y-3">
+            <p className="text-sm font-semibold flex items-center gap-1.5">
+              <Paperclip className="h-3.5 w-3.5" /> Adjuntos ({attachments.length})
+            </p>
+            {attachments.length > 0 && (
+              <div className="space-y-1.5">
+                {attachments.map((a) => (
+                  <div key={a.id} className="flex items-center gap-2 text-sm bg-muted/50 rounded px-2 py-1.5">
+                    <Paperclip className="h-3 w-3 shrink-0" />
+                    <span className="flex-1 truncate">{a.name}</span>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {a.size_bytes < 1024 ? `${a.size_bytes} B` : a.size_bytes < 1048576 ? `${Math.round(a.size_bytes / 1024)} KB` : `${(a.size_bytes / 1048576).toFixed(1)} MB`}
+                    </span>
+                    <Button variant="ghost" size="icon" className="h-6 w-6"
+                      onClick={() => handleDownloadAttachment(a.id, a.name)}>
+                      <Download className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-6 w-6"
+                      onClick={() => deleteAttachmentMut.mutate(a.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div>
+              <input
+                type="file"
+                className="hidden"
+                ref={(el) => setAttachmentFileRef(el)}
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) {
+                    uploadAttachmentMut.mutate(file)
+                    e.target.value = ""
+                  }
+                }}
+              />
+              <Button size="sm" variant="outline" className="h-8"
+                onClick={() => attachmentFileRef?.click()}
+                disabled={uploadAttachmentMut.isPending}>
+                {uploadAttachmentMut.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Plus className="h-3 w-3 mr-1" />}
+                Subir archivo
+              </Button>
+            </div>
+          </div>
+        )}
       </Dialog>
 
       {/* Time Log Dialog */}
@@ -810,8 +1005,11 @@ export default function TasksPage() {
           className="h-8 text-xs w-36"
         >
           <option value="">Cambiar estado</option>
+          <option value="backlog">Backlog</option>
           <option value="pending">Pendiente</option>
           <option value="in_progress">En curso</option>
+          <option value="waiting">En espera</option>
+          <option value="in_review">En revisión</option>
           <option value="completed">Completada</option>
         </Select>
         {bulkStatus && (

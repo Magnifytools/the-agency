@@ -6,7 +6,7 @@ from sqlalchemy import desc
 from typing import List, Optional
 
 from backend.db.database import get_db
-from backend.db.models import GrowthIdea, User
+from backend.db.models import GrowthIdea, User, Project, Task
 from backend.schemas.growth import GrowthIdeaCreate, GrowthIdeaUpdate, GrowthIdeaResponse
 from backend.api.deps import get_current_user, require_module
 
@@ -120,3 +120,65 @@ async def delete_growth_idea(
 
     await db.delete(idea)
     await db.commit()
+
+
+@router.post("/api/growth/{idea_id}/convert-to-project")
+async def convert_to_project(
+    idea_id: int,
+    client_id: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("growth", write=True)),
+):
+    """Convert a growth idea into a project and link them."""
+    result = await db.execute(select(GrowthIdea).where(GrowthIdea.id == idea_id))
+    idea = result.scalar_one_or_none()
+    if not idea:
+        raise HTTPException(status_code=404, detail="Idea no encontrada")
+
+    project = Project(
+        name=f"[Growth] {idea.title}",
+        description=idea.description or f"Proyecto creado desde idea Growth (ICE: {idea.ice_score})",
+        client_id=client_id,
+        status="planning",
+    )
+    db.add(project)
+    await db.commit()
+    await db.refresh(project)
+
+    idea.project_id = project.id
+    idea.status = "in_progress"
+    await db.commit()
+
+    return {"project_id": project.id, "message": "Proyecto creado y vinculado"}
+
+
+@router.post("/api/growth/{idea_id}/create-task")
+async def create_task_from_idea(
+    idea_id: int,
+    client_id: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("growth", write=True)),
+):
+    """Create a task from a growth idea and link them."""
+    result = await db.execute(select(GrowthIdea).where(GrowthIdea.id == idea_id))
+    idea = result.scalar_one_or_none()
+    if not idea:
+        raise HTTPException(status_code=404, detail="Idea no encontrada")
+
+    task = Task(
+        title=f"[Growth] {idea.title}",
+        description=idea.description,
+        client_id=client_id,
+        status="pending",
+        priority="medium",
+        created_by=current_user.id,
+    )
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+
+    idea.task_id = task.id
+    idea.status = "in_progress"
+    await db.commit()
+
+    return {"task_id": task.id, "message": "Tarea creada y vinculada"}

@@ -11,8 +11,11 @@ interface Props {
 }
 
 const STATUS_LABELS: Record<string, string> = {
+  backlog: "Backlog",
   pending: "Pendientes",
   in_progress: "En curso",
+  waiting: "En espera",
+  in_review: "En revisión",
   completed: "Completadas",
 }
 

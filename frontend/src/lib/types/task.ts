@@ -25,6 +25,10 @@ export interface Task {
   phase_id: number | null
   is_inbox: boolean
   depends_on: number | null
+  created_by: number | null
+  scheduled_date: string | null
+  waiting_for: string | null
+  follow_up_date: string | null
   created_at: string
   updated_at: string
   client_name: string | null
@@ -33,6 +37,7 @@ export interface Task {
   project_name: string | null
   phase_name: string | null
   dependency_title: string | null
+  created_by_name: string | null
   checklist_count: number
 }
 
@@ -62,6 +67,32 @@ export interface TaskCreate {
   phase_id?: number | null
   depends_on?: number | null
   is_inbox?: boolean
+  scheduled_date?: string | null
+  waiting_for?: string | null
+  follow_up_date?: string | null
+}
+
+export interface TaskComment {
+  id: number
+  task_id: number
+  user_id: number
+  text: string
+  user_name: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TaskAttachment {
+  id: number
+  task_id: number
+  name: string
+  description: string | null
+  mime_type: string
+  size_bytes: number
+  uploaded_by: number | null
+  uploaded_by_name: string | null
+  created_at: string
+  updated_at: string
 }
 
 // Time Entries

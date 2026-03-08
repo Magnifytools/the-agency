@@ -8,9 +8,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
-from backend.db.models import Task, TaskStatus, TaskPriority, User, TaskChecklist
+from backend.db.models import Task, TaskStatus, TaskPriority, User, TaskChecklist, TaskComment, TaskAttachment
 from backend.schemas.task import TaskCreate, TaskUpdate, TaskResponse
 from backend.schemas.task_checklist import ChecklistItemCreate, ChecklistItemUpdate, ChecklistItemResponse
+from backend.schemas.task_comment import TaskCommentCreate, TaskCommentResponse
+from backend.schemas.task_attachment import TaskAttachmentResponse
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module
 
@@ -35,6 +37,10 @@ def _task_to_response(task: Task) -> TaskResponse:
         project_id=task.project_id,
         phase_id=task.phase_id,
         depends_on=task.depends_on,
+        created_by=task.created_by,
+        scheduled_date=task.scheduled_date,
+        waiting_for=task.waiting_for,
+        follow_up_date=task.follow_up_date,
         created_at=task.created_at,
         updated_at=task.updated_at,
         client_name=task.client.name if task.client else None,
@@ -43,6 +49,7 @@ def _task_to_response(task: Task) -> TaskResponse:
         project_name=task.project.name if task.project else None,
         phase_name=task.phase.name if task.phase else None,
         dependency_title=task.dependency.title if task.dependency else None,
+        created_by_name=task.creator.full_name if task.creator else None,
         checklist_count=len(task.checklist_items) if task.checklist_items else 0,
     )
 
@@ -56,6 +63,7 @@ async def list_tasks(
     assigned_to: Optional[str] = Query(None),
     priority: Optional[TaskPriority] = Query(None),
     overdue: Optional[bool] = Query(None),
+    scheduled_date: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
@@ -86,6 +94,13 @@ async def list_tasks(
             Task.due_date < datetime.utcnow(),
             Task.status != TaskStatus.completed,
         )
+    if scheduled_date is not None:
+        from datetime import date as date_type
+        try:
+            sd = date_type.fromisoformat(scheduled_date)
+            base = base.where(Task.scheduled_date == sd)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="scheduled_date must be YYYY-MM-DD")
 
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
 
@@ -104,9 +119,9 @@ async def list_tasks(
 async def create_task(
     body: TaskCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("tasks", write=True)),
+    current_user: User = Depends(require_module("tasks", write=True)),
 ):
-    task = Task(**body.model_dump())
+    task = Task(**body.model_dump(), created_by=current_user.id)
     db.add(task)
     try:
         await db.commit()
@@ -166,6 +181,7 @@ async def update_task(
         "title", "description", "status", "priority", "estimated_minutes",
         "actual_minutes", "start_date", "due_date", "client_id", "category_id",
         "assigned_to", "project_id", "phase_id", "depends_on",
+        "scheduled_date", "waiting_for", "follow_up_date",
     }
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -289,4 +305,173 @@ async def delete_checklist_item(
     if not item:
         raise HTTPException(status_code=404, detail="Item no encontrado")
     await db.delete(item)
+    await db.commit()
+
+
+# ── Comment endpoints ────────────────────────────────────────────────────────
+
+@router.get("/{task_id}/comments", response_model=list[TaskCommentResponse])
+async def list_comments(
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("tasks")),
+):
+    r = await db.execute(
+        select(TaskComment)
+        .where(TaskComment.task_id == task_id)
+        .order_by(TaskComment.created_at.asc())
+    )
+    return [
+        TaskCommentResponse(
+            id=c.id, task_id=c.task_id, user_id=c.user_id, text=c.text,
+            user_name=c.user.full_name if c.user else None,
+            created_at=c.created_at, updated_at=c.updated_at,
+        )
+        for c in r.scalars().all()
+    ]
+
+
+@router.post("/{task_id}/comments", response_model=TaskCommentResponse, status_code=201)
+async def create_comment(
+    task_id: int,
+    body: TaskCommentCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("tasks", write=True)),
+):
+    # Verify task exists
+    t = await db.execute(select(Task.id).where(Task.id == task_id))
+    if not t.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Task not found")
+    comment = TaskComment(task_id=task_id, user_id=current_user.id, text=body.text)
+    db.add(comment)
+    await db.commit()
+    await db.refresh(comment)
+    return TaskCommentResponse(
+        id=comment.id, task_id=comment.task_id, user_id=comment.user_id,
+        text=comment.text, user_name=current_user.full_name,
+        created_at=comment.created_at, updated_at=comment.updated_at,
+    )
+
+
+@router.delete("/{task_id}/comments/{comment_id}", status_code=204)
+async def delete_comment(
+    task_id: int,
+    comment_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("tasks", write=True)),
+):
+    r = await db.execute(
+        select(TaskComment).where(TaskComment.id == comment_id, TaskComment.task_id == task_id)
+    )
+    comment = r.scalar_one_or_none()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    # Only author or admin can delete
+    if comment.user_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="No tienes permiso para eliminar este comentario")
+    await db.delete(comment)
+    await db.commit()
+
+
+# ── Attachment endpoints ─────────────────────────────────────────────────────
+
+@router.get("/{task_id}/attachments", response_model=list[TaskAttachmentResponse])
+async def list_attachments(
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("tasks")),
+):
+    r = await db.execute(
+        select(TaskAttachment)
+        .where(TaskAttachment.task_id == task_id)
+        .order_by(TaskAttachment.created_at.desc())
+    )
+    return [
+        TaskAttachmentResponse(
+            id=a.id, task_id=a.task_id, name=a.name, description=a.description,
+            mime_type=a.mime_type, size_bytes=a.size_bytes,
+            uploaded_by=a.uploaded_by,
+            uploaded_by_name=a.uploader.full_name if a.uploader else None,
+            created_at=a.created_at, updated_at=a.updated_at,
+        )
+        for a in r.scalars().all()
+    ]
+
+
+from fastapi import UploadFile, File as FileParam
+
+
+@router.post("/{task_id}/attachments", response_model=TaskAttachmentResponse, status_code=201)
+async def upload_task_attachment(
+    task_id: int,
+    file: UploadFile = FileParam(...),
+    description: str = "",
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("tasks", write=True)),
+):
+    # Verify task exists
+    t = await db.execute(select(Task.id).where(Task.id == task_id))
+    if not t.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Task not found")
+    content = await file.read()
+    attachment = TaskAttachment(
+        task_id=task_id,
+        name=file.filename or "file",
+        description=description or None,
+        mime_type=file.content_type or "application/octet-stream",
+        size_bytes=len(content),
+        content=content,
+        uploaded_by=current_user.id,
+    )
+    db.add(attachment)
+    await db.commit()
+    await db.refresh(attachment)
+    return TaskAttachmentResponse(
+        id=attachment.id, task_id=attachment.task_id, name=attachment.name,
+        description=attachment.description, mime_type=attachment.mime_type,
+        size_bytes=attachment.size_bytes, uploaded_by=attachment.uploaded_by,
+        uploaded_by_name=current_user.full_name,
+        created_at=attachment.created_at, updated_at=attachment.updated_at,
+    )
+
+
+@router.get("/{task_id}/attachments/{attachment_id}/download")
+async def download_attachment(
+    task_id: int,
+    attachment_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("tasks")),
+):
+    from fastapi.responses import Response
+    r = await db.execute(
+        select(TaskAttachment)
+        .where(TaskAttachment.id == attachment_id, TaskAttachment.task_id == task_id)
+    )
+    att = r.scalar_one_or_none()
+    if not att:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return Response(
+        content=att.content,
+        media_type=att.mime_type,
+        headers={"Content-Disposition": f'attachment; filename="{att.name}"'},
+    )
+
+
+@router.delete("/{task_id}/attachments/{attachment_id}", status_code=204)
+async def delete_attachment(
+    task_id: int,
+    attachment_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("tasks", write=True)),
+):
+    r = await db.execute(
+        select(TaskAttachment)
+        .where(TaskAttachment.id == attachment_id, TaskAttachment.task_id == task_id)
+    )
+    att = r.scalar_one_or_none()
+    if not att:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    if att.uploaded_by != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="No tienes permiso para eliminar este adjunto")
+    await db.delete(att)
     await db.commit()

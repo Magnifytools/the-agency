@@ -51,8 +51,11 @@ class ClientStatus(str, enum.Enum):
 
 
 class TaskStatus(str, enum.Enum):
+    backlog = "backlog"
     pending = "pending"
     in_progress = "in_progress"
+    waiting = "waiting"
+    in_review = "in_review"
     completed = "completed"
 
 
@@ -483,10 +486,15 @@ class Task(TimestampMixin, Base):
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     phase_id = Column(Integer, ForeignKey("project_phases.id"), nullable=True, index=True)
     depends_on = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    scheduled_date = Column(Date, nullable=True)
+    waiting_for = Column(String(255), nullable=True)
+    follow_up_date = Column(Date, nullable=True)
 
     client = relationship("Client", back_populates="tasks", lazy="selectin")
     category = relationship("TaskCategory", back_populates="tasks", lazy="selectin")
-    assigned_user = relationship("User", back_populates="tasks", lazy="selectin")
+    assigned_user = relationship("User", back_populates="tasks", lazy="selectin", foreign_keys=[assigned_to])
+    creator = relationship("User", lazy="selectin", foreign_keys=[created_by])
     time_entries = relationship("TimeEntry", back_populates="task", lazy="noload")
     project = relationship("Project", back_populates="tasks", lazy="selectin")
     phase = relationship("ProjectPhase", back_populates="tasks", lazy="selectin")
@@ -504,6 +512,32 @@ class TaskChecklist(TimestampMixin, Base):
     order_index = Column(Integer, nullable=False, default=0)
 
     task = relationship("Task", back_populates="checklist_items", lazy="noload")
+
+
+class TaskComment(TimestampMixin, Base):
+    __tablename__ = "task_comments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    text = Column(Text, nullable=False)
+
+    user = relationship("User", lazy="selectin")
+
+
+class TaskAttachment(TimestampMixin, Base):
+    __tablename__ = "task_attachments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    mime_type = Column(String(100), nullable=False, default="application/octet-stream")
+    size_bytes = Column(Integer, nullable=False)
+    content = Column(LargeBinary, nullable=False)
+    uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    uploader = relationship("User", lazy="selectin")
 
 
 class TimeEntry(TimestampMixin, Base):

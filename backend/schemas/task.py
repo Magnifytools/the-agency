@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Optional
 
-from datetime import datetime
+from datetime import datetime, date
 from pydantic import BaseModel, Field
 from backend.db.models import TaskStatus, TaskPriority
 
@@ -21,6 +21,9 @@ class TaskCreate(BaseModel):
     project_id: Optional[int] = None
     phase_id: Optional[int] = None
     depends_on: Optional[int] = None
+    scheduled_date: Optional[date] = None
+    waiting_for: Optional[str] = Field(None, max_length=255)
+    follow_up_date: Optional[date] = None
 
 
 class TaskUpdate(BaseModel):
@@ -38,6 +41,9 @@ class TaskUpdate(BaseModel):
     project_id: Optional[int] = None
     phase_id: Optional[int] = None
     depends_on: Optional[int] = None
+    scheduled_date: Optional[date] = None
+    waiting_for: Optional[str] = Field(None, max_length=255)
+    follow_up_date: Optional[date] = None
 
 
 class TaskResponse(BaseModel):
@@ -56,6 +62,10 @@ class TaskResponse(BaseModel):
     project_id: Optional[int] = None
     phase_id: Optional[int] = None
     depends_on: Optional[int] = None
+    created_by: Optional[int] = None
+    scheduled_date: Optional[date] = None
+    waiting_for: Optional[str] = None
+    follow_up_date: Optional[date] = None
     created_at: datetime
     updated_at: datetime
 
@@ -66,6 +76,7 @@ class TaskResponse(BaseModel):
     project_name: Optional[str] = None
     phase_name: Optional[str] = None
     dependency_title: Optional[str] = None
+    created_by_name: Optional[str] = None
     checklist_count: int = 0
 
     model_config = {"from_attributes": True}

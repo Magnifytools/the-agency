@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
-import { ClipboardList, Sparkles, MessageCircle, Loader2, ChevronDown, ChevronUp, RefreshCw, Trash2 } from "lucide-react"
+import { ClipboardList, Sparkles, MessageCircle, Loader2, ChevronDown, ChevronUp, RefreshCw, Trash2, Wand2 } from "lucide-react"
 import { dailysApi } from "@/lib/api"
 import type { DailyUpdate, ParsedProject, ParsedTask } from "@/lib/types"
 
@@ -27,12 +27,35 @@ export default function DailysPage() {
     queryFn: () => dailysApi.list({ limit: 50 }),
   })
 
+  const prefillMutation = useMutation({
+    mutationFn: () => dailysApi.prefill(),
+    onSuccess: (data) => {
+      if (data.text) {
+        setRawText((prev) => prev ? `${prev}\n\n${data.text}` : data.text)
+        toast.success(`${data.completed_count} completadas, ${data.worked_on_count} en curso`)
+      } else {
+        toast.info("No hay tareas de hoy para pre-rellenar")
+      }
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al pre-rellenar")),
+  })
+
   const submitMutation = useMutation({
     mutationFn: (text: string) => dailysApi.submit({ raw_text: text }),
-    onSuccess: () => {
+    onSuccess: async (daily) => {
       queryClient.invalidateQueries({ queryKey: ["dailys"] })
       setRawText("")
       toast.success("Daily procesado con IA correctamente")
+      // Auto-send to Discord
+      try {
+        const res = await dailysApi.sendDiscord(daily.id)
+        if (res.success) {
+          toast.success("Enviado a Discord automáticamente")
+          queryClient.invalidateQueries({ queryKey: ["dailys"] })
+        }
+      } catch {
+        // Discord send is best-effort, don't block
+      }
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al procesar daily")),
   })
@@ -102,9 +125,24 @@ export default function DailysPage() {
             className="w-full min-h-[200px] rounded-xl border border-border bg-background px-4 py-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-brand/20 resize-y"
           />
           <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">
-              {rawText.length > 0 ? `${rawText.length} caracteres` : "Soporta cualquier formato: bullets, párrafos, proyectos mezclados..."}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-muted-foreground">
+                {rawText.length > 0 ? `${rawText.length} caracteres` : "Soporta cualquier formato: bullets, párrafos, proyectos mezclados..."}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => prefillMutation.mutate()}
+                disabled={prefillMutation.isPending}
+              >
+                {prefillMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                ) : (
+                  <Wand2 className="w-3 h-3 mr-1" />
+                )}
+                Auto-rellenar
+              </Button>
+            </div>
             <Button
               onClick={handleSubmit}
               disabled={!rawText.trim() || submitMutation.isPending}

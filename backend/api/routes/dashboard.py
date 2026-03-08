@@ -62,7 +62,10 @@ async def get_overview(
 
     # Active clients
     r = await db.execute(
-        select(func.count()).select_from(Client).where(Client.status == ClientStatus.active)
+        select(func.count()).select_from(Client).where(
+            Client.status == ClientStatus.active,
+            Client.is_internal == False,
+        )
     )
     active_clients = r.scalar()
 
@@ -88,7 +91,8 @@ async def get_overview(
     # Total budget (active clients)
     r = await db.execute(
         select(func.coalesce(func.sum(Client.monthly_budget), 0)).where(
-            Client.status == ClientStatus.active
+            Client.status == ClientStatus.active,
+            Client.is_internal == False,
         )
     )
     total_budget = r.scalar() or 0
@@ -128,7 +132,10 @@ async def get_profitability(
     start, end = month_range_naive(y, m)
 
     # Get active clients (1 query)
-    r = await db.execute(select(Client).where(Client.status == ClientStatus.active))
+    r = await db.execute(select(Client).where(
+        Client.status == ClientStatus.active,
+        Client.is_internal == False,
+    ))
     clients = r.scalars().all()
     client_ids = [c.id for c in clients]
 
@@ -457,7 +464,7 @@ async def get_capacity(
             func.coalesce(func.sum(Task.estimated_minutes), 0),
             func.count(),
         )
-        .where(Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]))
+        .where(Task.status.in_([TaskStatus.backlog, TaskStatus.pending, TaskStatus.in_progress, TaskStatus.waiting, TaskStatus.in_review]))
         .group_by(Task.assigned_to)
     )
     stats_map = {row[0]: (row[1] or 0, row[2] or 0) for row in task_stats_result.all()}
@@ -487,3 +494,47 @@ async def get_capacity(
         })
 
     return capacity
+
+
+# ── Today Block ──────────────────────────────────────────────────────────────
+
+@router.get("/today")
+async def get_today(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Tasks scheduled for today, grouped by user. Returns all users' tasks for admin, own for member."""
+    from datetime import date
+    today = date.today()
+
+    query = (
+        select(Task)
+        .where(Task.scheduled_date == today)
+        .where(Task.status != TaskStatus.completed)
+    )
+    if current_user.role != "admin":
+        query = query.where(Task.assigned_to == current_user.id)
+
+    result = await db.execute(query.order_by(Task.priority.asc()))
+    tasks = result.scalars().all()
+
+    # Group by assignee
+    by_user: dict[str, list] = {}
+    for t in tasks:
+        user_name = t.assigned_user.full_name if t.assigned_user else "Sin asignar"
+        if user_name not in by_user:
+            by_user[user_name] = []
+        by_user[user_name].append({
+            "id": t.id,
+            "title": t.title,
+            "status": t.status.value,
+            "priority": t.priority.value,
+            "client_name": t.client.name if t.client else None,
+            "estimated_minutes": t.estimated_minutes,
+        })
+
+    return {
+        "date": today.isoformat(),
+        "total_tasks": len(tasks),
+        "by_user": by_user,
+    }

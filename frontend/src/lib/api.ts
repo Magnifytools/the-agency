@@ -13,6 +13,8 @@ import type {
   TaskCreate,
   TaskCategory,
   ChecklistItem,
+  TaskComment,
+  TaskAttachment,
   TokenResponse,
   User,
   UserCreate,
@@ -234,9 +236,9 @@ export const clientsApi = {
 
 // Tasks
 export const tasksApi = {
-  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number; priority?: string; overdue?: boolean; page?: number; page_size?: number }) =>
+  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number; priority?: string; overdue?: boolean; scheduled_date?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params }).then((r) => r.data),
-  listAll: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean }) =>
+  listAll: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; scheduled_date?: string }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params: { ...params, page_size: 999 } }).then((r) => r.data.items),
   get: (id: number) => api.get<Task>(`/tasks/${id}`).then((r) => r.data),
   create: (data: TaskCreate) => api.post<Task>("/tasks", data).then((r) => r.data),
@@ -251,6 +253,30 @@ export const tasksApi = {
       api.put<ChecklistItem>(`/tasks/${taskId}/checklist/${itemId}`, data).then((r) => r.data),
     delete: (taskId: number, itemId: number) =>
       api.delete(`/tasks/${taskId}/checklist/${itemId}`).then((r) => r.data),
+  },
+  comments: {
+    list: (taskId: number) =>
+      api.get<TaskComment[]>(`/tasks/${taskId}/comments`).then((r) => r.data),
+    create: (taskId: number, text: string) =>
+      api.post<TaskComment>(`/tasks/${taskId}/comments`, { text }).then((r) => r.data),
+    delete: (taskId: number, commentId: number) =>
+      api.delete(`/tasks/${taskId}/comments/${commentId}`).then((r) => r.data),
+  },
+  attachments: {
+    list: (taskId: number) =>
+      api.get<TaskAttachment[]>(`/tasks/${taskId}/attachments`).then((r) => r.data),
+    upload: (taskId: number, file: File, description?: string) => {
+      const fd = new FormData()
+      fd.append("file", file)
+      if (description) fd.append("description", description)
+      return api.post<TaskAttachment>(`/tasks/${taskId}/attachments`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      }).then((r) => r.data)
+    },
+    download: (taskId: number, attachmentId: number) =>
+      api.get(`/tasks/${taskId}/attachments/${attachmentId}/download`, { responseType: "blob" }).then((r) => r.data),
+    delete: (taskId: number, attachmentId: number) =>
+      api.delete(`/tasks/${taskId}/attachments/${attachmentId}`).then((r) => r.data),
   },
 }
 
@@ -315,6 +341,7 @@ export const dashboardApi = {
     api.put<FinancialSettings>("/dashboard/financial-settings", data).then((r) => r.data),
   exportMonthlyClose: (params?: { year?: number; month?: number }) =>
     api.get("/dashboard/monthly-close/export", { params, responseType: "blob" }).then((r) => r.data),
+  today: () => api.get("/dashboard/today").then((r) => r.data),
 }
 
 // Billing
@@ -520,6 +547,10 @@ export const growthApi = {
     api.put<GrowthIdea>(`/growth/${id}`, data).then((r) => r.data),
   delete: (id: number) =>
     api.delete(`/growth/${id}`).then((r) => r.data),
+  convertToProject: (id: number, clientId: number) =>
+    api.post<{ project_id: number; message: string }>(`/growth/${id}/convert-to-project`, null, { params: { client_id: clientId } }).then((r) => r.data),
+  createTask: (id: number, clientId: number) =>
+    api.post<{ task_id: number; message: string }>(`/growth/${id}/create-task`, null, { params: { client_id: clientId } }).then((r) => r.data),
 }
 
 // --- Finance APIs ---
@@ -695,6 +726,7 @@ export const dailysApi = {
   sendDiscord: (id: number) =>
     api.post<DailyDiscordResponse>(`/dailys/${id}/send-discord`).then((r) => r.data),
   delete: (id: number) => api.delete(`/dailys/${id}`).then((r) => r.data),
+  prefill: () => api.get<{ text: string; completed_count: number; worked_on_count: number }>("/dailys/prefill").then((r) => r.data),
 }
 
 export const financeExportApi = {

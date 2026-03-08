@@ -47,7 +47,7 @@ export function AppLayout() {
   })
   const holdedEnabled = isAdmin && (holdedConfig?.api_key_configured ?? false)
 
-  const mainNav = useMemo(() => {
+  const workspaceNav = useMemo(() => {
     const items = [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
       { to: "/executive", label: "Ejecutivo", icon: BarChart3, module: "dashboard", adminOnly: true },
@@ -56,19 +56,27 @@ export function AppLayout() {
       { to: "/projects", label: "Proyectos", icon: FolderKanban, module: "projects" },
       { to: "/tasks", label: "Tareas", icon: CheckSquare, module: "tasks" },
       { to: "/growth", label: "Growth", icon: Rocket, module: "growth" },
-      { to: "/timesheet", label: "Timesheet", icon: Clock, module: "timesheet" },
-      { to: "/dailys", label: "Dailys", icon: ClipboardList },
       { to: "/inbox", label: "Inbox", icon: Inbox, module: "tasks" },
-      { to: "/digests", label: "Digests", icon: Newspaper, module: "digests" },
-      { to: "/reports", label: "Informes", icon: FileText, module: "reports" },
-      { to: "/proposals", label: "Presupuestos", icon: ScrollText, module: "proposals" },
-      { to: "/billing", label: "Facturación", icon: CreditCard, module: "billing" },
     ]
     return items.filter((item) => {
       if (item.adminOnly && !isAdmin) return false
       return !item.module || hasPermission(item.module)
     })
   }, [hasPermission, isAdmin])
+
+  const opsNav = useMemo(() => {
+    const items = [
+      { to: "/timesheet", label: "Timesheet", icon: Clock, module: "timesheet" },
+      { to: "/dailys", label: "Dailys", icon: ClipboardList },
+      { to: "/digests", label: "Digests", icon: Newspaper, module: "digests" },
+      { to: "/reports", label: "Informes", icon: FileText, module: "reports" },
+      { to: "/proposals", label: "Presupuestos", icon: ScrollText, module: "proposals" },
+    ]
+    return items.filter((item) => !item.module || hasPermission(item.module))
+  }, [hasPermission])
+
+  // Keep mainNav as combined for backward compat (mobile nav, etc.)
+  const mainNav = useMemo(() => [...workspaceNav, ...opsNav], [workspaceNav, opsNav])
 
   const financeNav = useMemo(() => {
     const items = [
@@ -79,6 +87,7 @@ export function AppLayout() {
       { to: "/finance/forecasts", label: "Previsiones", icon: LineChart, module: "finance_forecasts" },
       { to: "/finance/advisor", label: "Asesor", icon: Brain, module: "finance_advisor" },
       { to: "/finance/import", label: "Importar", icon: Upload, module: "finance_import" },
+      { to: "/billing", label: "Facturación", icon: CreditCard, module: "billing" },
     ]
     return items.filter((item) => hasPermission(item.module))
   }, [hasPermission])
@@ -96,7 +105,7 @@ export function AppLayout() {
     return [
       { to: "/capacity", label: "Capacidad", icon: Gauge },
       { to: "/users", label: "Equipo", icon: UserCog },
-      { to: "/discord", label: "Discord", icon: MessageCircle },
+      { to: "/discord", label: "Integraciones", icon: MessageCircle },
     ]
   }, [isAdmin])
 
@@ -185,7 +194,7 @@ export function AppLayout() {
           {/* Main Nav */}
           <nav className="flex flex-col gap-1.5 flex-1 overflow-y-auto min-h-0" role="navigation" aria-label="Menu principal">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">Workspace</p>
-            {mainNav.map((item) => (
+            {workspaceNav.map((item) => (
               <Link
                 key={item.to}
                 to={item.to}
@@ -207,9 +216,32 @@ export function AppLayout() {
               </Link>
             ))}
 
+            {/* Operations Nav */}
+            {opsNav.length > 0 && (
+              <div className="mt-6 flex flex-col gap-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">Operaciones</p>
+                {opsNav.map((item) => (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    aria-current={isActive(item.to) ? "page" : undefined}
+                    className={cn(
+                      "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
+                      isActive(item.to)
+                        ? "bg-brand/10 text-brand"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    <item.icon className={cn("h-[18px] w-[18px] transition-colors", isActive(item.to) ? "text-brand" : "text-muted-foreground group-hover:text-foreground")} />
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+
             {/* Finance Nav */}
             {holdedEnabled ? (
-              <div className="mt-8 flex flex-col gap-1.5">
+              <div className="mt-6 flex flex-col gap-1.5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">Finanzas</p>
                 <Link
                   to="/finance-holded"
@@ -224,6 +256,21 @@ export function AppLayout() {
                   <Wallet className={cn("h-[18px] w-[18px]", isActive("/finance-holded") ? "text-brand" : "text-muted-foreground group-hover:text-foreground transition-colors")} />
                   Finanzas (Holded)
                 </Link>
+                {hasPermission("billing") && (
+                  <Link
+                    to="/billing"
+                    aria-current={isActive("/billing") ? "page" : undefined}
+                    className={cn(
+                      "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
+                      isActive("/billing")
+                        ? "bg-brand/10 text-brand"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    <CreditCard className={cn("h-[18px] w-[18px]", isActive("/billing") ? "text-brand" : "text-muted-foreground group-hover:text-foreground transition-colors")} />
+                    Facturación
+                  </Link>
+                )}
               </div>
             ) : financeNav.length > 0 ? (
               <div className="mt-8 flex flex-col gap-1.5">

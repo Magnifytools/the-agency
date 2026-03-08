@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { growthApi } from "@/lib/api"
+import { growthApi, clientsApi } from "@/lib/api"
 import type { GrowthIdeaCreate, GrowthFunnelStage, GrowthStatus } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,7 +10,7 @@ import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { Plus, Rocket, Trash2 } from "lucide-react"
+import { Plus, Rocket, Trash2, FolderKanban, CheckSquare } from "lucide-react"
 import { toast } from "sonner"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { getErrorMessage } from "@/lib/utils"
@@ -41,6 +41,8 @@ export default function GrowthPage() {
     const queryClient = useQueryClient()
     const [showDialog, setShowDialog] = useState(false)
     const [deleteId, setDeleteId] = useState<number | null>(null)
+    const [convertAction, setConvertAction] = useState<{ ideaId: number; type: "project" | "task" } | null>(null)
+    const [convertClientId, setConvertClientId] = useState<string>("")
 
     // Filters
     const [filterStatus, setFilterStatus] = useState<string>("")
@@ -98,6 +100,46 @@ export default function GrowthPage() {
         onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar la idea")),
     })
 
+    const { data: clients = [] } = useQuery({
+        queryKey: ["clients-list"],
+        queryFn: () => clientsApi.listAll("active"),
+        staleTime: 5 * 60_000,
+    })
+
+    const convertProjectMutation = useMutation({
+        mutationFn: ({ ideaId, clientId }: { ideaId: number; clientId: number }) =>
+            growthApi.convertToProject(ideaId, clientId),
+        onSuccess: (data) => {
+            queryClient.invalidateQueries({ queryKey: ["growth-ideas"] })
+            setConvertAction(null)
+            setConvertClientId("")
+            toast.success(`Proyecto creado (#${data.project_id})`)
+        },
+        onError: (err) => toast.error(getErrorMessage(err, "Error al crear proyecto")),
+    })
+
+    const convertTaskMutation = useMutation({
+        mutationFn: ({ ideaId, clientId }: { ideaId: number; clientId: number }) =>
+            growthApi.createTask(ideaId, clientId),
+        onSuccess: (data) => {
+            queryClient.invalidateQueries({ queryKey: ["growth-ideas"] })
+            setConvertAction(null)
+            setConvertClientId("")
+            toast.success(`Tarea creada (#${data.task_id})`)
+        },
+        onError: (err) => toast.error(getErrorMessage(err, "Error al crear tarea")),
+    })
+
+    const handleConvert = () => {
+        if (!convertAction || !convertClientId) return
+        const clientId = Number(convertClientId)
+        if (convertAction.type === "project") {
+            convertProjectMutation.mutate({ ideaId: convertAction.ideaId, clientId })
+        } else {
+            convertTaskMutation.mutate({ ideaId: convertAction.ideaId, clientId })
+        }
+    }
+
     const handleCreate = (e: React.FormEvent) => {
         e.preventDefault()
         if (!formData.title) return
@@ -122,7 +164,7 @@ export default function GrowthPage() {
                         Operaciones de Growth
                     </h1>
                     <p className="text-muted-foreground text-sm mt-1">
-                        {ideas.length} ideas · Priorización ICE y gestión de experimentos
+                        {ideas.length} ideas · Priorización ICE y gestión de ideas
                     </p>
                 </div>
                 <Button onClick={() => setShowDialog(true)}>
@@ -158,7 +200,7 @@ export default function GrowthPage() {
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Experimento / Idea</TableHead>
+                            <TableHead>Idea</TableHead>
                             <TableHead>Funnel</TableHead>
                             <TableHead>KPI</TableHead>
                             <TableHead className="text-center">I</TableHead>
@@ -176,7 +218,7 @@ export default function GrowthPage() {
                                     <div className="flex flex-col items-center">
                                         <Rocket className="h-8 w-8 text-muted-foreground/30 mb-3" />
                                         <p className="text-sm font-medium text-foreground mb-1">Sin ideas</p>
-                                        <p className="text-xs text-muted-foreground">Añade hipótesis, prioriza con ICE y trackea resultados.</p>
+                                        <p className="text-xs text-muted-foreground">Añade ideas, prioriza con ICE y decide qué ejecutar.</p>
                                     </div>
                                 </TableCell>
                             </TableRow>
@@ -213,6 +255,29 @@ export default function GrowthPage() {
                                     </Select>
                                 </TableCell>
                                 <TableCell className="text-right">
+                                    <div className="flex items-center justify-end gap-1">
+                                    {!idea.project_id && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-brand"
+                                            title="Crear Proyecto"
+                                            onClick={() => setConvertAction({ ideaId: idea.id, type: "project" })}
+                                        >
+                                            <FolderKanban className="h-4 w-4" />
+                                        </Button>
+                                    )}
+                                    {!idea.task_id && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-brand"
+                                            title="Crear Tarea"
+                                            onClick={() => setConvertAction({ ideaId: idea.id, type: "task" })}
+                                        >
+                                            <CheckSquare className="h-4 w-4" />
+                                        </Button>
+                                    )}
                                     <Button
                                         variant="ghost"
                                         size="sm"
@@ -221,6 +286,7 @@ export default function GrowthPage() {
                                     >
                                         <Trash2 className="h-4 w-4" />
                                     </Button>
+                                    </div>
                                 </TableCell>
                             </TableRow>
                         ))}
@@ -329,6 +395,37 @@ export default function GrowthPage() {
                     if (deleteId) deleteMutation.mutate(deleteId)
                 }}
             />
+
+            {/* Convert Dialog */}
+            <Dialog open={convertAction !== null} onOpenChange={(open) => { if (!open) { setConvertAction(null); setConvertClientId("") } }}>
+                <DialogHeader>
+                    <DialogTitle>
+                        {convertAction?.type === "project" ? "Crear Proyecto desde Idea" : "Crear Tarea desde Idea"}
+                    </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 mt-4">
+                    <div className="space-y-2">
+                        <Label>Cliente asociado</Label>
+                        <Select value={convertClientId} onChange={(e) => setConvertClientId(e.target.value)}>
+                            <option value="">Selecciona un cliente</option>
+                            {clients.map((c) => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                        </Select>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                        <Button variant="outline" onClick={() => { setConvertAction(null); setConvertClientId("") }}>
+                            Cancelar
+                        </Button>
+                        <Button
+                            onClick={handleConvert}
+                            disabled={!convertClientId || convertProjectMutation.isPending || convertTaskMutation.isPending}
+                        >
+                            {convertAction?.type === "project" ? "Crear Proyecto" : "Crear Tarea"}
+                        </Button>
+                    </div>
+                </div>
+            </Dialog>
         </div>
     )
 }

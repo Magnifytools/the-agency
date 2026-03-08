@@ -17,6 +17,8 @@ class ClientCreate(BaseModel):
     status: ClientStatus = ClientStatus.active
     notes: Optional[str] = None
     is_internal: bool = False
+    cif: Optional[str] = None
+    vat_number: Optional[str] = None
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
     billing_cycle: Optional[BillingCycle] = None
@@ -42,6 +44,8 @@ class ClientUpdate(BaseModel):
     status: Optional[ClientStatus] = None
     notes: Optional[str] = None
     is_internal: Optional[bool] = None
+    cif: Optional[str] = None
+    vat_number: Optional[str] = None
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
     billing_cycle: Optional[BillingCycle] = None
@@ -91,6 +95,8 @@ class ClientResponse(BaseModel):
     ltv: Optional[float] = None
     seo_maturity_level: Optional[str] = None
     is_internal: bool = False
+    cif: Optional[str] = None
+    vat_number: Optional[str] = None
     context: Optional[str] = None
     created_at: datetime
     updated_at: datetime

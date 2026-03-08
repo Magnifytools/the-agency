@@ -7,8 +7,11 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
 
 const STATUS_CONFIG: Record<TaskStatus, { label: string; cls: string }> = {
+  backlog:     { label: "Backlog",    cls: "text-slate-400 border-slate-300/60 bg-slate-50/30" },
   pending:     { label: "Pendiente",  cls: "text-muted-foreground border-border/60 bg-muted/30" },
   in_progress: { label: "En curso",   cls: "text-amber-600 border-amber-400/60 bg-amber-50/40" },
+  waiting:     { label: "En espera",  cls: "text-purple-600 border-purple-400/60 bg-purple-50/40" },
+  in_review:   { label: "En revisión", cls: "text-blue-600 border-blue-400/60 bg-blue-50/40" },
   completed:   { label: "Completada", cls: "text-green-600 border-green-400/60 bg-green-50/40" },
 }
 
@@ -43,10 +46,15 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
   const now = new Date()
   const today = now.toISOString().split("T")[0]
 
-  // Filter: my tasks (assigned to me) that are active
-  const myTasks = tasks.filter(
-    (t) => t.assigned_to === user?.id && t.status !== "completed"
-  )
+  // Filter: active tasks that are either scheduled for today or assigned to me
+  // If a task has a scheduled_date, only show if it's today
+  // If no scheduled_date, fall back to "assigned to me"
+  const myTasks = tasks.filter((t) => {
+    if (t.status === "completed") return false
+    if (t.scheduled_date === today) return true
+    if (t.scheduled_date) return false // scheduled for another day
+    return t.assigned_to === user?.id // no scheduled_date — show if assigned to me
+  })
 
   // Sort: overdue first, then by priority, then by due date
   const sorted = [...myTasks].sort((a, b) => {
@@ -137,8 +145,11 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
                       STATUS_CONFIG[task.status]?.cls ?? STATUS_CONFIG.pending.cls
                     )}
                   >
+                    <option value="backlog">Backlog</option>
                     <option value="pending">Pendiente</option>
                     <option value="in_progress">En curso</option>
+                    <option value="waiting">En espera</option>
+                    <option value="in_review">En revisión</option>
                     <option value="completed">Completada</option>
                   </select>
 

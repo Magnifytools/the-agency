@@ -18,6 +18,7 @@ export interface Client {
   status: ClientStatus
   notes: string | null
   cif: string | null
+  vat_number: string | null
   currency: string
   monthly_fee: number | null
   ga4_property_id: string | null
@@ -68,6 +69,7 @@ export interface ClientCreate {
   status?: ClientStatus
   notes?: string | null
   cif?: string | null
+  vat_number?: string | null
   currency?: string
   monthly_fee?: number | null
   ga4_property_id?: string | null

@@ -51,9 +51,12 @@ const statusBadge = (status: string) => {
 }
 
 const taskStatusBadge = (status: TaskStatus) => {
-  const map: Record<TaskStatus, { label: string; variant: "secondary" | "warning" | "success" }> = {
+  const map: Record<TaskStatus, { label: string; variant: "secondary" | "warning" | "success" | "outline" }> = {
+    backlog: { label: "Backlog", variant: "outline" },
     pending: { label: "Pendiente", variant: "secondary" },
     in_progress: { label: "En curso", variant: "warning" },
+    waiting: { label: "En espera", variant: "secondary" },
+    in_review: { label: "En revisión", variant: "warning" },
     completed: { label: "Completada", variant: "success" },
   }
   const { label, variant } = map[status]

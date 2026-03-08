@@ -68,6 +68,12 @@ CATEGORIES = [
     {"name": "SEO Técnico", "default_minutes": 90},
     {"name": "Reporting", "default_minutes": 30},
     {"name": "Reunión Cliente", "default_minutes": 30},
+    # Categorías internas
+    {"name": "Admin", "default_minutes": 30},
+    {"name": "Herramientas", "default_minutes": 60},
+    {"name": "Negocio", "default_minutes": 60},
+    {"name": "Formación", "default_minutes": 120},
+    {"name": "Conferencias", "default_minutes": 60},
 ]
 
 EXPENSE_CATEGORIES = [

@@ -232,3 +232,63 @@ async def delete_daily(
 
     await db.delete(daily)
     await db.commit()
+
+
+@router.get("/prefill")
+async def prefill_daily(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return tasks completed/moved today by the current user to pre-fill the daily."""
+    from backend.db.models import Task, TaskStatus, TimeEntry
+    from sqlalchemy import func, or_
+
+    today = date_type.today()
+
+    # Tasks completed today by this user
+    completed_result = await db.execute(
+        select(Task)
+        .where(
+            Task.assigned_to == current_user.id,
+            Task.status == TaskStatus.completed,
+            func.date(Task.updated_at) == today,
+        )
+    )
+    completed = completed_result.scalars().all()
+
+    # Tasks with time entries today by this user
+    te_result = await db.execute(
+        select(Task)
+        .join(TimeEntry, TimeEntry.task_id == Task.id)
+        .where(
+            TimeEntry.user_id == current_user.id,
+            TimeEntry.date == today,
+            Task.status != TaskStatus.completed,
+        )
+        .distinct()
+    )
+    worked_on = te_result.scalars().all()
+
+    # Build prefill text grouped by client
+    lines: list[str] = []
+    by_client: dict[str, list[str]] = {}
+
+    for task in completed:
+        client = task.client.name if task.client else "General"
+        by_client.setdefault(client, []).append(f"✅ {task.title}")
+
+    for task in worked_on:
+        client = task.client.name if task.client else "General"
+        by_client.setdefault(client, []).append(f"🔄 {task.title}")
+
+    for client, tasks in sorted(by_client.items()):
+        lines.append(f"**{client}**")
+        for t in tasks:
+            lines.append(f"- {t}")
+        lines.append("")
+
+    return {
+        "text": "\n".join(lines).strip(),
+        "completed_count": len(completed),
+        "worked_on_count": len(worked_on),
+    }

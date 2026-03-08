@@ -223,6 +223,59 @@ async def _ensure_numeric_types():
     logging.info("_ensure_numeric_types DDL complete.")
 
 
+async def _ensure_columns_v2():
+    """Phase 1+2 schema additions: task fields, new statuses, comments, attachments.
+
+    Runs unconditionally with idempotent statements.
+    """
+    from sqlalchemy import text
+    from backend.db.database import engine
+
+    stmts = [
+        # Phase 1: Task core fields
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id)",
+        "CREATE INDEX IF NOT EXISTS ix_tasks_created_by ON tasks (created_by)",
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS scheduled_date DATE",
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS waiting_for VARCHAR(255)",
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS follow_up_date DATE",
+        # Phase 1: Enum extension (PostgreSQL)
+        "DO $$ BEGIN ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'backlog'; EXCEPTION WHEN duplicate_object THEN NULL; END $$",
+        "DO $$ BEGIN ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'waiting'; EXCEPTION WHEN duplicate_object THEN NULL; END $$",
+        "DO $$ BEGIN ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'in_review'; EXCEPTION WHEN duplicate_object THEN NULL; END $$",
+        # Phase 2: Task comments
+        """CREATE TABLE IF NOT EXISTS task_comments (
+            id SERIAL PRIMARY KEY,
+            task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            text TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_task_comments_task_id ON task_comments (task_id)",
+        # Phase 2: Task attachments
+        """CREATE TABLE IF NOT EXISTS task_attachments (
+            id SERIAL PRIMARY KEY,
+            task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            name VARCHAR(255) NOT NULL,
+            description TEXT,
+            mime_type VARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
+            size_bytes INTEGER NOT NULL,
+            content BYTEA NOT NULL,
+            uploaded_by INTEGER REFERENCES users(id),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_task_attachments_task_id ON task_attachments (task_id)",
+    ]
+    async with engine.begin() as conn:
+        for sql in stmts:
+            try:
+                await conn.execute(text(sql))
+            except Exception as exc:
+                logging.warning("DDL v2 statement failed (may be expected): %s — %s", sql[:80], exc)
+    logging.info("_ensure_columns_v2 DDL complete.")
+
+
 def _log_task_error(t: asyncio.Task) -> None:
     if not t.cancelled() and (exc := t.exception()):
         logging.error("Background task %s failed: %s", t.get_name(), exc)
@@ -232,6 +285,7 @@ def _log_task_error(t: asyncio.Task) -> None:
 async def lifespan(app: FastAPI):
     await _ensure_columns()
     await _ensure_numeric_types()
+    await _ensure_columns_v2()
     task = None
     if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL:
         task = asyncio.create_task(_engine_sync_loop(), name="engine-sync")

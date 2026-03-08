@@ -163,6 +163,8 @@ export default function ClientsPage() {
       monthly_budget: fd.get("monthly_budget") ? Number(fd.get("monthly_budget")) : null,
       status: (fd.get("status") as ClientStatus) || "active",
       notes: (fd.get("notes") as string) || null,
+      cif: (fd.get("cif") as string) || null,
+      vat_number: (fd.get("vat_number") as string) || null,
       is_internal: fd.get("is_internal") === "on",
     }
     if (editing) {
@@ -403,6 +405,14 @@ export default function ClientsPage() {
             <div className="space-y-2">
               <Label htmlFor="website">Web</Label>
               <Input id="website" name="website" defaultValue={editing?.website ?? ""} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cif">CIF</Label>
+              <Input id="cif" name="cif" defaultValue={editing?.cif ?? ""} placeholder="B12345678" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vat_number">VAT Number</Label>
+              <Input id="vat_number" name="vat_number" defaultValue={editing?.vat_number ?? ""} placeholder="ESB12345678" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="contract_type">Tipo de contrato</Label>

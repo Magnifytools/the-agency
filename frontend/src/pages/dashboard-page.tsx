@@ -26,6 +26,7 @@ import { Link } from "react-router-dom"
 import { InboxWidget } from "@/components/dashboard/inbox-widget"
 import { DailyUpdateWidget } from "@/components/dashboard/daily-update-widget"
 import { DeberesWidget } from "@/components/dashboard/deberes-widget"
+import { TodayBlock } from "@/components/dashboard/today-block"
 import { getErrorMessage } from "@/lib/utils"
 import { SkeletonCard } from "@/components/ui/skeleton"
 
@@ -312,6 +313,9 @@ export default function DashboardPage() {
           </Select>
         </div>
       </div>
+
+      {/* Today Block */}
+      <TodayBlock />
 
       {/* Worker Dashboard */}
       {!isAdmin && user && (
