@@ -288,7 +288,7 @@ def _log_task_error(t: asyncio.Task) -> None:
 
 async def _cleanup_qa_test_data():
     """One-time cleanup of QA test data created during E2E testing."""
-    from sqlalchemy import select, delete, update, or_
+    from sqlalchemy import select, delete, update, or_, exists
     from backend.db.database import async_session
     from backend.db.models import (
         Client, Task, Project, ProjectPhase, ProjectEvidence,
@@ -412,9 +412,33 @@ async def _cleanup_qa_test_data():
             await session.execute(update(Task).where(Task.depends_on.in_(test_task_ids)).values(depends_on=None))
             await session.execute(update(GrowthIdea).where(GrowthIdea.task_id.in_(test_task_ids)).values(task_id=None))
             await session.execute(update(InvoiceItem).where(InvoiceItem.task_id.in_(test_task_ids)).values(task_id=None))
-            await session.execute(update(PMInsight).where(PMInsight.task_id.in_(test_task_ids)).values(task_id=None))
+            await session.execute(delete(PMInsight).where(PMInsight.task_id.in_(test_task_ids)))
             await session.execute(delete(Task).where(Task.id.in_(test_task_ids)))
             logging.info("🧹 Removed %d test task(s)", len(test_tasks))
+
+        # --- Part 5: Remove orphaned PM insights ---
+        # Delete active insights whose referenced task no longer exists
+        from sqlalchemy import exists
+        orphan_result = await session.execute(
+            delete(PMInsight).where(
+                PMInsight.task_id.isnot(None),
+                ~exists(select(Task.id).where(Task.id == PMInsight.task_id)),
+            )
+        )
+        if orphan_result.rowcount:
+            logging.info("🧹 Removed %d orphaned PM insight(s)", orphan_result.rowcount)
+
+        # Also remove insights that mention test data in their text
+        stale_result = await session.execute(
+            delete(PMInsight).where(
+                or_(
+                    PMInsight.title.ilike("%Tarea test%"),
+                    PMInsight.description.ilike("%Tarea test%"),
+                )
+            )
+        )
+        if stale_result.rowcount:
+            logging.info("🧹 Removed %d stale PM insight(s) referencing test data", stale_result.rowcount)
 
         await session.commit()
 
