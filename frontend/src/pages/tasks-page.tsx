@@ -661,7 +661,7 @@ export default function TasksPage() {
       )}
 
       {/* Create/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog() }}>
         <DialogHeader>
           <DialogTitle>{editing ? "Editar tarea" : "Nueva tarea"}</DialogTitle>
           {editing?.created_by_name && (
@@ -670,7 +670,7 @@ export default function TasksPage() {
             </p>
           )}
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form key={editing?.id ?? "new"} onSubmit={handleSubmit} className="space-y-4">
           {/* Title */}
           <div className="space-y-2">
             <Label htmlFor="title">Título *</Label>
@@ -707,11 +707,15 @@ export default function TasksPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="client_id" className="text-xs">Cliente *</Label>
-                  <Select id="client_id" name="client_id" defaultValue={editing?.client_id ?? ""}>
+                  <Select id="client_id" name="client_id" defaultValue={editing?.client_id ? String(editing.client_id) : ""}>
                     <option value="">Seleccionar...</option>
-                    {clients.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
+                    {clients.length === 0 ? (
+                      <option disabled>Cargando clientes...</option>
+                    ) : (
+                      clients.map((c) => (
+                        <option key={c.id} value={String(c.id)}>{c.name}</option>
+                      ))
+                    )}
                   </Select>
                 </div>
                 <div className="space-y-1.5">
@@ -952,24 +956,28 @@ export default function TasksPage() {
                 ))}
               </div>
             )}
-            <div className="flex gap-2">
-              <Input
+            <div className="space-y-2">
+              <Textarea
                 value={newCommentText}
                 onChange={(e) => setNewCommentText(e.target.value)}
-                placeholder="Añadir comentario..."
-                className="text-sm h-8"
+                placeholder="Escribe un comentario..."
+                className="text-sm min-h-[60px] resize-y"
+                rows={2}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && newCommentText.trim()) {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && newCommentText.trim()) {
                     e.preventDefault()
                     addCommentMut.mutate(newCommentText.trim())
                   }
                 }}
               />
-              <Button size="sm" variant="outline" className="h-8"
-                onClick={() => newCommentText.trim() && addCommentMut.mutate(newCommentText.trim())}
-                disabled={!newCommentText.trim() || addCommentMut.isPending}>
-                <Send className="h-3 w-3" />
-              </Button>
+              <div className="flex justify-end">
+                <Button size="sm"
+                  onClick={() => newCommentText.trim() && addCommentMut.mutate(newCommentText.trim())}
+                  disabled={!newCommentText.trim() || addCommentMut.isPending}>
+                  {addCommentMut.isPending ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <Send className="h-3 w-3 mr-1.5" />}
+                  Comentar
+                </Button>
+              </div>
             </div>
           </div>
         )}
