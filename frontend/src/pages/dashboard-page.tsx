@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { dashboardApi, discordApi, tasksApi, timeEntriesApi, timerApi, usersApi, dailysApi, digestsApi, clientsApi, leadsApi, proposalsApi, engineApi } from "@/lib/api"
+import { dashboardApi, discordApi, tasksApi, timeEntriesApi, timerApi, usersApi, dailysApi, digestsApi, clientsApi, leadsApi, proposalsApi, engineApi, holdedApi } from "@/lib/api"
+import { holdedKeys } from "@/lib/query-keys"
 import type { PricingOption } from "@/lib/types"
 import { useAuth } from "@/context/auth-context"
 import { MetricCard } from "@/components/dashboard/metric-card"
@@ -106,6 +107,26 @@ export default function DashboardPage() {
     queryFn: () => proposalsApi.list(),
     enabled: !!user,
   })
+
+  // ─── Holded queries (admin only) ───────────────────────────
+  const { data: holdedConfig } = useQuery({
+    queryKey: holdedKeys.config(),
+    queryFn: holdedApi.config,
+    staleTime: 5 * 60_000,
+    retry: false,
+    enabled: isAdmin,
+  })
+  const holdedEnabled = isAdmin && (holdedConfig?.api_key_configured ?? false)
+  const lastHoldedSync = holdedConfig?.last_sync_invoices?.completed_at ?? null
+
+  const { data: holdedDashboard } = useQuery({
+    queryKey: holdedKeys.dashboard(),
+    queryFn: holdedApi.dashboard,
+    staleTime: 5 * 60_000,
+    enabled: holdedEnabled,
+  })
+  const overdueInvoices = holdedDashboard?.pending_invoices.filter((i) => i.status === "overdue") ?? []
+  const overdueTotal = overdueInvoices.reduce((sum, i) => sum + i.total, 0)
 
   // ─── Worker queries ─────────────────────────────────────────
   const { data: myInProgressTasks } = useQuery({
@@ -252,7 +273,7 @@ export default function DashboardPage() {
     return { drafts: drafts.length, sent: sent.length, accepted: accepted.length, total: allProposals.length, pipelineValue }
   })()
 
-  const closeKeys = ["reviewed_numbers", "reviewed_margin", "reviewed_cash_buffer", "reviewed_reinvestment", "reviewed_debt", "reviewed_taxes", "reviewed_personal"]
+  const closeKeys = ["reviewed_numbers", "reviewed_margin", "reviewed_cash_buffer", "reviewed_reinvestment", "reviewed_debt", "reviewed_taxes", "reviewed_personal", "reviewed_holded"]
   const closeDoneCount = monthlyClose ? closeKeys.filter((key) => Boolean(monthlyClose[key as keyof typeof monthlyClose])).length : 0
   const closeTotalCount = closeKeys.length
   const closeDay = financialSettings?.monthly_close_day || 5
@@ -316,6 +337,21 @@ export default function DashboardPage() {
           </Select>
         </div>
       </div>
+
+      {/* Overdue Holded invoices alert */}
+      {overdueInvoices.length > 0 && (
+        <div className="rounded-lg border border-red-300 bg-red-50/10 p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0" />
+            <span className="text-sm font-medium text-red-500">
+              {overdueInvoices.length} {overdueInvoices.length === 1 ? "factura vencida" : "facturas vencidas"} por un total de {overdueTotal.toLocaleString("es-ES")}€
+            </span>
+          </div>
+          <Link to="/finance-holded" className="text-xs text-red-500 hover:underline whitespace-nowrap ml-4">
+            Ver en Holded →
+          </Link>
+        </div>
+      )}
 
       {/* Today Block */}
       <TodayBlock />
@@ -653,7 +689,7 @@ export default function DashboardPage() {
         </details>
       )}
 
-      {monthlyClose && <MonthlyCloseChecklist monthlyClose={monthlyClose as unknown as Record<string, string | boolean | null>} onUpdate={(p) => closeMutation.mutate(p)} onExport={handleExportClose} isPending={closeMutation.isPending} />}
+      {monthlyClose && <MonthlyCloseChecklist monthlyClose={monthlyClose as unknown as Record<string, string | boolean | null>} onUpdate={(p) => closeMutation.mutate(p)} onExport={handleExportClose} isPending={closeMutation.isPending} lastHoldedSync={lastHoldedSync} />}
 
       {isAdmin && profitability && profitability.clients.length > 0 && (
         <div className="grid lg:grid-cols-2 gap-6">

@@ -14,6 +14,7 @@ import { Plus, Pencil, Trash2, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
+import { FinanceTabNav } from "@/components/finance/finance-tab-nav"
 const currentYear = new Date().getFullYear()
 
 export default function ForecastsPage() {
@@ -81,6 +82,7 @@ export default function ForecastsPage() {
 
   return (
     <div className="space-y-6">
+      <FinanceTabNav />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Previsiones</h1>

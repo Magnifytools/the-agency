@@ -10,6 +10,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Upload, FileSpreadsheet } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { FinanceTabNav } from "@/components/finance/finance-tab-nav"
 
 export default function ImportPage() {
   const qc = useQueryClient()
@@ -74,6 +75,7 @@ export default function ImportPage() {
 
   return (
     <div className="space-y-6">
+      <FinanceTabNav />
       <div>
         <h1 className="text-2xl font-bold">Importar CSV</h1>
         <p className="text-muted-foreground">Importa ingresos o gastos desde un archivo CSV</p>

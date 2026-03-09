@@ -266,6 +266,8 @@ async def _ensure_columns_v2():
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )""",
         "CREATE INDEX IF NOT EXISTS ix_task_attachments_task_id ON task_attachments (task_id)",
+        # Sprint 4: Holded check in monthly close
+        "ALTER TABLE monthly_closes ADD COLUMN IF NOT EXISTS reviewed_holded BOOLEAN NOT NULL DEFAULT false",
     ]
     async with engine.begin() as conn:
         for sql in stmts:

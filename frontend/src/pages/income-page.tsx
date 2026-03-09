@@ -14,6 +14,7 @@ import { Plus, Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
+import { FinanceTabNav } from "@/components/finance/finance-tab-nav"
 
 const TYPES = [
   { label: "Factura", value: "factura" },
@@ -94,6 +95,7 @@ export default function IncomePage() {
 
   return (
     <div className="space-y-6">
+      <FinanceTabNav />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Ingresos</h1>

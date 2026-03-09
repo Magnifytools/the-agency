@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import (
-    User, Client, Task, TaskStatus, TimeEntry, TaskCategory,
+    User, Client, Task, TaskStatus, TimeEntry, TaskCategory, Income,
 )
 from backend.schemas.dashboard import ClientDashboardResponse, ProfitabilityStatus
 from backend.api.deps import get_current_user, require_module
@@ -138,6 +138,13 @@ async def client_dashboard(
     monthly_fee = (row[0] or 0) if row else 0
     monthly_budget = (row[1] or 0) if row else 0
 
+    # --- Actual income from Income table this month ---
+    income_result = await db.execute(
+        select(func.coalesce(func.sum(Income.amount), 0))
+        .where(Income.client_id == client_id, Income.date >= first_of_month)
+    )
+    actual_income = float(income_result.scalar() or 0)
+
     margin = monthly_fee - total_cost_this_month
     margin_pct = round((margin / monthly_fee) * 100, 1) if monthly_fee > 0 else 0
     hours_trend_pct = 0.0
@@ -165,4 +172,5 @@ async def client_dashboard(
         "tasks_due_this_week": tasks_due_this_week,
         "monthly_hours_breakdown": monthly_hours,
         "team_breakdown": list(team_breakdown.values()),
+        "actual_income": round(actual_income, 2),
     }

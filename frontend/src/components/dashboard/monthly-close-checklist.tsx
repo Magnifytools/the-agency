@@ -2,6 +2,7 @@ import { Link } from "react-router-dom"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { AlertTriangle } from "lucide-react"
 
 const CLOSE_ITEMS = [
   { key: "reviewed_numbers", label: "Revisar ingresos, gastos y cashflow del mes", link: "/finance" },
@@ -11,6 +12,7 @@ const CLOSE_ITEMS = [
   { key: "reviewed_debt", label: "Líneas de crédito y deuda bajo control", link: null },
   { key: "reviewed_taxes", label: "Impuestos y obligaciones fiscales al día", link: "/finance/taxes" },
   { key: "reviewed_personal", label: "Nóminas y pagos personales revisados", link: null },
+  { key: "reviewed_holded", label: "Holded sincronizado y conciliado", link: "/finance-holded" },
 ]
 
 interface MonthlyCloseChecklistProps {
@@ -18,6 +20,7 @@ interface MonthlyCloseChecklistProps {
   onUpdate: (payload: Record<string, boolean | string>) => void
   onExport: () => void
   isPending: boolean
+  lastHoldedSync?: string | null
 }
 
 export function MonthlyCloseChecklist({
@@ -25,9 +28,18 @@ export function MonthlyCloseChecklist({
   onUpdate,
   onExport,
   isPending,
+  lastHoldedSync,
 }: MonthlyCloseChecklistProps) {
   const doneCount = CLOSE_ITEMS.filter((item) => Boolean(monthlyClose[item.key])).length
   const totalCount = CLOSE_ITEMS.length
+
+  // Warn if Holded hasn't been synced in 7+ days
+  const holdedSyncStale = (() => {
+    if (!lastHoldedSync) return true
+    const syncDate = new Date(lastHoldedSync)
+    const daysSinceSync = (Date.now() - syncDate.getTime()) / (1000 * 60 * 60 * 24)
+    return daysSinceSync > 7
+  })()
 
   return (
     <Card>
@@ -79,6 +91,9 @@ export function MonthlyCloseChecklist({
               />
               <span className="text-sm flex-1">
                 {item.label}
+                {item.key === "reviewed_holded" && holdedSyncStale && (
+                  <AlertTriangle className="inline-block h-3.5 w-3.5 text-amber-500 ml-1.5 -mt-0.5" />
+                )}
                 {item.link && (
                   <Link
                     to={item.link}
@@ -107,6 +122,7 @@ export function MonthlyCloseChecklist({
                 reviewed_debt: true,
                 reviewed_taxes: true,
                 reviewed_personal: true,
+                reviewed_holded: true,
               })
             }
             disabled={isPending}

@@ -1,9 +1,9 @@
 import { Link, useLocation, Outlet } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/context/auth-context"
-import { holdedApi, inboxApi } from "@/lib/api"
-import { holdedKeys, inboxKeys } from "@/lib/query-keys"
-import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, CreditCard, FolderKanban, FileText, ScrollText, Rocket, Wallet, TrendingUp, Receipt, LineChart, Brain, Upload, Newspaper, Target, MessageCircle, ClipboardList, Gauge, BarChart3, Search, Archive, Megaphone, Inbox, Settings } from "lucide-react"
+import { inboxApi } from "@/lib/api"
+import { inboxKeys } from "@/lib/query-keys"
+import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, FolderKanban, FileText, ScrollText, Rocket, Wallet, Newspaper, Target, MessageCircle, ClipboardList, Gauge, Search, Archive, Megaphone, Inbox, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
 import { NotificationBell } from "@/components/layout/notification-bell"
@@ -38,19 +38,9 @@ export function AppLayout() {
     // Si falla, simplemente no hay badge — no bloquear la shell
   })
 
-  const { data: holdedConfig } = useQuery({
-    queryKey: holdedKeys.config(),
-    queryFn: holdedApi.config,
-    staleTime: 5 * 60_000,
-    retry: false,
-    enabled: isAdmin,
-  })
-  const holdedEnabled = isAdmin && (holdedConfig?.api_key_configured ?? false)
-
   const workspaceNav = useMemo(() => {
     const items = [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
-      { to: "/executive", label: "Ejecutivo", icon: BarChart3, module: "dashboard", adminOnly: true },
       { to: "/clients", label: "Clientes", icon: Users, module: "clients" },
       { to: "/leads", label: "Pipeline", icon: Target, module: "leads" },
       { to: "/projects", label: "Proyectos", icon: FolderKanban, module: "projects" },
@@ -58,10 +48,7 @@ export function AppLayout() {
       { to: "/growth", label: "Growth", icon: Rocket, module: "growth" },
       { to: "/inbox", label: "Inbox", icon: Inbox, module: "tasks" },
     ]
-    return items.filter((item) => {
-      if (item.adminOnly && !isAdmin) return false
-      return !item.module || hasPermission(item.module)
-    })
+    return items.filter((item) => !item.module || hasPermission(item.module))
   }, [hasPermission, isAdmin])
 
   const opsNav = useMemo(() => {
@@ -77,20 +64,6 @@ export function AppLayout() {
 
   // Keep mainNav as combined for backward compat (mobile nav, etc.)
   const mainNav = useMemo(() => [...workspaceNav, ...opsNav], [workspaceNav, opsNav])
-
-  const financeNav = useMemo(() => {
-    const items = [
-      { to: "/finance", label: "Resumen", icon: Wallet, module: "finance_dashboard" },
-      { to: "/finance/income", label: "Ingresos", icon: TrendingUp, module: "finance_income" },
-      { to: "/finance/expenses", label: "Gastos", icon: Receipt, module: "finance_expenses" },
-      { to: "/finance/taxes", label: "Impuestos", icon: CreditCard, module: "finance_taxes" },
-      { to: "/finance/forecasts", label: "Previsiones", icon: LineChart, module: "finance_forecasts" },
-      { to: "/finance/advisor", label: "Asesor", icon: Brain, module: "finance_advisor" },
-      { to: "/finance/import", label: "Importar", icon: Upload, module: "finance_import" },
-      { to: "/billing", label: "Facturación", icon: CreditCard, module: "billing" },
-    ]
-    return items.filter((item) => hasPermission(item.module))
-  }, [hasPermission])
 
   const agencyNav = useMemo(() => {
     const items: { to: string; label: string; icon: typeof Archive; adminOnly?: boolean }[] = [
@@ -111,20 +84,15 @@ export function AppLayout() {
 
   const mobileNav = useMemo(() => {
     const findMain = (path: string) => mainNav.find((item) => item.to === path)
-    const financeItem = holdedEnabled
-      ? { to: "/finance-holded", label: "Finanzas", icon: Wallet }
-      : financeNav.length > 0
-        ? { to: "/finance", label: "Finanzas", icon: Wallet }
-        : null
 
     return [
       findMain("/dashboard"),
       findMain("/clients"),
       findMain("/leads"),
-      financeItem,
+      isAdmin ? { to: "/finance", label: "Finanzas", icon: Wallet } : null,
       findMain("/projects"),
     ].filter((item): item is { to: string; label: string; icon: typeof Wallet } => Boolean(item))
-  }, [mainNav, holdedEnabled, financeNav])
+  }, [mainNav, isAdmin])
 
   const isActive = (path: string) => {
     if (path === "/finance-holded") {
@@ -239,60 +207,25 @@ export function AppLayout() {
               </div>
             )}
 
-            {/* Finance Nav */}
-            {holdedEnabled ? (
+            {/* Finance Nav — single entry */}
+            {isAdmin && (
               <div className="mt-6 flex flex-col gap-1.5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">Finanzas</p>
                 <Link
-                  to="/finance-holded"
-                  aria-current={isActive("/finance-holded") ? "page" : undefined}
+                  to="/finance"
+                  aria-current={isActive("/finance") || isActive("/executive") || isActive("/billing") || isActive("/finance-holded") ? "page" : undefined}
                   className={cn(
                     "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
-                    isActive("/finance-holded")
+                    isActive("/finance") || isActive("/executive") || isActive("/billing") || isActive("/finance-holded")
                       ? "bg-brand/10 text-brand"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
                 >
-                  <Wallet className={cn("h-[18px] w-[18px]", isActive("/finance-holded") ? "text-brand" : "text-muted-foreground group-hover:text-foreground transition-colors")} />
-                  Finanzas (Holded)
+                  <Wallet className={cn("h-[18px] w-[18px]", isActive("/finance") || isActive("/executive") || isActive("/billing") || isActive("/finance-holded") ? "text-brand" : "text-muted-foreground group-hover:text-foreground transition-colors")} />
+                  Finanzas
                 </Link>
-                {hasPermission("billing") && (
-                  <Link
-                    to="/billing"
-                    aria-current={isActive("/billing") ? "page" : undefined}
-                    className={cn(
-                      "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
-                      isActive("/billing")
-                        ? "bg-brand/10 text-brand"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    <CreditCard className={cn("h-[18px] w-[18px]", isActive("/billing") ? "text-brand" : "text-muted-foreground group-hover:text-foreground transition-colors")} />
-                    Facturación
-                  </Link>
-                )}
               </div>
-            ) : financeNav.length > 0 ? (
-              <div className="mt-8 flex flex-col gap-1.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">Finanzas</p>
-                {financeNav.map((item) => (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    aria-current={isActive(item.to) ? "page" : undefined}
-                    className={cn(
-                      "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
-                      isActive(item.to)
-                        ? "bg-brand/10 text-brand"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    <item.icon className={cn("h-[18px] w-[18px] transition-colors", isActive(item.to) ? "text-brand" : "text-muted-foreground group-hover:text-foreground")} />
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
-            ) : null}
+            )}
 
             {/* Agency Nav */}
             {agencyNav.length > 0 && (
@@ -391,13 +324,13 @@ export function AppLayout() {
           <Link
             key={item.to}
             to={item.to}
-            aria-current={isActive(item.to) || (item.to === "/finance" && location.pathname.startsWith("/finance")) ? "page" : undefined}
+            aria-current={isActive(item.to) || (item.to === "/finance" && (location.pathname.startsWith("/finance") || location.pathname === "/executive" || location.pathname === "/billing")) ? "page" : undefined}
             className={cn(
               "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
-              isActive(item.to) || (item.to === "/finance" && location.pathname.startsWith("/finance")) ? "text-brand" : "text-muted-foreground"
+              isActive(item.to) || (item.to === "/finance" && (location.pathname.startsWith("/finance") || location.pathname === "/executive" || location.pathname === "/billing")) ? "text-brand" : "text-muted-foreground"
             )}
           >
-            <item.icon className={cn("h-5 w-5", (isActive(item.to) || (item.to === "/finance" && location.pathname.startsWith("/finance"))) && "fill-brand/10")} />
+            <item.icon className={cn("h-5 w-5", (isActive(item.to) || (item.to === "/finance" && (location.pathname.startsWith("/finance") || location.pathname === "/executive" || location.pathname === "/billing"))) && "fill-brand/10")} />
             <span className="text-[10px] font-medium tracking-tight">
               {item.label === "Dashboard" ? "Home" : item.label}
             </span>

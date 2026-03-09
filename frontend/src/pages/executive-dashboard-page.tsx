@@ -43,6 +43,7 @@ import {
   Clock,
   Target,
 } from "lucide-react"
+import { FinanceTabNav } from "@/components/finance/finance-tab-nav"
 
 export default function ExecutiveDashboardPage() {
   const now = new Date()
@@ -170,6 +171,7 @@ export default function ExecutiveDashboardPage() {
 
   return (
     <div className="space-y-6">
+      <FinanceTabNav />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

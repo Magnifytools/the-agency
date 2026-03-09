@@ -189,6 +189,7 @@ export interface ClientDashboard {
   tasks_due_this_week: number
   monthly_hours_breakdown: Record<string, number>
   team_breakdown: { user_id: number; full_name: string; hours: number; cost: number }[]
+  actual_income: number
 }
 
 export interface ClientHealthScore {

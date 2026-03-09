@@ -15,6 +15,7 @@ import { Plus, Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
+import { FinanceTabNav } from "@/components/finance/finance-tab-nav"
 
 export default function ExpensesPage() {
   const qc = useQueryClient()
@@ -94,6 +95,7 @@ export default function ExpensesPage() {
 
   return (
     <div className="space-y-6">
+      <FinanceTabNav />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Gastos</h1>

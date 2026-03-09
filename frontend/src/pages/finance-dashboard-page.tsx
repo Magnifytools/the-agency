@@ -7,6 +7,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
 } from "recharts"
 import { formatCurrency } from "@/lib/format"
+import { FinanceTabNav } from "@/components/finance/finance-tab-nav"
 const currentYear = new Date().getFullYear()
 
 const MONTH_SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
@@ -43,6 +44,7 @@ export default function FinanceDashboardPage() {
 
   return (
     <div className="space-y-6">
+      <FinanceTabNav />
       <div>
         <h1 className="text-2xl font-bold">Dashboard Financiero</h1>
         <p className="text-muted-foreground">Resumen financiero del mes actual</p>

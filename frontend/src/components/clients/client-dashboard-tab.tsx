@@ -69,21 +69,37 @@ export function ClientDashboardTab({ client }: Props) {
             <p className="text-xs text-muted-foreground mt-1">
               Fee: {dash.monthly_fee.toLocaleString("es-ES")} {client.currency}
             </p>
+            {dash.actual_income > 0 && (
+              <p className="text-xs text-green-500 mt-0.5">
+                Ingresado: {dash.actual_income.toLocaleString("es-ES")} {client.currency}
+              </p>
+            )}
           </CardContent>
         </Card>
 
-        <Card className={dash.profitability_status === "unprofitable" ? "border-red-300 bg-red-50/10" : ""}>
+        <Card className={dash.profitability_status === "unprofitable" && dash.hours_this_month > 0 ? "border-red-300 bg-red-50/10" : ""}>
           <CardContent className="p-4">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
               <BarChart3 className="h-3 w-3" /> Margen
             </p>
-            <p className={`kpi-value mt-1 ${dash.margin >= 0 ? "text-green-500" : "text-red-500"}`}>
-              {dash.margin.toLocaleString("es-ES")} {client.currency}
-            </p>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-xs mono">{dash.margin_pct}%</span>
-              <Badge variant={profBadge.variant}>{profBadge.label}</Badge>
-            </div>
+            {dash.hours_this_month === 0 && dash.total_cost_this_month === 0 ? (
+              <div className="mt-2">
+                <p className="text-sm text-muted-foreground">Sin datos de tiempo</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Registra horas para calcular rentabilidad
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className={`kpi-value mt-1 ${dash.margin >= 0 ? "text-green-500" : "text-red-500"}`}>
+                  {dash.margin.toLocaleString("es-ES")} {client.currency}
+                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs mono">{dash.margin_pct}%</span>
+                  <Badge variant={profBadge.variant}>{profBadge.label}</Badge>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 

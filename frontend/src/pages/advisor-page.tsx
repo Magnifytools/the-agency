@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card"
 import { AlertTriangle, Bell, CheckCircle2, ListTodo } from "lucide-react"
 import { toast } from "sonner"
 import { formatCurrency } from "@/lib/format"
+import { FinanceTabNav } from "@/components/finance/finance-tab-nav"
 
 export default function AdvisorPage() {
   const qc = useQueryClient()
@@ -49,6 +50,7 @@ export default function AdvisorPage() {
 
   return (
     <div className="space-y-6">
+      <FinanceTabNav />
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">Asesor Financiero <Badge variant="warning" dot={false}>Beta</Badge></h1>
         <p className="text-muted-foreground">Resumen, alertas y tareas</p>

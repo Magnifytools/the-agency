@@ -59,6 +59,7 @@ class MonthlyCloseResponse(BaseModel):
     reviewed_debt: bool
     reviewed_taxes: bool
     reviewed_personal: bool
+    reviewed_holded: bool = False
     responsible_name: str = ""
     notes: str = ""
     updated_at: Optional[str] = None
@@ -72,6 +73,7 @@ class MonthlyCloseUpdate(BaseModel):
     reviewed_debt: Optional[bool] = None
     reviewed_taxes: Optional[bool] = None
     reviewed_personal: Optional[bool] = None
+    reviewed_holded: Optional[bool] = None
     responsible_name: Optional[str] = None
     notes: Optional[str] = None
 
@@ -136,3 +138,4 @@ class ClientDashboardResponse(BaseModel):
     tasks_due_this_week: int
     monthly_hours_breakdown: dict[str, float]
     team_breakdown: list[TeamBreakdownItem]
+    actual_income: float = 0

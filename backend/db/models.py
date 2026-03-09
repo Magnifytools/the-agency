@@ -752,6 +752,7 @@ class MonthlyClose(TimestampMixin, Base):
     reviewed_debt = Column(Boolean, nullable=False, default=False)
     reviewed_taxes = Column(Boolean, nullable=False, default=False)
     reviewed_personal = Column(Boolean, nullable=False, default=False)
+    reviewed_holded = Column(Boolean, nullable=False, default=False)
     responsible_name = Column(String, nullable=False, default="")
     notes = Column(Text, nullable=False, default="")
 

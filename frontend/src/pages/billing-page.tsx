@@ -9,6 +9,7 @@ import { billingApi } from "@/lib/api"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
+import { FinanceTabNav } from "@/components/finance/finance-tab-nav"
 
 interface BillingRow {
   client_id: number
@@ -55,6 +56,7 @@ export default function BillingPage() {
 
   return (
     <div className="space-y-6">
+      <FinanceTabNav />
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <h2 className="text-2xl font-bold uppercase tracking-wide flex items-center gap-2">Export facturación <Badge variant="warning" dot={false}>Beta</Badge></h2>
         <div className="flex flex-wrap gap-2">

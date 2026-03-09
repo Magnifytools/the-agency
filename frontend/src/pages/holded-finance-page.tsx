@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import { getErrorMessage } from "@/lib/utils"
+import { FinanceTabNav } from "@/components/finance/finance-tab-nav"
 
 type TabKey = "resumen" | "facturas" | "gastos" | "config"
 const SYNC_LOG_LIMIT = 20
@@ -67,6 +68,7 @@ export default function HoldedFinancePage() {
 
   return (
     <div className="space-y-6">
+      <FinanceTabNav />
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
