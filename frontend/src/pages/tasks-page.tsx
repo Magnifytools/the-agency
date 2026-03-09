@@ -26,6 +26,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { MyDayView } from "@/components/tasks/my-day-view"
 import { KanbanBoard } from "@/components/tasks/kanban-board"
 import { TaskCalendarView } from "@/components/tasks/task-calendar-view"
+import { WeeklyPlannerView } from "@/components/tasks/weekly-planner-view"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 
@@ -55,7 +56,7 @@ export default function TasksPage() {
   const [editing, setEditing] = useState<Task | null>(null)
   const [timeLogTask, setTimeLogTask] = useState<Task | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
-  const [view, setView] = useState<"my_day" | "sprint" | "all" | "calendar">("my_day")
+  const [view, setView] = useState<"my_day" | "sprint" | "all" | "calendar" | "weekly">("my_day")
   const [calMonth, setCalMonth] = useState(() => {
     const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }
   })
@@ -448,6 +449,14 @@ export default function TasksPage() {
         >
           <CalendarDays className="w-4 h-4 mr-2" /> Calendario
         </Button>
+        <Button
+          variant={view === "weekly" ? "default" : "ghost"}
+          size="sm"
+          className="flex-1 sm:w-32"
+          onClick={() => setView("weekly")}
+        >
+          <Calendar className="w-4 h-4 mr-2" /> Semana
+        </Button>
       </div>
 
       {/* Table & Planner */}
@@ -634,6 +643,14 @@ export default function TasksPage() {
           month={calMonth.month}
           onPrev={() => setCalMonth(({ year, month }) => month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 })}
           onNext={() => setCalMonth(({ year, month }) => month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 })}
+          onOpenEdit={openEdit}
+        />
+      )}
+
+      {!isLoading && view === "weekly" && (
+        <WeeklyPlannerView
+          tasks={allTasks}
+          onScheduleChange={(taskId, date) => updateMutation.mutate({ id: taskId, data: { scheduled_date: date } })}
           onOpenEdit={openEdit}
         />
       )}

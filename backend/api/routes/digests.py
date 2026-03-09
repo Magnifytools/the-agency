@@ -377,3 +377,68 @@ async def render_digest(
         rendered = render_email(content)
 
     return DigestRenderResponse(format=format, rendered=rendered)
+
+
+# ---------------------------------------------------------------------------
+# POST /{id}/send-email — Send digest via email
+# ---------------------------------------------------------------------------
+
+from pydantic import BaseModel as _EmailBase
+
+class DigestSendEmailRequest(_EmailBase):
+    to: str
+
+
+@router.post("/{digest_id}/send-email")
+async def send_digest_email(
+    digest_id: int,
+    body: DigestSendEmailRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("digests")),
+):
+    """Send a digest to a client via email."""
+    result = await db.execute(select(WeeklyDigest).where(WeeklyDigest.id == digest_id))
+    digest = result.scalar_one_or_none()
+
+    if not digest:
+        raise HTTPException(status_code=404, detail="Digest not found")
+    if current_user.role != UserRole.admin and digest.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your digest")
+    if not digest.content:
+        raise HTTPException(status_code=400, detail="Digest has no content")
+
+    try:
+        content = DigestContent(**digest.content)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Digest content is malformed")
+
+    # Render as email HTML
+    html_body = render_email(content)
+
+    # Get client name for subject
+    client_name = "tu proyecto"
+    if digest.client_id:
+        client_result = await db.execute(select(Client).where(Client.id == digest.client_id))
+        client = client_result.scalar_one_or_none()
+        if client:
+            client_name = client.name
+
+    subject = f"Resumen semanal — {client_name}"
+
+    # Send email
+    from backend.services.email_service import send_email
+    success = await send_email(
+        to=body.to,
+        subject=subject,
+        body_html=html_body,
+        body_text=f"Resumen semanal de {client_name}. Abre el email en un cliente que soporte HTML para ver el contenido completo.",
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Error al enviar email. Verifica la configuración SMTP.")
+
+    # Update status to sent
+    digest.status = DigestStatus.sent
+    await db.commit()
+
+    return {"success": True, "message": f"Digest enviado a {body.to}"}

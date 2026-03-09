@@ -668,6 +668,8 @@ export const digestsApi = {
     api.patch<Digest>(`/digests/${id}/status`, { status }).then((r) => r.data),
   render: (id: number, format: "slack" | "email") =>
     api.get<DigestRenderResponse>(`/digests/${id}/render`, { params: { format } }).then((r) => r.data),
+  sendEmail: (id: number, to: string) =>
+    api.post<{ success: boolean; message: string }>(`/digests/${id}/send-email`, { to }).then((r) => r.data),
 }
 
 // --- CRM Leads ---
