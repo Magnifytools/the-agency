@@ -709,13 +709,9 @@ export default function TasksPage() {
                   <Label htmlFor="client_id" className="text-xs">Cliente *</Label>
                   <Select id="client_id" name="client_id" defaultValue={editing?.client_id ? String(editing.client_id) : ""}>
                     <option value="">Seleccionar...</option>
-                    {clients.length === 0 ? (
-                      <option disabled>Cargando clientes...</option>
-                    ) : (
-                      clients.map((c) => (
-                        <option key={c.id} value={String(c.id)}>{c.name}</option>
-                      ))
-                    )}
+                    {clients.map((c) => (
+                      <option key={c.id} value={String(c.id)}>{c.name}</option>
+                    ))}
                   </Select>
                 </div>
                 <div className="space-y-1.5">

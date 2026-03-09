@@ -205,7 +205,7 @@ export const clientsApi = {
   list: (params?: { status?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Client>>("/clients", { params }).then((r) => r.data),
   listAll: (status?: string) =>
-    api.get<PaginatedResponse<Client>>("/clients", { params: { status, page_size: 999 } }).then((r) => r.data.items),
+    api.get<PaginatedResponse<Client>>("/clients", { params: { ...(status && { status }), page_size: 200 } }).then((r) => r.data.items),
   get: (id: number) => api.get<Client>(`/clients/${id}`).then((r) => r.data),
   create: (data: ClientCreate) => api.post<Client>("/clients", data).then((r) => r.data),
   update: (id: number, data: Partial<ClientCreate>) =>
@@ -239,7 +239,7 @@ export const tasksApi = {
   list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number; priority?: string; overdue?: boolean; scheduled_date?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params }).then((r) => r.data),
   listAll: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; scheduled_date?: string }) =>
-    api.get<PaginatedResponse<Task>>("/tasks", { params: { ...params, page_size: 999 } }).then((r) => r.data.items),
+    api.get<PaginatedResponse<Task>>("/tasks", { params: { ...params, page_size: 200 } }).then((r) => r.data.items),
   get: (id: number) => api.get<Task>(`/tasks/${id}`).then((r) => r.data),
   create: (data: TaskCreate) => api.post<Task>("/tasks", data).then((r) => r.data),
   update: (id: number, data: Partial<TaskCreate>) =>
@@ -317,7 +317,7 @@ export const usersApi = {
   list: (params?: { page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<User>>("/users", { params }).then((r) => r.data),
   listAll: () =>
-    api.get<PaginatedResponse<User>>("/users", { params: { page_size: 999 } }).then((r) => r.data.items),
+    api.get<PaginatedResponse<User>>("/users", { params: { page_size: 200 } }).then((r) => r.data.items),
   create: (data: UserCreate) => api.post<User>("/users", data).then((r) => r.data),
   get: (id: number) => api.get<User>(`/users/${id}`).then((r) => r.data),
   update: (id: number, data: Partial<User>) => api.put<User>(`/users/${id}`, data).then((r) => r.data),
@@ -403,7 +403,7 @@ export const projectsApi = {
   list: (params?: { client_id?: number; status?: string; project_type?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<ProjectListItem>>("/projects", { params }).then((r) => r.data),
   listAll: (params?: { client_id?: number; status?: string; project_type?: string }) =>
-    api.get<PaginatedResponse<ProjectListItem>>("/projects", { params: { ...params, page_size: 999 } }).then((r) => r.data.items),
+    api.get<PaginatedResponse<ProjectListItem>>("/projects", { params: { ...params, page_size: 200 } }).then((r) => r.data.items),
   get: (id: number) => api.get<Project>(`/projects/${id}`).then((r) => r.data),
   create: (data: ProjectCreate) => api.post<Project>("/projects", data).then((r) => r.data),
   update: (id: number, data: Partial<ProjectCreate> & { status?: string; progress_percent?: number }) =>
