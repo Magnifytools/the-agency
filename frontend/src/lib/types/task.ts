@@ -47,6 +47,9 @@ export interface ChecklistItem {
   text: string
   is_done: boolean
   order_index: number
+  assigned_to: number | null
+  due_date: string | null
+  assigned_user_name: string | null
   created_at: string
   updated_at: string
 }

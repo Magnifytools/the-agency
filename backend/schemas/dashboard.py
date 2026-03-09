@@ -139,3 +139,4 @@ class ClientDashboardResponse(BaseModel):
     monthly_hours_breakdown: dict[str, float]
     team_breakdown: list[TeamBreakdownItem]
     actual_income: float = 0
+    monthly_profitability: dict[str, dict] = {}

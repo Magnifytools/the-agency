@@ -219,6 +219,11 @@ export default function TasksPage() {
       tasksApi.checklist.update(editing!.id, id, { is_done }),
     onSuccess: () => { refetchChecklist(); queryClient.invalidateQueries({ queryKey: ["tasks"] }) },
   })
+  const updateChecklistMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<{ text: string; is_done: boolean; assigned_to: number | null; due_date: string | null }> }) =>
+      tasksApi.checklist.update(editing!.id, id, data),
+    onSuccess: () => refetchChecklist(),
+  })
   const deleteChecklistMut = useMutation({
     mutationFn: (id: number) => tasksApi.checklist.delete(editing!.id, id),
     onSuccess: () => refetchChecklist(),
@@ -855,7 +860,9 @@ export default function TasksPage() {
               Subtasks ({checklistItems.filter(i => i.is_done).length}/{checklistItems.length})
             </p>
             <div className="space-y-1.5">
-              {checklistItems.map((item) => (
+              {checklistItems.map((item) => {
+                const isOverdue = item.due_date && !item.is_done && new Date(item.due_date) < new Date()
+                return (
                 <div key={item.id} className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -863,15 +870,38 @@ export default function TasksPage() {
                     onChange={(e) => toggleChecklistMut.mutate({ id: item.id, is_done: e.target.checked })}
                     className="rounded border-border"
                   />
-                  <span className={`text-sm flex-1 ${item.is_done ? "line-through text-muted-foreground" : ""}`}>
+                  <span className={`text-sm flex-1 min-w-0 truncate ${item.is_done ? "line-through text-muted-foreground" : ""}`}>
                     {item.text}
                   </span>
-                  <Button variant="ghost" size="icon" className="h-6 w-6"
+                  <select
+                    value={item.assigned_to ?? ""}
+                    onChange={(e) => updateChecklistMut.mutate({
+                      id: item.id,
+                      data: { assigned_to: e.target.value ? Number(e.target.value) : null },
+                    })}
+                    className="text-xs h-6 w-24 border rounded bg-background px-1 shrink-0"
+                    title="Asignar a"
+                  >
+                    <option value="">—</option>
+                    {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                  </select>
+                  <input
+                    type="date"
+                    value={item.due_date ?? ""}
+                    onChange={(e) => updateChecklistMut.mutate({
+                      id: item.id,
+                      data: { due_date: e.target.value || null },
+                    })}
+                    className={`text-xs h-6 w-28 border rounded bg-background px-1 shrink-0 ${isOverdue ? "text-red-500 border-red-300" : ""}`}
+                    title="Fecha límite"
+                  />
+                  <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0"
                     onClick={() => deleteChecklistMut.mutate(item.id)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
-              ))}
+                )
+              })}
             </div>
             <div className="flex gap-2">
               <Input

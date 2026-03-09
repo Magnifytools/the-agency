@@ -242,6 +242,22 @@ async def delete_task(
 
 # ── Checklist endpoints ───────────────────────────────────────────────────────
 
+
+def _checklist_response(item: TaskChecklist) -> ChecklistItemResponse:
+    return ChecklistItemResponse(
+        id=item.id,
+        task_id=item.task_id,
+        text=item.text,
+        is_done=item.is_done,
+        order_index=item.order_index,
+        assigned_to=item.assigned_to,
+        due_date=item.due_date,
+        assigned_user_name=item.assigned_user.full_name if item.assigned_user else None,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
 @router.get("/{task_id}/checklist", response_model=list[ChecklistItemResponse])
 async def list_checklist(
     task_id: int,
@@ -253,7 +269,7 @@ async def list_checklist(
         .where(TaskChecklist.task_id == task_id)
         .order_by(TaskChecklist.order_index)
     )
-    return [ChecklistItemResponse.model_validate(i) for i in r.scalars().all()]
+    return [_checklist_response(i) for i in r.scalars().all()]
 
 
 @router.post("/{task_id}/checklist", response_model=ChecklistItemResponse, status_code=201)
@@ -267,7 +283,7 @@ async def create_checklist_item(
     db.add(item)
     await db.commit()
     await db.refresh(item)
-    return ChecklistItemResponse.model_validate(item)
+    return _checklist_response(item)
 
 
 @router.put("/{task_id}/checklist/{item_id}", response_model=ChecklistItemResponse)
@@ -288,7 +304,7 @@ async def update_checklist_item(
         setattr(item, field, value)
     await db.commit()
     await db.refresh(item)
-    return ChecklistItemResponse.model_validate(item)
+    return _checklist_response(item)
 
 
 @router.delete("/{task_id}/checklist/{item_id}", status_code=204)

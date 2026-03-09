@@ -43,6 +43,7 @@ class DailyUpdateResponse(BaseModel):
     parsed_data: Optional[ParsedDailyData] = None
     status: DailyUpdateStatus
     discord_sent_at: Optional[datetime] = None
+    time_entries_created: int = 0
     created_at: datetime
     updated_at: datetime
 

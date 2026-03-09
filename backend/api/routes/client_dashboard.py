@@ -129,6 +129,49 @@ async def client_dashboard(
         key = f"{int(yr)}-{int(mo):02d}"
         monthly_hours[key] = round((total_mins or 0) / 60, 1)
 
+    # --- Monthly profitability breakdown (last 6 months): income vs cost ---
+    monthly_profitability: dict[str, dict] = {}
+
+    # Monthly income from Income table
+    income_monthly = await db.execute(
+        select(
+            extract("year", Income.date).label("yr"),
+            extract("month", Income.date).label("mo"),
+            func.sum(Income.amount),
+        )
+        .where(
+            Income.client_id == client_id,
+            Income.date >= six_months_ago,
+        )
+        .group_by("yr", "mo")
+        .order_by("yr", "mo")
+    )
+    for yr, mo, total_amount in income_monthly.all():
+        key = f"{int(yr)}-{int(mo):02d}"
+        monthly_profitability[key] = {"income": round(float(total_amount or 0), 2), "cost": 0.0}
+
+    # Monthly cost from TimeEntry (hours * hourly_rate)
+    cost_monthly = await db.execute(
+        select(
+            extract("year", TimeEntry.date).label("yr"),
+            extract("month", TimeEntry.date).label("mo"),
+            func.sum(TimeEntry.minutes * User.hourly_rate / 60),
+        )
+        .join(User, TimeEntry.user_id == User.id)
+        .where(
+            TimeEntry.task_id.in_(task_subq),
+            TimeEntry.minutes.isnot(None),
+            TimeEntry.date >= datetime.combine(six_months_ago, datetime.min.time()),
+        )
+        .group_by("yr", "mo")
+        .order_by("yr", "mo")
+    )
+    for yr, mo, total_cost_val in cost_monthly.all():
+        key = f"{int(yr)}-{int(mo):02d}"
+        if key not in monthly_profitability:
+            monthly_profitability[key] = {"income": 0.0, "cost": 0.0}
+        monthly_profitability[key]["cost"] = round(float(total_cost_val or 0), 2)
+
     # --- Client financial data (only needed fields) ---
     client_result = await db.execute(
         select(Client.monthly_fee, Client.monthly_budget)
@@ -173,4 +216,5 @@ async def client_dashboard(
         "monthly_hours_breakdown": monthly_hours,
         "team_breakdown": list(team_breakdown.values()),
         "actual_income": round(actual_income, 2),
+        "monthly_profitability": monthly_profitability,
     }

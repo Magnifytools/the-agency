@@ -247,9 +247,9 @@ export const tasksApi = {
   delete: (id: number) => api.delete(`/tasks/${id}`).then((r) => r.data),
   checklist: {
     list: (taskId: number) => api.get<ChecklistItem[]>(`/tasks/${taskId}/checklist`).then((r) => r.data),
-    create: (taskId: number, text: string) =>
-      api.post<ChecklistItem>(`/tasks/${taskId}/checklist`, { text }).then((r) => r.data),
-    update: (taskId: number, itemId: number, data: Partial<{ text: string; is_done: boolean }>) =>
+    create: (taskId: number, text: string, assigned_to?: number | null, due_date?: string | null) =>
+      api.post<ChecklistItem>(`/tasks/${taskId}/checklist`, { text, assigned_to, due_date }).then((r) => r.data),
+    update: (taskId: number, itemId: number, data: Partial<{ text: string; is_done: boolean; assigned_to: number | null; due_date: string | null }>) =>
       api.put<ChecklistItem>(`/tasks/${taskId}/checklist/${itemId}`, data).then((r) => r.data),
     delete: (taskId: number, itemId: number) =>
       api.delete(`/tasks/${taskId}/checklist/${itemId}`).then((r) => r.data),

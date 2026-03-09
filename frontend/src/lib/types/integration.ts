@@ -351,6 +351,7 @@ export interface DailyUpdate {
   parsed_data: ParsedDailyData | null
   status: DailyUpdateStatus
   discord_sent_at: string | null
+  time_entries_created?: number
   created_at: string
   updated_at: string
 }

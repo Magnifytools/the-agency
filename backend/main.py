@@ -268,6 +268,9 @@ async def _ensure_columns_v2():
         "CREATE INDEX IF NOT EXISTS ix_task_attachments_task_id ON task_attachments (task_id)",
         # Sprint 4: Holded check in monthly close
         "ALTER TABLE monthly_closes ADD COLUMN IF NOT EXISTS reviewed_holded BOOLEAN NOT NULL DEFAULT false",
+        # Sprint 5: Enhanced subtasks
+        "ALTER TABLE task_checklists ADD COLUMN IF NOT EXISTS assigned_to INTEGER REFERENCES users(id)",
+        "ALTER TABLE task_checklists ADD COLUMN IF NOT EXISTS due_date DATE",
     ]
     async with engine.begin() as conn:
         for sql in stmts:
@@ -292,6 +295,7 @@ async def _cleanup_qa_test_data():
         TimeEntry, Invoice, InvoiceItem, ClientContact, ClientResource,
         BillingEvent, CommunicationLog, WeeklyDigest, PMInsight, GrowthIdea,
         Proposal, Event, Lead, GeneratedReport, Income, HoldedInvoiceCache,
+        InboxNote, TaskChecklist,
     )
 
     async with async_session() as session:
@@ -382,7 +386,60 @@ async def _cleanup_qa_test_data():
                 await session.delete(t)
             logging.info("🧹 Removed %d duplicate task(s)", len(dup_tasks) - 1)
 
+        # --- Part 3: Remove XSS / test inbox notes ---
+        xss_result = await session.execute(
+            delete(InboxNote).where(
+                or_(
+                    InboxNote.raw_text.ilike("%<script>%"),
+                    InboxNote.raw_text.ilike("%alert(%"),
+                    InboxNote.raw_text.ilike("%<img onerror%"),
+                    InboxNote.raw_text.ilike("%javascript:%"),
+                )
+            )
+        )
+        if xss_result.rowcount:
+            logging.info("🧹 Removed %d XSS/test inbox note(s)", xss_result.rowcount)
+
+        # --- Part 4: Remove standalone test tasks ---
+        test_tasks_result = await session.execute(
+            select(Task).where(Task.title.ilike("%Tarea test%"))
+        )
+        test_tasks = test_tasks_result.scalars().all()
+        if test_tasks:
+            test_task_ids = [t.id for t in test_tasks]
+            await session.execute(delete(TaskChecklist).where(TaskChecklist.task_id.in_(test_task_ids)))
+            await session.execute(delete(TimeEntry).where(TimeEntry.task_id.in_(test_task_ids)))
+            await session.execute(update(Task).where(Task.depends_on.in_(test_task_ids)).values(depends_on=None))
+            await session.execute(update(GrowthIdea).where(GrowthIdea.task_id.in_(test_task_ids)).values(task_id=None))
+            await session.execute(update(InvoiceItem).where(InvoiceItem.task_id.in_(test_task_ids)).values(task_id=None))
+            await session.execute(update(PMInsight).where(PMInsight.task_id.in_(test_task_ids)).values(task_id=None))
+            await session.execute(delete(Task).where(Task.id.in_(test_task_ids)))
+            logging.info("🧹 Removed %d test task(s)", len(test_tasks))
+
         await session.commit()
+
+
+async def _ensure_categories():
+    """Ensure all expected task categories exist (runs at startup)."""
+    from sqlalchemy import select
+    from backend.db.database import async_session
+    from backend.db.models import TaskCategory
+
+    REQUIRED = [
+        {"name": "Interno", "default_minutes": 30},
+    ]
+    async with async_session() as session:
+        created = 0
+        for cat in REQUIRED:
+            existing = await session.execute(
+                select(TaskCategory).where(TaskCategory.name == cat["name"])
+            )
+            if not existing.scalar_one_or_none():
+                session.add(TaskCategory(**cat))
+                created += 1
+        if created:
+            await session.commit()
+            logging.info("📂 Created %d missing task categor(ies)", created)
 
 
 @asynccontextmanager
@@ -391,6 +448,7 @@ async def lifespan(app: FastAPI):
     await _ensure_numeric_types()
     await _ensure_columns_v2()
     await _cleanup_qa_test_data()
+    await _ensure_categories()
     task = None
     if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL:
         task = asyncio.create_task(_engine_sync_loop(), name="engine-sync")

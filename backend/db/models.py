@@ -510,8 +510,11 @@ class TaskChecklist(TimestampMixin, Base):
     text = Column(String(500), nullable=False)
     is_done = Column(Boolean, nullable=False, default=False)
     order_index = Column(Integer, nullable=False, default=0)
+    assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True)
+    due_date = Column(Date, nullable=True)
 
     task = relationship("Task", back_populates="checklist_items", lazy="noload")
+    assigned_user = relationship("User", lazy="selectin")
 
 
 class TaskComment(TimestampMixin, Base):

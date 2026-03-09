@@ -74,6 +74,7 @@ CATEGORIES = [
     {"name": "Negocio", "default_minutes": 60},
     {"name": "Formación", "default_minutes": 120},
     {"name": "Conferencias", "default_minutes": 60},
+    {"name": "Interno", "default_minutes": 30},
 ]
 
 EXPENSE_CATEGORIES = [

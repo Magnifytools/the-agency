@@ -80,7 +80,22 @@ async def submit_daily(
     await db.commit()
     await db.refresh(daily)
 
-    return _to_response(daily)
+    # Auto-generate time entries from parsed data
+    time_entries_created = 0
+    if parsed:
+        try:
+            from backend.services.daily_timesheet import create_time_entries_from_daily
+            time_entries_created = await create_time_entries_from_daily(
+                db, current_user.id, update_date, parsed,
+            )
+            if time_entries_created:
+                await db.commit()
+        except Exception:
+            logger.exception("Error creating time entries from daily_id=%s", daily.id)
+
+    resp = _to_response(daily)
+    resp.time_entries_created = time_entries_created
+    return resp
 
 
 @router.get("", response_model=list[DailyUpdateResponse])

@@ -44,8 +44,14 @@ export default function DailysPage() {
     mutationFn: (text: string) => dailysApi.submit({ raw_text: text }),
     onSuccess: async (daily) => {
       queryClient.invalidateQueries({ queryKey: ["dailys"] })
+      queryClient.invalidateQueries({ queryKey: ["time-entries"] })
       setRawText("")
-      toast.success("Daily procesado con IA correctamente")
+      const teCount = daily.time_entries_created || 0
+      toast.success(
+        teCount > 0
+          ? `Daily procesado. ${teCount} registro${teCount > 1 ? "s" : ""} de tiempo creado${teCount > 1 ? "s" : ""}`
+          : "Daily procesado con IA correctamente"
+      )
       // Auto-send to Discord
       try {
         const res = await dailysApi.sendDiscord(daily.id)

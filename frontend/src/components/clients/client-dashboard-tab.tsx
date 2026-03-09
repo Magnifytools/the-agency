@@ -197,6 +197,62 @@ export function ClientDashboardTab({ client }: Props) {
         </Card>
       </div>
 
+      {/* Profitability: Revenue vs Cost (last 6 months) */}
+      {(() => {
+        const profKeys = Object.keys(dash.monthly_profitability || {}).sort()
+        if (profKeys.length === 0) return null
+        const maxVal = Math.max(
+          ...profKeys.flatMap((k) => [
+            dash.monthly_profitability[k].income,
+            dash.monthly_profitability[k].cost,
+          ]),
+          1,
+        )
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Ingresos vs Coste</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-end gap-3 h-36">
+                {profKeys.map((key) => {
+                  const { income, cost } = dash.monthly_profitability[key]
+                  const incomePct = (income / maxVal) * 100
+                  const costPct = (cost / maxVal) * 100
+                  const [, mo] = key.split("-")
+                  const monthName = new Date(2024, Number(mo) - 1).toLocaleString("es-ES", { month: "short" })
+                  return (
+                    <div key={key} className="flex-1 flex flex-col items-center gap-1">
+                      <div className="flex gap-0.5 items-end w-full" style={{ height: "85%" }}>
+                        <div className="flex-1 flex flex-col items-center justify-end h-full">
+                          {income > 0 && <span className="text-[9px] mono text-green-600">{income.toLocaleString("es-ES")}</span>}
+                          <div className="w-full bg-green-500 rounded-t" style={{ height: `${Math.max(incomePct, 2)}%` }} />
+                        </div>
+                        <div className="flex-1 flex flex-col items-center justify-end h-full">
+                          {cost > 0 && <span className="text-[9px] mono text-red-400">{cost.toLocaleString("es-ES")}</span>}
+                          <div className="w-full bg-red-400 rounded-t" style={{ height: `${Math.max(costPct, 2)}%` }} />
+                        </div>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground capitalize">{monthName}</span>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex items-center justify-center gap-4 mt-3">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 bg-green-500 rounded-sm" />
+                  <span className="text-xs text-muted-foreground">Ingresos</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 bg-red-400 rounded-sm" />
+                  <span className="text-xs text-muted-foreground">Coste</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
+
       {/* Team breakdown */}
       {dash.team_breakdown.length > 0 && (
         <Card>

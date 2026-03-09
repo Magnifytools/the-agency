@@ -230,6 +230,18 @@ export default function GrowthPage() {
                                     {idea.description && (
                                         <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{idea.description}</div>
                                     )}
+                                    {idea.project_name && (
+                                        <div className="text-xs text-brand mt-0.5 flex items-center gap-1">
+                                            <FolderKanban className="h-3 w-3" />
+                                            Proyecto: {idea.project_name}
+                                        </div>
+                                    )}
+                                    {idea.task_title && (
+                                        <div className="text-xs text-brand mt-0.5 flex items-center gap-1">
+                                            <CheckSquare className="h-3 w-3" />
+                                            Tarea: {idea.task_title}
+                                        </div>
+                                    )}
                                 </TableCell>
                                 <TableCell>
                                     <Badge variant="outline" className="text-xs">

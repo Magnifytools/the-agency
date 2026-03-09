@@ -135,9 +135,14 @@ async def convert_to_project(
     if not idea:
         raise HTTPException(status_code=404, detail="Idea no encontrada")
 
+    desc_parts = [idea.description] if idea.description else []
+    desc_parts.append(f"Origen: Growth Idea (ICE: {idea.ice_score})")
+    if idea.results_notes:
+        desc_parts.append(f"Resultados: {idea.results_notes}")
+
     project = Project(
         name=f"[Growth] {idea.title}",
-        description=idea.description or f"Proyecto creado desde idea Growth (ICE: {idea.ice_score})",
+        description="\n\n".join(desc_parts),
         client_id=client_id,
         status="planning",
     )
@@ -146,7 +151,7 @@ async def convert_to_project(
     await db.refresh(project)
 
     idea.project_id = project.id
-    idea.status = "in_progress"
+    idea.status = "completed"
     await db.commit()
 
     return {"project_id": project.id, "message": "Proyecto creado y vinculado"}
@@ -165,9 +170,14 @@ async def create_task_from_idea(
     if not idea:
         raise HTTPException(status_code=404, detail="Idea no encontrada")
 
+    desc_parts = [idea.description] if idea.description else []
+    desc_parts.append(f"Origen: Growth Idea (ICE: {idea.ice_score})")
+    if idea.results_notes:
+        desc_parts.append(f"Resultados: {idea.results_notes}")
+
     task = Task(
         title=f"[Growth] {idea.title}",
-        description=idea.description,
+        description="\n\n".join(desc_parts),
         client_id=client_id,
         status="pending",
         priority="medium",
@@ -178,7 +188,7 @@ async def create_task_from_idea(
     await db.refresh(task)
 
     idea.task_id = task.id
-    idea.status = "in_progress"
+    idea.status = "completed"
     await db.commit()
 
     return {"task_id": task.id, "message": "Tarea creada y vinculada"}
