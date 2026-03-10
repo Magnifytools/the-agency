@@ -13,7 +13,7 @@ import {
 } from "@dnd-kit/core"
 import type { Task } from "@/lib/types"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, Pencil, Clock } from "lucide-react"
+import { ChevronLeft, ChevronRight, Pencil, Clock, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface Props {
@@ -122,7 +122,10 @@ function DraggableTaskCard({
       )}
     >
       <div className="flex items-start justify-between gap-1">
-        <span className="font-medium leading-tight line-clamp-2 flex-1">{task.title}</span>
+        <span className="font-medium leading-tight line-clamp-2 flex-1 inline-flex items-center gap-1">
+          {task.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" />}
+          {task.title}
+        </span>
         <button
           onClick={(e) => {
             e.stopPropagation()
@@ -210,11 +213,23 @@ export function WeeklyPlannerView({ tasks, onScheduleChange, onOpenEdit }: Props
     const taskId = Number(String(active.id).replace("task-", ""))
     const targetId = String(over.id)
 
+    let newDate: string | null = null
     if (targetId === "unscheduled") {
-      onScheduleChange(taskId, null)
-    } else if (/^\d{4}-\d{2}-\d{2}$/.test(targetId)) {
-      onScheduleChange(taskId, targetId)
+      newDate = null
+    } else if (String(targetId).startsWith("day-")) {
+      newDate = String(targetId).replace("day-", "")
+    } else {
+      return
     }
+
+    // No-op if task is already in the target
+    const task = tasks.find((t) => t.id === taskId)
+    if (task) {
+      const currentDate = task.scheduled_date || null
+      if (currentDate === newDate) return
+    }
+
+    onScheduleChange(taskId, newDate)
   }
 
   return (
@@ -253,7 +268,7 @@ export function WeeklyPlannerView({ tasks, onScheduleChange, onOpenEdit }: Props
           {dates.map((dateStr, i) => (
             <DroppableColumn
               key={dateStr}
-              id={dateStr}
+              id={`day-${dateStr}`}
               label={DAY_NAMES[i]}
               sublabel={formatDay(dateStr)}
               isToday={dateStr === today}

@@ -43,6 +43,11 @@ def _task_to_response(task: Task) -> TaskResponse:
         follow_up_date=task.follow_up_date,
         created_at=task.created_at,
         updated_at=task.updated_at,
+        is_recurring=task.is_recurring,
+        recurrence_pattern=task.recurrence_pattern,
+        recurrence_day=task.recurrence_day,
+        recurrence_end_date=task.recurrence_end_date,
+        recurring_parent_id=task.recurring_parent_id,
         client_name=task.client.name if task.client else None,
         category_name=task.category.name if task.category else None,
         assigned_user_name=task.assigned_user.full_name if task.assigned_user else None,
@@ -50,6 +55,7 @@ def _task_to_response(task: Task) -> TaskResponse:
         phase_name=task.phase.name if task.phase else None,
         dependency_title=task.dependency.title if task.dependency else None,
         created_by_name=task.creator.full_name if task.creator else None,
+        recurring_parent_title=task.recurring_parent.title if task.recurring_parent else None,
         checklist_count=len(task.checklist_items) if task.checklist_items else 0,
     )
 
@@ -64,6 +70,7 @@ async def list_tasks(
     priority: Optional[TaskPriority] = Query(None),
     overdue: Optional[bool] = Query(None),
     scheduled_date: Optional[str] = Query(None),
+    is_recurring: Optional[bool] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
@@ -101,6 +108,13 @@ async def list_tasks(
             base = base.where(Task.scheduled_date == sd)
         except ValueError:
             raise HTTPException(status_code=422, detail="scheduled_date must be YYYY-MM-DD")
+
+    # Recurring filter: by default exclude templates from normal views
+    if is_recurring is True:
+        base = base.where(Task.is_recurring == True)
+    else:
+        # Default + explicit false: hide templates
+        base = base.where(Task.is_recurring == False)
 
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
 
@@ -182,6 +196,8 @@ async def update_task(
         "actual_minutes", "start_date", "due_date", "client_id", "category_id",
         "assigned_to", "project_id", "phase_id", "depends_on",
         "scheduled_date", "waiting_for", "follow_up_date",
+        "is_recurring", "recurrence_pattern", "recurrence_day",
+        "recurrence_end_date", "recurring_parent_id",
     }
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():

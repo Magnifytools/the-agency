@@ -24,6 +24,11 @@ class TaskCreate(BaseModel):
     scheduled_date: Optional[date] = None
     waiting_for: Optional[str] = Field(None, max_length=255)
     follow_up_date: Optional[date] = None
+    is_recurring: bool = False
+    recurrence_pattern: Optional[str] = None
+    recurrence_day: Optional[int] = None
+    recurrence_end_date: Optional[date] = None
+    recurring_parent_id: Optional[int] = None
 
 
 class TaskUpdate(BaseModel):
@@ -44,6 +49,11 @@ class TaskUpdate(BaseModel):
     scheduled_date: Optional[date] = None
     waiting_for: Optional[str] = Field(None, max_length=255)
     follow_up_date: Optional[date] = None
+    is_recurring: Optional[bool] = None
+    recurrence_pattern: Optional[str] = None
+    recurrence_day: Optional[int] = None
+    recurrence_end_date: Optional[date] = None
+    recurring_parent_id: Optional[int] = None
 
 
 class TaskResponse(BaseModel):
@@ -66,6 +76,11 @@ class TaskResponse(BaseModel):
     scheduled_date: Optional[date] = None
     waiting_for: Optional[str] = None
     follow_up_date: Optional[date] = None
+    is_recurring: bool = False
+    recurrence_pattern: Optional[str] = None
+    recurrence_day: Optional[int] = None
+    recurrence_end_date: Optional[date] = None
+    recurring_parent_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -77,6 +92,7 @@ class TaskResponse(BaseModel):
     phase_name: Optional[str] = None
     dependency_title: Optional[str] = None
     created_by_name: Optional[str] = None
+    recurring_parent_title: Optional[str] = None
     checklist_count: int = 0
 
     model_config = {"from_attributes": True}

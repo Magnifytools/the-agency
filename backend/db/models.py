@@ -491,6 +491,13 @@ class Task(TimestampMixin, Base):
     waiting_for = Column(String(255), nullable=True)
     follow_up_date = Column(Date, nullable=True)
 
+    # Recurring task fields
+    is_recurring = Column(Boolean, nullable=False, default=False, server_default="false")
+    recurrence_pattern = Column(String(20), nullable=True)  # daily|weekly|biweekly|monthly
+    recurrence_day = Column(Integer, nullable=True)  # 0-4 for weekly, 1-28 for monthly
+    recurrence_end_date = Column(Date, nullable=True)
+    recurring_parent_id = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
+
     client = relationship("Client", back_populates="tasks", lazy="selectin")
     category = relationship("TaskCategory", back_populates="tasks", lazy="selectin")
     assigned_user = relationship("User", back_populates="tasks", lazy="selectin", foreign_keys=[assigned_to])
@@ -498,7 +505,8 @@ class Task(TimestampMixin, Base):
     time_entries = relationship("TimeEntry", back_populates="task", lazy="noload")
     project = relationship("Project", back_populates="tasks", lazy="selectin")
     phase = relationship("ProjectPhase", back_populates="tasks", lazy="selectin")
-    dependency = relationship("Task", remote_side="Task.id", lazy="selectin")
+    dependency = relationship("Task", remote_side="Task.id", lazy="selectin", foreign_keys=[depends_on])
+    recurring_parent = relationship("Task", remote_side="Task.id", lazy="selectin", foreign_keys=[recurring_parent_id])
     checklist_items = relationship("TaskChecklist", back_populates="task", lazy="selectin", cascade="all, delete-orphan", order_by="TaskChecklist.order_index")
 
 

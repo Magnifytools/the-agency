@@ -466,13 +466,224 @@ async def _ensure_categories():
             logging.info("📂 Created %d missing task categor(ies)", created)
 
 
+async def _ensure_columns_v3():
+    """Phase 3 schema additions: recurring task fields."""
+    from sqlalchemy import text
+    from backend.db.database import engine
+
+    stmts = [
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN NOT NULL DEFAULT false",
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurrence_pattern VARCHAR(20)",
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurrence_day INTEGER",
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurrence_end_date DATE",
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurring_parent_id INTEGER REFERENCES tasks(id)",
+        "CREATE INDEX IF NOT EXISTS ix_tasks_recurring_parent_id ON tasks (recurring_parent_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tasks_is_recurring ON tasks (is_recurring)",
+    ]
+    async with engine.begin() as conn:
+        for sql in stmts:
+            try:
+                await conn.execute(text(sql))
+            except Exception as exc:
+                logging.warning("DDL v3 statement failed (may be expected): %s — %s", sql[:80], exc)
+    logging.info("_ensure_columns_v3 DDL complete.")
+
+
+async def _generate_recurring_instances():
+    """Create task instances from recurring templates for today."""
+    from datetime import date as date_type
+    from sqlalchemy import select, or_
+    from backend.db.database import async_session
+    from backend.db.models import Task, TaskStatus
+
+    today = date_type.today()
+    weekday = today.weekday()  # 0=Mon ... 4=Fri
+    day_of_month = today.day
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(Task).where(
+                Task.is_recurring == True,
+                or_(Task.recurrence_end_date == None, Task.recurrence_end_date >= today),
+            )
+        )
+        templates = result.scalars().all()
+
+        created = 0
+        for template in templates:
+            should_create = False
+            if template.recurrence_pattern == "daily":
+                should_create = weekday < 5  # Mon-Fri only
+            elif template.recurrence_pattern == "weekly":
+                should_create = weekday == template.recurrence_day
+            elif template.recurrence_pattern == "biweekly":
+                week_num = today.isocalendar()[1]
+                should_create = weekday == template.recurrence_day and week_num % 2 == 0
+            elif template.recurrence_pattern == "monthly":
+                should_create = day_of_month == template.recurrence_day
+
+            if not should_create:
+                continue
+
+            # Check duplicate: instance with same parent + same scheduled_date
+            dup = await session.execute(
+                select(Task.id).where(
+                    Task.recurring_parent_id == template.id,
+                    Task.scheduled_date == today,
+                )
+            )
+            if dup.scalar_one_or_none() is not None:
+                continue
+
+            new_task = Task(
+                title=template.title,
+                description=template.description,
+                client_id=template.client_id,
+                category_id=template.category_id,
+                assigned_to=template.assigned_to,
+                priority=template.priority,
+                status=TaskStatus.pending,
+                scheduled_date=today,
+                due_date=today,
+                recurring_parent_id=template.id,
+                is_recurring=False,
+            )
+            session.add(new_task)
+            created += 1
+
+        if created:
+            await session.commit()
+            logging.info("🔄 Generated %d recurring task instance(s) for %s", created, today)
+
+
+async def _recurring_midnight_loop():
+    """Background loop that generates recurring task instances at midnight."""
+    import asyncio
+    from datetime import datetime, timedelta
+
+    while True:
+        now = datetime.now()
+        tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=1, second=0, microsecond=0)
+        wait_seconds = (tomorrow - now).total_seconds()
+        logging.info("🔄 Recurring task loop: next run in %.0f seconds", wait_seconds)
+        await asyncio.sleep(wait_seconds)
+        try:
+            await _generate_recurring_instances()
+        except Exception as exc:
+            logging.error("🔄 Recurring task generation failed: %s", exc)
+
+
+async def _seed_recurring_templates():
+    """Create default recurring task templates if they don't exist yet."""
+    from sqlalchemy import select
+    from backend.db.database import async_session
+    from backend.db.models import Task, Client, User, TaskCategory, TaskPriority
+
+    TEMPLATES = [
+        {
+            "title": "Preparar y enviar update semanal — Sage Sales Management",
+            "client_name": "Sage Sales Management",
+            "recurrence_pattern": "weekly",
+            "recurrence_day": 0,  # Monday
+            "priority": TaskPriority.medium,
+            "description": "Preparar el update semanal del proyecto. Revisar tareas completadas, estado actual y próximos pasos. Enviar al cliente vía digest.",
+        },
+        {
+            "title": "Preparar y enviar update semanal — Fit Generation",
+            "client_name": "Fit Generation",
+            "recurrence_pattern": "weekly",
+            "recurrence_day": 0,  # Monday
+            "priority": TaskPriority.medium,
+            "description": "Preparar el update semanal del proyecto. Revisar tareas completadas, estado actual y próximos pasos. Enviar al cliente vía digest.",
+        },
+        {
+            "title": "Generar informe mensual — Sage Sales Management",
+            "client_name": "Sage Sales Management",
+            "recurrence_pattern": "monthly",
+            "recurrence_day": 1,  # Day 1
+            "priority": TaskPriority.high,
+            "description": "Generar el informe mensual completo del cliente. Incluir métricas SEO, tareas realizadas, evolución y noticias relevantes del sector.",
+        },
+        {
+            "title": "Generar informe mensual — Fit Generation",
+            "client_name": "Fit Generation",
+            "recurrence_pattern": "monthly",
+            "recurrence_day": 1,  # Day 1
+            "priority": TaskPriority.high,
+            "description": "Generar el informe mensual completo del cliente. Incluir métricas SEO, tareas realizadas, evolución y noticias relevantes del sector.",
+        },
+    ]
+
+    async with async_session() as session:
+        # Find Nacho user
+        nacho_result = await session.execute(
+            select(User).where(User.full_name.ilike("%nacho%"))
+        )
+        nacho = nacho_result.scalar_one_or_none()
+        nacho_id = nacho.id if nacho else None
+
+        # Find Reporting category
+        cat_result = await session.execute(
+            select(TaskCategory).where(TaskCategory.name == "Reporting")
+        )
+        reporting_cat = cat_result.scalar_one_or_none()
+        # Create if missing
+        if not reporting_cat:
+            reporting_cat = TaskCategory(name="Reporting", default_minutes=60)
+            session.add(reporting_cat)
+            await session.flush()
+
+        created = 0
+        for tmpl in TEMPLATES:
+            # Check if already exists
+            existing = await session.execute(
+                select(Task).where(
+                    Task.title == tmpl["title"],
+                    Task.is_recurring == True,
+                )
+            )
+            if existing.scalar_one_or_none():
+                continue
+
+            # Find client
+            client_result = await session.execute(
+                select(Client).where(Client.name == tmpl["client_name"])
+            )
+            client = client_result.scalar_one_or_none()
+            if not client:
+                logging.warning("🔄 Seed: client '%s' not found, skipping template '%s'", tmpl["client_name"], tmpl["title"])
+                continue
+
+            new_template = Task(
+                title=tmpl["title"],
+                description=tmpl["description"],
+                client_id=client.id,
+                category_id=reporting_cat.id,
+                assigned_to=nacho_id,
+                priority=tmpl["priority"],
+                status="pending",
+                is_recurring=True,
+                recurrence_pattern=tmpl["recurrence_pattern"],
+                recurrence_day=tmpl["recurrence_day"],
+            )
+            session.add(new_template)
+            created += 1
+
+        if created:
+            await session.commit()
+            logging.info("🔄 Seeded %d recurring task template(s)", created)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await _ensure_columns()
     await _ensure_numeric_types()
     await _ensure_columns_v2()
+    await _ensure_columns_v3()
     await _cleanup_qa_test_data()
     await _ensure_categories()
+    await _seed_recurring_templates()
+    await _generate_recurring_instances()
     task = None
     if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL:
         task = asyncio.create_task(_engine_sync_loop(), name="engine-sync")
@@ -483,6 +694,8 @@ async def lifespan(app: FastAPI):
         holded_task = asyncio.create_task(_holded_sync_loop(), name="holded-sync")
         holded_task.add_done_callback(_log_task_error)
         logging.info("Holded auto-sync started (every 6h).")
+    recurring_task = asyncio.create_task(_recurring_midnight_loop(), name="recurring-gen")
+    recurring_task.add_done_callback(_log_task_error)
     logging.info("Startup ready.")
     yield
     if task:
@@ -497,6 +710,11 @@ async def lifespan(app: FastAPI):
             await holded_task
         except asyncio.CancelledError:
             pass
+    recurring_task.cancel()
+    try:
+        await recurring_task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(title="The Agency", version="1.0.0", lifespan=lifespan)

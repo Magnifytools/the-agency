@@ -2,7 +2,7 @@ import type { Task, TaskStatus } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Pencil, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw } from "lucide-react"
+import { Pencil, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
 
@@ -156,7 +156,10 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium truncate">{task.title}</span>
+                      <span className="text-sm font-medium truncate inline-flex items-center gap-1">
+                        {task.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" />}
+                        {task.title}
+                      </span>
                       {priorityBadge(task.priority)}
                     </div>
                     <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">

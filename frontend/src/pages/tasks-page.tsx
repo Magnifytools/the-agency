@@ -13,7 +13,7 @@ import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare, Loader2, CalendarDays, ChevronDown, ChevronUp, MessageSquare, Paperclip, Download, Send } from "lucide-react"
+import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare, Loader2, CalendarDays, ChevronDown, ChevronUp, MessageSquare, Paperclip, Download, Send, Repeat } from "lucide-react"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
@@ -56,7 +56,7 @@ export default function TasksPage() {
   const [editing, setEditing] = useState<Task | null>(null)
   const [timeLogTask, setTimeLogTask] = useState<Task | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
-  const [view, setView] = useState<"my_day" | "sprint" | "all" | "calendar" | "weekly">("my_day")
+  const [view, setView] = useState<"my_day" | "sprint" | "all" | "calendar" | "weekly" | "recurring">("my_day")
   const [calMonth, setCalMonth] = useState(() => {
     const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }
   })
@@ -84,6 +84,11 @@ export default function TasksPage() {
   const [attachmentFileRef, setAttachmentFileRef] = useState<HTMLInputElement | null>(null)
   // Dialog — collapsible assignment fields
   const [showAssignmentFields, setShowAssignmentFields] = useState(true)
+  // Recurring fields state
+  const [isRecurring, setIsRecurring] = useState(false)
+  const [recurrencePattern, setRecurrencePattern] = useState<string>("weekly")
+  const [recurrenceDay, setRecurrenceDay] = useState<number>(0)
+  const [showRecurringFields, setShowRecurringFields] = useState(false)
 
   const { data: tasksData, isLoading } = useQuery({
     queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, page, pageSize],
@@ -173,10 +178,18 @@ export default function TasksPage() {
     queryFn: () => usersApi.listAll(),
   })
 
+  // Recurring templates query (only fetched when tab is active)
+  const { data: recurringTemplates = [] } = useQuery({
+    queryKey: ["tasks-recurring"],
+    queryFn: () => tasksApi.listAll({ is_recurring: true }),
+    enabled: view === "recurring",
+  })
+
   const createMutation = useMutation({
     mutationFn: (data: TaskCreate) => tasksApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      queryClient.invalidateQueries({ queryKey: ["tasks-recurring"] })
       closeDialog()
       toast.success("Tarea creada")
     },
@@ -187,10 +200,32 @@ export default function TasksPage() {
     mutationFn: ({ id, data }: { id: number; data: Partial<TaskCreate> }) => tasksApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      queryClient.invalidateQueries({ queryKey: ["tasks-recurring"] })
       closeDialog()
       toast.success("Tarea actualizada")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar tarea")),
+  })
+
+  // Separate mutation for drag & drop schedule changes (no dialog close, optimistic update)
+  const scheduleQueryKey = ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, page, pageSize]
+  const scheduleMutation = useMutation({
+    mutationFn: ({ id, scheduled_date }: { id: number; scheduled_date: string | null }) =>
+      tasksApi.update(id, { scheduled_date }),
+    onMutate: async ({ id, scheduled_date }) => {
+      await queryClient.cancelQueries({ queryKey: scheduleQueryKey })
+      const prev = queryClient.getQueryData(scheduleQueryKey)
+      queryClient.setQueryData(scheduleQueryKey, (old: typeof tasksData) => {
+        if (!old) return old
+        return { ...old, items: old.items.map((t: Task) => t.id === id ? { ...t, scheduled_date } : t) }
+      })
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(scheduleQueryKey, ctx.prev)
+      toast.error("Error al mover tarea")
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
   })
 
   const deleteMutation = useMutation({
@@ -282,12 +317,20 @@ export default function TasksPage() {
   const openCreate = () => {
     setEditing(null)
     setShowAssignmentFields(true)
+    setIsRecurring(false)
+    setRecurrencePattern("weekly")
+    setRecurrenceDay(0)
+    setShowRecurringFields(false)
     setDialogOpen(true)
   }
 
   const openEdit = (task: Task) => {
     setEditing(task)
     setShowAssignmentFields(true)
+    setIsRecurring(task.is_recurring)
+    setRecurrencePattern(task.recurrence_pattern ?? "weekly")
+    setRecurrenceDay(task.recurrence_day ?? 0)
+    setShowRecurringFields(task.is_recurring)
     setDialogOpen(true)
   }
 
@@ -316,6 +359,10 @@ export default function TasksPage() {
       scheduled_date: (fd.get("scheduled_date") as string) || null,
       waiting_for: (fd.get("waiting_for") as string) || null,
       follow_up_date: (fd.get("follow_up_date") as string) || null,
+      is_recurring: isRecurring,
+      recurrence_pattern: isRecurring ? recurrencePattern : null,
+      recurrence_day: isRecurring ? recurrenceDay : null,
+      recurrence_end_date: isRecurring ? ((fd.get("recurrence_end_date") as string) || null) : null,
     }
     if (editing) {
       updateMutation.mutate({ id: editing.id, data })
@@ -462,6 +509,14 @@ export default function TasksPage() {
         >
           <Calendar className="w-4 h-4 mr-2" /> Semana
         </Button>
+        <Button
+          variant={view === "recurring" ? "default" : "ghost"}
+          size="sm"
+          className="flex-1 sm:w-32"
+          onClick={() => setView("recurring")}
+        >
+          <Repeat className="w-4 h-4 mr-2" /> Recurrentes
+        </Button>
       </div>
 
       {/* Table & Planner */}
@@ -537,7 +592,10 @@ export default function TasksPage() {
                     />
                   </TableCell>
                   <TableCell className="font-medium">
-                    {t.title}
+                    <span className="inline-flex items-center gap-1">
+                      {t.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" aria-label="Recurrente" />}
+                      {t.title}
+                    </span>
                     {t.checklist_count > 0 && (
                       <span className="ml-2 text-xs text-muted-foreground">&#9745; {t.checklist_count}</span>
                     )}
@@ -655,9 +713,64 @@ export default function TasksPage() {
       {!isLoading && view === "weekly" && (
         <WeeklyPlannerView
           tasks={allTasks}
-          onScheduleChange={(taskId, date) => updateMutation.mutate({ id: taskId, data: { scheduled_date: date } })}
+          onScheduleChange={(taskId, date) => scheduleMutation.mutate({ id: taskId, scheduled_date: date })}
           onOpenEdit={openEdit}
         />
+      )}
+
+      {!isLoading && view === "recurring" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Plantillas recurrentes</h3>
+          </div>
+          {recurringTemplates.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">No hay plantillas recurrentes</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Título</TableHead>
+                  <TableHead>Patrón</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Asignado</TableHead>
+                  <TableHead>Prioridad</TableHead>
+                  <TableHead className="w-[80px]">Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recurringTemplates.map((t) => (
+                  <TableRow key={t.id}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-1.5">
+                        <Repeat className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        {t.title}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {t.recurrence_pattern === "daily" && "Diaria (L-V)"}
+                      {t.recurrence_pattern === "weekly" && `Semanal · ${["Lun", "Mar", "Mié", "Jue", "Vie"][t.recurrence_day ?? 0]}`}
+                      {t.recurrence_pattern === "biweekly" && `Bisemanal · ${["Lun", "Mar", "Mié", "Jue", "Vie"][t.recurrence_day ?? 0]}`}
+                      {t.recurrence_pattern === "monthly" && `Mensual · Día ${t.recurrence_day}`}
+                    </TableCell>
+                    <TableCell>{t.client_name}</TableCell>
+                    <TableCell>{t.assigned_user_name}</TableCell>
+                    <TableCell>{priorityBadge(t.priority)}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(t)}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteId(t.id)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
       )}
 
       {/* Create/Edit Dialog */}
@@ -806,6 +919,84 @@ export default function TasksPage() {
                     defaultValue={editing?.follow_up_date ?? ""}
                   />
                 </div>
+                {/* Recurring section */}
+                <div className="space-y-1.5 col-span-2">
+                  <button
+                    type="button"
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setShowRecurringFields((v) => !v)}
+                  >
+                    <Repeat className="w-3 h-3" />
+                    <span>Repetir</span>
+                    {showRecurringFields ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
+                  {showRecurringFields && (
+                    <div className="space-y-2 mt-1 p-2 border border-border/60 rounded-md bg-muted/10">
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isRecurring}
+                          onChange={(e) => setIsRecurring(e.target.checked)}
+                          className="rounded"
+                        />
+                        Tarea recurrente
+                      </label>
+                      {isRecurring && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Patrón</Label>
+                            <Select
+                              value={recurrencePattern}
+                              onChange={(e) => setRecurrencePattern(e.target.value)}
+                            >
+                              <option value="daily">Diaria</option>
+                              <option value="weekly">Semanal</option>
+                              <option value="biweekly">Bisemanal</option>
+                              <option value="monthly">Mensual</option>
+                            </Select>
+                          </div>
+                          {(recurrencePattern === "weekly" || recurrencePattern === "biweekly") && (
+                            <div className="space-y-1">
+                              <Label className="text-xs">Día</Label>
+                              <Select
+                                value={String(recurrenceDay)}
+                                onChange={(e) => setRecurrenceDay(Number(e.target.value))}
+                              >
+                                <option value="0">Lunes</option>
+                                <option value="1">Martes</option>
+                                <option value="2">Miércoles</option>
+                                <option value="3">Jueves</option>
+                                <option value="4">Viernes</option>
+                              </Select>
+                            </div>
+                          )}
+                          {recurrencePattern === "monthly" && (
+                            <div className="space-y-1">
+                              <Label className="text-xs">Día del mes</Label>
+                              <Input
+                                type="number"
+                                min={1}
+                                max={28}
+                                value={recurrenceDay}
+                                onChange={(e) => setRecurrenceDay(Number(e.target.value))}
+                              />
+                            </div>
+                          )}
+                          <div className="space-y-1 col-span-2">
+                            <Label htmlFor="recurrence_end_date" className="text-xs">Fecha fin (opcional)</Label>
+                            <Input
+                              id="recurrence_end_date"
+                              name="recurrence_end_date"
+                              type="date"
+                              defaultValue={editing?.recurrence_end_date ?? ""}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <div className="space-y-1.5 col-span-2">
                   <Label htmlFor="depends_on" className="text-xs">Depende de <span className="text-muted-foreground">(opcional)</span></Label>
                   <Input

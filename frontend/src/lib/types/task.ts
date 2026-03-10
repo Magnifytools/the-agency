@@ -29,6 +29,11 @@ export interface Task {
   scheduled_date: string | null
   waiting_for: string | null
   follow_up_date: string | null
+  is_recurring: boolean
+  recurrence_pattern: string | null
+  recurrence_day: number | null
+  recurrence_end_date: string | null
+  recurring_parent_id: number | null
   created_at: string
   updated_at: string
   client_name: string | null
@@ -38,6 +43,7 @@ export interface Task {
   phase_name: string | null
   dependency_title: string | null
   created_by_name: string | null
+  recurring_parent_title: string | null
   checklist_count: number
 }
 
@@ -73,6 +79,11 @@ export interface TaskCreate {
   scheduled_date?: string | null
   waiting_for?: string | null
   follow_up_date?: string | null
+  is_recurring?: boolean
+  recurrence_pattern?: string | null
+  recurrence_day?: number | null
+  recurrence_end_date?: string | null
+  recurring_parent_id?: number | null
 }
 
 export interface TaskComment {

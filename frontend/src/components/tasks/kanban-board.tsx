@@ -3,7 +3,7 @@ import type { Task, TaskStatus } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Pencil, Clock, AlertTriangle, User, GripVertical, UserX, CalendarX } from "lucide-react"
+import { Pencil, Clock, AlertTriangle, User, GripVertical, UserX, CalendarX, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface Props {
@@ -146,7 +146,10 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
                             <div className={cn("h-2 w-2 rounded-full shrink-0", priorityColors[task.priority] || "bg-slate-300")} />
                             <span className="text-xs text-muted-foreground">{priorityLabels[task.priority] || task.priority}</span>
                           </div>
-                          <p className="text-sm font-medium leading-snug line-clamp-2">{task.title}</p>
+                          <p className="text-sm font-medium leading-snug line-clamp-2 inline-flex items-center gap-1">
+                            {task.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" />}
+                            {task.title}
+                          </p>
                         </div>
                         <Button
                           variant="ghost"

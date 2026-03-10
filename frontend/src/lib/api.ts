@@ -236,9 +236,9 @@ export const clientsApi = {
 
 // Tasks
 export const tasksApi = {
-  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number; priority?: string; overdue?: boolean; scheduled_date?: string; page?: number; page_size?: number }) =>
+  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number; priority?: string; overdue?: boolean; scheduled_date?: string; is_recurring?: boolean; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params }).then((r) => r.data),
-  listAll: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; scheduled_date?: string }) =>
+  listAll: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; scheduled_date?: string; is_recurring?: boolean }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params: { ...params, page_size: 200 } }).then((r) => r.data.items),
   get: (id: number) => api.get<Task>(`/tasks/${id}`).then((r) => r.data),
   create: (data: TaskCreate) => api.post<Task>("/tasks", data).then((r) => r.data),

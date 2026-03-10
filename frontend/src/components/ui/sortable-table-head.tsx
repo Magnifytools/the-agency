@@ -16,16 +16,13 @@ export function SortableTableHead({ sortKey, currentSort, onSort, children, clas
 
   return (
     <TableHead
-      className={`cursor-pointer select-none hover:text-foreground transition-colors ${className ?? ""}`}
+      className={`cursor-pointer select-none transition-colors ${isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"} ${className ?? ""}`}
       onClick={() => onSort(sortKey)}
     >
       <span className="inline-flex items-center gap-1">
         {children}
-        {isActive && (
-          direction === "asc"
-            ? <ChevronUp className="h-3.5 w-3.5" />
-            : <ChevronDown className="h-3.5 w-3.5" />
-        )}
+        {direction === "asc" && <ChevronUp className="h-3.5 w-3.5" />}
+        {direction === "desc" && <ChevronDown className="h-3.5 w-3.5" />}
       </span>
     </TableHead>
   )
