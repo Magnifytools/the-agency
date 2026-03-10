@@ -1044,8 +1044,6 @@ class Expense(TimestampMixin, Base):
 class Tax(TimestampMixin, Base):
     __tablename__ = "taxes"
     __table_args__ = (
-        CheckConstraint("base_amount >= 0", name="ck_tax_base_amount_non_negative"),
-        CheckConstraint("tax_amount >= 0", name="ck_tax_tax_amount_non_negative"),
         CheckConstraint("status IN ('pendiente', 'pagado', 'aplazado')", name="ck_tax_status"),
     )
 

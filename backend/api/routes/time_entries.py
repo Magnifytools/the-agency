@@ -212,12 +212,15 @@ async def time_entries_by_project(
     date_to: Optional[datetime] = Query(None),
     client_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("timesheet")),
+    current_user: User = Depends(require_module("timesheet")),
 ):
     query = select(TimeEntry).where(
         TimeEntry.minutes.isnot(None),
         TimeEntry.task_id.isnot(None),
     )
+    # Members can only see their own time entries in aggregates
+    if current_user.role != UserRole.admin:
+        query = query.where(TimeEntry.user_id == current_user.id)
     if date_from is not None:
         query = query.where(TimeEntry.date >= date_from.replace(tzinfo=None))
     if date_to is not None:
@@ -282,12 +285,15 @@ async def time_entries_by_client(
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("timesheet")),
+    current_user: User = Depends(require_module("timesheet")),
 ):
     query = select(TimeEntry).where(
         TimeEntry.minutes.isnot(None),
         TimeEntry.task_id.isnot(None),
     )
+    # Members can only see their own time entries in aggregates
+    if current_user.role != UserRole.admin:
+        query = query.where(TimeEntry.user_id == current_user.id)
     if date_from is not None:
         query = query.where(TimeEntry.date >= date_from.replace(tzinfo=None))
     if date_to is not None:

@@ -81,13 +81,26 @@ async def generate_forecasts(db: AsyncSession, months_ahead: int = 6) -> list[Fo
     vat_rate = float(fs.default_vat_rate) if fs and fs.default_vat_rate else 21.0
     corp_tax_rate = float(fs.corporate_tax_rate) if fs and fs.corporate_tax_rate else 25.0
 
+    # Calculate average actual VAT differential from recent income/expenses
     today = date.today()
+    lookback_months = 6
+    recent_cutoff = today - timedelta(days=lookback_months * 31)
+    r_inc_vat = await db.execute(
+        select(func.coalesce(func.sum(Income.vat_amount), 0))
+        .where(Income.date >= recent_cutoff)
+    )
+    avg_income_vat = float(r_inc_vat.scalar()) / lookback_months
+    r_exp_vat = await db.execute(
+        select(func.coalesce(func.sum(Expense.vat_amount), 0))
+        .where(Expense.date >= recent_cutoff, Expense.is_deductible.is_(True))
+    )
+    avg_expense_vat = float(r_exp_vat.scalar()) / lookback_months
     results = []
     for i in range(1, months_ahead + 1):
         month_date = (today + relativedelta(months=i)).replace(day=1)
         confidence = round(max(0.3, 0.85 - (i - 1) * 0.1), 2)
-        # VAT reserve: approximate net VAT payable (income VAT - expense VAT)
-        proj_vat_reserve = round((proj_income - proj_expenses) * (vat_rate / 100), 2)
+        # VAT reserve: use actual average VAT repercutido - soportado
+        proj_vat_reserve = round(avg_income_vat - avg_expense_vat, 2)
         # Corporate tax on projected profit (only if positive)
         proj_corporate_tax = round(max(proj_income - proj_expenses, 0) * (corp_tax_rate / 100), 2)
         proj_taxes = round(max(proj_vat_reserve, 0) + proj_corporate_tax, 2)
@@ -157,8 +170,9 @@ async def calculate_runway(db: AsyncSession) -> dict:
         ytd_expenses = float(re.scalar())
         ytd_taxes_paid = float(rt.scalar())
 
+        # Fallback: approximate cash from YTD data (not real bank balance)
         cash = ytd_income - ytd_expenses - ytd_taxes_paid
-        balance_source = "calculated"
+        balance_source = "estimated"
         balance_date = None
 
     averages = await calculate_historical_averages(db)

@@ -211,8 +211,11 @@ async def _ensure_numeric_types():
         "ALTER TABLE forecasts ALTER COLUMN projected_taxes TYPE NUMERIC(12,2)",
         "ALTER TABLE forecasts ALTER COLUMN projected_profit TYPE NUMERIC(12,2)",
         "ALTER TABLE balance_snapshots ALTER COLUMN amount TYPE NUMERIC(12,2)",
-        # Clean up legacy negative test artifacts (new writes are blocked by CHECK constraints)
+        # Clean up legacy negative test artifacts
         "DELETE FROM expenses WHERE amount < 0",
+        # Allow negative tax_amount (IVA a compensar) and negative base_amount (pérdidas)
+        "ALTER TABLE taxes DROP CONSTRAINT IF EXISTS ck_tax_base_amount_non_negative",
+        "ALTER TABLE taxes DROP CONSTRAINT IF EXISTS ck_tax_tax_amount_non_negative",
     ]
     async with engine.begin() as conn:
         for sql in stmts:

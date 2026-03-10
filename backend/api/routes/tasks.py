@@ -433,6 +433,12 @@ async def list_attachments(
 from fastapi import UploadFile, File as FileParam
 
 
+ALLOWED_ATTACHMENT_MIME = {"application/pdf", "image/png", "image/jpeg", "image/gif", "text/plain", "text/csv",
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
 @router.post("/{task_id}/attachments", response_model=TaskAttachmentResponse, status_code=201)
 async def upload_task_attachment(
     task_id: int,
@@ -445,7 +451,14 @@ async def upload_task_attachment(
     t = await db.execute(select(Task.id).where(Task.id == task_id))
     if not t.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Task not found")
-    content = await file.read()
+    # Validate MIME type
+    mime = file.content_type or "application/octet-stream"
+    if mime not in ALLOWED_ATTACHMENT_MIME:
+        raise HTTPException(status_code=400, detail="Tipo de archivo no permitido")
+    # Validate size
+    content = await file.read(MAX_ATTACHMENT_BYTES + 1)
+    if len(content) > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(status_code=413, detail="Adjunto demasiado grande (máx 10 MB)")
     attachment = TaskAttachment(
         task_id=task_id,
         name=file.filename or "file",
