@@ -377,8 +377,14 @@ function ConvertToTaskDialog({
           Cancelar
         </Button>
         <Button
-          onClick={() => convertMutation.mutate()}
-          disabled={convertMutation.isPending}
+          onClick={() => {
+            if (!clientId) {
+              toast.error("Selecciona un cliente antes de crear la tarea")
+              return
+            }
+            convertMutation.mutate()
+          }}
+          disabled={convertMutation.isPending || !clientId}
           className="gap-2"
         >
           {convertMutation.isPending ? (

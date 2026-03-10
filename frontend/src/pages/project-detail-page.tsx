@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useParams, Link } from "react-router-dom"
+import { useParams, Link, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 import {
@@ -13,6 +13,8 @@ import {
   List,
   GanttChartSquare,
   Columns,
+  ExternalLink,
+  User,
 } from "lucide-react"
 import { toast } from "sonner"
 import { projectsApi, tasksApi } from "@/lib/api"
@@ -60,6 +62,8 @@ export default function ProjectDetailPage() {
   const [showAddTaskDialog, setShowAddTaskDialog] = useState<number | null>(null)
   const [viewMode, setViewMode] = useState<"list" | "gantt" | "kanban">("list")
   const [activeTab, setActiveTab] = useState<"tasks" | "evidence">("tasks")
+  const [previewTaskId, setPreviewTaskId] = useState<number | null>(null)
+  const navigate = useNavigate()
 
   const { data: project, isLoading } = useQuery({
     queryKey: ["project", id],
@@ -445,6 +449,7 @@ export default function ProjectDetailPage() {
                         onStatusChange={(status) =>
                           updateTaskMutation.mutate({ taskId: task.id, status })
                         }
+                        onPreview={(taskId) => setPreviewTaskId(taskId)}
                       />
                     ))}
                   </div>
@@ -498,6 +503,19 @@ export default function ProjectDetailPage() {
           clientId={project.client_id}
         />
       )}
+
+      {/* Task Preview Dialog */}
+      {previewTaskId && (
+        <TaskPreviewDialog
+          taskId={previewTaskId}
+          open={previewTaskId !== null}
+          onOpenChange={(open) => !open && setPreviewTaskId(null)}
+          onEditFull={(taskId) => {
+            setPreviewTaskId(null)
+            navigate(`/tasks?id=${taskId}`)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -505,9 +523,11 @@ export default function ProjectDetailPage() {
 function TaskRow({
   task,
   onStatusChange,
+  onPreview,
 }: {
   task: { id: number; title: string; status: TaskStatus; due_date: string | null; assigned_to: number | string | null }
   onStatusChange: (status: TaskStatus) => void
+  onPreview?: (taskId: number) => void
 }) {
   const isCompleted = task.status === "completed"
 
@@ -531,12 +551,12 @@ function TaskRow({
       {task.assigned_to && (
         <span className="text-xs text-muted-foreground">{task.assigned_to}</span>
       )}
-      <Link
-        to={`/tasks?id=${task.id}`}
+      <button
+        onClick={() => onPreview?.(task.id)}
         className="text-xs text-muted-foreground hover:text-brand opacity-0 group-hover:opacity-100"
       >
         Ver
-      </Link>
+      </button>
     </div>
   )
 }
@@ -754,6 +774,104 @@ function AddTaskDialog({
           </Button>
         </div>
       </form>
+    </Dialog>
+  )
+}
+
+
+// --- Task Preview Dialog (lightweight view from project) ---
+
+const TASK_STATUS_LABELS: Record<string, string> = {
+  backlog: "Backlog",
+  pending: "Pendiente",
+  in_progress: "En curso",
+  waiting: "En espera",
+  in_review: "En revisión",
+  completed: "Completada",
+}
+
+const TASK_PRIORITY_LABELS: Record<string, string> = {
+  urgent: "Urgente",
+  high: "Alta",
+  medium: "Media",
+  low: "Baja",
+}
+
+function TaskPreviewDialog({
+  taskId,
+  open,
+  onOpenChange,
+  onEditFull,
+}: {
+  taskId: number
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onEditFull: (taskId: number) => void
+}) {
+  const { data: task, isLoading } = useQuery({
+    queryKey: ["task-preview", taskId],
+    queryFn: () => tasksApi.get(taskId),
+    enabled: open,
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogHeader>
+        <DialogTitle>Detalle de tarea</DialogTitle>
+      </DialogHeader>
+      {isLoading ? (
+        <div className="py-8 text-center text-sm text-muted-foreground">Cargando...</div>
+      ) : task ? (
+        <div className="space-y-4 mt-2">
+          <h3 className="text-base font-semibold">{task.title}</h3>
+          {task.description && (
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{task.description}</p>
+          )}
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <span className="text-xs text-muted-foreground block">Estado</span>
+              <Badge variant="outline">{TASK_STATUS_LABELS[task.status] ?? task.status}</Badge>
+            </div>
+            <div>
+              <span className="text-xs text-muted-foreground block">Prioridad</span>
+              <Badge variant="outline">{TASK_PRIORITY_LABELS[task.priority] ?? task.priority}</Badge>
+            </div>
+            {task.assigned_user_name && (
+              <div>
+                <span className="text-xs text-muted-foreground block">Responsable</span>
+                <span className="flex items-center gap-1"><User className="w-3 h-3" />{task.assigned_user_name}</span>
+              </div>
+            )}
+            {task.client_name && (
+              <div>
+                <span className="text-xs text-muted-foreground block">Cliente</span>
+                <span>{task.client_name}</span>
+              </div>
+            )}
+            {task.due_date && (
+              <div>
+                <span className="text-xs text-muted-foreground block">Fecha límite</span>
+                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{new Date(task.due_date).toLocaleDateString("es-ES")}</span>
+              </div>
+            )}
+            {task.estimated_minutes && (
+              <div>
+                <span className="text-xs text-muted-foreground block">Estimado</span>
+                <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{task.estimated_minutes}min</span>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>Cerrar</Button>
+            <Button onClick={() => onEditFull(taskId)} className="gap-1.5">
+              <ExternalLink className="w-3.5 h-3.5" />
+              Editar completa
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="py-8 text-center text-sm text-muted-foreground">No se encontró la tarea</div>
+      )}
     </Dialog>
   )
 }

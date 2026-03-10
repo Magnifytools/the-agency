@@ -6,7 +6,8 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Select } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Building2 } from "lucide-react"
+import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Building2, Pencil, Check, X } from "lucide-react"
+import { Input } from "@/components/ui/input"
 import { EmptyTableState } from "@/components/ui/empty-state"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
@@ -148,15 +149,47 @@ export default function TimesheetPage() {
     queryFn: () => timeEntriesApi.byClient({ date_from: weekStart + "T00:00:00Z", date_to: weekEnd + "T23:59:59Z" }),
   })
 
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editHours, setEditHours] = useState(0)
+  const [editMins, setEditMins] = useState(0)
+  const [editNotes, setEditNotes] = useState("")
+
+  const invalidateTimeEntries = () => {
+    queryClient.invalidateQueries({ queryKey: ["time-entries"] })
+    queryClient.invalidateQueries({ queryKey: ["timesheet-week"] })
+  }
+
   const updateMutation = useMutation({
-    mutationFn: ({ id, task_id }: { id: number; task_id: number }) =>
-      timeEntriesApi.update(id, { task_id }),
+    mutationFn: ({ id, data }: { id: number; data: { task_id?: number; minutes?: number; notes?: string } }) =>
+      timeEntriesApi.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["time-entries"] })
-      toast.success("Entrada asignada")
+      invalidateTimeEntries()
+      setEditingId(null)
+      toast.success("Entrada actualizada")
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al asignar tarea")),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar")),
   })
+
+  const startEditEntry = (e: { id: number; minutes: number | null; notes: string | null }) => {
+    const m = e.minutes || 0
+    setEditingId(e.id)
+    setEditHours(Math.floor(m / 60))
+    setEditMins(m % 60)
+    setEditNotes(e.notes || "")
+  }
+
+  const saveEditEntry = () => {
+    if (editingId === null) return
+    const totalMinutes = editHours * 60 + editMins
+    if (totalMinutes <= 0) {
+      toast.error("Introduce al menos 1 minuto")
+      return
+    }
+    updateMutation.mutate({
+      id: editingId,
+      data: { minutes: totalMinutes, notes: editNotes || undefined },
+    })
+  }
 
   const handleExportCsv = async () => {
     try {
@@ -236,41 +269,115 @@ export default function TimesheetPage() {
                 <TableHead>Registro</TableHead>
                 <TableHead>Duración</TableHead>
                 <TableHead>Tarea / Proyecto</TableHead>
+                <TableHead className="w-16"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {todaysEntries.length === 0 && (
-                <EmptyTableState colSpan={3} icon={Clock} title="Sin registros hoy" description="Usa el timer desde cualquier tarea para registrar tiempo." />
+                <EmptyTableState colSpan={4} icon={Clock} title="Sin registros hoy" description="Usa el timer desde cualquier tarea para registrar tiempo." />
               )}
               {todaysEntries.map((e) => (
                 <TableRow key={e.id}>
-                  <TableCell className="font-medium">
-                    {e.notes || e.task_title || "Registro sin nombre"}
-                    {e.client_name && <span className="text-muted-foreground text-xs ml-2">— {e.client_name}</span>}
-                  </TableCell>
-                  <TableCell className="mono">{formatMinutes(e.minutes)}</TableCell>
-                  <TableCell>
-                    {e.task_id ? (
-                      <span className="text-sm text-muted-foreground">
-                        ✓ Asignado a &quot;{e.task_title}&quot;
-                      </span>
-                    ) : (
-                      <Select
-                        value=""
-                        onChange={(ev) => {
-                          if (ev.target.value) {
-                            updateMutation.mutate({ id: e.id, task_id: Number(ev.target.value) })
-                          }
-                        }}
-                        className="w-full max-w-xs h-8 text-xs"
-                      >
-                        <option value="">+ Seleccionar Tarea...</option>
-                        {myTasks.map(t => (
-                          <option key={t.id} value={t.id}>{t.client_name ? `[${t.client_name}] ` : ''}{t.title}</option>
-                        ))}
-                      </Select>
-                    )}
-                  </TableCell>
+                  {editingId === e.id ? (
+                    <>
+                      <TableCell>
+                        <Input
+                          value={editNotes}
+                          onChange={(ev) => setEditNotes(ev.target.value)}
+                          className="h-7 text-xs"
+                          placeholder="Notas..."
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            min="0"
+                            value={editHours}
+                            onChange={(ev) => setEditHours(Number(ev.target.value))}
+                            className="w-14 h-7 text-xs"
+                          />
+                          <span className="text-xs text-muted-foreground">h</span>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="59"
+                            value={editMins}
+                            onChange={(ev) => setEditMins(Number(ev.target.value))}
+                            className="w-14 h-7 text-xs"
+                          />
+                          <span className="text-xs text-muted-foreground">m</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {e.task_id ? (
+                          <span className="text-sm text-muted-foreground">
+                            ✓ {e.task_title}
+                          </span>
+                        ) : (
+                          <Select
+                            value=""
+                            onChange={(ev) => {
+                              if (ev.target.value) {
+                                updateMutation.mutate({ id: e.id, data: { task_id: Number(ev.target.value) } })
+                              }
+                            }}
+                            className="w-full max-w-xs h-8 text-xs"
+                          >
+                            <option value="">+ Seleccionar Tarea...</option>
+                            {myTasks.map(t => (
+                              <option key={t.id} value={t.id}>{t.client_name ? `[${t.client_name}] ` : ''}{t.title}</option>
+                            ))}
+                          </Select>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={saveEditEntry} disabled={updateMutation.isPending}>
+                            <Check className="h-3.5 w-3.5 text-green-600" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingId(null)}>
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </>
+                  ) : (
+                    <>
+                      <TableCell className="font-medium">
+                        {e.notes || e.task_title || "Registro sin nombre"}
+                        {e.client_name && <span className="text-muted-foreground text-xs ml-2">— {e.client_name}</span>}
+                      </TableCell>
+                      <TableCell className="mono">{formatMinutes(e.minutes)}</TableCell>
+                      <TableCell>
+                        {e.task_id ? (
+                          <span className="text-sm text-muted-foreground">
+                            ✓ Asignado a &quot;{e.task_title}&quot;
+                          </span>
+                        ) : (
+                          <Select
+                            value=""
+                            onChange={(ev) => {
+                              if (ev.target.value) {
+                                updateMutation.mutate({ id: e.id, data: { task_id: Number(ev.target.value) } })
+                              }
+                            }}
+                            className="w-full max-w-xs h-8 text-xs"
+                          >
+                            <option value="">+ Seleccionar Tarea...</option>
+                            {myTasks.map(t => (
+                              <option key={t.id} value={t.id}>{t.client_name ? `[${t.client_name}] ` : ''}{t.title}</option>
+                            ))}
+                          </Select>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEditEntry(e)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </TableCell>
+                    </>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

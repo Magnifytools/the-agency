@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { tasksApi, clientsApi, categoriesApi, usersApi } from "@/lib/api"
 import type { Task, TaskCreate, TaskStatus, TaskPriority } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import { usePagination } from "@/hooks/use-pagination"
 import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
@@ -612,6 +613,15 @@ export default function TasksPage() {
                     {t.assigned_user_name || (QA_unassigned && qaFilter === "unassigned" ? "⚠️ Faltante" : "-")}
                   </TableCell>
                   <TableCell>
+                    <div className="flex items-center gap-1.5">
+                    <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", {
+                      "bg-slate-400": t.status === "backlog",
+                      "bg-yellow-400": t.status === "pending",
+                      "bg-blue-500": t.status === "in_progress",
+                      "bg-orange-400": t.status === "waiting",
+                      "bg-purple-500": t.status === "in_review",
+                      "bg-green-500": t.status === "completed",
+                    })} />
                     <Select
                       value={t.status}
                       onChange={(e) => updateMutation.mutate({ id: t.id, data: { status: e.target.value as TaskStatus } })}
@@ -624,6 +634,7 @@ export default function TasksPage() {
                       <option value="in_review">En revisión</option>
                       <option value="completed">Completada</option>
                     </Select>
+                    </div>
                   </TableCell>
                   <TableCell className="text-xs mono">
                     {est || real ? (

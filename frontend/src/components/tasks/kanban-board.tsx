@@ -13,12 +13,11 @@ interface Props {
 }
 
 const columns: { status: TaskStatus; label: string; color: string; bgColor: string }[] = [
-  { status: "backlog", label: "Backlog", color: "text-slate-400", bgColor: "bg-slate-50/80 border-slate-200" },
-  { status: "pending", label: "Pendiente", color: "text-slate-600", bgColor: "bg-slate-100/80 border-slate-200" },
-  { status: "in_progress", label: "En curso", color: "text-amber-600", bgColor: "bg-amber-50/80 border-amber-200" },
-  { status: "waiting", label: "En espera", color: "text-purple-600", bgColor: "bg-purple-50/80 border-purple-200" },
   { status: "in_review", label: "En revisión", color: "text-blue-600", bgColor: "bg-blue-50/80 border-blue-200" },
-  { status: "completed", label: "Completada", color: "text-green-600", bgColor: "bg-green-50/80 border-green-200" },
+  { status: "waiting", label: "En espera", color: "text-purple-600", bgColor: "bg-purple-50/80 border-purple-200" },
+  { status: "in_progress", label: "En curso", color: "text-amber-600", bgColor: "bg-amber-50/80 border-amber-200" },
+  { status: "pending", label: "Pendiente", color: "text-slate-600", bgColor: "bg-slate-100/80 border-slate-200" },
+  { status: "backlog", label: "Backlog", color: "text-slate-400", bgColor: "bg-slate-50/80 border-slate-200" },
 ]
 
 const priorityColors: Record<string, string> = {

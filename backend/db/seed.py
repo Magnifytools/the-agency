@@ -235,6 +235,7 @@ async def seed():
         if member:
             desired_modules = [
                 "dashboard", "clients", "tasks", "projects", "timesheet",
+                "pm", "digests",
             ]
 
             existing_perms = await session.execute(

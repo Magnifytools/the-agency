@@ -60,6 +60,19 @@ async def submit_daily(
 
     update_date = body.date or date_type.today()
 
+    # Check for duplicate daily on same date for this user
+    existing = await db.execute(
+        select(DailyUpdate).where(
+            DailyUpdate.user_id == current_user.id,
+            DailyUpdate.date == update_date,
+        )
+    )
+    if existing.scalars().first():
+        raise HTTPException(
+            status_code=409,
+            detail=f"Ya existe un daily para el {update_date.isoformat()}. Edita o elimina el existente.",
+        )
+
     # Parse with AI
     try:
         parsed = await parse_daily_update(body.raw_text)

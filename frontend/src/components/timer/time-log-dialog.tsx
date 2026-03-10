@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { Trash2 } from "lucide-react"
+import { Trash2, Pencil, Check, X } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 
@@ -30,6 +30,10 @@ function formatMinutes(m: number): string {
 export function TimeLogDialog({ taskId, taskTitle, open, onOpenChange }: TimeLogDialogProps) {
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editHours, setEditHours] = useState(0)
+  const [editMins, setEditMins] = useState(0)
+  const [editNotes, setEditNotes] = useState("")
 
   const { data: entries = [] } = useQuery({
     queryKey: ["time-entries", taskId],
@@ -37,21 +41,38 @@ export function TimeLogDialog({ taskId, taskTitle, open, onOpenChange }: TimeLog
     enabled: open,
   })
 
+  const invalidateEntries = () => {
+    queryClient.invalidateQueries({ queryKey: ["time-entries", taskId] })
+    queryClient.invalidateQueries({ queryKey: ["time-entries", "today"] })
+    queryClient.invalidateQueries({ queryKey: ["timesheet-week"] })
+  }
+
   const createMutation = useMutation({
     mutationFn: (data: { minutes: number; task_id: number; notes?: string }) =>
       timeEntriesApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["time-entries", taskId] })
+      invalidateEntries()
       setShowForm(false)
       toast.success("Entrada de tiempo creada")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al crear entrada")),
   })
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { minutes?: number; notes?: string } }) =>
+      timeEntriesApi.update(id, data),
+    onSuccess: () => {
+      invalidateEntries()
+      setEditingId(null)
+      toast.success("Entrada actualizada")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar entrada")),
+  })
+
   const deleteMutation = useMutation({
     mutationFn: (id: number) => timeEntriesApi.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["time-entries", taskId] })
+      invalidateEntries()
       toast.success("Entrada eliminada")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar entrada")),
@@ -72,6 +93,31 @@ export function TimeLogDialog({ taskId, taskTitle, open, onOpenChange }: TimeLog
       task_id: taskId,
       notes: (fd.get("notes") as string) || undefined,
     })
+  }
+
+  const startEdit = (entry: TimeEntry) => {
+    const m = entry.minutes || 0
+    setEditingId(entry.id)
+    setEditHours(Math.floor(m / 60))
+    setEditMins(m % 60)
+    setEditNotes(entry.notes || "")
+  }
+
+  const saveEdit = () => {
+    if (editingId === null) return
+    const totalMinutes = editHours * 60 + editMins
+    if (totalMinutes <= 0) {
+      toast.error("Introduce al menos 1 minuto")
+      return
+    }
+    updateMutation.mutate({
+      id: editingId,
+      data: { minutes: totalMinutes, notes: editNotes || undefined },
+    })
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
   }
 
   const totalMinutes = entries.reduce((sum: number, e: TimeEntry) => sum + (e.minutes || 0), 0)
@@ -118,24 +164,95 @@ export function TimeLogDialog({ taskId, taskTitle, open, onOpenChange }: TimeLog
                 <TableHead>Fecha</TableHead>
                 <TableHead>Duración</TableHead>
                 <TableHead>Notas</TableHead>
-                <TableHead className="w-12"></TableHead>
+                <TableHead className="w-20"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {entries.map((e: TimeEntry) => (
                 <TableRow key={e.id}>
-                  <TableCell className="mono">{new Date(e.date).toLocaleDateString("es-ES")}</TableCell>
-                  <TableCell className="mono">{e.minutes ? formatMinutes(e.minutes) : "-"}</TableCell>
-                  <TableCell className="max-w-[200px] truncate">{e.notes || "-"}</TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => deleteMutation.mutate(e.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
+                  {editingId === e.id ? (
+                    <>
+                      <TableCell className="mono">{new Date(e.date).toLocaleDateString("es-ES")}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            min="0"
+                            value={editHours}
+                            onChange={(ev) => setEditHours(Number(ev.target.value))}
+                            className="w-14 h-7 text-xs"
+                            placeholder="h"
+                          />
+                          <span className="text-xs text-muted-foreground">h</span>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="59"
+                            value={editMins}
+                            onChange={(ev) => setEditMins(Number(ev.target.value))}
+                            className="w-14 h-7 text-xs"
+                            placeholder="m"
+                          />
+                          <span className="text-xs text-muted-foreground">m</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          value={editNotes}
+                          onChange={(ev) => setEditNotes(ev.target.value)}
+                          className="h-7 text-xs"
+                          placeholder="Notas..."
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={saveEdit}
+                            disabled={updateMutation.isPending}
+                          >
+                            <Check className="h-3.5 w-3.5 text-green-600" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={cancelEdit}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </>
+                  ) : (
+                    <>
+                      <TableCell className="mono">{new Date(e.date).toLocaleDateString("es-ES")}</TableCell>
+                      <TableCell className="mono">{e.minutes ? formatMinutes(e.minutes) : "-"}</TableCell>
+                      <TableCell className="max-w-[200px] truncate">{e.notes || "-"}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => startEdit(e)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => deleteMutation.mutate(e.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
