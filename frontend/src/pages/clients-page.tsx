@@ -239,7 +239,42 @@ export default function ClientsPage() {
           </TableBody>
         </Table>
       ) : (
-        <Table>
+        <>
+        {/* Mobile card list */}
+        <div className="sm:hidden space-y-3">
+          {sortedClients.map((c) => {
+            const h = healthMap.get(c.id)
+            const healthColor = h ? (h.risk_level === "healthy" ? "text-green-600" : h.risk_level === "warning" ? "text-amber-500" : "text-red-500") : ""
+            return (
+              <div key={c.id} className="border border-border rounded-xl p-4 bg-card space-y-2">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <Link to={`/clients/${c.id}`} className="font-medium text-brand hover:underline">
+                      {c.name || "Sin nombre"}
+                    </Link>
+                    {c.company && <p className="text-sm text-muted-foreground">{c.company}</p>}
+                  </div>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" aria-label="Editar cliente" onClick={() => openEdit(c)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {statusBadge(c.status)}
+                  {isAdmin && c.monthly_budget != null && <Badge variant="outline" className="text-xs">{c.monthly_budget}€</Badge>}
+                  {h && <span className={`inline-flex items-center gap-1 text-xs font-semibold ${healthColor}`}><Heart className="h-3 w-3" />{h.score}</span>}
+                </div>
+              </div>
+            )
+          })}
+          {clients.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground">Sin clientes todavía</div>
+          )}
+        </div>
+
+        {/* Desktop table */}
+        <Table className="hidden sm:table">
           <TableHeader>
             <TableRow>
               <TableHead className="w-10">
@@ -252,11 +287,11 @@ export default function ClientsPage() {
               </TableHead>
               <SortableTableHead sortKey="name" currentSort={clientSortConfig} onSort={requestClientSort}>Nombre</SortableTableHead>
               <TableHead>Empresa</TableHead>
-              <TableHead>Email</TableHead>
+              <TableHead className="hidden md:table-cell">Email</TableHead>
               <TableHead>Contrato</TableHead>
               {isAdmin && <SortableTableHead sortKey="monthly_budget" currentSort={clientSortConfig} onSort={requestClientSort}>Presupuesto</SortableTableHead>}
               <TableHead>Estado</TableHead>
-              <TableHead>
+              <TableHead className="hidden md:table-cell">
                 <span className="inline-flex items-center gap-1">
                   Salud
                   <InfoTooltip
@@ -317,11 +352,11 @@ export default function ClientsPage() {
                   </span>
                 </TableCell>
                 <TableCell>{c.company || "-"}</TableCell>
-                <TableCell>{c.email || "-"}</TableCell>
+                <TableCell className="hidden md:table-cell">{c.email || "-"}</TableCell>
                 <TableCell>{c.contract_type === "monthly" ? "Mensual" : "Puntual"}</TableCell>
                 {isAdmin && <TableCell className="mono">{c.monthly_budget != null ? `${c.monthly_budget}€` : "-"}</TableCell>}
                 <TableCell>{statusBadge(c.status)}</TableCell>
-                <TableCell>
+                <TableCell className="hidden md:table-cell">
                   {(() => {
                     const h = healthMap.get(c.id)
                     if (!h) return <span className="text-muted-foreground text-xs">-</span>
@@ -375,6 +410,7 @@ export default function ClientsPage() {
             )}
           </TableBody>
         </Table>
+        </>
       )}
 
       <Pagination page={page} pageSize={pageSize} total={data?.total ?? 0} onPageChange={setPage} />

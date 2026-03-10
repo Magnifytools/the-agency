@@ -25,7 +25,7 @@ export function TeamSummaryTable({ team }: TeamSummaryTableProps) {
         <CardTitle>Resumen del equipo</CardTitle>
       </CardHeader>
       <CardContent className="pt-4">
-        <Table>
+        <Table className="min-w-[600px]">
           <TableHeader>
             <TableRow>
               <TableHead>Miembro</TableHead>

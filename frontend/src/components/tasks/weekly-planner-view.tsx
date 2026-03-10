@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import {
   DndContext,
   DragOverlay,
@@ -8,12 +8,13 @@ import {
   type DragEndEvent,
   type DragStartEvent,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core"
 import type { Task } from "@/lib/types"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, Pencil, Clock, Repeat } from "lucide-react"
+import { ChevronLeft, ChevronRight, ChevronDown, Pencil, Clock, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface Props {
@@ -87,6 +88,61 @@ function DroppableColumn({
         {sublabel && <div className="text-xs text-muted-foreground">{sublabel}</div>}
       </div>
       <div className="flex-1 space-y-1.5 min-h-[60px]">{children}</div>
+    </div>
+  )
+}
+
+// ─── Droppable Accordion Day ──────────────────────────────────
+function DroppableAccordionDay({
+  id,
+  dayName,
+  dateStr,
+  isToday,
+  isOpen,
+  onToggle,
+  taskCount,
+  children,
+}: {
+  id: string
+  dayName: string
+  dateStr: string
+  isToday: boolean
+  isOpen: boolean
+  onToggle: () => void
+  taskCount: number
+  children: React.ReactNode
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id })
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "rounded-lg border transition-colors",
+        isOver ? "bg-primary/5 border-primary/40" : "bg-muted/20 border-border/60",
+        isToday && "ring-2 ring-primary/30",
+      )}
+    >
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between p-3 text-left"
+      >
+        <div className="flex items-center gap-2">
+          <span className={cn("font-medium", isToday && "text-primary")}>{dayName}</span>
+          <span className="text-xs text-muted-foreground">{formatDay(dateStr)}</span>
+          {taskCount > 0 && (
+            <span className="bg-muted text-muted-foreground text-xs rounded-full px-2 py-0.5">{taskCount}</span>
+          )}
+        </div>
+        <ChevronDown className={cn("h-4 w-4 transition-transform text-muted-foreground", isOpen && "rotate-180")} />
+      </button>
+      {isOpen && (
+        <div className="px-3 pb-3 space-y-1.5 min-h-[40px]">
+          {children}
+          {taskCount === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-2">Sin tareas</p>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -175,13 +231,41 @@ function TaskCardOverlay({ task }: { task: Task }) {
 export function WeeklyPlannerView({ tasks, onScheduleChange, onOpenEdit }: Props) {
   const [weekOffset, setWeekOffset] = useState(0)
   const [activeTask, setActiveTask] = useState<Task | null>(null)
+  const [isMobile, setIsMobile] = useState(false)
+  const [openDays, setOpenDays] = useState<Set<string>>(new Set())
+
+  // Detect mobile
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 639px)")
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => setIsMobile(e.matches)
+    handler(mql)
+    mql.addEventListener("change", handler)
+    return () => mql.removeEventListener("change", handler)
+  }, [])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
   )
 
   const { dates, label } = useMemo(() => getWeekDates(weekOffset), [weekOffset])
   const today = new Date().toISOString().slice(0, 10)
+
+  // Pre-open today's accordion
+  useEffect(() => {
+    if (isMobile && dates.includes(today)) {
+      setOpenDays(new Set([today]))
+    }
+  }, [isMobile, today, dates])
+
+  const toggleDay = (dateStr: string) => {
+    setOpenDays((prev) => {
+      const next = new Set(prev)
+      if (next.has(dateStr)) next.delete(dateStr)
+      else next.add(dateStr)
+      return next
+    })
+  }
 
   // Group tasks by scheduled_date
   const tasksByDate = useMemo(() => {
@@ -263,22 +347,44 @@ export function WeeklyPlannerView({ tasks, onScheduleChange, onOpenEdit }: Props
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        {/* Day columns */}
-        <div className="grid grid-cols-5 gap-2">
-          {dates.map((dateStr, i) => (
-            <DroppableColumn
-              key={dateStr}
-              id={`day-${dateStr}`}
-              label={DAY_NAMES[i]}
-              sublabel={formatDay(dateStr)}
-              isToday={dateStr === today}
-            >
-              {(tasksByDate[dateStr] || []).map((task) => (
-                <DraggableTaskCard key={task.id} task={task} onOpenEdit={onOpenEdit} />
-              ))}
-            </DroppableColumn>
-          ))}
-        </div>
+        {/* Mobile: accordion layout */}
+        {isMobile ? (
+          <div className="space-y-2">
+            {dates.map((dateStr, i) => (
+              <DroppableAccordionDay
+                key={dateStr}
+                id={`day-${dateStr}`}
+                dayName={DAY_NAMES[i]}
+                dateStr={dateStr}
+                isToday={dateStr === today}
+                isOpen={openDays.has(dateStr)}
+                onToggle={() => toggleDay(dateStr)}
+                taskCount={(tasksByDate[dateStr] || []).length}
+              >
+                {(tasksByDate[dateStr] || []).map((task) => (
+                  <DraggableTaskCard key={task.id} task={task} onOpenEdit={onOpenEdit} />
+                ))}
+              </DroppableAccordionDay>
+            ))}
+          </div>
+        ) : (
+          /* Desktop: 5-column grid */
+          <div className="grid grid-cols-5 gap-2">
+            {dates.map((dateStr, i) => (
+              <DroppableColumn
+                key={dateStr}
+                id={`day-${dateStr}`}
+                label={DAY_NAMES[i]}
+                sublabel={formatDay(dateStr)}
+                isToday={dateStr === today}
+              >
+                {(tasksByDate[dateStr] || []).map((task) => (
+                  <DraggableTaskCard key={task.id} task={task} onOpenEdit={onOpenEdit} />
+                ))}
+              </DroppableColumn>
+            ))}
+          </div>
+        )}
 
         {/* Unscheduled section */}
         <DroppableColumn id="unscheduled" label="Sin planificar">

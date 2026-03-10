@@ -152,3 +152,7 @@
     font-family: inherit;
   }
 }
+
+/* Hide scrollbar for horizontal scroll containers */
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { scrollbar-width: none; }

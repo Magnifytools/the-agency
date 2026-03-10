@@ -44,6 +44,7 @@ export default function ProjectsPage() {
   const [showTemplateDialog, setShowTemplateDialog] = useState(false)
   const [showImportDialog, setShowImportDialog] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [showNewMenu, setShowNewMenu] = useState(false)
 
   const { data: projectsData, isLoading } = useQuery({
     queryKey: ["projects", statusFilter, page, pageSize],
@@ -86,7 +87,8 @@ export default function ProjectsPage() {
             Gestiona proyectos con fases y tareas
           </p>
         </div>
-        <div className="flex gap-2">
+        {/* Desktop: 3 buttons */}
+        <div className="hidden sm:flex gap-2">
           <Button variant="outline" onClick={() => setShowImportDialog(true)}>
             <FileUp className="h-4 w-4 mr-2" />
             Importar PDF
@@ -99,6 +101,28 @@ export default function ProjectsPage() {
             <FolderKanban className="h-4 w-4 mr-2" />
             Desde plantilla
           </Button>
+        </div>
+        {/* Mobile: single dropdown */}
+        <div className="sm:hidden relative">
+          <Button onClick={() => setShowNewMenu(!showNewMenu)}>
+            <Plus className="h-4 w-4 mr-2" /> Nuevo
+          </Button>
+          {showNewMenu && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowNewMenu(false)} />
+              <div className="absolute right-0 top-full z-50 mt-1 w-52 rounded-md border bg-card shadow-md py-1">
+                <button className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-muted" onClick={() => { setShowNewMenu(false); setShowNewDialog(true) }}>
+                  <Plus className="h-4 w-4" /> Nuevo vacío
+                </button>
+                <button className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-muted" onClick={() => { setShowNewMenu(false); setShowTemplateDialog(true) }}>
+                  <FolderKanban className="h-4 w-4" /> Desde plantilla
+                </button>
+                <button className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-muted" onClick={() => { setShowNewMenu(false); setShowImportDialog(true) }}>
+                  <FileUp className="h-4 w-4" /> Importar PDF
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

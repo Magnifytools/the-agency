@@ -696,7 +696,7 @@ export default function DashboardPage() {
           <Card>
             <CardHeader><CardTitle>Rentabilidad por cliente</CardTitle></CardHeader>
             <CardContent className="pt-4">
-              <Table aria-label="Rentabilidad por cliente">
+              <Table aria-label="Rentabilidad por cliente" className="min-w-[700px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Cliente</TableHead>

@@ -468,11 +468,12 @@ export default function TasksPage() {
         )}
       </div>
 
-      <div className="flex items-center space-x-2 bg-muted/30 p-1 w-full sm:w-fit rounded-lg mb-6 border border-border">
+      <div className="relative mb-6">
+      <div className="flex gap-2 overflow-x-auto scrollbar-none flex-nowrap bg-muted/30 p-1 sm:w-fit rounded-lg border border-border">
         <Button
           variant={view === "my_day" ? "default" : "ghost"}
           size="sm"
-          className="flex-1 sm:w-32"
+          className="shrink-0 whitespace-nowrap"
           onClick={() => setView("my_day")}
         >
           <Calendar className="w-4 h-4 mr-2" /> Mi Día
@@ -480,7 +481,7 @@ export default function TasksPage() {
         <Button
           variant={view === "sprint" ? "default" : "ghost"}
           size="sm"
-          className="flex-1 sm:w-32"
+          className="shrink-0 whitespace-nowrap"
           onClick={() => setView("sprint")}
         >
           <Kanban className="w-4 h-4 mr-2" /> Tablero
@@ -488,7 +489,7 @@ export default function TasksPage() {
         <Button
           variant={view === "all" ? "default" : "ghost"}
           size="sm"
-          className="flex-1 sm:w-32"
+          className="shrink-0 whitespace-nowrap"
           onClick={() => setView("all")}
         >
           <List className="w-4 h-4 mr-2" /> Todas
@@ -496,7 +497,7 @@ export default function TasksPage() {
         <Button
           variant={view === "calendar" ? "default" : "ghost"}
           size="sm"
-          className="flex-1 sm:w-32"
+          className="shrink-0 whitespace-nowrap"
           onClick={() => setView("calendar")}
         >
           <CalendarDays className="w-4 h-4 mr-2" /> Calendario
@@ -504,7 +505,7 @@ export default function TasksPage() {
         <Button
           variant={view === "weekly" ? "default" : "ghost"}
           size="sm"
-          className="flex-1 sm:w-32"
+          className="shrink-0 whitespace-nowrap"
           onClick={() => setView("weekly")}
         >
           <Calendar className="w-4 h-4 mr-2" /> Semana
@@ -512,11 +513,13 @@ export default function TasksPage() {
         <Button
           variant={view === "recurring" ? "default" : "ghost"}
           size="sm"
-          className="flex-1 sm:w-32"
+          className="shrink-0 whitespace-nowrap"
           onClick={() => setView("recurring")}
         >
           <Repeat className="w-4 h-4 mr-2" /> Recurrentes
         </Button>
+      </div>
+      <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none sm:hidden" />
       </div>
 
       {/* Table & Planner */}

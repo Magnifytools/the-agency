@@ -3,8 +3,9 @@ import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/context/auth-context"
 import { inboxApi } from "@/lib/api"
 import { inboxKeys } from "@/lib/query-keys"
-import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, FolderKanban, FileText, ScrollText, Rocket, Wallet, Newspaper, Target, MessageCircle, ClipboardList, Gauge, Search, Archive, Megaphone, Inbox, Settings } from "lucide-react"
+import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, FolderKanban, FileText, ScrollText, Rocket, Wallet, Newspaper, Target, MessageCircle, ClipboardList, Gauge, Search, Archive, Megaphone, Inbox, Settings, LayoutGrid } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { BottomDrawer } from "@/components/ui/bottom-drawer"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
 import { NotificationBell } from "@/components/layout/notification-bell"
 import { SearchPalette } from "@/components/layout/search-palette"
@@ -18,6 +19,7 @@ export function AppLayout() {
   const location = useLocation()
   const [searchOpen, setSearchOpen] = useState(false)
   const [captureOpen, setCaptureOpen] = useState(false)
+  const [moreDrawerOpen, setMoreDrawerOpen] = useState(false)
 
   const handleSearch = useCallback(() => setSearchOpen((o) => !o), [])
   const handleCapture = useCallback(() => setCaptureOpen((o) => !o), [])
@@ -87,12 +89,11 @@ export function AppLayout() {
 
     return [
       findMain("/dashboard"),
-      findMain("/clients"),
-      findMain("/leads"),
-      isAdmin ? { to: "/finance", label: "Finanzas", icon: Wallet } : null,
-      findMain("/projects"),
+      findMain("/tasks"),
+      findMain("/inbox"),
+      { to: "/dailys", label: "Dailys", icon: ClipboardList },
     ].filter((item): item is { to: string; label: string; icon: typeof Wallet } => Boolean(item))
-  }, [mainNav, isAdmin])
+  }, [mainNav])
 
   const isActive = (path: string) => {
     if (path === "/finance-holded") {
@@ -324,19 +325,48 @@ export function AppLayout() {
           <Link
             key={item.to}
             to={item.to}
-            aria-current={isActive(item.to) || (item.to === "/finance" && (location.pathname.startsWith("/finance") || location.pathname === "/executive" || location.pathname === "/billing")) ? "page" : undefined}
+            aria-current={isActive(item.to) ? "page" : undefined}
             className={cn(
               "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
-              isActive(item.to) || (item.to === "/finance" && (location.pathname.startsWith("/finance") || location.pathname === "/executive" || location.pathname === "/billing")) ? "text-brand" : "text-muted-foreground"
+              isActive(item.to) ? "text-brand" : "text-muted-foreground"
             )}
           >
-            <item.icon className={cn("h-5 w-5", (isActive(item.to) || (item.to === "/finance" && (location.pathname.startsWith("/finance") || location.pathname === "/executive" || location.pathname === "/billing"))) && "fill-brand/10")} />
+            <item.icon className={cn("h-5 w-5", isActive(item.to) && "fill-brand/10")} />
             <span className="text-[10px] font-medium tracking-tight">
               {item.label === "Dashboard" ? "Home" : item.label}
             </span>
           </Link>
         ))}
+        <button
+          onClick={() => setMoreDrawerOpen(true)}
+          className={cn(
+            "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
+            moreDrawerOpen ? "text-brand" : "text-muted-foreground"
+          )}
+        >
+          <LayoutGrid className="h-5 w-5" />
+          <span className="text-[10px] font-medium tracking-tight">Más</span>
+        </button>
       </nav>
+
+      {/* More drawer */}
+      <BottomDrawer open={moreDrawerOpen} onOpenChange={setMoreDrawerOpen}>
+        <div className="grid grid-cols-4 gap-4">
+          {[...mainNav, ...agencyNav, ...(isAdmin ? [{ to: "/finance", label: "Finanzas", icon: Wallet }] : []), ...adminNav, { to: "/settings", label: "Ajustes", icon: Settings }]
+            .filter((item) => !mobileNav.some((m) => m.to === item.to))
+            .map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                onClick={() => setMoreDrawerOpen(false)}
+                className="flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <item.icon className="h-6 w-6" />
+                <span className="text-[11px] font-medium text-center leading-tight">{item.label}</span>
+              </Link>
+            ))}
+        </div>
+      </BottomDrawer>
 
       <SearchPalette open={searchOpen} onOpenChange={setSearchOpen} />
       <QuickCaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
