@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { inboxApi, projectsApi } from "@/lib/api"
+import { inboxApi, projectsApi, clientsApi } from "@/lib/api"
 import { inboxKeys } from "@/lib/query-keys"
 import { Dialog, DialogHeader, DialogTitle, DialogContent } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
@@ -17,9 +17,17 @@ interface Props {
 
 export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   const [text, setText] = useState("")
+  const [clientId, setClientId] = useState<string>("")
   const [projectId, setProjectId] = useState<string>("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const queryClient = useQueryClient()
+
+  const { data: clients = [] } = useQuery({
+    queryKey: ["clients-active-list"],
+    queryFn: () => clientsApi.listAll("active"),
+    staleTime: 60_000,
+    enabled: open,
+  })
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects-active-list"],
@@ -29,10 +37,11 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: { raw_text: string; project_id?: number }) =>
-      inboxApi.create({ raw_text: data.raw_text, source: "quick_capture", project_id: data.project_id }),
+    mutationFn: (data: { raw_text: string; project_id?: number; client_id?: number }) =>
+      inboxApi.create({ raw_text: data.raw_text, source: "quick_capture", project_id: data.project_id, client_id: data.client_id }),
     onSuccess: () => {
       setText("")
+      setClientId("")
       setProjectId("")
       onOpenChange(false)
       queryClient.invalidateQueries({ queryKey: inboxKeys.all() })
@@ -45,6 +54,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   useEffect(() => {
     if (open) {
       setText("")
+      setClientId("")
       setProjectId("")
       setTimeout(() => textareaRef.current?.focus(), 100)
     }
@@ -55,6 +65,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     if (!trimmed) return
     createMutation.mutate({
       raw_text: trimmed,
+      client_id: clientId ? Number(clientId) : undefined,
       project_id: projectId ? Number(projectId) : undefined,
     })
   }
@@ -91,17 +102,28 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
           disabled={createMutation.isPending}
         />
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select
+            value={clientId}
+            onChange={(e) => { setClientId(e.target.value); setProjectId("") }}
+            className="flex-1 min-w-[140px] text-sm"
+            disabled={createMutation.isPending}
+          >
+            <option value="">Cliente (opcional)</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </Select>
           <Select
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
-            className="flex-1 text-sm"
+            className="flex-1 min-w-[140px] text-sm"
             disabled={createMutation.isPending}
           >
-            <option value="">Proyecto (opcional, la IA lo infiere)</option>
-            {projects.map((p) => (
+            <option value="">Proyecto (opcional)</option>
+            {(clientId ? projects.filter((p) => String(p.client_id) === clientId) : projects).map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name} — {p.client_name}
+                {p.name}{!clientId && p.client_name ? ` — ${p.client_name}` : ""}
               </option>
             ))}
           </Select>

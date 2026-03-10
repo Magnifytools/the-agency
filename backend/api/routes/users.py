@@ -67,6 +67,14 @@ async def create_user(
         hourly_rate=body.hourly_rate,
     )
     db.add(user)
+    await db.flush()  # get user.id before adding permissions
+
+    # Auto-grant default module permissions for non-admin users
+    if user.role != UserRole.admin:
+        default_modules = ["dashboard", "clients", "tasks", "projects", "timesheet", "pm", "digests"]
+        for mod in default_modules:
+            db.add(UserPermission(user_id=user.id, module=mod, can_read=True, can_write=True))
+
     await db.commit()
     await db.refresh(user)
     return user
