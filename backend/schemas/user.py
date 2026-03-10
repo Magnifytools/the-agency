@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, EmailStr, Field
 from backend.db.models import UserRole
@@ -17,8 +17,7 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     hourly_rate: Optional[float] = None
     role: Optional[UserRole] = None
-    # Restrict preferences to scalar values only (no nested objects)
-    preferences: Optional[dict[str, str | int | float | bool | None]] = None
+    preferences: Optional[dict[str, Any]] = None
 
 
 class UserListResponse(BaseModel):

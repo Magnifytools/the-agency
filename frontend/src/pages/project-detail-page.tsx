@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useParams, Link, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
@@ -14,6 +14,7 @@ import {
   GanttChartSquare,
   Columns,
   ExternalLink,
+  Search,
   User,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -63,6 +64,8 @@ export default function ProjectDetailPage() {
   const [viewMode, setViewMode] = useState<"list" | "gantt" | "kanban">("list")
   const [activeTab, setActiveTab] = useState<"tasks" | "evidence">("tasks")
   const [previewTaskId, setPreviewTaskId] = useState<number | null>(null)
+  const [filterStatus, setFilterStatus] = useState<TaskStatus | "all">("all")
+  const [filterSearch, setFilterSearch] = useState("")
   const navigate = useNavigate()
 
   const { data: project, isLoading } = useQuery({
@@ -109,6 +112,31 @@ export default function ProjectDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["project-tasks", id] })
     },
   })
+
+  const filterTask = (t: Task) => {
+    if (filterStatus !== "all" && t.status !== filterStatus) return false
+    if (filterSearch && !t.title.toLowerCase().includes(filterSearch.toLowerCase())) return false
+    return true
+  }
+
+  const filteredPhases = useMemo(() => {
+    if (!tasksData?.phases) return []
+    if (filterStatus === "all" && !filterSearch) return tasksData.phases
+    return tasksData.phases
+      .map((pg: { phase: ProjectPhase; tasks: Task[] }) => ({
+        ...pg,
+        tasks: pg.tasks.filter(filterTask),
+      }))
+      .filter((pg: { phase: ProjectPhase; tasks: Task[] }) => pg.tasks.length > 0)
+  }, [tasksData, filterStatus, filterSearch])
+
+  const filteredUnassigned = useMemo(() => {
+    if (!tasksData?.unassigned_tasks) return []
+    if (filterStatus === "all" && !filterSearch) return tasksData.unassigned_tasks
+    return tasksData.unassigned_tasks.filter(filterTask)
+  }, [tasksData, filterStatus, filterSearch])
+
+  const hasActiveFilters = filterStatus !== "all" || filterSearch !== ""
 
   if (isLoading) {
     return (
@@ -374,6 +402,43 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
+        {viewMode === "list" && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Buscar tarea..."
+                value={filterSearch}
+                onChange={(e) => setFilterSearch(e.target.value)}
+                className="h-8 w-48 pl-8 text-sm"
+              />
+            </div>
+            <Select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value as TaskStatus | "all")}
+              className="h-8 w-36 text-xs"
+            >
+              <option value="all">Todos los estados</option>
+              <option value="backlog">Backlog</option>
+              <option value="pending">Pendiente</option>
+              <option value="in_progress">En curso</option>
+              <option value="waiting">En espera</option>
+              <option value="in_review">En revisión</option>
+              <option value="completed">Completada</option>
+            </Select>
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs text-muted-foreground"
+                onClick={() => { setFilterStatus("all"); setFilterSearch("") }}
+              >
+                Limpiar filtros
+              </Button>
+            )}
+          </div>
+        )}
+
         {viewMode === "gantt" && project && tasksData && (
           <GanttChart project={project} tasksData={tasksData} />
         )}
@@ -387,7 +452,7 @@ export default function ProjectDetailPage() {
           />
         )}
 
-        {viewMode === "list" && tasksData?.phases?.map((phaseGroup: { phase: ProjectPhase; tasks: Task[] }) => {
+        {viewMode === "list" && filteredPhases.map((phaseGroup: { phase: ProjectPhase; tasks: Task[] }) => {
           const phase = phaseGroup.phase
           const tasks = phaseGroup.tasks
           const PhaseIcon = PHASE_STATUS_ICONS[phase.status as PhaseStatus] || Circle
@@ -460,7 +525,7 @@ export default function ProjectDetailPage() {
         })}
 
         {/* Unassigned Tasks */}
-        {viewMode === "list" && tasksData?.unassigned_tasks?.length > 0 && (
+        {viewMode === "list" && filteredUnassigned.length > 0 && (
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-semibold text-foreground">
@@ -469,7 +534,7 @@ export default function ProjectDetailPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-1">
-                {tasksData.unassigned_tasks.map((task: Task) => (
+                {filteredUnassigned.map((task: Task) => (
                   <TaskRow
                     key={task.id}
                     task={task}
