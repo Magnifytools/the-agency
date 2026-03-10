@@ -460,7 +460,7 @@ async def start_timer(
         if task is None:
             raise HTTPException(status_code=404, detail="Task not found")
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     entry = TimeEntry(
         task_id=body.task_id,
         user_id=current_user.id,
@@ -486,12 +486,14 @@ async def start_timer(
         if entry.task:
             await db.refresh(entry.task, ["client"])
             
+    # Attach UTC tzinfo so JSON serialisation includes +00:00
+    sa = entry.started_at.replace(tzinfo=timezone.utc) if entry.started_at and entry.started_at.tzinfo is None else entry.started_at
     return ActiveTimerResponse(
         id=entry.id,
         task_id=entry.task_id,
         task_title=entry.task.title if entry.task else body.notes,
         client_name=entry.task.client.name if entry.task and entry.task.client else None,
-        started_at=entry.started_at,
+        started_at=sa,
     )
 
 
@@ -512,8 +514,10 @@ async def stop_timer(
     if not entry.started_at:
         raise HTTPException(status_code=400, detail="Timer has no start time")
 
-    now = datetime.utcnow()
-    elapsed = (now - entry.started_at).total_seconds()
+    now = datetime.now(timezone.utc)
+    # Ensure started_at is timezone-aware for subtraction
+    sa = entry.started_at.replace(tzinfo=timezone.utc) if entry.started_at.tzinfo is None else entry.started_at
+    elapsed = (now - sa).total_seconds()
     entry.minutes = max(1, min(480, round(elapsed / 60)))  # Cap at 8 hours
     if body.notes:
         entry.notes = body.notes
@@ -535,10 +539,11 @@ async def get_active_timer(
     entry = result.scalar_one_or_none()
     if entry is None:
         return None
+    sa = entry.started_at.replace(tzinfo=timezone.utc) if entry.started_at and entry.started_at.tzinfo is None else entry.started_at
     return ActiveTimerResponse(
         id=entry.id,
         task_id=entry.task_id,
         task_title=entry.task.title if entry.task else entry.notes,
         client_name=entry.task.client.name if entry.task and entry.task.client else None,
-        started_at=entry.started_at,
+        started_at=sa,
     )
