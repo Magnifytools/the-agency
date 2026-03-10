@@ -51,6 +51,7 @@ export interface ChecklistItem {
   id: number
   task_id: number
   text: string
+  description: string | null
   is_done: boolean
   order_index: number
   assigned_to: number | null

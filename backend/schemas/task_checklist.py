@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 class ChecklistItemCreate(BaseModel):
     text: str
+    description: Optional[str] = None
     order_index: int = 0
     assigned_to: Optional[int] = None
     due_date: Optional[date] = None
@@ -13,6 +14,7 @@ class ChecklistItemCreate(BaseModel):
 
 class ChecklistItemUpdate(BaseModel):
     text: Optional[str] = None
+    description: Optional[str] = None
     is_done: Optional[bool] = None
     order_index: Optional[int] = None
     assigned_to: Optional[int] = None
@@ -23,6 +25,7 @@ class ChecklistItemResponse(BaseModel):
     id: int
     task_id: int
     text: str
+    description: Optional[str] = None
     is_done: bool
     order_index: int
     assigned_to: Optional[int] = None

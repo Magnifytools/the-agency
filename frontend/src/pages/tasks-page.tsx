@@ -14,7 +14,7 @@ import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare, Loader2, CalendarDays, ChevronDown, ChevronUp, MessageSquare, Paperclip, Download, Send, Repeat } from "lucide-react"
+import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare, Loader2, CalendarDays, ChevronDown, ChevronUp, MessageSquare, Paperclip, Download, Send, Repeat, Eye } from "lucide-react"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
@@ -80,6 +80,7 @@ export default function TasksPage() {
 
   // Checklist state
   const [newChecklistText, setNewChecklistText] = useState("")
+  const [expandedChecklistId, setExpandedChecklistId] = useState<number | null>(null)
   // Comments & attachments state
   const [newCommentText, setNewCommentText] = useState("")
   const [attachmentFileRef, setAttachmentFileRef] = useState<HTMLInputElement | null>(null)
@@ -256,7 +257,7 @@ export default function TasksPage() {
     onSuccess: () => { refetchChecklist(); queryClient.invalidateQueries({ queryKey: ["tasks"] }) },
   })
   const updateChecklistMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<{ text: string; is_done: boolean; assigned_to: number | null; due_date: string | null }> }) =>
+    mutationFn: ({ id, data }: { id: number; data: Partial<{ text: string; description: string | null; is_done: boolean; assigned_to: number | null; due_date: string | null }> }) =>
       tasksApi.checklist.update(editing!.id, id, data),
     onSuccess: () => refetchChecklist(),
   })
@@ -1067,43 +1068,65 @@ export default function TasksPage() {
             <div className="space-y-1.5">
               {checklistItems.map((item) => {
                 const isOverdue = item.due_date && !item.is_done && new Date(item.due_date) < new Date()
+                const isExpanded = expandedChecklistId === item.id
                 return (
-                <div key={item.id} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={item.is_done}
-                    onChange={(e) => toggleChecklistMut.mutate({ id: item.id, is_done: e.target.checked })}
-                    className="rounded border-border"
-                  />
-                  <span className={`text-sm flex-1 min-w-0 truncate ${item.is_done ? "line-through text-muted-foreground" : ""}`}>
-                    {item.text}
-                  </span>
-                  <select
-                    value={item.assigned_to ?? ""}
-                    onChange={(e) => updateChecklistMut.mutate({
-                      id: item.id,
-                      data: { assigned_to: e.target.value ? Number(e.target.value) : null },
-                    })}
-                    className="text-xs h-6 w-24 border rounded bg-background px-1 shrink-0"
-                    title="Asignar a"
-                  >
-                    <option value="">—</option>
-                    {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-                  </select>
-                  <input
-                    type="date"
-                    value={item.due_date ?? ""}
-                    onChange={(e) => updateChecklistMut.mutate({
-                      id: item.id,
-                      data: { due_date: e.target.value || null },
-                    })}
-                    className={`text-xs h-6 w-28 border rounded bg-background px-1 shrink-0 ${isOverdue ? "text-red-500 border-red-300" : ""}`}
-                    title="Fecha límite"
-                  />
-                  <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0"
-                    onClick={() => deleteChecklistMut.mutate(item.id)}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
+                <div key={item.id} className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={item.is_done}
+                      onChange={(e) => toggleChecklistMut.mutate({ id: item.id, is_done: e.target.checked })}
+                      className="rounded border-border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setExpandedChecklistId(isExpanded ? null : item.id)}
+                      className={`text-sm flex-1 min-w-0 truncate text-left ${item.is_done ? "line-through text-muted-foreground" : ""}`}
+                      title="Click para ver/editar descripción"
+                    >
+                      {item.text}
+                      {item.description && <span className="ml-1 text-muted-foreground/50 text-xs">📝</span>}
+                    </button>
+                    <select
+                      value={item.assigned_to ?? ""}
+                      onChange={(e) => updateChecklistMut.mutate({
+                        id: item.id,
+                        data: { assigned_to: e.target.value ? Number(e.target.value) : null },
+                      })}
+                      className="text-xs h-6 w-24 border rounded bg-background px-1 shrink-0"
+                      title="Asignar a"
+                    >
+                      <option value="">—</option>
+                      {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                    </select>
+                    <input
+                      type="date"
+                      value={item.due_date ?? ""}
+                      onChange={(e) => updateChecklistMut.mutate({
+                        id: item.id,
+                        data: { due_date: e.target.value || null },
+                      })}
+                      className={`text-xs h-6 w-28 border rounded bg-background px-1 shrink-0 ${isOverdue ? "text-red-500 border-red-300" : ""}`}
+                      title="Fecha límite"
+                    />
+                    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0"
+                      onClick={() => deleteChecklistMut.mutate(item.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  {isExpanded && (
+                    <textarea
+                      defaultValue={item.description ?? ""}
+                      placeholder="Añadir descripción..."
+                      className="ml-6 w-[calc(100%-1.5rem)] text-xs border rounded bg-muted/30 px-2 py-1.5 resize-none min-h-[48px]"
+                      onBlur={(e) => {
+                        const val = e.target.value.trim() || null
+                        if (val !== (item.description ?? null)) {
+                          updateChecklistMut.mutate({ id: item.id, data: { description: val } })
+                        }
+                      }}
+                    />
+                  )}
                 </div>
                 )
               })}
@@ -1191,23 +1214,39 @@ export default function TasksPage() {
             </p>
             {attachments.length > 0 && (
               <div className="space-y-1.5">
-                {attachments.map((a) => (
-                  <div key={a.id} className="flex items-center gap-2 text-sm bg-muted/50 rounded px-2 py-1.5">
-                    <Paperclip className="h-3 w-3 shrink-0" />
-                    <span className="flex-1 truncate">{a.name}</span>
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      {a.size_bytes < 1024 ? `${a.size_bytes} B` : a.size_bytes < 1048576 ? `${Math.round(a.size_bytes / 1024)} KB` : `${(a.size_bytes / 1048576).toFixed(1)} MB`}
-                    </span>
-                    <Button variant="ghost" size="icon" className="h-6 w-6"
-                      onClick={() => handleDownloadAttachment(a.id, a.name)}>
-                      <Download className="h-3 w-3" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6"
-                      onClick={() => deleteAttachmentMut.mutate(a.id)}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ))}
+                {attachments.map((a) => {
+                  const isImage = a.mime_type?.startsWith("image/")
+                  const isPreviewable = isImage || a.mime_type === "application/pdf"
+                  const previewUrl = `/api/tasks/${editing!.id}/attachments/${a.id}/preview`
+                  return (
+                    <div key={a.id} className="space-y-1">
+                      <div className="flex items-center gap-2 text-sm bg-muted/50 rounded px-2 py-1.5">
+                        <Paperclip className="h-3 w-3 shrink-0" />
+                        <span className="flex-1 truncate">{a.name}</span>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {a.size_bytes < 1024 ? `${a.size_bytes} B` : a.size_bytes < 1048576 ? `${Math.round(a.size_bytes / 1024)} KB` : `${(a.size_bytes / 1048576).toFixed(1)} MB`}
+                        </span>
+                        {isPreviewable && (
+                          <Button variant="ghost" size="icon" className="h-6 w-6"
+                            onClick={() => window.open(previewUrl, "_blank")} title="Vista previa">
+                            <Eye className="h-3 w-3" />
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="icon" className="h-6 w-6"
+                          onClick={() => handleDownloadAttachment(a.id, a.name)}>
+                          <Download className="h-3 w-3" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6"
+                          onClick={() => deleteAttachmentMut.mutate(a.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      {isImage && (
+                        <img src={previewUrl} alt={a.name} className="ml-5 max-h-32 rounded border object-contain" />
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
             <div>

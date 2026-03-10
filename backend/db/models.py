@@ -517,6 +517,7 @@ class TaskChecklist(TimestampMixin, Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
     text = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
     is_done = Column(Boolean, nullable=False, default=False)
     order_index = Column(Integer, nullable=False, default=0)
     assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True)

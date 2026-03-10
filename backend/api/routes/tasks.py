@@ -264,6 +264,7 @@ def _checklist_response(item: TaskChecklist) -> ChecklistItemResponse:
         id=item.id,
         task_id=item.task_id,
         text=item.text,
+        description=item.description,
         is_done=item.is_done,
         order_index=item.order_index,
         assigned_to=item.assigned_to,
@@ -499,6 +500,29 @@ async def download_attachment(
         content=att.content,
         media_type=att.mime_type,
         headers={"Content-Disposition": f'attachment; filename="{att.name}"'},
+    )
+
+
+@router.get("/{task_id}/attachments/{attachment_id}/preview")
+async def preview_attachment(
+    task_id: int,
+    attachment_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("tasks")),
+):
+    """Serve attachment inline for browser preview (images, PDFs)."""
+    from fastapi.responses import Response
+    r = await db.execute(
+        select(TaskAttachment)
+        .where(TaskAttachment.id == attachment_id, TaskAttachment.task_id == task_id)
+    )
+    att = r.scalar_one_or_none()
+    if not att:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return Response(
+        content=att.content,
+        media_type=att.mime_type,
+        headers={"Content-Disposition": f'inline; filename="{att.name}"'},
     )
 
 
