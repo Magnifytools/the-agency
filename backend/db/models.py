@@ -247,6 +247,7 @@ class User(TimestampMixin, Base):
     hourly_rate = Column(Numeric(10, 2), nullable=True)
     weekly_hours = Column(Float, nullable=False, default=40.0)
     is_active = Column(Boolean, nullable=False, default=True)
+    password_reset_required = Column(Boolean, nullable=False, default=False)
     invited_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     preferences = Column(JSONB, nullable=True, server_default="{}")
 

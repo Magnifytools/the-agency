@@ -63,12 +63,16 @@ async def create_time_entry(
         if task_result.scalar_one_or_none() is None:
             raise HTTPException(status_code=404, detail="Task not found")
 
+    entry_date = body.date
+    if entry_date and entry_date.tzinfo is not None:
+        entry_date = entry_date.astimezone(timezone.utc).replace(tzinfo=None)
+
     entry = TimeEntry(
         minutes=body.minutes,
         task_id=body.task_id,
         user_id=current_user.id,
         notes=body.notes,
-        date=body.date or datetime.utcnow(),
+        date=entry_date or datetime.utcnow(),
     )
     db.add(entry)
     await db.commit()

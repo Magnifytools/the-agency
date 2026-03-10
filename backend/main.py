@@ -136,6 +136,7 @@ async def _ensure_columns():
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )""",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_required BOOLEAN NOT NULL DEFAULT false",
         # Sentinel column — MUST remain last ADD COLUMN so the fast-path check above works
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT '{}'",
         "ALTER TABLE leads ADD COLUMN IF NOT EXISTS estimated_close_date DATE",
