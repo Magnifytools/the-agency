@@ -21,7 +21,7 @@ import { Select } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { InfoTooltip } from "@/components/ui/tooltip"
-import { Users, CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink, Play, Square, Check, UserCog, AlertTriangle, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react"
+import { Users, CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink, Play, Square, Check, UserCog, AlertTriangle, MessageSquare, ChevronLeft, ChevronRight, Newspaper } from "lucide-react"
 import { toast } from "sonner"
 import { Link } from "react-router-dom"
 import { InboxWidget } from "@/components/dashboard/inbox-widget"
@@ -265,6 +265,15 @@ export default function DashboardPage() {
     onError: (err) => toast.error(getErrorMessage(err, "Error al parar el timer")),
   })
 
+  const generateDigestsMutation = useMutation({
+    mutationFn: () => digestsApi.generateBatch(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["digests"] })
+      toast.success(`${data.length} digest(s) generado(s)`)
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al generar digests")),
+  })
+
   // ─── Computed ───────────────────────────────────────────────
   const getMondayOfWeek = (d: Date) => {
     const day = d.getDay()
@@ -335,6 +344,17 @@ export default function DashboardPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <DailyBriefingButton />
+          {isAdmin && clientsMissingDigest.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={generateDigestsMutation.isPending}
+              onClick={() => generateDigestsMutation.mutate()}
+            >
+              <Newspaper className={`h-4 w-4 mr-1 ${generateDigestsMutation.isPending ? "animate-spin" : ""}`} />
+              {generateDigestsMutation.isPending ? "Generando..." : `Generar digests (${clientsMissingDigest.length})`}
+            </Button>
+          )}
           {isAdmin && memberUsers.length > 0 && (
             <Select
               value={viewAsUserId ?? ""}

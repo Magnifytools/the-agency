@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime, timezone, timedelta, date as date_type
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +29,21 @@ from backend.api.deps import get_current_user, require_admin, require_module
 from backend.services.csv_utils import build_csv_response
 
 router = APIRouter(tags=["time-entries"])
+
+
+async def _sync_task_actual_minutes(db: AsyncSession, task_id: int) -> None:
+    """Recompute Task.actual_minutes from the sum of its completed time entries."""
+    total_result = await db.execute(
+        select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
+            TimeEntry.task_id == task_id,
+            TimeEntry.minutes.isnot(None),
+        )
+    )
+    total_mins = total_result.scalar() or 0
+    task_result = await db.execute(select(Task).where(Task.id == task_id))
+    task = task_result.scalar_one_or_none()
+    if task:
+        task.actual_minutes = int(total_mins)
 
 
 def _entry_to_response(entry: TimeEntry) -> TimeEntryResponse:
@@ -76,6 +91,9 @@ async def create_time_entry(
     )
     db.add(entry)
     await db.commit()
+    if entry.task_id:
+        await _sync_task_actual_minutes(db, entry.task_id)
+        await db.commit()
     await db.refresh(entry)
     return _entry_to_response(entry)
 
@@ -403,10 +421,17 @@ async def update_time_entry(
         raise HTTPException(status_code=403, detail="Not your time entry")
     _UPDATABLE_TIME_ENTRY_FIELDS = {"minutes", "notes", "task_id"}
     update_data = body.model_dump(exclude_unset=True)
+    old_task_id = entry.task_id
     for field, value in update_data.items():
         if field in _UPDATABLE_TIME_ENTRY_FIELDS:
             setattr(entry, field, value)
     await db.commit()
+    # Sync actual_minutes on affected tasks
+    affected_tasks = {t for t in [old_task_id, entry.task_id] if t is not None}
+    for tid in affected_tasks:
+        await _sync_task_actual_minutes(db, tid)
+    if affected_tasks:
+        await db.commit()
     await db.refresh(entry)
     return _entry_to_response(entry)
 
@@ -424,8 +449,12 @@ async def delete_time_entry(
     # F-05: members can only delete their own entries
     if current_user.role != UserRole.admin and entry.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your time entry")
+    task_id = entry.task_id
     await db.delete(entry)
     await db.commit()
+    if task_id:
+        await _sync_task_actual_minutes(db, task_id)
+        await db.commit()
 
 
 # --- Timer ---
@@ -521,7 +550,11 @@ async def stop_timer(
     entry.minutes = max(1, min(480, round(elapsed / 60)))  # Cap at 8 hours
     if body.notes:
         entry.notes = body.notes
+
     await db.commit()
+    if entry.task_id:
+        await _sync_task_actual_minutes(db, entry.task_id)
+        await db.commit()
     await db.refresh(entry)
     return _entry_to_response(entry)
 

@@ -32,7 +32,6 @@ interface ProjectPhaseKanbanProps {
 const COLUMNS: { status: string; label: string; color: string }[] = [
   { status: "pending", label: "Pendiente", color: "text-muted-foreground" },
   { status: "in_progress", label: "En curso", color: "text-brand" },
-  { status: "completed", label: "Completada", color: "text-success" },
 ]
 
 function PhaseCard({ phase, taskCount }: { phase: PhaseData["phase"]; taskCount: number }) {
@@ -131,7 +130,7 @@ export function ProjectPhaseKanban({ phases, onPhaseStatusChange }: ProjectPhase
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         {COLUMNS.map((col) => {
           const columnPhases = phasesByStatus[col.status] || []
           return (

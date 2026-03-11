@@ -53,6 +53,7 @@ def _to_response(note: InboxNote) -> InboxNoteResponse:
         resolved_as=note.resolved_as,
         resolved_entity_id=note.resolved_entity_id,
         ai_suggestion=note.ai_suggestion,
+        link_url=note.link_url,
         created_at=note.created_at,
         updated_at=note.updated_at,
     )
