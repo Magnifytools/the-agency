@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "The Agency - Quick Capture",
-  "description": "Captura notas rapidas al inbox de The Agency desde cualquier pagina",
-  "version": "1.3.0",
+  "name": "The Agency",
+  "description": "Captura notas, gestiona tareas y registra tiempo desde cualquier pagina",
+  "version": "2.0.0",
   "update_url": "https://agency.magnifytools.com/extension/update.xml",
   "permissions": [
     "contextMenus",
@@ -12,7 +12,7 @@
     "notifications"
   ],
   "host_permissions": [
-    "http://localhost:8003/*",
+    "http://localhost:8004/*",
     "https://agency.magnifytools.com/*"
   ],
   "action": {

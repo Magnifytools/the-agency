@@ -1,4 +1,4 @@
-// Agency Manager - Quick Capture Extension
+// The Agency - Chrome Extension
 // Background service worker — context menus + notifications
 
 const API_URL = "https://agency.magnifytools.com";
@@ -11,7 +11,7 @@ const STORAGE_KEYS = {
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "am-capture-selection",
-    title: "Capturar al Inbox de Agency Manager",
+    title: "Capturar al Inbox de The Agency",
     contexts: ["selection"],
   });
 
@@ -90,7 +90,7 @@ chrome.runtime.onMessage.addListener(async (msg) => {
       chrome.action.setBadgeText({ text: "" });
     }
   }
-  if (msg.type === "NOTE_CREATED") {
+  if (msg.type === "NOTE_CREATED" || msg.type === "TIMER_UPDATED") {
     const stored = await chrome.storage.local.get([STORAGE_KEYS.token]);
     if (stored[STORAGE_KEYS.token]) {
       updateBadge(stored[STORAGE_KEYS.token]);
