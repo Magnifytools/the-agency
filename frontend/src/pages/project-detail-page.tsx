@@ -402,7 +402,7 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        {viewMode === "list" && (
+        {(viewMode === "list" || viewMode === "gantt") && (
           <div className="flex items-center gap-2 flex-wrap">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -440,7 +440,11 @@ export default function ProjectDetailPage() {
         )}
 
         {viewMode === "gantt" && project && tasksData && (
-          <GanttChart project={project} tasksData={tasksData} />
+          <GanttChart project={project} tasksData={{
+            ...tasksData,
+            phases: filteredPhases,
+            unassigned_tasks: filteredUnassigned,
+          }} />
         )}
 
         {viewMode === "kanban" && tasksData && (
@@ -541,6 +545,7 @@ export default function ProjectDetailPage() {
                     onStatusChange={(status) =>
                       updateTaskMutation.mutate({ taskId: task.id, status })
                     }
+                    onPreview={(taskId) => setPreviewTaskId(taskId)}
                   />
                 ))}
               </div>
@@ -577,7 +582,7 @@ export default function ProjectDetailPage() {
           onOpenChange={(open) => !open && setPreviewTaskId(null)}
           onEditFull={(taskId) => {
             setPreviewTaskId(null)
-            navigate(`/tasks?id=${taskId}`)
+            navigate(`/tasks?edit=${taskId}`)
           }}
         />
       )}

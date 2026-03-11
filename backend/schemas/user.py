@@ -26,5 +26,6 @@ class UserListResponse(BaseModel):
     full_name: str
     role: Optional[UserRole] = None
     hourly_rate: Optional[float] = None
+    preferences: Optional[dict[str, Any]] = None
 
     model_config = {"from_attributes": True}

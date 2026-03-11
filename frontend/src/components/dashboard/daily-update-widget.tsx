@@ -31,8 +31,8 @@ export function DailyUpdateWidget({ userId, readOnly = false }: DailyUpdateWidge
       const daily = await dailysApi.submit({ raw_text: rawText })
       let discordSent = false
       try {
-        await dailysApi.sendDiscord(daily.id)
-        discordSent = true
+        const discordRes = await dailysApi.sendDiscord(daily.id)
+        discordSent = discordRes?.success ?? false
       } catch { /* Discord send is best-effort */ }
       return { daily, discordSent }
     },

@@ -135,6 +135,12 @@ async def accept_invitation(
     db.add(user)
     await db.flush()  # Get user.id
 
+    # Auto-grant default module permissions for non-admin users
+    if user.role != UserRole.admin:
+        default_modules = ["dashboard", "clients", "tasks", "projects", "timesheet", "pm", "digests"]
+        for mod in default_modules:
+            db.add(UserPermission(user_id=user.id, module=mod, can_read=True, can_write=True))
+
     # Mark invitation as accepted
     invitation.accepted_at = datetime.utcnow()
 
