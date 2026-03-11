@@ -408,6 +408,26 @@ export interface IndustryNewsCreate {
   url?: string | null
 }
 
+// --- News Feeds (RSS) ---
+
+export interface NewsFeed {
+  id: number
+  name: string
+  url: string
+  category: string
+  enabled: boolean
+  last_fetched_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface NewsFeedCreate {
+  name: string
+  url: string
+  category?: string
+  enabled?: boolean
+}
+
 // --- Inbox Quick Capture ---
 
 export type InboxNoteStatus = "pending" | "classified" | "processed" | "dismissed"

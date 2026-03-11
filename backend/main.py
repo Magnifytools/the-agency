@@ -218,6 +218,18 @@ async def _ensure_numeric_types():
         "ALTER TABLE taxes DROP CONSTRAINT IF EXISTS ck_tax_tax_amount_non_negative",
         # Support forced password rotation for compromised credentials
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_required BOOLEAN NOT NULL DEFAULT false",
+        # RSS feeds for industry news
+        """CREATE TABLE IF NOT EXISTS news_feeds (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(200) NOT NULL,
+            url VARCHAR(500) NOT NULL UNIQUE,
+            category VARCHAR(100) NOT NULL DEFAULT 'general',
+            enabled BOOLEAN NOT NULL DEFAULT true,
+            last_fetched_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )""",
+        "ALTER TABLE industry_news ADD COLUMN IF NOT EXISTS feed_id INTEGER REFERENCES news_feeds(id) ON DELETE SET NULL",
     ]
     async with engine.begin() as conn:
         for sql in stmts:
@@ -561,6 +573,24 @@ async def _generate_recurring_instances():
             logging.info("🔄 Generated %d recurring task instance(s) for %s", created, today)
 
 
+async def _news_fetch_loop():
+    """Background loop that fetches RSS feeds every 6 hours."""
+    from backend.services.news_fetcher import fetch_all_feeds
+    from backend.db.database import async_session
+
+    await asyncio.sleep(600)  # 10 min initial delay
+    while True:
+        try:
+            async with async_session() as session:
+                result = await fetch_all_feeds(session)
+                if result["new_articles"]:
+                    logging.info("RSS fetch: %d new article(s) from %d feed(s)",
+                                 result["new_articles"], result["feeds_processed"])
+        except Exception as e:
+            logging.error("RSS fetch loop error: %s", e)
+        await asyncio.sleep(6 * 3600)  # every 6 hours
+
+
 async def _recurring_midnight_loop():
     """Background loop that generates recurring task instances at midnight."""
     import asyncio
@@ -701,6 +731,8 @@ async def lifespan(app: FastAPI):
         logging.info("Holded auto-sync started (every 6h).")
     recurring_task = asyncio.create_task(_recurring_midnight_loop(), name="recurring-gen")
     recurring_task.add_done_callback(_log_task_error)
+    news_task = asyncio.create_task(_news_fetch_loop(), name="news-rss")
+    news_task.add_done_callback(_log_task_error)
     logging.info("Startup ready.")
     yield
     if task:
@@ -718,6 +750,11 @@ async def lifespan(app: FastAPI):
     recurring_task.cancel()
     try:
         await recurring_task
+    except asyncio.CancelledError:
+        pass
+    news_task.cancel()
+    try:
+        await news_task
     except asyncio.CancelledError:
         pass
 

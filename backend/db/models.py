@@ -1280,6 +1280,22 @@ class IndustryNews(TimestampMixin, Base):
     content = Column(Text, nullable=True)
     url = Column(String(500), nullable=True)
     published_date = Column(Date, nullable=False)
+    feed_id = Column(Integer, ForeignKey("news_feeds.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    feed = relationship("NewsFeed", back_populates="articles", lazy="selectin")
+
+
+class NewsFeed(TimestampMixin, Base):
+    __tablename__ = "news_feeds"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200), nullable=False)
+    url = Column(String(500), nullable=False, unique=True)
+    category = Column(String(100), nullable=False, default="general")
+    enabled = Column(Boolean, nullable=False, default=True)
+    last_fetched_at = Column(DateTime, nullable=True)
+
+    articles = relationship("IndustryNews", back_populates="feed", lazy="noload")
 
 
 class BalanceSnapshot(TimestampMixin, Base):
