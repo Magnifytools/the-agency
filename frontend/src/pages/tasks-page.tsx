@@ -366,7 +366,7 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold uppercase tracking-wide">Tareas</h2>
           {tasksData && <p className="text-sm text-muted-foreground mt-1">{tasksData.total} tareas · {tasks.filter(t => t.status === "in_progress").length} en curso</p>}
@@ -377,7 +377,7 @@ export default function TasksPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
         <Select value={filterClient} onChange={(e) => { setFilterClient(e.target.value); reset() }} className="w-48">
           <option value="">Todos los clientes</option>
           {clients.map((c) => (

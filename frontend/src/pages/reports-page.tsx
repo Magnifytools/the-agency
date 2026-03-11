@@ -98,7 +98,7 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold uppercase tracking-wide">Informes</h2>
           <p className="text-sm text-muted-foreground mt-1">{reports.length} informes generados</p>

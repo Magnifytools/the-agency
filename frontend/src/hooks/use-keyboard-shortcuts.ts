@@ -8,6 +8,9 @@ export const DEFAULT_SHORTCUTS: Record<string, string> = {
   goto_inbox: "G+I",
   goto_timesheet: "G+T",
   goto_clients: "G+C",
+  goto_projects: "G+P",
+  goto_tasks: "G+A",
+  goto_leads: "G+L",
   new_entry: "N",
   show_shortcuts: "?",
 }
@@ -19,6 +22,9 @@ export const SHORTCUT_LABELS: Record<string, string> = {
   goto_inbox: "Ir a Inbox",
   goto_timesheet: "Ir a Timesheet",
   goto_clients: "Ir a Clientes",
+  goto_projects: "Ir a Proyectos",
+  goto_tasks: "Ir a Tareas",
+  goto_leads: "Ir a Pipeline",
   new_entry: "Nueva entrada",
   show_shortcuts: "Mostrar atajos",
 }
@@ -29,6 +35,9 @@ const ACTION_ROUTES: Record<string, string> = {
   goto_inbox: "/inbox",
   goto_timesheet: "/timesheet",
   goto_clients: "/clients",
+  goto_projects: "/projects",
+  goto_tasks: "/tasks",
+  goto_leads: "/leads",
 }
 
 function isMac() {

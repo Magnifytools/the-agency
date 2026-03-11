@@ -176,7 +176,7 @@ export default function ClientsPage() {
 
   return (
     <div className="space-y-4" onClick={() => openMenuId !== null && setOpenMenuId(null)}>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold uppercase tracking-wide">Clientes</h2>
           {data && <p className="text-sm text-muted-foreground mt-1">{data.total} clientes · {clients.length} en vista</p>}
@@ -187,7 +187,7 @@ export default function ClientsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {STATUS_TABS.map((t) => (
           <Button
             key={t.value}

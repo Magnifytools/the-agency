@@ -21,7 +21,7 @@ import { Select } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { InfoTooltip } from "@/components/ui/tooltip"
-import { Users, CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink, Play, Square, Check, UserCog, AlertTriangle, MessageSquare } from "lucide-react"
+import { Users, CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink, Play, Square, Check, UserCog, AlertTriangle, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import { Link } from "react-router-dom"
 import { InboxWidget } from "@/components/dashboard/inbox-widget"
@@ -57,6 +57,17 @@ export default function DashboardPage() {
 
   const params = { year, month }
   const isAdmin = user?.role === "admin"
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1
+
+  const goToPrevMonth = () => {
+    if (month === 1) { setMonth(12); setYear(year - 1) }
+    else setMonth(month - 1)
+  }
+  const goToNextMonth = () => {
+    if (month === 12) { setMonth(1); setYear(year + 1) }
+    else setMonth(month + 1)
+  }
+  const goToCurrentMonth = () => { setYear(now.getFullYear()); setMonth(now.getMonth() + 1) }
 
   // ─── Shared queries ─────────────────────────────────────────
   const { data: overview } = useQuery({
@@ -306,7 +317,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold uppercase tracking-wide">Dashboard</h2>
           {overview && (
@@ -315,7 +326,7 @@ export default function DashboardPage() {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <DailyBriefingButton />
           {isAdmin && memberUsers.length > 0 && (
             <Select
@@ -329,12 +340,25 @@ export default function DashboardPage() {
               ))}
             </Select>
           )}
-          <Select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="w-40">
-            {MONTHS.map((m, i) => (<option key={i} value={i + 1}>{m}</option>))}
-          </Select>
-          <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-24">
-            {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map((y) => (<option key={y} value={y}>{y}</option>))}
-          </Select>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goToPrevMonth} title="Mes anterior">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="w-40">
+              {MONTHS.map((m, i) => (<option key={i} value={i + 1}>{m}</option>))}
+            </Select>
+            <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-24">
+              {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map((y) => (<option key={y} value={y}>{y}</option>))}
+            </Select>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goToNextMonth} title="Mes siguiente">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            {!isCurrentMonth && (
+              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={goToCurrentMonth}>
+                Hoy
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 

@@ -27,7 +27,7 @@ function KbdSequence({ binding }: { binding: string }) {
   )
 }
 
-const NAV_SHORTCUTS = ["goto_dashboard", "goto_inbox", "goto_timesheet", "goto_clients"]
+const NAV_SHORTCUTS = ["goto_dashboard", "goto_inbox", "goto_timesheet", "goto_clients", "goto_projects", "goto_tasks", "goto_leads"]
 const ACTION_SHORTCUTS = ["search", "capture", "new_entry", "show_shortcuts"]
 
 export function ShortcutsHelpModal({ open, onOpenChange, shortcuts = DEFAULT_SHORTCUTS }: ShortcutsHelpModalProps) {
