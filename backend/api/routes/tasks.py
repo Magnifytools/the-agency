@@ -521,9 +521,23 @@ async def upload_task_attachment(
     content = await file.read(MAX_ATTACHMENT_BYTES + 1)
     if len(content) > MAX_ATTACHMENT_BYTES:
         raise HTTPException(status_code=413, detail="Adjunto demasiado grande (máx 10 MB)")
+    # Deduplicate filename
+    original_name = file.filename or "file"
+    existing = await db.execute(
+        select(TaskAttachment.name).where(TaskAttachment.task_id == task_id)
+    )
+    existing_names = {r[0] for r in existing.all()}
+    final_name = original_name
+    if final_name in existing_names:
+        import os
+        base, ext = os.path.splitext(original_name)
+        counter = 1
+        while final_name in existing_names:
+            final_name = f"{base} ({counter}){ext}"
+            counter += 1
     attachment = TaskAttachment(
         task_id=task_id,
-        name=file.filename or "file",
+        name=final_name,
         description=description or None,
         mime_type=file.content_type or "application/octet-stream",
         size_bytes=len(content),

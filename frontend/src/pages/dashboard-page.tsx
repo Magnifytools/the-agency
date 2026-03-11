@@ -214,6 +214,13 @@ export default function DashboardPage() {
     queryFn: () => discordApi.preview(),
     enabled: false,
   })
+  const { data: discordSettings } = useQuery({
+    queryKey: ["discord-settings"],
+    queryFn: () => discordApi.settings(),
+    staleTime: 5 * 60_000,
+    enabled: isAdmin,
+  })
+  const discordConfigured = discordSettings?.webhook_configured ?? false
 
   // ─── Mutations ──────────────────────────────────────────────
   const sendMutation = useMutation({
@@ -782,9 +789,10 @@ export default function DashboardPage() {
         <Card>
           <CardHeader><CardTitle>Resumen Diario</CardTitle></CardHeader>
           <CardContent className="pt-4">
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 items-center">
               <Button variant="outline" onClick={handlePreview}><Eye className="h-4 w-4 mr-2" /> Vista previa</Button>
-              <Button onClick={() => sendMutation.mutate()} disabled={sendMutation.isPending}><Send className="h-4 w-4 mr-2" /> Enviar a Discord</Button>
+              <Button onClick={() => sendMutation.mutate()} disabled={sendMutation.isPending || !discordConfigured}><Send className="h-4 w-4 mr-2" /> Enviar a Discord</Button>
+              {!discordConfigured && <span className="text-xs text-muted-foreground">Configura el webhook en Ajustes → Discord</span>}
             </div>
           </CardContent>
         </Card>
@@ -795,7 +803,7 @@ export default function DashboardPage() {
         <div className="bg-surface border border-brand/10 p-4 whitespace-pre-wrap text-sm font-mono text-foreground">{preview?.summary || "Cargando..."}</div>
         <div className="flex justify-end gap-2 mt-4">
           <Button variant="outline" onClick={() => setPreviewOpen(false)}>Cerrar</Button>
-          <Button onClick={() => { sendMutation.mutate(); setPreviewOpen(false) }} disabled={sendMutation.isPending}><Send className="h-4 w-4 mr-2" /> Enviar</Button>
+          <Button onClick={() => { sendMutation.mutate(); setPreviewOpen(false) }} disabled={sendMutation.isPending || !discordConfigured}><Send className="h-4 w-4 mr-2" /> Enviar</Button>
         </div>
       </Dialog>
     </div>

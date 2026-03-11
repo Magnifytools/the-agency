@@ -1090,16 +1090,18 @@ export default function TasksPage() {
                       <option value="">—</option>
                       {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
                     </select>
-                    <input
-                      type="date"
-                      value={item.due_date ?? ""}
-                      onChange={(e) => updateChecklistMut.mutate({
-                        id: item.id,
-                        data: { due_date: e.target.value || null },
-                      })}
-                      className={`text-xs h-6 w-28 border rounded bg-background px-1 shrink-0 ${isOverdue ? "text-red-500 border-red-300" : ""}`}
-                      title="Fecha límite"
-                    />
+                    <div className="flex items-center gap-0.5 shrink-0" title="Fecha límite de la subtarea">
+                      <span className="text-[10px] text-muted-foreground">Límite</span>
+                      <input
+                        type="date"
+                        value={item.due_date ?? ""}
+                        onChange={(e) => updateChecklistMut.mutate({
+                          id: item.id,
+                          data: { due_date: e.target.value || null },
+                        })}
+                        className={`text-xs h-6 w-28 border rounded bg-background px-1 ${isOverdue ? "text-red-500 border-red-300" : ""}`}
+                      />
+                    </div>
                     <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0"
                       onClick={() => deleteChecklistMut.mutate(item.id)}>
                       <Trash2 className="h-3 w-3" />
