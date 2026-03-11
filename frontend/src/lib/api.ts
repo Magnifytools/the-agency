@@ -941,4 +941,13 @@ export const inboxApi = {
     api.post<{ ok: boolean; task_id: number; note: InboxNote }>(`/inbox/${id}/convert-to-task`, data).then((r) => r.data),
   dismiss: (id: number) =>
     api.post<InboxNote>(`/inbox/${id}/dismiss`).then((r) => r.data),
+  uploadAttachment: (noteId: number, file: File) => {
+    const fd = new FormData()
+    fd.append("file", file)
+    return api.post<{ id: number; name: string; mime_type: string; size_bytes: number }>(`/inbox/${noteId}/attachments`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }).then((r) => r.data)
+  },
+  deleteAttachment: (noteId: number, attachmentId: number) =>
+    api.delete(`/inbox/${noteId}/attachments/${attachmentId}`).then((r) => r.data),
 }

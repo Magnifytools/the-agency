@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.database import get_db
 from backend.db.models import DailyUpdate, DailyUpdateStatus, DiscordSettings, User
 from backend.api.deps import get_current_user
+from backend.config import settings
 from backend.core.rate_limiter import ai_limiter
 from backend.schemas.daily import (
     DailySubmitRequest,
@@ -273,13 +274,13 @@ async def send_daily_to_discord(
     if not daily.parsed_data:
         raise HTTPException(status_code=400, detail="El daily no tiene datos parseados")
 
-    # Get Discord webhook from settings
+    # Get Discord webhook from settings (DB first, then env var fallback)
     ds_result = await db.execute(select(DiscordSettings).limit(1))
     ds = ds_result.scalar_one_or_none()
-    webhook_url = ds.webhook_url if ds else None
+    webhook_url = (ds.webhook_url if ds else None) or settings.DISCORD_WEBHOOK_URL
 
     if not webhook_url:
-        raise HTTPException(status_code=400, detail="Discord webhook no configurado")
+        raise HTTPException(status_code=400, detail="Discord webhook no configurado. Configúralo en Ajustes > Discord.")
 
     # Format message
     user_name = daily.user.full_name if daily.user else "Unknown"

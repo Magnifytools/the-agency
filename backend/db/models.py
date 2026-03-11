@@ -1351,3 +1351,19 @@ class InboxNote(TimestampMixin, Base):
     user = relationship("User", lazy="selectin")
     project = relationship("Project", lazy="selectin")
     client = relationship("Client", lazy="selectin")
+    attachments = relationship("InboxAttachment", back_populates="note", cascade="all, delete-orphan", lazy="selectin")
+
+
+class InboxAttachment(TimestampMixin, Base):
+    __tablename__ = "inbox_attachments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    note_id = Column(Integer, ForeignKey("inbox_notes.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    mime_type = Column(String(100), nullable=False, default="application/octet-stream")
+    size_bytes = Column(Integer, nullable=False)
+    content = Column(LargeBinary, nullable=False)
+    uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    note = relationship("InboxNote", back_populates="attachments")
+    uploader = relationship("User", lazy="selectin")

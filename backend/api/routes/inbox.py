@@ -4,14 +4,15 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import Response
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db, async_session
 from backend.db.models import (
-    InboxNote, InboxNoteStatus, Project, ProjectStatus, Client, ClientStatus,
+    InboxNote, InboxNoteStatus, InboxAttachment, Project, ProjectStatus, Client, ClientStatus,
     Task, TaskStatus, TaskPriority,
 )
 from backend.api.deps import get_current_user
@@ -55,6 +56,10 @@ def _to_response(note: InboxNote) -> InboxNoteResponse:
         resolved_entity_id=note.resolved_entity_id,
         ai_suggestion=note.ai_suggestion,
         link_url=note.link_url,
+        attachments=[
+            {"id": a.id, "name": a.name, "mime_type": a.mime_type, "size_bytes": a.size_bytes}
+            for a in (note.attachments or [])
+        ],
         created_at=note.created_at,
         updated_at=note.updated_at,
     )
@@ -383,3 +388,132 @@ async def dismiss_note(
     await db.commit()
     await db.refresh(note)
     return _to_response(note)
+
+
+# ── Attachments ──────────────────────────────────────
+
+MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024  # 10 MB
+ALLOWED_MIME_PREFIXES = ("image/", "application/pdf", "text/", "application/vnd.", "application/msword")
+
+
+@router.post("/{note_id}/attachments")
+async def upload_attachment(
+    note_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Upload an attachment to an inbox note."""
+    note = await _get_note_or_404(note_id, user.id, db)
+
+    content = await file.read()
+    if len(content) > MAX_ATTACHMENT_SIZE:
+        raise HTTPException(status_code=400, detail="El archivo supera el límite de 10 MB")
+
+    # Prevent duplicate filenames on the same note
+    existing = await db.execute(
+        select(InboxAttachment).where(
+            InboxAttachment.note_id == note_id,
+            InboxAttachment.name == file.filename,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Ya existe un adjunto con el nombre '{file.filename}'")
+
+    attachment = InboxAttachment(
+        note_id=note.id,
+        name=file.filename or "unnamed",
+        mime_type=file.content_type or "application/octet-stream",
+        size_bytes=len(content),
+        content=content,
+        uploaded_by=user.id,
+    )
+    db.add(attachment)
+    await db.commit()
+    await db.refresh(attachment)
+
+    return {
+        "id": attachment.id,
+        "name": attachment.name,
+        "mime_type": attachment.mime_type,
+        "size_bytes": attachment.size_bytes,
+        "created_at": attachment.created_at.isoformat() if attachment.created_at else None,
+    }
+
+
+@router.get("/{note_id}/attachments")
+async def list_attachments(
+    note_id: int,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """List attachments for an inbox note (without content)."""
+    await _get_note_or_404(note_id, user.id, db)
+    result = await db.execute(
+        select(InboxAttachment).where(InboxAttachment.note_id == note_id)
+    )
+    attachments = result.scalars().all()
+    return [
+        {
+            "id": a.id,
+            "name": a.name,
+            "mime_type": a.mime_type,
+            "size_bytes": a.size_bytes,
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+        }
+        for a in attachments
+    ]
+
+
+@router.get("/{note_id}/attachments/{attachment_id}")
+async def download_attachment(
+    note_id: int,
+    attachment_id: int,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Download/view an attachment inline."""
+    await _get_note_or_404(note_id, user.id, db)
+    result = await db.execute(
+        select(InboxAttachment).where(
+            InboxAttachment.id == attachment_id,
+            InboxAttachment.note_id == note_id,
+        )
+    )
+    attachment = result.scalar_one_or_none()
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Adjunto no encontrado")
+
+    # Serve inline for images/PDFs, attachment for others
+    disposition = "inline" if attachment.mime_type.startswith("image/") or attachment.mime_type == "application/pdf" else "attachment"
+
+    return Response(
+        content=attachment.content,
+        media_type=attachment.mime_type,
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{attachment.name}"',
+            "Content-Length": str(attachment.size_bytes),
+        },
+    )
+
+
+@router.delete("/{note_id}/attachments/{attachment_id}", status_code=204)
+async def delete_attachment(
+    note_id: int,
+    attachment_id: int,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Delete an attachment from an inbox note."""
+    await _get_note_or_404(note_id, user.id, db)
+    result = await db.execute(
+        select(InboxAttachment).where(
+            InboxAttachment.id == attachment_id,
+            InboxAttachment.note_id == note_id,
+        )
+    )
+    attachment = result.scalar_one_or_none()
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Adjunto no encontrado")
+    await db.delete(attachment)
+    await db.commit()

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { inboxApi, projectsApi, clientsApi, usersApi } from "@/lib/api"
 import { inboxKeys } from "@/lib/query-keys"
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import {
   CheckSquare, X, RefreshCw, Loader2, FolderKanban,
-  Users, Clock, Sparkles, ExternalLink,
+  Users, Clock, Sparkles, ExternalLink, Paperclip, FileText, Image, Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage, formatTimeAgo } from "@/lib/utils"
@@ -33,14 +33,45 @@ interface Props {
   note: InboxNote
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 export function InboxNoteCard({ note }: Props) {
   const [convertOpen, setConvertOpen] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
   const ai = note.ai_suggestion as AISuggestion | null
 
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: inboxKeys.all() })
     queryClient.invalidateQueries({ queryKey: inboxKeys.count() })
+  }
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => inboxApi.uploadAttachment(note.id, file),
+    onSuccess: () => {
+      invalidateAll()
+      toast.success("Adjunto subido")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al subir adjunto")),
+  })
+
+  const deleteAttachmentMutation = useMutation({
+    mutationFn: (attachmentId: number) => inboxApi.deleteAttachment(note.id, attachmentId),
+    onSuccess: () => {
+      invalidateAll()
+      toast.success("Adjunto eliminado")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar")),
+  })
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) uploadMutation.mutate(file)
+    e.target.value = ""
   }
 
   const { data: projects = [] } = useQuery({
@@ -93,6 +124,40 @@ export function InboxNoteCard({ note }: Props) {
                 {note.link_url.replace(/^https?:\/\//, "").slice(0, 50)}{note.link_url.replace(/^https?:\/\//, "").length > 50 ? "…" : ""}
               </a>
             )}
+
+            {/* Attachments */}
+            {note.attachments && note.attachments.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {note.attachments.map((att) => {
+                  const isImage = att.mime_type.startsWith("image/")
+                  const previewUrl = `/api/inbox/${note.id}/attachments/${att.id}`
+                  return (
+                    <div key={att.id} className="group/att relative flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg bg-muted/50 border border-border/50 hover:border-border transition-colors">
+                      {isImage ? (
+                        <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-foreground hover:text-brand">
+                          <Image className="w-3 h-3 shrink-0" />
+                          <span className="truncate max-w-[120px]">{att.name}</span>
+                        </a>
+                      ) : (
+                        <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-foreground hover:text-brand">
+                          <FileText className="w-3 h-3 shrink-0" />
+                          <span className="truncate max-w-[120px]">{att.name}</span>
+                        </a>
+                      )}
+                      <span className="text-muted-foreground">{formatFileSize(att.size_bytes)}</span>
+                      <button
+                        type="button"
+                        className="opacity-0 group-hover/att:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                        onClick={() => deleteAttachmentMutation.mutate(att.id)}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                 <Clock className="w-3 h-3" />
@@ -228,6 +293,26 @@ export function InboxNoteCard({ note }: Props) {
                 )}
                 Descartar
               </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs gap-1.5 px-3 ml-auto"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadMutation.isPending}
+              >
+                {uploadMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Paperclip className="w-3 h-3" />
+                )}
+                Adjuntar
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={handleFileChange}
+              />
             </div>
           </div>
         )}

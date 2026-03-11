@@ -441,6 +441,13 @@ export interface AISuggestion {
   reasoning: string
 }
 
+export interface InboxAttachment {
+  id: number
+  name: string
+  mime_type: string
+  size_bytes: number
+}
+
 export interface InboxNote {
   id: number
   user_id: number
@@ -455,6 +462,7 @@ export interface InboxNote {
   resolved_entity_id: number | null
   ai_suggestion: AISuggestion | null
   link_url: string | null
+  attachments: InboxAttachment[]
   created_at: string
   updated_at: string
 }

@@ -33,6 +33,15 @@ class ConvertToTaskBody(BaseModel):
     assigned_to: Optional[int] = None
 
 
+class AttachmentInfo(BaseModel):
+    id: int
+    name: str
+    mime_type: str
+    size_bytes: int
+
+    model_config = {"from_attributes": True}
+
+
 class InboxNoteResponse(BaseModel):
     id: int
     user_id: int
@@ -47,6 +56,7 @@ class InboxNoteResponse(BaseModel):
     resolved_entity_id: Optional[int] = None
     ai_suggestion: Optional[dict] = None
     link_url: Optional[str] = None
+    attachments: list[AttachmentInfo] = []
     created_at: datetime
     updated_at: datetime
 
