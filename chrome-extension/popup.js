@@ -82,11 +82,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (stored[STORAGE_KEYS.email]) emailInput.value = stored[STORAGE_KEYS.email];
 
   if (token) {
-    const valid = await verifyToken();
-    if (valid) {
-      showMainView();
-      return;
-    }
+    // Show main view immediately — verify in background
+    showMainView();
+    verifyToken().then((valid) => {
+      if (!valid) {
+        token = "";
+        chrome.storage.local.remove(STORAGE_KEYS.token);
+        showLoginView();
+      }
+    });
+    return;
   }
 
   showLoginView();
