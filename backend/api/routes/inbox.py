@@ -340,6 +340,9 @@ async def convert_to_task(
     note.resolved_entity_id = task.id
     await db.commit()
 
+    # Refresh to re-load relationships (project, client) after commit
+    await db.refresh(note, ["project", "client"])
+
     return {
         "ok": True,
         "task_id": task.id,

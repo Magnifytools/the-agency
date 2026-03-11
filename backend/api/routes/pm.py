@@ -211,9 +211,14 @@ async def share_briefing_to_discord(
     if not briefing['priorities'] and not briefing['alerts'] and not briefing['followups']:
         lines.append("\n*No hay tareas pendientes para hoy.*")
         
+    content = "\n".join(lines)
+    # Discord enforces 2000 char limit
+    if len(content) > 1950:
+        content = content[:1950] + "\n…(truncado)"
+
     discord_payload = {
-        "content": "\n".join(lines),
-        "username": "Agency Manager Bot",
+        "content": content,
+        "username": "The Agency Bot",
     }
     
     try:

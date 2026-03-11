@@ -16,7 +16,7 @@ export function DailyBriefingDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { data: briefing, isLoading } = useQuery({
+  const { data: briefing, isLoading, isError } = useQuery({
     queryKey: ["daily-briefing"],
     queryFn: () => pmApi.dailyBriefing(),
     enabled: open,
@@ -145,6 +145,13 @@ export function DailyBriefingDialog({
                 </p>
               </div>
             )}
+        </div>
+      ) : isError ? (
+        <div className="py-8 text-center">
+          <AlertTriangle className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+          <p className="text-muted-foreground text-sm">
+            No se pudo cargar el briefing. Inténtalo de nuevo más tarde.
+          </p>
         </div>
       ) : null}
 
