@@ -1330,6 +1330,7 @@ class InboxNote(TimestampMixin, Base):
     resolved_as = Column(String(20), nullable=True)
     resolved_entity_id = Column(Integer, nullable=True)
     ai_suggestion = Column(JSONB, nullable=True)
+    link_url = Column(String(500), nullable=True)
 
     user = relationship("User", lazy="selectin")
     project = relationship("Project", lazy="selectin")

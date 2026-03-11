@@ -140,6 +140,7 @@ async def create_inbox_note(
         source=body.source,
         project_id=body.project_id,
         client_id=body.client_id,
+        link_url=body.link_url,
         status=initial_status,
     )
     db.add(note)
@@ -214,7 +215,7 @@ async def update_inbox_note(
 
     _UPDATABLE_NOTE_FIELDS = {
         "raw_text", "status", "project_id", "client_id",
-        "resolved_as", "resolved_entity_id",
+        "resolved_as", "resolved_entity_id", "link_url",
     }
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():

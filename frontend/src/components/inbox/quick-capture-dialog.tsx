@@ -6,7 +6,8 @@ import { Dialog, DialogHeader, DialogTitle, DialogContent } from "@/components/u
 import { Textarea } from "@/components/ui/textarea"
 import { Select } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Inbox, Loader2, Zap } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Inbox, Link2, Loader2, Zap } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 
@@ -17,6 +18,7 @@ interface Props {
 
 export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   const [text, setText] = useState("")
+  const [linkUrl, setLinkUrl] = useState("")
   const [clientId, setClientId] = useState<string>("")
   const [projectId, setProjectId] = useState<string>("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -37,10 +39,11 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: { raw_text: string; project_id?: number; client_id?: number }) =>
-      inboxApi.create({ raw_text: data.raw_text, source: "quick_capture", project_id: data.project_id, client_id: data.client_id }),
+    mutationFn: (data: { raw_text: string; project_id?: number; client_id?: number; link_url?: string }) =>
+      inboxApi.create({ raw_text: data.raw_text, source: "quick_capture", project_id: data.project_id, client_id: data.client_id, link_url: data.link_url }),
     onSuccess: () => {
       setText("")
+      setLinkUrl("")
       setClientId("")
       setProjectId("")
       onOpenChange(false)
@@ -54,6 +57,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   useEffect(() => {
     if (open) {
       setText("")
+      setLinkUrl("")
       setClientId("")
       setProjectId("")
       setTimeout(() => textareaRef.current?.focus(), 100)
@@ -67,6 +71,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
       raw_text: trimmed,
       client_id: clientId ? Number(clientId) : undefined,
       project_id: projectId ? Number(projectId) : undefined,
+      link_url: linkUrl.trim() || undefined,
     })
   }
 
@@ -101,6 +106,18 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
           className="min-h-[100px] rounded-xl resize-none text-sm"
           disabled={createMutation.isPending}
         />
+
+        <div className="flex items-center gap-2">
+          <Link2 className="w-4 h-4 text-muted-foreground shrink-0" />
+          <Input
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            placeholder="Enlace a Drive, Docs, etc. (opcional)"
+            className="text-sm h-8"
+            disabled={createMutation.isPending}
+            type="url"
+          />
+        </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           <Select

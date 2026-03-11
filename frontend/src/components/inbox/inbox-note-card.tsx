@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import {
   CheckSquare, X, RefreshCw, Loader2, FolderKanban,
-  Users, Clock, Sparkles,
+  Users, Clock, Sparkles, ExternalLink,
 } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage, formatTimeAgo } from "@/lib/utils"
@@ -87,6 +87,12 @@ export function InboxNoteCard({ note }: Props) {
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
             <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{note.raw_text}</p>
+            {note.link_url && (
+              <a href={note.link_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-brand hover:underline mt-1">
+                <ExternalLink className="w-3 h-3" />
+                {note.link_url.replace(/^https?:\/\//, "").slice(0, 50)}{note.link_url.replace(/^https?:\/\//, "").length > 50 ? "…" : ""}
+              </a>
+            )}
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                 <Clock className="w-3 h-3" />

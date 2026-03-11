@@ -430,6 +430,19 @@ export default function TimesheetPage() {
                     </TableCell>
                   </TableRow>
                 ))}
+                {weeklyData.users.length > 1 && (
+                  <TableRow className="bg-muted/50 font-semibold">
+                    <TableCell>Total equipo</TableCell>
+                    {days.map((d) => {
+                      const total = weeklyData.users.reduce((sum, u) => sum + (u.daily_minutes[d] || 0), 0)
+                      const h = Math.floor(total / 60); const min = total % 60
+                      return <TableCell key={d} className="text-right mono">{total > 0 ? (h > 0 ? (min > 0 ? `${h}h ${min}m` : `${h}h`) : `${min}m`) : "—"}</TableCell>
+                    })}
+                    <TableCell className="text-right mono">
+                      {(() => { const total = weeklyData.users.reduce((sum, u) => sum + (u.total_minutes || 0), 0); const h = Math.floor(total / 60); const min = total % 60; return total > 0 ? (h > 0 ? (min > 0 ? `${h}h ${min}m` : `${h}h`) : `${min}m`) : "—" })()}
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           )}
@@ -449,7 +462,7 @@ export default function TimesheetPage() {
           {clientLoading ? (
             <div className="text-sm text-muted-foreground">Cargando...</div>
           ) : clientReport.length === 0 ? (
-            <EmptyTableState colSpan={5} icon={Building2} title="Sin datos por cliente" description="No hay registros de tiempo en esta semana." />
+            <EmptyTableState colSpan={5} icon={Building2} title="Sin datos por cliente" description="Asigna tareas a tus registros de tiempo para ver el desglose por cliente." />
           ) : (
             <Table>
               <TableHeader>
@@ -484,7 +497,7 @@ export default function TimesheetPage() {
           {projectLoading ? (
             <div className="text-sm text-muted-foreground">Cargando...</div>
           ) : projectReport.length === 0 ? (
-            <EmptyTableState colSpan={4} icon={FolderKanban} title="Sin datos por proyecto" description="No hay registros de tiempo vinculados a proyectos en esta semana." />
+            <EmptyTableState colSpan={4} icon={FolderKanban} title="Sin datos por proyecto" description="Asigna tareas a tus registros de tiempo para ver el desglose por proyecto." />
           ) : (
             <Table>
               <TableHeader>

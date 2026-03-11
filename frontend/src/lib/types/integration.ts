@@ -434,6 +434,7 @@ export interface InboxNote {
   resolved_as: string | null
   resolved_entity_id: number | null
   ai_suggestion: AISuggestion | null
+  link_url: string | null
   created_at: string
   updated_at: string
 }
@@ -443,4 +444,5 @@ export interface InboxNoteCreate {
   source?: string
   project_id?: number | null
   client_id?: number | null
+  link_url?: string | null
 }

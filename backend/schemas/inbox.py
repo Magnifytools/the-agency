@@ -12,6 +12,7 @@ class InboxNoteCreate(BaseModel):
     source: str = "dashboard"
     project_id: Optional[int] = None
     client_id: Optional[int] = None
+    link_url: Optional[str] = None
 
 
 class InboxNoteUpdate(BaseModel):
@@ -21,6 +22,7 @@ class InboxNoteUpdate(BaseModel):
     client_id: Optional[int] = None
     resolved_as: Optional[str] = None
     resolved_entity_id: Optional[int] = None
+    link_url: Optional[str] = None
 
 
 class ConvertToTaskBody(BaseModel):
@@ -44,6 +46,7 @@ class InboxNoteResponse(BaseModel):
     resolved_as: Optional[str] = None
     resolved_entity_id: Optional[int] = None
     ai_suggestion: Optional[dict] = None
+    link_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
