@@ -1090,8 +1090,8 @@ export default function TasksPage() {
                       <option value="">—</option>
                       {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
                     </select>
-                    <div className="flex items-center gap-0.5 shrink-0" title="Fecha límite de la subtarea">
-                      <span className="text-[10px] text-muted-foreground">Límite</span>
+                    <div className="flex items-center gap-0.5 shrink-0" title="Fecha de vencimiento de la subtarea">
+                      <span className="text-[10px] text-muted-foreground">Vence</span>
                       <input
                         type="date"
                         value={item.due_date ?? ""}
