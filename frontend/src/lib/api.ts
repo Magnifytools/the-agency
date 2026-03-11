@@ -245,6 +245,10 @@ export const tasksApi = {
   update: (id: number, data: Partial<TaskCreate>) =>
     api.put<Task>(`/tasks/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/tasks/${id}`).then((r) => r.data),
+  bulkUpdate: (ids: number[], updates: Record<string, unknown>) =>
+    api.patch<{ updated: number; requested: number }>("/tasks/bulk/update", { ids, updates }).then((r) => r.data),
+  bulkDelete: (ids: number[]) =>
+    api.post<{ deleted: number; errors: number; requested: number }>("/tasks/bulk/delete", { ids }).then((r) => r.data),
   checklist: {
     list: (taskId: number) => api.get<ChecklistItem[]>(`/tasks/${taskId}/checklist`).then((r) => r.data),
     create: (taskId: number, text: string, assigned_to?: number | null, due_date?: string | null, description?: string | null) =>

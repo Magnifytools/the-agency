@@ -126,40 +126,31 @@ export default function TasksPage() {
   const { sortedItems: sortedTasks, sortConfig: taskSortConfig, requestSort: requestTaskSort } = useTableSort(tasks)
   const { selectedIds: selectedTaskIds, isSelected: isTaskSelected, toggleItem: toggleTask, toggleAll: toggleAllTasks, clearSelection: clearTaskSelection, selectedCount: selectedTaskCount, allSelected: allTasksSelected } = useBulkSelect(tasks)
 
-  const bulkStatusMutation = useMutation({
-    mutationFn: async ({ ids, status }: { ids: number[]; status: string }) => {
-      const results = await Promise.allSettled(ids.map((id) => tasksApi.update(id, { status: status as TaskStatus })))
-      const fulfilled = results.filter((r) => r.status === "fulfilled").length
-      const rejected = results.length - fulfilled
-      return { fulfilled, rejected }
-    },
-    onSuccess: ({ fulfilled, rejected }) => {
+  const bulkUpdateMutation = useMutation({
+    mutationFn: async ({ ids, updates }: { ids: number[]; updates: Record<string, unknown> }) =>
+      tasksApi.bulkUpdate(ids, updates),
+    onSuccess: ({ updated, requested }) => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] })
       clearTaskSelection()
       setBulkStatus("")
-      if (rejected === 0) {
-        toast.success(`${fulfilled} tareas actualizadas`)
+      if (updated === requested) {
+        toast.success(`${updated} tareas actualizadas`)
       } else {
-        toast.warning(`${fulfilled} actualizadas, ${rejected} fallaron`)
+        toast.warning(`${updated}/${requested} actualizadas`)
       }
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar tareas")),
   })
 
   const bulkDeleteMutation = useMutation({
-    mutationFn: async (ids: number[]) => {
-      const results = await Promise.allSettled(ids.map((id) => tasksApi.delete(id)))
-      const fulfilled = results.filter((r) => r.status === "fulfilled").length
-      const rejected = results.length - fulfilled
-      return { fulfilled, rejected }
-    },
-    onSuccess: ({ fulfilled, rejected }) => {
+    mutationFn: async (ids: number[]) => tasksApi.bulkDelete(ids),
+    onSuccess: ({ deleted, requested }) => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] })
       clearTaskSelection()
-      if (rejected === 0) {
-        toast.success(`${fulfilled} tareas eliminadas`)
+      if (deleted === requested) {
+        toast.success(`${deleted} tareas eliminadas`)
       } else {
-        toast.warning(`${fulfilled} eliminadas, ${rejected} fallaron`)
+        toast.warning(`${deleted}/${requested} eliminadas`)
       }
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar tareas")),
@@ -1301,10 +1292,13 @@ export default function TasksPage() {
       <BulkActionBar selectedCount={selectedTaskCount} onClear={clearTaskSelection}>
         <Select
           value={bulkStatus}
-          onChange={(e) => setBulkStatus(e.target.value)}
+          onChange={(e) => {
+            setBulkStatus(e.target.value)
+            if (e.target.value) bulkUpdateMutation.mutate({ ids: [...selectedTaskIds], updates: { status: e.target.value } })
+          }}
           className="h-8 text-xs w-36"
         >
-          <option value="">Cambiar estado</option>
+          <option value="">Estado...</option>
           <option value="backlog">Backlog</option>
           <option value="pending">Pendiente</option>
           <option value="in_progress">En curso</option>
@@ -1312,15 +1306,30 @@ export default function TasksPage() {
           <option value="in_review">En revisión</option>
           <option value="completed">Completada</option>
         </Select>
-        {bulkStatus && (
-          <Button
-            size="sm"
-            onClick={() => bulkStatusMutation.mutate({ ids: [...selectedTaskIds], status: bulkStatus })}
-            disabled={bulkStatusMutation.isPending}
-          >
-            {bulkStatusMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Aplicar"}
-          </Button>
-        )}
+        <Select
+          value=""
+          onChange={(e) => {
+            if (e.target.value) bulkUpdateMutation.mutate({ ids: [...selectedTaskIds], updates: { priority: e.target.value } })
+          }}
+          className="h-8 text-xs w-32"
+        >
+          <option value="">Prioridad...</option>
+          <option value="urgent">Urgente</option>
+          <option value="high">Alta</option>
+          <option value="medium">Media</option>
+          <option value="low">Baja</option>
+        </Select>
+        <Select
+          value=""
+          onChange={(e) => {
+            if (e.target.value) bulkUpdateMutation.mutate({ ids: [...selectedTaskIds], updates: { assigned_to: e.target.value === "none" ? null : Number(e.target.value) } })
+          }}
+          className="h-8 text-xs w-32"
+        >
+          <option value="">Asignar a...</option>
+          <option value="none">Sin asignar</option>
+          {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+        </Select>
         <Button
           size="sm"
           variant="destructive"

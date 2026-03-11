@@ -2,7 +2,8 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -254,6 +255,66 @@ async def delete_task(
         await db.rollback()
         logger.error("Error eliminando tarea %d: %s", task_id, e)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
+# ── Bulk operations ──────────────────────────────────────────────────────────
+
+class BulkUpdateBody(BaseModel):
+    ids: list[int]
+    updates: dict  # Partial task fields: status, priority, assigned_to, etc.
+
+class BulkDeleteBody(BaseModel):
+    ids: list[int]
+
+
+@router.patch("/bulk/update")
+async def bulk_update_tasks(
+    body: BulkUpdateBody,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("tasks", write=True)),
+):
+    if not body.ids or len(body.ids) > 100:
+        raise HTTPException(400, "Provide 1-100 task IDs")
+    allowed = {"status", "priority", "assigned_to", "category_id", "due_date", "client_id", "project_id", "phase_id"}
+    updates = {k: v for k, v in body.updates.items() if k in allowed}
+    if not updates:
+        raise HTTPException(400, "No valid fields to update")
+
+    result = await db.execute(select(Task).where(Task.id.in_(body.ids)))
+    tasks = result.scalars().all()
+    updated = 0
+    for task in tasks:
+        for field, value in updates.items():
+            if field == "status" and value:
+                value = TaskStatus(value)
+            if field == "priority" and value:
+                value = TaskPriority(value)
+            setattr(task, field, value)
+        updated += 1
+    await db.commit()
+    return {"updated": updated, "requested": len(body.ids)}
+
+
+@router.post("/bulk/delete")
+async def bulk_delete_tasks(
+    body: BulkDeleteBody,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("tasks", write=True)),
+):
+    if not body.ids or len(body.ids) > 100:
+        raise HTTPException(400, "Provide 1-100 task IDs")
+    result = await db.execute(select(Task).where(Task.id.in_(body.ids)))
+    tasks = result.scalars().all()
+    deleted = 0
+    errors = 0
+    for task in tasks:
+        try:
+            await db.delete(task)
+            deleted += 1
+        except Exception:
+            errors += 1
+    await db.commit()
+    return {"deleted": deleted, "errors": errors, "requested": len(body.ids)}
 
 
 # ── Checklist endpoints ───────────────────────────────────────────────────────

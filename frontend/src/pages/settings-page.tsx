@@ -21,7 +21,8 @@ interface EditingState {
 
 export default function SettingsPage() {
   const queryClient = useQueryClient()
-  const { user, refreshUser, isAdmin } = useAuth()
+  const { user, refreshUser, isAdmin, hasPermission } = useAuth()
+  const canManageCategories = isAdmin || hasPermission("tasks", true)
   const [bindings, setBindings] = useState<Record<string, string>>({
     ...DEFAULT_SHORTCUTS,
     ...(user?.preferences?.shortcuts ?? {}),
@@ -111,7 +112,7 @@ export default function SettingsPage() {
   const { data: categories = [] } = useQuery({
     queryKey: ["task-categories"],
     queryFn: () => categoriesApi.list(),
-    enabled: isAdmin,
+    enabled: canManageCategories,
   })
 
   const createCatMut = useMutation({
@@ -229,8 +230,8 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Task categories — admin only */}
-      {isAdmin && (
+      {/* Task categories — admin or users with tasks write permission */}
+      {canManageCategories && (
         <div className="bg-card border border-border rounded-2xl p-6">
           <div className="mb-6">
             <h2 className="text-base font-semibold text-foreground">Categorías de tareas</h2>
