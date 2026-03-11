@@ -24,7 +24,6 @@ export const vaultKeys = {
 
 export const newsKeys = {
   all: () => ["industry-news"] as const,
-  feeds: () => ["news-feeds"] as const,
 }
 
 export const inboxKeys = {

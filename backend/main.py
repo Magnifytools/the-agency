@@ -575,23 +575,6 @@ async def _generate_recurring_instances():
             logging.info("🔄 Generated %d recurring task instance(s) for %s", created, today)
 
 
-async def _news_fetch_loop():
-    """Background loop that fetches RSS feeds every 6 hours."""
-    from backend.services.news_fetcher import fetch_all_feeds
-    from backend.db.database import async_session
-
-    await asyncio.sleep(600)  # 10 min initial delay
-    while True:
-        try:
-            async with async_session() as session:
-                result = await fetch_all_feeds(session)
-                if result["new_articles"]:
-                    logging.info("RSS fetch: %d new article(s) from %d feed(s)",
-                                 result["new_articles"], result["feeds_processed"])
-        except Exception as e:
-            logging.error("RSS fetch loop error: %s", e)
-        await asyncio.sleep(6 * 3600)  # every 6 hours
-
 
 async def _recurring_midnight_loop():
     """Background loop that generates recurring task instances at midnight."""
@@ -733,8 +716,6 @@ async def lifespan(app: FastAPI):
         logging.info("Holded auto-sync started (every 6h).")
     recurring_task = asyncio.create_task(_recurring_midnight_loop(), name="recurring-gen")
     recurring_task.add_done_callback(_log_task_error)
-    news_task = asyncio.create_task(_news_fetch_loop(), name="news-rss")
-    news_task.add_done_callback(_log_task_error)
     logging.info("Startup ready.")
     yield
     if task:
@@ -752,11 +733,6 @@ async def lifespan(app: FastAPI):
     recurring_task.cancel()
     try:
         await recurring_task
-    except asyncio.CancelledError:
-        pass
-    news_task.cancel()
-    try:
-        await news_task
     except asyncio.CancelledError:
         pass
 

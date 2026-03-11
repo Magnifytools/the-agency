@@ -123,8 +123,7 @@ import type {
   AssetCategory,
   IndustryNewsItem,
   IndustryNewsCreate,
-  NewsFeed,
-  NewsFeedCreate,
+  NewsExtraction,
   InboxNote,
   InboxNoteCreate,
 } from "./types"
@@ -865,17 +864,8 @@ export const newsApi = {
     api.put<IndustryNewsItem>(`/news/${id}`, data).then((r) => r.data),
   delete: (id: number) =>
     api.delete(`/news/${id}`).then((r) => r.data),
-  // RSS Feeds
-  listFeeds: () =>
-    api.get<NewsFeed[]>("/news/feeds").then((r) => r.data),
-  createFeed: (data: NewsFeedCreate) =>
-    api.post<NewsFeed>("/news/feeds", data).then((r) => r.data),
-  updateFeed: (id: number, data: Partial<NewsFeedCreate>) =>
-    api.put<NewsFeed>(`/news/feeds/${id}`, data).then((r) => r.data),
-  deleteFeed: (id: number) =>
-    api.delete(`/news/feeds/${id}`).then((r) => r.data),
-  fetchFeeds: () =>
-    api.post<{ feeds_processed: number; new_articles: number }>("/news/fetch").then((r) => r.data),
+  extract: (url: string) =>
+    api.post<NewsExtraction>("/news/extract", { url }).then((r) => r.data),
 }
 
 // --- Engine Integration ---
