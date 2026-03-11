@@ -220,6 +220,34 @@ async def _ensure_numeric_types():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_required BOOLEAN NOT NULL DEFAULT false",
         "ALTER TABLE task_checklists ADD COLUMN IF NOT EXISTS description TEXT",
         "ALTER TABLE inbox_notes ADD COLUMN IF NOT EXISTS link_url VARCHAR(500)",
+        # Inbox attachments table
+        """CREATE TABLE IF NOT EXISTS inbox_attachments (
+            id SERIAL PRIMARY KEY,
+            note_id INTEGER NOT NULL REFERENCES inbox_notes(id) ON DELETE CASCADE,
+            name VARCHAR(255) NOT NULL,
+            mime_type VARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
+            size_bytes INTEGER NOT NULL,
+            content BYTEA NOT NULL,
+            uploaded_by INTEGER REFERENCES users(id),
+            created_at TIMESTAMPTZ DEFAULT now(),
+            updated_at TIMESTAMPTZ DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_inbox_attachments_note_id ON inbox_attachments(note_id)",
+        # Notifications table
+        """CREATE TABLE IF NOT EXISTS notifications (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            type VARCHAR(50) NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            message TEXT,
+            is_read BOOLEAN NOT NULL DEFAULT false,
+            link_url VARCHAR(500),
+            entity_type VARCHAR(50),
+            entity_id INTEGER,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            updated_at TIMESTAMPTZ DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_notifications_user_id ON notifications(user_id)",
     ]
     async with engine.begin() as conn:
         for sql in stmts:
