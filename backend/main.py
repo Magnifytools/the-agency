@@ -230,6 +230,8 @@ async def _ensure_numeric_types():
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )""",
         "ALTER TABLE industry_news ADD COLUMN IF NOT EXISTS feed_id INTEGER REFERENCES news_feeds(id) ON DELETE SET NULL",
+        "ALTER TABLE task_checklists ADD COLUMN IF NOT EXISTS description TEXT",
+        "ALTER TABLE inbox_notes ADD COLUMN IF NOT EXISTS link_url VARCHAR(500)",
     ]
     async with engine.begin() as conn:
         for sql in stmts:
