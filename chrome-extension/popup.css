@@ -83,6 +83,31 @@ body {
   gap: 8px;
 }
 
+.header-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #FFD600;
+  background: rgba(255, 214, 0, 0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.timer-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ef4444;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
 .logo-sm {
   width: 24px;
   height: 24px;
@@ -503,6 +528,26 @@ textarea::placeholder {
   gap: 8px;
   margin-top: 4px;
   padding-left: 16px;
+}
+
+.task-play-btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: #52525b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: color 0.1s, background 0.1s;
+}
+
+.task-play-btn:hover {
+  color: #FFD600;
+  background: rgba(255, 214, 0, 0.1);
 }
 
 .task-status-label {

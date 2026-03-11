@@ -176,59 +176,68 @@ async def share_briefing_to_discord(
 ):
     """Generate the daily briefing and share it to Discord via Webhook."""
     from backend.config import settings
+    from backend.db.models import DiscordSettings
     import httpx
-    
-    if not settings.DISCORD_WEBHOOK_URL:
-        raise HTTPException(status_code=400, detail="Discord Webhook URL not configured in settings.")
-        
+
+    # Resolve webhook URL: DB settings first, then env var fallback
+    ds_result = await db.execute(select(DiscordSettings).limit(1))
+    ds = ds_result.scalar_one_or_none()
+    webhook_url = (ds.webhook_url if ds else None) or settings.DISCORD_WEBHOOK_URL
+
+    if not webhook_url:
+        raise HTTPException(
+            status_code=400,
+            detail="No hay webhook de Discord configurado. Ve a Ajustes > Discord para configurarlo.",
+        )
+
     briefing = await get_daily_briefing(db, user_id=current_user.id)
-    
+
     # Format the message for Discord
     lines = [f"# {briefing['greeting']}"]
     lines.append(f"**Briefing del {briefing['date']}**")
-    
+
     if briefing.get('suggestion'):
-        lines.append(f"> 💡 *{briefing['suggestion']}*")
-        
+        lines.append(f"> *{briefing['suggestion']}*")
+
     if briefing['priorities']:
-        lines.append("\n**📋 Tareas de hoy:**")
+        lines.append("\n**Tareas de hoy:**")
         for p in briefing['priorities']:
             client_prefix = f"[{p['client']}] " if p.get('client') else ""
             lines.append(f"- {client_prefix}{p['title']}")
-            
+
     if briefing['alerts']:
-        lines.append("\n**🚨 Tareas vencidas:**")
+        lines.append("\n**Tareas vencidas:**")
         for a in briefing['alerts']:
             client_prefix = f"[{a['client']}] " if a.get('client') else ""
-            lines.append(f"- {client_prefix}{a['title']} ({a['days_overdue']} días)")
-            
+            lines.append(f"- {client_prefix}{a['title']} ({a['days_overdue']} dias)")
+
     if briefing['followups']:
-        lines.append("\n**📞 Seguimientos pendientes:**")
-        for f in briefing['followups']:
-            client_prefix = f"[{f['client']}] " if f.get('client') else ""
-            lines.append(f"- {client_prefix}{f['subject']}")
-            
+        lines.append("\n**Seguimientos pendientes:**")
+        for f_ in briefing['followups']:
+            client_prefix = f"[{f_['client']}] " if f_.get('client') else ""
+            lines.append(f"- {client_prefix}{f_['subject']}")
+
     if not briefing['priorities'] and not briefing['alerts'] and not briefing['followups']:
         lines.append("\n*No hay tareas pendientes para hoy.*")
-        
+
     content = "\n".join(lines)
     # Discord enforces 2000 char limit
     if len(content) > 1950:
-        content = content[:1950] + "\n…(truncado)"
+        content = content[:1950] + "\n...(truncado)"
 
     discord_payload = {
         "content": content,
         "username": "The Agency Bot",
     }
-    
+
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(settings.DISCORD_WEBHOOK_URL, json=discord_payload)
+        async with httpx.AsyncClient() as http_client:
+            resp = await http_client.post(webhook_url, json=discord_payload)
             resp.raise_for_status()
     except Exception:
         logger.exception("Failed to push PM briefing to Discord for user_id=%s", current_user.id)
         raise HTTPException(status_code=500, detail="No se pudo enviar el briefing a Discord")
-        
+
     return {"status": "ok", "message": "Briefing shared to Discord."}
 
 

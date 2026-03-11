@@ -192,9 +192,10 @@ async def update_task(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     old_assigned_to = task.assigned_to
+    # actual_minutes excluded: auto-synced from time entries, not manually editable
     _UPDATABLE_TASK_FIELDS = {
         "title", "description", "status", "priority", "estimated_minutes",
-        "actual_minutes", "start_date", "due_date", "client_id", "category_id",
+        "start_date", "due_date", "client_id", "category_id",
         "assigned_to", "project_id", "phase_id", "depends_on",
         "scheduled_date", "waiting_for", "follow_up_date",
         "is_recurring", "recurrence_pattern", "recurrence_day",

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.database import get_db
 from fastapi.responses import StreamingResponse
 
+from backend.config import settings
 from backend.db.models import TimeEntry, Task, User, UserRole, Project, Client
 from backend.schemas.time_entry import (
     TimeEntryCreate,
@@ -342,7 +343,7 @@ async def time_entries_by_client(
             }
         cm = client_map[cid]
         mins = e.minutes or 0
-        rate = float((e.user.hourly_rate or 0) if e.user else 0)
+        rate = float((e.user.hourly_rate or settings.DEFAULT_HOURLY_RATE) if e.user else settings.DEFAULT_HOURLY_RATE)
         cost = mins * rate / 60
         cm["total_minutes"] += mins
         cm["entries_count"] += 1

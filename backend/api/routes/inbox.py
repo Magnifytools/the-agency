@@ -6,6 +6,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db, async_session
@@ -291,6 +292,10 @@ async def convert_to_task(
     note = await _get_note_or_404(note_id, user.id, db)
     body = body or ConvertToTaskBody()
 
+    # Guard: don't convert an already-processed note
+    if note.status == InboxNoteStatus.processed:
+        raise HTTPException(status_code=409, detail="Esta nota ya fue convertida en tarea")
+
     # Resolve fields: explicit > AI suggestion > defaults
     ai = note.ai_suggestion or {}
 
@@ -298,12 +303,14 @@ async def convert_to_task(
     project_id = body.project_id or note.project_id
     client_id = body.client_id or note.client_id
 
-    # Infer client from AI suggestion if not set
-    if not client_id and ai.get("suggested_client"):
-        client_id = ai["suggested_client"].get("id")
+    # Infer client from AI suggestion if not set (defend against malformed AI data)
+    suggested_client = ai.get("suggested_client")
+    if not client_id and isinstance(suggested_client, dict):
+        client_id = suggested_client.get("id")
     # Infer project from AI suggestion if not set
-    if not project_id and ai.get("suggested_project"):
-        project_id = ai["suggested_project"].get("id")
+    suggested_project = ai.get("suggested_project")
+    if not project_id and isinstance(suggested_project, dict):
+        project_id = suggested_project.get("id")
     # Infer client from project
     if project_id and not client_id:
         proj = await db.execute(select(Project.client_id).where(Project.id == project_id))
@@ -337,9 +344,17 @@ async def convert_to_task(
     note.status = InboxNoteStatus.processed
     note.resolved_as = "task"
 
-    await db.flush()
-    note.resolved_entity_id = task.id
-    await db.commit()
+    try:
+        await db.flush()
+        note.resolved_entity_id = task.id
+        await db.commit()
+    except IntegrityError as e:
+        await db.rollback()
+        logger.error("DB integrity error converting note %d to task: %s", note_id, e)
+        raise HTTPException(
+            status_code=400,
+            detail="Error al crear la tarea: referencia inválida (cliente, proyecto o usuario inexistente)",
+        )
 
     # Refresh to re-load relationships (project, client) after commit
     await db.refresh(note, ["project", "client"])

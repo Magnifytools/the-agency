@@ -21,6 +21,8 @@ const passwordInput = document.getElementById("password");
 
 // Header
 const settingsBtn = document.getElementById("settings-btn");
+const headerTimer = document.getElementById("header-timer");
+const headerTimerText = document.getElementById("header-timer-text");
 
 // Tabs
 const tabs = document.querySelectorAll(".tab");
@@ -123,11 +125,28 @@ function showMainView() {
     }
   });
 
+  // Click header timer indicator to switch to Timer tab
+  headerTimer.addEventListener("click", () => switchToTab("timer"));
+
   // Load data
   loadProjectsAndClients();
   loadInboxCount();
-  loadActiveTimer();
+  loadActiveTimer().then(() => {
+    // Auto-select Timer tab when a timer is running
+    if (activeTimerStart) switchToTab("timer");
+  });
   loadTasks();
+}
+
+function switchToTab(target) {
+  tabs.forEach((t) => {
+    if (t.dataset.tab === target) t.classList.add("active");
+    else t.classList.remove("active");
+  });
+  Object.entries(tabContents).forEach(([key, el]) => {
+    if (key === target) el.classList.remove("hidden");
+    else el.classList.add("hidden");
+  });
 }
 
 // ── Tab Navigation ────────────────────────────────────────
@@ -304,6 +323,7 @@ async function captureNote() {
     // Success — reset form
     noteText.value = "";
     linkUrl.value = "";
+    assignSelect.value = "";
     captureBtn.disabled = true;
 
     if (selected) {
@@ -395,6 +415,9 @@ function showActiveTimer(data) {
   activeTimerStart = new Date(data.started_at);
   timerTaskName.textContent = data.task_title || "Sin tarea";
 
+  // Show header timer indicator
+  headerTimer.classList.remove("hidden");
+
   // Start interval
   if (timerInterval) clearInterval(timerInterval);
   updateTimerDisplay();
@@ -406,6 +429,7 @@ function showIdleTimer() {
   timerIdle.classList.remove("hidden");
 
   activeTimerStart = null;
+  headerTimer.classList.add("hidden");
   if (timerInterval) {
     clearInterval(timerInterval);
     timerInterval = null;
@@ -423,11 +447,13 @@ function updateTimerDisplay() {
   const m = Math.floor((diff % 3600) / 60);
   const s = diff % 60;
   timerElapsed.textContent = `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  // Update header compact timer
+  headerTimerText.textContent = `${h}:${String(m).padStart(2, "0")}`;
 }
 
 async function loadTimerTasks() {
   try {
-    const res = await fetch(`${API_URL}/api/tasks?assigned_to=me&status=in_progress&limit=50`, {
+    const res = await fetch(`${API_URL}/api/tasks?assigned_to=me&status=in_progress&status=pending&limit=50`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -627,10 +653,42 @@ async function loadTasks() {
 
     // Add click handlers to open tasks in webapp
     tasksList.querySelectorAll(".task-card").forEach((card) => {
-      card.addEventListener("click", () => {
+      card.addEventListener("click", (e) => {
+        // Don't navigate if play button was clicked
+        if (e.target.closest(".task-play-btn")) return;
         const taskId = card.dataset.id;
         chrome.tabs.create({ url: `${API_URL}/tasks?task=${taskId}` });
         window.close();
+      });
+    });
+
+    // Play button: start timer on this task
+    tasksList.querySelectorAll(".task-play-btn").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const taskId = parseInt(btn.dataset.taskId, 10);
+        btn.disabled = true;
+        try {
+          const res = await fetch(`${API_URL}/api/timer/start`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ task_id: taskId }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || "Error al iniciar timer");
+          }
+          const data = await res.json();
+          showActiveTimer(data);
+          switchToTab("timer");
+        } catch (err) {
+          alert(err.message);
+        } finally {
+          btn.disabled = false;
+        }
       });
     });
   } catch (err) {
@@ -651,6 +709,9 @@ function renderTaskCard(task) {
         <span class="task-status-dot" style="background:${statusColor}"></span>
         <span class="task-title">${escapeHtml(task.title)}</span>
         ${priorityIcon ? `<span class="task-priority task-priority-${priority}">${priorityIcon}</span>` : ""}
+        <button class="task-play-btn" data-task-id="${task.id}" title="Iniciar timer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        </button>
       </div>
       <div class="task-meta">
         <span class="task-status-label" style="color:${statusColor}">${statusLabel}</span>
