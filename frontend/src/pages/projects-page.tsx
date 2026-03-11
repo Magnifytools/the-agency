@@ -40,6 +40,7 @@ export default function ProjectsPage() {
   const { page, pageSize, setPage, reset } = usePagination(25)
   const [statusFilter, setStatusFilter] = useState<string>("")
   const [typeFilter, setTypeFilter] = useState<string>("")
+  const [periodFilter, setPeriodFilter] = useState<string>("")
   const [showNewDialog, setShowNewDialog] = useState(false)
   const [showTemplateDialog, setShowTemplateDialog] = useState(false)
   const [showImportDialog, setShowImportDialog] = useState(false)
@@ -75,6 +76,37 @@ export default function ProjectsPage() {
   const formatDate = (date: string | null) => {
     if (!date) return "—"
     return new Date(date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })
+  }
+
+  const filterByPeriod = (p: ProjectListItem) => {
+    if (!periodFilter) return true
+    const now = new Date()
+    const endDate = p.target_end_date ? new Date(p.target_end_date) : null
+    const startDate = p.start_date ? new Date(p.start_date) : null
+
+    // Project overlaps with the selected period if it started before period end AND ends after period start
+    let periodStart: Date
+    let periodEnd: Date
+
+    if (periodFilter === "week") {
+      const day = now.getDay()
+      periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (day === 0 ? 6 : day - 1))
+      periodEnd = new Date(periodStart)
+      periodEnd.setDate(periodEnd.getDate() + 6)
+    } else if (periodFilter === "month") {
+      periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
+      periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    } else if (periodFilter === "quarter") {
+      const q = Math.floor(now.getMonth() / 3)
+      periodStart = new Date(now.getFullYear(), q * 3, 1)
+      periodEnd = new Date(now.getFullYear(), q * 3 + 3, 0)
+    } else {
+      return true
+    }
+
+    const pStart = startDate ?? new Date(0)
+    const pEnd = endDate ?? new Date(9999, 11, 31)
+    return pStart <= periodEnd && pEnd >= periodStart
   }
 
   return (
@@ -149,6 +181,16 @@ export default function ProjectsPage() {
           <option value="recurring">Recurrentes</option>
           <option value="one_time">Puntuales</option>
         </Select>
+        <Select
+          value={periodFilter}
+          onChange={(e) => setPeriodFilter(e.target.value)}
+          className="w-48"
+        >
+          <option value="">Todos los periodos</option>
+          <option value="week">Esta semana</option>
+          <option value="month">Este mes</option>
+          <option value="quarter">Este trimestre</option>
+        </Select>
       </div>
 
       {/* Projects Grid */}
@@ -162,7 +204,11 @@ export default function ProjectsPage() {
             </div>
           ))}
         </div>
-      ) : (typeFilter ? projects.filter(p => typeFilter === "recurring" ? p.is_recurring : !p.is_recurring) : projects).length === 0 ? (
+      ) : (projects.filter(p => {
+          if (typeFilter && (typeFilter === "recurring" ? !p.is_recurring : p.is_recurring)) return false
+          if (!filterByPeriod(p)) return false
+          return true
+        })).length === 0 ? (
         <EmptyState
           icon={FolderKanban}
           title="Sin proyectos todavia"
@@ -172,7 +218,11 @@ export default function ProjectsPage() {
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {(typeFilter ? projects.filter(p => typeFilter === "recurring" ? p.is_recurring : !p.is_recurring) : projects).map((project) => (
+          {projects.filter(p => {
+            if (typeFilter && (typeFilter === "recurring" ? !p.is_recurring : p.is_recurring)) return false
+            if (!filterByPeriod(p)) return false
+            return true
+          }).map((project) => (
             <ProjectCard
               key={project.id}
               project={project}
