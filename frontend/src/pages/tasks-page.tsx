@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { tasksApi, clientsApi, categoriesApi, usersApi, timeEntriesApi } from "@/lib/api"
+import { tasksApi, clientsApi, categoriesApi, usersApi, timeEntriesApi, projectsApi } from "@/lib/api"
 import type { Task, TaskCreate, TaskStatus, TaskPriority, TimeEntry } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { usePagination } from "@/hooks/use-pagination"
@@ -169,6 +169,12 @@ export default function TasksPage() {
   const { data: users = [] } = useQuery({
     queryKey: ["users-all"],
     queryFn: () => usersApi.listAll(),
+  })
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ["projects-active-list"],
+    queryFn: () => projectsApi.listAll({ status: "active" }),
+    staleTime: 60_000,
   })
 
   // Recurring templates query (only fetched when tab is active)
@@ -353,6 +359,7 @@ export default function TasksPage() {
       actual_minutes: fd.get("actual_minutes") ? Number(fd.get("actual_minutes")) : null,
       due_date: (fd.get("due_date") as string) || null,
       client_id: Number(clientIdStr),
+      project_id: fd.get("project_id") ? Number(fd.get("project_id")) : null,
       category_id: fd.get("category_id") ? Number(fd.get("category_id")) : null,
       assigned_to: fd.get("assigned_to") ? Number(fd.get("assigned_to")) : null,
       depends_on: fd.get("depends_on") ? Number(fd.get("depends_on")) : null,
@@ -837,6 +844,15 @@ export default function TasksPage() {
                     <option value="">Seleccionar...</option>
                     {clients.map((c) => (
                       <option key={c.id} value={String(c.id)}>{c.name}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="project_id" className="text-xs">Proyecto</Label>
+                  <Select id="project_id" name="project_id" defaultValue={editing?.project_id ? String(editing.project_id) : ""}>
+                    <option value="">Sin proyecto</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={String(p.id)}>{p.name}</option>
                     ))}
                   </Select>
                 </div>

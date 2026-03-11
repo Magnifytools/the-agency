@@ -426,7 +426,7 @@ export default function DashboardPage() {
                   {myOverdueTasks.length > 2 ? ` · +${myOverdueTasks.length - 2} más` : ""}
                 </p>
               </div>
-              <Link to="/tasks" className="text-xs text-red-400 hover:underline flex-shrink-0">Ver todas →</Link>
+              <Link to="/tasks?qaFilter=overdue" className="text-xs text-red-400 hover:underline flex-shrink-0">Ver todas →</Link>
             </div>
           )}
 

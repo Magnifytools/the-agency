@@ -510,19 +510,27 @@ async def start_timer(
     await db.refresh(entry)
 
     # Reload relation if it was tied to a task
-    if task:
-        await db.refresh(entry, ["task"])
-        # And task.client
-        if entry.task:
-            await db.refresh(entry.task, ["client"])
-            
+    task_title = body.notes
+    client_name = None
+    try:
+        if task:
+            await db.refresh(entry, ["task"])
+            if entry.task:
+                task_title = entry.task.title
+                await db.refresh(entry.task, ["client"])
+                if entry.task.client:
+                    client_name = entry.task.client.name
+    except Exception:
+        # Relationship loading failed — continue with fallback values
+        pass
+
     # Attach UTC tzinfo so JSON serialisation includes +00:00
     sa = entry.started_at.replace(tzinfo=timezone.utc) if entry.started_at and entry.started_at.tzinfo is None else entry.started_at
     return ActiveTimerResponse(
         id=entry.id,
         task_id=entry.task_id,
-        task_title=entry.task.title if entry.task else body.notes,
-        client_name=entry.task.client.name if entry.task and entry.task.client else None,
+        task_title=task_title,
+        client_name=client_name,
         started_at=sa,
     )
 
@@ -574,10 +582,20 @@ async def get_active_timer(
     if entry is None:
         return None
     sa = entry.started_at.replace(tzinfo=timezone.utc) if entry.started_at and entry.started_at.tzinfo is None else entry.started_at
+    # Safe relationship access — avoid 500 if relations fail to load
+    task_title = entry.notes
+    client_name = None
+    try:
+        if entry.task:
+            task_title = entry.task.title
+            if entry.task.client:
+                client_name = entry.task.client.name
+    except Exception:
+        pass
     return ActiveTimerResponse(
         id=entry.id,
         task_id=entry.task_id,
-        task_title=entry.task.title if entry.task else entry.notes,
-        client_name=entry.task.client.name if entry.task and entry.task.client else None,
+        task_title=task_title,
+        client_name=client_name,
         started_at=sa,
     )

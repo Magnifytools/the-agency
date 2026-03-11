@@ -160,9 +160,12 @@ function DraggableTaskCard({
     data: { task },
   })
 
-  const style = transform
-    ? { transform: `translate(${transform.x}px, ${transform.y}px)` }
-    : undefined
+  const style: React.CSSProperties = transform
+    ? {
+        transform: `translate(${transform.x}px, ${transform.y}px)`,
+        transition: isDragging ? undefined : "transform 200ms ease",
+      }
+    : {}
 
   return (
     <div
@@ -174,7 +177,7 @@ function DraggableTaskCard({
         "bg-background border rounded-md p-2 cursor-grab active:cursor-grabbing",
         "border-l-4 shadow-sm hover:shadow-md transition-shadow text-xs",
         priorityColors[task.priority] || "border-l-slate-300",
-        isDragging && "opacity-50",
+        isDragging && "opacity-30 scale-95 transition-all duration-200",
       )}
     >
       <div className="flex items-start justify-between gap-1">
@@ -346,6 +349,7 @@ export function WeeklyPlannerView({ tasks, onScheduleChange, onOpenEdit }: Props
         collisionDetection={closestCenter}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveTask(null)}
       >
         {/* Mobile: accordion layout */}
         {isMobile ? (
@@ -400,7 +404,12 @@ export function WeeklyPlannerView({ tasks, onScheduleChange, onOpenEdit }: Props
           )}
         </DroppableColumn>
 
-        <DragOverlay>
+        <DragOverlay
+          dropAnimation={{
+            duration: 200,
+            easing: "ease",
+          }}
+        >
           {activeTask ? <TaskCardOverlay task={activeTask} /> : null}
         </DragOverlay>
       </DndContext>

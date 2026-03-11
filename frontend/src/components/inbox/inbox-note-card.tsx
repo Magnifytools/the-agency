@@ -111,6 +111,15 @@ export function InboxNoteCard({ note }: Props) {
     onError: (err) => toast.error(getErrorMessage(err, "Error al descartar")),
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: () => inboxApi.delete(note.id),
+    onSuccess: () => {
+      invalidateAll()
+      toast.success("Nota eliminada")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar")),
+  })
+
   return (
     <>
       <div className="group p-4 rounded-xl border border-border/50 hover:border-border bg-card/40 hover:bg-card/80 transition-all">
@@ -179,6 +188,19 @@ export function InboxNoteCard({ note }: Props) {
                 </span>
               )}
             </div>
+            {/* Delete button — always visible for any state */}
+            <button
+              className="shrink-0 mt-1 p-1 rounded text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
+              title="Eliminar nota"
+              onClick={() => {
+                if (confirm("¿Eliminar esta nota del inbox?")) {
+                  deleteMutation.mutate()
+                }
+              }}
+              disabled={deleteMutation.isPending}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
 
