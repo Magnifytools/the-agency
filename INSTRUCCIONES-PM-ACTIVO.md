@@ -1,15 +1,15 @@
 # Instrucciones: Evolución a PM Activo con IA
 
-> **Para:** Claude Code trabajando en Agency Manager
+> **Para:** Claude Code trabajando en The Agency
 > **Fecha:** 3 Feb 2026
-> **Objetivo:** Transformar Agency Manager de CRUD pasivo a PM activo con IA
+> **Objetivo:** Transformar The Agency de CRUD pasivo a PM activo con IA
 
 ---
 
 ## ⚠️ ANTES DE EMPEZAR
 
 ```bash
-pwd  # Debe mostrar: .../Código/agency-manager
+pwd  # Debe mostrar: .../Código/the-agency
 ls   # Debe mostrar: backend/, frontend/, data/
 ```
 
