@@ -21,3 +21,8 @@ output/
 !chrome-extension/dist/**
 chrome-extension/dist/key.pem
 .agency-extension-key.pem
+
+# Chrome extension build artifacts
+chrome-extension.zip
+chrome-extension-*.zip
+chrome-extension/dist/*.zip
