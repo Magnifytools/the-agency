@@ -75,6 +75,7 @@ async def list_tasks(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _: User = Depends(require_module("tasks")),
 ):
     base = select(Task)
@@ -89,11 +90,13 @@ async def list_tasks(
     if assigned_to is not None:
         if assigned_to == "unassigned":
             base = base.where(Task.assigned_to.is_(None))
+        elif assigned_to == "me":
+            base = base.where(Task.assigned_to == current_user.id)
         else:
             try:
                 base = base.where(Task.assigned_to == int(assigned_to))
             except ValueError:
-                raise HTTPException(status_code=422, detail="assigned_to must be 'unassigned' or a valid user ID")
+                raise HTTPException(status_code=422, detail="assigned_to must be 'unassigned', 'me', or a valid user ID")
     if priority is not None:
         base = base.where(Task.priority == priority)
     if overdue:
@@ -575,7 +578,7 @@ async def download_attachment(
     return Response(
         content=att.content,
         media_type=att.mime_type,
-        headers={"Content-Disposition": f'attachment; filename="{att.name}"'},
+        headers={"Content-Disposition": f'attachment; filename="{att.name.replace(chr(34), "_").replace(chr(10), "_").replace(chr(13), "_")}"'},
     )
 
 
@@ -595,10 +598,11 @@ async def preview_attachment(
     att = r.scalar_one_or_none()
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
+    safe_name = att.name.replace('"', '_').replace('\n', '_').replace('\r', '_')
     return Response(
         content=att.content,
         media_type=att.mime_type,
-        headers={"Content-Disposition": f'inline; filename="{att.name}"'},
+        headers={"Content-Disposition": f'inline; filename="{safe_name}"'},
     )
 
 

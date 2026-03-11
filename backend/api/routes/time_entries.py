@@ -88,7 +88,7 @@ async def create_time_entry(
         task_id=body.task_id,
         user_id=current_user.id,
         notes=body.notes,
-        date=entry_date or datetime.utcnow(),
+        date=entry_date or datetime.now(timezone.utc),
     )
     db.add(entry)
     await db.commit()
@@ -389,7 +389,7 @@ async def admin_active_timers(
         select(TimeEntry).where(TimeEntry.minutes.is_(None))
     )
     entries = result.scalars().all()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     return [
         AdminActiveTimerResponse(
             id=e.id,

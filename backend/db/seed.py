@@ -14,7 +14,7 @@ import secrets
 import string
 from sqlalchemy import select
 from backend.db.database import engine, async_session
-from backend.db.models import Base, User, TaskCategory, UserRole, ExpenseCategory, UserPermission, ServiceTemplate, ServiceType, NewsFeed
+from backend.db.models import Base, User, TaskCategory, UserRole, ExpenseCategory, UserPermission, ServiceTemplate, ServiceType
 from backend.core.security import hash_password
 
 
@@ -265,29 +265,6 @@ async def seed():
                 print(f"Member permissions synced: +{len(added)} added, -{len(removed)} removed → {len(desired_modules)} modules")
             else:
                 print(f"Member permissions already up to date ({len(desired_modules)} modules)")
-
-        # Seed default RSS feeds for industry news
-        default_feeds = [
-            {"name": "Search Engine Journal", "url": "https://www.searchenginejournal.com/feed/", "category": "SEO"},
-            {"name": "Search Engine Land", "url": "https://searchengineland.com/feed/", "category": "SEO"},
-            {"name": "Google Search Central", "url": "https://developers.google.com/search/blog/feeds", "category": "SEO"},
-            {"name": "Moz Blog", "url": "https://moz.com/blog/feed", "category": "SEO"},
-            {"name": "Ahrefs Blog", "url": "https://ahrefs.com/blog/feed/", "category": "SEO"},
-            {"name": "Semrush Blog", "url": "https://www.semrush.com/blog/rss/", "category": "SEO"},
-        ]
-        feeds_added = 0
-        for feed_data in default_feeds:
-            existing = await session.execute(
-                select(NewsFeed).where(NewsFeed.url == feed_data["url"])
-            )
-            if existing.scalar_one_or_none() is None:
-                session.add(NewsFeed(**feed_data))
-                feeds_added += 1
-        await session.commit()
-        if feeds_added:
-            print(f"RSS feeds seeded: {feeds_added} new feeds added")
-        else:
-            print(f"RSS feeds already up to date ({len(default_feeds)} feeds)")
 
         # Seed service templates
         for tmpl_data in SERVICE_TEMPLATES:

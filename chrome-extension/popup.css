@@ -578,3 +578,35 @@ textarea::placeholder {
   font-size: 12px;
   color: #52525b;
 }
+
+/* ── Quick Create Task ─────────────────────────────────── */
+.quick-create-row {
+  margin-bottom: 8px;
+}
+
+.link.small {
+  font-size: 11px;
+}
+
+.quick-create-form {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quick-create-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.primary-btn.small,
+.secondary-btn.small {
+  padding: 5px 12px;
+  font-size: 11px;
+}

@@ -1,8 +1,8 @@
 import { useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { tasksApi, clientsApi, categoriesApi, usersApi } from "@/lib/api"
-import type { Task, TaskCreate, TaskStatus, TaskPriority } from "@/lib/types"
+import { tasksApi, clientsApi, categoriesApi, usersApi, timeEntriesApi } from "@/lib/api"
+import type { Task, TaskCreate, TaskStatus, TaskPriority, TimeEntry } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { usePagination } from "@/hooks/use-pagination"
 import { Pagination } from "@/components/ui/pagination"
@@ -269,6 +269,13 @@ export default function TasksPage() {
   const deleteCommentMut = useMutation({
     mutationFn: (id: number) => tasksApi.comments.delete(editing!.id, id),
     onSuccess: () => refetchComments(),
+  })
+
+  // Time entries for task detail
+  const { data: taskTimeEntries = [] } = useQuery<TimeEntry[]>({
+    queryKey: ["time-entries", editing?.id],
+    queryFn: () => timeEntriesApi.list({ task_id: editing!.id }),
+    enabled: !!editing?.id,
   })
 
   // Attachments queries/mutations
@@ -1196,6 +1203,56 @@ export default function TasksPage() {
                 </Button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Time Entries — only shown when editing an existing task */}
+        {editing && taskTimeEntries.length > 0 && (
+          <div className="mt-4 border-t pt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5" /> Tiempo registrado ({taskTimeEntries.length})
+              </p>
+              <span className="text-sm font-mono font-semibold text-brand">
+                {(() => {
+                  const total = taskTimeEntries.reduce((sum, e) => sum + (e.minutes || 0), 0)
+                  const h = Math.floor(total / 60)
+                  const m = total % 60
+                  return h > 0 ? `${h}h ${m}m` : `${m}m`
+                })()}
+              </span>
+            </div>
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {taskTimeEntries.slice(0, 10).map((entry) => (
+                <div key={entry.id} className="flex items-center justify-between text-xs bg-muted/50 rounded px-2 py-1.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-muted-foreground shrink-0">
+                      {new Date(entry.date || entry.started_at || "").toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                    </span>
+                    <span className="font-mono font-medium shrink-0">
+                      {entry.minutes ? `${Math.floor(entry.minutes / 60)}h ${entry.minutes % 60}m` : "—"}
+                    </span>
+                    {entry.notes && (
+                      <span className="text-muted-foreground truncate">{entry.notes}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {taskTimeEntries.length > 10 && (
+                <p className="text-xs text-muted-foreground text-center">
+                  +{taskTimeEntries.length - 10} registros más
+                </p>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full"
+              onClick={() => { setTimeLogTask(editing); }}
+            >
+              <Clock className="h-3 w-3 mr-1.5" />
+              Ver todos / Añadir registro
+            </Button>
           </div>
         )}
 

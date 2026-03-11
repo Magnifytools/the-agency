@@ -1,4 +1,4 @@
-"""add description to task_checklist
+"""add description to task_checklists
 
 Revision ID: a1b2c3d4e5f6
 Revises: 0eea1ee4b2c4
@@ -18,8 +18,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('task_checklist', sa.Column('description', sa.Text(), nullable=True))
+    op.add_column('task_checklists', sa.Column('description', sa.Text(), nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column('task_checklist', 'description')
+    op.drop_column('task_checklists', 'description')

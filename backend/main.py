@@ -218,18 +218,6 @@ async def _ensure_numeric_types():
         "ALTER TABLE taxes DROP CONSTRAINT IF EXISTS ck_tax_tax_amount_non_negative",
         # Support forced password rotation for compromised credentials
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_required BOOLEAN NOT NULL DEFAULT false",
-        # RSS feeds for industry news
-        """CREATE TABLE IF NOT EXISTS news_feeds (
-            id SERIAL PRIMARY KEY,
-            name VARCHAR(200) NOT NULL,
-            url VARCHAR(500) NOT NULL UNIQUE,
-            category VARCHAR(100) NOT NULL DEFAULT 'general',
-            enabled BOOLEAN NOT NULL DEFAULT true,
-            last_fetched_at TIMESTAMPTZ,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )""",
-        "ALTER TABLE industry_news ADD COLUMN IF NOT EXISTS feed_id INTEGER REFERENCES news_feeds(id) ON DELETE SET NULL",
         "ALTER TABLE task_checklists ADD COLUMN IF NOT EXISTS description TEXT",
         "ALTER TABLE inbox_notes ADD COLUMN IF NOT EXISTS link_url VARCHAR(500)",
     ]

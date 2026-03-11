@@ -8,6 +8,17 @@ const STORAGE_KEYS = {
   email: "am_email",
 };
 
+// Helper: check if API response is 401 and force re-login
+function handle401(res) {
+  if (res.status === 401) {
+    token = "";
+    chrome.storage.local.remove(STORAGE_KEYS.token);
+    showLoginView();
+    return true;
+  }
+  return false;
+}
+
 // ── DOM refs ──────────────────────────────────────────────
 // Views
 const loginView = document.getElementById("login-view");
@@ -62,6 +73,22 @@ const manualSaveBtn = document.getElementById("manual-save-btn");
 const timerError = document.getElementById("timer-error");
 const timerSuccess = document.getElementById("timer-success");
 
+// Quick create (timer)
+const qcTimerLink = document.getElementById("quick-create-timer-link");
+const qcTimerForm = document.getElementById("quick-create-timer-form");
+const qcTimerTitle = document.getElementById("qc-timer-title");
+const qcTimerClient = document.getElementById("qc-timer-client");
+const qcTimerCancel = document.getElementById("qc-timer-cancel");
+const qcTimerSave = document.getElementById("qc-timer-save");
+
+// Quick create (manual)
+const qcManualLink = document.getElementById("quick-create-manual-link");
+const qcManualForm = document.getElementById("quick-create-manual-form");
+const qcManualTitle = document.getElementById("qc-manual-title");
+const qcManualClient = document.getElementById("qc-manual-client");
+const qcManualCancel = document.getElementById("qc-manual-cancel");
+const qcManualSave = document.getElementById("qc-manual-save");
+
 // Tasks
 const tasksFilter = document.getElementById("tasks-filter");
 const tasksRefresh = document.getElementById("tasks-refresh");
@@ -72,6 +99,7 @@ const tasksEmpty = document.getElementById("tasks-empty");
 let token = "";
 let timerInterval = null;
 let activeTimerStart = null;
+let clientsList = []; // cached for quick-create forms
 
 // ── Init ──────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
@@ -229,6 +257,9 @@ async function loadProjectsAndClients() {
       }),
     ]);
 
+    // Clear existing optgroups (prevent duplicates on re-login)
+    while (assignSelect.options.length > 1) assignSelect.remove(1);
+
     // Projects group
     if (projRes.ok) {
       const projData = await projRes.json();
@@ -250,6 +281,7 @@ async function loadProjectsAndClients() {
     if (clientRes.ok) {
       const clientData = await clientRes.json();
       const clients = clientData.items || clientData;
+      clientsList = clients; // cache for quick-create
       if (clients.length > 0) {
         const grp = document.createElement("optgroup");
         grp.label = "Clientes";
@@ -261,10 +293,24 @@ async function loadProjectsAndClients() {
         });
         assignSelect.appendChild(grp);
       }
+      // Populate quick-create client selectors
+      populateQuickCreateClients();
     }
   } catch {
     // silently ignore — assignment is optional
   }
+}
+
+function populateQuickCreateClients() {
+  [qcTimerClient, qcManualClient].forEach((sel) => {
+    while (sel.options.length > 1) sel.remove(1);
+    clientsList.forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = c.name;
+      sel.appendChild(opt);
+    });
+  });
 }
 
 // ── Capture ───────────────────────────────────────────────
@@ -394,6 +440,7 @@ async function loadActiveTimer() {
       headers: { Authorization: `Bearer ${token}` },
     });
 
+    if (handle401(res)) return;
     if (res.ok) {
       const data = await res.json();
       if (data && data.started_at) {
@@ -457,6 +504,7 @@ async function loadTimerTasks() {
       headers: { Authorization: `Bearer ${token}` },
     });
 
+    if (handle401(res)) return;
     if (res.ok) {
       const data = await res.json();
       const tasks = data.items || data;
@@ -478,14 +526,24 @@ async function loadTimerTasks() {
   }
 }
 
-// Start timer
+// ── Task selection required for timer ─────────────────────
+timerTaskSelect.addEventListener("change", () => {
+  timerStartBtn.disabled = !timerTaskSelect.value;
+});
+
+// Start timer (task_id is now required)
 timerStartBtn.addEventListener("click", async () => {
+  if (!timerTaskSelect.value) {
+    timerError.textContent = "Selecciona una tarea para iniciar el timer";
+    timerError.classList.remove("hidden");
+    return;
+  }
+
   timerStartBtn.disabled = true;
   timerStartBtn.textContent = "Iniciando...";
   timerError.classList.add("hidden");
 
-  const body = {};
-  if (timerTaskSelect.value) body.task_id = parseInt(timerTaskSelect.value, 10);
+  const body = { task_id: parseInt(timerTaskSelect.value, 10) };
 
   try {
     const res = await fetch(`${API_URL}/api/timer/start`, {
@@ -497,6 +555,7 @@ timerStartBtn.addEventListener("click", async () => {
       body: JSON.stringify(body),
     });
 
+    if (handle401(res)) return;
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || "Error al iniciar timer");
@@ -508,7 +567,7 @@ timerStartBtn.addEventListener("click", async () => {
     timerError.textContent = err.message;
     timerError.classList.remove("hidden");
   } finally {
-    timerStartBtn.disabled = false;
+    timerStartBtn.disabled = !timerTaskSelect.value;
     timerStartBtn.textContent = "Iniciar Timer";
   }
 });
@@ -527,6 +586,7 @@ timerStopBtn.addEventListener("click", async () => {
       },
     });
 
+    if (handle401(res)) return;
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || "Error al detener timer");
@@ -543,14 +603,20 @@ timerStopBtn.addEventListener("click", async () => {
   }
 });
 
-// Manual time entry
+// Manual time entry (task required)
 manualSaveBtn.addEventListener("click", async () => {
-  const hours = parseInt(manualHours.value, 10) || 0;
-  const mins = parseInt(manualMins.value, 10) || 0;
+  const hours = Math.max(0, parseInt(manualHours.value, 10) || 0);
+  const mins = Math.max(0, Math.min(59, parseInt(manualMins.value, 10) || 0));
   const totalMinutes = hours * 60 + mins;
 
   timerError.classList.add("hidden");
   timerSuccess.classList.add("hidden");
+
+  if (!manualTaskSelect.value) {
+    timerError.textContent = "Selecciona una tarea para el registro";
+    timerError.classList.remove("hidden");
+    return;
+  }
 
   if (totalMinutes <= 0) {
     timerError.textContent = "Introduce un tiempo mayor a 0";
@@ -561,8 +627,7 @@ manualSaveBtn.addEventListener("click", async () => {
   manualSaveBtn.disabled = true;
   manualSaveBtn.textContent = "Guardando...";
 
-  const body = { minutes: totalMinutes };
-  if (manualTaskSelect.value) body.task_id = parseInt(manualTaskSelect.value, 10);
+  const body = { minutes: totalMinutes, task_id: parseInt(manualTaskSelect.value, 10) };
   if (manualNotes.value.trim()) body.notes = manualNotes.value.trim();
 
   try {
@@ -575,6 +640,7 @@ manualSaveBtn.addEventListener("click", async () => {
       body: JSON.stringify(body),
     });
 
+    if (handle401(res)) return;
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || "Error al guardar");
@@ -637,6 +703,7 @@ async function loadTasks() {
       headers: { Authorization: `Bearer ${token}` },
     });
 
+    if (handle401(res)) return;
     if (!res.ok) throw new Error("Error al cargar tareas");
 
     const data = await res.json();
@@ -677,6 +744,7 @@ async function loadTasks() {
             },
             body: JSON.stringify({ task_id: taskId }),
           });
+          if (handle401(res)) return;
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             throw new Error(err.detail || "Error al iniciar timer");
@@ -685,14 +753,15 @@ async function loadTasks() {
           showActiveTimer(data);
           switchToTab("timer");
         } catch (err) {
-          alert(err.message);
+          timerError.textContent = err.message;
+          timerError.classList.remove("hidden");
         } finally {
           btn.disabled = false;
         }
       });
     });
   } catch (err) {
-    tasksList.innerHTML = `<div class="tasks-error">${err.message}</div>`;
+    tasksList.innerHTML = `<div class="tasks-error">${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -730,3 +799,88 @@ function escapeHtml(text) {
 // Task filter change
 tasksFilter.addEventListener("change", () => loadTasks());
 tasksRefresh.addEventListener("click", () => loadTasks());
+
+// ══════════════════════════════════════════════════════════
+// QUICK CREATE TASK (from Timer tab)
+// ══════════════════════════════════════════════════════════
+
+function setupQuickCreate(linkEl, formEl, titleEl, clientEl, cancelEl, saveEl, targetSelect) {
+  linkEl.addEventListener("click", (e) => {
+    e.preventDefault();
+    formEl.classList.remove("hidden");
+    linkEl.classList.add("hidden");
+    titleEl.focus();
+  });
+
+  cancelEl.addEventListener("click", () => {
+    formEl.classList.add("hidden");
+    linkEl.classList.remove("hidden");
+    titleEl.value = "";
+    clientEl.value = "";
+  });
+
+  saveEl.addEventListener("click", async () => {
+    const title = titleEl.value.trim();
+    const clientId = clientEl.value;
+
+    if (!title || !clientId) {
+      timerError.textContent = "Titulo y cliente son obligatorios";
+      timerError.classList.remove("hidden");
+      return;
+    }
+
+    saveEl.disabled = true;
+    saveEl.textContent = "Creando...";
+    timerError.classList.add("hidden");
+
+    try {
+      const res = await fetch(`${API_URL}/api/tasks`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title,
+          client_id: parseInt(clientId, 10),
+          status: "in_progress",
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Error al crear tarea");
+      }
+
+      const task = await res.json();
+
+      // Add to both selectors and auto-select in target
+      [timerTaskSelect, manualTaskSelect].forEach((sel) => {
+        const opt = document.createElement("option");
+        opt.value = task.id;
+        opt.textContent = task.title.length > 40 ? task.title.slice(0, 40) + "..." : task.title;
+        sel.appendChild(opt);
+      });
+
+      targetSelect.value = String(task.id);
+      targetSelect.dispatchEvent(new Event("change"));
+
+      // Reset and hide form
+      formEl.classList.add("hidden");
+      linkEl.classList.remove("hidden");
+      titleEl.value = "";
+      clientEl.value = "";
+
+      showTimerSuccess("Tarea creada y seleccionada");
+    } catch (err) {
+      timerError.textContent = err.message;
+      timerError.classList.remove("hidden");
+    } finally {
+      saveEl.disabled = false;
+      saveEl.textContent = "Crear";
+    }
+  });
+}
+
+setupQuickCreate(qcTimerLink, qcTimerForm, qcTimerTitle, qcTimerClient, qcTimerCancel, qcTimerSave, timerTaskSelect);
+setupQuickCreate(qcManualLink, qcManualForm, qcManualTitle, qcManualClient, qcManualCancel, qcManualSave, manualTaskSelect);

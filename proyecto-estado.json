@@ -1,5 +1,5 @@
 {
-  "proyecto": "agency-manager",
+  "proyecto": "the-agency",
   "ultima_actualizacion": "2026-02-05T11:30:00.000000",
   "estado_general": "sprint_1_completado",
   "progreso_estimado": 40,
@@ -213,8 +213,8 @@
   "proximos_pasos": "Sprint 2: Alembic migraciones, rutas TimeEntry, dashboard con métricas, detalle de cliente con tareas asociadas",
   "bloqueadores": "",
   "puertos": {
-    "frontend": 5176,
-    "backend": 8003
+    "frontend": 5177,
+    "backend": 8004
   },
   "pendiente_david": "Rediseñar app"
 }

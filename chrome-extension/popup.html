@@ -99,17 +99,43 @@
       <div id="timer-idle" class="timer-section">
         <div class="section-label">Iniciar timer</div>
         <select id="timer-task-select" class="field-select">
-          <option value="">Selecciona tarea (opcional)</option>
+          <option value="">Selecciona tarea *</option>
         </select>
-        <button id="timer-start-btn" class="primary-btn full-width">Iniciar Timer</button>
+        <div id="quick-create-timer" class="quick-create-row">
+          <a href="#" id="quick-create-timer-link" class="link small">+ Crear tarea</a>
+        </div>
+        <div id="quick-create-timer-form" class="quick-create-form hidden">
+          <input type="text" id="qc-timer-title" placeholder="Titulo de la tarea *" class="field-input">
+          <select id="qc-timer-client" class="field-select">
+            <option value="">Cliente *</option>
+          </select>
+          <div class="quick-create-actions">
+            <button id="qc-timer-cancel" class="secondary-btn small">Cancelar</button>
+            <button id="qc-timer-save" class="primary-btn small">Crear</button>
+          </div>
+        </div>
+        <button id="timer-start-btn" class="primary-btn full-width" disabled>Iniciar Timer</button>
       </div>
 
       <!-- Manual time entry -->
       <div class="timer-section">
         <div class="section-label">Registro manual</div>
         <select id="manual-task-select" class="field-select">
-          <option value="">Selecciona tarea</option>
+          <option value="">Selecciona tarea *</option>
         </select>
+        <div id="quick-create-manual" class="quick-create-row">
+          <a href="#" id="quick-create-manual-link" class="link small">+ Crear tarea</a>
+        </div>
+        <div id="quick-create-manual-form" class="quick-create-form hidden">
+          <input type="text" id="qc-manual-title" placeholder="Titulo de la tarea *" class="field-input">
+          <select id="qc-manual-client" class="field-select">
+            <option value="">Cliente *</option>
+          </select>
+          <div class="quick-create-actions">
+            <button id="qc-manual-cancel" class="secondary-btn small">Cancelar</button>
+            <button id="qc-manual-save" class="primary-btn small">Crear</button>
+          </div>
+        </div>
         <div class="time-inputs">
           <div class="time-field">
             <input type="number" id="manual-hours" min="0" max="23" value="0" class="field-input time-input">
