@@ -163,6 +163,20 @@ async def hard_delete_client(
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
 
+    # Protect against deleting clients with financial records (legal retention)
+    income_count = (await db.execute(
+        select(func.count()).where(Income.client_id == client_id)
+    )).scalar() or 0
+    invoice_count = (await db.execute(
+        select(func.count()).where(Invoice.client_id == client_id)
+    )).scalar() or 0
+    if income_count > 0 or invoice_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se puede eliminar: el cliente tiene {income_count} ingresos y {invoice_count} facturas registradas. "
+                   "Use desactivar (soft delete) para preservar el historial financiero.",
+        )
+
     # Collect IDs needed for cascade operations
     project_ids = list((await db.execute(
         select(Project.id).where(Project.client_id == client_id)

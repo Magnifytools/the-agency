@@ -257,6 +257,9 @@ class User(TimestampMixin, Base):
 
 class Client(TimestampMixin, Base):
     __tablename__ = "clients"
+    __table_args__ = (
+        CheckConstraint("monthly_budget >= 0", name="ck_client_monthly_budget_positive"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
@@ -325,6 +328,10 @@ class TaskCategory(TimestampMixin, Base):
 
 class Project(TimestampMixin, Base):
     __tablename__ = "projects"
+    __table_args__ = (
+        CheckConstraint("budget_amount >= 0", name="ck_project_budget_amount_positive"),
+        CheckConstraint("budget_hours >= 0", name="ck_project_budget_hours_positive"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(200), nullable=False)

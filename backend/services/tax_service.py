@@ -38,8 +38,8 @@ async def _income_vat_for_quarter(db: AsyncSession, year: int, quarter: int) -> 
     base_total = Decimal("0")
     for row in rows:
         base_total += Decimal(str(row.amount or 0))
-        if row.vat_amount and row.vat_amount > 0:
-            vat_total += Decimal(str(row.vat_amount or 0))
+        if row.vat_amount is not None:
+            vat_total += Decimal(str(row.vat_amount))
         else:
             vat_total += Decimal(str(row.amount or 0)) * Decimal(str(row.vat_rate or 0)) / Decimal("100")
     return (
@@ -64,8 +64,8 @@ async def _expense_vat_for_quarter(db: AsyncSession, year: int, quarter: int) ->
     base_total = Decimal("0")
     for row in rows:
         base_total += Decimal(str(row.amount or 0))
-        if row.vat_amount and row.vat_amount > 0:
-            vat_total += Decimal(str(row.vat_amount or 0))
+        if row.vat_amount is not None:
+            vat_total += Decimal(str(row.vat_amount))
         else:
             vat_total += Decimal(str(row.amount or 0)) * Decimal(str(row.vat_rate or 0)) / Decimal("100")
     return (
