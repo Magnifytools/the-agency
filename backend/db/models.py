@@ -488,7 +488,7 @@ class Task(TimestampMixin, Base):
     due_date = Column(DateTime, nullable=True)
     is_inbox = Column(Boolean, nullable=False, default=False)
 
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
     category_id = Column(Integer, ForeignKey("task_categories.id"), nullable=True, index=True)
     assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
@@ -1291,6 +1291,15 @@ class IndustryNews(TimestampMixin, Base):
     content = Column(Text, nullable=True)
     url = Column(String(500), nullable=True)
     published_date = Column(Date, nullable=False)
+
+
+class NewsSource(TimestampMixin, Base):
+    __tablename__ = "news_sources"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200), nullable=False)
+    url = Column(String(500), nullable=False)
+    category = Column(String(100), nullable=True)
 
 
 class BalanceSnapshot(TimestampMixin, Base):

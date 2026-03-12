@@ -172,6 +172,15 @@ async def _ensure_columns():
         "CREATE INDEX IF NOT EXISTS ix_inbox_notes_user_id ON inbox_notes (user_id)",
         "CREATE INDEX IF NOT EXISTS ix_inbox_notes_project_id ON inbox_notes (project_id)",
         "CREATE INDEX IF NOT EXISTS ix_inbox_notes_client_id ON inbox_notes (client_id)",
+        "ALTER TABLE tasks ALTER COLUMN client_id DROP NOT NULL",
+        """CREATE TABLE IF NOT EXISTS news_sources (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    url VARCHAR(500) NOT NULL,
+    category VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)""",
     ]
     async with engine.begin() as conn:
         for sql in stmts:

@@ -15,7 +15,7 @@ class TaskCreate(BaseModel):
     actual_minutes: Optional[int] = None
     start_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
-    client_id: int
+    client_id: Optional[int] = None
     category_id: Optional[int] = None
     assigned_to: Optional[int] = None
     project_id: Optional[int] = None
@@ -66,7 +66,7 @@ class TaskResponse(BaseModel):
     actual_minutes: Optional[int] = None
     start_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
-    client_id: int
+    client_id: Optional[int] = None
     category_id: Optional[int] = None
     assigned_to: Optional[int] = None
     project_id: Optional[int] = None

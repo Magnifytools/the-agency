@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
-from backend.db.models import User, IndustryNews
+from backend.db.models import User, IndustryNews, NewsSource
 from backend.schemas.industry_news import (
     IndustryNewsCreate,
     IndustryNewsUpdate,
@@ -159,4 +159,79 @@ async def delete_news(
     if item is None:
         raise HTTPException(status_code=404, detail="News item not found")
     await db.delete(item)
+    await db.commit()
+
+
+# --- News Sources CRUD ---
+
+class NewsSourceCreate(BaseModel):
+    name: str
+    url: str
+    category: str | None = None
+
+class NewsSourceUpdate(BaseModel):
+    name: str | None = None
+    url: str | None = None
+    category: str | None = None
+
+class NewsSourceResponse(BaseModel):
+    id: int
+    name: str
+    url: str
+    category: str | None = None
+    created_at: str | None = None
+    model_config = {"from_attributes": True}
+
+
+@router.get("/sources", response_model=list[NewsSourceResponse])
+async def list_sources(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(select(NewsSource).order_by(NewsSource.name))
+    return result.scalars().all()
+
+
+@router.post("/sources", response_model=NewsSourceResponse, status_code=201)
+async def create_source(
+    body: NewsSourceCreate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    source = NewsSource(**body.model_dump())
+    db.add(source)
+    await db.commit()
+    await db.refresh(source)
+    return source
+
+
+@router.put("/sources/{source_id}", response_model=NewsSourceResponse)
+async def update_source(
+    source_id: int,
+    body: NewsSourceUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(select(NewsSource).where(NewsSource.id == source_id))
+    source = result.scalar_one_or_none()
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(source, field, value)
+    await db.commit()
+    await db.refresh(source)
+    return source
+
+
+@router.delete("/sources/{source_id}", status_code=204)
+async def delete_source(
+    source_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(select(NewsSource).where(NewsSource.id == source_id))
+    source = result.scalar_one_or_none()
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    await db.delete(source)
     await db.commit()

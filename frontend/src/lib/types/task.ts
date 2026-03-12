@@ -18,7 +18,7 @@ export interface Task {
   actual_minutes: number | null
   start_date: string | null
   due_date: string | null
-  client_id: number
+  client_id: number | null
   category_id: number | null
   assigned_to: number | null
   project_id: number | null
@@ -70,7 +70,7 @@ export interface TaskCreate {
   actual_minutes?: number | null
   start_date?: string | null
   due_date?: string | null
-  client_id: number
+  client_id?: number | null
   category_id?: number | null
   assigned_to?: number | null
   project_id?: number | null

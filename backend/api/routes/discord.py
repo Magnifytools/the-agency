@@ -207,8 +207,11 @@ async def send_daily_summary(
     success = await _send_discord_message(url, summary)
 
     if success:
-        ds.last_sent_at = datetime.now(timezone.utc)
-        await db.commit()
+        try:
+            ds.last_sent_at = datetime.now(timezone.utc)
+            await db.commit()
+        except Exception:
+            logger.warning("Discord message sent but failed to update last_sent_at")
         return DiscordSendResponse(
             success=True,
             message="Resumen diario enviado a Discord",

@@ -127,6 +127,9 @@ export default function TasksPage() {
   const { sortedItems: sortedTasks, sortConfig: taskSortConfig, requestSort: requestTaskSort } = useTableSort(tasks)
   const { selectedIds: selectedTaskIds, isSelected: isTaskSelected, toggleItem: toggleTask, toggleAll: toggleAllTasks, clearSelection: clearTaskSelection, selectedCount: selectedTaskCount, allSelected: allTasksSelected } = useBulkSelect(tasks)
 
+  // Clear bulk selection when switching views
+  useEffect(() => { clearTaskSelection() }, [view])
+
   const bulkUpdateMutation = useMutation({
     mutationFn: async ({ ids, updates }: { ids: number[]; updates: Record<string, unknown> }) =>
       tasksApi.bulkUpdate(ids, updates),
@@ -372,12 +375,6 @@ export default function TasksPage() {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
     const clientIdStr = fd.get("client_id") as string
-    if (!clientIdStr) {
-      // client_id may be inside the collapsed section — expand it and alert
-      setShowAssignmentFields(true)
-      toast.error("Selecciona un cliente antes de guardar")
-      return
-    }
     const data: TaskCreate = {
       title: fd.get("title") as string,
       description: (fd.get("description") as string) || null,
@@ -386,7 +383,7 @@ export default function TasksPage() {
       estimated_minutes: fd.get("estimated_minutes") ? Number(fd.get("estimated_minutes")) : null,
       actual_minutes: fd.get("actual_minutes") ? Number(fd.get("actual_minutes")) : null,
       due_date: (fd.get("due_date") as string) || null,
-      client_id: Number(clientIdStr),
+      client_id: clientIdStr ? Number(clientIdStr) : null,
       project_id: fd.get("project_id") ? Number(fd.get("project_id")) : null,
       category_id: fd.get("category_id") ? Number(fd.get("category_id")) : null,
       assigned_to: fd.get("assigned_to") ? Number(fd.get("assigned_to")) : null,
@@ -800,7 +797,7 @@ export default function TasksPage() {
                       {t.recurrence_pattern === "biweekly" && `Bisemanal · ${["Lun", "Mar", "Mié", "Jue", "Vie"][t.recurrence_day ?? 0]}`}
                       {t.recurrence_pattern === "monthly" && `Mensual · Día ${t.recurrence_day}`}
                     </TableCell>
-                    <TableCell>{t.client_name}</TableCell>
+                    <TableCell>{t.client_name ?? <span className="text-muted-foreground">Sin cliente</span>}</TableCell>
                     <TableCell>{t.assigned_user_name}</TableCell>
                     <TableCell>{priorityBadge(t.priority)}</TableCell>
                     <TableCell>
@@ -867,7 +864,7 @@ export default function TasksPage() {
             <div className={showAssignmentFields ? "p-3 pt-2 border-t border-border/60" : "hidden"}>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="client_id" className="text-xs">Cliente *</Label>
+                  <Label htmlFor="client_id" className="text-xs">Cliente</Label>
                   <Select id="client_id" name="client_id" defaultValue={editing?.client_id ? String(editing.client_id) : ""}>
                     <option value="">Seleccionar...</option>
                     {clients.map((c) => (

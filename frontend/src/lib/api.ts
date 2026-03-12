@@ -881,6 +881,25 @@ export const newsApi = {
     api.post<NewsExtraction>("/news/extract", { url }).then((r) => r.data),
 }
 
+export interface NewsSource {
+  id: number
+  name: string
+  url: string
+  category: string | null
+  created_at: string | null
+}
+
+export const newsSourcesApi = {
+  list: () =>
+    api.get<NewsSource[]>("/news/sources").then((r) => r.data),
+  create: (data: Omit<NewsSource, "id" | "created_at">) =>
+    api.post<NewsSource>("/news/sources", data).then((r) => r.data),
+  update: (id: number, data: Partial<Omit<NewsSource, "id" | "created_at">>) =>
+    api.put<NewsSource>(`/news/sources/${id}`, data).then((r) => r.data),
+  delete: (id: number) =>
+    api.delete(`/news/sources/${id}`).then((r) => r.data),
+}
+
 // --- Engine Integration ---
 export interface EngineProject {
   id: number
