@@ -177,7 +177,7 @@ function DraggableTaskCard({
         "bg-background border rounded-md p-2 cursor-grab active:cursor-grabbing",
         "border-l-4 shadow-sm hover:shadow-md transition-shadow text-xs",
         priorityColors[task.priority] || "border-l-slate-300",
-        isDragging && "opacity-30 scale-95 transition-all duration-200",
+        isDragging && "opacity-0 pointer-events-none",
       )}
     >
       <div className="flex items-start justify-between gap-1">
@@ -404,12 +404,7 @@ export function WeeklyPlannerView({ tasks, onScheduleChange, onOpenEdit }: Props
           )}
         </DroppableColumn>
 
-        <DragOverlay
-          dropAnimation={{
-            duration: 200,
-            easing: "ease",
-          }}
-        >
+        <DragOverlay dropAnimation={null}>
           {activeTask ? <TaskCardOverlay task={activeTask} /> : null}
         </DragOverlay>
       </DndContext>

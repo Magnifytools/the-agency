@@ -724,7 +724,7 @@ async function loadTasks() {
         // Don't navigate if play button was clicked
         if (e.target.closest(".task-play-btn")) return;
         const taskId = card.dataset.id;
-        chrome.tabs.create({ url: `${API_URL}/tasks?task=${taskId}` });
+        chrome.tabs.create({ url: `${API_URL}/tasks?edit=${taskId}` });
         window.close();
       });
     });

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, and_, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
 from fastapi.responses import StreamingResponse
@@ -30,6 +31,10 @@ from backend.api.deps import get_current_user, require_admin, require_module
 from backend.services.csv_utils import build_csv_response
 
 router = APIRouter(tags=["time-entries"])
+
+_TIME_ENTRY_RESPONSE_OPTIONS = (
+    selectinload(TimeEntry.task).selectinload(Task.client),
+)
 
 
 async def _sync_task_actual_minutes(db: AsyncSession, task_id: int) -> None:
@@ -61,6 +66,15 @@ def _entry_to_response(entry: TimeEntry) -> TimeEntryResponse:
         task_title=entry.task.title if entry.task else None,
         client_name=entry.task.client.name if entry.task and entry.task.client else None,
     )
+
+
+async def _load_time_entry_for_response(db: AsyncSession, entry_id: int) -> TimeEntry | None:
+    result = await db.execute(
+        select(TimeEntry)
+        .options(*_TIME_ENTRY_RESPONSE_OPTIONS)
+        .where(TimeEntry.id == entry_id)
+    )
+    return result.scalar_one_or_none()
 
 
 # --- CRUD ---
@@ -95,7 +109,9 @@ async def create_time_entry(
     if entry.task_id:
         await _sync_task_actual_minutes(db, entry.task_id)
         await db.commit()
-    await db.refresh(entry)
+    entry = await _load_time_entry_for_response(db, entry.id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Time entry not found after create")
     return _entry_to_response(entry)
 
 
@@ -108,7 +124,7 @@ async def list_time_entries(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("timesheet")),
 ):
-    query = select(TimeEntry).where(TimeEntry.minutes.isnot(None))
+    query = select(TimeEntry).options(*_TIME_ENTRY_RESPONSE_OPTIONS).where(TimeEntry.minutes.isnot(None))
     # F-05: members can only see their own time entries
     if current_user.role != UserRole.admin:
         query = query.where(TimeEntry.user_id == current_user.id)
@@ -433,7 +449,9 @@ async def update_time_entry(
         await _sync_task_actual_minutes(db, tid)
     if affected_tasks:
         await db.commit()
-    await db.refresh(entry)
+    entry = await _load_time_entry_for_response(db, entry.id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Time entry not found after stop")
     return _entry_to_response(entry)
 
 
@@ -468,7 +486,9 @@ async def start_timer(
 ):
     # Check no active timer for this user
     result = await db.execute(
-        select(TimeEntry).where(
+        select(TimeEntry)
+        .options(*_TIME_ENTRY_RESPONSE_OPTIONS)
+        .where(
             and_(TimeEntry.user_id == current_user.id, TimeEntry.minutes.is_(None))
         )
     )

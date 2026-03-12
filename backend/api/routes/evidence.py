@@ -1,22 +1,87 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+import os
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from backend.db.database import get_db
-from backend.db.models import User, Project, ProjectEvidence
+from backend.db.models import User, Project, ProjectEvidence, EvidenceType
 from backend.schemas.evidence import EvidenceCreate, EvidenceUpdate, EvidenceResponse
-from backend.api.deps import get_current_user, require_module
+from backend.api.deps import require_module
 
 router = APIRouter(prefix="/api/projects/{project_id}/evidence", tags=["evidence"])
 
+_ALLOWED_EVIDENCE_MIME_TYPES = {
+    "application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/plain", "text/csv",
+    "application/zip",
+}
+_ALLOWED_EVIDENCE_EXTENSIONS = {
+    ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp",
+    ".doc", ".docx", ".xls", ".xlsx",
+    ".txt", ".csv", ".zip",
+}
+_MAX_EVIDENCE_BYTES = 20 * 1024 * 1024
 
-def _to_response(ev: ProjectEvidence) -> dict:
-    data = {c.name: getattr(ev, c.name) for c in ev.__table__.columns}
+
+def _to_response(project_id: int, ev: ProjectEvidence) -> dict:
+    data = {
+        "id": ev.id,
+        "project_id": ev.project_id,
+        "phase_id": ev.phase_id,
+        "title": ev.title,
+        "url": ev.url,
+        "evidence_type": ev.evidence_type,
+        "description": ev.description,
+        "created_by": ev.created_by,
+        "created_at": ev.created_at,
+        "updated_at": ev.updated_at,
+        "file_name": ev.file_name,
+        "file_mime_type": ev.file_mime_type,
+        "file_size_bytes": ev.file_size_bytes,
+    }
     data["creator_name"] = ev.creator.full_name if ev.creator else None
     data["phase_name"] = ev.phase.name if ev.phase else None
+    data["has_file"] = bool(ev.file_name)
+    data["download_url"] = (
+        f"/api/projects/{project_id}/evidence/{ev.id}/download"
+        if data["has_file"]
+        else None
+    )
+    data["preview_url"] = (
+        f"/api/projects/{project_id}/evidence/{ev.id}/preview"
+        if data["has_file"]
+        else None
+    )
     return data
+
+
+async def _ensure_project_exists(db: AsyncSession, project_id: int) -> None:
+    proj = await db.execute(select(Project).where(Project.id == project_id))
+    if proj.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+
+def _validate_upload(file: UploadFile, content: bytes) -> None:
+    filename = file.filename or ""
+    ext = os.path.splitext(filename.lower())[1]
+    if ext not in _ALLOWED_EVIDENCE_EXTENSIONS:
+        raise HTTPException(400, f"Extensión no permitida: {ext or '(sin extensión)'}")
+    if not file.content_type or file.content_type not in _ALLOWED_EVIDENCE_MIME_TYPES:
+        raise HTTPException(400, f"Tipo de archivo no permitido: {file.content_type or '(sin tipo)'}")
+    if len(content) > _MAX_EVIDENCE_BYTES:
+        raise HTTPException(400, "Archivo demasiado grande (máx 20 MB)")
+
+
+def _safe_filename(name: str) -> str:
+    return name.replace('"', "_").replace("\n", "_").replace("\r", "_")
 
 
 @router.get("", response_model=list[EvidenceResponse])
@@ -27,10 +92,11 @@ async def list_evidence(
 ):
     result = await db.execute(
         select(ProjectEvidence)
+        .options(defer(ProjectEvidence.file_content))
         .where(ProjectEvidence.project_id == project_id)
         .order_by(ProjectEvidence.created_at.desc())
     )
-    return [_to_response(ev) for ev in result.scalars().all()]
+    return [_to_response(project_id, ev) for ev in result.scalars().all()]
 
 
 @router.post("", response_model=EvidenceResponse, status_code=201)
@@ -40,9 +106,9 @@ async def create_evidence(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("projects", write=True)),
 ):
-    proj = await db.execute(select(Project).where(Project.id == project_id))
-    if proj.scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+    await _ensure_project_exists(db, project_id)
+    if not body.url:
+        raise HTTPException(status_code=400, detail="Añade una URL o sube un archivo")
 
     evidence = ProjectEvidence(
         project_id=project_id,
@@ -52,7 +118,41 @@ async def create_evidence(
     db.add(evidence)
     await db.commit()
     await db.refresh(evidence)
-    return _to_response(evidence)
+    return _to_response(project_id, evidence)
+
+
+@router.post("/upload", response_model=EvidenceResponse, status_code=201)
+async def upload_evidence(
+    project_id: int,
+    title: str = Form(...),
+    evidence_type: EvidenceType = Form(EvidenceType.other),
+    phase_id: int | None = Form(None),
+    description: str | None = Form(None),
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("projects", write=True)),
+):
+    await _ensure_project_exists(db, project_id)
+    content = await file.read()
+    _validate_upload(file, content)
+
+    evidence = ProjectEvidence(
+        project_id=project_id,
+        phase_id=phase_id,
+        title=title.strip(),
+        evidence_type=evidence_type,
+        description=description.strip() if description else None,
+        created_by=current_user.id,
+        file_name=file.filename or "archivo",
+        file_mime_type=file.content_type or "application/octet-stream",
+        file_size_bytes=len(content),
+        file_content=content,
+        url=None,
+    )
+    db.add(evidence)
+    await db.commit()
+    await db.refresh(evidence)
+    return _to_response(project_id, evidence)
 
 
 @router.put("/{evidence_id}", response_model=EvidenceResponse)
@@ -80,7 +180,55 @@ async def update_evidence(
             setattr(evidence, field, value)
     await db.commit()
     await db.refresh(evidence)
-    return _to_response(evidence)
+    return _to_response(project_id, evidence)
+
+
+@router.get("/{evidence_id}/download")
+async def download_evidence(
+    project_id: int,
+    evidence_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("projects")),
+):
+    result = await db.execute(
+        select(ProjectEvidence).where(
+            ProjectEvidence.id == evidence_id,
+            ProjectEvidence.project_id == project_id,
+        )
+    )
+    evidence = result.scalar_one_or_none()
+    if evidence is None or not evidence.file_content or not evidence.file_name:
+        raise HTTPException(status_code=404, detail="Evidence file not found")
+    safe_name = _safe_filename(evidence.file_name)
+    return Response(
+        content=evidence.file_content,
+        media_type=evidence.file_mime_type or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
+    )
+
+
+@router.get("/{evidence_id}/preview")
+async def preview_evidence(
+    project_id: int,
+    evidence_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("projects")),
+):
+    result = await db.execute(
+        select(ProjectEvidence).where(
+            ProjectEvidence.id == evidence_id,
+            ProjectEvidence.project_id == project_id,
+        )
+    )
+    evidence = result.scalar_one_or_none()
+    if evidence is None or not evidence.file_content or not evidence.file_name:
+        raise HTTPException(status_code=404, detail="Evidence file not found")
+    safe_name = _safe_filename(evidence.file_name)
+    return Response(
+        content=evidence.file_content,
+        media_type=evidence.file_mime_type or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{safe_name}"'},
+    )
 
 
 @router.delete("/{evidence_id}", status_code=204)

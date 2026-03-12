@@ -1,13 +1,28 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Camera, FileBarChart, BarChart3, TrendingUp, FileText, Package, Link2, Plus, Pencil, Trash2, ExternalLink } from "lucide-react"
+import {
+  Camera,
+  FileBarChart,
+  BarChart3,
+  TrendingUp,
+  FileText,
+  Package,
+  Link2,
+  Plus,
+  Pencil,
+  Trash2,
+  ExternalLink,
+  Upload,
+  Download,
+  Clipboard,
+} from "lucide-react"
 import { toast } from "sonner"
 import { evidenceApi } from "@/lib/api"
 import type { ProjectEvidence, ProjectEvidenceCreate, EvidenceType, ProjectPhase } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
-import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
@@ -33,9 +48,21 @@ function getEvidenceLabel(type: EvidenceType) {
   return EVIDENCE_TYPES.find((t) => t.value === type)?.label ?? type
 }
 
+function formatFileSize(bytes: number | null | undefined) {
+  if (!bytes) return ""
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 interface Props {
   projectId: number
   phases: ProjectPhase[]
+}
+
+interface EvidenceFormSubmit {
+  data: ProjectEvidenceCreate
+  file: File | null
 }
 
 export function EvidenceList({ projectId, phases }: Props) {
@@ -49,12 +76,28 @@ export function EvidenceList({ projectId, phases }: Props) {
     queryFn: () => evidenceApi.list(projectId),
   })
 
+  const closeForm = () => {
+    setEditing(null)
+    setShowForm(false)
+  }
+
   const createMut = useMutation({
     mutationFn: (data: ProjectEvidenceCreate) => evidenceApi.create(projectId, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["project-evidence", projectId] })
-      setShowForm(false)
+      closeForm()
       toast.success("Evidencia creada")
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  })
+
+  const uploadMut = useMutation({
+    mutationFn: ({ file, data }: { file: File; data: ProjectEvidenceCreate }) =>
+      evidenceApi.upload(projectId, file, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["project-evidence", projectId] })
+      closeForm()
+      toast.success("Archivo de evidencia subido")
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   })
@@ -64,8 +107,7 @@ export function EvidenceList({ projectId, phases }: Props) {
       evidenceApi.update(projectId, id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["project-evidence", projectId] })
-      setEditing(null)
-      setShowForm(false)
+      closeForm()
       toast.success("Evidencia actualizada")
     },
     onError: (e) => toast.error(getErrorMessage(e)),
@@ -81,9 +123,20 @@ export function EvidenceList({ projectId, phases }: Props) {
     onError: (e) => toast.error(getErrorMessage(e)),
   })
 
+  const handleSubmit = ({ data, file }: EvidenceFormSubmit) => {
+    if (editing) {
+      updateMut.mutate({ id: editing.id, data })
+      return
+    }
+    if (file) {
+      uploadMut.mutate({ file, data })
+      return
+    }
+    createMut.mutate(data)
+  }
+
   if (isLoading) return <p className="text-muted-foreground text-sm">Cargando evidencia...</p>
 
-  // Group by phase
   const grouped = new Map<string, ProjectEvidence[]>()
   for (const ev of evidence) {
     const key = ev.phase_name || "Sin fase"
@@ -102,7 +155,7 @@ export function EvidenceList({ projectId, phases }: Props) {
 
       {evidence.length === 0 ? (
         <p className="text-muted-foreground text-sm py-8 text-center">
-          No hay evidencia registrada. Anade URLs de screenshots, informes, rankings, etc.
+          No hay evidencia registrada. Puedes anadir una URL, subir un archivo o pegar una captura.
         </p>
       ) : (
         <div className="space-y-6">
@@ -112,6 +165,13 @@ export function EvidenceList({ projectId, phases }: Props) {
               <div className="grid gap-3 sm:grid-cols-2">
                 {items.map((ev) => {
                   const Icon = getEvidenceIcon(ev.evidence_type)
+                  const primaryHref = ev.has_file
+                    ? (ev.preview_url || evidenceApi.previewUrl(projectId, ev.id))
+                    : ev.url
+                  const downloadHref = ev.has_file
+                    ? (ev.download_url || evidenceApi.downloadUrl(projectId, ev.id))
+                    : ev.url
+
                   return (
                     <Card key={ev.id} className="relative">
                       <CardContent className="p-4">
@@ -122,17 +182,33 @@ export function EvidenceList({ projectId, phases }: Props) {
                             </div>
                             <div className="min-w-0">
                               <span className="font-medium truncate block">{ev.title}</span>
-                              <Badge variant="secondary" className="text-[10px] mt-0.5">
-                                {getEvidenceLabel(ev.evidence_type)}
-                              </Badge>
+                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <Badge variant="secondary" className="text-[10px]">
+                                  {getEvidenceLabel(ev.evidence_type)}
+                                </Badge>
+                                {ev.has_file && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    Archivo
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="flex gap-1 shrink-0">
-                            <a href={ev.url} target="_blank" rel="noopener noreferrer">
-                              <Button variant="ghost" size="icon" aria-label="Abrir enlace" className="h-7 w-7">
-                                <ExternalLink className="h-3.5 w-3.5" />
-                              </Button>
-                            </a>
+                            {primaryHref && (
+                              <a href={primaryHref} target="_blank" rel="noopener noreferrer">
+                                <Button variant="ghost" size="icon" aria-label="Abrir evidencia" className="h-7 w-7">
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </Button>
+                              </a>
+                            )}
+                            {ev.has_file && downloadHref && (
+                              <a href={downloadHref} target="_blank" rel="noopener noreferrer">
+                                <Button variant="ghost" size="icon" aria-label="Descargar evidencia" className="h-7 w-7">
+                                  <Download className="h-3.5 w-3.5" />
+                                </Button>
+                              </a>
+                            )}
                             <Button variant="ghost" size="icon" aria-label="Editar evidencia" className="h-7 w-7" onClick={() => { setEditing(ev); setShowForm(true) }}>
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
@@ -141,14 +217,21 @@ export function EvidenceList({ projectId, phases }: Props) {
                             </Button>
                           </div>
                         </div>
-                        <a
-                          href={ev.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-2 text-xs text-brand hover:underline truncate block"
-                        >
-                          {ev.url}
-                        </a>
+                        {ev.has_file ? (
+                          <p className="mt-2 text-xs text-brand break-all">
+                            {ev.file_name}
+                            {ev.file_size_bytes ? ` · ${formatFileSize(ev.file_size_bytes)}` : ""}
+                          </p>
+                        ) : ev.url ? (
+                          <a
+                            href={ev.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 text-xs text-brand hover:underline truncate block"
+                          >
+                            {ev.url}
+                          </a>
+                        ) : null}
                         {ev.description && (
                           <p className="mt-2 text-xs text-muted-foreground border-t pt-2">{ev.description}</p>
                         )}
@@ -167,27 +250,21 @@ export function EvidenceList({ projectId, phases }: Props) {
         </div>
       )}
 
-      {/* Create/Edit Dialog */}
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogHeader>
-          <DialogTitle>{editing ? "Editar evidencia" : "Nueva evidencia"}</DialogTitle>
-        </DialogHeader>
-        <EvidenceForm
-          initial={editing}
-          phases={phases}
-          onSubmit={(data) => {
-            if (editing) {
-              updateMut.mutate({ id: editing.id, data })
-            } else {
-              createMut.mutate(data)
-            }
-          }}
-          loading={createMut.isPending || updateMut.isPending}
-          onCancel={() => setShowForm(false)}
-        />
+      <Dialog open={showForm} onOpenChange={(open) => { setShowForm(open); if (!open) setEditing(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editing ? "Editar evidencia" : "Nueva evidencia"}</DialogTitle>
+          </DialogHeader>
+          <EvidenceForm
+            initial={editing}
+            phases={phases}
+            onSubmit={handleSubmit}
+            loading={createMut.isPending || uploadMut.isPending || updateMut.isPending}
+            onCancel={closeForm}
+          />
+        </DialogContent>
       </Dialog>
 
-      {/* Delete Confirm */}
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
@@ -208,7 +285,7 @@ function EvidenceForm({
 }: {
   initial: ProjectEvidence | null
   phases: ProjectPhase[]
-  onSubmit: (data: ProjectEvidenceCreate) => void
+  onSubmit: (payload: EvidenceFormSubmit) => void
   loading: boolean
   onCancel: () => void
 }) {
@@ -217,21 +294,67 @@ function EvidenceForm({
   const [evidenceType, setEvidenceType] = useState<EvidenceType>(initial?.evidence_type ?? "other")
   const [phaseId, setPhaseId] = useState<string>(initial?.phase_id?.toString() ?? "")
   const [description, setDescription] = useState(initial?.description ?? "")
+  const [mode, setMode] = useState<"url" | "file">(initial?.has_file ? "file" : "url")
+  const [file, setFile] = useState<File | null>(null)
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = Array.from(e.clipboardData.items || [])
+    const rawFile = items.find((item) => item.kind === "file")?.getAsFile()
+    const pastedFile = rawFile
+      ? new File(
+          [rawFile],
+          rawFile.name || `captura${rawFile.type === "image/png" ? ".png" : rawFile.type === "image/jpeg" ? ".jpg" : ""}`,
+          { type: rawFile.type || "application/octet-stream" }
+        )
+      : null
+    if (!pastedFile) return
+    e.preventDefault()
+    setMode("file")
+    setFile(pastedFile)
+    if (!title.trim() && pastedFile.name) {
+      setTitle(pastedFile.name.replace(/\.[^.]+$/, ""))
+    }
+    toast.success("Captura pegada")
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!title.trim() || !url.trim()) return
-    onSubmit({
+    if (!title.trim()) return
+    const data: ProjectEvidenceCreate = {
       title: title.trim(),
-      url: url.trim(),
       evidence_type: evidenceType,
       phase_id: phaseId ? parseInt(phaseId) : null,
       description: description.trim() || null,
-    })
+      url: mode === "url" ? (url.trim() || null) : null,
+    }
+    if (!initial && mode === "file") {
+      if (!file) return
+      onSubmit({ data, file })
+      return
+    }
+    if (mode === "url" && !data.url) return
+    onSubmit({ data, file: null })
   }
 
+  const fileHelp = initial?.has_file
+    ? "Esta evidencia ya tiene un archivo. Puedes editar metadatos, pero no reemplazarlo desde este formulario."
+    : "Sube un archivo o pega una captura con Cmd/Ctrl+V."
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 p-4">
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {!initial && (
+        <div className="flex items-center gap-2">
+          <Button type="button" variant={mode === "url" ? "default" : "outline"} size="sm" onClick={() => setMode("url")}>
+            <Link2 className="h-3.5 w-3.5 mr-1.5" />
+            URL
+          </Button>
+          <Button type="button" variant={mode === "file" ? "default" : "outline"} size="sm" onClick={() => setMode("file")}>
+            <Upload className="h-3.5 w-3.5 mr-1.5" />
+            Archivo o captura
+          </Button>
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <Label>Título *</Label>
@@ -239,20 +362,61 @@ function EvidenceForm({
         </div>
         <div>
           <Label>Tipo</Label>
-          <Select
-            value={evidenceType}
-            onChange={(e) => setEvidenceType(e.target.value as EvidenceType)}
-          >
+          <Select value={evidenceType} onChange={(e) => setEvidenceType(e.target.value as EvidenceType)}>
             {EVIDENCE_TYPES.map((t) => (
               <option key={t.value} value={t.value}>{t.label}</option>
             ))}
           </Select>
         </div>
       </div>
-      <div>
-        <Label>URL *</Label>
-        <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." required />
-      </div>
+
+      {mode === "url" ? (
+        <div>
+          <Label>URL *</Label>
+          <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." required />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div>
+            <Label>Archivo</Label>
+            <Input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip"
+              disabled={!!initial}
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">{fileHelp}</p>
+          </div>
+          {!initial && (
+            <div
+              tabIndex={0}
+              onPaste={handlePaste}
+              className="rounded-lg border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground focus:outline-none focus:ring-1 focus:ring-brand"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Clipboard className="h-4 w-4" />
+                <span className="font-medium text-foreground">Pegar desde portapapeles</span>
+              </div>
+              <p>Pega aquí una captura o archivo con Cmd/Ctrl+V.</p>
+            </div>
+          )}
+          {initial?.has_file && (
+            <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
+              <p className="font-medium text-foreground">{initial.file_name}</p>
+              <p className="text-xs text-muted-foreground">
+                {initial.file_size_bytes ? formatFileSize(initial.file_size_bytes) : ""}
+              </p>
+            </div>
+          )}
+          {file && !initial && (
+            <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
+              <p className="font-medium text-foreground">{file.name}</p>
+              <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+            </div>
+          )}
+        </div>
+      )}
+
       <div>
         <Label>Fase</Label>
         <Select value={phaseId} onChange={(e) => setPhaseId(e.target.value)}>
@@ -262,14 +426,16 @@ function EvidenceForm({
           ))}
         </Select>
       </div>
+
       <div>
         <Label>Descripción</Label>
-        <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Contexto o notas sobre esta evidencia..." rows={2} />
+        <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Contexto o notas sobre esta evidencia..." rows={3} />
       </div>
+
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onCancel}>Cancelar</Button>
-        <Button type="submit" disabled={loading || !title.trim() || !url.trim()}>
-          {loading ? "Guardando..." : initial ? "Guardar" : "Crear"}
+        <Button type="submit" disabled={loading || !title.trim() || (mode === "url" ? !url.trim() : !initial && !file)}>
+          {loading ? "Guardando..." : initial ? "Guardar cambios" : mode === "file" ? "Subir evidencia" : "Crear evidencia"}
         </Button>
       </div>
     </form>

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { tasksApi, clientsApi, categoriesApi, usersApi, timeEntriesApi, projectsApi } from "@/lib/api"
@@ -51,7 +51,7 @@ const formatMinutes = (mins: number) => {
 
 export default function TasksPage() {
   const queryClient = useQueryClient()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { page, pageSize, setPage, reset } = usePagination(25)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Task | null>(null)
@@ -91,6 +91,7 @@ export default function TasksPage() {
   const [recurrencePattern, setRecurrencePattern] = useState<string>("weekly")
   const [recurrenceDay, setRecurrenceDay] = useState<number>(0)
   const [showRecurringFields, setShowRecurringFields] = useState(false)
+  const deepLinkTaskId = searchParams.get("edit") || searchParams.get("task")
 
   const { data: tasksData, isLoading } = useQuery({
     queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, page, pageSize],
@@ -114,7 +115,7 @@ export default function TasksPage() {
     if (t.status === "completed") return false // QA mostly applies to active tasks
 
     if (qaFilter === "unassigned") return t.assigned_to === null
-    if (qaFilter === "no_date") return t.due_date === null
+    if (qaFilter === "no_date") return t.scheduled_date === null
     if (qaFilter === "no_estimate") return t.estimated_minutes === null
     if (qaFilter === "overdue") {
       if (!t.due_date) return false
@@ -339,6 +340,33 @@ export default function TasksPage() {
     setShowRecurringFields(task.is_recurring)
     setDialogOpen(true)
   }
+
+  useEffect(() => {
+    if (!deepLinkTaskId) return
+    const taskId = Number(deepLinkTaskId)
+    if (!Number.isFinite(taskId) || taskId <= 0) return
+
+    let cancelled = false
+
+    tasksApi.get(taskId)
+      .then((task) => {
+        if (cancelled) return
+        openEdit(task)
+        const next = new URLSearchParams(searchParams)
+        next.delete("edit")
+        next.delete("task")
+        setSearchParams(next, { replace: true })
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          toast.error(getErrorMessage(err, "No se pudo abrir la tarea"))
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [deepLinkTaskId, searchParams, setSearchParams])
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -576,7 +604,7 @@ export default function TasksPage() {
           <TableBody>
             {sortedTasks.map((t) => {
               const QA_unassigned = t.assigned_to === null;
-              const QA_nodate = t.due_date === null;
+              const QA_nodate = t.scheduled_date === null;
               const QA_noestimate = t.estimated_minutes === null;
               const QA_overdue = t.due_date && new Date(t.due_date) < now;
 
@@ -663,7 +691,7 @@ export default function TasksPage() {
                   <TableCell className={`mono ${(qaFilter === "no_date" && QA_nodate) || (qaFilter === "overdue" && QA_overdue)
                       ? "text-destructive font-bold" : ""
                     }`}>
-                    {t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : (QA_nodate && qaFilter === "no_date" ? "⚠️ Sin fecha" : "-")}
+                    {t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : (QA_nodate && qaFilter === "no_date" ? "⚠️ Sin planificar" : "-")}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">

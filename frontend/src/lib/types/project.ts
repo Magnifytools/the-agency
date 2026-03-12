@@ -113,19 +113,25 @@ export interface ProjectEvidence {
   project_id: number
   phase_id: number | null
   title: string
-  url: string
+  url: string | null
   evidence_type: EvidenceType
   description: string | null
   created_by: number | null
   creator_name: string | null
   phase_name: string | null
+  has_file: boolean
+  file_name: string | null
+  file_mime_type: string | null
+  file_size_bytes: number | null
+  download_url: string | null
+  preview_url: string | null
   created_at: string
   updated_at: string
 }
 
 export interface ProjectEvidenceCreate {
   title: string
-  url: string
+  url?: string | null
   evidence_type?: EvidenceType
   phase_id?: number | null
   description?: string | null

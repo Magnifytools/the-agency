@@ -443,7 +443,7 @@ function ConvertToTaskDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Cliente</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Cliente *</label>
               <Select value={clientId} onChange={(e) => setClientId(e.target.value)} className="text-sm">
                 <option value="">Sin cliente</option>
                 {clients.map((c) => (

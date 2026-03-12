@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
 from backend.db.models import Task, TaskStatus, TaskPriority, User, TaskChecklist, TaskComment, TaskAttachment
@@ -20,6 +21,18 @@ from backend.api.deps import get_current_user, require_module
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+
+_TASK_RESPONSE_OPTIONS = (
+    selectinload(Task.client),
+    selectinload(Task.category),
+    selectinload(Task.assigned_user),
+    selectinload(Task.creator),
+    selectinload(Task.project),
+    selectinload(Task.phase),
+    selectinload(Task.dependency),
+    selectinload(Task.recurring_parent),
+    selectinload(Task.checklist_items),
+)
 
 
 def _task_to_response(task: Task) -> TaskResponse:
@@ -59,6 +72,15 @@ def _task_to_response(task: Task) -> TaskResponse:
         recurring_parent_title=task.recurring_parent.title if task.recurring_parent else None,
         checklist_count=len(task.checklist_items) if task.checklist_items else 0,
     )
+
+
+async def _load_task_for_response(db: AsyncSession, task_id: int) -> Task | None:
+    result = await db.execute(
+        select(Task)
+        .options(*_TASK_RESPONSE_OPTIONS)
+        .where(Task.id == task_id)
+    )
+    return result.scalar_one_or_none()
 
 
 @router.get("", response_model=PaginatedResponse[TaskResponse])
@@ -122,7 +144,12 @@ async def list_tasks(
 
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
 
-    query = base.order_by(Task.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+    query = (
+        base.options(*_TASK_RESPONSE_OPTIONS)
+        .order_by(Task.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
     result = await db.execute(query)
 
     return PaginatedResponse(
@@ -150,7 +177,9 @@ async def create_task(
         await db.rollback()
         logger.error("Error creando tarea: %s", e)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
-    await db.refresh(task)
+    task = await _load_task_for_response(db, task.id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found after create")
 
     # Notify assignee
     if body.assigned_to:
@@ -176,7 +205,11 @@ async def get_task(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("tasks")),
 ):
-    result = await db.execute(select(Task).where(Task.id == task_id))
+    result = await db.execute(
+        select(Task)
+        .options(*_TASK_RESPONSE_OPTIONS)
+        .where(Task.id == task_id)
+    )
     task = result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -217,7 +250,9 @@ async def update_task(
         await db.rollback()
         logger.error("Error actualizando tarea %d: %s", task_id, e)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
-    await db.refresh(task)
+    task = await _load_task_for_response(db, task.id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found after update")
 
     # Notify new assignee if assignment changed
     update_data = body.model_dump(exclude_unset=True)

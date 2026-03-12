@@ -828,10 +828,23 @@ export const evidenceApi = {
     api.get<ProjectEvidence[]>(`/projects/${projectId}/evidence`).then((r) => r.data),
   create: (projectId: number, data: ProjectEvidenceCreate) =>
     api.post<ProjectEvidence>(`/projects/${projectId}/evidence`, data).then((r) => r.data),
+  upload: (projectId: number, file: File, data: ProjectEvidenceCreate) => {
+    const form = new FormData()
+    form.append("file", file)
+    form.append("title", data.title)
+    form.append("evidence_type", data.evidence_type || "other")
+    if (data.phase_id != null) form.append("phase_id", String(data.phase_id))
+    if (data.description) form.append("description", data.description)
+    return api.post<ProjectEvidence>(`/projects/${projectId}/evidence/upload`, form).then((r) => r.data)
+  },
   update: (projectId: number, evidenceId: number, data: Partial<ProjectEvidenceCreate>) =>
     api.put<ProjectEvidence>(`/projects/${projectId}/evidence/${evidenceId}`, data).then((r) => r.data),
   delete: (projectId: number, evidenceId: number) =>
     api.delete(`/projects/${projectId}/evidence/${evidenceId}`).then((r) => r.data),
+  downloadUrl: (projectId: number, evidenceId: number) =>
+    `/api/projects/${projectId}/evidence/${evidenceId}/download`,
+  previewUrl: (projectId: number, evidenceId: number) =>
+    `/api/projects/${projectId}/evidence/${evidenceId}/preview`,
 }
 
 // --- Global Search ---
