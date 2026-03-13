@@ -194,9 +194,9 @@ async def export_billing(
 
     rows = []
     for row in result.all():
-        hours = round((row.total_minutes or 0) / 60, 2)
-        cost = round(row.total_cost or 0, 2)
-        budget = float(row.monthly_budget or 0)
+        hours = round(float(row.total_minutes or 0) / 60, 2)
+        cost = round(float(row.total_cost or 0), 2)
+        budget = round(float(row.monthly_budget or 0), 2)
         invoiced = round(float(row.invoiced or 0), 2)
         margin = round(invoiced - cost, 2) if invoiced > 0 else round(budget - cost, 2)
         rows.append({
@@ -275,9 +275,9 @@ async def export_billing_pdf(
 
     rows = []
     for row in result.all():
-        hours = round((row.total_minutes or 0) / 60, 2)
-        cost = round(row.total_cost or 0, 2)
-        budget = float(row.monthly_budget or 0)
+        hours = round(float(row.total_minutes or 0) / 60, 2)
+        cost = round(float(row.total_cost or 0), 2)
+        budget = round(float(row.monthly_budget or 0), 2)
         invoiced = round(float(row.invoiced or 0), 2)
         margin = round(invoiced - cost, 2) if invoiced > 0 else round(budget - cost, 2)
         rows.append({
