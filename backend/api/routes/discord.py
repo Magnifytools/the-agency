@@ -20,6 +20,7 @@ from backend.db.database import get_db
 from backend.db.models import User, WeeklyDigest, DiscordSettings
 from backend.api.deps import require_admin
 from backend.services.discord import generate_daily_summary, send_to_discord
+from backend.api.routes.dailys import _resolve_channel_id, _send_daily_as_thread
 from backend.services.digest_renderer import render_discord
 from backend.schemas.digest import DigestContent
 from backend.schemas.discord import (
@@ -208,7 +209,28 @@ async def send_daily_summary(
     except Exception as exc:
         logger.error("Error generating daily summary: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Error al generar el resumen diario")
-    success = await _send_discord_message(url, summary)
+
+    success = False
+    bot_token = ds.bot_token if ds else None
+
+    if bot_token:
+        try:
+            async with httpx.AsyncClient(timeout=15) as http:
+                channel_id = await _resolve_channel_id(ds, url, http)
+                if channel_id:
+                    date_str = d.strftime("%d/%m/%Y")
+                    header = f"📋 **Resumen del dia — {date_str}**"
+                    success = await _send_daily_as_thread(
+                        url, bot_token, channel_id, header, summary, http
+                    )
+                    if success and ds.channel_id:
+                        await db.commit()
+        except Exception as exc:
+            logger.warning("Thread mode failed for summary: %s", exc)
+            success = False
+
+    if not success:
+        success = await _send_discord_message(url, summary)
 
     if success:
         try:
