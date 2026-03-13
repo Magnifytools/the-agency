@@ -220,8 +220,11 @@ async def send_daily_summary(
                 if channel_id:
                     date_str = d.strftime("%d/%m/%Y")
                     header = f"📋 **Resumen del dia — {date_str}**"
+                    # Strip the first line (header) from summary to avoid duplication
+                    body_lines = summary.split("\n")
+                    body = "\n".join(body_lines[1:]).strip() or summary
                     success = await _send_daily_as_thread(
-                        url, bot_token, channel_id, header, summary, http
+                        url, bot_token, channel_id, header, body, http
                     )
                     if success and ds.channel_id:
                         await db.commit()
