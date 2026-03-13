@@ -73,6 +73,6 @@ async def me(current_user: User = Depends(get_current_user)):
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(response: Response):
+async def logout(response: Response, _current_user: User = Depends(get_current_user)):
     _clear_auth_cookies(response)
     return None

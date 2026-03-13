@@ -53,7 +53,6 @@ def _settings_to_response(ds: DiscordSettings) -> DiscordSettingsResponse:
     url = ds.webhook_url or ""
     return DiscordSettingsResponse(
         id=ds.id,
-        webhook_url=url,
         webhook_configured=bool(url.strip()),
         bot_token_configured=bool(ds.bot_token),
         auto_daily_summary=ds.auto_daily_summary,

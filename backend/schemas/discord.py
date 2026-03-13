@@ -8,7 +8,6 @@ from pydantic import BaseModel
 
 class DiscordSettingsResponse(BaseModel):
     id: int
-    webhook_url: Optional[str] = None
     webhook_configured: bool = False
     bot_token_configured: bool = False
     auto_daily_summary: bool = False

@@ -27,7 +27,7 @@ export default function DiscordSettingsPage() {
 
   // Initialize form when settings load
   if (settings && !initialized) {
-    setWebhookInput(settings.webhook_url || "")
+    setWebhookInput("")
     setSummaryTimeInput(settings.summary_time || "18:00")
     setAutoSendInput(settings.auto_daily_summary)
     setIncludeAiInput(settings.include_ai_note)
