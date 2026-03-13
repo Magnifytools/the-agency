@@ -151,13 +151,17 @@ async def export_billing(
     y, m = resolve_default_period(year, month)
     start, end = month_range_naive(y, m)
 
+    # Income.date is a Date column; convert datetime → date for correct comparison
+    start_date = start.date()
+    end_date = end.date()
+
     # Subquery: real invoiced income per client for the period (cobrado + pendiente)
     invoiced_subq = (
         select(func.coalesce(func.sum(Income.amount), 0))
         .where(
             Income.client_id == Client.id,
-            Income.date >= start,
-            Income.date <= end,
+            Income.date >= start_date,
+            Income.date <= end_date,
         )
         .scalar_subquery()
     )
@@ -229,13 +233,17 @@ async def export_billing_pdf(
     y, m = resolve_default_period(year, month)
     start, end = month_range_naive(y, m)
 
+    # Income.date is a Date column; convert datetime → date for correct comparison
+    start_date = start.date()
+    end_date = end.date()
+
     # Reuse the same aggregation query as /export
     invoiced_subq = (
         select(func.coalesce(func.sum(Income.amount), 0))
         .where(
             Income.client_id == Client.id,
-            Income.date >= start,
-            Income.date <= end,
+            Income.date >= start_date,
+            Income.date <= end_date,
         )
         .scalar_subquery()
     )
