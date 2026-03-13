@@ -527,6 +527,17 @@ async def _ensure_columns_v3():
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurring_parent_id INTEGER REFERENCES tasks(id)",
         "CREATE INDEX IF NOT EXISTS ix_tasks_recurring_parent_id ON tasks (recurring_parent_id)",
         "CREATE INDEX IF NOT EXISTS ix_tasks_is_recurring ON tasks (is_recurring)",
+        # A3: Allow tasks without client
+        "ALTER TABLE tasks ALTER COLUMN client_id DROP NOT NULL",
+        # A4: News sources table
+        """CREATE TABLE IF NOT EXISTS news_sources (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    url VARCHAR(500) NOT NULL,
+    category VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)""",
     ]
     async with engine.begin() as conn:
         for sql in stmts:
