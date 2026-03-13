@@ -10,6 +10,7 @@ class DiscordSettingsResponse(BaseModel):
     id: int
     webhook_url: Optional[str] = None
     webhook_configured: bool = False
+    bot_token_configured: bool = False
     auto_daily_summary: bool = False
     summary_time: str = "18:00"
     include_ai_note: bool = True
@@ -20,6 +21,7 @@ class DiscordSettingsResponse(BaseModel):
 
 class DiscordSettingsUpdate(BaseModel):
     webhook_url: Optional[str] = None
+    bot_token: Optional[str] = None
     auto_daily_summary: Optional[bool] = None
     summary_time: Optional[str] = None
     include_ai_note: Optional[bool] = None

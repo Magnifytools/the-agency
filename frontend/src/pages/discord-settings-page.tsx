@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Send, CheckCircle, Bell } from "lucide-react"
+import { Loader2, Send, CheckCircle, Bell, Bot } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 
 export default function DiscordSettingsPage() {
   const queryClient = useQueryClient()
   const [webhookInput, setWebhookInput] = useState("")
+  const [botTokenInput, setBotTokenInput] = useState("")
   const [summaryTimeInput, setSummaryTimeInput] = useState("18:00")
   const [autoSendInput, setAutoSendInput] = useState(false)
   const [includeAiInput, setIncludeAiInput] = useState(true)
@@ -64,12 +65,17 @@ export default function DiscordSettingsPage() {
   })
 
   const handleSave = () => {
-    updateMutation.mutate({
+    const data: Record<string, unknown> = {
       webhook_url: webhookInput,
       auto_daily_summary: autoSendInput,
       summary_time: summaryTimeInput,
       include_ai_note: includeAiInput,
-    })
+    }
+    // Only send bot_token if user typed something (avoid clearing existing token)
+    if (botTokenInput.trim()) {
+      data.bot_token = botTokenInput.trim()
+    }
+    updateMutation.mutate(data as Partial<DiscordSettings>)
   }
 
   if (isLoading) {
@@ -118,6 +124,9 @@ export default function DiscordSettingsPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-2 text-sm">
+            <p className="text-muted-foreground">
+              Hilos: {settings?.bot_token_configured ? "✅ Activados (bot token configurado)" : "❌ Desactivados (sin bot token)"}
+            </p>
             {settings?.last_sent_at ? (
               <p className="text-muted-foreground">
                 Último envío: {new Date(settings.last_sent_at).toLocaleString("es-ES")}
@@ -161,6 +170,40 @@ export default function DiscordSettingsPage() {
             </div>
             <p className="text-xs text-muted-foreground">
               Crea un webhook en Discord: Configuración del canal → Integraciones → Webhooks → Nuevo webhook
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Bot Token for threads */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Bot className="w-5 h-5" />
+            Bot Token
+            {settings?.bot_token_configured ? (
+              <Badge variant="success">Configurado</Badge>
+            ) : (
+              <Badge variant="outline">No configurado</Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="bot-token">Token del bot de Discord</Label>
+            <Input
+              id="bot-token"
+              type="password"
+              placeholder={settings?.bot_token_configured ? "••••••••••••••••" : "Pega el token del bot aquí..."}
+              value={botTokenInput}
+              onChange={(e) => setBotTokenInput(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Necesario para enviar dailys como hilos. Crea un bot en{" "}
+              <a href="https://discord.com/developers/applications" target="_blank" rel="noopener noreferrer" className="text-brand underline">
+                discord.com/developers
+              </a>
+              {" "}y copia el token. El bot necesita permisos de "Create Public Threads" y "Send Messages in Threads".
             </p>
           </div>
         </CardContent>

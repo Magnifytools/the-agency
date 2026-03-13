@@ -372,6 +372,7 @@ export interface DiscordSettings {
   id: number
   webhook_url: string | null
   webhook_configured: boolean
+  bot_token_configured: boolean
   auto_daily_summary: boolean
   summary_time: string
   include_ai_note: boolean

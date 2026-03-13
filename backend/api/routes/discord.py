@@ -54,6 +54,7 @@ def _settings_to_response(ds: DiscordSettings) -> DiscordSettingsResponse:
         id=ds.id,
         webhook_url=url,
         webhook_configured=bool(url.strip()),
+        bot_token_configured=bool(ds.bot_token),
         auto_daily_summary=ds.auto_daily_summary,
         summary_time=ds.summary_time or "18:00",
         include_ai_note=ds.include_ai_note,
@@ -143,6 +144,9 @@ async def update_discord_settings(
                 detail="URL de webhook inválida. Debe ser una URL de webhook de Discord válida.",
             )
         ds.webhook_url = payload.webhook_url
+        ds.channel_id = None  # Reset cached channel_id when webhook changes
+    if payload.bot_token is not None:
+        ds.bot_token = payload.bot_token.strip() or None
     if payload.auto_daily_summary is not None:
         ds.auto_daily_summary = payload.auto_daily_summary
     if payload.summary_time is not None:

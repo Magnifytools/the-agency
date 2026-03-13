@@ -1221,6 +1221,8 @@ class DiscordSettings(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     webhook_url = Column(String(500), nullable=True)
+    bot_token = Column(String(500), nullable=True)
+    channel_id = Column(String(50), nullable=True)  # Cached from webhook info
     auto_daily_summary = Column(Boolean, default=False)
     summary_time = Column(String(5), default="18:00")  # HH:MM
     include_ai_note = Column(Boolean, default=True)

@@ -538,6 +538,9 @@ async def _ensure_columns_v3():
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )""",
+        # Discord bot token + channel_id for thread support
+        "ALTER TABLE discord_settings ADD COLUMN IF NOT EXISTS bot_token VARCHAR(500)",
+        "ALTER TABLE discord_settings ADD COLUMN IF NOT EXISTS channel_id VARCHAR(50)",
     ]
     async with engine.begin() as conn:
         for sql in stmts:

@@ -253,13 +253,77 @@ async def reparse_daily(
     return _to_response(daily)
 
 
+async def _resolve_channel_id(
+    ds: DiscordSettings, webhook_url: str, http: "httpx.AsyncClient"
+) -> str | None:
+    """Get the channel_id for the webhook, using cached value or fetching from Discord."""
+    if ds.channel_id:
+        return ds.channel_id
+    try:
+        # GET /webhooks/{id}/{token} returns webhook info including channel_id
+        resp = await http.get(webhook_url)
+        if resp.status_code == 200:
+            data = resp.json()
+            channel_id = data.get("channel_id")
+            if channel_id:
+                ds.channel_id = channel_id
+            return channel_id
+    except Exception:
+        pass
+    return None
+
+
+async def _send_daily_as_thread(
+    webhook_url: str,
+    bot_token: str,
+    channel_id: str,
+    header: str,
+    body: str,
+    http: "httpx.AsyncClient",
+) -> bool:
+    """Send daily as a Discord thread: post header via webhook, create thread, post body inside."""
+    # Step 1: Send header message via webhook with ?wait=true to get message_id
+    resp = await http.post(
+        f"{webhook_url}?wait=true",
+        json={"content": header},
+    )
+    if resp.status_code not in (200, 201):
+        return False
+    message_id = resp.json().get("id")
+    if not message_id:
+        return False
+
+    # Step 2: Create thread from that message via Bot API
+    thread_resp = await http.post(
+        f"https://discord.com/api/v10/channels/{channel_id}/messages/{message_id}/threads",
+        headers={"Authorization": f"Bot {bot_token}"},
+        json={"name": header[:100]},  # Thread name max 100 chars
+    )
+    if thread_resp.status_code not in (200, 201):
+        logger.warning("Failed to create thread: %s %s", thread_resp.status_code, thread_resp.text[:200])
+        return False
+    thread_id = thread_resp.json().get("id")
+    if not thread_id:
+        return False
+
+    # Step 3: Send body inside the thread via webhook
+    # Discord messages max 2000 chars — split if needed
+    if len(body) > 2000:
+        body = body[:1997] + "..."
+    resp = await http.post(
+        f"{webhook_url}?wait=true&thread_id={thread_id}",
+        json={"content": body},
+    )
+    return resp.status_code in (200, 201)
+
+
 @router.post("/{daily_id}/send-discord", response_model=DailyDiscordResponse)
 async def send_daily_to_discord(
     daily_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Send a parsed daily update to Discord."""
+    """Send a parsed daily update to Discord, as a thread if bot_token is configured."""
     import httpx
 
     result = await db.execute(select(DailyUpdate).where(DailyUpdate.id == daily_id))
@@ -274,7 +338,7 @@ async def send_daily_to_discord(
     if not daily.parsed_data:
         raise HTTPException(status_code=400, detail="El daily no tiene datos parseados")
 
-    # Get Discord webhook from settings (DB first, then env var fallback)
+    # Get Discord settings
     ds_result = await db.execute(select(DiscordSettings).limit(1))
     ds = ds_result.scalar_one_or_none()
     webhook_url = (ds.webhook_url if ds else None) or settings.DISCORD_WEBHOOK_URL
@@ -287,12 +351,29 @@ async def send_daily_to_discord(
     date_str = daily.date.isoformat()
     message = format_daily_for_discord(daily.parsed_data, user_name, date_str)
 
-    # Send
+    success = False
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(webhook_url, json={"content": message})
-            success = resp.status_code in (200, 204)
-    except Exception:
+        async with httpx.AsyncClient(timeout=15) as http:
+            bot_token = ds.bot_token if ds else None
+
+            if bot_token:
+                # Thread mode: resolve channel_id, then send as thread
+                channel_id = await _resolve_channel_id(ds, webhook_url, http)
+                if channel_id:
+                    header = f"📋 **Daily Update — {user_name}** ({date_str})"
+                    success = await _send_daily_as_thread(
+                        webhook_url, bot_token, channel_id, header, message, http
+                    )
+                    if success and ds.channel_id:
+                        # Persist cached channel_id
+                        await db.commit()
+
+            if not success:
+                # Fallback: send as regular message (no thread)
+                resp = await http.post(webhook_url, json={"content": message})
+                success = resp.status_code in (200, 204)
+    except Exception as exc:
+        logger.error("Error sending daily to Discord: %s", exc)
         success = False
 
     if success:
