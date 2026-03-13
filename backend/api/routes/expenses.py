@@ -152,10 +152,9 @@ async def generate_recurring_expenses(
     created = 0
     skipped = 0
     for tmpl in templates:
-        # Check if already exists for this month (description + category + amount + supplier + month)
+        # Check if already generated for this month (match by description + category + amount + supplier)
         existing = await db.execute(
             select(Expense).where(
-                Expense.is_recurring.is_(True),
                 Expense.description == tmpl.description,
                 Expense.category_id == tmpl.category_id,
                 Expense.amount == tmpl.amount,
@@ -174,7 +173,7 @@ async def generate_recurring_expenses(
             description=tmpl.description,
             amount=tmpl.amount,
             category_id=tmpl.category_id,
-            is_recurring=True,
+            is_recurring=False,
             recurrence_period=tmpl.recurrence_period,
             vat_rate=tmpl.vat_rate,
             vat_amount=tmpl.vat_amount,

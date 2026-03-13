@@ -180,7 +180,7 @@ api.interceptors.response.use(
         const isShellRequest =
           requestUrl.includes("/inbox/count") ||
           requestUrl.includes("/holded/config")
-        if (!isGetRequest && !isShellRequest) {
+        if (!isShellRequest) {
           toast.error("Error del servidor. Intenta de nuevo.")
         }
       }
