@@ -140,6 +140,13 @@ export default function DashboardPage() {
   const overdueInvoices = holdedDashboard?.pending_invoices.filter((i) => i.status === "overdue") ?? []
   const overdueTotal = overdueInvoices.reduce((sum, i) => sum + i.total, 0)
 
+  // ─── Utilization (admin) ────────────────────────────────────
+  const { data: utilization } = useQuery({
+    queryKey: ["utilization", year, month],
+    queryFn: () => dashboardApi.utilization({ year, month }),
+    enabled: isAdmin,
+  })
+
   // ─── Worker queries ─────────────────────────────────────────
   const { data: myInProgressTasks } = useQuery({
     queryKey: ["my-tasks-in-progress", user?.id],
@@ -667,11 +674,20 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           {overview ? (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
               <MetricCard icon={Users} label="Clientes activos" value={overview.active_clients} tooltip="Clientes con estado 'activo'." />
               <MetricCard icon={CheckSquare} label="Tareas pendientes" value={overview.pending_tasks + overview.in_progress_tasks} subtitle={`${overview.in_progress_tasks} en curso`} tooltip="Tareas 'pendiente' + 'en curso' del mes." />
               <MetricCard icon={Clock} label="Horas mes" value={`${overview.hours_this_month}h`} tooltip="Total horas registradas del equipo." />
               <MetricCard icon={DollarSign} label="Presupuesto total" value={`${overview.total_budget.toLocaleString("es-ES")}€`} subtitle={`Coste: ${overview.total_cost.toLocaleString("es-ES")}€`} tooltip="Suma de presupuestos mensuales de clientes activos." />
+              {utilization && (
+                <MetricCard
+                  icon={UserCog}
+                  label="Ocupación"
+                  value={`${utilization.global_utilization_pct}%`}
+                  subtitle={`${utilization.total_logged_hours}h / ${utilization.total_available_hours}h`}
+                  tooltip="Horas registradas vs horas disponibles del equipo en el mes seleccionado."
+                />
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-4">

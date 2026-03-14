@@ -348,6 +348,8 @@ export const dashboardApi = {
     api.get("/dashboard/monthly-close/export", { params, responseType: "blob" }).then((r) => r.data),
   today: () => api.get("/dashboard/today").then((r) => r.data),
   alertsSummary: () => api.get("/dashboard/alerts-summary").then((r) => r.data),
+  utilization: (params?: { year?: number; month?: number }) =>
+    api.get("/dashboard/utilization", { params }).then((r) => r.data),
 }
 
 // Billing

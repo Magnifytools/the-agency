@@ -501,6 +501,84 @@ async def get_capacity(
     return capacity
 
 
+# ── Utilization (real hours vs available) ────────────────────────────────────
+
+@router.get("/utilization")
+async def get_utilization(
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("dashboard")),
+):
+    """Team utilization: actual hours logged vs available hours.
+
+    Returns per-user utilization for the given month + global average.
+    """
+    from datetime import date, timedelta
+    import calendar
+
+    today = date.today()
+    y = year or today.year
+    m = month or today.month
+    days_in_month = calendar.monthrange(y, m)[1]
+    start = date(y, m, 1)
+    end = date(y, m, days_in_month)
+
+    # Count business days in month
+    business_days = sum(1 for d in range(days_in_month)
+                        if date(y, m, d + 1).weekday() < 5)
+
+    users_result = await db.execute(
+        select(User).where(User.is_active == True).order_by(User.full_name)
+    )
+    users = users_result.scalars().all()
+
+    # Aggregate logged hours per user for the month
+    hours_result = await db.execute(
+        select(
+            TimeEntry.user_id,
+            func.coalesce(func.sum(TimeEntry.minutes), 0),
+        ).where(
+            func.date(TimeEntry.date) >= start,
+            func.date(TimeEntry.date) <= end,
+        ).group_by(TimeEntry.user_id)
+    )
+    hours_map = {row[0]: row[1] for row in hours_result.all()}
+
+    members = []
+    total_logged = 0
+    total_available = 0
+
+    for user in users:
+        daily_hours = (user.weekly_hours or 40) / 5
+        available_minutes = int(daily_hours * 60 * business_days)
+        logged_minutes = hours_map.get(user.id, 0)
+        pct = round((logged_minutes / available_minutes) * 100) if available_minutes > 0 else 0
+
+        total_logged += logged_minutes
+        total_available += available_minutes
+
+        members.append({
+            "user_id": user.id,
+            "full_name": user.full_name,
+            "logged_minutes": logged_minutes,
+            "available_minutes": available_minutes,
+            "utilization_pct": pct,
+        })
+
+    global_pct = round((total_logged / total_available) * 100) if total_available > 0 else 0
+
+    return {
+        "year": y,
+        "month": m,
+        "business_days": business_days,
+        "global_utilization_pct": global_pct,
+        "total_logged_hours": round(total_logged / 60, 1),
+        "total_available_hours": round(total_available / 60, 1),
+        "members": sorted(members, key=lambda x: x["utilization_pct"], reverse=True),
+    }
+
+
 # ── Today Block ──────────────────────────────────────────────────────────────
 
 @router.get("/today")
