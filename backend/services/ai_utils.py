@@ -36,6 +36,8 @@ def parse_claude_json(message: anthropic.types.Message) -> dict:
 
     Raises ValueError if the response cannot be parsed.
     """
+    if not message.content:
+        raise ValueError("Claude returned an empty response")
     raw_text = message.content[0].text.strip()
 
     if raw_text.startswith("```"):
