@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, and_, distinct
+from sqlalchemy import select, func, and_, or_, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
@@ -69,14 +69,18 @@ async def get_overview(
     )
     active_clients = r.scalar()
 
-    # Tasks
+    # Tasks — scoped to the selected month (by scheduled_date, or due_date if no scheduled)
+    task_date_filter = or_(
+        and_(Task.scheduled_date.isnot(None), Task.scheduled_date >= start, Task.scheduled_date <= end),
+        and_(Task.scheduled_date.is_(None), Task.due_date.isnot(None), Task.due_date >= start, Task.due_date <= end),
+    )
     r = await db.execute(
-        select(func.count()).select_from(Task).where(Task.status == TaskStatus.pending)
+        select(func.count()).select_from(Task).where(Task.status == TaskStatus.pending, task_date_filter)
     )
     pending_tasks = r.scalar()
 
     r = await db.execute(
-        select(func.count()).select_from(Task).where(Task.status == TaskStatus.in_progress)
+        select(func.count()).select_from(Task).where(Task.status == TaskStatus.in_progress, task_date_filter)
     )
     in_progress_tasks = r.scalar()
 

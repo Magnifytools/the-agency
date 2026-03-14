@@ -1,12 +1,12 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { timeEntriesApi, tasksApi } from "@/lib/api"
+import { timeEntriesApi, tasksApi, timerApi, clientsApi } from "@/lib/api"
 import { useAuth } from "@/context/auth-context"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Select } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Building2, Pencil, Check, X } from "lucide-react"
+import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Building2, Pencil, Check, X, Play, Square } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { EmptyTableState } from "@/components/ui/empty-state"
 import { toast } from "sonner"
@@ -95,6 +95,113 @@ function ClientReportRow({ client }: { client: ClientTimeReport }) {
         </TableRow>
       ))}
     </>
+  )
+}
+
+function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: string; client_id?: number | null; client_name?: string | null; project_id?: number | null; project_name?: string | null }[]; onTimerChange: () => void }) {
+  const queryClient = useQueryClient()
+  const [filterClient, setFilterClient] = useState("")
+  const [filterProject, setFilterProject] = useState("")
+  const [selectedTask, setSelectedTask] = useState("")
+  const [elapsed, setElapsed] = useState("")
+
+  const { data: activeTimer } = useQuery({
+    queryKey: ["active-timer"],
+    queryFn: () => timerApi.active(),
+    refetchInterval: 10_000,
+  })
+
+  // Tick elapsed every second when timer is active
+  useEffect(() => {
+    if (!activeTimer?.started_at) { setElapsed(""); return }
+    const tick = () => {
+      const secs = Math.floor((Date.now() - new Date(activeTimer.started_at).getTime()) / 1000)
+      const h = Math.floor(secs / 3600)
+      const m = Math.floor((secs % 3600) / 60)
+      const s = secs % 60
+      setElapsed(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`)
+    }
+    tick()
+    const iv = setInterval(tick, 1000)
+    return () => clearInterval(iv)
+  }, [activeTimer?.started_at])
+
+  // Derive unique clients and projects from tasks
+  const clients = Array.from(new Map(tasks.filter((t) => t.client_id).map((t) => [t.client_id, t.client_name])).entries())
+  const projects = Array.from(new Map(tasks.filter((t) => t.project_id && (!filterClient || String(t.client_id) === filterClient)).map((t) => [t.project_id, t.project_name])).entries())
+  const filteredTasks = tasks.filter((t) => {
+    if (filterClient && String(t.client_id) !== filterClient) return false
+    if (filterProject && String(t.project_id) !== filterProject) return false
+    return true
+  })
+
+  const handleStart = async () => {
+    try {
+      await timerApi.start({ task_id: selectedTask ? Number(selectedTask) : null })
+      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
+      onTimerChange()
+      toast.success("Timer iniciado")
+    } catch {
+      toast.error("Error al iniciar timer")
+    }
+  }
+
+  const handleStop = async () => {
+    try {
+      await timerApi.stop()
+      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
+      onTimerChange()
+      toast.success("Timer detenido")
+    } catch {
+      toast.error("Error al detener timer")
+    }
+  }
+
+  return (
+    <Card className={activeTimer ? "border-green-500/30 bg-green-500/5" : ""}>
+      <CardContent className="py-3">
+        {activeTimer ? (
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-1">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="font-mono text-lg font-semibold">{elapsed}</span>
+              <span className="text-sm text-muted-foreground truncate">
+                {activeTimer.task_title || "Sin tarea"}
+                {activeTimer.client_name && <span className="ml-1 text-xs">({activeTimer.client_name})</span>}
+              </span>
+            </div>
+            <Button size="sm" variant="destructive" onClick={handleStop} className="gap-1.5">
+              <Square className="h-3.5 w-3.5" />
+              Parar
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 flex-wrap">
+            <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+            <Select value={filterClient} onChange={(e) => { setFilterClient(e.target.value); setFilterProject(""); setSelectedTask("") }} className="h-8 text-xs w-36">
+              <option value="">Cliente...</option>
+              {clients.map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
+            </Select>
+            <Select value={filterProject} onChange={(e) => { setFilterProject(e.target.value); setSelectedTask("") }} className="h-8 text-xs w-36">
+              <option value="">Proyecto...</option>
+              {projects.map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
+            </Select>
+            <Select value={selectedTask} onChange={(e) => setSelectedTask(e.target.value)} className="h-8 text-xs flex-1 min-w-[180px]">
+              <option value="">Tarea (opcional)...</option>
+              {filteredTasks.slice(0, 50).map((t) => (
+                <option key={t.id} value={String(t.id)}>
+                  {t.title.length > 60 ? t.title.slice(0, 60) + "…" : t.title}
+                </option>
+              ))}
+            </Select>
+            <Button size="sm" onClick={handleStart} className="gap-1.5 shrink-0">
+              <Play className="h-3.5 w-3.5" />
+              Iniciar
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -222,6 +329,16 @@ export default function TimesheetPage() {
           Exportar CSV
         </Button>
       </div>
+
+      {/* Quick Timer */}
+      <TimerWidget
+        tasks={myTasks}
+        onTimerChange={() => {
+          invalidateTimeEntries()
+          queryClient.invalidateQueries({ queryKey: ["time-entries"] })
+          queryClient.invalidateQueries({ queryKey: ["admin-active-timers"] })
+        }}
+      />
 
       {/* Admin: Active Timers */}
       {isAdmin && activeTimers.length > 0 && (

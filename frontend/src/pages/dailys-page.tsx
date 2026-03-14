@@ -52,16 +52,7 @@ export default function DailysPage() {
           ? `Daily procesado. ${teCount} registro${teCount > 1 ? "s" : ""} de tiempo creado${teCount > 1 ? "s" : ""}`
           : "Daily procesado con IA correctamente"
       )
-      // Auto-send to Discord
-      try {
-        const res = await dailysApi.sendDiscord(daily.id)
-        if (res.success) {
-          toast.success("Enviado a Discord automáticamente")
-          queryClient.invalidateQueries({ queryKey: ["dailys"] })
-        }
-      } catch {
-        // Discord send is best-effort, don't block
-      }
+      // Draft mode: user sends manually via the Discord button on the card
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al procesar daily")),
   })
