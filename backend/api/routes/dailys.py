@@ -361,8 +361,11 @@ async def send_daily_to_discord(
                 channel_id = await _resolve_channel_id(ds, webhook_url, http)
                 if channel_id:
                     header = f"📋 **Daily Update — {user_name}** ({date_str})"
+                    # Strip the first line (header) from message to avoid duplication in thread
+                    body_lines = message.split("\n")
+                    thread_body = "\n".join(body_lines[1:]).strip() or message
                     success = await _send_daily_as_thread(
-                        webhook_url, bot_token, channel_id, header, message, http
+                        webhook_url, bot_token, channel_id, header, thread_body, http
                     )
                     if success and ds.channel_id:
                         # Persist cached channel_id
