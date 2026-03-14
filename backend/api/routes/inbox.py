@@ -362,7 +362,10 @@ async def convert_to_task(
         )
 
     # Refresh to re-load relationships (project, client) after commit
-    await db.refresh(note, ["project", "client"])
+    try:
+        await db.refresh(note, ["project", "client"])
+    except Exception:
+        pass  # relationships not critical for response
 
     return {
         "ok": True,

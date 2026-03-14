@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
@@ -200,7 +201,15 @@ async def create_source(
 ):
     source = NewsSource(**body.model_dump())
     db.add(source)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Ya existe una fuente con ese nombre o URL")
+    except Exception as e:
+        await db.rollback()
+        logger.error("Error creating news source: %s", e)
+        raise HTTPException(status_code=500, detail="Error al crear la fuente")
     await db.refresh(source)
     return source
 

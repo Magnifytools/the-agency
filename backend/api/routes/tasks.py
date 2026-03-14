@@ -181,20 +181,23 @@ async def create_task(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found after create")
 
-    # Notify assignee
+    # Notify assignee (non-critical — don't fail the whole request)
     if body.assigned_to:
-        from backend.services.notification_service import create_notification, TASK_ASSIGNED
-        await create_notification(
-            db,
-            user_id=body.assigned_to,
-            type=TASK_ASSIGNED,
-            title=f"Nueva tarea asignada: {task.title}",
-            message=f"Se te ha asignado la tarea '{task.title}'",
-            link_url="/tasks",
-            entity_type="task",
-            entity_id=task.id,
-        )
-        await db.commit()
+        try:
+            from backend.services.notification_service import create_notification, TASK_ASSIGNED
+            await create_notification(
+                db,
+                user_id=body.assigned_to,
+                type=TASK_ASSIGNED,
+                title=f"Nueva tarea asignada: {task.title}",
+                message=f"Se te ha asignado la tarea '{task.title}'",
+                link_url="/tasks",
+                entity_type="task",
+                entity_id=task.id,
+            )
+            await db.commit()
+        except Exception:
+            logger.exception("Error sending task notification for task_id=%s", task.id)
 
     return _task_to_response(task)
 
@@ -345,15 +348,24 @@ async def bulk_delete_tasks(
     result = await db.execute(select(Task).where(Task.id.in_(body.ids)))
     tasks = result.scalars().all()
     deleted = 0
-    errors = 0
+    skipped_ids: list[int] = []
     for task in tasks:
         try:
             await db.delete(task)
+            await db.flush()
             deleted += 1
+        except IntegrityError:
+            await db.rollback()
+            skipped_ids.append(task.id)
         except Exception:
-            errors += 1
-    await db.commit()
-    return {"deleted": deleted, "errors": errors, "requested": len(body.ids)}
+            await db.rollback()
+            skipped_ids.append(task.id)
+    if deleted:
+        await db.commit()
+    detail = None
+    if skipped_ids:
+        detail = f"No se pudieron eliminar {len(skipped_ids)} tareas porque tienen registros de tiempo asociados. Elimínalos primero."
+    return {"deleted": deleted, "errors": len(skipped_ids), "requested": len(body.ids), "detail": detail}
 
 
 # ── Checklist endpoints ───────────────────────────────────────────────────────

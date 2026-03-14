@@ -3,9 +3,14 @@ from __future__ import annotations
 import os
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+import logging
+
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
+
+logger = logging.getLogger(__name__)
 
 from backend.db.database import get_db
 from backend.db.models import User, Project, ProjectEvidence, EvidenceType
@@ -116,7 +121,15 @@ async def create_evidence(
         **body.model_dump(),
     )
     db.add(evidence)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Referencia inválida (fase o proyecto inexistente)")
+    except Exception as e:
+        await db.rollback()
+        logger.error("Error creating evidence: %s", e)
+        raise HTTPException(status_code=500, detail="Error al crear la evidencia")
     await db.refresh(evidence)
     return _to_response(project_id, evidence)
 
@@ -150,7 +163,15 @@ async def upload_evidence(
         url=None,
     )
     db.add(evidence)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Referencia inválida (fase o proyecto inexistente)")
+    except Exception as e:
+        await db.rollback()
+        logger.error("Error uploading evidence: %s", e)
+        raise HTTPException(status_code=500, detail="Error al subir la evidencia")
     await db.refresh(evidence)
     return _to_response(project_id, evidence)
 

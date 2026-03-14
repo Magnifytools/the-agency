@@ -85,7 +85,7 @@ export default function TasksPage() {
   const [newCommentText, setNewCommentText] = useState("")
   const [attachmentFileRef, setAttachmentFileRef] = useState<HTMLInputElement | null>(null)
   // Dialog — collapsible assignment fields
-  const [showAssignmentFields, setShowAssignmentFields] = useState(true)
+  const [showAssignmentFields, setShowAssignmentFields] = useState(false)
   // Recurring fields state
   const [isRecurring, setIsRecurring] = useState(false)
   const [recurrencePattern, setRecurrencePattern] = useState<string>("weekly")
