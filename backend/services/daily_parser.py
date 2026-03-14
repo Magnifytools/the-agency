@@ -151,3 +151,57 @@ def format_daily_for_discord(parsed_data: dict, user_name: str, date_str: str) -
         result = result[:1997] + "..."
 
     return result
+
+
+# Magnify brand color (indigo-500)
+_EMBED_COLOR = 0x6366F1
+
+
+def format_daily_embed(parsed_data: dict, user_name: str, date_str: str) -> dict:
+    """Format parsed daily data as a Discord rich embed dict.
+
+    Returns a single embed dict ready to include in ``{"embeds": [embed]}``.
+    """
+    fields: list[dict] = []
+
+    for proj in parsed_data.get("projects", []):
+        name = f"🔹 {proj['name']}"
+        if proj.get("client"):
+            name += f" ({proj['client']})"
+        task_lines = []
+        for task in proj.get("tasks", []):
+            line = f"• {task['description']}"
+            if task.get("details"):
+                line += f"\n  ↳ {task['details'][:120]}"
+            task_lines.append(line)
+        value = "\n".join(task_lines) or "—"
+        # Discord field limits
+        fields.append({
+            "name": name[:256],
+            "value": value[:1024],
+            "inline": False,
+        })
+
+    if parsed_data.get("general"):
+        lines = [f"• {t['description']}" for t in parsed_data["general"]]
+        fields.append({
+            "name": "🔸 General",
+            "value": "\n".join(lines)[:1024],
+            "inline": False,
+        })
+
+    if parsed_data.get("tomorrow"):
+        lines = [f"• {item}" for item in parsed_data["tomorrow"]]
+        fields.append({
+            "name": "📅 Mañana",
+            "value": "\n".join(lines)[:1024],
+            "inline": False,
+        })
+
+    embed: dict = {
+        "title": f"📋 Daily Update — {user_name} ({date_str})",
+        "color": _EMBED_COLOR,
+        "fields": fields[:25],  # Discord max 25 fields
+    }
+
+    return embed

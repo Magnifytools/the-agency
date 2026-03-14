@@ -19,7 +19,7 @@ from backend.schemas.daily import (
     DailyDiscordResponse,
     ParsedDailyData,
 )
-from backend.services.daily_parser import parse_daily_update, format_daily_for_discord
+from backend.services.daily_parser import parse_daily_update, format_daily_for_discord, format_daily_embed
 
 router = APIRouter(prefix="/api/dailys", tags=["daily-updates"])
 logger = logging.getLogger(__name__)
@@ -346,10 +346,10 @@ async def send_daily_to_discord(
     if not webhook_url:
         raise HTTPException(status_code=400, detail="Discord webhook no configurado. Configúralo en Ajustes > Discord.")
 
-    # Format message
+    # Format as rich embed
     user_name = daily.user.full_name if daily.user else "Unknown"
     date_str = daily.date.isoformat()
-    message = format_daily_for_discord(daily.parsed_data, user_name, date_str)
+    embed = format_daily_embed(daily.parsed_data, user_name, date_str)
 
     success = False
     try:
@@ -357,23 +357,23 @@ async def send_daily_to_discord(
             bot_token = ds.bot_token if ds else None
 
             if bot_token:
-                # Thread mode: resolve channel_id, then send as thread
+                # Thread mode: send embed as header, body in thread
                 channel_id = await _resolve_channel_id(ds, webhook_url, http)
                 if channel_id:
-                    header = f"📋 **Daily Update — {user_name}** ({date_str})"
-                    # Strip the first line (header) from message to avoid duplication in thread
-                    body_lines = message.split("\n")
-                    thread_body = "\n".join(body_lines[1:]).strip() or message
+                    header = embed["title"]
+                    # Send embed as the main message, then plain-text body in thread
+                    body = format_daily_for_discord(daily.parsed_data, user_name, date_str)
+                    body_lines = body.split("\n")
+                    thread_body = "\n".join(body_lines[1:]).strip() or body
                     success = await _send_daily_as_thread(
                         webhook_url, bot_token, channel_id, header, thread_body, http
                     )
                     if success and ds.channel_id:
-                        # Persist cached channel_id
                         await db.commit()
 
             if not success:
-                # Fallback: send as regular message (no thread)
-                resp = await http.post(webhook_url, json={"content": message})
+                # Send as rich embed (no thread)
+                resp = await http.post(webhook_url, json={"embeds": [embed]})
                 success = resp.status_code in (200, 204)
     except Exception as exc:
         logger.error("Error sending daily to Discord: %s", exc)
