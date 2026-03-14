@@ -86,7 +86,7 @@ async def _load_task_for_response(db: AsyncSession, task_id: int) -> Task | None
 @router.get("", response_model=PaginatedResponse[TaskResponse])
 async def list_tasks(
     client_id: Optional[int] = Query(None),
-    status_filter: Optional[TaskStatus] = Query(None, alias="status"),
+    status_filter: Optional[str] = Query(None, alias="status"),
     category_id: Optional[int] = Query(None),
     project_id: Optional[int] = Query(None),
     assigned_to: Optional[str] = Query(None),
@@ -104,7 +104,18 @@ async def list_tasks(
     if client_id is not None:
         base = base.where(Task.client_id == client_id)
     if status_filter is not None:
-        base = base.where(Task.status == status_filter)
+        # Support comma-separated statuses: ?status=pending,in_progress,waiting
+        statuses = [s.strip() for s in status_filter.split(",") if s.strip()]
+        parsed_statuses = []
+        for s in statuses:
+            try:
+                parsed_statuses.append(TaskStatus(s))
+            except ValueError:
+                raise HTTPException(status_code=422, detail=f"Invalid status: {s}")
+        if len(parsed_statuses) == 1:
+            base = base.where(Task.status == parsed_statuses[0])
+        elif parsed_statuses:
+            base = base.where(Task.status.in_(parsed_statuses))
     if category_id is not None:
         base = base.where(Task.category_id == category_id)
     if project_id is not None:
@@ -261,18 +272,21 @@ async def update_task(
     update_data = body.model_dump(exclude_unset=True)
     new_assigned = update_data.get("assigned_to")
     if new_assigned and new_assigned != old_assigned_to:
-        from backend.services.notification_service import create_notification, TASK_ASSIGNED
-        await create_notification(
-            db,
-            user_id=new_assigned,
-            type=TASK_ASSIGNED,
-            title=f"Tarea asignada: {task.title}",
-            message=f"Se te ha reasignado la tarea '{task.title}'",
-            link_url="/tasks",
-            entity_type="task",
-            entity_id=task.id,
-        )
-        await db.commit()
+        try:
+            from backend.services.notification_service import create_notification, TASK_ASSIGNED
+            await create_notification(
+                db,
+                user_id=new_assigned,
+                type=TASK_ASSIGNED,
+                title=f"Tarea asignada: {task.title}",
+                message=f"Se te ha reasignado la tarea '{task.title}'",
+                link_url="/tasks",
+                entity_type="task",
+                entity_id=task.id,
+            )
+            await db.commit()
+        except Exception as e:
+            logger.warning("Failed to send assignment notification for task %d: %s", task.id, e)
 
     return _task_to_response(task)
 
@@ -351,14 +365,13 @@ async def bulk_delete_tasks(
     skipped_ids: list[int] = []
     for task in tasks:
         try:
-            await db.delete(task)
-            await db.flush()
+            async with db.begin_nested():
+                await db.delete(task)
+                await db.flush()
             deleted += 1
         except IntegrityError:
-            await db.rollback()
             skipped_ids.append(task.id)
         except Exception:
-            await db.rollback()
             skipped_ids.append(task.id)
     if deleted:
         await db.commit()

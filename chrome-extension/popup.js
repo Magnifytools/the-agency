@@ -500,7 +500,7 @@ function updateTimerDisplay() {
 
 async function loadTimerTasks() {
   try {
-    const res = await fetch(`${API_URL}/api/tasks?assigned_to=me&status=pending&status=in_progress&status=waiting&status=in_review&limit=50`, {
+    const res = await fetch(`${API_URL}/api/tasks?assigned_to=me&status=pending,in_progress,waiting,in_review&page_size=50`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
