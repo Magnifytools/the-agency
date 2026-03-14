@@ -352,6 +352,12 @@ export const dashboardApi = {
     api.get("/dashboard/utilization", { params }).then((r) => r.data),
 }
 
+// Assistant
+export const assistantApi = {
+  ask: (question: string) =>
+    api.post("/assistant/ask", { question }).then((r) => r.data),
+}
+
 // Billing
 export const billingApi = {
   preview: (params: { year: number; month: number }) =>

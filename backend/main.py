@@ -25,6 +25,7 @@ from backend.api.routes import (
     evidence, search, agency_vault, industry_news, core_updates, balance,
     inbox,
     extension,
+    assistant,
 )
 
 
@@ -943,6 +944,7 @@ app.include_router(core_updates.router)
 app.include_router(balance.router)
 app.include_router(inbox.router)
 app.include_router(extension.router)
+app.include_router(assistant.router)
 
 # Serve frontend static files in production
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
