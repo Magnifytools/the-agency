@@ -17,6 +17,10 @@ LEAD_FOLLOWUP = "lead_followup"
 DIGEST_GENERATED = "digest_generated"
 PHASE_COMPLETED = "phase_completed"
 BILLING_REMINDER = "billing_reminder"
+DAILY_MISSING = "daily_missing"
+TIMESHEET_INCOMPLETE = "timesheet_incomplete"
+CAPACITY_OVERLOAD = "capacity_overload"
+CLIENT_NO_HOURS = "client_no_hours"
 
 
 async def create_notification(

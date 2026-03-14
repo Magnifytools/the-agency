@@ -9,6 +9,7 @@ from backend.db.database import get_db
 from backend.db.models import (
     Client,
     ClientStatus,
+    DailyUpdate,
     Task,
     TaskStatus,
     TimeEntry,
@@ -541,4 +542,156 @@ async def get_today(
         "date": today.isoformat(),
         "total_tasks": len(tasks),
         "by_user": by_user,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /alerts-summary — Real-time alert counts for dashboard widget
+# ---------------------------------------------------------------------------
+
+@router.get("/alerts-summary")
+async def alerts_summary(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("dashboard")),
+):
+    """Return real-time alert counts for the dashboard widget.
+
+    Categories: overdue_tasks, missing_dailys, incomplete_timesheets,
+    clients_no_hours, capacity_overloads.
+    """
+    from datetime import date, timedelta
+
+    today = date.today()
+    alerts: list[dict] = []
+
+    # 1. Overdue tasks (all users, for admin view)
+    overdue_result = await db.execute(
+        select(func.count(Task.id)).where(
+            Task.due_date < today,
+            Task.status.notin_([TaskStatus.completed, TaskStatus.cancelled]),
+        )
+    )
+    overdue_count = overdue_result.scalar() or 0
+    if overdue_count > 0:
+        alerts.append({
+            "type": "overdue_tasks",
+            "severity": "critical" if overdue_count >= 5 else "warning",
+            "count": overdue_count,
+            "title": f"{overdue_count} tareas vencidas",
+            "link": "/tasks?overdue=true",
+        })
+
+    # 2. Missing dailys (users with no daily in 2+ days)
+    two_days_ago = today - timedelta(days=2)
+    active_users = await db.execute(
+        select(User).where(User.is_active.is_(True))
+    )
+    missing_daily_names: list[str] = []
+    for u in active_users.scalars().all():
+        recent = await db.execute(
+            select(DailyUpdate.id).where(
+                DailyUpdate.user_id == u.id,
+                DailyUpdate.date >= two_days_ago,
+            ).limit(1)
+        )
+        if not recent.scalar_one_or_none():
+            missing_daily_names.append(u.full_name)
+    if missing_daily_names:
+        alerts.append({
+            "type": "missing_dailys",
+            "severity": "warning",
+            "count": len(missing_daily_names),
+            "title": f"{len(missing_daily_names)} sin daily reciente",
+            "detail": missing_daily_names[:5],
+            "link": "/dailys",
+        })
+
+    # 3. Incomplete timesheets yesterday (< 6h on weekday)
+    yesterday = today - timedelta(days=1)
+    if yesterday.weekday() < 5:  # Only check weekdays
+        all_users = await db.execute(
+            select(User).where(User.is_active.is_(True))
+        )
+        incomplete_names: list[str] = []
+        for u in all_users.scalars().all():
+            hrs = await db.execute(
+                select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
+                    TimeEntry.user_id == u.id,
+                    func.date(TimeEntry.date) == yesterday,
+                )
+            )
+            if (hrs.scalar() or 0) < 360:
+                incomplete_names.append(u.full_name)
+        if incomplete_names:
+            alerts.append({
+                "type": "incomplete_timesheets",
+                "severity": "info",
+                "count": len(incomplete_names),
+                "title": f"{len(incomplete_names)} timesheets incompletos ayer",
+                "detail": incomplete_names[:5],
+                "link": "/timesheet",
+            })
+
+    # 4. Active clients with 0 hours this week (from Wednesday)
+    if today.weekday() >= 2:
+        week_start = today - timedelta(days=today.weekday())
+        active_clients = await db.execute(
+            select(Client).where(Client.status == ClientStatus.active)
+        )
+        no_hours_clients: list[str] = []
+        for client in active_clients.scalars().all():
+            hrs = await db.execute(
+                select(func.coalesce(func.sum(TimeEntry.minutes), 0))
+                .join(Task, TimeEntry.task_id == Task.id)
+                .where(
+                    Task.client_id == client.id,
+                    func.date(TimeEntry.date) >= week_start,
+                )
+            )
+            if (hrs.scalar() or 0) == 0:
+                no_hours_clients.append(client.name)
+        if no_hours_clients:
+            alerts.append({
+                "type": "clients_no_hours",
+                "severity": "warning",
+                "count": len(no_hours_clients),
+                "title": f"{len(no_hours_clients)} clientes sin horas esta semana",
+                "detail": no_hours_clients[:5],
+                "link": "/clients",
+            })
+
+    # 5. Capacity overload (20+ hours estimated pending)
+    overloaded = await db.execute(
+        select(
+            Task.assigned_to,
+            func.sum(Task.estimated_minutes).label("total"),
+        ).where(
+            Task.assigned_to.isnot(None),
+            Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
+            Task.estimated_minutes.isnot(None),
+        ).group_by(Task.assigned_to)
+    )
+    overloaded_names: list[str] = []
+    for row in overloaded.all():
+        if row.total and row.total > 1200:
+            u_res = await db.execute(select(User.full_name).where(User.id == row.assigned_to))
+            name = u_res.scalar() or f"#{row.assigned_to}"
+            overloaded_names.append(name)
+    if overloaded_names:
+        alerts.append({
+            "type": "capacity_overload",
+            "severity": "critical",
+            "count": len(overloaded_names),
+            "title": f"{len(overloaded_names)} sobrecargados (20h+ pendiente)",
+            "detail": overloaded_names[:5],
+            "link": "/capacity",
+        })
+
+    total = sum(a["count"] for a in alerts)
+    critical = sum(a["count"] for a in alerts if a["severity"] == "critical")
+
+    return {
+        "total": total,
+        "critical": critical,
+        "alerts": alerts,
     }
