@@ -51,12 +51,14 @@ export function DailyUpdateWidget({ userId, readOnly = false }: DailyUpdateWidge
 
   if (todayDaily) {
     return (
-      <Card className="border-green-500/20 bg-green-500/5">
+      <Card className={todayDaily.status === "sent" ? "border-green-500/20 bg-green-500/5" : "border-yellow-500/20 bg-yellow-500/5"}>
         <CardContent className="pt-4 pb-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm text-green-400">
+            <div className={`flex items-center gap-2 text-sm ${todayDaily.status === "sent" ? "text-green-400" : "text-yellow-400"}`}>
               <CheckCircle2 className="h-4 w-4" />
-              <span className="font-medium">Daily enviado hoy</span>
+              <span className="font-medium">
+                {todayDaily.status === "sent" ? "Daily enviado hoy" : "Daily guardado (borrador)"}
+              </span>
               {todayDaily.status === "sent" && (
                 <Badge variant="success" className="text-xs">Discord ✓</Badge>
               )}
