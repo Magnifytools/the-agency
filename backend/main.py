@@ -737,6 +737,30 @@ async def _seed_recurring_templates():
             logging.info("🔄 Seeded %d recurring task template(s)", created)
 
 
+async def _backfill_module_permissions():
+    """Ensure all non-admin users have default module permissions (pm, digests, etc.)."""
+    from sqlalchemy import select, and_
+    from backend.db.database import async_session
+    from backend.db.models import User, UserPermission, UserRole
+
+    default_modules = ["dashboard", "clients", "tasks", "projects", "timesheet", "pm", "digests"]
+    async with async_session() as db:
+        users = (await db.execute(select(User).where(User.role != UserRole.admin))).scalars().all()
+        added = 0
+        for user in users:
+            existing = (await db.execute(
+                select(UserPermission.module).where(UserPermission.user_id == user.id)
+            )).scalars().all()
+            existing_set = set(existing)
+            for mod in default_modules:
+                if mod not in existing_set:
+                    db.add(UserPermission(user_id=user.id, module=mod, can_read=True, can_write=True))
+                    added += 1
+        if added:
+            await db.commit()
+            logging.info("Backfilled %d module permissions for existing users.", added)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await _ensure_columns()
@@ -747,6 +771,7 @@ async def lifespan(app: FastAPI):
     await _ensure_categories()
     await _seed_recurring_templates()
     await _generate_recurring_instances()
+    await _backfill_module_permissions()
     task = None
     if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL:
         task = asyncio.create_task(_engine_sync_loop(), name="engine-sync")
