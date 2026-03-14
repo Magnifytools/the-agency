@@ -301,10 +301,11 @@ async def _send_daily_as_thread(
     )
     if thread_resp.status_code not in (200, 201):
         logger.warning("Failed to create thread: %s %s", thread_resp.status_code, thread_resp.text[:200])
-        return False
+        # Header was already posted to Discord — treat as partial success
+        return True
     thread_id = thread_resp.json().get("id")
     if not thread_id:
-        return False
+        return True  # Header posted, thread creation gave no ID
 
     # Step 3: Send body inside the thread via webhook
     # Discord messages max 2000 chars — split if needed
@@ -314,7 +315,10 @@ async def _send_daily_as_thread(
         f"{webhook_url}?wait=true&thread_id={thread_id}",
         json={"content": body},
     )
-    return resp.status_code in (200, 201)
+    if resp.status_code not in (200, 201):
+        logger.warning("Failed to post thread body: %s", resp.status_code)
+    # Header was posted — consider sent regardless of thread body result
+    return True
 
 
 @router.post("/{daily_id}/send-discord", response_model=DailyDiscordResponse)

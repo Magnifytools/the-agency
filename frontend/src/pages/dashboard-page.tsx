@@ -286,7 +286,7 @@ export default function DashboardPage() {
       .filter((d) => d.period_start >= thisMonday || d.created_at >= thisMonday)
       .map((d) => d.client_id)
   )
-  const clientsMissingDigest = (allClients || []).filter((c) => !clientsWithDigestThisWeek.has(c.id))
+  const clientsMissingDigest = (allClients || []).filter((c) => !c.is_internal && !clientsWithDigestThisWeek.has(c.id))
 
   const proposalStats = (() => {
     if (!allProposals) return null

@@ -520,9 +520,15 @@ async function loadTimerTasks() {
           sel.appendChild(opt);
         });
       });
+    } else {
+      console.warn("loadTimerTasks: response not ok", res.status);
+      timerError.textContent = "Error cargando tareas";
+      timerError.classList.remove("hidden");
     }
-  } catch {
-    // silently ignore
+  } catch (err) {
+    console.error("loadTimerTasks failed:", err);
+    timerError.textContent = "Error cargando tareas. Reintenta.";
+    timerError.classList.remove("hidden");
   }
 }
 
@@ -584,6 +590,7 @@ timerStopBtn.addEventListener("click", async () => {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
+      body: JSON.stringify({}),
     });
 
     if (handle401(res)) return;
