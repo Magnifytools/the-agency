@@ -104,7 +104,7 @@ async def generate_forecasts(db: AsyncSession, months_ahead: int = 6) -> list[Fo
         # Corporate tax on projected profit (only if positive)
         proj_corporate_tax = round(max(proj_income - proj_expenses, 0) * (corp_tax_rate / 100), 2)
         proj_taxes = round(max(proj_vat_reserve, 0) + proj_corporate_tax, 2)
-        proj_profit = round(proj_income - proj_expenses - proj_corporate_tax, 2)
+        proj_profit = round(proj_income - proj_expenses - proj_taxes, 2)
 
         r = await db.execute(select(Forecast).where(Forecast.month == month_date))
         existing = r.scalars().first()
@@ -172,7 +172,7 @@ async def calculate_runway(db: AsyncSession) -> dict:
 
         # Fallback: approximate cash from YTD data (not real bank balance)
         cash = ytd_income - ytd_expenses - ytd_taxes_paid
-        balance_source = "estimated"
+        balance_source = "calculated"
         balance_date = None
 
     averages = await calculate_historical_averages(db)
