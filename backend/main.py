@@ -552,6 +552,30 @@ async def _ensure_columns_v3():
     logging.info("_ensure_columns_v3 DDL complete.")
 
 
+async def _ensure_columns_v4():
+    """Phase 4 schema additions: tax regime and IRPF withholding fields."""
+    from sqlalchemy import text
+    from backend.db.database import engine
+
+    stmts = [
+        # Income: tax regime + IRPF withholding
+        "ALTER TABLE income ADD COLUMN IF NOT EXISTS tax_regime VARCHAR(50) NOT NULL DEFAULT 'standard'",
+        "ALTER TABLE income ADD COLUMN IF NOT EXISTS irpf_withholding_rate NUMERIC(5,2) NOT NULL DEFAULT 0",
+        "ALTER TABLE income ADD COLUMN IF NOT EXISTS irpf_withholding_amount NUMERIC(12,2) NOT NULL DEFAULT 0",
+        # Expenses: tax regime + IRPF withholding
+        "ALTER TABLE expenses ADD COLUMN IF NOT EXISTS tax_regime VARCHAR(50) NOT NULL DEFAULT 'standard'",
+        "ALTER TABLE expenses ADD COLUMN IF NOT EXISTS irpf_withholding_rate NUMERIC(5,2) NOT NULL DEFAULT 0",
+        "ALTER TABLE expenses ADD COLUMN IF NOT EXISTS irpf_withholding_amount NUMERIC(12,2) NOT NULL DEFAULT 0",
+    ]
+    async with engine.begin() as conn:
+        for sql in stmts:
+            try:
+                await conn.execute(text(sql))
+            except Exception as exc:
+                logging.warning("DDL v4 statement failed (may be expected): %s — %s", sql[:80], exc)
+    logging.info("_ensure_columns_v4 DDL complete.")
+
+
 async def _generate_recurring_instances():
     """Create task instances from recurring templates for today."""
     from datetime import date as date_type
@@ -768,6 +792,7 @@ async def lifespan(app: FastAPI):
     await _ensure_numeric_types()
     await _ensure_columns_v2()
     await _ensure_columns_v3()
+    await _ensure_columns_v4()
     await _cleanup_qa_test_data()
     await _ensure_categories()
     await _seed_recurring_templates()
