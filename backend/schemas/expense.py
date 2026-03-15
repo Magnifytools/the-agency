@@ -30,6 +30,9 @@ class ExpenseCreate(BaseModel):
     recurrence_period: str = ""
     vat_rate: float = Field(default=21.0, ge=0, le=100)
     vat_amount: float = Field(default=0.0, ge=0)
+    tax_regime: str = "standard"
+    irpf_withholding_rate: float = Field(default=0.0, ge=0, le=100)
+    irpf_withholding_amount: float = Field(default=0.0, ge=0)
     is_deductible: bool = True
     supplier: str = ""
     notes: str = ""
@@ -44,6 +47,9 @@ class ExpenseUpdate(BaseModel):
     recurrence_period: Optional[str] = None
     vat_rate: Optional[float] = Field(default=None, ge=0, le=100)
     vat_amount: Optional[float] = Field(default=None, ge=0)
+    tax_regime: Optional[str] = None
+    irpf_withholding_rate: Optional[float] = Field(default=None, ge=0, le=100)
+    irpf_withholding_amount: Optional[float] = Field(default=None, ge=0)
     is_deductible: Optional[bool] = None
     supplier: Optional[str] = None
     notes: Optional[str] = None
@@ -60,6 +66,9 @@ class ExpenseResponse(BaseModel):
     recurrence_period: str
     vat_rate: float
     vat_amount: float
+    tax_regime: str = "standard"
+    irpf_withholding_rate: float = 0.0
+    irpf_withholding_amount: float = 0.0
     is_deductible: bool
     supplier: str
     notes: str

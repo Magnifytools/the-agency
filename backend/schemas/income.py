@@ -13,6 +13,9 @@ class IncomeCreate(BaseModel):
     invoice_number: str = ""
     vat_rate: float = Field(default=21.0, ge=0, le=100)
     vat_amount: float = Field(default=0.0, ge=0)
+    tax_regime: str = "standard"
+    irpf_withholding_rate: float = Field(default=0.0, ge=0, le=100)
+    irpf_withholding_amount: float = Field(default=0.0, ge=0)
     status: str = "cobrado"
     notes: str = ""
     due_date: Optional[date] = None
@@ -27,6 +30,9 @@ class IncomeUpdate(BaseModel):
     invoice_number: Optional[str] = None
     vat_rate: Optional[float] = Field(default=None, ge=0, le=100)
     vat_amount: Optional[float] = Field(default=None, ge=0)
+    tax_regime: Optional[str] = None
+    irpf_withholding_rate: Optional[float] = Field(default=None, ge=0, le=100)
+    irpf_withholding_amount: Optional[float] = Field(default=None, ge=0)
     status: Optional[str] = None
     notes: Optional[str] = None
     due_date: Optional[date] = None
@@ -43,6 +49,9 @@ class IncomeResponse(BaseModel):
     invoice_number: str
     vat_rate: float
     vat_amount: float
+    tax_regime: str = "standard"
+    irpf_withholding_rate: float = 0.0
+    irpf_withholding_amount: float = 0.0
     status: str
     notes: str
     due_date: Optional[date] = None

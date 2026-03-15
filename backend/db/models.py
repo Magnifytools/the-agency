@@ -1024,6 +1024,11 @@ class Income(TimestampMixin, Base):
     invoice_number = Column(String(100), nullable=False, default="")
     vat_rate = Column(Numeric(5, 2), nullable=False, default=21.0)
     vat_amount = Column(Numeric(12, 2), nullable=False, default=0.0)
+    # Tax regime: standard (21% IVA), eu_reverse_charge, intracomunitario, export
+    tax_regime = Column(String(50), nullable=False, default="standard")
+    # IRPF withholding applied TO this invoice (e.g. client retains 15%)
+    irpf_withholding_rate = Column(Numeric(5, 2), nullable=False, default=0.0)
+    irpf_withholding_amount = Column(Numeric(12, 2), nullable=False, default=0.0)
     status = Column(String(50), nullable=False, default="cobrado")  # pendiente, cobrado
     notes = Column(Text, nullable=False, default="")
     due_date = Column(Date, nullable=True)
@@ -1048,6 +1053,11 @@ class Expense(TimestampMixin, Base):
     vat_rate = Column(Numeric(5, 2), nullable=False, default=21.0)
     vat_amount = Column(Numeric(12, 2), nullable=False, default=0.0)
     is_deductible = Column(Boolean, nullable=False, default=True)
+    # Tax regime: standard, eu_reverse_charge (auto-repercusión IVA), intracomunitario, import
+    tax_regime = Column(String(50), nullable=False, default="standard")
+    # IRPF withholding on this expense (e.g. freelancer retention)
+    irpf_withholding_rate = Column(Numeric(5, 2), nullable=False, default=0.0)
+    irpf_withholding_amount = Column(Numeric(12, 2), nullable=False, default=0.0)
     supplier = Column(String(255), nullable=False, default="")
     notes = Column(Text, nullable=False, default="")
 

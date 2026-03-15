@@ -34,6 +34,9 @@ def _income_response(item: Income) -> IncomeResponse:
         invoice_number=item.invoice_number,
         vat_rate=item.vat_rate,
         vat_amount=item.vat_amount,
+        tax_regime=item.tax_regime or "standard",
+        irpf_withholding_rate=float(item.irpf_withholding_rate or 0),
+        irpf_withholding_amount=float(item.irpf_withholding_amount or 0),
         status=item.status,
         notes=item.notes,
         due_date=item.due_date,
@@ -92,6 +95,7 @@ async def create_income(
     payload = data.model_dump()
     payload["amount"] = _round_money(payload.get("amount")) or 0.0
     payload["vat_amount"] = _round_money(payload.get("vat_amount")) or 0.0
+    payload["irpf_withholding_amount"] = _round_money(payload.get("irpf_withholding_amount")) or 0.0
     item = Income(**payload)
     db.add(item)
     await db.commit()
@@ -111,7 +115,7 @@ async def update_income(
     if not item:
         raise HTTPException(status_code=404, detail="Ingreso no encontrado")
     for key, value in data.model_dump(exclude_unset=True).items():
-        if key in {"amount", "vat_amount"}:
+        if key in {"amount", "vat_amount", "irpf_withholding_amount"}:
             value = _round_money(value)
         setattr(item, key, value)
     await db.commit()

@@ -35,6 +35,9 @@ def _expense_response(item: Expense) -> ExpenseResponse:
         recurrence_period=item.recurrence_period,
         vat_rate=item.vat_rate,
         vat_amount=item.vat_amount,
+        tax_regime=item.tax_regime or "standard",
+        irpf_withholding_rate=float(item.irpf_withholding_rate or 0),
+        irpf_withholding_amount=float(item.irpf_withholding_amount or 0),
         is_deductible=item.is_deductible,
         supplier=item.supplier,
         notes=item.notes,
@@ -90,6 +93,7 @@ async def create_expense(
     payload = data.model_dump()
     payload["amount"] = _round_money(payload.get("amount")) or 0.0
     payload["vat_amount"] = _round_money(payload.get("vat_amount")) or 0.0
+    payload["irpf_withholding_amount"] = _round_money(payload.get("irpf_withholding_amount")) or 0.0
     item = Expense(**payload)
     db.add(item)
     await db.commit()
@@ -109,7 +113,7 @@ async def update_expense(
     if not item:
         raise HTTPException(status_code=404, detail="Gasto no encontrado")
     for key, value in data.model_dump(exclude_unset=True).items():
-        if key in {"amount", "vat_amount"}:
+        if key in {"amount", "vat_amount", "irpf_withholding_amount"}:
             value = _round_money(value)
         setattr(item, key, value)
     await db.commit()
@@ -177,6 +181,9 @@ async def generate_recurring_expenses(
             recurrence_period=tmpl.recurrence_period,
             vat_rate=tmpl.vat_rate,
             vat_amount=tmpl.vat_amount,
+            tax_regime=tmpl.tax_regime,
+            irpf_withholding_rate=tmpl.irpf_withholding_rate,
+            irpf_withholding_amount=tmpl.irpf_withholding_amount,
             is_deductible=tmpl.is_deductible,
             supplier=tmpl.supplier,
             notes=f"[Automático] {tmpl.notes or ''}".strip(),
