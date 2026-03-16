@@ -119,6 +119,14 @@ export interface ActivityEvent {
   icon: string
 }
 
+export interface WeeklyTimesheetTask {
+  task_id: number | null
+  task_title: string
+  client_name: string | null
+  daily_minutes: Record<string, number>
+  total_minutes: number
+}
+
 export interface WeeklyTimesheet {
   week_start: string
   week_end: string
@@ -128,6 +136,7 @@ export interface WeeklyTimesheet {
     full_name: string
     daily_minutes: Record<string, number>
     total_minutes: number
+    tasks: WeeklyTimesheetTask[]
   }[]
 }
 

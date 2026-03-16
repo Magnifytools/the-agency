@@ -184,11 +184,54 @@ async def weekly_timesheet(
     result = await db.execute(entry_query)
     entries = result.scalars().all()
 
+    # Batch-load tasks and their clients for task-level breakdown
+    task_ids = {e.task_id for e in entries if e.task_id}
+    tasks_map: dict[int, dict] = {}
+    if task_ids:
+        task_result = await db.execute(
+            select(Task, Client.name)
+            .outerjoin(Client, Task.client_id == Client.id)
+            .where(Task.id.in_(task_ids))
+        )
+        for task, client_name in task_result.all():
+            tasks_map[task.id] = {"title": task.title, "client_name": client_name}
+
+    # Initialise per-user task breakdown dict
+    for uid in user_map:
+        user_map[uid]["tasks"] = {}
+
     for entry in entries:
+        if entry.user_id not in user_map:
+            continue
         day_key = entry.date.date().isoformat()
-        if entry.user_id in user_map and day_key in user_map[entry.user_id]["daily_minutes"]:
-            user_map[entry.user_id]["daily_minutes"][day_key] += entry.minutes or 0
-            user_map[entry.user_id]["total_minutes"] += entry.minutes or 0
+        mins = entry.minutes or 0
+
+        # Accumulate user-level daily totals (existing behaviour)
+        if day_key in user_map[entry.user_id]["daily_minutes"]:
+            user_map[entry.user_id]["daily_minutes"][day_key] += mins
+            user_map[entry.user_id]["total_minutes"] += mins
+
+        # Accumulate task-level breakdown
+        tid = entry.task_id or 0  # 0 = unassigned
+        tasks = user_map[entry.user_id]["tasks"]
+        if tid not in tasks:
+            info = tasks_map.get(tid, {"title": "Sin tarea asignada", "client_name": None})
+            tasks[tid] = {
+                "task_id": tid if tid else None,
+                "task_title": info["title"],
+                "client_name": info.get("client_name"),
+                "daily_minutes": {k: 0 for k in day_keys},
+                "total_minutes": 0,
+            }
+        tasks[tid]["daily_minutes"][day_key] = tasks[tid]["daily_minutes"].get(day_key, 0) + mins
+        tasks[tid]["total_minutes"] += mins
+
+    # Convert tasks dict to sorted list
+    for uid in user_map:
+        user_map[uid]["tasks"] = sorted(
+            user_map[uid]["tasks"].values(),
+            key=lambda t: -t["total_minutes"],
+        )
 
     return {
         "week_start": week_start.isoformat(),

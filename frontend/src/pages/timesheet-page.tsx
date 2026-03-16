@@ -6,13 +6,13 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Select } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Building2, Pencil, Check, X, Play, Square } from "lucide-react"
+import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Building2, Pencil, Check, X, Play, Square, ChevronLeft } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { EmptyTableState } from "@/components/ui/empty-state"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
-import type { ProjectTimeReport, ClientTimeReport } from "@/lib/types"
+import type { ProjectTimeReport, ClientTimeReport, WeeklyTimesheetTask } from "@/lib/types"
 
 function getMonday(date: Date) {
   const d = new Date(date)
@@ -316,6 +316,23 @@ export default function TimesheetPage() {
   }
 
   const days = weeklyData?.days || []
+  const [expandedUsers, setExpandedUsers] = useState<Set<number>>(new Set())
+
+  const toggleUser = (uid: number) => {
+    setExpandedUsers((prev) => {
+      const next = new Set(prev)
+      if (next.has(uid)) next.delete(uid)
+      else next.add(uid)
+      return next
+    })
+  }
+
+  const fmtMin = (m: number) => {
+    if (!m) return "—"
+    const h = Math.floor(m / 60)
+    const min = m % 60
+    return h > 0 ? (min > 0 ? `${h}h ${min}m` : `${h}h`) : `${min}m`
+  }
 
   return (
     <div className="space-y-6">
@@ -504,12 +521,28 @@ export default function TimesheetPage() {
 
       <div className="flex items-center justify-between pt-4">
         <h3 className="text-xl font-bold">Resumen Semanal</h3>
-        <input
-          type="date"
-          value={weekStart}
-          onChange={(e) => setWeekStart(e.target.value)}
-          className="border border-border rounded-md px-3 py-2 text-sm bg-background"
-        />
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+            const d = new Date(weekStart)
+            d.setDate(d.getDate() - 7)
+            setWeekStart(toInputDate(getMonday(d)))
+          }}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <input
+            type="date"
+            value={weekStart}
+            onChange={(e) => setWeekStart(toInputDate(getMonday(new Date(e.target.value))))}
+            className="border border-border rounded-md px-3 py-2 text-sm bg-background"
+          />
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+            const d = new Date(weekStart)
+            d.setDate(d.getDate() + 7)
+            setWeekStart(toInputDate(getMonday(d)))
+          }}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -526,37 +559,61 @@ export default function TimesheetPage() {
                 <TableRow>
                   <TableHead>Miembro</TableHead>
                   {days.map((d) => (
-                    <TableHead key={d} className="text-right">
-                      {new Date(d).toLocaleDateString("es-ES", { weekday: "short", day: "2-digit" })}
+                    <TableHead key={d} className="text-right text-xs">
+                      {new Date(d + "T12:00:00").toLocaleDateString("es-ES", { weekday: "short", day: "2-digit" }).toUpperCase()}
                     </TableHead>
                   ))}
                   <TableHead className="text-right">Total</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {weeklyData.users.map((u) => (
-                  <TableRow key={u.user_id}>
-                    <TableCell className="font-medium">{u.full_name}</TableCell>
-                    {days.map((d) => (
-                      <TableCell key={d} className="text-right mono">
-                        {(() => { const m = u.daily_minutes[d] || 0; if (!m) return "—"; const h = Math.floor(m / 60); const min = m % 60; return h > 0 ? (min > 0 ? `${h}h ${min}m` : `${h}h`) : `${min}m` })()}
-                      </TableCell>
-                    ))}
-                    <TableCell className="text-right mono font-semibold">
-                      {(() => { const m = u.total_minutes || 0; const h = Math.floor(m / 60); const min = m % 60; return h > 0 ? (min > 0 ? `${h}h ${min}m` : `${h}h`) : (min > 0 ? `${min}m` : "—") })()}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {weeklyData.users.map((u) => {
+                  const isExpanded = expandedUsers.has(u.user_id)
+                  const hasTasks = u.tasks && u.tasks.length > 0
+                  return (
+                    <>{/* User summary row */}
+                      <TableRow
+                        key={u.user_id}
+                        className={hasTasks ? "cursor-pointer hover:bg-muted/50" : ""}
+                        onClick={() => hasTasks && toggleUser(u.user_id)}
+                      >
+                        <TableCell className="font-medium">
+                          <span className="inline-flex items-center gap-1">
+                            {hasTasks && (isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />)}
+                            {u.full_name}
+                            {hasTasks && <span className="text-xs text-muted-foreground ml-1">({u.tasks.length})</span>}
+                          </span>
+                        </TableCell>
+                        {days.map((d) => (
+                          <TableCell key={d} className="text-right mono">{fmtMin(u.daily_minutes[d] || 0)}</TableCell>
+                        ))}
+                        <TableCell className="text-right mono font-semibold">{fmtMin(u.total_minutes || 0)}</TableCell>
+                      </TableRow>
+                      {/* Expanded task rows */}
+                      {isExpanded && u.tasks.map((t: WeeklyTimesheetTask) => (
+                        <TableRow key={`${u.user_id}-${t.task_id ?? "none"}`} className="bg-muted/20">
+                          <TableCell className="pl-8 text-sm">
+                            <span className="text-muted-foreground">{t.task_title}</span>
+                            {t.client_name && <span className="text-xs text-muted-foreground/60 ml-1.5">— {t.client_name}</span>}
+                          </TableCell>
+                          {days.map((d) => (
+                            <TableCell key={d} className="text-right mono text-sm text-muted-foreground">{fmtMin(t.daily_minutes[d] || 0)}</TableCell>
+                          ))}
+                          <TableCell className="text-right mono text-sm">{fmtMin(t.total_minutes)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </>
+                  )
+                })}
                 {weeklyData.users.length > 1 && (
                   <TableRow className="bg-muted/50 font-semibold">
                     <TableCell>Total equipo</TableCell>
                     {days.map((d) => {
                       const total = weeklyData.users.reduce((sum, u) => sum + (u.daily_minutes[d] || 0), 0)
-                      const h = Math.floor(total / 60); const min = total % 60
-                      return <TableCell key={d} className="text-right mono">{total > 0 ? (h > 0 ? (min > 0 ? `${h}h ${min}m` : `${h}h`) : `${min}m`) : "—"}</TableCell>
+                      return <TableCell key={d} className="text-right mono">{fmtMin(total)}</TableCell>
                     })}
                     <TableCell className="text-right mono">
-                      {(() => { const total = weeklyData.users.reduce((sum, u) => sum + (u.total_minutes || 0), 0); const h = Math.floor(total / 60); const min = total % 60; return total > 0 ? (h > 0 ? (min > 0 ? `${h}h ${min}m` : `${h}h`) : `${min}m`) : "—" })()}
+                      {fmtMin(weeklyData.users.reduce((sum, u) => sum + (u.total_minutes || 0), 0))}
                     </TableCell>
                   </TableRow>
                 )}
