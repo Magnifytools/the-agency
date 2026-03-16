@@ -1,8 +1,8 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { clientsApi, clientHealthApi, engineApi } from "@/lib/api"
-import type { Client, ClientCreate, ClientStatus, ClientHealthScore } from "@/lib/types"
+import { clientsApi, clientHealthApi, engineApi, projectsApi } from "@/lib/api"
+import type { Client, ClientCreate, ClientExtract, ClientExtractProject, ClientStatus, ClientHealthScore } from "@/lib/types"
 import { usePagination } from "@/hooks/use-pagination"
 import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
@@ -50,7 +50,7 @@ export default function ClientsPage() {
   const [tab, setTab] = useState<ClientStatus | "all">("all")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
-  const [prefill, setPrefill] = useState<Partial<ClientCreate> | null>(null)
+  const [prefill, setPrefill] = useState<ClientExtract | null>(null)
   const [formKey, setFormKey] = useState(0)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [hardDeleteId, setHardDeleteId] = useState<number | null>(null)
@@ -100,11 +100,31 @@ export default function ClientsPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: ClientCreate) => clientsApi.create(data),
-    onSuccess: () => {
+    mutationFn: async (data: ClientCreate) => {
+      const client = await clientsApi.create(data)
+      if (prefill?.project?.name) {
+        await projectsApi.create({
+          name: prefill.project.name,
+          description: prefill.project.description ?? null,
+          project_type: prefill.project.project_type ?? null,
+          is_recurring: prefill.project.is_recurring ?? false,
+          pricing_model: prefill.project.pricing_model ?? null,
+          unit_price: prefill.project.unit_price ?? null,
+          unit_label: prefill.project.unit_label ?? null,
+          scope: prefill.project.scope ?? null,
+          budget_amount: prefill.project.budget_amount ?? null,
+          start_date: prefill.project.start_date ?? null,
+          target_end_date: prefill.project.target_end_date ?? null,
+          client_id: client.id,
+        })
+      }
+      return { client, hadProject: !!prefill?.project?.name }
+    },
+    onSuccess: ({ hadProject }) => {
       queryClient.invalidateQueries({ queryKey: ["clients"] })
+      queryClient.invalidateQueries({ queryKey: ["projects"] })
       closeDialog()
-      toast.success("Cliente creado")
+      toast.success(hadProject ? "Cliente y proyecto creados" : "Cliente creado")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al crear cliente")),
   })
@@ -530,6 +550,25 @@ export default function ClientsPage() {
               <Textarea id="context" name="context" defaultValue={prefill.context} className="min-h-[80px]" />
             </div>
           )}
+          {prefill?.project?.name && (
+            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5">
+              <p className="text-sm font-medium flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                Proyecto a crear automáticamente
+              </p>
+              <div className="text-sm text-muted-foreground space-y-0.5">
+                <p><span className="font-medium text-foreground">{prefill.project.name}</span></p>
+                {prefill.project.description && <p>{prefill.project.description}</p>}
+                <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs mt-1">
+                  {prefill.project.project_type && <span>Tipo: {prefill.project.project_type}</span>}
+                  {prefill.project.pricing_model && <span>Pricing: {prefill.project.pricing_model}</span>}
+                  {prefill.project.unit_price && <span>{prefill.project.unit_price}€{prefill.project.unit_label ? `/${prefill.project.unit_label}` : ""}</span>}
+                  {prefill.project.is_recurring && <span>Recurrente</span>}
+                  {prefill.project.scope && <span>Scope: {prefill.project.scope}</span>}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={closeDialog}>
               Cancelar
@@ -590,7 +629,7 @@ export default function ClientsPage() {
   )
 }
 
-function AiFillSection({ onExtracted }: { onExtracted: (data: Partial<ClientCreate>) => void }) {
+function AiFillSection({ onExtracted }: { onExtracted: (data: ClientExtract) => void }) {
   const [mode, setMode] = useState<"closed" | "paste" | "file">("closed")
   const [pasteText, setPasteText] = useState("")
   const [file, setFile] = useState<File | null>(null)
