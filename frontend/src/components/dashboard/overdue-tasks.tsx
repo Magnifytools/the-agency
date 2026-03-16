@@ -9,15 +9,20 @@ interface OverdueTasksProps {
 }
 
 export function OverdueTasks({ tasks, showAssigned = false, title }: OverdueTasksProps) {
+  // Filter out tasks due today or in the future — only truly overdue
+  const todayStr = new Date().toISOString().split("T")[0]
+  const trulyOverdue = (tasks || []).filter(
+    (t) => t.due_date && t.due_date < todayStr
+  )
   // eslint-disable-next-line react-hooks/purity -- Date.now() for computing days overdue is intentional
   const now = Date.now()
-  if (!tasks || tasks.length === 0) return null
+  if (trulyOverdue.length === 0) return null
 
   return (
     <Card className="border-red-500/30 bg-red-500/5">
       <CardHeader className="pb-2">
         <CardTitle className="text-red-400 text-sm">
-          {title || `Tareas vencidas (${tasks.length})`}
+          {title || `Tareas vencidas (${trulyOverdue.length})`}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -32,10 +37,10 @@ export function OverdueTasks({ tasks, showAssigned = false, title }: OverdueTask
             </TableRow>
           </TableHeader>
           <TableBody>
-            {tasks.map((t) => {
+            {trulyOverdue.map((t) => {
               const daysOverdue = t.due_date
-                ? Math.floor((now - new Date(t.due_date).getTime()) / 86400000)
-                : 0
+                ? Math.max(1, Math.floor((now - new Date(t.due_date).getTime()) / 86400000))
+                : 1
               return (
                 <TableRow key={t.id}>
                   <TableCell className="font-medium">{t.title}</TableCell>

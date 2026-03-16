@@ -133,9 +133,9 @@ async def list_tasks(
     if priority is not None:
         base = base.where(Task.priority == priority)
     if overdue:
-        from datetime import datetime
+        from datetime import date as _date
         base = base.where(
-            Task.due_date < datetime.utcnow(),
+            Task.due_date < _date.today(),
             Task.status != TaskStatus.completed,
         )
     if scheduled_date is not None:

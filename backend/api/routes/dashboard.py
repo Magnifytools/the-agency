@@ -659,21 +659,30 @@ async def alerts_summary(
             "link": "/tasks?overdue=true",
         })
 
-    # 2. Missing dailys (users with no daily in 2+ days)
-    two_days_ago = today - timedelta(days=2)
-    active_users = await db.execute(
-        select(User).where(User.is_active.is_(True))
-    )
+    # 2. Missing dailys (users with no daily in 2+ business days)
+    # On Monday check from Thursday, otherwise 2 calendar days back
+    if today.weekday() == 0:  # Monday
+        lookback = today - timedelta(days=4)  # Thursday
+    elif today.weekday() == 6:  # Sunday — skip alert entirely
+        lookback = None
+    elif today.weekday() == 5:  # Saturday — skip alert entirely
+        lookback = None
+    else:
+        lookback = today - timedelta(days=2)
     missing_daily_names: list[str] = []
-    for u in active_users.scalars().all():
-        recent = await db.execute(
-            select(DailyUpdate.id).where(
-                DailyUpdate.user_id == u.id,
-                DailyUpdate.date >= two_days_ago,
-            ).limit(1)
+    if lookback is not None:
+        active_users = await db.execute(
+            select(User).where(User.is_active.is_(True))
         )
-        if not recent.scalar_one_or_none():
-            missing_daily_names.append(u.full_name)
+        for u in active_users.scalars().all():
+            recent = await db.execute(
+                select(DailyUpdate.id).where(
+                    DailyUpdate.user_id == u.id,
+                    DailyUpdate.date >= lookback,
+                ).limit(1)
+            )
+            if not recent.scalar_one_or_none():
+                missing_daily_names.append(u.full_name)
     if missing_daily_names:
         alerts.append({
             "type": "missing_dailys",
