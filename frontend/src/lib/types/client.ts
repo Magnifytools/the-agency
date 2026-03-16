@@ -43,6 +43,8 @@ export interface Client {
   ltv: number | null
   seo_maturity_level: string | null
   is_internal: boolean
+  intermediary_name: string | null
+  is_intermediary_deal: boolean
   context?: string | null
   created_at: string
   updated_at: string
@@ -86,6 +88,8 @@ export interface ClientCreate {
   ltv?: number | null
   seo_maturity_level?: string | null
   is_internal?: boolean
+  intermediary_name?: string | null
+  is_intermediary_deal?: boolean
   context?: string | null
 }
 

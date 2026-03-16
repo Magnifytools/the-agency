@@ -53,6 +53,10 @@ class ProjectCreate(BaseModel):
     budget_amount: Optional[float] = None
     gsc_url: Optional[str] = None
     ga4_property_id: Optional[str] = None
+    pricing_model: Optional[str] = None  # monthly, per_piece, hourly, project
+    unit_price: Optional[float] = None
+    unit_label: Optional[str] = None
+    scope: Optional[str] = None
     client_id: int
 
 
@@ -70,6 +74,10 @@ class ProjectUpdate(BaseModel):
     budget_amount: Optional[float] = None
     gsc_url: Optional[str] = None
     ga4_property_id: Optional[str] = None
+    pricing_model: Optional[str] = None
+    unit_price: Optional[float] = None
+    unit_label: Optional[str] = None
+    scope: Optional[str] = None
 
 
 class ProjectResponse(BaseModel):
@@ -87,6 +95,10 @@ class ProjectResponse(BaseModel):
     budget_amount: Optional[float]
     gsc_url: Optional[str] = None
     ga4_property_id: Optional[str] = None
+    pricing_model: Optional[str] = None
+    unit_price: Optional[float] = None
+    unit_label: Optional[str] = None
+    scope: Optional[str] = None
     client_id: int
     client_name: Optional[str] = None
     phases: list[ProjectPhaseResponse] = []
@@ -128,6 +140,10 @@ class ProjectExtract(BaseModel):
     start_date: Optional[str] = None
     target_end_date: Optional[str] = None
     client_name: Optional[str] = None
+    pricing_model: Optional[str] = None
+    unit_price: Optional[float] = None
+    unit_label: Optional[str] = None
+    scope: Optional[str] = None
 
 
 # --- Project Templates ---

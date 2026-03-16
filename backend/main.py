@@ -576,6 +576,30 @@ async def _ensure_columns_v4():
     logging.info("_ensure_columns_v4 DDL complete.")
 
 
+async def _ensure_columns_v5():
+    """Phase 5 schema additions: project pricing/scope + client intermediary."""
+    from sqlalchemy import text
+    from backend.db.database import engine
+
+    stmts = [
+        # Project: pricing & scope
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS pricing_model VARCHAR(20)",
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS unit_price NUMERIC(12,2)",
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS unit_label VARCHAR(50)",
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS scope TEXT",
+        # Client: intermediary
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS intermediary_name VARCHAR(200)",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_intermediary_deal BOOLEAN NOT NULL DEFAULT false",
+    ]
+    async with engine.begin() as conn:
+        for sql in stmts:
+            try:
+                await conn.execute(text(sql))
+            except Exception as exc:
+                logging.warning("DDL v5 statement failed (may be expected): %s — %s", sql[:80], exc)
+    logging.info("_ensure_columns_v5 DDL complete.")
+
+
 async def _generate_recurring_instances():
     """Create task instances from recurring templates for today."""
     from datetime import date as date_type
@@ -793,6 +817,7 @@ async def lifespan(app: FastAPI):
     await _ensure_columns_v2()
     await _ensure_columns_v3()
     await _ensure_columns_v4()
+    await _ensure_columns_v5()
     await _cleanup_qa_test_data()
     await _ensure_categories()
     await _seed_recurring_templates()

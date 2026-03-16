@@ -431,6 +431,11 @@ export const projectsApi = {
     form.append("file", file)
     return api.post<ProjectDraft>("/projects/extract-from-pdf", form).then((r) => r.data)
   },
+  extractFromText: (file: File) => {
+    const form = new FormData()
+    form.append("file", file)
+    return api.post<ProjectDraft>("/projects/extract-from-text", form).then((r) => r.data)
+  },
   tasks: (id: number) => api.get(`/projects/${id}/tasks`).then((r) => r.data),
   burndown: (id: number) => api.get(`/projects/${id}/burndown`).then((r) => r.data),
   createPhase: (project_id: number, data: { name: string; order_index: number; start_date?: string; due_date?: string }) =>

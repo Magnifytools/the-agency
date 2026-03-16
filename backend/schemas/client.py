@@ -17,6 +17,8 @@ class ClientCreate(BaseModel):
     status: ClientStatus = ClientStatus.active
     notes: Optional[str] = None
     is_internal: bool = False
+    intermediary_name: Optional[str] = None
+    is_intermediary_deal: bool = False
     cif: Optional[str] = None
     vat_number: Optional[str] = None
     ga4_property_id: Optional[str] = None
@@ -53,6 +55,8 @@ class ClientUpdate(BaseModel):
     next_invoice_date: Optional[date] = None
     last_invoiced_date: Optional[date] = None
     engine_project_id: Optional[int] = None
+    intermediary_name: Optional[str] = None
+    is_intermediary_deal: Optional[bool] = None
     # Revenue intelligence
     business_model: Optional[str] = None
     aov: Optional[float] = None
@@ -95,6 +99,8 @@ class ClientResponse(BaseModel):
     ltv: Optional[float] = None
     seo_maturity_level: Optional[str] = None
     is_internal: bool = False
+    intermediary_name: Optional[str] = None
+    is_intermediary_deal: bool = False
     cif: Optional[str] = None
     vat_number: Optional[str] = None
     context: Optional[str] = None

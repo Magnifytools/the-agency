@@ -34,7 +34,29 @@ EXTRACT_PROMPT = """Extrae la información de esta propuesta comercial y respond
   "budget_amount": importe numérico sin símbolo o null,
   "start_date": "YYYY-MM-DD" o null,
   "target_end_date": "YYYY-MM-DD" o null,
-  "client_name": "nombre de la empresa cliente"
+  "client_name": "nombre de la empresa cliente",
+  "pricing_model": "uno de: monthly | per_piece | hourly | project (o null si no aplica)",
+  "unit_price": precio por unidad numérico o null,
+  "unit_label": "etiqueta de la unidad (pieza, artículo, hora, etc.) o null",
+  "scope": "descripción detallada del alcance/scope del proyecto"
+}
+Sin texto adicional. Solo el JSON."""
+
+EXTRACT_TEXT_PROMPT = """Analiza este documento de contexto de proyecto y extrae la información relevante.
+Responde SOLO con un JSON válido:
+{
+  "name": "nombre del proyecto/servicio (breve, máx 60 chars)",
+  "description": "resumen del alcance en 2-3 frases",
+  "project_type": "uno de: seo_audit | content_strategy | linkbuilding | technical_seo | custom",
+  "is_recurring": true si es retención/servicio mensual, false si es proyecto puntual,
+  "budget_amount": importe total numérico sin símbolo o null,
+  "start_date": "YYYY-MM-DD" o null,
+  "target_end_date": "YYYY-MM-DD" o null,
+  "client_name": "nombre de la empresa cliente o null",
+  "pricing_model": "uno de: monthly | per_piece | hourly | project (o null)",
+  "unit_price": precio por unidad numérico o null,
+  "unit_label": "etiqueta de la unidad (pieza, artículo, hora, etc.) o null",
+  "scope": "descripción detallada del alcance/scope aprobado del proyecto"
 }
 Sin texto adicional. Solo el JSON."""
 
@@ -78,6 +100,10 @@ def _build_project_response(project: Project, hours_used: Optional[float] = None
         progress_percent=project.progress_percent,
         budget_hours=project.budget_hours,
         budget_amount=project.budget_amount,
+        pricing_model=project.pricing_model,
+        unit_price=float(project.unit_price) if project.unit_price is not None else None,
+        unit_label=project.unit_label,
+        scope=project.scope,
         client_id=project.client_id,
         client_name=project.client.name if project.client else None,
         phases=[
@@ -186,6 +212,37 @@ async def extract_project_from_pdf(
         raise HTTPException(422, f"No se pudieron extraer los datos del PDF: {e}")
 
 
+@router.post("/extract-from-text", response_model=ProjectExtract)
+async def extract_project_from_text(
+    file: UploadFile = File(...),
+    _: object = Depends(require_module("projects", write=True)),
+):
+    if not file.filename:
+        raise HTTPException(400, "Archivo sin nombre")
+    ext = file.filename.lower().rsplit(".", 1)[-1] if "." in file.filename else ""
+    if ext not in ("txt", "md"):
+        raise HTTPException(400, "Solo se aceptan archivos .txt o .md")
+    raw = await file.read()
+    if len(raw) > 1 * 1024 * 1024:
+        raise HTTPException(400, "El archivo no puede superar 1MB")
+    text_content = raw.decode("utf-8", errors="replace")
+    client = get_anthropic_client()
+    message = await client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": f"Documento:\n\n{text_content}\n\n---\n\n{EXTRACT_TEXT_PROMPT}"},
+        ]}],
+    )
+    try:
+        data = parse_claude_json(message)
+        return ProjectExtract(**data)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    except Exception as e:
+        raise HTTPException(422, f"No se pudieron extraer los datos del texto: {e}")
+
+
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 async def create_project(
     body: ProjectCreate,
@@ -201,6 +258,10 @@ async def create_project(
         target_end_date=body.target_end_date,
         budget_hours=body.budget_hours,
         budget_amount=body.budget_amount,
+        pricing_model=body.pricing_model,
+        unit_price=body.unit_price,
+        unit_label=body.unit_label,
+        scope=body.scope,
         client_id=body.client_id,
     )
     db.add(project)
@@ -381,6 +442,7 @@ _UPDATABLE_PROJECT_FIELDS = {
     "start_date", "target_end_date", "actual_end_date",
     "status", "progress_percent", "budget_hours", "budget_amount",
     "gsc_url", "ga4_property_id",
+    "pricing_model", "unit_price", "unit_label", "scope",
 }
 
 

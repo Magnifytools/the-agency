@@ -29,6 +29,10 @@ export interface Project {
   gsc_url: string | null
   ga4_property_id: string | null
   is_recurring: boolean
+  pricing_model: string | null
+  unit_price: number | null
+  unit_label: string | null
+  scope: string | null
   client_id: number
   client_name: string | null
   phases: ProjectPhase[]
@@ -68,6 +72,10 @@ export interface ProjectCreate {
   gsc_url?: string | null
   ga4_property_id?: string | null
   is_recurring?: boolean
+  pricing_model?: string | null
+  unit_price?: number | null
+  unit_label?: string | null
+  scope?: string | null
   client_id: number
 }
 
@@ -86,6 +94,10 @@ export interface ProjectDraft {
   start_date?: string
   target_end_date?: string
   client_name?: string
+  pricing_model?: string
+  unit_price?: number
+  unit_label?: string
+  scope?: string
 }
 
 export interface ProjectTeamBreakdown {

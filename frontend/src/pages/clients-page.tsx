@@ -166,6 +166,8 @@ export default function ClientsPage() {
       cif: (fd.get("cif") as string) || null,
       vat_number: (fd.get("vat_number") as string) || null,
       is_internal: fd.get("is_internal") === "on",
+      is_intermediary_deal: fd.get("is_intermediary_deal") === "on",
+      intermediary_name: (fd.get("intermediary_name") as string) || null,
     }
     if (editing) {
       updateMutation.mutate({ id: editing.id, data })
@@ -334,6 +336,11 @@ export default function ClientsPage() {
                         Interno
                       </Badge>
                     )}
+                    {c.is_intermediary_deal && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-orange-500/50 text-orange-400">
+                        {c.intermediary_name ? `vía ${c.intermediary_name}` : "Intermediario"}
+                      </Badge>
+                    )}
                     {c.engine_project_id && engineConfig?.engine_frontend_url && (
                       <a
                         href={`${engineConfig.engine_frontend_url}/p/${c.engine_project_id}/dashboard`}
@@ -493,6 +500,22 @@ export default function ClientsPage() {
             <Label htmlFor="is_internal" className="cursor-pointer text-sm font-normal">
               Cliente interno (Magnify)
             </Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="is_intermediary_deal"
+              name="is_intermediary_deal"
+              defaultChecked={editing?.is_intermediary_deal ?? false}
+              className="rounded border-border"
+            />
+            <Label htmlFor="is_intermediary_deal" className="cursor-pointer text-sm font-normal">
+              Hay agencia intermediaria
+            </Label>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="intermediary_name">Agencia intermediaria</Label>
+            <Input id="intermediary_name" name="intermediary_name" defaultValue={editing?.intermediary_name ?? ""} placeholder="Peak Ace, etc." />
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={closeDialog}>

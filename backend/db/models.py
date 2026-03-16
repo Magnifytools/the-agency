@@ -291,6 +291,9 @@ class Client(TimestampMixin, Base):
     is_internal = Column(Boolean, nullable=False, default=False)
     # Narrative context / dossier
     context = Column(Text, nullable=True)
+    # Intermediary agency
+    intermediary_name = Column(String(200), nullable=True)
+    is_intermediary_deal = Column(Boolean, nullable=False, default=False)
     # Revenue intelligence
     business_model = Column(String(50), nullable=True)  # ecommerce, saas, lead_gen, media
     aov = Column(Float, nullable=True)  # Average Order Value EUR
@@ -348,6 +351,11 @@ class Project(TimestampMixin, Base):
     ga4_property_id = Column(String(50), nullable=True)
     is_recurring = Column(Boolean, nullable=False, default=False)
     engine_project_id = Column(Integer, nullable=True)
+    # Pricing & scope
+    pricing_model = Column(String(20), nullable=True)  # monthly, per_piece, hourly, project
+    unit_price = Column(Numeric(12, 2), nullable=True)
+    unit_label = Column(String(50), nullable=True)  # e.g. "pieza", "artículo", "hora"
+    scope = Column(Text, nullable=True)
 
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
 
