@@ -646,7 +646,7 @@ async def alerts_summary(
     overdue_result = await db.execute(
         select(func.count(Task.id)).where(
             Task.due_date < today,
-            Task.status.notin_([TaskStatus.completed, TaskStatus.cancelled]),
+            Task.status.notin_([TaskStatus.completed]),
         )
     )
     overdue_count = overdue_result.scalar() or 0
