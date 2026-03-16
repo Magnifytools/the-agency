@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from backend.db.database import get_db
 from fastapi.responses import StreamingResponse
 
+from backend.api.utils.db_helpers import safe_refresh
 from backend.config import settings
 from backend.db.models import TimeEntry, Task, User, UserRole, Project, Client
 from backend.schemas.time_entry import (
@@ -106,6 +107,19 @@ async def create_time_entry(
     )
     db.add(entry)
     await db.commit()
+
+    # Automation hook: time_entry_created
+    try:
+        from backend.api.routes.automations import execute_automations
+        await execute_automations("time_entry_created", {
+            "time_entry_id": entry.id,
+            "task_id": entry.task_id,
+            "user_id": entry.user_id,
+            "minutes": entry.minutes,
+        }, db)
+    except Exception:
+        pass  # Never break time entry creation
+
     if entry.task_id:
         await _sync_task_actual_minutes(db, entry.task_id)
         await db.commit()
@@ -570,7 +584,7 @@ async def start_timer(
             status_code=status.HTTP_409_CONFLICT,
             detail="Ya hay un timer activo. Detén el actual antes de iniciar otro.",
         )
-    await db.refresh(entry)
+    await safe_refresh(db, entry, log_context="timer_start")
 
     # Reload relation if it was tied to a task
     task_title = body.notes
@@ -627,7 +641,7 @@ async def stop_timer(
     if entry.task_id:
         await _sync_task_actual_minutes(db, entry.task_id)
         await db.commit()
-    await db.refresh(entry)
+    await safe_refresh(db, entry, log_context="timer_stop")
     return _entry_to_response(entry)
 
 

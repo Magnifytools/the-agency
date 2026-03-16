@@ -34,6 +34,11 @@ class DailySubmitRequest(BaseModel):
     date: Optional[date] = None  # defaults to today
 
 
+class DailyEditRequest(BaseModel):
+    raw_text: Optional[str] = None
+    parsed_data: Optional[ParsedDailyData] = None
+
+
 class DailyUpdateResponse(BaseModel):
     id: int
     user_id: int

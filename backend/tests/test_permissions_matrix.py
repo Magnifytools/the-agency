@@ -61,6 +61,8 @@ class TestUsersEndpoint:
         u1.hourly_rate = 50.0
         u1.is_active = True
         u1.preferences = None
+        u1.region = None
+        u1.locality = None
         u1.permissions = []
 
         u2 = MagicMock(spec=User)
@@ -111,6 +113,8 @@ class TestUsersEndpoint:
         u1.hourly_rate = 50.0
         u1.is_active = True
         u1.preferences = None
+        u1.region = None
+        u1.locality = None
         u1.permissions = []
 
         count_result = MagicMock()

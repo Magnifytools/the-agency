@@ -8,6 +8,7 @@ Endpoints:
 - PUT  /{id}              — update digest content/tone
 - PATCH /{id}/status      — change digest status
 - GET  /{id}/render       — render digest as Slack or Email HTML
+- DELETE /{id}            — delete a digest (draft or admin)
 """
 from __future__ import annotations
 
@@ -442,3 +443,33 @@ async def send_digest_email(
     await db.commit()
 
     return {"success": True, "message": f"Digest enviado a {body.to}"}
+
+
+# ---------------------------------------------------------------------------
+# DELETE /{id} — Delete a digest
+# ---------------------------------------------------------------------------
+
+@router.delete("/{digest_id}", status_code=204)
+async def delete_digest(
+    digest_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("digests", write=True)),
+):
+    """Delete a digest. Admins can delete any; users can only delete their drafts."""
+    result = await db.execute(select(WeeklyDigest).where(WeeklyDigest.id == digest_id))
+    digest = result.scalar_one_or_none()
+
+    if not digest:
+        raise HTTPException(status_code=404, detail="Digest no encontrado")
+
+    is_admin = current_user.role == UserRole.admin
+    is_owner = digest.created_by == current_user.id
+
+    if not is_admin and not is_owner:
+        raise HTTPException(status_code=403, detail="No tienes permiso para eliminar este digest")
+
+    if not is_admin and digest.status != DigestStatus.draft:
+        raise HTTPException(status_code=409, detail="Solo puedes eliminar digests en borrador")
+
+    await db.delete(digest)
+    await db.commit()

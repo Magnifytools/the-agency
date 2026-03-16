@@ -35,6 +35,15 @@ _TASK_RESPONSE_OPTIONS = (
 )
 
 
+def _safe_attr(obj, rel: str, attr: str) -> str | None:
+    """Safely get attribute from a relationship, None on any failure."""
+    try:
+        r = getattr(obj, rel, None)
+        return getattr(r, attr) if r else None
+    except Exception:
+        return None
+
+
 def _task_to_response(task: Task) -> TaskResponse:
     return TaskResponse(
         id=task.id,
@@ -62,14 +71,14 @@ def _task_to_response(task: Task) -> TaskResponse:
         recurrence_day=task.recurrence_day,
         recurrence_end_date=task.recurrence_end_date,
         recurring_parent_id=task.recurring_parent_id,
-        client_name=task.client.name if task.client else None,
-        category_name=task.category.name if task.category else None,
-        assigned_user_name=task.assigned_user.full_name if task.assigned_user else None,
-        project_name=task.project.name if task.project else None,
-        phase_name=task.phase.name if task.phase else None,
-        dependency_title=task.dependency.title if task.dependency else None,
-        created_by_name=task.creator.full_name if task.creator else None,
-        recurring_parent_title=task.recurring_parent.title if task.recurring_parent else None,
+        client_name=_safe_attr(task, "client", "name"),
+        category_name=_safe_attr(task, "category", "name"),
+        assigned_user_name=_safe_attr(task, "assigned_user", "full_name"),
+        project_name=_safe_attr(task, "project", "name"),
+        phase_name=_safe_attr(task, "phase", "name"),
+        dependency_title=_safe_attr(task, "dependency", "title"),
+        created_by_name=_safe_attr(task, "creator", "full_name"),
+        recurring_parent_title=_safe_attr(task, "recurring_parent", "title"),
         checklist_count=len(task.checklist_items) if task.checklist_items else 0,
     )
 
@@ -242,6 +251,7 @@ async def update_task(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     old_assigned_to = task.assigned_to
+    old_status = task.status.value if hasattr(task.status, "value") else str(task.status)
     # actual_minutes excluded: auto-synced from time entries, not manually editable
     _UPDATABLE_TASK_FIELDS = {
         "title", "description", "status", "priority", "estimated_minutes",
@@ -264,6 +274,23 @@ async def update_task(
         await db.rollback()
         logger.error("Error actualizando tarea %d: %s", task_id, e)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
+    # Automation hook: task_completed
+    new_status = update_data.get("status")
+    if new_status and str(new_status) == "completed" and old_status != "completed":
+        try:
+            from backend.api.routes.automations import execute_automations
+            await execute_automations("task_completed", {
+                "task_id": task_id,
+                "task_title": task.title,
+                "project_id": task.project_id,
+                "client_id": task.client_id,
+                "phase_id": task.phase_id,
+                "assigned_to": task.assigned_to,
+                "old_status": old_status,
+            }, db)
+        except Exception as e:
+            logger.warning("Automation hook failed for task %d: %s", task_id, e)
+
     task = await _load_task_for_response(db, task.id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found after update")

@@ -15,6 +15,7 @@ from backend.config import settings
 from backend.core.rate_limiter import ai_limiter
 from backend.schemas.daily import (
     DailySubmitRequest,
+    DailyEditRequest,
     DailyUpdateResponse,
     DailyDiscordResponse,
     ParsedDailyData,
@@ -247,6 +248,43 @@ async def reparse_daily(
         raise HTTPException(status_code=502, detail="Error al re-parsear el daily")
 
     daily.parsed_data = parsed
+    await db.commit()
+    await db.refresh(daily)
+
+    return _to_response(daily)
+
+
+@router.put("/{daily_id}", response_model=DailyUpdateResponse)
+async def edit_daily(
+    daily_id: int,
+    body: DailyEditRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Edit a daily update's text or parsed data (only drafts)."""
+    result = await db.execute(select(DailyUpdate).where(DailyUpdate.id == daily_id))
+    daily = result.scalars().first()
+    if not daily:
+        raise HTTPException(status_code=404, detail="Daily update no encontrado")
+
+    if daily.user_id != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="Solo puedes editar tus propios dailys")
+
+    if daily.status != DailyUpdateStatus.draft:
+        raise HTTPException(status_code=409, detail="Solo se pueden editar dailys en borrador")
+
+    if body.raw_text is not None:
+        daily.raw_text = body.raw_text
+    if body.parsed_data is not None:
+        daily.parsed_data = body.parsed_data.model_dump()
+    elif body.raw_text is not None:
+        # Re-parse automatically when raw_text changes and no explicit parsed_data
+        try:
+            parsed = await parse_daily_update(body.raw_text)
+            daily.parsed_data = parsed
+        except Exception:
+            logger.warning("Auto-reparse failed for daily_id=%s, keeping old parsed_data", daily_id)
+
     await db.commit()
     await db.refresh(daily)
 

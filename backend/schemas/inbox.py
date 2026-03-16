@@ -1,7 +1,7 @@
 """Inbox note schemas for quick capture system."""
 from __future__ import annotations
 from typing import Optional, Any
-from datetime import datetime
+from datetime import date, datetime
 from pydantic import BaseModel
 
 from backend.db.models import InboxNoteStatus
@@ -31,6 +31,7 @@ class ConvertToTaskBody(BaseModel):
     client_id: Optional[int] = None
     priority: Optional[str] = None
     assigned_to: Optional[int] = None
+    due_date: Optional[date] = None  # defaults to today if not set
 
 
 class AttachmentInfo(BaseModel):

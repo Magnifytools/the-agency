@@ -8,7 +8,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import defer
+from sqlalchemy.orm import defer, selectinload
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,7 @@ from backend.db.database import get_db
 from backend.db.models import User, Project, ProjectEvidence, EvidenceType
 from backend.schemas.evidence import EvidenceCreate, EvidenceUpdate, EvidenceResponse
 from backend.api.deps import require_module
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/projects/{project_id}/evidence", tags=["evidence"])
 
@@ -52,8 +53,14 @@ def _to_response(project_id: int, ev: ProjectEvidence) -> dict:
         "file_mime_type": ev.file_mime_type,
         "file_size_bytes": ev.file_size_bytes,
     }
-    data["creator_name"] = ev.creator.full_name if ev.creator else None
-    data["phase_name"] = ev.phase.name if ev.phase else None
+    try:
+        data["creator_name"] = ev.creator.full_name if ev.creator else None
+    except Exception:
+        data["creator_name"] = None
+    try:
+        data["phase_name"] = ev.phase.name if ev.phase else None
+    except Exception:
+        data["phase_name"] = None
     data["has_file"] = bool(ev.file_name)
     data["download_url"] = (
         f"/api/projects/{project_id}/evidence/{ev.id}/download"
@@ -97,7 +104,11 @@ async def list_evidence(
 ):
     result = await db.execute(
         select(ProjectEvidence)
-        .options(defer(ProjectEvidence.file_content))
+        .options(
+            defer(ProjectEvidence.file_content),
+            selectinload(ProjectEvidence.creator),
+            selectinload(ProjectEvidence.phase),
+        )
         .where(ProjectEvidence.project_id == project_id)
         .order_by(ProjectEvidence.created_at.desc())
     )
@@ -130,7 +141,7 @@ async def create_evidence(
         await db.rollback()
         logger.error("Error creating evidence: %s", e)
         raise HTTPException(status_code=500, detail="Error al crear la evidencia")
-    await db.refresh(evidence)
+    await safe_refresh(db, evidence, log_context="create_evidence")
     return _to_response(project_id, evidence)
 
 
@@ -172,7 +183,7 @@ async def upload_evidence(
         await db.rollback()
         logger.error("Error uploading evidence: %s", e)
         raise HTTPException(status_code=500, detail="Error al subir la evidencia")
-    await db.refresh(evidence)
+    await safe_refresh(db, evidence, log_context="upload_evidence")
     return _to_response(project_id, evidence)
 
 
@@ -200,7 +211,7 @@ async def update_evidence(
         if field in _UPDATABLE_EVIDENCE_FIELDS:
             setattr(evidence, field, value)
     await db.commit()
-    await db.refresh(evidence)
+    await safe_refresh(db, evidence, log_context="update_evidence")
     return _to_response(project_id, evidence)
 
 

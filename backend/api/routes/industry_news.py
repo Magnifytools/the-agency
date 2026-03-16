@@ -16,6 +16,7 @@ from backend.schemas.industry_news import (
     IndustryNewsResponse,
 )
 from backend.api.deps import get_current_user
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/news", tags=["industry-news"])
 
@@ -119,7 +120,7 @@ async def create_news(
     item = IndustryNews(**body.model_dump())
     db.add(item)
     await db.commit()
-    await db.refresh(item)
+    await safe_refresh(db, item, log_context="create_news")
     return item
 
 
@@ -143,7 +144,7 @@ async def update_news(
         if field in _UPDATABLE_NEWS_FIELDS:
             setattr(item, field, value)
     await db.commit()
-    await db.refresh(item)
+    await safe_refresh(db, item, log_context="update_news")
     return item
 
 
@@ -210,7 +211,7 @@ async def create_source(
         await db.rollback()
         logger.error("Error creating news source: %s", e)
         raise HTTPException(status_code=500, detail="Error al crear la fuente")
-    await db.refresh(source)
+    await safe_refresh(db, source, log_context="create_news_source")
     return source
 
 
@@ -228,7 +229,7 @@ async def update_source(
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(source, field, value)
     await db.commit()
-    await db.refresh(source)
+    await safe_refresh(db, source, log_context="update_news_source")
     return source
 
 

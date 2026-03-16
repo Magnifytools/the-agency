@@ -1,0 +1,15 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.0
+    hooks:
+      - id: ruff
+        args: [--select, "E,W,F", --ignore, "E501", --fix]
+
+  - repo: local
+    hooks:
+      - id: check-unsafe-refresh
+        name: Check for unprotected db.refresh() calls
+        entry: python scripts/check_unsafe_refresh.py
+        language: python
+        files: '\.py$'
+        pass_filenames: true

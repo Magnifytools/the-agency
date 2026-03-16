@@ -27,6 +27,8 @@ def _make_admin():
     user.hourly_rate = 40.0
     user.weekly_hours = 40.0
     user.preferences = None
+    user.region = None
+    user.locality = None
     user.permissions = []
     return user
 
@@ -41,6 +43,8 @@ def _make_member():
     user.hourly_rate = 30.0
     user.weekly_hours = 40.0
     user.preferences = None
+    user.region = None
+    user.locality = None
     perm = MagicMock(spec=UserPermission)
     perm.module = "clients"
     perm.can_read = True

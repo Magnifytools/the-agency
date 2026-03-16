@@ -16,6 +16,7 @@ from backend.db.models import (
     Task, TaskStatus, TaskPriority,
 )
 from backend.api.deps import get_current_user
+from backend.api.utils.db_helpers import safe_refresh
 from backend.schemas.inbox import (
     InboxNoteCreate, InboxNoteUpdate, InboxNoteResponse, ConvertToTaskBody,
 )
@@ -40,6 +41,15 @@ def _fire_and_forget(coro) -> asyncio.Task:
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _safe_rel_name(obj, rel_attr: str) -> str | None:
+    """Safely get .name from a relationship, returning None on any error."""
+    try:
+        rel = getattr(obj, rel_attr, None)
+        return rel.name if rel else None
+    except Exception:
+        return None
+
+
 def _to_response(note: InboxNote) -> InboxNoteResponse:
     """Convert ORM model to response, populating relationship names."""
     return InboxNoteResponse(
@@ -50,8 +60,8 @@ def _to_response(note: InboxNote) -> InboxNoteResponse:
         status=note.status,
         project_id=note.project_id,
         client_id=note.client_id,
-        project_name=note.project.name if note.project else None,
-        client_name=note.client.name if note.client else None,
+        project_name=_safe_rel_name(note, "project"),
+        client_name=_safe_rel_name(note, "client"),
         resolved_as=note.resolved_as,
         resolved_entity_id=note.resolved_entity_id,
         ai_suggestion=note.ai_suggestion,
@@ -152,7 +162,7 @@ async def create_inbox_note(
     )
     db.add(note)
     await db.commit()
-    await db.refresh(note)
+    await safe_refresh(db, note, log_context="create_inbox_note")
 
     # Only run AI classification if user didn't pre-assign
     if not already_assigned:
@@ -230,7 +240,7 @@ async def update_inbox_note(
             setattr(note, field, value)
 
     await db.commit()
-    await db.refresh(note)
+    await safe_refresh(db, note, log_context="update_inbox_note")
     return _to_response(note)
 
 
@@ -335,6 +345,7 @@ async def convert_to_task(
     except ValueError:
         priority = TaskPriority.medium
 
+    from datetime import date as _date
     task = Task(
         title=title,
         description=note.raw_text,
@@ -343,6 +354,7 @@ async def convert_to_task(
         client_id=client_id,
         project_id=project_id,
         assigned_to=body.assigned_to or user.id,
+        due_date=body.due_date or _date.today(),
     )
     db.add(task)
 
@@ -389,7 +401,7 @@ async def dismiss_note(
     note.status = InboxNoteStatus.dismissed
     note.resolved_as = "dismissed"
     await db.commit()
-    await db.refresh(note)
+    await safe_refresh(db, note, log_context="dismiss_inbox_note")
     return _to_response(note)
 
 
@@ -433,7 +445,7 @@ async def upload_attachment(
     )
     db.add(attachment)
     await db.commit()
-    await db.refresh(attachment)
+    await safe_refresh(db, attachment, log_context="upload_inbox_attachment")
 
     return {
         "id": attachment.id,

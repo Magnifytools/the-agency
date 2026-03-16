@@ -26,6 +26,8 @@ from backend.api.routes import (
     inbox,
     extension,
     assistant,
+    my_week,
+    automations,
 )
 
 
@@ -600,6 +602,243 @@ async def _ensure_columns_v5():
     logging.info("_ensure_columns_v5 DDL complete.")
 
 
+async def _ensure_columns_v6():
+    """Phase 6: My Week — user day statuses and company holidays tables."""
+    from sqlalchemy import text
+    from backend.db.database import engine
+
+    stmts = [
+        """CREATE TABLE IF NOT EXISTS user_day_statuses (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            date DATE NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'available',
+            label VARCHAR(100),
+            note TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE(user_id, date)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_user_day_statuses_user_id ON user_day_statuses(user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_user_day_statuses_date ON user_day_statuses(date)",
+        """CREATE TABLE IF NOT EXISTS company_holidays (
+            id SERIAL PRIMARY KEY,
+            date DATE NOT NULL UNIQUE,
+            name VARCHAR(100) NOT NULL,
+            country VARCHAR(5) NOT NULL DEFAULT 'ES',
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )""",
+    ]
+
+    async with engine.begin() as conn:
+        for sql in stmts:
+            try:
+                await conn.execute(text(sql))
+            except Exception as exc:
+                logging.warning("DDL v6 statement failed (may be expected): %s — %s", sql[:80], exc)
+    logging.info("_ensure_columns_v6 DDL complete.")
+
+
+async def _ensure_columns_v7():
+    """Phase 7: Add monthly_fee to projects (pricing lives on project, not client)."""
+    from sqlalchemy import text
+    from backend.db.database import engine
+
+    stmts = [
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS monthly_fee NUMERIC(12,2)",
+    ]
+
+    async with engine.begin() as conn:
+        for sql in stmts:
+            try:
+                await conn.execute(text(sql))
+            except Exception as exc:
+                logging.warning("DDL v7 statement failed (may be expected): %s — %s", sql[:80], exc)
+    logging.info("_ensure_columns_v7 DDL complete.")
+
+
+async def _ensure_columns_v8():
+    """Phase 8: project_templates table + seed from hardcoded templates."""
+    from sqlalchemy import text
+    from backend.db.database import engine
+
+    create_sql = """CREATE TABLE IF NOT EXISTS project_templates (
+        id SERIAL PRIMARY KEY,
+        key VARCHAR(50) NOT NULL UNIQUE,
+        name VARCHAR(200) NOT NULL,
+        description TEXT,
+        project_type VARCHAR(50),
+        is_recurring BOOLEAN NOT NULL DEFAULT FALSE,
+        phases JSON NOT NULL DEFAULT '[]',
+        default_tasks JSON NOT NULL DEFAULT '[]',
+        pricing_model VARCHAR(20),
+        monthly_fee NUMERIC(12,2),
+        created_by INTEGER REFERENCES users(id),
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )"""
+
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text(create_sql))
+        except Exception as exc:
+            logging.warning("DDL v8 create table failed (may be expected): %s", exc)
+
+        # Seed hardcoded templates if table is empty
+        try:
+            row = await conn.execute(text("SELECT count(*) FROM project_templates"))
+            count = row.scalar() or 0
+            if count == 0:
+                from backend.schemas.project import PROJECT_TEMPLATES
+                import json
+                for key, tpl in PROJECT_TEMPLATES.items():
+                    await conn.execute(
+                        text(
+                            "INSERT INTO project_templates (key, name, project_type, phases, default_tasks) "
+                            "VALUES (:key, :name, :ptype, :phases, :tasks) ON CONFLICT (key) DO NOTHING"
+                        ),
+                        {
+                            "key": key,
+                            "name": tpl["name"],
+                            "ptype": key,
+                            "phases": json.dumps(tpl["phases"]),
+                            "tasks": json.dumps(tpl.get("default_tasks", [])),
+                        },
+                    )
+                logging.info("Seeded %d project templates from hardcoded definitions.", len(PROJECT_TEMPLATES))
+        except Exception as exc:
+            logging.warning("DDL v8 seed failed (may be expected): %s", exc)
+
+    logging.info("_ensure_columns_v8 DDL complete.")
+
+
+async def _ensure_columns_v9():
+    """Phase 9: automation_rules + automation_logs tables."""
+    from sqlalchemy import text
+    from backend.db.database import engine
+
+    rules_sql = """CREATE TABLE IF NOT EXISTS automation_rules (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(200) NOT NULL,
+        description TEXT,
+        trigger VARCHAR(50) NOT NULL,
+        conditions JSON NOT NULL DEFAULT '{}',
+        action_type VARCHAR(50) NOT NULL,
+        action_config JSON NOT NULL DEFAULT '{}',
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        run_count INTEGER NOT NULL DEFAULT 0,
+        last_run_at TIMESTAMP,
+        created_by INTEGER REFERENCES users(id),
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )"""
+
+    logs_sql = """CREATE TABLE IF NOT EXISTS automation_logs (
+        id SERIAL PRIMARY KEY,
+        rule_id INTEGER NOT NULL REFERENCES automation_rules(id) ON DELETE CASCADE,
+        trigger_event VARCHAR(50) NOT NULL,
+        trigger_data JSON,
+        action_result JSON,
+        success BOOLEAN NOT NULL DEFAULT TRUE,
+        error_message TEXT,
+        executed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )"""
+
+    idx_sql = "CREATE INDEX IF NOT EXISTS idx_automation_rules_trigger ON automation_rules(trigger)"
+
+    async with engine.begin() as conn:
+        for sql in [rules_sql, logs_sql, idx_sql]:
+            try:
+                await conn.execute(text(sql))
+            except Exception as exc:
+                logging.warning("DDL v9 statement failed (may be expected): %s", exc)
+
+    logging.info("_ensure_columns_v9 DDL complete.")
+
+
+async def _ensure_columns_v10():
+    """Phase 10: region/locality on users + company_holidays, seed national holidays."""
+    from sqlalchemy import text
+    from backend.db.database import engine
+
+    ddl_statements = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS region VARCHAR(10)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS locality VARCHAR(100)",
+        "ALTER TABLE company_holidays ADD COLUMN IF NOT EXISTS region VARCHAR(10)",
+        "ALTER TABLE company_holidays ADD COLUMN IF NOT EXISTS locality VARCHAR(100)",
+        # Drop old unique constraint on date alone, add new composite one
+        "ALTER TABLE company_holidays DROP CONSTRAINT IF EXISTS company_holidays_date_key",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_holiday_date_region_locality ON company_holidays(date, COALESCE(region, ''), COALESCE(locality, ''))",
+    ]
+
+    async with engine.begin() as conn:
+        for sql in ddl_statements:
+            try:
+                await conn.execute(text(sql))
+            except Exception as exc:
+                logging.warning("DDL v10 statement failed (may be expected): %s", exc)
+
+    logging.info("_ensure_columns_v10 DDL complete.")
+
+
+async def _seed_national_holidays():
+    """Seed Spanish national holidays for current and next year if not present."""
+    from sqlalchemy import text, select
+    from backend.db.database import async_session
+    from backend.db.models import CompanyHoliday
+    from datetime import date as date_type
+
+    current_year = date_type.today().year
+
+    # Festivos nacionales fijos de España (region=NULL = aplica a todos)
+    NATIONAL_HOLIDAYS = [
+        (1, 1, "Año Nuevo"),
+        (1, 6, "Reyes Magos"),
+        (5, 1, "Día del Trabajador"),
+        (8, 15, "Asunción de la Virgen"),
+        (10, 12, "Fiesta Nacional de España"),
+        (11, 1, "Día de Todos los Santos"),
+        (12, 6, "Día de la Constitución"),
+        (12, 8, "Inmaculada Concepción"),
+        (12, 25, "Navidad"),
+    ]
+
+    # Festivos móviles 2026 (Semana Santa)
+    MOVABLE_HOLIDAYS = {
+        2026: [(4, 2, "Jueves Santo"), (4, 3, "Viernes Santo")],
+        2027: [(3, 25, "Jueves Santo"), (3, 26, "Viernes Santo")],
+    }
+
+    async with async_session() as session:
+        for year in [current_year, current_year + 1]:
+            all_holidays = [(year, m, d, name) for m, d, name in NATIONAL_HOLIDAYS]
+            for m, d, name in MOVABLE_HOLIDAYS.get(year, []):
+                all_holidays.append((year, m, d, name))
+
+            for y, m, d, name in all_holidays:
+                try:
+                    holiday_date = date_type(y, m, d)
+                except ValueError:
+                    continue
+                existing = await session.execute(
+                    select(CompanyHoliday).where(
+                        CompanyHoliday.date == holiday_date,
+                        CompanyHoliday.region.is_(None),
+                    )
+                )
+                if existing.scalar_one_or_none() is None:
+                    session.add(CompanyHoliday(
+                        date=holiday_date, name=name, country="ES",
+                        region=None, locality=None,
+                    ))
+
+        await session.commit()
+    logging.info("National holidays seeded.")
+
+
 async def _generate_recurring_instances():
     """Create task instances from recurring templates for today."""
     from datetime import date as date_type
@@ -668,8 +907,50 @@ async def _generate_recurring_instances():
 
 
 
+async def _check_overdue_tasks():
+    """Check for overdue tasks and fire automation triggers."""
+    from datetime import date as date_type, datetime as dt_type
+    from sqlalchemy import select
+    from backend.db.database import async_session
+    from backend.db.models import Task, TaskStatus
+
+    today = date_type.today()
+    now = dt_type.now()
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(Task).where(
+                Task.status.in_([TaskStatus.todo, TaskStatus.in_progress, TaskStatus.blocked]),
+                Task.due_date < now,
+            )
+        )
+        overdue_tasks = result.scalars().all()
+
+        if not overdue_tasks:
+            return
+
+        count = 0
+        for task in overdue_tasks:
+            try:
+                from backend.api.routes.automations import execute_automations
+                await execute_automations("task_overdue", {
+                    "task_id": task.id,
+                    "task_title": task.title,
+                    "project_id": task.project_id,
+                    "client_id": task.client_id,
+                    "assigned_to": task.assigned_to,
+                    "due_date": str(task.due_date),
+                    "status": task.status.value if hasattr(task.status, "value") else str(task.status),
+                }, session)
+                count += 1
+            except Exception as exc:
+                logging.warning("Overdue automation failed for task %d: %s", task.id, exc)
+
+        logging.info("Checked %d overdue tasks, triggered %d automations.", len(overdue_tasks), count)
+
+
 async def _recurring_midnight_loop():
-    """Background loop that generates recurring task instances at midnight."""
+    """Background loop that generates recurring task instances and checks overdue tasks at midnight."""
     import asyncio
     from datetime import datetime, timedelta
 
@@ -677,12 +958,16 @@ async def _recurring_midnight_loop():
         now = datetime.now()
         tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=1, second=0, microsecond=0)
         wait_seconds = (tomorrow - now).total_seconds()
-        logging.info("🔄 Recurring task loop: next run in %.0f seconds", wait_seconds)
+        logging.info("Recurring task loop: next run in %.0f seconds", wait_seconds)
         await asyncio.sleep(wait_seconds)
         try:
             await _generate_recurring_instances()
         except Exception as exc:
-            logging.error("🔄 Recurring task generation failed: %s", exc)
+            logging.error("Recurring task generation failed: %s", exc)
+        try:
+            await _check_overdue_tasks()
+        except Exception as exc:
+            logging.error("Overdue task check failed: %s", exc)
 
 
 async def _seed_recurring_templates():
@@ -811,13 +1096,37 @@ async def _backfill_module_permissions():
 
 
 @asynccontextmanager
+async def _schema_needs_startup_ddl() -> bool:
+    """Check if startup DDL is still needed (table from v9 missing = needs DDL)."""
+    from sqlalchemy import text
+    from backend.db.database import engine
+    try:
+        async with engine.begin() as conn:
+            r = await conn.execute(text(
+                "SELECT 1 FROM information_schema.tables WHERE table_name = 'automation_rules'"
+            ))
+            return r.scalar() is None
+    except Exception:
+        return True  # conservative: run DDL if check fails
+
+
 async def lifespan(app: FastAPI):
-    await _ensure_columns()
-    await _ensure_numeric_types()
-    await _ensure_columns_v2()
-    await _ensure_columns_v3()
-    await _ensure_columns_v4()
-    await _ensure_columns_v5()
+    if await _schema_needs_startup_ddl():
+        logging.info("Running startup DDL (schema not yet up to date)...")
+        await _ensure_columns()
+        await _ensure_numeric_types()
+        await _ensure_columns_v2()
+        await _ensure_columns_v3()
+        await _ensure_columns_v4()
+        await _ensure_columns_v5()
+        await _ensure_columns_v6()
+        await _ensure_columns_v7()
+        await _ensure_columns_v8()
+        await _ensure_columns_v9()
+        await _ensure_columns_v10()
+    else:
+        logging.info("Schema up to date, skipping startup DDL.")
+    await _seed_national_holidays()
     await _cleanup_qa_test_data()
     await _ensure_categories()
     await _seed_recurring_templates()
@@ -948,6 +1257,10 @@ class HttpsRedirectMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(HttpsRedirectMiddleware)
 
+# Global error handler — structured JSON for all unhandled exceptions
+from backend.api.middleware.error_handler import unhandled_exception_handler
+app.add_exception_handler(Exception, unhandled_exception_handler)
+
 app.include_router(auth.router)
 app.include_router(clients.router)
 app.include_router(tasks.router)
@@ -995,6 +1308,8 @@ app.include_router(balance.router)
 app.include_router(inbox.router)
 app.include_router(extension.router)
 app.include_router(assistant.router)
+app.include_router(my_week.router)
+app.include_router(automations.router)
 
 # Serve frontend static files in production
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
