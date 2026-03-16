@@ -62,13 +62,41 @@ Responde SOLO con un JSON válido con los campos que puedas extraer (omite los q
   "phone": "teléfono o null",
   "website": "URL de su web o null",
   "contract_type": "monthly si es recurrente/retención, one_time si es puntual",
-  "monthly_budget": importe mensual numérico o null,
+  "monthly_budget": importe mensual numérico o null (solo si es fijo; si es variable, dejarlo null)",
   "notes": "resumen breve de la relación y contexto importante (2-3 frases)",
   "is_intermediary_deal": true si hay una agencia intermediaria entre nosotros y el cliente final,
   "intermediary_name": "nombre de la agencia intermediaria o null",
-  "context": "resumen ejecutivo completo: quién es el cliente, cómo llegó, qué se ha hecho, qué se ha prometido, particularidades del trato"
+  "context": "resumen ejecutivo completo: quién es el cliente, cómo llegó, qué se ha hecho, qué se ha prometido, particularidades del trato",
+  "project": {
+    "name": "nombre del proyecto/servicio activo o más reciente (breve, máx 60 chars)",
+    "description": "resumen del alcance en 2-3 frases",
+    "project_type": "uno de: seo_audit | content_strategy | linkbuilding | technical_seo | custom",
+    "is_recurring": true si es servicio recurrente/mensual,
+    "pricing_model": "uno de: monthly | per_piece | hourly | project (o null)",
+    "unit_price": precio por unidad numérico o null,
+    "unit_label": "etiqueta de la unidad (pieza, artículo, hora, etc.) o null",
+    "scope": "descripción detallada del alcance/scope aprobado del proyecto",
+    "budget_amount": importe total del proyecto o null,
+    "start_date": "YYYY-MM-DD o null",
+    "target_end_date": "YYYY-MM-DD o null"
+  }
 }
+Si no hay información suficiente para el proyecto, omite el campo "project".
 Sin texto adicional. Solo el JSON."""
+
+
+class ProjectExtractInline(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    project_type: Optional[str] = None
+    is_recurring: bool = False
+    pricing_model: Optional[str] = None
+    unit_price: Optional[float] = None
+    unit_label: Optional[str] = None
+    scope: Optional[str] = None
+    budget_amount: Optional[float] = None
+    start_date: Optional[str] = None
+    target_end_date: Optional[str] = None
 
 
 class ClientExtract(BaseModel):
@@ -83,6 +111,7 @@ class ClientExtract(BaseModel):
     is_intermediary_deal: bool = False
     intermediary_name: Optional[str] = None
     context: Optional[str] = None
+    project: Optional[ProjectExtractInline] = None
 
 
 @router.post("/extract-context", response_model=ClientExtract)

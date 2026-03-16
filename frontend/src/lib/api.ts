@@ -7,6 +7,7 @@ import type {
   PaginatedResponse,
   Client,
   ClientCreate,
+  ClientExtract,
   ClientDocument,
   ClientSummary,
   Task,
@@ -223,7 +224,7 @@ export const clientsApi = {
     const form = new FormData()
     if (params.file) form.append("file", params.file)
     if (params.rawText) form.append("raw_text", params.rawText)
-    return api.post<Partial<ClientCreate>>("/clients/extract-context", form).then((r) => r.data)
+    return api.post<ClientExtract>("/clients/extract-context", form).then((r) => r.data)
   },
   documents: {
     list: (clientId: number) =>

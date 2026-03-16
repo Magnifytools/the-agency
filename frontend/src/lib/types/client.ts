@@ -93,6 +93,24 @@ export interface ClientCreate {
   context?: string | null
 }
 
+export interface ClientExtractProject {
+  name?: string
+  description?: string
+  project_type?: string
+  is_recurring?: boolean
+  pricing_model?: string
+  unit_price?: number
+  unit_label?: string
+  scope?: string
+  budget_amount?: number
+  start_date?: string
+  target_end_date?: string
+}
+
+export interface ClientExtract extends Partial<ClientCreate> {
+  project?: ClientExtractProject | null
+}
+
 export interface ClientContact {
   id: number
   client_id: number
