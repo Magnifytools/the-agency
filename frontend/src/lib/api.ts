@@ -219,6 +219,12 @@ export const clientsApi = {
   recentTimeEntries: (id: number, limit = 10) =>
     api.get<Array<{ id: number; date: string; minutes: number; notes: string | null; task_title: string | null; user_name: string | null }>>(`/clients/${id}/recent-time-entries`, { params: { limit } }).then((r) => r.data),
   whatIf: (clientId: number) => api.get(`/clients/${clientId}/what-if`).then((r) => r.data),
+  extractContext: (params: { file?: File; rawText?: string }) => {
+    const form = new FormData()
+    if (params.file) form.append("file", params.file)
+    if (params.rawText) form.append("raw_text", params.rawText)
+    return api.post<Partial<ClientCreate>>("/clients/extract-context", form).then((r) => r.data)
+  },
   documents: {
     list: (clientId: number) =>
       api.get<ClientDocument[]>(`/clients/${clientId}/documents`).then((r) => r.data),

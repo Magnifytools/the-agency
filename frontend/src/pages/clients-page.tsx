@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { Plus, Pencil, MoreVertical, Users, Heart, Loader2, ExternalLink } from "lucide-react"
+import { Plus, Pencil, MoreVertical, Users, Heart, Loader2, ExternalLink, Sparkles, Upload } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
@@ -50,6 +50,8 @@ export default function ClientsPage() {
   const [tab, setTab] = useState<ClientStatus | "all">("all")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
+  const [prefill, setPrefill] = useState<Partial<ClientCreate> | null>(null)
+  const [formKey, setFormKey] = useState(0)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [hardDeleteId, setHardDeleteId] = useState<number | null>(null)
   const [openMenuId, setOpenMenuId] = useState<number | null>(null)
@@ -138,10 +140,13 @@ export default function ClientsPage() {
   const closeDialog = () => {
     setDialogOpen(false)
     setEditing(null)
+    setPrefill(null)
   }
 
   const openCreate = () => {
     setEditing(null)
+    setPrefill(null)
+    setFormKey((k) => k + 1)
     setDialogOpen(true)
   }
 
@@ -168,6 +173,7 @@ export default function ClientsPage() {
       is_internal: fd.get("is_internal") === "on",
       is_intermediary_deal: fd.get("is_intermediary_deal") === "on",
       intermediary_name: (fd.get("intermediary_name") as string) || null,
+      context: (fd.get("context") as string) || undefined,
     }
     if (editing) {
       updateMutation.mutate({ id: editing.id, data })
@@ -427,27 +433,28 @@ export default function ClientsPage() {
         <DialogHeader>
           <DialogTitle>{editing ? "Editar cliente" : "Nuevo cliente"}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {!editing && <AiFillSection onExtracted={(data) => { setPrefill(data); setFormKey((k) => k + 1) }} />}
+        <form key={formKey} onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="name">Nombre *</Label>
-              <Input id="name" name="name" defaultValue={editing?.name ?? ""} required />
+              <Input id="name" name="name" defaultValue={prefill?.name ?? editing?.name ?? ""} required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="company">Empresa</Label>
-              <Input id="company" name="company" defaultValue={editing?.company ?? ""} />
+              <Input id="company" name="company" defaultValue={prefill?.company ?? editing?.company ?? ""} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" defaultValue={editing?.email ?? ""} />
+              <Input id="email" name="email" type="email" defaultValue={prefill?.email ?? editing?.email ?? ""} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone">Teléfono</Label>
-              <Input id="phone" name="phone" defaultValue={editing?.phone ?? ""} />
+              <Input id="phone" name="phone" defaultValue={prefill?.phone ?? editing?.phone ?? ""} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="website">Web</Label>
-              <Input id="website" name="website" defaultValue={editing?.website ?? ""} />
+              <Input id="website" name="website" defaultValue={prefill?.website ?? editing?.website ?? ""} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="cif">CIF</Label>
@@ -459,20 +466,20 @@ export default function ClientsPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="contract_type">Tipo de contrato</Label>
-              <Select id="contract_type" name="contract_type" defaultValue={editing?.contract_type ?? "monthly"}>
+              <Select id="contract_type" name="contract_type" defaultValue={prefill?.contract_type ?? editing?.contract_type ?? "monthly"}>
                 <option value="monthly">Mensual</option>
                 <option value="one_time">Puntual</option>
               </Select>
             </div>
             {isAdmin && (
               <div className="space-y-2">
-                <Label htmlFor="monthly_budget">Presupuesto mensual (€)</Label>
+                <Label htmlFor="monthly_budget">Presupuesto mensual (EUR)</Label>
                 <Input
                   id="monthly_budget"
                   name="monthly_budget"
                   type="number"
                   step="0.01"
-                  defaultValue={editing?.monthly_budget ?? ""}
+                  defaultValue={prefill?.monthly_budget ?? editing?.monthly_budget ?? ""}
                 />
               </div>
             )}
@@ -487,7 +494,7 @@ export default function ClientsPage() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="notes">Notas</Label>
-            <Textarea id="notes" name="notes" defaultValue={editing?.notes ?? ""} />
+            <Textarea id="notes" name="notes" defaultValue={prefill?.notes ?? editing?.notes ?? ""} />
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -506,7 +513,7 @@ export default function ClientsPage() {
               type="checkbox"
               id="is_intermediary_deal"
               name="is_intermediary_deal"
-              defaultChecked={editing?.is_intermediary_deal ?? false}
+              defaultChecked={prefill?.is_intermediary_deal ?? editing?.is_intermediary_deal ?? false}
               className="rounded border-border"
             />
             <Label htmlFor="is_intermediary_deal" className="cursor-pointer text-sm font-normal">
@@ -515,8 +522,14 @@ export default function ClientsPage() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="intermediary_name">Agencia intermediaria</Label>
-            <Input id="intermediary_name" name="intermediary_name" defaultValue={editing?.intermediary_name ?? ""} placeholder="Peak Ace, etc." />
+            <Input id="intermediary_name" name="intermediary_name" defaultValue={prefill?.intermediary_name ?? editing?.intermediary_name ?? ""} placeholder="Peak Ace, etc." />
           </div>
+          {prefill?.context && (
+            <div className="space-y-2">
+              <Label htmlFor="context">Contexto (generado por IA)</Label>
+              <Textarea id="context" name="context" defaultValue={prefill.context} className="min-h-[80px]" />
+            </div>
+          )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={closeDialog}>
               Cancelar
@@ -573,6 +586,82 @@ export default function ClientsPage() {
           Aplicar
         </Button>
       </BulkActionBar>
+    </div>
+  )
+}
+
+function AiFillSection({ onExtracted }: { onExtracted: (data: Partial<ClientCreate>) => void }) {
+  const [mode, setMode] = useState<"closed" | "paste" | "file">("closed")
+  const [pasteText, setPasteText] = useState("")
+  const [file, setFile] = useState<File | null>(null)
+
+  const extractMutation = useMutation({
+    mutationFn: () => clientsApi.extractContext({
+      file: mode === "file" ? file ?? undefined : undefined,
+      rawText: mode === "paste" ? pasteText : undefined,
+    }),
+    onSuccess: (data) => {
+      onExtracted(data)
+      toast.success("Datos extraídos — revisa y ajusta antes de crear")
+      setMode("closed")
+      setPasteText("")
+      setFile(null)
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Error al extraer datos")),
+  })
+
+  if (mode === "closed") {
+    return (
+      <div className="flex gap-2 mb-4">
+        <Button type="button" variant="outline" size="sm" onClick={() => setMode("paste")}>
+          <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+          Pegar contexto
+        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={() => setMode("file")}>
+          <Upload className="h-3.5 w-3.5 mr-1.5" />
+          Subir TXT/MD
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-4 p-3 rounded-lg border border-dashed border-brand/40 bg-brand/5 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium flex items-center gap-1.5">
+          <Sparkles className="h-4 w-4 text-brand" />
+          {mode === "paste" ? "Pega la información del cliente" : "Sube un archivo .txt o .md"}
+        </span>
+        <Button type="button" variant="ghost" size="sm" onClick={() => { setMode("closed"); setPasteText(""); setFile(null) }}>
+          Cancelar
+        </Button>
+      </div>
+      {mode === "paste" ? (
+        <textarea
+          className="w-full min-h-[120px] text-sm bg-background border border-input rounded-md p-3 resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+          value={pasteText}
+          onChange={(e) => setPasteText(e.target.value)}
+          placeholder="Pega aquí emails, notas, resúmenes de reunión, briefings... Claude extraerá los datos del cliente automáticamente."
+        />
+      ) : (
+        <Input
+          type="file"
+          accept=".txt,.md"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        />
+      )}
+      <Button
+        type="button"
+        size="sm"
+        onClick={() => extractMutation.mutate()}
+        disabled={extractMutation.isPending || (mode === "paste" ? !pasteText.trim() : !file)}
+      >
+        {extractMutation.isPending ? (
+          <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Analizando...</>
+        ) : (
+          <><Sparkles className="h-3.5 w-3.5 mr-1.5" /> Extraer datos con IA</>
+        )}
+      </Button>
     </div>
   )
 }

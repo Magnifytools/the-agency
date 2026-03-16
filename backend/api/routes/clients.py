@@ -5,6 +5,7 @@ from typing import Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel
 from fastapi.responses import Response
 from sqlalchemy import select, func, delete, update, or_
 from sqlalchemy.exc import IntegrityError
@@ -50,6 +51,78 @@ async def list_clients(
     result = await db.execute(query)
 
     return PaginatedResponse(items=result.scalars().all(), total=total, page=page, page_size=page_size)
+
+
+_CLIENT_EXTRACT_PROMPT = """Analiza este texto de contexto sobre un cliente y extrae la información relevante.
+Responde SOLO con un JSON válido con los campos que puedas extraer (omite los que no aparezcan):
+{
+  "name": "nombre del cliente/empresa principal (el cliente final, no intermediarios)",
+  "company": "nombre de la empresa (puede ser igual a name)",
+  "email": "email de contacto o null",
+  "phone": "teléfono o null",
+  "website": "URL de su web o null",
+  "contract_type": "monthly si es recurrente/retención, one_time si es puntual",
+  "monthly_budget": importe mensual numérico o null,
+  "notes": "resumen breve de la relación y contexto importante (2-3 frases)",
+  "is_intermediary_deal": true si hay una agencia intermediaria entre nosotros y el cliente final,
+  "intermediary_name": "nombre de la agencia intermediaria o null",
+  "context": "resumen ejecutivo completo: quién es el cliente, cómo llegó, qué se ha hecho, qué se ha prometido, particularidades del trato"
+}
+Sin texto adicional. Solo el JSON."""
+
+
+class ClientExtract(BaseModel):
+    name: Optional[str] = None
+    company: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
+    contract_type: Optional[str] = None
+    monthly_budget: Optional[float] = None
+    notes: Optional[str] = None
+    is_intermediary_deal: bool = False
+    intermediary_name: Optional[str] = None
+    context: Optional[str] = None
+
+
+@router.post("/extract-context", response_model=ClientExtract)
+async def extract_client_context(
+    file: Optional[UploadFile] = File(None),
+    raw_text: Optional[str] = Form(None),
+    _: User = Depends(require_module("clients", write=True)),
+):
+    """Extract client info from a text file (.txt/.md) or pasted raw text."""
+    from backend.services.ai_utils import get_anthropic_client, parse_claude_json
+
+    text_content = ""
+    if file and file.filename:
+        ext = file.filename.lower().rsplit(".", 1)[-1] if "." in file.filename else ""
+        if ext not in ("txt", "md"):
+            raise HTTPException(400, "Solo se aceptan archivos .txt o .md")
+        raw = await file.read()
+        if len(raw) > 1 * 1024 * 1024:
+            raise HTTPException(400, "El archivo no puede superar 1MB")
+        text_content = raw.decode("utf-8", errors="replace")
+    elif raw_text and raw_text.strip():
+        text_content = raw_text.strip()
+    else:
+        raise HTTPException(400, "Debes subir un archivo o pegar texto")
+
+    client = get_anthropic_client()
+    message = await client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": f"Documento de contexto:\n\n{text_content}\n\n---\n\n{_CLIENT_EXTRACT_PROMPT}"},
+        ]}],
+    )
+    try:
+        data = parse_claude_json(message)
+        return ClientExtract(**data)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    except Exception as e:
+        raise HTTPException(422, f"No se pudieron extraer los datos: {e}")
 
 
 @router.post("", response_model=ClientResponse, status_code=status.HTTP_201_CREATED)
