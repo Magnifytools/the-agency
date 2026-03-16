@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import (
-    User, Client, Task, TaskStatus, TimeEntry, TaskCategory, Income,
+    User, Client, Project, ProjectStatus, Task, TaskStatus, TimeEntry, TaskCategory, Income,
 )
 from backend.schemas.dashboard import ClientDashboardResponse, ProfitabilityStatus
 from backend.api.deps import get_current_user, require_module
@@ -172,14 +172,24 @@ async def client_dashboard(
             monthly_profitability[key] = {"income": 0.0, "cost": 0.0}
         monthly_profitability[key]["cost"] = round(float(total_cost_val or 0), 2)
 
-    # --- Client financial data (only needed fields) ---
+    # --- Client financial data: derive from active projects, fallback to client fields ---
+    project_fee_result = await db.execute(
+        select(func.coalesce(func.sum(Project.monthly_fee), 0))
+        .where(Project.client_id == client_id, Project.status == ProjectStatus.active)
+    )
+    project_fee_total = float(project_fee_result.scalar() or 0)
+
     client_result = await db.execute(
         select(Client.monthly_fee, Client.monthly_budget)
         .where(Client.id == client_id)
     )
     row = client_result.one_or_none()
-    monthly_fee = (row[0] or 0) if row else 0
-    monthly_budget = (row[1] or 0) if row else 0
+    legacy_fee = float(row[0] or 0) if row else 0
+    legacy_budget = float(row[1] or 0) if row else 0
+
+    # Prefer project-derived fee; fall back to legacy client fields
+    monthly_fee = project_fee_total or legacy_fee
+    monthly_budget = project_fee_total or legacy_budget
 
     # --- Actual income from Income table this month ---
     income_result = await db.execute(

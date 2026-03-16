@@ -16,6 +16,7 @@ import {
   ExternalLink,
   Search,
   User,
+  Copy,
 } from "lucide-react"
 import { toast } from "sonner"
 import { projectsApi, tasksApi } from "@/lib/api"
@@ -61,6 +62,7 @@ export default function ProjectDetailPage() {
   const queryClient = useQueryClient()
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showAddTaskDialog, setShowAddTaskDialog] = useState<number | null>(null)
+  const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false)
   const [viewMode, setViewMode] = useState<"list" | "gantt" | "kanban">("list")
   const [activeTab, setActiveTab] = useState<"tasks" | "evidence">("tasks")
   const [previewTaskId, setPreviewTaskId] = useState<number | null>(null)
@@ -201,6 +203,10 @@ export default function ProjectDetailPage() {
             <option value="completed">Completado</option>
             <option value="cancelled">Cancelado</option>
           </Select>
+          <Button variant="outline" onClick={() => setShowSaveTemplateDialog(true)}>
+            <Copy className="h-4 w-4 mr-2" />
+            Guardar plantilla
+          </Button>
           <Button variant="outline" onClick={() => setShowEditDialog(true)}>
             <Edit2 className="h-4 w-4 mr-2" />
             Editar
@@ -563,6 +569,16 @@ export default function ProjectDetailPage() {
         />
       )}
 
+      {/* Save as Template Dialog */}
+      {project && (
+        <SaveTemplateDialog
+          open={showSaveTemplateDialog}
+          onOpenChange={setShowSaveTemplateDialog}
+          projectId={project.id}
+          projectName={project.name}
+        />
+      )}
+
       {/* Add Task Dialog */}
       {showAddTaskDialog && project && (
         <AddTaskDialog
@@ -648,6 +664,7 @@ function EditProjectDialog({
     target_end_date: project.target_end_date?.split("T")[0] || "",
     budget_hours: project.budget_hours?.toString() || "",
     budget_amount: project.budget_amount?.toString() || "",
+    monthly_fee: project.monthly_fee?.toString() || "",
     gsc_url: project.gsc_url || "",
     ga4_property_id: project.ga4_property_id || "",
   })
@@ -661,6 +678,7 @@ function EditProjectDialog({
         target_end_date: formData.target_end_date || undefined,
         budget_hours: formData.budget_hours ? parseFloat(formData.budget_hours) : undefined,
         budget_amount: formData.budget_amount ? parseFloat(formData.budget_amount) : undefined,
+        monthly_fee: formData.monthly_fee ? parseFloat(formData.monthly_fee) : undefined,
         gsc_url: formData.gsc_url || undefined,
         ga4_property_id: formData.ga4_property_id || undefined,
       }),
@@ -717,7 +735,17 @@ function EditProjectDialog({
             />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label>Fee mensual (EUR)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              value={formData.monthly_fee}
+              onChange={(e) => setFormData({ ...formData, monthly_fee: e.target.value })}
+              placeholder="Retainer"
+            />
+          </div>
           <div className="space-y-2">
             <Label>Presupuesto horas</Label>
             <Input
@@ -942,6 +970,80 @@ function TaskPreviewDialog({
       ) : (
         <div className="py-8 text-center text-sm text-muted-foreground">No se encontró la tarea</div>
       )}
+    </Dialog>
+  )
+}
+
+function SaveTemplateDialog({
+  open,
+  onOpenChange,
+  projectId,
+  projectName,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  projectId: number
+  projectName: string
+}) {
+  const [name, setName] = useState(projectName)
+  const [description, setDescription] = useState("")
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      projectsApi.saveAsTemplate(projectId, { name, description: description || undefined }),
+    onSuccess: () => {
+      toast.success("Plantilla guardada correctamente")
+      onOpenChange(false)
+      setName(projectName)
+      setDescription("")
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Error al guardar plantilla")),
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogHeader>
+        <DialogTitle>Guardar como plantilla</DialogTitle>
+      </DialogHeader>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          saveMutation.mutate()
+        }}
+        className="space-y-4 mt-4"
+      >
+        <p className="text-sm text-muted-foreground">
+          Se guardará la estructura actual del proyecto (fases y tareas) como plantilla reutilizable.
+        </p>
+
+        <div className="space-y-2">
+          <Label>Nombre de la plantilla *</Label>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Ej: SEO Mensual Completo"
+            required
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Descripción</Label>
+          <Input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Breve descripción de qué incluye"
+          />
+        </div>
+
+        <div className="flex justify-end gap-2 pt-4">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={saveMutation.isPending}>
+            {saveMutation.isPending ? "Guardando..." : "Guardar plantilla"}
+          </Button>
+        </div>
+      </form>
     </Dialog>
   )
 }

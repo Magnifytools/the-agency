@@ -250,6 +250,8 @@ class User(TimestampMixin, Base):
     password_reset_required = Column(Boolean, nullable=False, default=False)
     invited_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     preferences = Column(JSONB, nullable=True, server_default="{}")
+    region = Column(String(10), nullable=True)      # CCAA code: "MAD", "CAT"...
+    locality = Column(String(100), nullable=True)    # City: "Madrid", "Barcelona"...
 
     tasks = relationship("Task", back_populates="assigned_user", lazy="selectin", foreign_keys="[Task.assigned_to]")
     permissions = relationship("UserPermission", back_populates="user", lazy="selectin", cascade="all, delete-orphan")
@@ -353,6 +355,7 @@ class Project(TimestampMixin, Base):
     engine_project_id = Column(Integer, nullable=True)
     # Pricing & scope
     pricing_model = Column(String(20), nullable=True)  # monthly, per_piece, hourly, project
+    monthly_fee = Column(Numeric(12, 2), nullable=True)  # retainer mensual que factura este proyecto
     unit_price = Column(Numeric(12, 2), nullable=True)
     unit_label = Column(String(50), nullable=True)  # e.g. "pieza", "artículo", "hora"
     scope = Column(Text, nullable=True)
@@ -1391,3 +1394,115 @@ class InboxAttachment(TimestampMixin, Base):
 
     note = relationship("InboxNote", back_populates="attachments")
     uploader = relationship("User", lazy="selectin")
+
+
+# ── My Week: Day Status & Company Holidays ─────────────────
+
+
+class DayStatusType(str, enum.Enum):
+    available = "available"
+    away = "away"
+    vacation = "vacation"
+    sick = "sick"
+    holiday = "holiday"
+
+
+class UserDayStatus(TimestampMixin, Base):
+    __tablename__ = "user_day_statuses"
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_user_day_status"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    status = Column(Enum(DayStatusType), nullable=False, default=DayStatusType.available)
+    label = Column(String(100), nullable=True)
+    note = Column(Text, nullable=True)
+
+    user = relationship("User", lazy="selectin")
+
+
+class CompanyHoliday(TimestampMixin, Base):
+    __tablename__ = "company_holidays"
+    __table_args__ = (
+        UniqueConstraint("date", "region", "locality", name="uq_holiday_date_region_locality"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(Date, nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    country = Column(String(5), nullable=False, default="ES")
+    region = Column(String(10), nullable=True)      # CCAA code: "MAD", "CAT", "AND"...
+    locality = Column(String(100), nullable=True)    # City: "Madrid", "Barcelona"...
+
+
+# ── Project Templates (DB-backed) ──────────────────────────
+
+class ProjectTemplateDB(TimestampMixin, Base):
+    __tablename__ = "project_templates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String(50), nullable=False, unique=True, index=True)
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    project_type = Column(String(50), nullable=True)
+    is_recurring = Column(Boolean, nullable=False, default=False)
+    phases = Column(JSON, nullable=False, default=list)       # [{name, default_days}]
+    default_tasks = Column(JSON, nullable=False, default=list) # [{phase, title, minutes}]
+    pricing_model = Column(String(20), nullable=True)
+    monthly_fee = Column(Numeric(12, 2), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    creator = relationship("User", lazy="selectin")
+
+
+# ── Automation Rules ──────────────────────────────────────
+
+class AutomationTrigger(str, enum.Enum):
+    task_completed = "task_completed"
+    task_overdue = "task_overdue"
+    phase_completed = "phase_completed"
+    project_status_changed = "project_status_changed"
+    time_entry_created = "time_entry_created"
+    communication_logged = "communication_logged"
+    # Scheduled
+    daily_check = "daily_check"
+
+
+class AutomationActionType(str, enum.Enum):
+    create_task = "create_task"
+    change_task_status = "change_task_status"
+    change_project_status = "change_project_status"
+    assign_user = "assign_user"
+    send_notification = "send_notification"
+    send_discord = "send_discord"
+    create_insight = "create_insight"
+
+
+class AutomationRule(TimestampMixin, Base):
+    __tablename__ = "automation_rules"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    trigger = Column(String(50), nullable=False, index=True)  # AutomationTrigger value
+    conditions = Column(JSON, nullable=False, default=dict)    # {project_id, client_id, status, etc.}
+    action_type = Column(String(50), nullable=False)           # AutomationActionType value
+    action_config = Column(JSON, nullable=False, default=dict) # Parameters for the action
+    is_active = Column(Boolean, nullable=False, default=True)
+    run_count = Column(Integer, nullable=False, default=0)
+    last_run_at = Column(DateTime, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    creator = relationship("User", lazy="selectin")
+
+
+class AutomationLog(TimestampMixin, Base):
+    __tablename__ = "automation_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    rule_id = Column(Integer, ForeignKey("automation_rules.id", ondelete="CASCADE"), nullable=False)
+    trigger_event = Column(String(50), nullable=False)
+    trigger_data = Column(JSON, nullable=True)     # What caused the trigger
+    action_result = Column(JSON, nullable=True)     # What the action did
+    success = Column(Boolean, nullable=False, default=True)
+    error_message = Column(Text, nullable=True)
+    executed_at = Column(DateTime, nullable=False, default=func.now())
+    rule = relationship("AutomationRule", lazy="selectin")

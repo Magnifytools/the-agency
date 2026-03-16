@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
-from backend.db.models import Project, ProjectPhase, Task, TaskStatus, PhaseStatus, ProjectStatus, TimeEntry
+from backend.db.models import Project, ProjectPhase, ProjectTemplateDB, Task, TaskStatus, PhaseStatus, ProjectStatus, TimeEntry
 from backend.schemas.project import (
     ProjectCreate,
     ProjectExtract,
@@ -22,7 +22,7 @@ from backend.schemas.project import (
     PROJECT_TEMPLATES,
 )
 from backend.schemas.pagination import PaginatedResponse
-from backend.api.deps import get_current_user, require_module
+from backend.api.deps import get_current_user, require_module, require_admin
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 
 EXTRACT_PROMPT = """Extrae la información de esta propuesta comercial y responde SOLO con un JSON válido:
@@ -276,12 +276,182 @@ async def create_project(
 
 
 @router.get("/templates")
-async def get_project_templates(_user=Depends(require_module("projects"))):
-    """Return available project templates."""
+async def get_project_templates(
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(require_module("projects")),
+):
+    """Return available project templates from DB."""
+    result = await db.execute(
+        select(ProjectTemplateDB).order_by(ProjectTemplateDB.name)
+    )
+    templates = result.scalars().all()
     return {
-        key: {"name": val["name"], "phase_count": len(val["phases"]), "task_count": len(val.get("default_tasks", []))}
-        for key, val in PROJECT_TEMPLATES.items()
+        t.key: {
+            "id": t.id,
+            "name": t.name,
+            "description": t.description,
+            "phase_count": len(t.phases or []),
+            "task_count": len(t.default_tasks or []),
+            "pricing_model": t.pricing_model,
+            "monthly_fee": float(t.monthly_fee) if t.monthly_fee else None,
+            "is_recurring": t.is_recurring,
+        }
+        for t in templates
     }
+
+
+@router.get("/templates/{template_id}")
+async def get_template_detail(
+    template_id: int,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(require_module("projects")),
+):
+    """Return full template detail including phases and tasks."""
+    result = await db.execute(
+        select(ProjectTemplateDB).where(ProjectTemplateDB.id == template_id)
+    )
+    tpl = result.scalar_one_or_none()
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {
+        "id": tpl.id,
+        "key": tpl.key,
+        "name": tpl.name,
+        "description": tpl.description,
+        "project_type": tpl.project_type,
+        "is_recurring": tpl.is_recurring,
+        "phases": tpl.phases or [],
+        "default_tasks": tpl.default_tasks or [],
+        "pricing_model": tpl.pricing_model,
+        "monthly_fee": float(tpl.monthly_fee) if tpl.monthly_fee else None,
+        "created_at": tpl.created_at.isoformat() if tpl.created_at else None,
+    }
+
+
+@router.post("/templates", status_code=status.HTTP_201_CREATED)
+async def create_template(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_admin),
+):
+    """Create a new project template."""
+    import re
+    key = body.get("key") or re.sub(r"[^a-z0-9_]", "_", body["name"].lower().strip())[:50]
+
+    # Check unique key
+    existing = await db.execute(select(ProjectTemplateDB).where(ProjectTemplateDB.key == key))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Template key '{key}' already exists")
+
+    tpl = ProjectTemplateDB(
+        key=key,
+        name=body["name"],
+        description=body.get("description"),
+        project_type=body.get("project_type"),
+        is_recurring=body.get("is_recurring", False),
+        phases=body.get("phases", []),
+        default_tasks=body.get("default_tasks", []),
+        pricing_model=body.get("pricing_model"),
+        monthly_fee=body.get("monthly_fee"),
+        created_by=user.id,
+    )
+    db.add(tpl)
+    await db.commit()
+    await db.refresh(tpl)
+    return {"id": tpl.id, "key": tpl.key, "name": tpl.name}
+
+
+@router.put("/templates/{template_id}")
+async def update_template(
+    template_id: int,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(require_admin),
+):
+    """Update a project template."""
+    result = await db.execute(select(ProjectTemplateDB).where(ProjectTemplateDB.id == template_id))
+    tpl = result.scalar_one_or_none()
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    for field in ("name", "description", "project_type", "is_recurring", "phases", "default_tasks", "pricing_model", "monthly_fee"):
+        if field in body:
+            setattr(tpl, field, body[field])
+    await db.commit()
+    return {"id": tpl.id, "key": tpl.key, "name": tpl.name}
+
+
+@router.delete("/templates/{template_id}", status_code=204)
+async def delete_template(
+    template_id: int,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(require_admin),
+):
+    """Delete a project template."""
+    result = await db.execute(select(ProjectTemplateDB).where(ProjectTemplateDB.id == template_id))
+    tpl = result.scalar_one_or_none()
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+    await db.delete(tpl)
+    await db.commit()
+
+
+@router.post("/{project_id}/save-as-template")
+async def save_project_as_template(
+    project_id: int,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_admin),
+):
+    """Save an existing project's structure as a new template."""
+    result = await db.execute(
+        select(Project).options(selectinload(Project.phases), selectinload(Project.tasks))
+        .where(Project.id == project_id)
+    )
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    import re
+    name = body.get("name", f"Template: {project.name}")
+    key = body.get("key") or re.sub(r"[^a-z0-9_]", "_", name.lower().strip())[:50]
+
+    # Build phases
+    phases = []
+    phase_id_to_idx = {}
+    for idx, phase in enumerate(sorted(project.phases, key=lambda p: p.order_index)):
+        days = 7  # default
+        if phase.start_date and phase.due_date:
+            days = max((phase.due_date - phase.start_date).days, 1)
+        phases.append({"name": phase.name, "default_days": days})
+        phase_id_to_idx[phase.id] = idx
+
+    # Build tasks
+    default_tasks = []
+    for task in project.tasks:
+        phase_idx = phase_id_to_idx.get(task.phase_id, 0)
+        default_tasks.append({
+            "phase": phase_idx,
+            "title": task.title,
+            "minutes": task.estimated_minutes or 60,
+        })
+
+    tpl = ProjectTemplateDB(
+        key=key,
+        name=name,
+        description=body.get("description", f"Based on project: {project.name}"),
+        project_type=project.project_type,
+        is_recurring=project.is_recurring,
+        phases=phases,
+        default_tasks=default_tasks,
+        pricing_model=project.pricing_model,
+        monthly_fee=project.monthly_fee,
+        created_by=user.id,
+    )
+    db.add(tpl)
+    await db.commit()
+    await db.refresh(tpl)
+    return {"id": tpl.id, "key": tpl.key, "name": tpl.name}
 
 
 @router.post("/from-template", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
@@ -292,37 +462,42 @@ async def create_project_from_template(
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_module("projects", write=True)),
 ):
-    """Create a project from a template with phases and tasks pre-populated."""
-    if template_key not in PROJECT_TEMPLATES:
+    """Create a project from a DB template with phases and tasks pre-populated."""
+    result = await db.execute(
+        select(ProjectTemplateDB).where(ProjectTemplateDB.key == template_key)
+    )
+    tpl = result.scalar_one_or_none()
+    if not tpl:
         raise HTTPException(status_code=400, detail=f"Template '{template_key}' not found")
 
-    template = PROJECT_TEMPLATES[template_key]
     base_date = start_date or datetime.utcnow()
+    template_phases = tpl.phases or []
+    template_tasks = tpl.default_tasks or []
 
-    # Calculate total days
-    total_days = sum(p["default_days"] for p in template["phases"])
+    total_days = sum(p.get("default_days", 7) for p in template_phases)
 
-    # Create project
     project = Project(
-        name=template["name"],
-        project_type=template_key,
+        name=tpl.name,
+        project_type=tpl.project_type or tpl.key,
         start_date=base_date,
         target_end_date=base_date + timedelta(days=total_days),
         client_id=client_id,
         status=ProjectStatus.planning,
+        is_recurring=tpl.is_recurring,
+        pricing_model=tpl.pricing_model,
+        monthly_fee=tpl.monthly_fee,
     )
     db.add(project)
     await db.flush()
 
-    # Create phases
     phase_map = {}
     current_date = base_date
-    for idx, phase_def in enumerate(template["phases"]):
+    for idx, phase_def in enumerate(template_phases):
         phase = ProjectPhase(
             name=phase_def["name"],
             order_index=idx,
             start_date=current_date,
-            due_date=current_date + timedelta(days=phase_def["default_days"]),
+            due_date=current_date + timedelta(days=phase_def.get("default_days", 7)),
             project_id=project.id,
         )
         db.add(phase)
@@ -330,9 +505,8 @@ async def create_project_from_template(
         phase_map[idx] = phase
         current_date = phase.due_date
 
-    # Create tasks
-    for task_def in template.get("default_tasks", []):
-        phase = phase_map.get(task_def["phase"])
+    for task_def in template_tasks:
+        phase = phase_map.get(task_def.get("phase", 0))
         task = Task(
             title=task_def["title"],
             estimated_minutes=task_def.get("minutes", 60),
@@ -442,7 +616,7 @@ _UPDATABLE_PROJECT_FIELDS = {
     "start_date", "target_end_date", "actual_end_date",
     "status", "progress_percent", "budget_hours", "budget_amount",
     "gsc_url", "ga4_property_id",
-    "pricing_model", "unit_price", "unit_label", "scope",
+    "pricing_model", "monthly_fee", "unit_price", "unit_label", "scope",
 }
 
 
@@ -460,6 +634,7 @@ async def update_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    old_status = project.status.value if hasattr(project.status, "value") else str(project.status)
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         if field not in _UPDATABLE_PROJECT_FIELDS:
@@ -474,6 +649,22 @@ async def update_project(
 
     await db.commit()
     await db.refresh(project)
+
+    # Automation hook: project_status_changed
+    new_status = project.status.value if hasattr(project.status, "value") else str(project.status)
+    if new_status != old_status:
+        try:
+            from backend.api.routes.automations import execute_automations
+            await execute_automations("project_status_changed", {
+                "project_id": project.id,
+                "project_name": project.name,
+                "client_id": project.client_id,
+                "old_status": old_status,
+                "new_status": new_status,
+            }, db)
+        except Exception as e:
+            import logging
+            logging.warning("Automation hook failed for project %d: %s", project.id, e)
 
     return _build_project_response(project)
 
@@ -564,6 +755,18 @@ async def update_phase(
 
     await db.commit()
     await db.refresh(phase)
+
+    # Automation hook: phase_completed
+    if phase.completed_at and not was_completed_before:
+        try:
+            from backend.api.routes.automations import execute_automations
+            await execute_automations("phase_completed", {
+                "phase_id": phase.id,
+                "phase_name": phase.name,
+                "project_id": phase.project_id,
+            }, db)
+        except Exception:
+            pass  # Never break phase update
 
     # Notify project members when phase is newly completed
     if phase.completed_at and not was_completed_before:

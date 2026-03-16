@@ -54,6 +54,7 @@ class ProjectCreate(BaseModel):
     gsc_url: Optional[str] = None
     ga4_property_id: Optional[str] = None
     pricing_model: Optional[str] = None  # monthly, per_piece, hourly, project
+    monthly_fee: Optional[float] = None
     unit_price: Optional[float] = None
     unit_label: Optional[str] = None
     scope: Optional[str] = None
@@ -75,6 +76,7 @@ class ProjectUpdate(BaseModel):
     gsc_url: Optional[str] = None
     ga4_property_id: Optional[str] = None
     pricing_model: Optional[str] = None
+    monthly_fee: Optional[float] = None
     unit_price: Optional[float] = None
     unit_label: Optional[str] = None
     scope: Optional[str] = None
@@ -96,6 +98,7 @@ class ProjectResponse(BaseModel):
     gsc_url: Optional[str] = None
     ga4_property_id: Optional[str] = None
     pricing_model: Optional[str] = None
+    monthly_fee: Optional[float] = None
     unit_price: Optional[float] = None
     unit_label: Optional[str] = None
     scope: Optional[str] = None
@@ -141,6 +144,7 @@ class ProjectExtract(BaseModel):
     target_end_date: Optional[str] = None
     client_name: Optional[str] = None
     pricing_model: Optional[str] = None
+    monthly_fee: Optional[float] = None
     unit_price: Optional[float] = None
     unit_label: Optional[str] = None
     scope: Optional[str] = None

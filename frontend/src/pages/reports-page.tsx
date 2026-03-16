@@ -271,6 +271,10 @@ export default function ReportsPage() {
                 <FileDown className="h-4 w-4 mr-2" />
                 PDF
               </Button>
+              <Button variant="outline" size="sm" onClick={() => reportsApi.downloadPdf(viewReport.id)}>
+                <FileDown className="h-4 w-4 mr-2" />
+                Descargar PDF
+              </Button>
               {narrative && (
                 <Button variant="outline" size="sm" onClick={handleExportNarrativePdf}>
                   <FileDown className="h-4 w-4 mr-2" />

@@ -43,6 +43,7 @@ class InvestmentSummary(BaseModel):
     year1_roi_range: str
     year1_revenue_range: str
     total_investment: float
+    opportunity_cost: Optional[float] = None
 
 
 class InvestmentAssumptions(BaseModel):
@@ -53,8 +54,38 @@ class InvestmentAssumptions(BaseModel):
     conversion_rate: float
 
 
+class NullScenarioMonthlyRow(BaseModel):
+    month: int
+    traffic: int
+    lost_visitors: int
+    lost_conversions: float
+    lost_revenue: float
+    cumulative_opportunity_cost: float
+
+
+class NullScenario(BaseModel):
+    label: str
+    traffic_decline: int
+    lost_conversions: float
+    lost_revenue: float
+    cumulative_opportunity_cost: float
+    monthly_projection: list[NullScenarioMonthlyRow]
+
+
+class PricingTierRoi(BaseModel):
+    name: str
+    price: float
+    is_recommended: bool
+    roi_conservative: float
+    roi_moderate: float
+    roi_optimistic: float
+    payback_months: Optional[int] = None
+
+
 class InvestmentCalculateResponse(BaseModel):
     scenarios: list[InvestmentScenario]
+    null_scenario: Optional[NullScenario] = None
+    pricing_comparison: Optional[list[PricingTierRoi]] = None
     monthly_projection: list[InvestmentMonthlyRow]
     summary: InvestmentSummary
     assumptions: InvestmentAssumptions

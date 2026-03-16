@@ -43,7 +43,9 @@ const ExecutiveDashboardPage = lazy(() => import("@/pages/executive-dashboard-pa
 const AgencyVaultPage = lazy(() => import("@/pages/agency-vault-page"))
 const IndustryNewsPage = lazy(() => import("@/pages/industry-news-page"))
 const InboxPage = lazy(() => import("@/pages/inbox-page"))
+const MyWeekPage = lazy(() => import("@/pages/my-week-page"))
 const SettingsPage = lazy(() => import("@/pages/settings-page"))
+const AutomationsPage = lazy(() => import("@/pages/automations-page"))
 
 function PageLoader() {
   return (
@@ -124,8 +126,11 @@ export default function App() {
               <Route path="/news" element={<ErrorBoundary section="News"><Suspense fallback={<PageLoader />}><IndustryNewsPage /></Suspense></ErrorBoundary>} />
               <Route path="/vault" element={<PermissionRoute adminOnly><ErrorBoundary section="Vault"><Suspense fallback={<PageLoader />}><AgencyVaultPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/inbox" element={<ErrorBoundary section="Inbox"><Suspense fallback={<PageLoader />}><InboxPage /></Suspense></ErrorBoundary>} />
+              <Route path="/my-week" element={<ErrorBoundary section="MyWeek"><Suspense fallback={<PageLoader />}><MyWeekPage /></Suspense></ErrorBoundary>} />
               {/* Discord */}
               <Route path="/discord" element={<PermissionRoute adminOnly><ErrorBoundary section="Discord"><Suspense fallback={<PageLoader />}><DiscordSettingsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              {/* Automations */}
+              <Route path="/automations" element={<PermissionRoute adminOnly><ErrorBoundary section="Automations"><Suspense fallback={<PageLoader />}><AutomationsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Settings */}
               <Route path="/settings" element={<ErrorBoundary section="Settings"><Suspense fallback={<PageLoader />}><SettingsPage /></Suspense></ErrorBoundary>} />
             </Route>

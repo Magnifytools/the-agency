@@ -342,6 +342,115 @@ async def get_report_narrative_pdf(
     return Response(content=html, media_type="text/html")
 
 
+@router.get("/{report_id}/download")
+async def download_report_pdf(
+    report_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("reports")),
+):
+    """Download report as server-generated PDF (fpdf2)."""
+    result = await db.execute(
+        select(GeneratedReport).where(GeneratedReport.id == report_id)
+    )
+    report = result.scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    if current_user.role != UserRole.admin and report.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your report")
+
+    import asyncio
+    loop = asyncio.get_event_loop()
+    pdf_bytes = await loop.run_in_executor(None, _build_report_pdf, report)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="report-{report_id}.pdf"'},
+    )
+
+
+def _safe_r(text: str) -> str:
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
+
+def _build_report_pdf(report: "GeneratedReport") -> bytes:
+    from fpdf import FPDF
+
+    content = json.loads(report.content) if isinstance(report.content, str) else (report.content or {})
+    sections = content.get("sections", [])
+    summary = content.get("summary", "")
+    audience = report.audience.value if report.audience else None
+
+    AUDIENCE_LABEL = {"executive": "Ejecutivo", "marketing": "Marketing", "operational": "Operativo"}
+
+    pdf = FPDF(unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.set_margins(20, 15, 20)
+
+    # Cover
+    pdf.add_page()
+    pdf.set_y(70)
+    pdf.set_font("Helvetica", "B", 32)
+    pdf.cell(0, 12, "MAGNIFY", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(6)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 6, "INFORME DE RESULTADOS", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(10)
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.multi_cell(0, 10, _safe_r(report.title or ""), align="C")
+    pdf.ln(6)
+    pdf.set_font("Helvetica", "", 11)
+    meta_parts = []
+    if report.client:
+        meta_parts.append(report.client.name)
+    if report.period_start and report.period_end:
+        meta_parts.append(f"{report.period_start.strftime('%d/%m/%Y')} - {report.period_end.strftime('%d/%m/%Y')}")
+    if audience:
+        meta_parts.append(AUDIENCE_LABEL.get(audience, audience))
+    pdf.cell(0, 6, _safe_r(" | ".join(meta_parts)), align="C", new_x="LMARGIN", new_y="NEXT")
+
+    # Content
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_text_color(50, 50, 50)
+    pdf.cell(0, 5, "MAGNIFY", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_draw_color(30, 30, 30)
+    pdf.line(pdf.l_margin, pdf.get_y(), 210 - pdf.r_margin, pdf.get_y())
+    pdf.ln(4)
+    pdf.set_text_color(0, 0, 0)
+
+    if summary:
+        pdf.set_fill_color(240, 244, 255)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 5, _safe_r(str(summary)), fill=True, border=1)
+        pdf.ln(4)
+
+    for sec in sections:
+        if not isinstance(sec, dict):
+            continue
+        title = sec.get("title", "")
+        body = sec.get("content", sec.get("body", ""))
+        pdf.ln(3)
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(0, 8, _safe_r(str(title)), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_draw_color(180, 180, 180)
+        pdf.line(pdf.l_margin, pdf.get_y(), 210 - pdf.r_margin, pdf.get_y())
+        pdf.ln(3)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 5, _safe_r(str(body)))
+        pdf.ln(2)
+
+    # Footer
+    pdf.ln(8)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 4, _safe_r(f"magnify.ing | Generado {datetime.now(timezone.utc).strftime('%d/%m/%Y')}"), align="C")
+    pdf.set_text_color(0, 0, 0)
+
+    return bytes(pdf.output())
+
+
 # ---------------------------------------------------------------------------
 # Client Monthly Report (Engine + Agency data)
 # ---------------------------------------------------------------------------

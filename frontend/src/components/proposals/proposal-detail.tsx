@@ -382,6 +382,40 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                                         </div>
                                     )}
 
+                                    {gc.investment_model && typeof gc.investment_model === "object" ? (() => {
+                                        const im = gc.investment_model as Record<string, unknown>
+                                        const scenarios = (im.scenarios || []) as Array<{label: string; key: string; roi_percent: number; traffic_increase: number; revenue_increase: number; payback_months: number | null}>
+                                        const ns = im.null_scenario as {label: string; traffic_decline: number; lost_revenue: number; cumulative_opportunity_cost: number} | null
+                                        const summary = im.summary as {break_even_month: number | null; year1_roi_range: string; year1_revenue_range: string; opportunity_cost?: number} | null
+                                        return (
+                                            <div>
+                                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Modelo de inversión</p>
+                                                <div className={`grid gap-2 ${ns ? "grid-cols-4" : "grid-cols-3"}`}>
+                                                    {ns && (
+                                                        <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-3 text-center">
+                                                            <p className="text-xs font-medium text-destructive">{ns.label}</p>
+                                                            <p className="text-lg font-bold text-destructive">-{ns.lost_revenue.toLocaleString("es-ES")}{"\u20AC"}</p>
+                                                            <p className="text-xs text-muted-foreground">Coste total: {ns.cumulative_opportunity_cost.toLocaleString("es-ES")}{"\u20AC"}</p>
+                                                        </div>
+                                                    )}
+                                                    {scenarios.map(s => (
+                                                        <div key={s.key} className="bg-secondary/30 rounded-lg p-3 text-center">
+                                                            <p className="text-xs font-medium text-muted-foreground">{s.label}</p>
+                                                            <p className="text-lg font-bold">{s.roi_percent}%</p>
+                                                            <p className="text-xs text-muted-foreground">+{s.traffic_increase.toLocaleString("es-ES")} visitas | {s.revenue_increase.toLocaleString("es-ES")}{"\u20AC"}</p>
+                                                            {s.payback_months && <p className="text-xs">Payback: mes {s.payback_months}</p>}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                {summary && (
+                                                    <div className="bg-secondary/30 rounded-lg p-2 text-xs text-center mt-2">
+                                                        Break-even: <strong>mes {summary.break_even_month ?? "N/A"}</strong> | ROI: <strong>{summary.year1_roi_range}</strong> | Ingresos: <strong>{summary.year1_revenue_range}</strong>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )
+                                    })() : null}
+
                                     {Object.entries(gc)
                                         .filter(([key]) => !["executive_summary", "null_case", "success_metrics", "phases", "investment_model"].includes(key))
                                         .filter(([, value]) => value && typeof value === "string")

@@ -55,6 +55,26 @@ def calculate_seo_roi(
         {"label": "Optimista", "key": "optimistic", "multiplier": 2.2},
     ]
 
+    # Null scenario: what happens if the client does NOT invest
+    null_monthly = []
+    null_cumulative_cost = 0.0
+    # Organic decay: without SEO investment, traffic typically declines 2-5% monthly
+    _ORGANIC_DECAY = 0.02
+    for m in range(1, months + 1):
+        decay_traffic = int(current_monthly_traffic * (1 - _ORGANIC_DECAY) ** m)
+        lost_visitors = current_monthly_traffic - decay_traffic
+        lost_conversions = lost_visitors * conv_rate
+        lost_revenue = lost_conversions * aov * ltv_factor
+        null_cumulative_cost += lost_revenue
+        null_monthly.append({
+            "month": m,
+            "traffic": decay_traffic,
+            "lost_visitors": lost_visitors,
+            "lost_conversions": round(lost_conversions, 1),
+            "lost_revenue": round(lost_revenue, 2),
+            "cumulative_opportunity_cost": round(null_cumulative_cost, 2),
+        })
+
     total_investment = monthly_investment * months
     scenarios = []
     all_monthly = {}
@@ -119,14 +139,25 @@ def calculate_seo_roi(
     year1_rev_low = round(all_monthly["conservative"][-1]["cumulative_revenue"], 0)
     year1_rev_high = round(all_monthly["optimistic"][-1]["cumulative_revenue"], 0)
 
+    null_final = null_monthly[-1]
+
     return {
         "scenarios": scenarios,
+        "null_scenario": {
+            "label": "Sin inversión",
+            "traffic_decline": null_final["lost_visitors"],
+            "lost_conversions": null_final["lost_conversions"],
+            "lost_revenue": null_final["lost_revenue"],
+            "cumulative_opportunity_cost": null_final["cumulative_opportunity_cost"],
+            "monthly_projection": null_monthly,
+        },
         "monthly_projection": all_monthly["moderate"],  # Show moderate by default
         "summary": {
             "break_even_month": break_even,
             "year1_roi_range": f"{year1_roi_low}% – {year1_roi_high}%",
             "year1_revenue_range": f"{year1_rev_low:,.0f}€ – {year1_rev_high:,.0f}€",
             "total_investment": round(total_investment, 2),
+            "opportunity_cost": null_final["cumulative_opportunity_cost"],
         },
         "assumptions": {
             "seo_maturity": seo_maturity,

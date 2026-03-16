@@ -98,8 +98,43 @@ async def calculate_investment(
         months=body.months,
     )
 
+    # Calculate ROI for each pricing tier if proposal has multiple options
+    pricing_comparison = None
+    if body.proposal_id:
+        res = await db.execute(select(Proposal).where(Proposal.id == body.proposal_id))
+        prop = res.scalar_one_or_none()
+        if prop and prop.pricing_options and len(prop.pricing_options) > 1:
+            tiers = []
+            for opt in prop.pricing_options:
+                if not isinstance(opt, dict) or not opt.get("is_recurring") or not opt.get("price"):
+                    continue
+                tier_result = calculate_seo_roi(
+                    business_model=business_model,
+                    aov=aov,
+                    conversion_rate=conversion_rate,
+                    ltv=ltv,
+                    current_monthly_traffic=current_monthly_traffic,
+                    monthly_investment=opt["price"],
+                    seo_maturity=seo_maturity or "none",
+                    months=body.months,
+                )
+                scenarios_by_key = {s["key"]: s for s in tier_result["scenarios"]}
+                tiers.append({
+                    "name": opt.get("name", "Sin nombre"),
+                    "price": opt["price"],
+                    "is_recommended": bool(opt.get("recommended")),
+                    "roi_conservative": scenarios_by_key["conservative"]["roi_percent"],
+                    "roi_moderate": scenarios_by_key["moderate"]["roi_percent"],
+                    "roi_optimistic": scenarios_by_key["optimistic"]["roi_percent"],
+                    "payback_months": scenarios_by_key["conservative"]["payback_months"],
+                })
+            if tiers:
+                pricing_comparison = tiers
+
     return InvestmentCalculateResponse(
         scenarios=result["scenarios"],
+        null_scenario=result.get("null_scenario"),
+        pricing_comparison=pricing_comparison,
         monthly_projection=result["monthly_projection"],
         summary=result["summary"],
         assumptions=result["assumptions"],

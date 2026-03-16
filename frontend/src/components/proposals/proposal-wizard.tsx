@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import {
     Plus, Trash2, XCircle, ChevronRight, ChevronLeft,
@@ -86,7 +86,7 @@ const emptyPricing: PricingOption = {
 const DAVID_RATE = 50
 const NACHO_RATE = 30
 
-function RoiPreviewStep({ form }: { form: WizardForm }) {
+function RoiPreviewStep({ form, onResult }: { form: WizardForm; onResult?: (r: InvestmentCalculateResponse | null) => void }) {
     const [result, setResult] = useState<InvestmentCalculateResponse | null>(null)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -115,7 +115,7 @@ function RoiPreviewStep({ form }: { form: WizardForm }) {
             seo_maturity: form.seo_maturity_level || undefined,
             current_monthly_traffic: Number(form.current_monthly_traffic),
             monthly_investment: monthlyInvestment,
-        }).then(setResult).catch(err => {
+        }).then(r => { setResult(r); onResult?.(r) }).catch(err => {
             setError(getErrorMessage(err))
         }).finally(() => setLoading(false))
     }
@@ -145,9 +145,24 @@ function RoiPreviewStep({ form }: { form: WizardForm }) {
 
     if (!result) return null
 
+    const ns = result.null_scenario
+
     return (
         <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
+            <div className={`grid gap-3 ${ns ? "grid-cols-4" : "grid-cols-3"}`}>
+                {ns && (
+                    <Card className="border-destructive/30 bg-destructive/5">
+                        <CardContent className="p-4 text-center">
+                            <p className="text-xs font-medium text-destructive mb-1">{ns.label}</p>
+                            <p className="text-xl font-bold text-destructive">-{ns.lost_revenue.toLocaleString("es-ES")}{"\u20AC"}</p>
+                            <p className="text-xs text-muted-foreground">coste mes 12</p>
+                            <div className="mt-2 space-y-1 text-xs text-left">
+                                <p>Tráfico: <span className="font-medium text-destructive">-{ns.traffic_decline.toLocaleString("es-ES")}</span></p>
+                                <p>Coste total: <span className="font-medium text-destructive">{ns.cumulative_opportunity_cost.toLocaleString("es-ES")}{"\u20AC"}</span></p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
                 {result.scenarios.map(s => (
                     <Card key={s.key}>
                         <CardContent className="p-4 text-center">
@@ -156,7 +171,7 @@ function RoiPreviewStep({ form }: { form: WizardForm }) {
                             <p className="text-xs text-muted-foreground">ROI</p>
                             <div className="mt-2 space-y-1 text-xs text-left">
                                 <p>Tráfico: <span className="font-medium text-green-400">+{s.traffic_increase.toLocaleString("es-ES")}</span></p>
-                                <p>Ingresos: <span className="font-medium">{s.revenue_increase.toLocaleString("es-ES")}\u20AC</span></p>
+                                <p>Ingresos: <span className="font-medium">{s.revenue_increase.toLocaleString("es-ES")}{"\u20AC"}</span></p>
                                 {s.payback_months && <p>Payback: <span className="font-medium">mes {s.payback_months}</span></p>}
                             </div>
                         </CardContent>
@@ -164,8 +179,39 @@ function RoiPreviewStep({ form }: { form: WizardForm }) {
                 ))}
             </div>
             <div className="bg-secondary/30 rounded-lg p-3 text-sm text-center">
-                <p>Break-even: <strong>mes {result.summary.break_even_month ?? "N/A"}</strong> | ROI año 1: <strong>{result.summary.year1_roi_range}</strong> | Ingresos: <strong>{result.summary.year1_revenue_range}</strong></p>
+                <p>Break-even: <strong>mes {result.summary.break_even_month ?? "N/A"}</strong> | ROI año 1: <strong>{result.summary.year1_roi_range}</strong> | Ingresos: <strong>{result.summary.year1_revenue_range}</strong>{result.summary.opportunity_cost ? <>{" "}| No actuar: <strong className="text-destructive">{result.summary.opportunity_cost.toLocaleString("es-ES")}{"\u20AC"}</strong></> : null}</p>
             </div>
+            {result.pricing_comparison && result.pricing_comparison.length > 1 && (
+                <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">ROI por tier de pricing</p>
+                    <div className="border border-border rounded-lg overflow-hidden">
+                        <table className="w-full text-sm" aria-label="Comparativa ROI por tier">
+                            <thead>
+                                <tr className="bg-secondary/50 text-xs">
+                                    <th className="text-left p-2">Tier</th>
+                                    <th className="text-right p-2">Precio</th>
+                                    <th className="text-right p-2">Conservador</th>
+                                    <th className="text-right p-2">Moderado</th>
+                                    <th className="text-right p-2">Optimista</th>
+                                    <th className="text-right p-2">Payback</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {result.pricing_comparison.map(t => (
+                                    <tr key={t.name} className={`border-t border-border ${t.is_recommended ? "bg-green-500/5" : ""}`}>
+                                        <td className="p-2 font-medium">{t.name}{t.is_recommended ? " \u2B50" : ""}</td>
+                                        <td className="p-2 text-right">{t.price.toLocaleString("es-ES")}{"\u20AC"}/mes</td>
+                                        <td className="p-2 text-right">{t.roi_conservative}%</td>
+                                        <td className="p-2 text-right">{t.roi_moderate}%</td>
+                                        <td className="p-2 text-right">{t.roi_optimistic}%</td>
+                                        <td className="p-2 text-right">{t.payback_months ? `mes ${t.payback_months}` : "N/A"}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
@@ -188,15 +234,25 @@ export function ProposalWizard({
 }: ProposalWizardProps) {
     const queryClient = useQueryClient()
     const [wizardStep, setWizardStep] = useState(0)
+    const roiResultRef = useRef<InvestmentCalculateResponse | null>(null)
 
     // Reset step when opened
     useEffect(() => {
         if (open) setWizardStep(0)
     }, [open])
 
+    const saveInvestmentIfAvailable = async (proposalId: number) => {
+        if (roiResultRef.current) {
+            try {
+                await proposalsApi.saveInvestment(proposalId, roiResultRef.current as unknown as Record<string, unknown>)
+            } catch { /* best-effort */ }
+        }
+    }
+
     const createMutation = useMutation({
         mutationFn: (data: ProposalCreate) => proposalsApi.create(data),
-        onSuccess: (newProp) => {
+        onSuccess: async (newProp) => {
+            await saveInvestmentIfAvailable(newProp.id)
             queryClient.invalidateQueries({ queryKey: ["proposals"] })
             onClose()
             onCreated?.(newProp.id)
@@ -207,7 +263,8 @@ export function ProposalWizard({
 
     const updateMutation = useMutation({
         mutationFn: ({ id, data }: { id: number; data: ProposalCreate }) => proposalsApi.update(id, data),
-        onSuccess: () => {
+        onSuccess: async (_data, variables) => {
+            await saveInvestmentIfAvailable(variables.id)
             queryClient.invalidateQueries({ queryKey: ["proposals"] })
             onClose()
             toast.success("Propuesta actualizada")
@@ -673,7 +730,7 @@ export function ProposalWizard({
                         <p className="text-sm text-muted-foreground">
                             Vista previa del modelo de inversión calculado con los datos de Revenue (paso 2) y Pricing (paso 4).
                         </p>
-                        <RoiPreviewStep form={form} />
+                        <RoiPreviewStep form={form} onResult={(r) => { roiResultRef.current = r }} />
                     </div>
                 )}
 

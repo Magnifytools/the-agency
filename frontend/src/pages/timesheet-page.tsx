@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { timeEntriesApi, tasksApi, timerApi } from "@/lib/api"
 import { useAuth } from "@/context/auth-context"
@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Select } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Building2, Pencil, Check, X, Play, Square, ChevronLeft } from "lucide-react"
+import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Building2, Pencil, Check, X, Play, Square, ChevronLeft, AlertTriangle, User as UserIcon } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { EmptyTableState } from "@/components/ui/empty-state"
 import { toast } from "sonner"
@@ -48,6 +48,24 @@ function formatElapsed(seconds: number) {
   const m = Math.floor((seconds % 3600) / 60)
   return `${h}h ${m}m`
 }
+
+function fmtMin(m: number) {
+  if (!m) return "—"
+  const h = Math.floor(m / 60)
+  const min = m % 60
+  return h > 0 ? (min > 0 ? `${h}h ${min}m` : `${h}h`) : `${min}m`
+}
+
+const TABS = [
+  { key: "resumen", label: "Resumen", icon: Clock },
+  { key: "trabajador", label: "Por Trabajador", icon: UserIcon },
+  { key: "cliente", label: "Por Cliente", icon: Building2 },
+  { key: "proyecto", label: "Por Proyecto", icon: FolderKanban },
+] as const
+
+type TabKey = typeof TABS[number]["key"]
+
+// ─── Subcomponents ───────────────────────────────────────────
 
 function ProjectReportRow({ project }: { project: ProjectTimeReport }) {
   const [expanded, setExpanded] = useState(false)
@@ -120,7 +138,6 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
     refetchInterval: 10_000,
   })
 
-  // Tick elapsed every second when timer is active
   useEffect(() => {
     if (!activeTimer?.started_at) { setElapsed(""); return }
     const tick = () => {
@@ -135,7 +152,6 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
     return () => clearInterval(iv)
   }, [activeTimer?.started_at])
 
-  // Derive unique clients and projects from tasks
   const clients = Array.from(new Map(tasks.filter((t) => t.client_id).map((t) => [t.client_id, t.client_name])).entries())
   const projects = Array.from(new Map(tasks.filter((t) => t.project_id && (!filterClient || String(t.client_id) === filterClient)).map((t) => [t.project_id, t.project_name])).entries())
   const filteredTasks = tasks.filter((t) => {
@@ -214,10 +230,191 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
   )
 }
 
+
+// ─── Worker Tab ──────────────────────────────────────────────
+
+interface WorkerTabProps {
+  weeklyData: { days: string[]; users: { user_id: number; full_name: string; daily_minutes: Record<string, number>; total_minutes: number; tasks: WeeklyTimesheetTask[] }[] } | undefined
+  weekLoading: boolean
+  assignedTasks: { id: number; title: string; client_name?: string | null; assigned_to?: number | null; status?: string }[]
+  onEditEntry?: (entry: { taskId: number | null; taskTitle: string; userId: number; userName: string }) => void
+}
+
+function WorkerTab({ weeklyData, weekLoading, assignedTasks }: WorkerTabProps) {
+  const [expandedWorkers, setExpandedWorkers] = useState<Set<number>>(new Set())
+
+  if (weekLoading) return <div className="text-sm text-muted-foreground p-4">Cargando...</div>
+  if (!weeklyData?.users.length) return <div className="text-sm text-muted-foreground p-4">Sin datos para esta semana.</div>
+
+  // Build a map of task IDs that have time entries this week per user
+  const userTasksWithTime = useMemo(() => {
+    const map = new Map<number, Set<number>>()
+    for (const u of weeklyData?.users || []) {
+      const taskIds = new Set<number>()
+      for (const t of u.tasks) {
+        if (t.task_id && t.total_minutes > 0) taskIds.add(t.task_id)
+      }
+      map.set(u.user_id, taskIds)
+    }
+    return map
+  }, [weeklyData])
+
+  // Find assigned tasks without time entries per user
+  const tasksWithoutTime = useMemo(() => {
+    const map = new Map<number, typeof assignedTasks>()
+    for (const u of weeklyData?.users || []) {
+      const withTime = userTasksWithTime.get(u.user_id) || new Set()
+      const missing = assignedTasks.filter(
+        (t) => t.assigned_to === u.user_id && !withTime.has(t.id) && t.status !== "done" && t.status !== "cancelled"
+      )
+      if (missing.length > 0) map.set(u.user_id, missing)
+    }
+    return map
+  }, [weeklyData, assignedTasks, userTasksWithTime])
+
+  const toggleWorker = (uid: number) => {
+    setExpandedWorkers((prev) => {
+      const next = new Set(prev)
+      if (next.has(uid)) next.delete(uid)
+      else next.add(uid)
+      return next
+    })
+  }
+
+  const days = weeklyData.days
+
+  return (
+    <div className="space-y-4">
+      {weeklyData.users.map((u) => {
+        const isExpanded = expandedWorkers.has(u.user_id)
+        const noTimeTasks = tasksWithoutTime.get(u.user_id) || []
+        const avgDaily = u.total_minutes / Math.max(days.filter((d) => (u.daily_minutes[d] || 0) > 0).length, 1)
+
+        return (
+          <Card key={u.user_id} className="overflow-hidden">
+            <div
+              className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors"
+              onClick={() => toggleWorker(u.user_id)}
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                  <UserIcon className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <span className="font-semibold">{u.full_name}</span>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span>{fmtMin(u.total_minutes)} total</span>
+                    <span>{u.tasks.length} tareas</span>
+                    <span>~{fmtMin(Math.round(avgDaily))}/dia</span>
+                    {noTimeTasks.length > 0 && (
+                      <span className="text-amber-500 flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {noTimeTasks.length} sin tiempo
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                {/* Mini sparkline of daily hours */}
+                <div className="hidden sm:flex items-end gap-0.5 h-6">
+                  {days.slice(0, 5).map((d) => {
+                    const mins = u.daily_minutes[d] || 0
+                    const maxMins = Math.max(...days.map((dd) => u.daily_minutes[dd] || 0), 1)
+                    const pct = Math.max((mins / maxMins) * 100, 4)
+                    return (
+                      <div
+                        key={d}
+                        className={`w-3 rounded-t transition-all ${mins > 0 ? "bg-primary/60" : "bg-muted"}`}
+                        style={{ height: `${pct}%` }}
+                        title={`${new Date(d + "T12:00:00").toLocaleDateString("es-ES", { weekday: "short" })}: ${fmtMin(mins)}`}
+                      />
+                    )
+                  })}
+                </div>
+                <span className="font-mono font-semibold text-sm">{fmtMin(u.total_minutes)}</span>
+                {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              </div>
+            </div>
+
+            {isExpanded && (
+              <CardContent className="pt-0 pb-4">
+                {/* Daily breakdown header */}
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[40%]">Tarea</TableHead>
+                      {days.map((d) => (
+                        <TableHead key={d} className="text-right text-xs w-[8%]">
+                          {new Date(d + "T12:00:00").toLocaleDateString("es-ES", { weekday: "short", day: "2-digit" }).toUpperCase()}
+                        </TableHead>
+                      ))}
+                      <TableHead className="text-right">Total</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {u.tasks.map((t: WeeklyTimesheetTask) => (
+                      <TableRow key={t.task_id ?? "none"}>
+                        <TableCell className="text-sm">
+                          <span>{t.task_title}</span>
+                          {t.client_name && <span className="text-xs text-muted-foreground ml-1.5">— {t.client_name}</span>}
+                        </TableCell>
+                        {days.map((d) => (
+                          <TableCell key={d} className="text-right mono text-sm text-muted-foreground">
+                            {fmtMin(t.daily_minutes[d] || 0)}
+                          </TableCell>
+                        ))}
+                        <TableCell className="text-right mono text-sm font-medium">{fmtMin(t.total_minutes)}</TableCell>
+                      </TableRow>
+                    ))}
+                    {u.tasks.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={days.length + 2} className="text-center text-sm text-muted-foreground py-4">
+                          Sin registros de tiempo esta semana
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+
+                {/* Tasks without time entries */}
+                {noTimeTasks.length > 0 && (
+                  <div className="mt-4 border border-amber-500/20 rounded-lg bg-amber-500/5 p-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-amber-600 mb-2">
+                      <AlertTriangle className="h-4 w-4" />
+                      Tareas asignadas sin tiempo registrado ({noTimeTasks.length})
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                      {noTimeTasks.slice(0, 10).map((t) => (
+                        <div key={t.id} className="text-xs text-muted-foreground flex items-center gap-1.5 py-0.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                          <span className="truncate">{t.title}</span>
+                          {t.client_name && <span className="text-muted-foreground/50 shrink-0">({t.client_name})</span>}
+                        </div>
+                      ))}
+                      {noTimeTasks.length > 10 && (
+                        <div className="text-xs text-muted-foreground/60">+{noTimeTasks.length - 10} mas...</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            )}
+          </Card>
+        )
+      })}
+    </div>
+  )
+}
+
+
+// ─── Main Page ───────────────────────────────────────────────
+
 export default function TimesheetPage() {
   const { user, isAdmin } = useAuth()
   const queryClient = useQueryClient()
   const [weekStart, setWeekStart] = useState(() => toInputDate(getMonday(new Date())))
+  const [activeTab, setActiveTab] = useState<TabKey>("resumen")
   const todayDate = toInputDate(new Date())
 
   const weekEnd = (() => {
@@ -231,20 +428,17 @@ export default function TimesheetPage() {
     queryFn: () => timeEntriesApi.weekly(weekStart),
   })
 
-  // Obtener los time entries de hoy para el usuario actual
   const { data: todaysEntries = [] } = useQuery({
     queryKey: ["time-entries", "today", user?.id],
     queryFn: () => timeEntriesApi.list({ user_id: user?.id, date_from: todayDate + "T00:00:00Z", date_to: todayDate + "T23:59:59Z" }),
     enabled: !!user?.id,
   })
 
-  // Obtener tareas para el selector
   const { data: myTasks = [] } = useQuery({
     queryKey: ["tasks-all", "my-tasks"],
     queryFn: () => tasksApi.listAll(),
   })
 
-  // Admin: active timers
   const { data: activeTimers = [] } = useQuery({
     queryKey: ["admin-active-timers"],
     queryFn: () => timeEntriesApi.adminTimers(),
@@ -253,16 +447,16 @@ export default function TimesheetPage() {
     refetchIntervalInBackground: false,
   })
 
-  // Project report
   const { data: projectReport = [], isLoading: projectLoading } = useQuery({
     queryKey: ["time-entries-by-project", weekStart, weekEnd],
     queryFn: () => timeEntriesApi.byProject({ date_from: weekStart + "T00:00:00Z", date_to: weekEnd + "T23:59:59Z" }),
+    enabled: activeTab === "proyecto",
   })
 
-  // Client report
   const { data: clientReport = [], isLoading: clientLoading } = useQuery({
     queryKey: ["time-entries-by-client", weekStart, weekEnd],
     queryFn: () => timeEntriesApi.byClient({ date_from: weekStart + "T00:00:00Z", date_to: weekEnd + "T23:59:59Z" }),
+    enabled: activeTab === "cliente",
   })
 
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -336,13 +530,6 @@ export default function TimesheetPage() {
     })
   }
 
-  const fmtMin = (m: number) => {
-    if (!m) return "—"
-    const h = Math.floor(m / 60)
-    const min = m % 60
-    return h > 0 ? (min > 0 ? `${h}h ${min}m` : `${h}h`) : `${min}m`
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -400,17 +587,18 @@ export default function TimesheetPage() {
         </Card>
       )}
 
+      {/* Today's entries */}
       <Card>
         <CardHeader>
           <CardTitle>Mis Registros de Hoy</CardTitle>
-          <p className="text-sm text-muted-foreground">Revisa tus tiempos rápidos y asígnalos a tareas para facturar.</p>
+          <p className="text-sm text-muted-foreground">Revisa tus tiempos rapidos y asignalos a tareas para facturar.</p>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Registro</TableHead>
-                <TableHead>Duración</TableHead>
+                <TableHead>Duracion</TableHead>
                 <TableHead>Tarea / Proyecto</TableHead>
                 <TableHead className="w-16"></TableHead>
               </TableRow>
@@ -433,37 +621,20 @@ export default function TimesheetPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          <Input
-                            type="number"
-                            min="0"
-                            value={editHours}
-                            onChange={(ev) => setEditHours(Number(ev.target.value))}
-                            className="w-14 h-7 text-xs"
-                          />
+                          <Input type="number" min="0" value={editHours} onChange={(ev) => setEditHours(Number(ev.target.value))} className="w-14 h-7 text-xs" />
                           <span className="text-xs text-muted-foreground">h</span>
-                          <Input
-                            type="number"
-                            min="0"
-                            max="59"
-                            value={editMins}
-                            onChange={(ev) => setEditMins(Number(ev.target.value))}
-                            className="w-14 h-7 text-xs"
-                          />
+                          <Input type="number" min="0" max="59" value={editMins} onChange={(ev) => setEditMins(Number(ev.target.value))} className="w-14 h-7 text-xs" />
                           <span className="text-xs text-muted-foreground">m</span>
                         </div>
                       </TableCell>
                       <TableCell>
                         {e.task_id ? (
-                          <span className="text-sm text-muted-foreground">
-                            ✓ {e.task_title}
-                          </span>
+                          <span className="text-sm text-muted-foreground">✓ {e.task_title}</span>
                         ) : (
                           <Select
                             value=""
                             onChange={(ev) => {
-                              if (ev.target.value) {
-                                updateMutation.mutate({ id: e.id, data: { task_id: Number(ev.target.value) } })
-                              }
+                              if (ev.target.value) updateMutation.mutate({ id: e.id, data: { task_id: Number(ev.target.value) } })
                             }}
                             className="w-full max-w-xs h-8 text-xs"
                           >
@@ -494,16 +665,12 @@ export default function TimesheetPage() {
                       <TableCell className="mono">{formatMinutes(e.minutes)}</TableCell>
                       <TableCell>
                         {e.task_id ? (
-                          <span className="text-sm text-muted-foreground">
-                            ✓ Asignado a &quot;{e.task_title}&quot;
-                          </span>
+                          <span className="text-sm text-muted-foreground">✓ Asignado a &quot;{e.task_title}&quot;</span>
                         ) : (
                           <Select
                             value=""
                             onChange={(ev) => {
-                              if (ev.target.value) {
-                                updateMutation.mutate({ id: e.id, data: { task_id: Number(ev.target.value) } })
-                              }
+                              if (ev.target.value) updateMutation.mutate({ id: e.id, data: { task_id: Number(ev.target.value) } })
                             }}
                             className="w-full max-w-xs h-8 text-xs"
                           >
@@ -528,8 +695,8 @@ export default function TimesheetPage() {
         </CardContent>
       </Card>
 
-      <div className="flex items-center justify-between pt-4">
-        <h3 className="text-xl font-bold">Resumen Semanal</h3>
+      {/* Week navigation + Tabs */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
             const d = parseLocalDate(weekStart)
@@ -552,154 +719,183 @@ export default function TimesheetPage() {
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
+        <div className="flex items-center gap-1 bg-muted p-1 rounded-lg">
+          {TABS.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                activeTab === key
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <Card>
-        <CardContent className="pt-4">
-          {weekLoading ? (
-            <div className="text-sm text-muted-foreground">Cargando...</div>
-          ) : weekError ? (
-            <div className="text-red-500 text-sm">Error al cargar datos. <button className="underline ml-1" onClick={() => weekRefetch()}>Reintentar</button></div>
-          ) : !weeklyData ? (
-            <div className="text-sm text-muted-foreground">Sin datos</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Miembro</TableHead>
-                  {days.map((d) => (
-                    <TableHead key={d} className="text-right text-xs">
-                      {new Date(d + "T12:00:00").toLocaleDateString("es-ES", { weekday: "short", day: "2-digit" }).toUpperCase()}
-                    </TableHead>
-                  ))}
-                  <TableHead className="text-right">Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {weeklyData.users.map((u) => {
-                  const isExpanded = expandedUsers.has(u.user_id)
-                  const hasTasks = u.tasks && u.tasks.length > 0
-                  return (
-                    <>{/* User summary row */}
-                      <TableRow
-                        key={u.user_id}
-                        className={hasTasks ? "cursor-pointer hover:bg-muted/50" : ""}
-                        onClick={() => hasTasks && toggleUser(u.user_id)}
-                      >
-                        <TableCell className="font-medium">
-                          <span className="inline-flex items-center gap-1">
-                            {hasTasks && (isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />)}
-                            {u.full_name}
-                            {hasTasks && <span className="text-xs text-muted-foreground ml-1">({u.tasks.length})</span>}
-                          </span>
-                        </TableCell>
-                        {days.map((d) => (
-                          <TableCell key={d} className="text-right mono">{fmtMin(u.daily_minutes[d] || 0)}</TableCell>
-                        ))}
-                        <TableCell className="text-right mono font-semibold">{fmtMin(u.total_minutes || 0)}</TableCell>
-                      </TableRow>
-                      {/* Expanded task rows */}
-                      {isExpanded && u.tasks.map((t: WeeklyTimesheetTask) => (
-                        <TableRow key={`${u.user_id}-${t.task_id ?? "none"}`} className="bg-muted/20">
-                          <TableCell className="pl-8 text-sm">
-                            <span className="text-muted-foreground">{t.task_title}</span>
-                            {t.client_name && <span className="text-xs text-muted-foreground/60 ml-1.5">— {t.client_name}</span>}
+      {/* Tab Content */}
+      {activeTab === "resumen" && (
+        <Card>
+          <CardContent className="pt-4">
+            {weekLoading ? (
+              <div className="text-sm text-muted-foreground">Cargando...</div>
+            ) : weekError ? (
+              <div className="text-red-500 text-sm">Error al cargar datos. <button className="underline ml-1" onClick={() => weekRefetch()}>Reintentar</button></div>
+            ) : !weeklyData ? (
+              <div className="text-sm text-muted-foreground">Sin datos</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Miembro</TableHead>
+                    {days.map((d) => (
+                      <TableHead key={d} className="text-right text-xs">
+                        {new Date(d + "T12:00:00").toLocaleDateString("es-ES", { weekday: "short", day: "2-digit" }).toUpperCase()}
+                      </TableHead>
+                    ))}
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {weeklyData.users.map((u) => {
+                    const isExpanded = expandedUsers.has(u.user_id)
+                    const hasTasks = u.tasks && u.tasks.length > 0
+                    return (
+                      <>{/* User summary row */}
+                        <TableRow
+                          key={u.user_id}
+                          className={hasTasks ? "cursor-pointer hover:bg-muted/50" : ""}
+                          onClick={() => hasTasks && toggleUser(u.user_id)}
+                        >
+                          <TableCell className="font-medium">
+                            <span className="inline-flex items-center gap-1">
+                              {hasTasks && (isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />)}
+                              {u.full_name}
+                              {hasTasks && <span className="text-xs text-muted-foreground ml-1">({u.tasks.length})</span>}
+                            </span>
                           </TableCell>
                           {days.map((d) => (
-                            <TableCell key={d} className="text-right mono text-sm text-muted-foreground">{fmtMin(t.daily_minutes[d] || 0)}</TableCell>
+                            <TableCell key={d} className="text-right mono">{fmtMin(u.daily_minutes[d] || 0)}</TableCell>
                           ))}
-                          <TableCell className="text-right mono text-sm">{fmtMin(t.total_minutes)}</TableCell>
+                          <TableCell className="text-right mono font-semibold">{fmtMin(u.total_minutes || 0)}</TableCell>
                         </TableRow>
-                      ))}
-                    </>
-                  )
-                })}
-                {weeklyData.users.length > 1 && (
-                  <TableRow className="bg-muted/50 font-semibold">
-                    <TableCell>Total equipo</TableCell>
-                    {days.map((d) => {
-                      const total = weeklyData.users.reduce((sum, u) => sum + (u.daily_minutes[d] || 0), 0)
-                      return <TableCell key={d} className="text-right mono">{fmtMin(total)}</TableCell>
-                    })}
-                    <TableCell className="text-right mono">
-                      {fmtMin(weeklyData.users.reduce((sum, u) => sum + (u.total_minutes || 0), 0))}
-                    </TableCell>
+                        {/* Expanded task rows */}
+                        {isExpanded && u.tasks.map((t: WeeklyTimesheetTask) => (
+                          <TableRow key={`${u.user_id}-${t.task_id ?? "none"}`} className="bg-muted/20">
+                            <TableCell className="pl-8 text-sm">
+                              <span className="text-muted-foreground">{t.task_title}</span>
+                              {t.client_name && <span className="text-xs text-muted-foreground/60 ml-1.5">— {t.client_name}</span>}
+                            </TableCell>
+                            {days.map((d) => (
+                              <TableCell key={d} className="text-right mono text-sm text-muted-foreground">{fmtMin(t.daily_minutes[d] || 0)}</TableCell>
+                            ))}
+                            <TableCell className="text-right mono text-sm">{fmtMin(t.total_minutes)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </>
+                    )
+                  })}
+                  {weeklyData.users.length > 1 && (
+                    <TableRow className="bg-muted/50 font-semibold">
+                      <TableCell>Total equipo</TableCell>
+                      {days.map((d) => {
+                        const total = weeklyData.users.reduce((sum, u) => sum + (u.daily_minutes[d] || 0), 0)
+                        return <TableCell key={d} className="text-right mono">{fmtMin(total)}</TableCell>
+                      })}
+                      <TableCell className="text-right mono">
+                        {fmtMin(weeklyData.users.reduce((sum, u) => sum + (u.total_minutes || 0), 0))}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "trabajador" && (
+        <WorkerTab
+          weeklyData={weeklyData}
+          weekLoading={weekLoading}
+          assignedTasks={myTasks}
+        />
+      )}
+
+      {activeTab === "cliente" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              Por Cliente
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">Horas y coste agrupados por cliente para la semana seleccionada.</p>
+          </CardHeader>
+          <CardContent>
+            {clientLoading ? (
+              <div className="text-sm text-muted-foreground">Cargando...</div>
+            ) : clientReport.length === 0 ? (
+              <EmptyTableState colSpan={5} icon={Building2} title="Sin datos por cliente" description="Asigna tareas a tus registros de tiempo para ver el desglose por cliente." />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead className="text-right">Horas</TableHead>
+                    <TableHead className="text-right">Coste EUR</TableHead>
+                    <TableHead className="text-right">Registros</TableHead>
+                    <TableHead className="text-right">Personas</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {clientReport.map((c) => (
+                    <ClientReportRow key={c.client_id ?? "null"} client={c} />
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Client Report */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            Por Cliente
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">Horas y coste agrupados por cliente para la semana seleccionada.</p>
-        </CardHeader>
-        <CardContent>
-          {clientLoading ? (
-            <div className="text-sm text-muted-foreground">Cargando...</div>
-          ) : clientReport.length === 0 ? (
-            <EmptyTableState colSpan={5} icon={Building2} title="Sin datos por cliente" description="Asigna tareas a tus registros de tiempo para ver el desglose por cliente." />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead className="text-right">Horas</TableHead>
-                  <TableHead className="text-right">Coste €</TableHead>
-                  <TableHead className="text-right">Registros</TableHead>
-                  <TableHead className="text-right">Personas</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {clientReport.map((c) => (
-                  <ClientReportRow key={c.client_id ?? "null"} client={c} />
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Project Report */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FolderKanban className="h-5 w-5" />
-            Por Proyecto
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">Horas agrupadas por proyecto para la semana seleccionada.</p>
-        </CardHeader>
-        <CardContent>
-          {projectLoading ? (
-            <div className="text-sm text-muted-foreground">Cargando...</div>
-          ) : projectReport.length === 0 ? (
-            <EmptyTableState colSpan={4} icon={FolderKanban} title="Sin datos por proyecto" description="Asigna tareas a tus registros de tiempo para ver el desglose por proyecto." />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Proyecto</TableHead>
-                  <TableHead className="text-right">Horas</TableHead>
-                  <TableHead className="text-right">Registros</TableHead>
-                  <TableHead className="text-right">Personas</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {projectReport.map((p) => (
-                  <ProjectReportRow key={p.project_id} project={p} />
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {activeTab === "proyecto" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FolderKanban className="h-5 w-5" />
+              Por Proyecto
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">Horas agrupadas por proyecto para la semana seleccionada.</p>
+          </CardHeader>
+          <CardContent>
+            {projectLoading ? (
+              <div className="text-sm text-muted-foreground">Cargando...</div>
+            ) : projectReport.length === 0 ? (
+              <EmptyTableState colSpan={4} icon={FolderKanban} title="Sin datos por proyecto" description="Asigna tareas a tus registros de tiempo para ver el desglose por proyecto." />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Proyecto</TableHead>
+                    <TableHead className="text-right">Horas</TableHead>
+                    <TableHead className="text-right">Registros</TableHead>
+                    <TableHead className="text-right">Personas</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {projectReport.map((p) => (
+                    <ProjectReportRow key={p.project_id} project={p} />
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

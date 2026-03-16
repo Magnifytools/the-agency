@@ -10,6 +10,8 @@ from backend.db.models import (
     Client,
     ClientStatus,
     DailyUpdate,
+    Project,
+    ProjectStatus,
     Task,
     TaskStatus,
     TimeEntry,
@@ -147,6 +149,20 @@ async def get_profitability(
     if not client_ids:
         return ProfitabilityResponse(clients=[])
 
+    # Aggregate monthly_fee from active projects per client (1 query)
+    r = await db.execute(
+        select(
+            Project.client_id,
+            func.coalesce(func.sum(Project.monthly_fee), 0).label("total_fee"),
+        )
+        .where(
+            Project.client_id.in_(client_ids),
+            Project.status == ProjectStatus.active,
+        )
+        .group_by(Project.client_id)
+    )
+    fee_map = {row.client_id: round(float(row.total_fee), 2) for row in r.all()}
+
     # Aggregate actual minutes + cost per client (1 query instead of N)
     r = await db.execute(
         select(
@@ -185,7 +201,8 @@ async def get_profitability(
     # Build response using dict lookups (no per-client queries)
     result = []
     for client in clients:
-        budget = float(client.monthly_budget or 0)
+        # Prefer sum of project fees; fall back to legacy client.monthly_budget
+        budget = fee_map.get(client.id, 0) or float(client.monthly_budget or 0)
         actual_minutes, cost = time_map.get(client.id, (0, 0))
         estimated_minutes = est_map.get(client.id, 0)
         variance_minutes = actual_minutes - estimated_minutes
@@ -499,6 +516,89 @@ async def get_capacity(
         })
 
     return capacity
+
+
+@router.get("/capacity/detail")
+async def get_capacity_detail(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Enhanced capacity: per-user task list grouped by client, with priorities."""
+    users_result = await db.execute(
+        select(User).where(User.is_active == True).order_by(User.full_name)
+    )
+    users = users_result.scalars().all()
+    user_ids = [u.id for u in users]
+
+    if not user_ids:
+        return []
+
+    # Fetch all active tasks for these users
+    active_statuses = [TaskStatus.backlog, TaskStatus.pending, TaskStatus.in_progress, TaskStatus.waiting, TaskStatus.in_review]
+    tasks_result = await db.execute(
+        select(Task, Client.name.label("client_name"), Project.name.label("project_name"))
+        .outerjoin(Client, Task.client_id == Client.id)
+        .outerjoin(Project, Task.project_id == Project.id)
+        .where(Task.assigned_to.in_(user_ids), Task.status.in_(active_statuses))
+        .order_by(Task.priority.desc(), Task.due_date.asc().nullslast())
+    )
+
+    # Group tasks by user
+    user_tasks: dict[int, list] = {uid: [] for uid in user_ids}
+    for task, client_name, project_name in tasks_result.all():
+        user_tasks.setdefault(task.assigned_to, []).append({
+            "task_id": task.id,
+            "title": task.title,
+            "status": task.status.value if task.status else "pending",
+            "priority": task.priority.value if task.priority else "medium",
+            "estimated_minutes": task.estimated_minutes or 0,
+            "due_date": task.due_date.isoformat() if task.due_date else None,
+            "client_id": task.client_id,
+            "client_name": client_name,
+            "project_id": task.project_id,
+            "project_name": project_name,
+        })
+
+    result = []
+    for user in users:
+        tasks = user_tasks.get(user.id, [])
+        assigned_minutes = sum(t["estimated_minutes"] for t in tasks)
+        weekly_minutes = (user.weekly_hours or 40) * 60
+        load_pct = round((assigned_minutes / weekly_minutes) * 100) if weekly_minutes > 0 else 0
+
+        if load_pct < 70:
+            status = "available"
+        elif load_pct < 90:
+            status = "busy"
+        else:
+            status = "overloaded"
+
+        # Group tasks by client
+        by_client: dict[int | None, dict] = {}
+        for t in tasks:
+            cid = t["client_id"]
+            if cid not in by_client:
+                by_client[cid] = {
+                    "client_id": cid,
+                    "client_name": t["client_name"] or "Sin cliente",
+                    "tasks": [],
+                    "total_minutes": 0,
+                }
+            by_client[cid]["tasks"].append(t)
+            by_client[cid]["total_minutes"] += t["estimated_minutes"]
+
+        result.append({
+            "user_id": user.id,
+            "full_name": user.full_name,
+            "weekly_hours": user.weekly_hours or 40,
+            "assigned_minutes": assigned_minutes,
+            "task_count": len(tasks),
+            "load_percent": load_pct,
+            "status": status,
+            "clients": sorted(by_client.values(), key=lambda c: -c["total_minutes"]),
+        })
+
+    return result
 
 
 # ── Utilization (real hours vs available) ────────────────────────────────────

@@ -30,6 +30,8 @@ export interface User {
   is_active: boolean
   permissions: UserPermission[]
   preferences?: { shortcuts?: Record<string, string> } | null
+  region?: string | null
+  locality?: string | null
 }
 
 export interface UserCreate {
@@ -91,6 +93,30 @@ export interface CapacityMember {
   task_count: number
   load_percent: number
   status: "available" | "busy" | "overloaded"
+}
+
+export interface CapacityTask {
+  task_id: number
+  title: string
+  status: string
+  priority: string
+  estimated_minutes: number
+  due_date: string | null
+  client_id: number | null
+  client_name: string | null
+  project_id: number | null
+  project_name: string | null
+}
+
+export interface CapacityClientGroup {
+  client_id: number | null
+  client_name: string
+  tasks: CapacityTask[]
+  total_minutes: number
+}
+
+export interface CapacityMemberDetail extends CapacityMember {
+  clients: CapacityClientGroup[]
 }
 
 export interface NotificationItem {
@@ -213,4 +239,61 @@ export interface InvitationCreate {
   email: string
   role?: UserRole
   modules?: string[]
+}
+
+// ── Automation Rules ──────────────────────────────────────
+
+export type AutomationTrigger = "task_completed" | "task_overdue" | "phase_completed" | "project_status_changed" | "time_entry_created" | "communication_logged" | "daily_check"
+export type AutomationActionType = "create_task" | "change_task_status" | "change_project_status" | "assign_user" | "send_notification" | "send_discord" | "create_insight"
+
+export interface AutomationRule {
+  id: number
+  name: string
+  description: string | null
+  trigger: AutomationTrigger
+  conditions: Record<string, unknown>
+  action_type: AutomationActionType
+  action_config: Record<string, unknown>
+  is_active: boolean
+  run_count: number
+  last_run_at: string | null
+  created_by: number | null
+  creator_name: string | null
+  created_at: string
+  updated_at: string
+  recent_logs?: AutomationLogEntry[]
+}
+
+export interface AutomationLogEntry {
+  id: number
+  rule_id: number
+  rule_name: string | null
+  trigger_event: string
+  trigger_data: Record<string, unknown> | null
+  action_result: Record<string, unknown> | null
+  success: boolean
+  error_message: string | null
+  executed_at: string
+}
+
+export interface AutomationRuleCreate {
+  name: string
+  description?: string | null
+  trigger: AutomationTrigger
+  conditions?: Record<string, unknown>
+  action_type: AutomationActionType
+  action_config?: Record<string, unknown>
+  is_active?: boolean
+}
+
+export interface AutomationTriggerOption {
+  key: AutomationTrigger
+  label: string
+  description: string
+}
+
+export interface AutomationActionOption {
+  key: AutomationActionType
+  label: string
+  description: string
 }

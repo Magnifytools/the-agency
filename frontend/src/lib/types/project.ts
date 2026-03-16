@@ -30,6 +30,7 @@ export interface Project {
   ga4_property_id: string | null
   is_recurring: boolean
   pricing_model: string | null
+  monthly_fee: number | null
   unit_price: number | null
   unit_label: string | null
   scope: string | null
@@ -73,6 +74,7 @@ export interface ProjectCreate {
   ga4_property_id?: string | null
   is_recurring?: boolean
   pricing_model?: string | null
+  monthly_fee?: number | null
   unit_price?: number | null
   unit_label?: string | null
   scope?: string | null
@@ -80,9 +82,28 @@ export interface ProjectCreate {
 }
 
 export interface ProjectTemplate {
+  id?: number
   name: string
+  description?: string | null
   phase_count: number
   task_count: number
+  pricing_model?: string | null
+  monthly_fee?: number | null
+  is_recurring?: boolean
+}
+
+export interface ProjectTemplateDetail {
+  id: number
+  key: string
+  name: string
+  description: string | null
+  project_type: string | null
+  is_recurring: boolean
+  phases: { name: string; default_days: number }[]
+  default_tasks: { phase: number; title: string; minutes: number }[]
+  pricing_model: string | null
+  monthly_fee: number | null
+  created_at: string | null
 }
 
 export interface ProjectDraft {
@@ -95,6 +116,7 @@ export interface ProjectDraft {
   target_end_date?: string
   client_name?: string
   pricing_model?: string
+  monthly_fee?: number
   unit_price?: number
   unit_label?: string
   scope?: string

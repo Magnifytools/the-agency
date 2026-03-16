@@ -39,6 +39,7 @@ import type {
   ProjectCreate,
   ProjectDraft,
   ProjectTemplate,
+  ProjectTemplateDetail,
   ProjectPhase,
   Communication,
   CommunicationCreate,
@@ -115,6 +116,7 @@ import type {
   ClientDashboard,
   ClientHealthScore,
   CapacityMember,
+  CapacityMemberDetail,
   ActivityEvent,
   NotificationItem,
   InvestmentCalculateRequest,
@@ -127,6 +129,11 @@ import type {
   NewsExtraction,
   InboxNote,
   InboxNoteCreate,
+  AutomationRule,
+  AutomationRuleCreate,
+  AutomationLogEntry,
+  AutomationTriggerOption,
+  AutomationActionOption,
 } from "./types"
 
 export const CSRF_COOKIE_NAME = "agency_csrf_token"
@@ -431,6 +438,12 @@ export const projectsApi = {
     api.put<Project>(`/projects/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/projects/${id}`).then((r) => r.data),
   templates: () => api.get<Record<string, ProjectTemplate>>("/projects/templates").then((r) => r.data),
+  templateDetail: (id: number) => api.get<ProjectTemplateDetail>(`/projects/templates/${id}`).then((r) => r.data),
+  createTemplate: (data: Record<string, unknown>) => api.post("/projects/templates", data).then((r) => r.data),
+  updateTemplate: (id: number, data: Record<string, unknown>) => api.put(`/projects/templates/${id}`, data).then((r) => r.data),
+  deleteTemplate: (id: number) => api.delete(`/projects/templates/${id}`).then((r) => r.data),
+  saveAsTemplate: (projectId: number, data: { name: string; key?: string; description?: string }) =>
+    api.post(`/projects/${projectId}/save-as-template`, data).then((r) => r.data),
   createFromTemplate: (client_id: number, template_key: string, start_date?: string) =>
     api.post<Project>("/projects/from-template", null, { params: { client_id, template_key, start_date } }).then((r) => r.data),
   extractFromPdf: (file: File) => {
@@ -512,6 +525,16 @@ export const reportsApi = {
   generateClientMonthly: (data: { client_id: number; year: number; month: number }) =>
     api.post<Report>("/reports/generate-client-monthly", data).then((r) => r.data),
   monthlyPdfUrl: (id: number) => `/api/reports/client-monthly/${id}/pdf`,
+  downloadPdf: (id: number) =>
+    api.get(`/reports/${id}/download`, { responseType: "blob" }).then((r) => {
+      const blob = new Blob([r.data], { type: "application/pdf" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `report-${id}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    }),
 }
 
 // Service Templates
@@ -541,6 +564,8 @@ export const proposalsApi = {
     api.post<{ subject: string; body: string; tone: string; suggested_followup: string | null }>(`/proposals/${id}/draft-email`).then((r) => r.data),
   sendEmail: (id: number, data: { to_email: string; message?: string }) =>
     api.post(`/proposals/${id}/send-email`, data).then((r) => r.data),
+  saveInvestment: (id: number, data: Record<string, unknown>) =>
+    api.post<Proposal>(`/proposals/${id}/save-investment`, data).then((r) => r.data),
 }
 
 // Investments
@@ -822,6 +847,8 @@ export const clientHealthApi = {
 export const capacityApi = {
   get: () =>
     api.get<CapacityMember[]>("/dashboard/capacity").then((r) => r.data),
+  detail: () =>
+    api.get<CapacityMemberDetail[]>("/dashboard/capacity/detail").then((r) => r.data),
 }
 
 // --- Client Activity Timeline ---
@@ -993,4 +1020,134 @@ export const inboxApi = {
   },
   deleteAttachment: (noteId: number, attachmentId: number) =>
     api.delete(`/inbox/${noteId}/attachments/${attachmentId}`).then((r) => r.data),
+}
+
+// ── My Week ──────────────────────────────────────────────────
+
+export interface MyWeekTask {
+  id: number
+  title: string
+  status: string
+  priority: string
+  scheduled_date: string | null
+  due_date: string | null
+  estimated_minutes: number | null
+  client_id: number | null
+  client_name: string | null
+  project_id: number | null
+  project_name: string | null
+  created_at: string
+  last_comment: string | null
+  last_comment_at: string | null
+  checklist_total: number
+  checklist_done: number
+  weeks_open: number
+}
+
+export interface DayStatusResponse {
+  id: number
+  user_id: number
+  date: string
+  status: string
+  label: string | null
+  note: string | null
+}
+
+export interface CompanyHolidayResponse {
+  id: number
+  date: string
+  name: string
+  country: string
+  region: string | null
+  locality: string | null
+}
+
+export interface EventResponse {
+  id: number
+  title: string
+  description: string | null
+  event_type: string
+  date: string
+  time: string | null
+  start_time: string | null
+  end_time: string | null
+  is_all_day: boolean
+  duration_minutes: number | null
+  client_id: number | null
+  client_name: string | null
+  user_id: number
+}
+
+export interface MyWeekDay {
+  date: string
+  weekday: string
+  status: DayStatusResponse | null
+  is_holiday: CompanyHolidayResponse | null
+  events: EventResponse[]
+  tasks: MyWeekTask[]
+}
+
+export interface MyWeekSummary {
+  total_tasks: number
+  estimated_minutes: number
+  available_hours: number
+  tasks_dragging: number
+  tasks_no_estimate: number
+  tasks_no_date: number
+  by_client: { client_id: number | null; client_name: string; count: number }[]
+}
+
+export interface MyWeekResponse {
+  week_start: string
+  week_end: string
+  days: MyWeekDay[]
+  backlog: MyWeekTask[]
+  summary: MyWeekSummary
+}
+
+export const myWeekApi = {
+  get: (weekStart?: string) =>
+    api.get<MyWeekResponse>("/my-week", { params: weekStart ? { week_start: weekStart } : {} }).then((r) => r.data),
+  updateDayStatus: (data: { date: string; status: string; label?: string | null; note?: string | null }) =>
+    api.put<DayStatusResponse>("/my-week/day-status", data).then((r) => r.data),
+  deleteDayStatus: (date: string) =>
+    api.delete(`/my-week/day-status/${date}`).then((r) => r.data),
+  createEvent: (data: { date: string; time?: string | null; title: string; client_id?: number | null; event_type?: string; duration_minutes?: number | null; description?: string | null; is_all_day?: boolean }) =>
+    api.post<EventResponse>("/my-week/events", data).then((r) => r.data),
+  updateEvent: (id: number, data: Partial<{ date: string; time: string; title: string; client_id: number; event_type: string; duration_minutes: number; description: string; is_all_day: boolean }>) =>
+    api.put<EventResponse>(`/my-week/events/${id}`, data).then((r) => r.data),
+  deleteEvent: (id: number) =>
+    api.delete(`/my-week/events/${id}`).then((r) => r.data),
+  scheduleTask: (taskId: number, scheduledDate: string | null) =>
+    api.patch(`/my-week/tasks/${taskId}/schedule`, null, { params: { scheduled_date: scheduledDate } }).then((r) => r.data),
+  listHolidays: (year?: number, region?: string) =>
+    api.get<CompanyHolidayResponse[]>("/my-week/holidays", {
+      params: { ...(year ? { year } : {}), ...(region ? { region } : {}) },
+    }).then((r) => r.data),
+  createHoliday: (data: { date: string; name: string; country?: string; region?: string | null; locality?: string | null }) =>
+    api.post<CompanyHolidayResponse>("/my-week/holidays", data).then((r) => r.data),
+  deleteHoliday: (id: number) =>
+    api.delete(`/my-week/holidays/${id}`).then((r) => r.data),
+  addTaskComment: (taskId: number, content: string) =>
+    api.post(`/tasks/${taskId}/comments`, { content }).then((r) => r.data),
+}
+
+// ── Automations ──────────────────────────────────────────
+export const automationsApi = {
+  list: () =>
+    api.get<AutomationRule[]>("/automations").then((r) => r.data),
+  get: (id: number) =>
+    api.get<AutomationRule>(`/automations/${id}`).then((r) => r.data),
+  triggers: () =>
+    api.get<{ triggers: AutomationTriggerOption[]; actions: AutomationActionOption[] }>("/automations/triggers").then((r) => r.data),
+  logs: (ruleId?: number, limit?: number) =>
+    api.get<AutomationLogEntry[]>("/automations/logs", { params: { rule_id: ruleId, limit } }).then((r) => r.data),
+  create: (data: AutomationRuleCreate) =>
+    api.post<AutomationRule>("/automations", data).then((r) => r.data),
+  update: (id: number, data: Partial<AutomationRuleCreate>) =>
+    api.put<AutomationRule>(`/automations/${id}`, data).then((r) => r.data),
+  delete: (id: number) =>
+    api.delete(`/automations/${id}`).then((r) => r.data),
+  toggle: (id: number) =>
+    api.post<AutomationRule>(`/automations/${id}/toggle`).then((r) => r.data),
 }

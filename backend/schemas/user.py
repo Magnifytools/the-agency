@@ -18,6 +18,8 @@ class UserUpdate(BaseModel):
     hourly_rate: Optional[float] = None
     role: Optional[UserRole] = None
     preferences: Optional[dict[str, Any]] = None
+    region: Optional[str] = None
+    locality: Optional[str] = None
 
 
 class UserListResponse(BaseModel):
@@ -27,5 +29,7 @@ class UserListResponse(BaseModel):
     role: Optional[UserRole] = None
     hourly_rate: Optional[float] = None
     preferences: Optional[dict[str, Any]] = None
+    region: Optional[str] = None
+    locality: Optional[str] = None
 
     model_config = {"from_attributes": True}

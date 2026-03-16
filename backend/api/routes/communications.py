@@ -84,6 +84,21 @@ async def create_communication(
     db.add(comm)
     await db.commit()
     await db.refresh(comm)
+
+    # Automation hook: communication_logged
+    try:
+        from backend.api.routes.automations import execute_automations
+        await execute_automations("communication_logged", {
+            "communication_id": comm.id,
+            "client_id": client_id,
+            "user_id": current_user.id,
+            "channel": body.channel,
+            "direction": body.direction,
+            "requires_followup": body.requires_followup or False,
+        }, db)
+    except Exception:
+        pass  # Never break communication creation
+
     return _to_response(comm)
 
 

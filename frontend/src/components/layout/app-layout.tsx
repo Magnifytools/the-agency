@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/context/auth-context"
 import { inboxApi } from "@/lib/api"
 import { inboxKeys } from "@/lib/query-keys"
-import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, FolderKanban, FileText, ScrollText, Rocket, Wallet, Newspaper, Target, MessageCircle, ClipboardList, Gauge, Search, Archive, Megaphone, Inbox, Settings, LayoutGrid } from "lucide-react"
+import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, FolderKanban, FileText, ScrollText, Rocket, Wallet, Newspaper, Target, MessageCircle, ClipboardList, Gauge, Search, Archive, Megaphone, Inbox, Settings, LayoutGrid, CalendarDays, Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { BottomDrawer } from "@/components/ui/bottom-drawer"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
@@ -43,6 +43,7 @@ export function AppLayout() {
 
   const workspaceNav = useMemo(() => {
     const items = [
+      { to: "/my-week", label: "Mi Semana", icon: CalendarDays },
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
       { to: "/clients", label: "Clientes", icon: Users, module: "clients" },
       { to: "/leads", label: "Pipeline", icon: Target, module: "leads" },
@@ -82,6 +83,7 @@ export function AppLayout() {
       { to: "/capacity", label: "Capacidad", icon: Gauge },
       { to: "/users", label: "Equipo", icon: UserCog },
       { to: "/discord", label: "Integraciones", icon: MessageCircle },
+      { to: "/automations", label: "Automatizaciones", icon: Zap },
     ]
   }, [isAdmin])
 

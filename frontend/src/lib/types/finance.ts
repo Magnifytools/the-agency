@@ -436,10 +436,39 @@ export interface InvestmentSummary {
   year1_roi_range: string
   year1_revenue_range: string
   total_investment: number
+  opportunity_cost?: number | null
+}
+
+export interface NullScenario {
+  label: string
+  traffic_decline: number
+  lost_conversions: number
+  lost_revenue: number
+  cumulative_opportunity_cost: number
+  monthly_projection: {
+    month: number
+    traffic: number
+    lost_visitors: number
+    lost_conversions: number
+    lost_revenue: number
+    cumulative_opportunity_cost: number
+  }[]
+}
+
+export interface PricingTierRoi {
+  name: string
+  price: number
+  is_recommended: boolean
+  roi_conservative: number
+  roi_moderate: number
+  roi_optimistic: number
+  payback_months: number | null
 }
 
 export interface InvestmentCalculateResponse {
   scenarios: InvestmentScenario[]
+  null_scenario?: NullScenario | null
+  pricing_comparison?: PricingTierRoi[] | null
   monthly_projection: InvestmentMonthlyRow[]
   summary: InvestmentSummary
   assumptions: Record<string, unknown>

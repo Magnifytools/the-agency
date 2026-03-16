@@ -374,6 +374,7 @@ function NewProjectDialog({
     target_end_date: "",
     is_recurring: false,
     pricing_model: "",
+    monthly_fee: "",
     unit_price: "",
     unit_label: "",
     scope: "",
@@ -391,6 +392,7 @@ function NewProjectDialog({
         target_end_date: formData.target_end_date || undefined,
         is_recurring: formData.is_recurring,
         pricing_model: formData.pricing_model || undefined,
+        monthly_fee: formData.monthly_fee ? parseFloat(formData.monthly_fee) : undefined,
         unit_price: formData.unit_price ? parseFloat(formData.unit_price) : undefined,
         unit_label: formData.unit_label || undefined,
         scope: formData.scope || undefined,
@@ -469,7 +471,7 @@ function NewProjectDialog({
           />
           <Label htmlFor="is_recurring_new">Servicio recurrente</Label>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Modelo de precio</Label>
             <Select
@@ -483,6 +485,18 @@ function NewProjectDialog({
               <option value="project">Precio cerrado</option>
             </Select>
           </div>
+          <div className="space-y-2">
+            <Label>Fee mensual (EUR)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              value={formData.monthly_fee}
+              onChange={(e) => setFormData({ ...formData, monthly_fee: e.target.value })}
+              placeholder="Retainer mensual"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label>Precio unitario (EUR)</Label>
             <Input
@@ -501,16 +515,16 @@ function NewProjectDialog({
               placeholder="pieza, hora, mes..."
             />
           </div>
-        </div>
-        <div className="space-y-2">
-          <Label>Presupuesto total (EUR)</Label>
-          <Input
-            type="number"
-            step="0.01"
-            value={formData.budget_amount}
-            onChange={(e) => setFormData({ ...formData, budget_amount: e.target.value })}
-            placeholder="Opcional"
-          />
+          <div className="space-y-2">
+            <Label>Presupuesto total (EUR)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              value={formData.budget_amount}
+              onChange={(e) => setFormData({ ...formData, budget_amount: e.target.value })}
+              placeholder="Opcional"
+            />
+          </div>
         </div>
         <div className="space-y-2">
           <Label>Scope / Alcance</Label>
@@ -543,7 +557,7 @@ function TemplateDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   clients: { id: number; name: string }[]
-  templates: Record<string, { name: string; phase_count: number; task_count: number }>
+  templates: Record<string, { name: string; description?: string | null; phase_count: number; task_count: number; pricing_model?: string | null; monthly_fee?: number | null; is_recurring?: boolean }>
 }) {
   const queryClient = useQueryClient()
   const [clientId, setClientId] = useState("")
@@ -603,11 +617,33 @@ function TemplateDialog({
         </div>
 
         {selectedTemplate && (
-          <div className="p-3 bg-surface rounded-lg text-sm">
-            <p className="text-muted-foreground">
-              Esta plantilla creará <span className="text-foreground font-medium">{selectedTemplate.phase_count} fases</span> y{" "}
-              <span className="text-foreground font-medium">{selectedTemplate.task_count} tareas</span>
-            </p>
+          <div className="p-3 bg-surface rounded-lg text-sm space-y-1.5">
+            {selectedTemplate.description && (
+              <p className="text-muted-foreground">{selectedTemplate.description}</p>
+            )}
+            <div className="flex flex-wrap gap-3 text-muted-foreground">
+              <span>
+                <span className="text-foreground font-medium">{selectedTemplate.phase_count}</span> fases
+              </span>
+              <span>
+                <span className="text-foreground font-medium">{selectedTemplate.task_count}</span> tareas
+              </span>
+              {selectedTemplate.is_recurring && (
+                <span className="flex items-center gap-1">
+                  <Repeat className="h-3.5 w-3.5" /> Recurrente
+                </span>
+              )}
+            </div>
+            {(selectedTemplate.pricing_model || selectedTemplate.monthly_fee) && (
+              <div className="flex gap-3 text-muted-foreground">
+                {selectedTemplate.pricing_model && (
+                  <span>Modelo: <span className="text-foreground font-medium">{selectedTemplate.pricing_model}</span></span>
+                )}
+                {selectedTemplate.monthly_fee && (
+                  <span>Fee: <span className="text-foreground font-medium">{selectedTemplate.monthly_fee.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</span></span>
+                )}
+              </div>
+            )}
           </div>
         )}
 

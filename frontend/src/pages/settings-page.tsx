@@ -2,9 +2,31 @@ import { useState, useEffect, useCallback } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { useAuth } from "@/context/auth-context"
-import { usersApi, categoriesApi } from "@/lib/api"
+import { usersApi, categoriesApi, myWeekApi } from "@/lib/api"
 import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS } from "@/hooks/use-keyboard-shortcuts"
-import { Pencil, Trash2, Plus, Check, X } from "lucide-react"
+import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar } from "lucide-react"
+
+const SPAIN_REGIONS: { code: string; name: string }[] = [
+  { code: "AND", name: "Andalucía" },
+  { code: "ARA", name: "Aragón" },
+  { code: "AST", name: "Asturias" },
+  { code: "BAL", name: "Islas Baleares" },
+  { code: "CAN", name: "Canarias" },
+  { code: "CAB", name: "Cantabria" },
+  { code: "CLM", name: "Castilla-La Mancha" },
+  { code: "CYL", name: "Castilla y León" },
+  { code: "CAT", name: "Cataluña" },
+  { code: "EXT", name: "Extremadura" },
+  { code: "GAL", name: "Galicia" },
+  { code: "MAD", name: "Comunidad de Madrid" },
+  { code: "MUR", name: "Región de Murcia" },
+  { code: "NAV", name: "Navarra" },
+  { code: "PVA", name: "País Vasco" },
+  { code: "RIO", name: "La Rioja" },
+  { code: "VAL", name: "Comunidad Valenciana" },
+  { code: "CEU", name: "Ceuta" },
+  { code: "MEL", name: "Melilla" },
+]
 
 function formatBinding(binding: string): string {
   return binding
@@ -37,10 +59,63 @@ export default function SettingsPage() {
   const [editCatName, setEditCatName] = useState("")
   const [editCatMinutes, setEditCatMinutes] = useState(60)
 
+  // Location state
+  const [userRegion, setUserRegion] = useState(user?.region ?? "")
+  const [userLocality, setUserLocality] = useState(user?.locality ?? "")
+  const [savingLocation, setSavingLocation] = useState(false)
+
+  // Holiday management state
+  const [newHolidayDate, setNewHolidayDate] = useState("")
+  const [newHolidayName, setNewHolidayName] = useState("")
+  const [newHolidayRegion, setNewHolidayRegion] = useState("")
+  const [newHolidayLocality, setNewHolidayLocality] = useState("")
+  const currentYear = new Date().getFullYear()
+
   // Sync with user preferences when they load
   useEffect(() => {
     setBindings({ ...DEFAULT_SHORTCUTS, ...(user?.preferences?.shortcuts ?? {}) })
   }, [user?.preferences?.shortcuts])
+
+  useEffect(() => {
+    setUserRegion(user?.region ?? "")
+    setUserLocality(user?.locality ?? "")
+  }, [user?.region, user?.locality])
+
+  const { data: holidays = [], refetch: refetchHolidays } = useQuery({
+    queryKey: ["holidays", currentYear],
+    queryFn: () => myWeekApi.listHolidays(currentYear),
+    enabled: isAdmin,
+  })
+
+  const saveLocationMut = useMutation({
+    mutationFn: () => usersApi.update(user!.id, { region: userRegion || null, locality: userLocality || null }),
+    onSuccess: async () => {
+      await refreshUser()
+      toast.success("Ubicación guardada")
+      setSavingLocation(false)
+    },
+    onError: () => { toast.error("Error al guardar ubicación"); setSavingLocation(false) },
+  })
+
+  const createHolidayMut = useMutation({
+    mutationFn: (data: { date: string; name: string; region?: string | null; locality?: string | null }) =>
+      myWeekApi.createHoliday(data),
+    onSuccess: () => {
+      refetchHolidays()
+      setNewHolidayDate("")
+      setNewHolidayName("")
+      setNewHolidayRegion("")
+      setNewHolidayLocality("")
+      toast.success("Festivo creado")
+    },
+    onError: () => toast.error("Error al crear festivo"),
+  })
+
+  const deleteHolidayMut = useMutation({
+    mutationFn: (id: number) => myWeekApi.deleteHoliday(id),
+    onSuccess: () => { refetchHolidays(); toast.success("Festivo eliminado") },
+    onError: () => toast.error("Error al eliminar festivo"),
+  })
 
   const startCapture = useCallback((key: string) => {
     setEditing({ key, captured: null })
@@ -329,6 +404,158 @@ export default function SettingsPage() {
             >
               <Plus className="h-4 w-4" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Location / Region */}
+      <div className="bg-card border border-border rounded-2xl p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <MapPin className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-base font-semibold text-foreground">Ubicación</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Tu comunidad autónoma y localidad determinan qué festivos te aplican
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Comunidad Autónoma</label>
+            <select
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              value={userRegion}
+              onChange={(e) => setUserRegion(e.target.value)}
+            >
+              <option value="">— Sin especificar —</option>
+              {SPAIN_REGIONS.map((r) => (
+                <option key={r.code} value={r.code}>{r.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Localidad</label>
+            <input
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              placeholder="Ej: Madrid, Barcelona..."
+              value={userLocality}
+              onChange={(e) => setUserLocality(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={() => { setSavingLocation(true); saveLocationMut.mutate() }}
+            disabled={savingLocation}
+            className="px-4 py-2 bg-brand text-black text-sm font-semibold rounded-xl hover:bg-brand/90 transition-colors disabled:opacity-50"
+          >
+            {savingLocation ? "Guardando…" : "Guardar ubicación"}
+          </button>
+        </div>
+      </div>
+
+      {/* Holiday management — admin only */}
+      {isAdmin && (
+        <div className="bg-card border border-border rounded-2xl p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-base font-semibold text-foreground">Festivos {currentYear}</h2>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Los nacionales se aplican a todos. Los regionales/locales solo a usuarios de esa zona.
+          </p>
+
+          <div className="divide-y divide-border max-h-80 overflow-y-auto">
+            {holidays.map((h) => (
+              <div key={h.id} className="flex items-center justify-between py-2.5 gap-3">
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium text-foreground">{h.name}</span>
+                  <span className="text-xs text-muted-foreground ml-2">
+                    {new Date(h.date + "T00:00:00").toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                  </span>
+                  {h.region && (
+                    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-600">
+                      {SPAIN_REGIONS.find((r) => r.code === h.region)?.name ?? h.region}
+                    </span>
+                  )}
+                  {h.locality && (
+                    <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-600">
+                      {h.locality}
+                    </span>
+                  )}
+                  {!h.region && (
+                    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600">
+                      Nacional
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => { if (confirm(`¿Eliminar "${h.name}"?`)) deleteHolidayMut.mutate(h.id) }}
+                  className="p-1.5 text-muted-foreground hover:text-red-600 hover:bg-red-50 rounded-md transition-colors flex-shrink-0"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+            {holidays.length === 0 && (
+              <p className="py-4 text-sm text-muted-foreground text-center">No hay festivos configurados</p>
+            )}
+          </div>
+
+          {/* Add new holiday */}
+          <div className="mt-4 pt-4 border-t border-border space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="date"
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+                value={newHolidayDate}
+                onChange={(e) => setNewHolidayDate(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+                placeholder="Nombre del festivo"
+                value={newHolidayName}
+                onChange={(e) => setNewHolidayName(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-3 items-end">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Ámbito</label>
+                <select
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+                  value={newHolidayRegion}
+                  onChange={(e) => setNewHolidayRegion(e.target.value)}
+                >
+                  <option value="">Nacional</option>
+                  {SPAIN_REGIONS.map((r) => (
+                    <option key={r.code} value={r.code}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Localidad (opcional)</label>
+                <input
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+                  placeholder="Dejar vacío = toda la CCAA"
+                  value={newHolidayLocality}
+                  onChange={(e) => setNewHolidayLocality(e.target.value)}
+                  disabled={!newHolidayRegion}
+                />
+              </div>
+              <button
+                onClick={() => {
+                  if (!newHolidayDate || !newHolidayName.trim()) return
+                  createHolidayMut.mutate({
+                    date: newHolidayDate,
+                    name: newHolidayName.trim(),
+                    region: newHolidayRegion || null,
+                    locality: newHolidayLocality || null,
+                  })
+                }}
+                disabled={!newHolidayDate || !newHolidayName.trim() || createHolidayMut.isPending}
+                className="px-3 py-1.5 bg-brand text-black text-sm font-semibold rounded-lg hover:bg-brand/90 transition-colors disabled:opacity-50 flex items-center gap-1.5 justify-center"
+              >
+                <Plus className="h-4 w-4" /> Añadir
+              </button>
+            </div>
           </div>
         </div>
       )}

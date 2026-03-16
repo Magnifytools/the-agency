@@ -13,7 +13,7 @@ from backend.core.security import hash_password
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
-_MEMBER_UPDATABLE = {"full_name", "preferences"}
+_MEMBER_UPDATABLE = {"full_name", "preferences", "region", "locality"}
 _ADMIN_UPDATABLE = _MEMBER_UPDATABLE | {"role", "hourly_rate", "is_active", "email", "weekly_hours"}
 
 @router.get("", response_model=PaginatedResponse[UserListResponse])

@@ -31,5 +31,7 @@ class UserResponse(BaseModel):
     is_active: bool = True
     permissions: list[PermissionResponse] = []
     preferences: Optional[dict] = None
+    region: Optional[str] = None
+    locality: Optional[str] = None
 
     model_config = {"from_attributes": True}

@@ -10,6 +10,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 from jinja2 import Environment, BaseLoader
 
 from backend.db.database import get_db
@@ -735,6 +736,28 @@ PDF_HTML_TEMPLATE = """
 """
 
 
+@router.post("/{proposal_id}/save-investment", response_model=ProposalResponse)
+async def save_investment_model(
+    proposal_id: int,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_module("proposals")),
+):
+    """Save calculated investment model to proposal's generated_content."""
+    result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
+    prop = result.scalar_one_or_none()
+    if not prop:
+        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+
+    content = prop.generated_content or {}
+    content["investment_model"] = body
+    prop.generated_content = content
+    flag_modified(prop, "generated_content")
+    await db.commit()
+    await db.refresh(prop)
+    return _proposal_to_response(prop)
+
+
 @router.post("/{proposal_id}/generate-pdf")
 async def generate_proposal_pdf(
     proposal_id: int,
@@ -1073,6 +1096,53 @@ def _build_pdf(prop: "Proposal") -> bytes:  # type: ignore[name-defined]
         pdf.set_text_color(100, 100, 100)
         pdf.multi_cell(0, 4, "Proyectos: 50% al inicio, 50% a la entrega. Retainers: mensual, sin permanencia, 30 dias de aviso.")
         pdf.set_text_color(0, 0, 0)
+
+    # ── Investment model ──────────────────────────────────────────────────
+    inv = content.get("investment_model")
+    if inv and isinstance(inv, dict):
+        _section("Modelo de inversion")
+        scenarios = inv.get("scenarios", [])
+        null_sc = inv.get("null_scenario")
+
+        if null_sc and isinstance(null_sc, dict):
+            _box(
+                f"Sin inversion: trafico cae {null_sc.get('traffic_decline', 0):,} visitas. "
+                f"Coste de oportunidad acumulado: {null_sc.get('cumulative_opportunity_cost', 0):,.0f} EUR",
+                bg=(255, 235, 235),
+            )
+
+        if scenarios:
+            col_w = [42, 42, 42, 42]
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_fill_color(245, 245, 245)
+            for i, h in enumerate(["Escenario", "ROI 12m", "Ingresos", "Payback"]):
+                pdf.cell(col_w[i], 6, h, border=1, fill=True)
+            pdf.ln()
+            pdf.set_font("Helvetica", "", 9)
+            for s in scenarios:
+                if not isinstance(s, dict):
+                    continue
+                row = [
+                    s.get("label", ""),
+                    f"{s.get('roi_percent', 0)}%",
+                    f"{s.get('revenue_increase', 0):,.0f} EUR",
+                    f"mes {s.get('payback_months', 'N/A')}" if s.get("payback_months") else "N/A",
+                ]
+                for i, cell in enumerate(row):
+                    pdf.cell(col_w[i], 6, _safe(str(cell)), border=1)
+                pdf.ln()
+            pdf.ln(3)
+
+        summary = inv.get("summary")
+        if summary and isinstance(summary, dict):
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(80, 80, 80)
+            parts = [f"Break-even: mes {summary.get('break_even_month', 'N/A')}"]
+            parts.append(f"ROI: {summary.get('year1_roi_range', '')}")
+            parts.append(f"Ingresos: {summary.get('year1_revenue_range', '')}")
+            pdf.cell(0, 5, _safe("  |  ".join(parts)), new_x="LMARGIN", new_y="NEXT")
+            pdf.set_text_color(0, 0, 0)
+            pdf.ln(3)
 
     for key, label in [
         ("credibility", "Sobre Magnify"),
