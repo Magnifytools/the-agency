@@ -14,6 +14,12 @@ import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
 import type { ProjectTimeReport, ClientTimeReport, WeeklyTimesheetTask } from "@/lib/types"
 
+/** Parse "YYYY-MM-DD" as local date (not UTC) to avoid timezone shift */
+function parseLocalDate(str: string) {
+  const [y, m, d] = str.split("-").map(Number)
+  return new Date(y, m - 1, d)
+}
+
 function getMonday(date: Date) {
   const d = new Date(date)
   const day = d.getDay()
@@ -24,7 +30,10 @@ function getMonday(date: Date) {
 }
 
 function toInputDate(d: Date) {
-  return d.toISOString().slice(0, 10)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
 }
 
 function formatMinutes(minutes: number | null) {
@@ -212,7 +221,7 @@ export default function TimesheetPage() {
   const todayDate = toInputDate(new Date())
 
   const weekEnd = (() => {
-    const d = new Date(weekStart)
+    const d = parseLocalDate(weekStart)
     d.setDate(d.getDate() + 6)
     return toInputDate(d)
   })()
@@ -523,7 +532,7 @@ export default function TimesheetPage() {
         <h3 className="text-xl font-bold">Resumen Semanal</h3>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
-            const d = new Date(weekStart)
+            const d = parseLocalDate(weekStart)
             d.setDate(d.getDate() - 7)
             setWeekStart(toInputDate(getMonday(d)))
           }}>
@@ -532,11 +541,11 @@ export default function TimesheetPage() {
           <input
             type="date"
             value={weekStart}
-            onChange={(e) => setWeekStart(toInputDate(getMonday(new Date(e.target.value))))}
+            onChange={(e) => setWeekStart(toInputDate(getMonday(parseLocalDate(e.target.value))))}
             className="border border-border rounded-md px-3 py-2 text-sm bg-background"
           />
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
-            const d = new Date(weekStart)
+            const d = parseLocalDate(weekStart)
             d.setDate(d.getDate() + 7)
             setWeekStart(toInputDate(getMonday(d)))
           }}>

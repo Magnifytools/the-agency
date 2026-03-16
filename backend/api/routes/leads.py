@@ -314,6 +314,15 @@ async def delete_lead(
         raise HTTPException(status_code=404, detail="Lead no encontrado")
     if current_user.role != UserRole.admin:
         raise HTTPException(status_code=403, detail="Solo admin puede eliminar leads")
+    # Delete associated activities first (FK constraint)
+    await db.execute(
+        select(LeadActivity).where(LeadActivity.lead_id == lead_id)
+    )
+    activities = (await db.execute(
+        select(LeadActivity).where(LeadActivity.lead_id == lead_id)
+    )).scalars().all()
+    for a in activities:
+        await db.delete(a)
     await db.delete(lead)
     await db.commit()
 
