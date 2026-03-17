@@ -127,10 +127,32 @@ async def generate_notification_checks(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ) -> dict:
-    """Generate notifications for overdue tasks and lead followups due."""
+    """Generate notifications for overdue tasks and lead followups due.
+
+    Optimized: pre-loads all existing unread notifications in 1 query
+    instead of checking per-item (eliminates N+1 pattern).
+    """
+    from datetime import timedelta
+
     created = 0
     today = date.today()
     now = datetime.now(timezone.utc)
+
+    # ── Pre-load ALL unread notifications for this user (1 query) ──
+    existing_result = await db.execute(
+        select(Notification.type, Notification.entity_type, Notification.entity_id)
+        .where(
+            Notification.user_id == user.id,
+            Notification.is_read.is_(False),
+        )
+    )
+    existing_set: set[tuple[str, str, int]] = {
+        (row.type, row.entity_type, row.entity_id)
+        for row in existing_result.all()
+    }
+
+    def _has_existing(ntype: str, etype: str, eid: int) -> bool:
+        return (ntype, etype, eid) in existing_set
 
     # 1. Overdue tasks assigned to this user
     try:
@@ -142,17 +164,7 @@ async def generate_notification_checks(
             )
         )
         for task in overdue_result.scalars().all():
-            # Check if unread notification already exists for this task
-            existing = await db.execute(
-                select(Notification.id).where(
-                    Notification.user_id == user.id,
-                    Notification.entity_type == "task",
-                    Notification.entity_id == task.id,
-                    Notification.type == TASK_OVERDUE,
-                    Notification.is_read.is_(False),
-                )
-            )
-            if not existing.scalar_one_or_none():
+            if not _has_existing(TASK_OVERDUE, "task", task.id):
                 due_str = task.due_date.strftime("%d/%m/%Y") if task.due_date else "—"
                 await create_notification(
                     db,
@@ -178,16 +190,7 @@ async def generate_notification_checks(
             )
         )
         for lead in leads_result.scalars().all():
-            existing = await db.execute(
-                select(Notification.id).where(
-                    Notification.user_id == user.id,
-                    Notification.entity_type == "lead",
-                    Notification.entity_id == lead.id,
-                    Notification.type == LEAD_FOLLOWUP,
-                    Notification.is_read.is_(False),
-                )
-            )
-            if not existing.scalar_one_or_none():
+            if not _has_existing(LEAD_FOLLOWUP, "lead", lead.id):
                 followup_str = lead.next_followup_date.strftime("%d/%m/%Y") if lead.next_followup_date else "hoy"
                 await create_notification(
                     db,
@@ -206,7 +209,6 @@ async def generate_notification_checks(
     # 3. Billing reminders for clients due within 3 days (admin only)
     if user.role == UserRole.admin:
         try:
-            from datetime import timedelta
             threshold = today + timedelta(days=3)
             billing_result = await db.execute(
                 select(Client).where(
@@ -216,16 +218,7 @@ async def generate_notification_checks(
                 )
             )
             for client in billing_result.scalars().all():
-                existing = await db.execute(
-                    select(Notification.id).where(
-                        Notification.user_id == user.id,
-                        Notification.entity_type == "client",
-                        Notification.entity_id == client.id,
-                        Notification.type == BILLING_REMINDER,
-                        Notification.is_read.is_(False),
-                    )
-                )
-                if not existing.scalar_one_or_none():
+                if not _has_existing(BILLING_REMINDER, "client", client.id):
                     date_str = client.next_invoice_date.strftime("%d/%m/%Y")
                     days_left = (client.next_invoice_date - today).days
                     msg = f"Toca facturar a {client.name} el {date_str}" if days_left >= 0 else f"Factura vencida para {client.name} desde el {date_str}"
@@ -246,120 +239,103 @@ async def generate_notification_checks(
     # 4. Missing dailys — admin sees who hasn't submitted in 2+ business days
     if user.role == UserRole.admin:
         try:
-            from datetime import timedelta
             two_days_ago = today - timedelta(days=2)
             # Get all active users
-            all_users = await db.execute(
+            all_users_result = await db.execute(
                 select(User).where(User.is_active.is_(True))
             )
-            for u in all_users.scalars().all():
-                # Check if user has any daily in last 2 days
-                recent_daily = await db.execute(
-                    select(DailyUpdate.id).where(
-                        DailyUpdate.user_id == u.id,
-                        DailyUpdate.date >= two_days_ago,
-                    ).limit(1)
-                )
-                if not recent_daily.scalar_one_or_none():
-                    existing = await db.execute(
-                        select(Notification.id).where(
-                            Notification.user_id == user.id,
-                            Notification.type == DAILY_MISSING,
-                            Notification.entity_type == "user",
-                            Notification.entity_id == u.id,
-                            Notification.is_read.is_(False),
-                        )
+            all_users = all_users_result.scalars().all()
+
+            # Batch: get user IDs who HAVE submitted a daily in the last 2 days (1 query)
+            recent_daily_result = await db.execute(
+                select(DailyUpdate.user_id).where(
+                    DailyUpdate.date >= two_days_ago,
+                ).distinct()
+            )
+            users_with_daily = {row[0] for row in recent_daily_result.all()}
+
+            for u in all_users:
+                if u.id not in users_with_daily and not _has_existing(DAILY_MISSING, "user", u.id):
+                    await create_notification(
+                        db,
+                        user_id=user.id,
+                        type=DAILY_MISSING,
+                        title=f"Daily pendiente: {u.full_name}",
+                        message=f"{u.full_name} no ha enviado daily en los últimos 2 días",
+                        link_url="/dailys",
+                        entity_type="user",
+                        entity_id=u.id,
                     )
-                    if not existing.scalar_one_or_none():
-                        await create_notification(
-                            db,
-                            user_id=user.id,
-                            type=DAILY_MISSING,
-                            title=f"Daily pendiente: {u.full_name}",
-                            message=f"{u.full_name} no ha enviado daily en los últimos 2 días",
-                            link_url="/dailys",
-                            entity_type="user",
-                            entity_id=u.id,
-                        )
-                        created += 1
+                    created += 1
         except Exception as e:
             logger.error("Error checking missing dailys: %s", e)
 
     # 5. Incomplete timesheets — users with < 6h logged yesterday (weekday)
     if user.role == UserRole.admin:
         try:
-            from datetime import timedelta
             yesterday = today - timedelta(days=1)
             # Skip weekends
             if yesterday.weekday() < 5:
-                all_users = await db.execute(
+                all_users_result = await db.execute(
                     select(User).where(User.is_active.is_(True))
                 )
-                for u in all_users.scalars().all():
-                    hours_result = await db.execute(
-                        select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
-                            TimeEntry.user_id == u.id,
-                            func.date(TimeEntry.date) == yesterday,
+                all_users = all_users_result.scalars().all()
+
+                # Batch: get hours per user for yesterday (1 query)
+                hours_by_user_result = await db.execute(
+                    select(
+                        TimeEntry.user_id,
+                        func.coalesce(func.sum(TimeEntry.minutes), 0).label("total"),
+                    ).where(
+                        func.date(TimeEntry.date) == yesterday,
+                    ).group_by(TimeEntry.user_id)
+                )
+                hours_map = {row.user_id: row.total for row in hours_by_user_result.all()}
+
+                for u in all_users:
+                    total_minutes = hours_map.get(u.id, 0)
+                    if total_minutes < 360 and not _has_existing(TIMESHEET_INCOMPLETE, "user", u.id):
+                        hours_str = f"{total_minutes // 60}h {total_minutes % 60}m" if total_minutes > 0 else "0h"
+                        await create_notification(
+                            db,
+                            user_id=user.id,
+                            type=TIMESHEET_INCOMPLETE,
+                            title=f"Timesheet incompleto: {u.full_name}",
+                            message=f"{u.full_name} registró solo {hours_str} ayer ({yesterday.strftime('%d/%m')})",
+                            link_url="/timesheet",
+                            entity_type="user",
+                            entity_id=u.id,
                         )
-                    )
-                    total_minutes = hours_result.scalar() or 0
-                    if total_minutes < 360:  # Less than 6 hours
-                        existing = await db.execute(
-                            select(Notification.id).where(
-                                Notification.user_id == user.id,
-                                Notification.type == TIMESHEET_INCOMPLETE,
-                                Notification.entity_type == "user",
-                                Notification.entity_id == u.id,
-                                Notification.is_read.is_(False),
-                            )
-                        )
-                        if not existing.scalar_one_or_none():
-                            hours_str = f"{total_minutes // 60}h {total_minutes % 60}m" if total_minutes > 0 else "0h"
-                            await create_notification(
-                                db,
-                                user_id=user.id,
-                                type=TIMESHEET_INCOMPLETE,
-                                title=f"Timesheet incompleto: {u.full_name}",
-                                message=f"{u.full_name} registró solo {hours_str} ayer ({yesterday.strftime('%d/%m')})",
-                                link_url="/timesheet",
-                                entity_type="user",
-                                entity_id=u.id,
-                            )
-                            created += 1
+                        created += 1
         except Exception as e:
             logger.error("Error checking incomplete timesheets: %s", e)
 
     # 6. Active clients with 0 hours this week
     if user.role == UserRole.admin:
         try:
-            from datetime import timedelta
             # Start of current week (Monday)
             week_start = today - timedelta(days=today.weekday())
-            active_clients = await db.execute(
+            active_clients_result = await db.execute(
                 select(Client).where(Client.status == ClientStatus.active)
             )
-            for client in active_clients.scalars().all():
-                hours_result = await db.execute(
-                    select(func.coalesce(func.sum(TimeEntry.minutes), 0))
-                    .join(Task, TimeEntry.task_id == Task.id)
-                    .where(
-                        Task.client_id == client.id,
-                        func.date(TimeEntry.date) >= week_start,
-                    )
+            active_clients = active_clients_result.scalars().all()
+
+            # Batch: get hours per client this week (1 query)
+            client_hours_result = await db.execute(
+                select(
+                    Task.client_id,
+                    func.coalesce(func.sum(TimeEntry.minutes), 0).label("total"),
                 )
-                total_minutes = hours_result.scalar() or 0
-                # Only alert from Wednesday onward (give Mon-Tue to start work)
-                if total_minutes == 0 and today.weekday() >= 2:
-                    existing = await db.execute(
-                        select(Notification.id).where(
-                            Notification.user_id == user.id,
-                            Notification.type == CLIENT_NO_HOURS,
-                            Notification.entity_type == "client",
-                            Notification.entity_id == client.id,
-                            Notification.is_read.is_(False),
-                        )
-                    )
-                    if not existing.scalar_one_or_none():
+                .join(Task, TimeEntry.task_id == Task.id)
+                .where(func.date(TimeEntry.date) >= week_start)
+                .group_by(Task.client_id)
+            )
+            client_hours_map = {row.client_id: row.total for row in client_hours_result.all()}
+
+            # Only alert from Wednesday onward (give Mon-Tue to start work)
+            if today.weekday() >= 2:
+                for client in active_clients:
+                    if client_hours_map.get(client.id, 0) == 0 and not _has_existing(CLIENT_NO_HOURS, "client", client.id):
                         await create_notification(
                             db,
                             user_id=user.id,
@@ -376,7 +352,6 @@ async def generate_notification_checks(
 
     # 7. Capacity overload — users with 20+ hours of pending estimated work
     try:
-        from datetime import timedelta
         overloaded_users = await db.execute(
             select(
                 Task.assigned_to,
@@ -387,23 +362,23 @@ async def generate_notification_checks(
                 Task.estimated_minutes.isnot(None),
             ).group_by(Task.assigned_to)
         )
-        for row in overloaded_users.all():
-            assigned_to, total_est = row
-            if total_est and total_est > 1200:  # 20+ hours
-                existing = await db.execute(
-                    select(Notification.id).where(
-                        Notification.user_id == user.id,
-                        Notification.type == CAPACITY_OVERLOAD,
-                        Notification.entity_type == "user",
-                        Notification.entity_id == assigned_to,
-                        Notification.is_read.is_(False),
-                    )
-                )
-                if not existing.scalar_one_or_none():
-                    # Get user name
-                    u_result = await db.execute(select(User).where(User.id == assigned_to))
-                    u = u_result.scalar_one_or_none()
-                    name = u.full_name if u else f"Usuario #{assigned_to}"
+
+        # Collect overloaded user IDs, then batch-fetch names (1 query)
+        overloaded_rows = [
+            (row.assigned_to, row.total_est)
+            for row in overloaded_users.all()
+            if row.total_est and row.total_est > 1200
+        ]
+        if overloaded_rows:
+            overloaded_ids = [r[0] for r in overloaded_rows]
+            users_result = await db.execute(
+                select(User).where(User.id.in_(overloaded_ids))
+            )
+            user_name_map = {u.id: u.full_name for u in users_result.scalars().all()}
+
+            for assigned_to, total_est in overloaded_rows:
+                if not _has_existing(CAPACITY_OVERLOAD, "user", assigned_to):
+                    name = user_name_map.get(assigned_to, f"Usuario #{assigned_to}")
                     hours = total_est // 60
                     await create_notification(
                         db,
