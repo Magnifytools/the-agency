@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 
+logger = logging.getLogger(__name__)
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select

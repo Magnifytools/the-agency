@@ -756,7 +756,7 @@ async def save_investment_model(
     flag_modified(prop, "generated_content")
     await db.commit()
     await safe_refresh(db, prop, log_context="proposals")
-    return _proposal_to_response(prop)
+    return _to_response(prop)
 
 
 @router.post("/{proposal_id}/generate-pdf")

@@ -4,6 +4,7 @@ import logging
 from datetime import date as date_type, datetime, timezone
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
