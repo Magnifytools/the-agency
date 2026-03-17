@@ -22,6 +22,7 @@ from backend.schemas.daily import (
 )
 from backend.services.daily_parser import parse_daily_update, format_daily_for_discord, format_daily_embed
 from backend.api.utils.db_helpers import safe_refresh
+from backend.core.security import decrypt_vault_secret
 
 router = APIRouter(prefix="/api/dailys", tags=["daily-updates"])
 logger = logging.getLogger(__name__)
@@ -384,7 +385,13 @@ async def send_daily_to_discord(
     # Get Discord settings
     ds_result = await db.execute(select(DiscordSettings).limit(1))
     ds = ds_result.scalar_one_or_none()
-    webhook_url = (ds.webhook_url if ds else None) or settings.DISCORD_WEBHOOK_URL
+    raw_wh = ds.webhook_url if ds else None
+    if raw_wh and raw_wh.startswith("v1:"):
+        try:
+            raw_wh = decrypt_vault_secret(raw_wh)
+        except Exception:
+            pass
+    webhook_url = raw_wh or settings.DISCORD_WEBHOOK_URL
 
     if not webhook_url:
         raise HTTPException(status_code=400, detail="Discord webhook no configurado. Configúralo en Ajustes > Discord.")
@@ -397,7 +404,13 @@ async def send_daily_to_discord(
     success = False
     try:
         async with httpx.AsyncClient(timeout=15) as http:
-            bot_token = ds.bot_token if ds else None
+            raw_bt = ds.bot_token if ds else None
+            if raw_bt and raw_bt.startswith("v1:"):
+                try:
+                    raw_bt = decrypt_vault_secret(raw_bt)
+                except Exception:
+                    pass
+            bot_token = raw_bt
 
             if bot_token:
                 # Thread mode: send embed as header, body in thread

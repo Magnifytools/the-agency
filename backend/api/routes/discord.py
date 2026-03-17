@@ -23,6 +23,7 @@ from backend.services.discord import generate_daily_summary, send_to_discord
 from backend.api.routes.dailys import _resolve_channel_id, _send_daily_as_thread
 from backend.services.digest_renderer import render_discord
 from backend.schemas.digest import DigestContent
+from backend.core.security import encrypt_vault_secret, decrypt_vault_secret
 from backend.schemas.discord import (
     DiscordSettingsResponse,
     DiscordSettingsUpdate,
@@ -50,8 +51,21 @@ async def _get_or_create_settings(db: AsyncSession) -> DiscordSettings:
     return ds
 
 
+def _decrypt_field(value: str | None) -> str:
+    """Decrypt a vault-encrypted field, returning raw value for legacy plaintext."""
+    if not value:
+        return ""
+    if value.startswith("v1:"):
+        try:
+            return decrypt_vault_secret(value)
+        except Exception:
+            logger.warning("Failed to decrypt Discord field — may be legacy plaintext")
+            return value
+    return value  # Legacy plaintext — will be re-encrypted on next save
+
+
 def _settings_to_response(ds: DiscordSettings) -> DiscordSettingsResponse:
-    url = ds.webhook_url or ""
+    url = _decrypt_field(ds.webhook_url)
     return DiscordSettingsResponse(
         id=ds.id,
         webhook_configured=bool(url.strip()),
@@ -144,10 +158,11 @@ async def update_discord_settings(
                 status_code=400,
                 detail="URL de webhook inválida. Debe ser una URL de webhook de Discord válida.",
             )
-        ds.webhook_url = payload.webhook_url
+        ds.webhook_url = encrypt_vault_secret(payload.webhook_url.strip()) if payload.webhook_url.strip() else ""
         ds.channel_id = None  # Reset cached channel_id when webhook changes
     if payload.bot_token is not None:
-        ds.bot_token = payload.bot_token.strip() or None
+        raw_token = payload.bot_token.strip()
+        ds.bot_token = encrypt_vault_secret(raw_token) if raw_token else None
     if payload.auto_daily_summary is not None:
         ds.auto_daily_summary = payload.auto_daily_summary
     if payload.summary_time is not None:
@@ -170,7 +185,7 @@ async def test_webhook(
 ):
     """Send a test message to the configured Discord webhook."""
     ds = await _get_or_create_settings(db)
-    url = ds.webhook_url or settings.DISCORD_WEBHOOK_URL or ""
+    url = _decrypt_field(ds.webhook_url) or settings.DISCORD_WEBHOOK_URL or ""
 
     if not url.strip():
         raise HTTPException(status_code=400, detail="No hay webhook configurado")
@@ -194,7 +209,7 @@ async def send_daily_summary(
 ):
     """Generate and send the daily summary to Discord."""
     ds = await _get_or_create_settings(db)
-    url = ds.webhook_url or settings.DISCORD_WEBHOOK_URL or ""
+    url = _decrypt_field(ds.webhook_url) or settings.DISCORD_WEBHOOK_URL or ""
 
     if not url.strip():
         raise HTTPException(status_code=400, detail="No hay webhook configurado")
@@ -211,7 +226,7 @@ async def send_daily_summary(
         raise HTTPException(status_code=500, detail="Error al generar el resumen diario")
 
     success = False
-    bot_token = ds.bot_token if ds else None
+    bot_token = _decrypt_field(ds.bot_token) if ds else None
 
     if bot_token:
         try:
@@ -265,7 +280,7 @@ async def send_digest_to_discord(
 ):
     """Send a specific digest rendered as Discord markdown to the webhook."""
     ds = await _get_or_create_settings(db)
-    url = ds.webhook_url or settings.DISCORD_WEBHOOK_URL or ""
+    url = _decrypt_field(ds.webhook_url) or settings.DISCORD_WEBHOOK_URL or ""
 
     if not url.strip():
         raise HTTPException(status_code=400, detail="No hay webhook configurado")

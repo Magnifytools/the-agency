@@ -80,6 +80,6 @@ async def send_to_discord(message: str) -> bool:
     url = settings.DISCORD_WEBHOOK_URL
     if not url:
         return False
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.post(url, json={"content": message})
         return resp.status_code in (200, 204)

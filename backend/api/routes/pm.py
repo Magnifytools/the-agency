@@ -232,7 +232,7 @@ async def share_briefing_to_discord(
     }
 
     try:
-        async with httpx.AsyncClient() as http_client:
+        async with httpx.AsyncClient(timeout=10) as http_client:
             resp = await http_client.post(webhook_url, json=discord_payload)
             resp.raise_for_status()
     except Exception:
