@@ -1168,13 +1168,22 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="The Agency", version="1.0.0", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-cors_origins = ["http://localhost:5177"]
-if extra := os.environ.get("CORS_ORIGINS"):
-    parsed = [o.strip() for o in extra.split(",") if o.strip()]
-    from backend.config import _is_production
-    if _is_production() and "*" in parsed:
+from backend.config import _is_production
+
+if _is_production():
+    _cors_raw = os.environ.get("CORS_ORIGINS", "")
+    cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+    if not cors_origins:
+        raise RuntimeError(
+            "CORS_ORIGINS must be set in production. "
+            "Example: CORS_ORIGINS=https://agency.magnifytools.com"
+        )
+    if "*" in cors_origins:
         raise RuntimeError("CORS_ORIGINS must not contain '*' in production — this would allow any origin with credentials")
-    cors_origins.extend(parsed)
+else:
+    cors_origins = ["http://localhost:5177"]
+    if extra := os.environ.get("CORS_ORIGINS"):
+        cors_origins.extend(o.strip() for o in extra.split(",") if o.strip())
 
 app.add_middleware(
     CORSMiddleware,

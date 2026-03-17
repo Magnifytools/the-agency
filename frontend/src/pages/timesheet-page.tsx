@@ -161,13 +161,17 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
   })
 
   const handleStart = async () => {
+    if (!selectedTask) {
+      toast.error("Selecciona una tarea para iniciar el timer")
+      return
+    }
     try {
-      await timerApi.start({ task_id: selectedTask ? Number(selectedTask) : null })
+      await timerApi.start({ task_id: Number(selectedTask) })
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       onTimerChange()
       toast.success("Timer iniciado")
-    } catch {
-      toast.error("Error al iniciar timer")
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Error al iniciar timer"))
     }
   }
 
@@ -177,8 +181,8 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       onTimerChange()
       toast.success("Timer detenido")
-    } catch {
-      toast.error("Error al detener timer")
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Error al detener timer"))
     }
   }
 
@@ -212,14 +216,14 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
               {projects.map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
             </Select>
             <Select value={selectedTask} onChange={(e) => setSelectedTask(e.target.value)} className="h-8 text-xs flex-1 min-w-[180px]">
-              <option value="">Tarea (opcional)...</option>
+              <option value="">Selecciona una tarea...</option>
               {filteredTasks.slice(0, 50).map((t) => (
                 <option key={t.id} value={String(t.id)}>
                   {t.title.length > 60 ? t.title.slice(0, 60) + "…" : t.title}
                 </option>
               ))}
             </Select>
-            <Button size="sm" onClick={handleStart} className="gap-1.5 shrink-0">
+            <Button size="sm" onClick={handleStart} disabled={!selectedTask} className="gap-1.5 shrink-0">
               <Play className="h-3.5 w-3.5" />
               Iniciar
             </Button>
