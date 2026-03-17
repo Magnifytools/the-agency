@@ -71,6 +71,20 @@ VALID_ACTIONS = {
 }
 
 
+_SENSITIVE_ACTION_FIELDS = {"webhook_url", "bot_token", "api_key", "secret", "password"}
+
+
+def _sanitize_action_config(config: dict | None, action_type: str) -> dict:
+    """Strip sensitive fields from action_config before returning to browser."""
+    if not config:
+        return {}
+    sanitized = dict(config)
+    for field in _SENSITIVE_ACTION_FIELDS:
+        if field in sanitized:
+            sanitized[field] = "••••••" if sanitized[field] else ""
+    return sanitized
+
+
 def _rule_to_dict(r: AutomationRule) -> dict:
     return {
         "id": r.id,
@@ -79,7 +93,7 @@ def _rule_to_dict(r: AutomationRule) -> dict:
         "trigger": r.trigger,
         "conditions": r.conditions or {},
         "action_type": r.action_type,
-        "action_config": r.action_config or {},
+        "action_config": _sanitize_action_config(r.action_config, r.action_type),
         "is_active": r.is_active,
         "run_count": r.run_count,
         "last_run_at": r.last_run_at.isoformat() if r.last_run_at else None,
