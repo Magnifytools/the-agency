@@ -99,6 +99,7 @@ export interface ClientExtractProject {
   project_type?: string
   is_recurring?: boolean
   pricing_model?: string
+  monthly_fee?: number
   unit_price?: number
   unit_label?: string
   scope?: string

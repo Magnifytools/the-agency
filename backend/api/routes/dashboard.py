@@ -97,14 +97,21 @@ async def get_overview(
     )
     hours_this_month = round((r.scalar() or 0) / 60, 1)
 
-    # Total budget (active clients)
+    # Total budget — derived from active projects' monthly_fee (fallback to client.monthly_budget)
     r = await db.execute(
-        select(func.coalesce(func.sum(Client.monthly_budget), 0)).where(
-            Client.status == ClientStatus.active,
-            Client.is_internal == False,
+        select(
+            Client.id,
+            func.coalesce(func.sum(Project.monthly_fee), 0).label("project_fee"),
+            Client.monthly_budget,
         )
+        .outerjoin(Project, and_(Project.client_id == Client.id, Project.status == ProjectStatus.active))
+        .where(Client.status == ClientStatus.active, Client.is_internal == False)
+        .group_by(Client.id, Client.monthly_budget)
     )
-    total_budget = r.scalar() or 0
+    total_budget = sum(
+        float(row.project_fee) if float(row.project_fee) > 0 else float(row.monthly_budget or 0)
+        for row in r.all()
+    )
 
     # Total cost this month (hours * hourly_rate)
     r = await db.execute(

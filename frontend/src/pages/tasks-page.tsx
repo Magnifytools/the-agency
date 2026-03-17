@@ -862,7 +862,7 @@ export default function TasksPage() {
                 : <ChevronDown className="h-4 w-4" />}
             </button>
             <div className={showAssignmentFields ? "p-3 pt-2 border-t border-border/60" : "hidden"}>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="client_id" className="text-xs">Cliente</Label>
                   <Select id="client_id" name="client_id" defaultValue={editing?.client_id ? String(editing.client_id) : ""}>
@@ -936,7 +936,7 @@ export default function TasksPage() {
                 : <ChevronDown className="h-4 w-4" />}
             </button>
             <div className={showDeadlineFields ? "p-3 pt-2 border-t border-border/60" : "hidden"}>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="estimated_minutes" className="text-xs">Minutos estimados</Label>
                   <Input
@@ -1014,7 +1014,7 @@ export default function TasksPage() {
                         Tarea recurrente
                       </label>
                       {isRecurring && (
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div className="space-y-1">
                             <Label className="text-xs">Patrón</Label>
                             <Select

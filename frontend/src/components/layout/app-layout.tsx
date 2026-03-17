@@ -354,7 +354,7 @@ export function AppLayout() {
 
       {/* More drawer */}
       <BottomDrawer open={moreDrawerOpen} onOpenChange={setMoreDrawerOpen}>
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
           {[...mainNav, ...agencyNav, ...(isAdmin ? [{ to: "/finance", label: "Finanzas", icon: Wallet }] : []), ...adminNav, { to: "/settings", label: "Ajustes", icon: Settings }]
             .filter((item) => !mobileNav.some((m) => m.to === item.to))
             .map((item) => (

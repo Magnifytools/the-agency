@@ -168,11 +168,11 @@ export default function ProjectsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-4">
+      <div className="flex flex-wrap gap-3">
         <Select
           value={statusFilter}
           onChange={(e) => { setStatusFilter(e.target.value); reset() }}
-          className="w-48"
+          className="w-full sm:w-48"
         >
           <option value="">Todos los estados</option>
           <option value="planning">Planificación</option>
@@ -184,7 +184,7 @@ export default function ProjectsPage() {
         <Select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
-          className="w-48"
+          className="w-full sm:w-48"
         >
           <option value="">Todos los tipos</option>
           <option value="recurring">Recurrentes</option>
@@ -193,7 +193,7 @@ export default function ProjectsPage() {
         <Select
           value={periodFilter}
           onChange={(e) => setPeriodFilter(e.target.value)}
-          className="w-48"
+          className="w-full sm:w-48"
         >
           <option value="">Todos los periodos</option>
           <option value="week">Esta semana</option>
@@ -444,7 +444,7 @@ function NewProjectDialog({
             ))}
           </Select>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Fecha inicio</Label>
             <Input
@@ -472,7 +472,7 @@ function NewProjectDialog({
           />
           <Label htmlFor="is_recurring_new">Servicio recurrente</Label>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Modelo de precio</Label>
             <Select
@@ -497,7 +497,7 @@ function NewProjectDialog({
             />
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label>Precio unitario (EUR)</Label>
             <Input

@@ -675,7 +675,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           {overview ? (
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <MetricCard icon={Users} label="Clientes activos" value={overview.active_clients} tooltip="Clientes con estado 'activo'." />
               <MetricCard icon={CheckSquare} label="Tareas pendientes" value={overview.pending_tasks + overview.in_progress_tasks} subtitle={`${overview.in_progress_tasks} en curso`} tooltip="Tareas 'pendiente' + 'en curso' del mes." />
               <MetricCard icon={Clock} label="Horas mes" value={`${overview.hours_this_month}h`} tooltip="Total horas registradas del equipo." />
@@ -691,7 +691,7 @@ export default function DashboardPage() {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
             </div>
           )}
@@ -766,7 +766,7 @@ export default function DashboardPage() {
           <Card>
             <CardHeader><CardTitle>Rentabilidad por cliente</CardTitle></CardHeader>
             <CardContent className="pt-4">
-              <Table aria-label="Rentabilidad por cliente" className="min-w-[700px]">
+              <div className="overflow-x-auto"><Table aria-label="Rentabilidad por cliente" className="min-w-[700px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Cliente</TableHead>
@@ -812,7 +812,7 @@ export default function DashboardPage() {
                     )
                   })}
                 </TableBody>
-              </Table>
+              </Table></div>
             </CardContent>
           </Card>
           <Card>

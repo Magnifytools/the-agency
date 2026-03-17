@@ -113,6 +113,7 @@ export default function ClientsPage() {
           unit_price: prefill.project.unit_price ?? null,
           unit_label: prefill.project.unit_label ?? null,
           scope: prefill.project.scope ?? null,
+          monthly_fee: prefill.project.monthly_fee ?? null,
           budget_amount: prefill.project.budget_amount ?? null,
           start_date: prefill.project.start_date ?? null,
           target_end_date: prefill.project.target_end_date ?? null,
@@ -456,7 +457,7 @@ export default function ClientsPage() {
         </DialogHeader>
         {!editing && <AiFillSection onExtracted={(data) => { setPrefill(data); setFormKey((k) => k + 1) }} />}
         <form key={formKey} onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="name">Nombre *</Label>
               <Input id="name" name="name" defaultValue={prefill?.name ?? editing?.name ?? ""} required />
@@ -492,15 +493,17 @@ export default function ClientsPage() {
                 <option value="one_time">Puntual</option>
               </Select>
             </div>
-            {isAdmin && (
+            {isAdmin && editing?.monthly_budget != null && (
               <div className="space-y-2">
-                <Label htmlFor="monthly_budget">Presupuesto mensual (EUR)</Label>
+                <Label htmlFor="monthly_budget">Presupuesto mensual (EUR) <span className="text-xs text-muted-foreground">(derivado de proyectos)</span></Label>
                 <Input
                   id="monthly_budget"
                   name="monthly_budget"
                   type="number"
                   step="0.01"
-                  defaultValue={prefill?.monthly_budget ?? editing?.monthly_budget ?? ""}
+                  defaultValue={editing.monthly_budget ?? ""}
+                  className="opacity-60"
+                  title="Este campo se deriva de los proyectos activos del cliente"
                 />
               </div>
             )}
@@ -563,6 +566,7 @@ export default function ClientsPage() {
                 <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs mt-1">
                   {prefill.project.project_type && <span>Tipo: {prefill.project.project_type}</span>}
                   {prefill.project.pricing_model && <span>Pricing: {prefill.project.pricing_model}</span>}
+                  {prefill.project.monthly_fee && <span>Fee: {formatCurrency(prefill.project.monthly_fee)}/mes</span>}
                   {prefill.project.unit_price && <span>{formatCurrency(prefill.project.unit_price)}{prefill.project.unit_label ? `/${prefill.project.unit_label}` : ""}</span>}
                   {prefill.project.is_recurring && <span>Recurrente</span>}
                   {prefill.project.scope && <span>Scope: {prefill.project.scope}</span>}

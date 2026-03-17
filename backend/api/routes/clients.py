@@ -77,6 +77,7 @@ Responde SOLO con un JSON válido con los campos que puedas extraer (omite los q
     "unit_price": precio por unidad numérico o null,
     "unit_label": "etiqueta de la unidad (pieza, artículo, hora, etc.) o null",
     "scope": "descripción detallada del alcance/scope aprobado del proyecto",
+    "monthly_fee": importe mensual recurrente que factura este proyecto o null,
     "budget_amount": importe total del proyecto o null,
     "start_date": "YYYY-MM-DD o null",
     "target_end_date": "YYYY-MM-DD o null"
@@ -92,6 +93,7 @@ class ProjectExtractInline(BaseModel):
     project_type: Optional[str] = None
     is_recurring: bool = False
     pricing_model: Optional[str] = None
+    monthly_fee: Optional[float] = None
     unit_price: Optional[float] = None
     unit_label: Optional[str] = None
     scope: Optional[str] = None
