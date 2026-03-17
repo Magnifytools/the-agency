@@ -1,4 +1,3 @@
-from contextlib import asynccontextmanager
 import asyncio
 import logging
 import os
@@ -1095,7 +1094,6 @@ async def _backfill_module_permissions():
             logging.info("Backfilled %d module permissions for existing users.", added)
 
 
-@asynccontextmanager
 async def _schema_needs_startup_ddl() -> bool:
     """Check if startup DDL is still needed (table from v9 missing = needs DDL)."""
     from sqlalchemy import text
@@ -1319,6 +1317,13 @@ app.include_router(extension.router)
 app.include_router(assistant.router)
 app.include_router(my_week.router)
 app.include_router(automations.router)
+
+
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint for monitoring and deployment probes."""
+    return {"status": "ok"}
+
 
 # Serve frontend static files in production
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
