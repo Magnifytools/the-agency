@@ -84,89 +84,7 @@ async def extract_url(
     return ExtractResponse(title=title, content=content, published_date=published_date)
 
 
-# --- News CRUD ---
-
-@router.get("", response_model=list[IndustryNewsResponse])
-async def list_news(
-    limit: int = Query(50, ge=1, le=200),
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
-):
-    result = await db.execute(
-        select(IndustryNews).order_by(IndustryNews.published_date.desc()).limit(limit)
-    )
-    return result.scalars().all()
-
-
-@router.get("/{news_id}", response_model=IndustryNewsResponse)
-async def get_news(
-    news_id: int,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
-):
-    result = await db.execute(
-        select(IndustryNews).where(IndustryNews.id == news_id)
-    )
-    item = result.scalar_one_or_none()
-    if item is None:
-        raise HTTPException(status_code=404, detail="News item not found")
-    return item
-
-
-@router.post("", response_model=IndustryNewsResponse, status_code=201)
-async def create_news(
-    body: IndustryNewsCreate,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
-):
-    item = IndustryNews(**body.model_dump())
-    db.add(item)
-    await db.commit()
-    await safe_refresh(db, item, log_context="create_news")
-    return item
-
-
-@router.put("/{news_id}", response_model=IndustryNewsResponse)
-async def update_news(
-    news_id: int,
-    body: IndustryNewsUpdate,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
-):
-    result = await db.execute(
-        select(IndustryNews).where(IndustryNews.id == news_id)
-    )
-    item = result.scalar_one_or_none()
-    if item is None:
-        raise HTTPException(status_code=404, detail="News item not found")
-
-    _UPDATABLE_NEWS_FIELDS = {"title", "published_date", "content", "url"}
-    update_data = body.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        if field in _UPDATABLE_NEWS_FIELDS:
-            setattr(item, field, value)
-    await db.commit()
-    await safe_refresh(db, item, log_context="update_news")
-    return item
-
-
-@router.delete("/{news_id}", status_code=204)
-async def delete_news(
-    news_id: int,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
-):
-    result = await db.execute(
-        select(IndustryNews).where(IndustryNews.id == news_id)
-    )
-    item = result.scalar_one_or_none()
-    if item is None:
-        raise HTTPException(status_code=404, detail="News item not found")
-    await db.delete(item)
-    await db.commit()
-
-
-# --- News Sources CRUD ---
+# --- News Sources CRUD (before /{news_id} to avoid route shadowing) ---
 
 class NewsSourceCreate(BaseModel):
     name: str
@@ -246,4 +164,86 @@ async def delete_source(
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
     await db.delete(source)
+    await db.commit()
+
+
+# --- News CRUD ---
+
+@router.get("", response_model=list[IndustryNewsResponse])
+async def list_news(
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(IndustryNews).order_by(IndustryNews.published_date.desc()).limit(limit)
+    )
+    return result.scalars().all()
+
+
+@router.get("/{news_id}", response_model=IndustryNewsResponse)
+async def get_news(
+    news_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(IndustryNews).where(IndustryNews.id == news_id)
+    )
+    item = result.scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="News item not found")
+    return item
+
+
+@router.post("", response_model=IndustryNewsResponse, status_code=201)
+async def create_news(
+    body: IndustryNewsCreate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    item = IndustryNews(**body.model_dump())
+    db.add(item)
+    await db.commit()
+    await safe_refresh(db, item, log_context="create_news")
+    return item
+
+
+@router.put("/{news_id}", response_model=IndustryNewsResponse)
+async def update_news(
+    news_id: int,
+    body: IndustryNewsUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(IndustryNews).where(IndustryNews.id == news_id)
+    )
+    item = result.scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="News item not found")
+
+    _UPDATABLE_NEWS_FIELDS = {"title", "published_date", "content", "url"}
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field in _UPDATABLE_NEWS_FIELDS:
+            setattr(item, field, value)
+    await db.commit()
+    await safe_refresh(db, item, log_context="update_news")
+    return item
+
+
+@router.delete("/{news_id}", status_code=204)
+async def delete_news(
+    news_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(IndustryNews).where(IndustryNews.id == news_id)
+    )
+    item = result.scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="News item not found")
+    await db.delete(item)
     await db.commit()

@@ -74,7 +74,7 @@ VALID_ACTIONS = {
 _SENSITIVE_ACTION_FIELDS = {"webhook_url", "bot_token", "api_key", "secret", "password"}
 
 
-def _sanitize_action_config(config: dict | None, action_type: str) -> dict:
+def _sanitize_action_config(config: Optional[dict], action_type: str) -> dict:
     """Strip sensitive fields from action_config before returning to browser."""
     if not config:
         return {}
