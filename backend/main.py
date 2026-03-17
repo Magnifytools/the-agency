@@ -1108,6 +1108,30 @@ async def _schema_needs_startup_ddl() -> bool:
         return True  # conservative: run DDL if check fails
 
 
+async def _reset_admin_password():
+    """One-time: reset admin password from SEED_ADMIN_PASSWORD env var."""
+    from sqlalchemy import text
+    from backend.db.database import engine
+    from backend.core.security import hash_password
+
+    pw = os.environ.get("SEED_ADMIN_PASSWORD")
+    if not pw:
+        return
+    async with engine.begin() as conn:
+        result = await conn.execute(
+            text("SELECT id FROM users WHERE email = 'david@magnify.ing'")
+        )
+        row = result.fetchone()
+        if not row:
+            return
+        hashed = hash_password(pw)
+        await conn.execute(
+            text("UPDATE users SET hashed_password = :pw WHERE email = 'david@magnify.ing'"),
+            {"pw": hashed},
+        )
+        logging.info("Admin password reset from SEED_ADMIN_PASSWORD.")
+
+
 async def lifespan(app: FastAPI):
     if await _schema_needs_startup_ddl():
         logging.info("Running startup DDL (schema not yet up to date)...")
@@ -1124,6 +1148,8 @@ async def lifespan(app: FastAPI):
         await _ensure_columns_v10()
     else:
         logging.info("Schema up to date, skipping startup DDL.")
+    # One-time password reset for admin — ensures SEED_ADMIN_PASSWORD is applied
+    await _reset_admin_password()
     await _seed_national_holidays()
     await _cleanup_qa_test_data()
     await _ensure_categories()
