@@ -308,8 +308,8 @@ async def _resolve_channel_id(
             if channel_id:
                 ds.channel_id = channel_id
             return channel_id
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to resolve Discord channel_id from webhook: %s", e)
     return None
 
 
@@ -389,8 +389,8 @@ async def send_daily_to_discord(
     if raw_wh and raw_wh.startswith("v1:"):
         try:
             raw_wh = decrypt_vault_secret(raw_wh)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to decrypt webhook_url vault secret: %s", e)
     webhook_url = raw_wh or settings.DISCORD_WEBHOOK_URL
 
     if not webhook_url:
@@ -408,8 +408,8 @@ async def send_daily_to_discord(
             if raw_bt and raw_bt.startswith("v1:"):
                 try:
                     raw_bt = decrypt_vault_secret(raw_bt)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("Failed to decrypt bot_token vault secret: %s", e)
             bot_token = raw_bt
 
             if bot_token:

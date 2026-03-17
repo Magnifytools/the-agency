@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 from typing import Optional
 
 from datetime import datetime, timezone, timedelta, date as date_type
@@ -30,6 +31,8 @@ from backend.schemas.time_entry import (
 )
 from backend.api.deps import get_current_user, require_admin, require_module
 from backend.services.csv_utils import build_csv_response
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["time-entries"])
 
@@ -134,7 +137,8 @@ async def create_time_entry(
             "user_id": entry.user_id,
             "minutes": entry.minutes,
         }, db)
-    except Exception:
+    except Exception as e:
+        logger.debug("Automation hook time_entry_created failed (never break time entry creation): %s", e)
         pass  # Never break time entry creation
 
     if entry.task_id:
@@ -684,8 +688,8 @@ async def get_active_timer(
             task_title = entry.task.title
             if entry.task.client:
                 client_name = entry.task.client.name
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to load task/client relationships for active timer: %s", e)
     return ActiveTimerResponse(
         id=entry.id,
         task_id=entry.task_id,

@@ -23,6 +23,8 @@ from backend.schemas.my_week import (
     MyWeekTask, MyWeekDay, MyWeekSummary, MyWeekResponse,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/my-week", tags=["my-week"])
 
 WEEKDAYS_ES = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
@@ -390,7 +392,8 @@ async def update_event(
     if body.event_type is not None:
         try:
             event.event_type = EventType(body.event_type)
-        except ValueError:
+        except ValueError as e:
+            logger.debug("Invalid event_type value %r ignored: %s", body.event_type, e)
             pass
 
     if body.date is not None or body.time is not None:

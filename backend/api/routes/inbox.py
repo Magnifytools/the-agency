@@ -376,7 +376,8 @@ async def convert_to_task(
     # Refresh to re-load relationships (project, client) after commit
     try:
         await safe_refresh(db, note, ["project", "client"], log_context="inbox")
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to refresh note relationships after convert-to-task (not critical): %s", e)
         pass  # relationships not critical for response
 
     return {

@@ -97,7 +97,8 @@ async def create_communication(
             "direction": body.direction,
             "requires_followup": body.requires_followup or False,
         }, db)
-    except Exception:
+    except Exception as e:
+        logger.debug("Automation hook communication_logged failed (never break communication creation): %s", e)
         pass  # Never break communication creation
 
     return _to_response(comm)

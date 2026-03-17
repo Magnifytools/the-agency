@@ -226,7 +226,8 @@ async def generate_batch(
                 entity_id=None,
             )
             await db.commit()
-        except Exception:
+        except Exception as e:
+            logger.debug("Notification for batch digest generation failed (never break digest generation): %s", e)
             pass  # Notification failure should never break digest generation
 
     return [_to_response(d) for d in digests]

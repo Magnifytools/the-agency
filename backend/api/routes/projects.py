@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 from typing import Optional
 
 import base64
@@ -60,6 +61,8 @@ Responde SOLO con un JSON válido:
   "scope": "descripción detallada del alcance/scope aprobado del proyecto"
 }
 Sin texto adicional. Solo el JSON."""
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -766,7 +769,8 @@ async def update_phase(
                 "phase_name": phase.name,
                 "project_id": phase.project_id,
             }, db)
-        except Exception:
+        except Exception as e:
+            logger.debug("Automation hook phase_completed failed (never break phase update): %s", e)
             pass  # Never break phase update
 
     # Notify project members when phase is newly completed
@@ -796,7 +800,8 @@ async def update_phase(
                     )
                 if user_ids:
                     await db.commit()
-        except Exception:
+        except Exception as e:
+            logger.debug("Phase completion notification failed (never break phase update): %s", e)
             pass  # Notification failure should never break phase update
 
     return ProjectPhaseResponse(
