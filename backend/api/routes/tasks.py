@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
-from backend.db.models import Task, TaskStatus, TaskPriority, User, TaskChecklist, TaskComment, TaskAttachment
+from backend.db.models import Task, TaskStatus, TaskPriority, User, TaskChecklist, TaskComment, TaskAttachment, TimeEntry
 from backend.schemas.task import TaskCreate, TaskUpdate, TaskResponse
 from backend.schemas.task_checklist import ChecklistItemCreate, ChecklistItemUpdate, ChecklistItemResponse
 from backend.schemas.task_comment import TaskCommentCreate, TaskCommentResponse
@@ -252,9 +252,9 @@ async def update_task(
         raise HTTPException(status_code=404, detail="Task not found")
     old_assigned_to = task.assigned_to
     old_status = task.status.value if hasattr(task.status, "value") else str(task.status)
-    # actual_minutes excluded: auto-synced from time entries, not manually editable
     _UPDATABLE_TASK_FIELDS = {
-        "title", "description", "status", "priority", "estimated_minutes",
+        "title", "description", "status", "priority",
+        "estimated_minutes", "actual_minutes",
         "start_date", "due_date", "client_id", "category_id",
         "assigned_to", "project_id", "phase_id", "depends_on",
         "scheduled_date", "waiting_for", "follow_up_date",
@@ -262,9 +262,49 @@ async def update_task(
         "recurrence_end_date", "recurring_parent_id",
     }
     update_data = body.model_dump(exclude_unset=True)
+    manual_minutes_changed = "actual_minutes" in update_data
+    new_actual = update_data.get("actual_minutes")
     for field, value in update_data.items():
         if field in _UPDATABLE_TASK_FIELDS:
             setattr(task, field, value)
+
+    # If actual_minutes changed manually, sync a "manual" TimeEntry so it
+    # counts toward daily hours even without a timer.
+    if manual_minutes_changed and new_actual is not None:
+        from datetime import datetime, timezone
+        timer_sum_result = await db.execute(
+            select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
+                TimeEntry.task_id == task_id,
+                TimeEntry.minutes.isnot(None),
+                TimeEntry.notes != "[manual]",
+            )
+        )
+        timer_sum = timer_sum_result.scalar() or 0
+        manual_diff = max(0, new_actual - timer_sum)
+
+        # Find existing manual entry for this task, or create one
+        manual_result = await db.execute(
+            select(TimeEntry).where(
+                TimeEntry.task_id == task_id,
+                TimeEntry.notes == "[manual]",
+            )
+        )
+        manual_entry = manual_result.scalar_one_or_none()
+        if manual_diff > 0:
+            if manual_entry:
+                manual_entry.minutes = manual_diff
+                manual_entry.date = datetime.now(timezone.utc)
+            else:
+                db.add(TimeEntry(
+                    task_id=task_id,
+                    user_id=_.id,
+                    minutes=manual_diff,
+                    date=datetime.now(timezone.utc),
+                    notes="[manual]",
+                ))
+        elif manual_entry:
+            await db.delete(manual_entry)
+
     try:
         await db.commit()
     except IntegrityError:

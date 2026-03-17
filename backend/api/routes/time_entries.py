@@ -39,18 +39,35 @@ _TIME_ENTRY_RESPONSE_OPTIONS = (
 
 
 async def _sync_task_actual_minutes(db: AsyncSession, task_id: int) -> None:
-    """Recompute Task.actual_minutes from the sum of its completed time entries."""
-    total_result = await db.execute(
+    """Recompute Task.actual_minutes from the sum of its timer-based time entries.
+
+    Excludes '[manual]' entries (created when user edits actual_minutes directly)
+    so they aren't double-counted.  The manual entry represents the portion of
+    actual_minutes that didn't come from timers.
+    """
+    from sqlalchemy import or_
+
+    timer_result = await db.execute(
         select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
             TimeEntry.task_id == task_id,
             TimeEntry.minutes.isnot(None),
+            or_(TimeEntry.notes != "[manual]", TimeEntry.notes.is_(None)),
         )
     )
-    total_mins = total_result.scalar() or 0
+    timer_mins = timer_result.scalar() or 0
+
+    manual_result = await db.execute(
+        select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
+            TimeEntry.task_id == task_id,
+            TimeEntry.notes == "[manual]",
+        )
+    )
+    manual_mins = manual_result.scalar() or 0
+
     task_result = await db.execute(select(Task).where(Task.id == task_id))
     task = task_result.scalar_one_or_none()
     if task:
-        task.actual_minutes = int(total_mins)
+        task.actual_minutes = int(timer_mins + manual_mins)
 
 
 def _entry_to_response(entry: TimeEntry) -> TimeEntryResponse:
