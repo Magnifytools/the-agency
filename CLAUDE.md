@@ -120,10 +120,40 @@ admin_users, admin_settings
 - Se reemplazarán por integración Holded en fase posterior
 - Si necesitas importar algo de estos módulos, no lo hagas. Trabaja alrededor.
 
+## Pricing Architecture (Sprint 10)
+- **Source of truth**: `Project.monthly_fee` — cada proyecto define su tarifa mensual
+- **Client budget**: `Client.monthly_budget` es legacy/fallback. El presupuesto real se deriva de `SUM(Project.monthly_fee)` de proyectos activos
+- **Dashboard**: `total_budget` agrega desde proyectos con fallback a `client.monthly_budget` cuando no hay proyectos
+- **Onboarding**: Crear cliente + proyecto en un solo flujo. La extracción AI (extract-context) devuelve un sub-objeto `project` con `monthly_fee`
+- **Profitability**: Ya calcula correctamente desde `Project.monthly_fee`
+
+## Testing
+```bash
+# Backend (pytest, 99+ tests)
+cd backend && source venv/bin/activate && python -m pytest tests/ -v
+
+# Frontend (vitest, 39+ tests)
+cd frontend && npm run test
+```
+
+## Responsive / Mobile
+- Todos los grids usan `grid-cols-1 sm:grid-cols-2` como base
+- Tablas wrapped en `overflow-x-auto`
+- Filtros usan `flex-wrap` para mobile
+- Dialog forms son responsive con breakpoints sm/lg
+
+## UI/UX
+- Skill UI/UX Pro Max instalado en `.claude/skills/ui-ux-pro-max/`
+- Focus states: ring amarillo `#FFD600` con `focus-visible`
+- Transiciones: 150ms en elementos interactivos
+- `prefers-reduced-motion` respetado
+- Card hover: borde sutil + sombra brand
+- Font mono: JetBrains Mono para datos numéricos (clase `.mono`)
+
 ## Errores conocidos
 - bcrypt pinned a 4.1.3 (incompatibilidad passlib)
 - `Base.metadata.create_all` no agrega columnas a tablas existentes. Para nuevas columnas en tablas existentes, agregar `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` en `backend/main.py` lifespan.
 
 ---
 
-*Actualizado: 24 Feb 2026*
+*Actualizado: 17 Mar 2026*

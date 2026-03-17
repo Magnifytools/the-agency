@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
-import { MemoryRouter } from "react-router-dom"
+import { MemoryRouter, Routes, Route } from "react-router-dom"
 import { PermissionRoute } from "@/components/layout/permission-route"
 
 // ── Mock useAuth ──────────────────────────────────────────────────────────────
@@ -15,10 +15,18 @@ vi.mock("@/context/auth-context", () => ({
 
 function renderRoute(props: Omit<Parameters<typeof PermissionRoute>[0], "children">) {
   return render(
-    <MemoryRouter>
-      <PermissionRoute {...props}>
-        <div data-testid="protected-content">Contenido protegido</div>
-      </PermissionRoute>
+    <MemoryRouter initialEntries={["/protected"]}>
+      <Routes>
+        <Route
+          path="/protected"
+          element={
+            <PermissionRoute {...props}>
+              <div data-testid="protected-content">Contenido protegido</div>
+            </PermissionRoute>
+          }
+        />
+        <Route path="/dashboard" element={<div data-testid="redirected-dashboard">Dashboard</div>} />
+      </Routes>
     </MemoryRouter>,
   )
 }
@@ -39,7 +47,9 @@ describe("PermissionRoute", () => {
     it("renders nothing while auth is loading", () => {
       authAs({ isLoading: true })
       const { container } = renderRoute({})
-      expect(container).toBeEmptyDOMElement()
+      // During loading, only the route wrapper exists
+      expect(screen.queryByTestId("protected-content")).not.toBeInTheDocument()
+      expect(screen.queryByTestId("redirected-dashboard")).not.toBeInTheDocument()
     })
   })
 
@@ -50,18 +60,11 @@ describe("PermissionRoute", () => {
       expect(screen.getByTestId("protected-content")).toBeInTheDocument()
     })
 
-    it("renders AccessDenied when member hits admin-only route", () => {
+    it("redirects to dashboard when member hits admin-only route", () => {
       authAs({ isAdmin: false })
       renderRoute({ adminOnly: true })
       expect(screen.queryByTestId("protected-content")).not.toBeInTheDocument()
-      expect(screen.getByText("Acceso restringido")).toBeInTheDocument()
-    })
-
-    it("shows back-to-dashboard link in AccessDenied", () => {
-      authAs({ isAdmin: false })
-      renderRoute({ adminOnly: true })
-      const link = screen.getByRole("link", { name: /volver al dashboard/i })
-      expect(link).toHaveAttribute("href", "/dashboard")
+      expect(screen.getByTestId("redirected-dashboard")).toBeInTheDocument()
     })
   })
 
@@ -72,11 +75,11 @@ describe("PermissionRoute", () => {
       expect(screen.getByTestId("protected-content")).toBeInTheDocument()
     })
 
-    it("renders AccessDenied when user lacks read permission", () => {
+    it("redirects when user lacks read permission", () => {
       authAs({ hasPermission: () => false })
       renderRoute({ module: "billing" })
       expect(screen.queryByTestId("protected-content")).not.toBeInTheDocument()
-      expect(screen.getByText("Acceso restringido")).toBeInTheDocument()
+      expect(screen.getByTestId("redirected-dashboard")).toBeInTheDocument()
     })
 
     it("renders children when user has write permission and write=true", () => {
@@ -85,14 +88,13 @@ describe("PermissionRoute", () => {
       expect(screen.getByTestId("protected-content")).toBeInTheDocument()
     })
 
-    it("renders AccessDenied when user only has read but write=true required", () => {
+    it("redirects when user only has read but write=true required", () => {
       authAs({
-        // can read but not write
         hasPermission: (_mod: string, write?: boolean) => !write,
       })
       renderRoute({ module: "clients", write: true })
       expect(screen.queryByTestId("protected-content")).not.toBeInTheDocument()
-      expect(screen.getByText("Acceso restringido")).toBeInTheDocument()
+      expect(screen.getByTestId("redirected-dashboard")).toBeInTheDocument()
     })
   })
 
@@ -104,7 +106,6 @@ describe("PermissionRoute", () => {
     })
 
     it("admin bypasses module check even without hasPermission returning true", () => {
-      // adminOnly=false, no module prop → always passes through
       authAs({ isAdmin: true, hasPermission: () => false })
       renderRoute({ adminOnly: false })
       expect(screen.getByTestId("protected-content")).toBeInTheDocument()
