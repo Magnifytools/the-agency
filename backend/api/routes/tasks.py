@@ -17,6 +17,7 @@ from backend.schemas.task_comment import TaskCommentCreate, TaskCommentResponse
 from backend.schemas.task_attachment import TaskAttachmentResponse
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module
+from backend.api.utils.db_helpers import safe_refresh
 
 logger = logging.getLogger(__name__)
 
@@ -491,7 +492,7 @@ async def create_checklist_item(
     item = TaskChecklist(task_id=task_id, **data.model_dump())
     db.add(item)
     await db.commit()
-    await db.refresh(item)
+    await safe_refresh(db, item, log_context="tasks")
     return _checklist_response(item)
 
 
@@ -512,7 +513,7 @@ async def update_checklist_item(
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
     await db.commit()
-    await db.refresh(item)
+    await safe_refresh(db, item, log_context="tasks")
     return _checklist_response(item)
 
 
@@ -570,7 +571,7 @@ async def create_comment(
     comment = TaskComment(task_id=task_id, user_id=current_user.id, text=body.text)
     db.add(comment)
     await db.commit()
-    await db.refresh(comment)
+    await safe_refresh(db, comment, log_context="tasks")
     return TaskCommentResponse(
         id=comment.id, task_id=comment.task_id, user_id=comment.user_id,
         text=comment.text, user_name=current_user.full_name,
@@ -677,7 +678,7 @@ async def upload_task_attachment(
     )
     db.add(attachment)
     await db.commit()
-    await db.refresh(attachment)
+    await safe_refresh(db, attachment, log_context="tasks")
     return TaskAttachmentResponse(
         id=attachment.id, task_id=attachment.task_id, name=attachment.name,
         description=attachment.description, mime_type=attachment.mime_type,

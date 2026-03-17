@@ -24,6 +24,7 @@ from backend.schemas.advisor import (
 )
 from backend.schemas.dashboard import MonthlyCloseResponse, MonthlyCloseUpdate
 from backend.api.deps import require_module
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/finance/advisor", tags=["finance-advisor"])
 
@@ -320,7 +321,7 @@ async def create_task(
     task = AdvisorTask(**data.model_dump())
     db.add(task)
     await db.commit()
-    await db.refresh(task)
+    await safe_refresh(db, task, log_context="advisor")
     return AdvisorTaskResponse.model_validate(task)
 
 
@@ -388,7 +389,7 @@ async def get_monthly_close(
         record = MonthlyClose(year=y, month=m)
         db.add(record)
         await db.commit()
-        await db.refresh(record)
+        await safe_refresh(db, record, log_context="advisor")
     return MonthlyCloseResponse(
         year=record.year,
         month=record.month,
@@ -424,7 +425,7 @@ async def update_monthly_close(
         record = MonthlyClose(year=y, month=m)
         db.add(record)
         await db.commit()
-        await db.refresh(record)
+        await safe_refresh(db, record, log_context="advisor")
 
     updates = body.model_dump(exclude_unset=True)
     for field in (
@@ -439,5 +440,5 @@ async def update_monthly_close(
         record.notes = updates["notes"] or ""
 
     await db.commit()
-    await db.refresh(record)
+    await safe_refresh(db, record, log_context="advisor")
     return {"ok": True}

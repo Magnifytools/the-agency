@@ -9,6 +9,7 @@ from backend.db.database import get_db
 from backend.db.models import BalanceSnapshot, User
 from backend.schemas.balance import BalanceSnapshotCreate, BalanceSnapshotResponse
 from backend.api.deps import require_module
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/finance/balance", tags=["finance-balance"])
 
@@ -33,7 +34,7 @@ async def create_balance_snapshot(
     item = BalanceSnapshot(**data.model_dump())
     db.add(item)
     await db.commit()
-    await db.refresh(item)
+    await safe_refresh(db, item, log_context="balance")
     return item
 
 

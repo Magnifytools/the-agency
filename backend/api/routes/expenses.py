@@ -13,6 +13,7 @@ from backend.db.database import get_db
 from backend.db.models import Expense, User
 from backend.schemas.expense import ExpenseCreate, ExpenseUpdate, ExpenseResponse
 from backend.api.deps import require_module
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/finance/expenses", tags=["finance-expenses"])
 
@@ -97,7 +98,7 @@ async def create_expense(
     item = Expense(**payload)
     db.add(item)
     await db.commit()
-    await db.refresh(item)
+    await safe_refresh(db, item, log_context="expenses")
     return _expense_response(item)
 
 
@@ -117,7 +118,7 @@ async def update_expense(
             value = _round_money(value)
         setattr(item, key, value)
     await db.commit()
-    await db.refresh(item)
+    await safe_refresh(db, item, log_context="expenses")
     return _expense_response(item)
 
 

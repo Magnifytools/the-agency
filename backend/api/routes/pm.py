@@ -15,6 +15,7 @@ from backend.services.insights import generate_insights, get_daily_briefing
 from backend.api.deps import get_current_user, require_module
 from backend.core.rate_limiter import ai_limiter
 from backend.db.models import UserRole
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/pm", tags=["pm"])
 logger = logging.getLogger(__name__)
@@ -127,7 +128,7 @@ async def dismiss_insight(
     insight.dismissed_at = datetime.now(timezone.utc)
 
     await db.commit()
-    await db.refresh(insight)
+    await safe_refresh(db, insight, log_context="pm")
 
     return _to_response(insight)
 
@@ -153,7 +154,7 @@ async def act_on_insight(
     insight.acted_at = datetime.now(timezone.utc)
 
     await db.commit()
-    await db.refresh(insight)
+    await safe_refresh(db, insight, log_context="pm")
 
     return _to_response(insight)
 
@@ -295,7 +296,7 @@ async def get_alert_settings(
         settings = AlertSettings(user_id=current_user.id)
         db.add(settings)
         await db.commit()
-        await db.refresh(settings)
+        await safe_refresh(db, settings, log_context="pm")
 
     return _settings_to_response(settings)
 
@@ -331,6 +332,6 @@ async def update_alert_settings(
         settings.notify_email = data.notify_email
 
     await db.commit()
-    await db.refresh(settings)
+    await safe_refresh(db, settings, log_context="pm")
 
     return _settings_to_response(settings)

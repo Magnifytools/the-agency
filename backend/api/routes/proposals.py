@@ -25,6 +25,7 @@ from backend.schemas.proposal import (
 )
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 from backend.core.rate_limiter import ai_limiter
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/proposals", tags=["proposals"])
 logger = logging.getLogger(__name__)
@@ -127,7 +128,7 @@ async def create_proposal(
     new_prop = Proposal(**dump)
     db.add(new_prop)
     await db.commit()
-    await db.refresh(new_prop)
+    await safe_refresh(db, new_prop, log_context="proposals")
 
     # Reload with relations
     result = await db.execute(select(Proposal).where(Proposal.id == new_prop.id))
@@ -184,7 +185,7 @@ async def update_proposal(
         setattr(prop, key, value)
 
     await db.commit()
-    await db.refresh(prop)
+    await safe_refresh(db, prop, log_context="proposals")
 
     result = await db.execute(select(Proposal).where(Proposal.id == prop.id))
     return _to_response(result.scalar_one())
@@ -232,7 +233,7 @@ async def change_proposal_status(
             prop.response_notes = body.response_notes
 
     await db.commit()
-    await db.refresh(prop)
+    await safe_refresh(db, prop, log_context="proposals")
 
     result = await db.execute(select(Proposal).where(Proposal.id == prop.id))
     return _to_response(result.scalar_one())
@@ -277,7 +278,7 @@ async def duplicate_proposal(
     )
     db.add(new_prop)
     await db.commit()
-    await db.refresh(new_prop)
+    await safe_refresh(db, new_prop, log_context="proposals")
 
     result = await db.execute(select(Proposal).where(Proposal.id == new_prop.id))
     return _to_response(result.scalar_one())
@@ -358,7 +359,7 @@ async def convert_proposal(
 
     prop.converted_project_id = project.id
     await db.commit()
-    await db.refresh(prop)
+    await safe_refresh(db, prop, log_context="proposals")
 
     result = await db.execute(select(Proposal).where(Proposal.id == prop.id))
     return _to_response(result.scalar_one())
@@ -501,7 +502,7 @@ Responde SOLO con el JSON, sin markdown ni texto adicional."""
 
     prop.generated_content = generated
     await db.commit()
-    await db.refresh(prop)
+    await safe_refresh(db, prop, log_context="proposals")
 
     result = await db.execute(select(Proposal).where(Proposal.id == prop.id))
     return _to_response(result.scalar_one())
@@ -754,7 +755,7 @@ async def save_investment_model(
     prop.generated_content = content
     flag_modified(prop, "generated_content")
     await db.commit()
-    await db.refresh(prop)
+    await safe_refresh(db, prop, log_context="proposals")
     return _proposal_to_response(prop)
 
 

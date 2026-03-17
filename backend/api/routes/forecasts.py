@@ -11,6 +11,7 @@ from backend.db.models import Forecast, User
 from backend.schemas.forecast import ForecastCreate, ForecastUpdate, ForecastResponse
 from backend.services.forecast_service import generate_forecasts, calculate_runway, get_vs_actual
 from backend.api.deps import require_module
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/finance/forecasts", tags=["finance-forecasts"])
 
@@ -78,7 +79,7 @@ async def create_forecast(
     item = Forecast(**data.model_dump())
     db.add(item)
     await db.commit()
-    await db.refresh(item)
+    await safe_refresh(db, item, log_context="forecasts")
     return ForecastResponse.model_validate(item)
 
 
@@ -96,7 +97,7 @@ async def update_forecast(
     for key, value in data.model_dump(exclude_unset=True).items():
         setattr(item, key, value)
     await db.commit()
-    await db.refresh(item)
+    await safe_refresh(db, item, log_context="forecasts")
     return ForecastResponse.model_validate(item)
 
 

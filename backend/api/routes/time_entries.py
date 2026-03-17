@@ -608,10 +608,10 @@ async def start_timer(
     client_name = None
     try:
         if task:
-            await db.refresh(entry, ["task"])
+            await safe_refresh(db, entry, ["task"], log_context="time_entries")
             if entry.task:
                 task_title = entry.task.title
-                await db.refresh(entry.task, ["client"])
+                await safe_refresh(db, entry.task, ["client"], log_context="time_entries")
                 if entry.task.client:
                     client_name = entry.task.client.name
     except Exception:

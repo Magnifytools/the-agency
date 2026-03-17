@@ -15,6 +15,7 @@ from backend.schemas.communication import (
 from backend.api.deps import get_current_user, require_module
 from backend.core.rate_limiter import ai_limiter
 from backend.services.email_drafter import draft_email
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api", tags=["communications"])
 logger = logging.getLogger(__name__)
@@ -83,7 +84,7 @@ async def create_communication(
     )
     db.add(comm)
     await db.commit()
-    await db.refresh(comm)
+    await safe_refresh(db, comm, log_context="communications")
 
     # Automation hook: communication_logged
     try:
@@ -234,7 +235,7 @@ async def update_communication(
         setattr(comm, field, value)
 
     await db.commit()
-    await db.refresh(comm)
+    await safe_refresh(db, comm, log_context="communications")
     return _to_response(comm)
 
 

@@ -21,6 +21,7 @@ from backend.schemas.invitation import (
 )
 from backend.schemas.auth import UserResponse
 from backend.api.deps import get_current_user, require_admin
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api", tags=["invitations"])
 
@@ -96,7 +97,7 @@ async def create_invitation(
     )
     db.add(invitation)
     await db.commit()
-    await db.refresh(invitation)
+    await safe_refresh(db, invitation, log_context="invitations")
 
     return _inv_create_response(invitation)
 
@@ -145,7 +146,7 @@ async def accept_invitation(
     invitation.accepted_at = datetime.utcnow()
 
     await db.commit()
-    await db.refresh(user)
+    await safe_refresh(db, user, log_context="invitations")
 
     return user
 

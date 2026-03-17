@@ -15,6 +15,7 @@ from backend.db.models import (
     Client, ClientStatus, ContractType, User, UserRole,
 )
 from backend.api.deps import get_current_user, require_module
+from backend.api.utils.db_helpers import safe_refresh
 from backend.schemas.lead import (
     LeadCreate, LeadUpdate, LeadResponse, LeadDetailResponse,
     LeadActivityCreate, LeadActivityResponse,
@@ -232,7 +233,7 @@ async def create_lead(
     )
     db.add(lead)
     await db.commit()
-    await db.refresh(lead)
+    await safe_refresh(db, lead, log_context="leads")
     return _lead_to_response(lead)
 
 
@@ -298,7 +299,7 @@ async def update_lead(
         db.add(activity)
 
     await db.commit()
-    await db.refresh(lead)
+    await safe_refresh(db, lead, log_context="leads")
     return _lead_to_response(lead)
 
 
@@ -360,7 +361,7 @@ async def add_activity(
         lead.last_contacted_at = datetime.utcnow()
 
     await db.commit()
-    await db.refresh(activity)
+    await safe_refresh(db, activity, log_context="leads")
     return _activity_to_response(activity)
 
 
@@ -416,7 +417,7 @@ async def convert_to_client(
     db.add(activity)
 
     await db.commit()
-    await db.refresh(client)
+    await safe_refresh(db, client, log_context="leads")
 
     return {
         "message": "Lead convertido a cliente exitosamente",

@@ -6,6 +6,7 @@ from backend.db.database import get_db
 from backend.db.models import TaskCategory, User
 from backend.schemas.task_category import TaskCategoryCreate, TaskCategoryUpdate, TaskCategoryResponse
 from backend.api.deps import get_current_user, require_module
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/task-categories", tags=["task_categories"])
 
@@ -28,7 +29,7 @@ async def create_category(
     cat = TaskCategory(**body.model_dump())
     db.add(cat)
     await db.commit()
-    await db.refresh(cat)
+    await safe_refresh(db, cat, log_context="task_categories")
     return cat
 
 
@@ -49,7 +50,7 @@ async def update_category(
         if field in _UPDATABLE_CATEGORY_FIELDS:
             setattr(cat, field, value)
     await db.commit()
-    await db.refresh(cat)
+    await safe_refresh(db, cat, log_context="task_categories")
     return cat
 
 

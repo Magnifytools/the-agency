@@ -24,6 +24,7 @@ from backend.schemas.project import (
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module, require_admin
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
+from backend.api.utils.db_helpers import safe_refresh
 
 EXTRACT_PROMPT = """Extrae la información de esta propuesta comercial y responde SOLO con un JSON válido:
 {
@@ -357,7 +358,7 @@ async def create_template(
     )
     db.add(tpl)
     await db.commit()
-    await db.refresh(tpl)
+    await safe_refresh(db, tpl, log_context="projects")
     return {"id": tpl.id, "key": tpl.key, "name": tpl.name}
 
 
@@ -450,7 +451,7 @@ async def save_project_as_template(
     )
     db.add(tpl)
     await db.commit()
-    await db.refresh(tpl)
+    await safe_refresh(db, tpl, log_context="projects")
     return {"id": tpl.id, "key": tpl.key, "name": tpl.name}
 
 
@@ -648,7 +649,7 @@ async def update_project(
         project.progress_percent = calculate_progress(project.tasks)
 
     await db.commit()
-    await db.refresh(project)
+    await safe_refresh(db, project, log_context="projects")
 
     # Automation hook: project_status_changed
     new_status = project.status.value if hasattr(project.status, "value") else str(project.status)
@@ -715,7 +716,7 @@ async def create_phase(
     )
     db.add(phase)
     await db.commit()
-    await db.refresh(phase)
+    await safe_refresh(db, phase, log_context="projects")
 
     return ProjectPhaseResponse(
         id=phase.id,
@@ -754,7 +755,7 @@ async def update_phase(
         setattr(phase, field, value)
 
     await db.commit()
-    await db.refresh(phase)
+    await safe_refresh(db, phase, log_context="projects")
 
     # Automation hook: phase_completed
     if phase.completed_at and not was_completed_before:

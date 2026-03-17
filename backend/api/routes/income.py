@@ -12,6 +12,7 @@ from backend.db.database import get_db
 from backend.db.models import Income, User
 from backend.schemas.income import IncomeCreate, IncomeUpdate, IncomeResponse
 from backend.api.deps import require_module
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/finance/income", tags=["finance-income"])
 
@@ -99,7 +100,7 @@ async def create_income(
     item = Income(**payload)
     db.add(item)
     await db.commit()
-    await db.refresh(item)
+    await safe_refresh(db, item, log_context="income")
     return _income_response(item)
 
 
@@ -119,7 +120,7 @@ async def update_income(
             value = _round_money(value)
         setattr(item, key, value)
     await db.commit()
-    await db.refresh(item)
+    await safe_refresh(db, item, log_context="income")
     return _income_response(item)
 
 

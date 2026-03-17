@@ -8,6 +8,7 @@ from backend.db.database import get_db
 from backend.db.models import User, ClientResource
 from backend.schemas.resource import ResourceCreate, ResourceUpdate, ResourceResponse
 from backend.api.deps import get_current_user, require_module, get_client_or_404
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/clients/{client_id}/resources", tags=["resources"])
 
@@ -37,7 +38,7 @@ async def create_resource(
     resource = ClientResource(client_id=client_id, **body.model_dump())
     db.add(resource)
     await db.commit()
-    await db.refresh(resource)
+    await safe_refresh(db, resource, log_context="resources")
     return resource
 
 
@@ -65,7 +66,7 @@ async def update_resource(
         if field in _UPDATABLE_RESOURCE_FIELDS:
             setattr(resource, field, value)
     await db.commit()
-    await db.refresh(resource)
+    await safe_refresh(db, resource, log_context="resources")
     return resource
 
 

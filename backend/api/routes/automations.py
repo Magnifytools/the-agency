@@ -19,6 +19,7 @@ from backend.db.models import (
     Notification,
 )
 from backend.api.deps import get_current_user, require_admin
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/automations", tags=["automations"])
 
@@ -213,7 +214,7 @@ async def create_automation(
     )
     db.add(rule)
     await db.commit()
-    await db.refresh(rule)
+    await safe_refresh(db, rule, log_context="automations")
     return _rule_to_dict(rule)
 
 
@@ -242,7 +243,7 @@ async def update_automation(
         setattr(rule, k, v)
 
     await db.commit()
-    await db.refresh(rule)
+    await safe_refresh(db, rule, log_context="automations")
     return _rule_to_dict(rule)
 
 
@@ -280,7 +281,7 @@ async def toggle_automation(
 
     rule.is_active = not rule.is_active
     await db.commit()
-    await db.refresh(rule)
+    await safe_refresh(db, rule, log_context="automations")
     return _rule_to_dict(rule)
 
 

@@ -14,6 +14,7 @@ from backend.schemas.sync import (
 )
 from backend.services.csv_service import process_csv_preview, parse_csv, parse_date, parse_amount
 from backend.api.deps import require_module
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/finance/sync", tags=["finance-import"])
 
@@ -116,7 +117,7 @@ async def create_mapping(
     m = CsvMapping(**data.model_dump())
     db.add(m)
     await db.commit()
-    await db.refresh(m)
+    await safe_refresh(db, m, log_context="sync")
     return CsvMappingResponse.model_validate(m)
 
 

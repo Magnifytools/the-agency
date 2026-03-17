@@ -8,6 +8,7 @@ from backend.db.database import get_db
 from backend.db.models import ExpenseCategory, User
 from backend.schemas.expense import ExpenseCategoryCreate, ExpenseCategoryResponse
 from backend.api.deps import require_module
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/finance/expense-categories", tags=["finance-expenses"])
 
@@ -30,7 +31,7 @@ async def create_category(
     cat = ExpenseCategory(**data.model_dump())
     db.add(cat)
     await db.commit()
-    await db.refresh(cat)
+    await safe_refresh(db, cat, log_context="expense_categories")
     return ExpenseCategoryResponse.model_validate(cat)
 
 
@@ -48,7 +49,7 @@ async def update_category(
     for key, value in data.model_dump().items():
         setattr(cat, key, value)
     await db.commit()
-    await db.refresh(cat)
+    await safe_refresh(db, cat, log_context="expense_categories")
     return ExpenseCategoryResponse.model_validate(cat)
 
 

@@ -38,6 +38,7 @@ from backend.services.digest_generator import generate_digest_content
 from backend.services.digest_renderer import render_slack, render_email, render_discord
 from backend.api.deps import require_module
 from backend.core.rate_limiter import ai_limiter
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/digests", tags=["digests"])
 logger = logging.getLogger(__name__)
@@ -135,7 +136,7 @@ async def generate_digest(
     )
     db.add(digest)
     await db.commit()
-    await db.refresh(digest)
+    await safe_refresh(db, digest, log_context="digests")
 
     return _to_response(digest)
 
@@ -209,7 +210,7 @@ async def generate_batch(
     if digests:
         await db.commit()
         for d in digests:
-            await db.refresh(d)
+            await safe_refresh(db, d, log_context="digests")
 
         # Notify creator that batch is done
         try:
@@ -310,7 +311,7 @@ async def update_digest(
         digest.tone = request.tone
 
     await db.commit()
-    await db.refresh(digest)
+    await safe_refresh(db, digest, log_context="digests")
 
     return _to_response(digest)
 
@@ -337,7 +338,7 @@ async def update_digest_status(
 
     digest.status = request.status
     await db.commit()
-    await db.refresh(digest)
+    await safe_refresh(db, digest, log_context="digests")
 
     return _to_response(digest)
 

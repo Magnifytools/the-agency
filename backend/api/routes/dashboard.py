@@ -32,6 +32,7 @@ from backend.schemas.dashboard import (
 from backend.api.deps import get_current_user, require_module, require_admin
 from backend.core.security import encrypt_vault_secret
 from backend.services.csv_utils import build_csv_response
+from backend.api.utils.db_helpers import safe_refresh
 from backend.services.report_period import (
     MAX_REPORT_YEAR,
     MIN_REPORT_YEAR,
@@ -49,7 +50,7 @@ async def _get_or_create_financial_settings(db: AsyncSession) -> FinancialSettin
         record = FinancialSettings()
         db.add(record)
         await db.commit()
-        await db.refresh(record)
+        await safe_refresh(db, record, log_context="dashboard")
     return record
 
 
@@ -305,7 +306,7 @@ async def get_monthly_close(
         record = MonthlyClose(year=y, month=m)
         db.add(record)
         await db.commit()
-        await db.refresh(record)
+        await safe_refresh(db, record, log_context="dashboard")
 
     return _monthly_close_response(record)
 
@@ -345,7 +346,7 @@ async def update_monthly_close(
         record = MonthlyClose(year=y, month=m)
         db.add(record)
         await db.commit()
-        await db.refresh(record)
+        await safe_refresh(db, record, log_context="dashboard")
 
     updates = body.model_dump(exclude_unset=True)
     for field in (
@@ -360,7 +361,7 @@ async def update_monthly_close(
         record.notes = updates["notes"] or ""
 
     await db.commit()
-    await db.refresh(record)
+    await safe_refresh(db, record, log_context="dashboard")
 
     return _monthly_close_response(record)
 
@@ -381,7 +382,7 @@ async def export_monthly_close(
         record = MonthlyClose(year=y, month=m)
         db.add(record)
         await db.commit()
-        await db.refresh(record)
+        await safe_refresh(db, record, log_context="dashboard")
 
     payload = {
         "year": record.year,
@@ -464,7 +465,7 @@ async def update_financial_settings(
         record.ai_api_key = encrypt_vault_secret(raw_key) if raw_key else ""
 
     await db.commit()
-    await db.refresh(record)
+    await safe_refresh(db, record, log_context="dashboard")
     return _financial_settings_response(record)
 
 

@@ -8,6 +8,7 @@ from backend.db.database import get_db
 from backend.db.models import ServiceTemplate, ServiceType, User
 from backend.schemas.proposal import ServiceTemplateResponse, ServiceTemplateUpdate
 from backend.api.deps import require_admin, require_module
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/service-templates", tags=["service-templates"])
 
@@ -68,5 +69,5 @@ async def update_service_template(
         setattr(template, field, value)
 
     await db.commit()
-    await db.refresh(template)
+    await safe_refresh(db, template, log_context="service_templates")
     return template

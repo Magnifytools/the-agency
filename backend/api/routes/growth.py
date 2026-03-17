@@ -9,6 +9,7 @@ from backend.db.database import get_db
 from backend.db.models import GrowthIdea, User, Project, Task
 from backend.schemas.growth import GrowthIdeaCreate, GrowthIdeaUpdate, GrowthIdeaResponse
 from backend.api.deps import get_current_user, require_module
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(tags=["growth"])
 
@@ -65,7 +66,7 @@ async def create_growth_idea(
     new_idea = GrowthIdea(**idea_dict)
     db.add(new_idea)
     await db.commit()
-    await db.refresh(new_idea)
+    await safe_refresh(db, new_idea, log_context="growth")
     return GrowthIdeaResponse.model_validate(new_idea)
 
 
@@ -102,7 +103,7 @@ async def update_growth_idea(
             idea.ice_score = round((idea.impact + idea.confidence + idea.ease) / 3)
 
         await db.commit()
-        await db.refresh(idea)
+        await safe_refresh(db, idea, log_context="growth")
         
     return GrowthIdeaResponse.model_validate(idea)
 
@@ -148,7 +149,7 @@ async def convert_to_project(
     )
     db.add(project)
     await db.commit()
-    await db.refresh(project)
+    await safe_refresh(db, project, log_context="growth")
 
     idea.project_id = project.id
     idea.status = "completed"
@@ -185,7 +186,7 @@ async def create_task_from_idea(
     )
     db.add(task)
     await db.commit()
-    await db.refresh(task)
+    await safe_refresh(db, task, log_context="growth")
 
     idea.task_id = task.id
     idea.status = "completed"

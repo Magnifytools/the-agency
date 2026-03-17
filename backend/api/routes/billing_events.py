@@ -12,6 +12,7 @@ from backend.db.database import get_db
 from backend.db.models import User, Client, BillingEvent, BillingEventType, BillingCycle
 from backend.schemas.billing_event import BillingEventCreate, BillingEventResponse, BillingStatusResponse
 from backend.api.deps import get_current_user, require_module, get_client_or_404
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/clients/{client_id}/billing", tags=["billing-events"])
 
@@ -56,7 +57,7 @@ async def create_billing_event(
     event = BillingEvent(client_id=client_id, **body.model_dump())
     db.add(event)
     await db.commit()
-    await db.refresh(event)
+    await safe_refresh(db, event, log_context="billing_events")
     return event
 
 
@@ -126,7 +127,7 @@ async def mark_invoiced(
         client.next_invoice_date = _calc_next_invoice_date(base_date, client.billing_cycle)
 
     await db.commit()
-    await db.refresh(event)
+    await safe_refresh(db, event, log_context="billing_events")
     return event
 
 
@@ -146,5 +147,5 @@ async def mark_paid(
     )
     db.add(event)
     await db.commit()
-    await db.refresh(event)
+    await safe_refresh(db, event, log_context="billing_events")
     return event

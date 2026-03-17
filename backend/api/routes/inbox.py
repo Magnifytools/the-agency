@@ -284,7 +284,7 @@ async def classify_note(
         note.ai_suggestion = suggestion
         note.status = InboxNoteStatus.classified
         await db.commit()
-        await db.refresh(note)
+        await safe_refresh(db, note, log_context="inbox")
     except Exception as e:
         logger.error("Classification failed for note %d: %s", note_id, e)
         raise HTTPException(status_code=502, detail="Error al clasificar con IA")
@@ -375,7 +375,7 @@ async def convert_to_task(
 
     # Refresh to re-load relationships (project, client) after commit
     try:
-        await db.refresh(note, ["project", "client"])
+        await safe_refresh(db, note, ["project", "client"], log_context="inbox")
     except Exception:
         pass  # relationships not critical for response
 

@@ -11,6 +11,7 @@ from backend.db.models import Tax, User
 from backend.schemas.tax import TaxCreate, TaxUpdate, TaxResponse
 from backend.services.tax_service import calculate_all_taxes, get_fiscal_deadlines
 from backend.api.deps import require_module
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/finance/taxes", tags=["finance-taxes"])
 
@@ -119,7 +120,7 @@ async def create_tax(
     item = Tax(**data.model_dump())
     db.add(item)
     await db.commit()
-    await db.refresh(item)
+    await safe_refresh(db, item, log_context="taxes")
     return TaxResponse.model_validate(item)
 
 
@@ -137,7 +138,7 @@ async def update_tax(
     for key, value in data.model_dump(exclude_unset=True).items():
         setattr(item, key, value)
     await db.commit()
-    await db.refresh(item)
+    await safe_refresh(db, item, log_context="taxes")
     return TaxResponse.model_validate(item)
 
 

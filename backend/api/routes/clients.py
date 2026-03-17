@@ -25,6 +25,7 @@ from backend.schemas.client import ClientCreate, ClientUpdate, ClientResponse, C
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module, require_admin
 from backend.services.client_health import compute_health, compute_health_batch
+from backend.api.utils.db_helpers import safe_refresh
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +172,7 @@ async def create_client(
         await db.rollback()
         logger.error("Error creando cliente: %s", e)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
-    await db.refresh(client)
+    await safe_refresh(db, client, log_context="clients")
     return client
 
 
@@ -250,7 +251,7 @@ async def update_client(
         await db.rollback()
         logger.error("Error actualizando cliente %d: %s", client_id, e)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
-    await db.refresh(client)
+    await safe_refresh(db, client, log_context="clients")
     return client
 
 
@@ -369,7 +370,7 @@ async def delete_client(
         raise HTTPException(status_code=404, detail="Client not found")
     client.status = ClientStatus.finished
     await db.commit()
-    await db.refresh(client)
+    await safe_refresh(db, client, log_context="clients")
     return client
 
 
@@ -523,7 +524,7 @@ async def upload_document(
     )
     db.add(doc)
     await db.commit()
-    await db.refresh(doc)
+    await safe_refresh(db, doc, log_context="clients")
     return doc
 
 

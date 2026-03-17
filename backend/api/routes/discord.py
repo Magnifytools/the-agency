@@ -30,6 +30,7 @@ from backend.schemas.discord import (
     DiscordSendResponse,
 )
 from backend.config import settings
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/discord", tags=["discord"])
 
@@ -45,7 +46,7 @@ async def _get_or_create_settings(db: AsyncSession) -> DiscordSettings:
         ds = DiscordSettings(webhook_url=settings.DISCORD_WEBHOOK_URL or "")
         db.add(ds)
         await db.commit()
-        await db.refresh(ds)
+        await safe_refresh(db, ds, log_context="discord")
     return ds
 
 
@@ -155,7 +156,7 @@ async def update_discord_settings(
         ds.include_ai_note = payload.include_ai_note
 
     await db.commit()
-    await db.refresh(ds)
+    await safe_refresh(db, ds, log_context="discord")
     return _settings_to_response(ds)
 
 

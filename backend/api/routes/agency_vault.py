@@ -11,6 +11,7 @@ from backend.db.models import User, AgencyAsset, AssetCategory
 from backend.schemas.agency_asset import AssetCreate, AssetUpdate, AssetResponse
 from backend.api.deps import get_current_user, require_admin
 from backend.core.security import encrypt_vault_secret, decrypt_vault_secret
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/vault/assets", tags=["agency-vault"])
 
@@ -48,7 +49,7 @@ async def create_asset(
     asset = AgencyAsset(**data)
     db.add(asset)
     await db.commit()
-    await db.refresh(asset)
+    await safe_refresh(db, asset, log_context="agency_vault")
     return _safe_response(asset)
 
 
@@ -80,7 +81,7 @@ async def update_asset(
             value = encrypt_vault_secret(value)
         setattr(asset, field, value)
     await db.commit()
-    await db.refresh(asset)
+    await safe_refresh(db, asset, log_context="agency_vault")
     return _safe_response(asset)
 
 

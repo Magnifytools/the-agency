@@ -8,6 +8,7 @@ from backend.db.database import get_db
 from backend.db.models import User, ClientContact
 from backend.schemas.contact import ContactCreate, ContactUpdate, ContactResponse
 from backend.api.deps import get_current_user, require_module, get_client_or_404
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/clients/{client_id}/contacts", tags=["contacts"])
 
@@ -49,7 +50,7 @@ async def create_contact(
     contact = ClientContact(client_id=client_id, **body.model_dump())
     db.add(contact)
     await db.commit()
-    await db.refresh(contact)
+    await safe_refresh(db, contact, log_context="contacts")
     return contact
 
 
@@ -88,7 +89,7 @@ async def update_contact(
     for field, value in data.items():
         setattr(contact, field, value)
     await db.commit()
-    await db.refresh(contact)
+    await safe_refresh(db, contact, log_context="contacts")
     return contact
 
 

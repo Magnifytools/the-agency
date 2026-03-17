@@ -15,6 +15,7 @@ from backend.db.models import (
     User, UserDayStatus, DayStatusType, CompanyHoliday,
 )
 from backend.api.deps import get_current_user, require_admin
+from backend.api.utils.db_helpers import safe_refresh
 from backend.schemas.my_week import (
     DayStatusUpdate, DayStatusResponse,
     EventCreate, EventUpdate, EventResponse,
@@ -288,7 +289,7 @@ async def upsert_day_status(
         db.add(existing)
 
     await db.commit()
-    await db.refresh(existing)
+    await safe_refresh(db, existing, log_context="my_week")
     return existing
 
 
@@ -346,7 +347,7 @@ async def create_event(
     )
     db.add(event)
     await db.commit()
-    await db.refresh(event)
+    await safe_refresh(db, event, log_context="my_week")
 
     return EventResponse(
         id=event.id,
@@ -405,7 +406,7 @@ async def update_event(
         event.end_time = event.start_time + timedelta(minutes=body.duration_minutes)
 
     await db.commit()
-    await db.refresh(event)
+    await safe_refresh(db, event, log_context="my_week")
 
     d = event.start_time.date()
     return EventResponse(
@@ -501,7 +502,7 @@ async def create_holiday(
     )
     db.add(holiday)
     await db.commit()
-    await db.refresh(holiday)
+    await safe_refresh(db, holiday, log_context="my_week")
     return holiday
 
 

@@ -21,6 +21,7 @@ from backend.schemas.daily import (
     ParsedDailyData,
 )
 from backend.services.daily_parser import parse_daily_update, format_daily_for_discord, format_daily_embed
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/dailys", tags=["daily-updates"])
 logger = logging.getLogger(__name__)
@@ -93,7 +94,7 @@ async def submit_daily(
     )
     db.add(daily)
     await db.commit()
-    await db.refresh(daily)
+    await safe_refresh(db, daily, log_context="dailys")
 
     # Auto-generate time entries from parsed data
     time_entries_created = 0
@@ -249,7 +250,7 @@ async def reparse_daily(
 
     daily.parsed_data = parsed
     await db.commit()
-    await db.refresh(daily)
+    await safe_refresh(db, daily, log_context="dailys")
 
     return _to_response(daily)
 
@@ -286,7 +287,7 @@ async def edit_daily(
             logger.warning("Auto-reparse failed for daily_id=%s, keeping old parsed_data", daily_id)
 
     await db.commit()
-    await db.refresh(daily)
+    await safe_refresh(db, daily, log_context="dailys")
 
     return _to_response(daily)
 

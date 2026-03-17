@@ -10,6 +10,7 @@ from backend.schemas.user import UserCreate, UserUpdate, UserListResponse
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_admin
 from backend.core.security import hash_password
+from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -76,7 +77,7 @@ async def create_user(
             db.add(UserPermission(user_id=user.id, module=mod, can_read=True, can_write=True))
 
     await db.commit()
-    await db.refresh(user)
+    await safe_refresh(db, user, log_context="users")
     return user
 
 
@@ -123,7 +124,7 @@ async def update_user(
             )
         setattr(user, field, value)
     await db.commit()
-    await db.refresh(user)
+    await safe_refresh(db, user, log_context="users")
     return user
 
 
