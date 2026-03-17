@@ -1,6 +1,7 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { InfoTooltip } from "@/components/ui/tooltip"
+import { formatCurrency } from "@/lib/format"
 
 interface TeamMember {
   user_id: number
@@ -56,9 +57,9 @@ export function TeamSummaryTable({ team }: TeamSummaryTableProps) {
             {team.map((m) => (
               <TableRow key={m.user_id}>
                 <TableCell className="font-medium">{m.full_name}</TableCell>
-                <TableCell className="mono">{m.hourly_rate != null ? `${m.hourly_rate}€` : "-"}</TableCell>
+                <TableCell className="mono">{m.hourly_rate != null ? `${formatCurrency(m.hourly_rate)}/h` : "-"}</TableCell>
                 <TableCell className="mono">{m.hours_this_month}h</TableCell>
-                <TableCell className="mono">{m.cost.toLocaleString("es-ES")}€</TableCell>
+                <TableCell className="mono">{formatCurrency(m.cost)}</TableCell>
                 <TableCell className="mono">{m.task_count}</TableCell>
                 <TableCell className="mono">{m.clients_touched}</TableCell>
               </TableRow>

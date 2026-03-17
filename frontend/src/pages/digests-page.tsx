@@ -3,7 +3,7 @@ import DOMPurify from "dompurify"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle, Mail } from "lucide-react"
+import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle, Mail, Trash2 } from "lucide-react"
 import { digestsApi, clientsApi, discordApi } from "@/lib/api"
 import type { Digest, DigestStatus, DigestTone } from "@/lib/types"
 
@@ -96,6 +96,20 @@ export default function DigestsPage() {
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al enviar a Discord")),
   })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => digestsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["digests"] })
+      toast.success("Digest eliminado")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar digest")),
+  })
+
+  const handleDelete = (digest: Digest) => {
+    if (!confirm(`¿Eliminar el digest de ${digest.client_name || "este cliente"}?`)) return
+    deleteMutation.mutate(digest.id)
+  }
 
   const emailSendMutation = useMutation({
     mutationFn: ({ id, to }: { id: number; to: string }) => digestsApi.sendEmail(id, to),
@@ -280,6 +294,18 @@ export default function DigestsPage() {
                         >
                           <Mail className="w-4 h-4" />
                         </Button>
+                        {digest.status !== "sent" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Eliminar"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => handleDelete(digest)}
+                            disabled={deleteMutation.isPending}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

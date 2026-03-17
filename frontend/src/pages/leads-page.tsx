@@ -20,6 +20,7 @@ import { EmptyTableState, EmptyState } from "@/components/ui/empty-state"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
+import { formatCurrency } from "@/lib/format"
 
 const PIPELINE_STAGES: { key: LeadStatus; label: string; color: string }[] = [
   { key: "new", label: "Nuevo", color: "bg-blue-500" },
@@ -45,7 +46,7 @@ const SOURCE_LABELS: Record<LeadSource, string> = {
 
 function formatValue(v: number | null, currency = "EUR") {
   if (v == null) return "-"
-  return new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(v)
+  return formatCurrency(v, currency)
 }
 
 function daysInStage(createdAt: string): number {

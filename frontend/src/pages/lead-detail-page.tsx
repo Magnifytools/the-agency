@@ -20,6 +20,7 @@ import {
   MessageSquare, PhoneCall, Video, FileText, Bell, UserCheck, Sparkles
 } from "lucide-react"
 import { toast } from "sonner"
+import { formatCurrency } from "@/lib/format"
 
 const SOURCE_LABELS: Record<string, string> = {
   website: "Web",
@@ -65,7 +66,7 @@ const ACTIVITY_LABELS: Record<LeadActivityType, string> = {
 
 function formatValue(v: number | null, currency = "EUR") {
   if (v == null) return "-"
-  return new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(v)
+  return formatCurrency(v, currency)
 }
 
 export default function LeadDetailPage() {

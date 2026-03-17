@@ -31,6 +31,7 @@ import { CoreUpdatesTab } from "@/components/clients/core-updates-tab"
 import { FichaTab } from "@/components/clients/ficha-tab"
 import { useAuth } from "@/context/auth-context"
 import { holdedKeys } from "@/lib/query-keys"
+import { formatCurrency } from "@/lib/format"
 
 function formatMinutes(m: number): string {
   const h = Math.floor(m / 60)
@@ -182,7 +183,7 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
             {client.aov != null && (
               <div>
                 <p className="text-xs text-muted-foreground">AOV</p>
-                <p className="font-medium">{client.aov.toLocaleString("es-ES")} €</p>
+                <p className="font-medium">{formatCurrency(client.aov)}</p>
               </div>
             )}
             {client.conversion_rate != null && (
@@ -194,7 +195,7 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
             {client.ltv != null && (
               <div>
                 <p className="text-xs text-muted-foreground">LTV</p>
-                <p className="font-medium">{client.ltv.toLocaleString("es-ES")} €</p>
+                <p className="font-medium">{formatCurrency(client.ltv)}</p>
               </div>
             )}
             {client.seo_maturity_level && (
@@ -650,7 +651,7 @@ export default function ClientDetailPage() {
                     <TableCell className="font-medium">{inv.invoice_number || "-"}</TableCell>
                     <TableCell className="mono">{inv.date ? new Date(inv.date).toLocaleDateString("es-ES") : "-"}</TableCell>
                     <TableCell className="mono">{inv.due_date ? new Date(inv.due_date).toLocaleDateString("es-ES") : "-"}</TableCell>
-                    <TableCell className="mono font-semibold">{inv.total.toLocaleString("es-ES", { style: "currency", currency: inv.currency || "EUR" })}</TableCell>
+                    <TableCell className="mono font-semibold">{formatCurrency(inv.total, inv.currency || "EUR")}</TableCell>
                     <TableCell>
                       <Badge variant={inv.status === "paid" ? "success" : inv.status === "overdue" ? "destructive" : "warning"}>
                         {inv.status === "paid" ? "Pagada" : inv.status === "overdue" ? "Vencida" : "Pendiente"}
@@ -692,7 +693,7 @@ export default function ClientDetailPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">Ingreso mensual medio</p>
-                <p className="text-2xl font-bold">{whatIfData.avg_monthly_revenue.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>
+                <p className="text-2xl font-bold">{formatCurrency(whatIfData.avg_monthly_revenue)}</p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">% del total de ingresos</p>
@@ -700,7 +701,7 @@ export default function ClientDetailPage() {
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">Ingreso anual estimado</p>
-                <p className="text-xl font-bold">{whatIfData.annual_revenue_estimate.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</p>
+                <p className="text-xl font-bold">{formatCurrency(whatIfData.annual_revenue_estimate)}</p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">Runway sin este cliente</p>

@@ -23,6 +23,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { formatCurrency } from "@/lib/format"
 import { serviceTypeLabels } from "@/lib/constants"
 
 const statusConfig: Record<ProposalStatus, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning" }> = {
@@ -133,7 +134,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
         } catch {
             const contact = p.contact_name || p.company_name
             const mainPrice = p.pricing_options?.find(o => o.recommended)?.price ?? p.pricing_options?.[0]?.price
-            const priceStr = mainPrice ? `${mainPrice.toLocaleString("es-ES")} €` : null
+            const priceStr = mainPrice ? formatCurrency(mainPrice) : null
             const subject = `Propuesta ${p.title} — ${p.company_name}`
             const body = [
                 `Hola ${contact},`,

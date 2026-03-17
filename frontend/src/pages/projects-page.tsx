@@ -17,6 +17,7 @@ import { Select } from "@/components/ui/select"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { EmptyState } from "@/components/ui/empty-state"
 import { getErrorMessage } from "@/lib/utils"
+import { formatCurrency } from "@/lib/format"
 
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
@@ -640,7 +641,7 @@ function TemplateDialog({
                   <span>Modelo: <span className="text-foreground font-medium">{selectedTemplate.pricing_model}</span></span>
                 )}
                 {selectedTemplate.monthly_fee && (
-                  <span>Fee: <span className="text-foreground font-medium">{selectedTemplate.monthly_fee.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</span></span>
+                  <span>Fee: <span className="text-foreground font-medium">{formatCurrency(selectedTemplate.monthly_fee)}</span></span>
                 )}
               </div>
             )}

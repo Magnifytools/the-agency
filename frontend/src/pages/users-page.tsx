@@ -16,6 +16,7 @@ import { Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
 import type { UserCreate, UserRole } from "@/lib/types"
 import { getErrorMessage } from "@/lib/utils"
+import { formatCurrency } from "@/lib/format"
 import { SkeletonTableRow } from "@/components/ui/skeleton"
 
 export default function UsersPage() {
@@ -129,7 +130,7 @@ export default function UsersPage() {
                         {u.role === "admin" ? "Admin" : "Miembro"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="mono">{u.hourly_rate != null ? `${u.hourly_rate}€/h` : "-"}</TableCell>
+                    <TableCell className="mono">{u.hourly_rate != null ? `${formatCurrency(u.hourly_rate)}/h` : "-"}</TableCell>
                     <TableCell>
                       <Button variant="ghost" size="icon" aria-label="Editar usuario" onClick={() => setEditing(u)}>
                         <Pencil className="h-4 w-4" />
@@ -151,7 +152,7 @@ export default function UsersPage() {
                 </div>
                 <p className="text-sm text-muted-foreground break-all">{u.email}</p>
                 <div className="flex items-center justify-between">
-                  <p className="text-sm mono">{u.hourly_rate != null ? `${u.hourly_rate}€/h` : "-"}</p>
+                  <p className="text-sm mono">{u.hourly_rate != null ? `${formatCurrency(u.hourly_rate)}/h` : "-"}</p>
                   <Button variant="outline" size="sm" onClick={() => setEditing(u)}>
                     <Pencil className="h-4 w-4 mr-2" />
                     Editar

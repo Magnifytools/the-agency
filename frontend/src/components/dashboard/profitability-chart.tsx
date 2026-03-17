@@ -1,5 +1,6 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts"
 import type { ClientProfitability } from "@/lib/types"
+import { formatCurrency } from "@/lib/format"
 
 interface ProfitabilityChartProps {
   data: ClientProfitability[]
@@ -16,9 +17,9 @@ export function ProfitabilityChart({ data }: ProfitabilityChartProps) {
     <ResponsiveContainer width="100%" height={300}>
       <BarChart data={chartData}>
         <XAxis dataKey="name" fontSize={11} tick={{ fill: "#8a8a80" }} />
-        <YAxis fontSize={11} tickFormatter={(v) => `${v}€`} tick={{ fill: "#8a8a80" }} />
+        <YAxis fontSize={11} tickFormatter={(v) => formatCurrency(v)} tick={{ fill: "#8a8a80" }} />
         <Tooltip
-          formatter={(value) => Number(value).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+          formatter={(value) => formatCurrency(Number(value))}
           contentStyle={{
             backgroundColor: "#2a2a28",
             border: "1px solid rgba(254, 230, 48, 0.3)",

@@ -773,18 +773,23 @@ async def alerts_summary(
         lookback = today - timedelta(days=2)
     missing_daily_names: list[str] = []
     if lookback is not None:
-        active_users = await db.execute(
+        active_users_result = await db.execute(
             select(User).where(User.is_active.is_(True), User.role != UserRole.admin)
         )
-        for u in active_users.scalars().all():
-            recent = await db.execute(
-                select(DailyUpdate.id).where(
-                    DailyUpdate.user_id == u.id,
-                    DailyUpdate.date >= lookback,
-                ).limit(1)
-            )
-            if not recent.scalar_one_or_none():
-                missing_daily_names.append(u.full_name)
+        active_users = active_users_result.scalars().all()
+
+        # Batch: get user IDs who HAVE submitted a daily since lookback (1 query)
+        recent_daily_result = await db.execute(
+            select(DailyUpdate.user_id).where(
+                DailyUpdate.date >= lookback,
+            ).distinct()
+        )
+        users_with_daily = {row[0] for row in recent_daily_result.all()}
+
+        missing_daily_names = [
+            u.full_name for u in active_users
+            if u.id not in users_with_daily
+        ]
     if missing_daily_names:
         alerts.append({
             "type": "missing_dailys",
@@ -798,19 +803,26 @@ async def alerts_summary(
     # 3. Incomplete timesheets yesterday (< 6h on weekday)
     yesterday = today - timedelta(days=1)
     if yesterday.weekday() < 5:  # Only check weekdays
-        all_users = await db.execute(
+        all_users_result = await db.execute(
             select(User).where(User.is_active.is_(True), User.role != UserRole.admin)
         )
-        incomplete_names: list[str] = []
-        for u in all_users.scalars().all():
-            hrs = await db.execute(
-                select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
-                    TimeEntry.user_id == u.id,
-                    func.date(TimeEntry.date) == yesterday,
-                )
-            )
-            if (hrs.scalar() or 0) < 360:
-                incomplete_names.append(u.full_name)
+        all_users = all_users_result.scalars().all()
+
+        # Batch: get hours per user for yesterday (1 query instead of N)
+        hours_result = await db.execute(
+            select(
+                TimeEntry.user_id,
+                func.coalesce(func.sum(TimeEntry.minutes), 0).label("total"),
+            ).where(
+                func.date(TimeEntry.date) == yesterday,
+            ).group_by(TimeEntry.user_id)
+        )
+        hours_map = {row.user_id: row.total for row in hours_result.all()}
+
+        incomplete_names: list[str] = [
+            u.full_name for u in all_users
+            if hours_map.get(u.id, 0) < 360
+        ]
         if incomplete_names:
             alerts.append({
                 "type": "incomplete_timesheets",

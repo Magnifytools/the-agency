@@ -30,6 +30,7 @@ import { DailyUpdateWidget } from "@/components/dashboard/daily-update-widget"
 import { DeberesWidget } from "@/components/dashboard/deberes-widget"
 import { TodayBlock } from "@/components/dashboard/today-block"
 import { getErrorMessage } from "@/lib/utils"
+import { formatCurrency } from "@/lib/format"
 import { SkeletonCard } from "@/components/ui/skeleton"
 
 const MONTHS = [
@@ -403,7 +404,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0" />
             <span className="text-sm font-medium text-red-500">
-              {overdueInvoices.length} {overdueInvoices.length === 1 ? "factura vencida" : "facturas vencidas"} por un total de {overdueTotal.toLocaleString("es-ES")}€
+              {overdueInvoices.length} {overdueInvoices.length === 1 ? "factura vencida" : "facturas vencidas"} por un total de {formatCurrency(overdueTotal)}
             </span>
           </div>
           <Link to="/finance-holded" className="text-xs text-red-500 hover:underline whitespace-nowrap ml-4">
@@ -678,7 +679,7 @@ export default function DashboardPage() {
               <MetricCard icon={Users} label="Clientes activos" value={overview.active_clients} tooltip="Clientes con estado 'activo'." />
               <MetricCard icon={CheckSquare} label="Tareas pendientes" value={overview.pending_tasks + overview.in_progress_tasks} subtitle={`${overview.in_progress_tasks} en curso`} tooltip="Tareas 'pendiente' + 'en curso' del mes." />
               <MetricCard icon={Clock} label="Horas mes" value={`${overview.hours_this_month}h`} tooltip="Total horas registradas del equipo." />
-              <MetricCard icon={DollarSign} label="Presupuesto total" value={`${overview.total_budget.toLocaleString("es-ES")}€`} subtitle={`Coste: ${overview.total_cost.toLocaleString("es-ES")}€`} tooltip="Suma de presupuestos mensuales de clientes activos." />
+              <MetricCard icon={DollarSign} label="Presupuesto total" value={formatCurrency(overview.total_budget)} subtitle={`Coste: ${formatCurrency(overview.total_cost)}`} tooltip="Suma de presupuestos mensuales de clientes activos." />
               {utilization && (
                 <MetricCard
                   icon={UserCog}
@@ -721,7 +722,7 @@ export default function DashboardPage() {
               <div className="text-center"><div className="text-2xl font-bold text-blue-400">{proposalStats.sent}</div><div className="text-xs text-muted-foreground">Enviadas</div></div>
               <div className="text-center"><div className="text-2xl font-bold text-green-400">{proposalStats.accepted}</div><div className="text-xs text-muted-foreground">Aceptadas</div></div>
               {proposalStats.pipelineValue > 0 && (
-                <div className="ml-auto text-right"><div className="text-2xl font-bold text-brand">{proposalStats.pipelineValue.toLocaleString("es-ES")}€</div><div className="text-xs text-muted-foreground">Valor pipeline (enviadas)</div></div>
+                <div className="ml-auto text-right"><div className="text-2xl font-bold text-brand">{formatCurrency(proposalStats.pipelineValue)}</div><div className="text-xs text-muted-foreground">Valor pipeline (enviadas)</div></div>
               )}
             </div>
           </CardContent>
@@ -800,12 +801,12 @@ export default function DashboardPage() {
                           )}
                         </span>
                       </TableCell>
-                      <TableCell className="mono">{c.budget.toLocaleString("es-ES")}€</TableCell>
-                      <TableCell className="mono">{c.cost.toLocaleString("es-ES")}€</TableCell>
+                      <TableCell className="mono">{formatCurrency(c.budget)}</TableCell>
+                      <TableCell className="mono">{formatCurrency(c.cost)}</TableCell>
                       <TableCell className="mono">{Math.round((c.estimated_minutes || 0) / 60)}h</TableCell>
                       <TableCell className="mono">{Math.round((c.actual_minutes || 0) / 60)}h</TableCell>
                       <TableCell className="mono">{Math.round((c.variance_minutes || 0) / 60)}h</TableCell>
-                      <TableCell className="mono">{c.margin.toLocaleString("es-ES")}€ ({c.margin_percent}%)</TableCell>
+                      <TableCell className="mono">{formatCurrency(c.margin)} ({c.margin_percent}%)</TableCell>
                       <TableCell>{profitBadge(c.status)}</TableCell>
                     </TableRow>
                     )

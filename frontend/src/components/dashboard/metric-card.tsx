@@ -1,5 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { InfoTooltip } from "@/components/ui/tooltip"
+import { formatCurrency } from "@/lib/format"
 import type { LucideIcon } from "lucide-react"
 
 interface MetricCardProps {
@@ -24,7 +25,7 @@ export function MetricCard({ icon: Icon, label, value, subtitle, tooltip, delta 
             <p className="kpi-value">{value}</p>
             {delta !== undefined && (
               <p className={`text-xs mt-1 font-medium ${delta >= 0 ? "text-green-500" : "text-red-500"}`}>
-                {delta >= 0 ? "↑" : "↓"} {Math.abs(delta).toLocaleString("es-ES", { style: "currency", currency: "EUR" })} vs mes ant.
+                {delta >= 0 ? "↑" : "↓"} {formatCurrency(Math.abs(delta))} vs mes ant.
               </p>
             )}
             {subtitle && <p className="text-xs text-muted-foreground mt-1 mono">{subtitle}</p>}

@@ -9,7 +9,7 @@ import {
   CartesianGrid,
 } from "recharts"
 import type { ForecastVsActual } from "@/lib/types"
-import { formatCompact } from "@/lib/format"
+import { formatCompact, formatCurrency } from "@/lib/format"
 
 const MONTH_LABELS = [
   "Ene", "Feb", "Mar", "Abr", "May", "Jun",
@@ -48,7 +48,7 @@ export function RevenueTrendChart({ data }: RevenueTrendChartProps) {
           tick={{ fill: "#8a8a80" }}
         />
         <Tooltip
-          formatter={(value) => `${Number(value).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}`}
+          formatter={(value) => formatCurrency(Number(value))}
           contentStyle={{
             backgroundColor: "#2a2a28",
             border: "1px solid rgba(254, 230, 48, 0.3)",

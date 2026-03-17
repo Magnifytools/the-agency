@@ -25,6 +25,7 @@ import { EmptyTableState } from "@/components/ui/empty-state"
 import { SkeletonTableRow } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { formatCurrency } from "@/lib/format"
 
 const STATUS_TABS: { label: string; value: ClientStatus | "all" }[] = [
   { label: "Todos", value: "all" },
@@ -290,7 +291,7 @@ export default function ClientsPage() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {statusBadge(c.status)}
-                  {isAdmin && c.monthly_budget != null && <Badge variant="outline" className="text-xs">{c.monthly_budget}€</Badge>}
+                  {isAdmin && c.monthly_budget != null && <Badge variant="outline" className="text-xs">{formatCurrency(c.monthly_budget)}</Badge>}
                   {h && <span className={`inline-flex items-center gap-1 text-xs font-semibold ${healthColor}`}><Heart className="h-3 w-3" />{h.score}</span>}
                 </div>
               </div>
@@ -387,7 +388,7 @@ export default function ClientsPage() {
                 <TableCell>{c.company || "-"}</TableCell>
                 <TableCell className="hidden md:table-cell">{c.email || "-"}</TableCell>
                 <TableCell>{c.contract_type === "monthly" ? "Mensual" : "Puntual"}</TableCell>
-                {isAdmin && <TableCell className="mono">{c.monthly_budget != null ? `${c.monthly_budget}€` : "-"}</TableCell>}
+                {isAdmin && <TableCell className="mono">{c.monthly_budget != null ? formatCurrency(c.monthly_budget) : "-"}</TableCell>}
                 <TableCell>{statusBadge(c.status)}</TableCell>
                 <TableCell className="hidden md:table-cell">
                   {(() => {
@@ -562,7 +563,7 @@ export default function ClientsPage() {
                 <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs mt-1">
                   {prefill.project.project_type && <span>Tipo: {prefill.project.project_type}</span>}
                   {prefill.project.pricing_model && <span>Pricing: {prefill.project.pricing_model}</span>}
-                  {prefill.project.unit_price && <span>{prefill.project.unit_price}€{prefill.project.unit_label ? `/${prefill.project.unit_label}` : ""}</span>}
+                  {prefill.project.unit_price && <span>{formatCurrency(prefill.project.unit_price)}{prefill.project.unit_label ? `/${prefill.project.unit_label}` : ""}</span>}
                   {prefill.project.is_recurring && <span>Recurrente</span>}
                   {prefill.project.scope && <span>Scope: {prefill.project.scope}</span>}
                 </div>
