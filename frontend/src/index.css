@@ -28,6 +28,7 @@
   font-display: swap;
 }
 
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -101,6 +102,31 @@
     background: #FFD600;
     color: #0A0A0A;
   }
+
+  /* Smooth transitions on interactive elements */
+  button, a, [role="button"], input, select, textarea, summary {
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+  }
+
+  /* Focus states — visible ring for keyboard navigation */
+  :focus-visible {
+    outline: 2px solid #FFD600;
+    outline-offset: 2px;
+  }
+  input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px #FFD600;
+  }
+
+  /* Respect users who prefer reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
 @layer utilities {
@@ -136,7 +162,7 @@
     font-weight: 500;
   }
   .mono {
-    font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Inconsolata', monospace;
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.5px;
     font-size: 13px;
