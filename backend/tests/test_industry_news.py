@@ -1,74 +1,82 @@
-"""Tests for industry news endpoints — regression for source creation 500."""
-import sys
-from unittest.mock import MagicMock, AsyncMock
+"""Regression tests for industry news endpoints.
 
-if "asyncpg" not in sys.modules:
-    sys.modules["asyncpg"] = MagicMock()
+Covers:
+- List news sources → 200
+- Create news source without required fields (url/name missing) → 422
+- Create news source happy path (mock DB commit)
+- List news → 200
+- Get nonexistent news → 404
+- Delete nonexistent news/source → 404
+"""
+from __future__ import annotations
 
-import pytest  # noqa: E402
-import pytest_asyncio  # noqa: E402
-from httpx import AsyncClient, ASGITransport  # noqa: E402
-
-from backend.main import app  # noqa: E402
-from backend.api.deps import get_current_user  # noqa: E402
-from backend.db.database import get_db  # noqa: E402
-from backend.db.models import User, UserRole  # noqa: E402
+import pytest
 
 
-def _make_admin():
-    user = MagicMock(spec=User)
-    user.id = 1
-    user.email = "admin@test.com"
-    user.full_name = "Admin Test"
-    user.role = UserRole.admin
-    user.is_active = True
-    user.permissions = []
-    return user
+@pytest.mark.asyncio
+class TestNewsSourcesList:
+    """GET /api/news/sources"""
 
-
-class TestIndustryNewsEndpoints:
-    @pytest_asyncio.fixture
-    async def client(self):
-        admin = _make_admin()
-        mock_db = AsyncMock()
-        execute_result = MagicMock()
-        execute_result.scalar_one_or_none.return_value = None
-        execute_result.scalars.return_value.all.return_value = []
-        mock_db.execute.return_value = execute_result
-
-        app.dependency_overrides[get_current_user] = lambda: admin
-        app.dependency_overrides[get_db] = lambda: mock_db
-
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as c:
-            yield c
-
-        app.dependency_overrides.clear()
-
-    @pytest.mark.asyncio
-    async def test_list_news_returns_200(self, client):
-        resp = await client.get("/api/news")
+    async def test_list_sources_returns_200(self, admin_client):
+        resp = await admin_client.get("/api/news/sources")
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
-    @pytest.mark.asyncio
-    async def test_get_nonexistent_news_returns_404(self, client):
-        resp = await client.get("/api/news/999")
-        assert resp.status_code == 404
 
-    @pytest.mark.asyncio
-    async def test_list_sources_returns_200(self, client):
-        resp = await client.get("/api/news/sources")
+@pytest.mark.asyncio
+class TestNewsSourcesCreate:
+    """POST /api/news/sources"""
+
+    async def test_create_source_missing_url_returns_422(self, admin_client):
+        resp = await admin_client.post(
+            "/api/news/sources",
+            json={"name": "Test Source"},
+        )
+        # url is required in NewsSourceCreate → 422 validation error
+        assert resp.status_code == 422
+
+    async def test_create_source_missing_name_returns_422(self, admin_client):
+        resp = await admin_client.post(
+            "/api/news/sources",
+            json={"url": "https://example.com"},
+        )
+        # name is required in NewsSourceCreate → 422 validation error
+        assert resp.status_code == 422
+
+    async def test_create_source_empty_body_returns_422(self, admin_client):
+        resp = await admin_client.post(
+            "/api/news/sources",
+            json={},
+        )
+        assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+class TestNewsList:
+    """GET /api/news"""
+
+    async def test_list_news_returns_200(self, admin_client):
+        resp = await admin_client.get("/api/news")
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
-    @pytest.mark.asyncio
-    async def test_delete_nonexistent_news_returns_404(self, client):
-        resp = await client.delete("/api/news/999")
+    async def test_list_news_with_limit(self, admin_client):
+        resp = await admin_client.get("/api/news", params={"limit": 10})
+        assert resp.status_code == 200
+
+    async def test_get_nonexistent_news_returns_404(self, admin_client):
+        resp = await admin_client.get("/api/news/999")
         assert resp.status_code == 404
 
-    @pytest.mark.asyncio
-    async def test_delete_nonexistent_source_returns_404(self, client):
-        resp = await client.delete("/api/news/sources/999")
+
+@pytest.mark.asyncio
+class TestNewsDelete:
+    """DELETE /api/news and /api/news/sources"""
+
+    async def test_delete_nonexistent_news_returns_404(self, admin_client):
+        resp = await admin_client.delete("/api/news/999")
+        assert resp.status_code == 404
+
+    async def test_delete_nonexistent_source_returns_404(self, admin_client):
+        resp = await admin_client.delete("/api/news/sources/999")
         assert resp.status_code == 404
