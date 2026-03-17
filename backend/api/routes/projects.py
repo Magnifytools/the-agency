@@ -263,6 +263,7 @@ async def create_project(
         budget_hours=body.budget_hours,
         budget_amount=body.budget_amount,
         pricing_model=body.pricing_model,
+        monthly_fee=body.monthly_fee,
         unit_price=body.unit_price,
         unit_label=body.unit_label,
         scope=body.scope,
