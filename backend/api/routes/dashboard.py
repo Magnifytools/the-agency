@@ -16,6 +16,7 @@ from backend.db.models import (
     TaskStatus,
     TimeEntry,
     User,
+    UserRole,
     MonthlyClose,
     FinancialSettings,
 )
@@ -773,7 +774,7 @@ async def alerts_summary(
     missing_daily_names: list[str] = []
     if lookback is not None:
         active_users = await db.execute(
-            select(User).where(User.is_active.is_(True))
+            select(User).where(User.is_active.is_(True), User.role != UserRole.admin)
         )
         for u in active_users.scalars().all():
             recent = await db.execute(
@@ -798,7 +799,7 @@ async def alerts_summary(
     yesterday = today - timedelta(days=1)
     if yesterday.weekday() < 5:  # Only check weekdays
         all_users = await db.execute(
-            select(User).where(User.is_active.is_(True))
+            select(User).where(User.is_active.is_(True), User.role != UserRole.admin)
         )
         incomplete_names: list[str] = []
         for u in all_users.scalars().all():

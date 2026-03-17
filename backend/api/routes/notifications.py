@@ -240,9 +240,9 @@ async def generate_notification_checks(
     if user.role == UserRole.admin:
         try:
             two_days_ago = today - timedelta(days=2)
-            # Get all active users
+            # Get all active non-admin users (admins don't need to submit dailys)
             all_users_result = await db.execute(
-                select(User).where(User.is_active.is_(True))
+                select(User).where(User.is_active.is_(True), User.role != UserRole.admin)
             )
             all_users = all_users_result.scalars().all()
 
@@ -277,7 +277,7 @@ async def generate_notification_checks(
             # Skip weekends
             if yesterday.weekday() < 5:
                 all_users_result = await db.execute(
-                    select(User).where(User.is_active.is_(True))
+                    select(User).where(User.is_active.is_(True), User.role != UserRole.admin)
                 )
                 all_users = all_users_result.scalars().all()
 
