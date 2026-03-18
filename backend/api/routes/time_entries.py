@@ -133,7 +133,7 @@ async def create_time_entry(
         task_id=body.task_id,
         user_id=current_user.id,
         notes=body.notes,
-        date=entry_date or datetime.now(timezone.utc),
+        date=entry_date or datetime.utcnow(),
     )
     db.add(entry)
     await db.commit()
@@ -521,7 +521,7 @@ async def admin_active_timers(
         select(TimeEntry).where(TimeEntry.minutes.is_(None))
     )
     entries = result.scalars().all()
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     return [
         AdminActiveTimerResponse(
             id=e.id,
@@ -633,7 +633,7 @@ async def start_timer(
         if task is None:
             raise HTTPException(status_code=404, detail="Task not found")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     entry = TimeEntry(
         task_id=body.task_id,
         user_id=current_user.id,
@@ -694,9 +694,9 @@ async def stop_timer(
     if not entry.started_at:
         raise HTTPException(status_code=400, detail="Timer has no start time")
 
-    now = datetime.now(timezone.utc)
-    # Ensure started_at is timezone-aware for subtraction
-    sa = entry.started_at.replace(tzinfo=timezone.utc) if entry.started_at.tzinfo is None else entry.started_at
+    now = datetime.utcnow()
+    # Use naive UTC to match DB TIMESTAMP WITHOUT TIME ZONE columns
+    sa = entry.started_at if entry.started_at.tzinfo is None else entry.started_at.replace(tzinfo=None)
     elapsed = (now - sa).total_seconds()
     entry.minutes = max(1, min(480, round(elapsed / 60)))  # Cap at 8 hours
     if body.notes:

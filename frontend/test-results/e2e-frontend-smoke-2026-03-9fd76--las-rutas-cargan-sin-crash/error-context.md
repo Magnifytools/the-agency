@@ -6,249 +6,305 @@
     - link "Ir al contenido" [ref=e4] [cursor=pointer]:
       - /url: "#main-content"
     - generic [ref=e6]:
-      - textbox "¿En qué estás trabajando? (ej. Estrategia Cliente X)" [ref=e7]
-      - button [disabled]:
-        - img
-    - generic [ref=e8]:
-      - complementary "Barra lateral" [ref=e9]:
-        - generic [ref=e10]:
-          - img [ref=e11]
-          - generic [ref=e14]:
-            - generic [ref=e15]: The Agency
-            - generic [ref=e16]: by Magnify
-        - button "Buscar ⌘K" [ref=e17]:
-          - img [ref=e18]
-          - generic [ref=e21]: Buscar
-          - generic [ref=e22]: ⌘K
-        - navigation "Menu principal" [ref=e23]:
-          - paragraph [ref=e24]: Workspace
-          - link "Dashboard" [ref=e25] [cursor=pointer]:
+      - combobox [ref=e7] [cursor=pointer]:
+        - option "Sin tarea" [selected]
+      - button "Crear tarea rápida" [ref=e8]:
+        - img [ref=e9]
+      - generic [ref=e10]:
+        - textbox "¿En qué estás trabajando?" [ref=e11]
+        - button [disabled]:
+          - img
+    - generic [ref=e12]:
+      - complementary "Barra lateral" [ref=e13]:
+        - generic [ref=e14]:
+          - img [ref=e15]
+          - generic [ref=e18]:
+            - generic [ref=e19]: The Agency
+            - generic [ref=e20]: by Magnify
+        - button "Buscar ⌘K" [ref=e21]:
+          - img [ref=e22]
+          - generic [ref=e25]: Buscar
+          - generic [ref=e26]: ⌘K
+        - navigation "Menu principal" [ref=e27]:
+          - paragraph [ref=e28]: Workspace
+          - link "Mi Semana" [ref=e29] [cursor=pointer]:
+            - /url: /my-week
+            - img [ref=e30]
+            - text: Mi Semana
+          - link "Dashboard" [ref=e32] [cursor=pointer]:
             - /url: /dashboard
-            - img [ref=e26]
+            - img [ref=e33]
             - text: Dashboard
-          - link "Ejecutivo" [ref=e31] [cursor=pointer]:
-            - /url: /executive
-            - img [ref=e32]
-            - text: Ejecutivo
-          - link "Clientes" [ref=e34] [cursor=pointer]:
+          - link "Clientes" [ref=e38] [cursor=pointer]:
             - /url: /clients
-            - img [ref=e35]
+            - img [ref=e39]
             - text: Clientes
-          - link "Pipeline" [ref=e40] [cursor=pointer]:
+          - link "Pipeline" [ref=e44] [cursor=pointer]:
             - /url: /leads
-            - img [ref=e41]
+            - img [ref=e45]
             - text: Pipeline
-          - link "Proyectos" [ref=e45] [cursor=pointer]:
+          - link "Proyectos" [ref=e49] [cursor=pointer]:
             - /url: /projects
-            - img [ref=e46]
+            - img [ref=e50]
             - text: Proyectos
-          - link "Tareas" [ref=e48] [cursor=pointer]:
+          - link "Tareas" [ref=e52] [cursor=pointer]:
             - /url: /tasks
-            - img [ref=e49]
-            - text: Tareas
-          - link "Growth" [ref=e52] [cursor=pointer]:
-            - /url: /growth
             - img [ref=e53]
+            - text: Tareas
+          - link "Growth" [ref=e56] [cursor=pointer]:
+            - /url: /growth
+            - img [ref=e57]
             - text: Growth
-          - link "Timesheet" [ref=e58] [cursor=pointer]:
-            - /url: /timesheet
-            - img [ref=e59]
-            - text: Timesheet
-          - link "Dailys" [ref=e62] [cursor=pointer]:
-            - /url: /dailys
-            - img [ref=e63]
-            - text: Dailys
-          - link "Inbox 5" [ref=e66] [cursor=pointer]:
+          - link "Inbox 6" [ref=e62] [cursor=pointer]:
             - /url: /inbox
-            - img [ref=e67]
+            - img [ref=e63]
             - text: Inbox
-            - generic [ref=e70]: "5"
-          - link "Digests" [ref=e71] [cursor=pointer]:
-            - /url: /digests
-            - img [ref=e72]
-            - text: Digests
-          - link "Informes" [ref=e75] [cursor=pointer]:
-            - /url: /reports
-            - img [ref=e76]
-            - text: Informes
-          - link "Presupuestos" [ref=e79] [cursor=pointer]:
-            - /url: /proposals
-            - img [ref=e80]
-            - text: Presupuestos
-          - link "Facturación" [ref=e83] [cursor=pointer]:
-            - /url: /billing
-            - img [ref=e84]
-            - text: Facturación
-          - generic [ref=e86]:
-            - paragraph [ref=e87]: Finanzas
-            - link "Finanzas (Holded)" [ref=e88] [cursor=pointer]:
-              - /url: /finance-holded
-              - img [ref=e89]
-              - text: Finanzas (Holded)
-          - generic [ref=e92]:
-            - paragraph [ref=e93]: La Agencia
-            - link "Noticias" [ref=e94] [cursor=pointer]:
+            - generic [ref=e66]: "6"
+          - generic [ref=e67]:
+            - paragraph [ref=e68]: Operaciones
+            - link "Timesheet" [ref=e69] [cursor=pointer]:
+              - /url: /timesheet
+              - img [ref=e70]
+              - text: Timesheet
+            - link "Dailys" [ref=e73] [cursor=pointer]:
+              - /url: /dailys
+              - img [ref=e74]
+              - text: Dailys
+            - link "Digests" [ref=e77] [cursor=pointer]:
+              - /url: /digests
+              - img [ref=e78]
+              - text: Digests
+            - link "Informes" [ref=e81] [cursor=pointer]:
+              - /url: /reports
+              - img [ref=e82]
+              - text: Informes
+            - link "Presupuestos" [ref=e85] [cursor=pointer]:
+              - /url: /proposals
+              - img [ref=e86]
+              - text: Presupuestos
+          - generic [ref=e89]:
+            - paragraph [ref=e90]: Finanzas
+            - link "Finanzas" [ref=e91] [cursor=pointer]:
+              - /url: /finance
+              - img [ref=e92]
+              - text: Finanzas
+          - generic [ref=e95]:
+            - paragraph [ref=e96]: La Agencia
+            - link "Noticias" [ref=e97] [cursor=pointer]:
               - /url: /news
-              - img [ref=e95]
+              - img [ref=e98]
               - text: Noticias
-            - link "Vault" [ref=e98] [cursor=pointer]:
+            - link "Vault" [ref=e101] [cursor=pointer]:
               - /url: /vault
-              - img [ref=e99]
+              - img [ref=e102]
               - text: Vault
-          - generic [ref=e102]:
-            - paragraph [ref=e103]: Admin
-            - link "Capacidad" [ref=e104] [cursor=pointer]:
+          - generic [ref=e105]:
+            - paragraph [ref=e106]: Admin
+            - link "Capacidad" [ref=e107] [cursor=pointer]:
               - /url: /capacity
-              - img [ref=e105]
+              - img [ref=e108]
               - text: Capacidad
-            - link "Equipo" [ref=e108] [cursor=pointer]:
+            - link "Equipo" [ref=e111] [cursor=pointer]:
               - /url: /users
-              - img [ref=e109]
+              - img [ref=e112]
               - text: Equipo
-            - link "Discord" [ref=e121] [cursor=pointer]:
+            - link "Integraciones" [ref=e124] [cursor=pointer]:
               - /url: /discord
-              - img [ref=e122]
-              - text: Discord
-          - link "Configuración" [ref=e125] [cursor=pointer]:
+              - img [ref=e125]
+              - text: Integraciones
+            - link "Automatizaciones" [ref=e127] [cursor=pointer]:
+              - /url: /automations
+              - img [ref=e128]
+              - text: Automatizaciones
+          - link "Configuración" [ref=e131] [cursor=pointer]:
             - /url: /settings
-            - img [ref=e126]
+            - img [ref=e132]
             - text: Configuración
-        - generic [ref=e130]:
-          - generic [ref=e131]:
-            - paragraph [ref=e132]: David Carrasco
-            - paragraph [ref=e133]: david@magnify.ing
-          - generic [ref=e134]:
-            - button "Notificaciones" [ref=e136]:
-              - img [ref=e137]
-            - button "Cerrar sesión" [ref=e140]:
-              - img [ref=e141]
-      - main [ref=e144]:
-        - generic [ref=e145]:
-          - generic [ref=e146]:
-            - heading "Capacidad del equipo" [level=2] [ref=e147]
-            - paragraph [ref=e148]: Carga de trabajo semanal por miembro — basado en tiempo estimado de tareas activas
-          - generic [ref=e149]:
-            - generic [ref=e151]:
-              - paragraph [ref=e152]: Miembros
-              - paragraph [ref=e153]: "8"
-            - generic [ref=e155]:
-              - paragraph [ref=e156]: Disponibles
-              - paragraph [ref=e157]: "8"
-            - generic [ref=e159]:
-              - paragraph [ref=e160]: Sobrecargados
-              - paragraph [ref=e161]: "0"
-          - generic [ref=e162]:
-            - generic [ref=e164]:
-              - generic [ref=e165]:
-                - generic [ref=e166]:
-                  - img [ref=e168]
-                  - generic [ref=e173]:
+        - generic [ref=e136]:
+          - generic [ref=e137]:
+            - paragraph [ref=e138]: David Carrasco
+            - paragraph [ref=e139]: david@magnify.ing
+          - generic [ref=e140]:
+            - button "Notificaciones" [ref=e142]:
+              - img [ref=e143]
+            - button "Cerrar sesión" [ref=e146]:
+              - img [ref=e147]
+      - main [ref=e150]:
+        - generic [ref=e151]:
+          - generic [ref=e152]:
+            - heading "Capacidad del equipo" [level=2] [ref=e153]
+            - paragraph [ref=e154]: Carga de trabajo por miembro — basado en tiempo estimado de tareas activas
+          - generic [ref=e155]:
+            - generic [ref=e157]:
+              - paragraph [ref=e158]: Equipo
+              - paragraph [ref=e159]: "9"
+            - generic [ref=e161]:
+              - paragraph [ref=e162]: Disponibles
+              - paragraph [ref=e163]: "9"
+            - generic [ref=e165]:
+              - paragraph [ref=e166]: Sobrecargados
+              - paragraph [ref=e167]: "0"
+            - generic [ref=e169]:
+              - paragraph [ref=e170]: Carga total
+              - paragraph [ref=e171]: 3%
+          - generic [ref=e174]:
+            - generic [ref=e175]: Capacidad total del equipo
+            - generic [ref=e176]: 12h / 360h
+          - generic [ref=e179]:
+            - generic [ref=e181]:
+              - generic [ref=e182] [cursor=pointer]:
+                - generic [ref=e183]:
+                  - img [ref=e185]
+                  - generic [ref=e190]:
                     - text: David Carrasco
-                    - generic [ref=e174]: 2 tareas
-                - generic [ref=e175]:
-                  - generic [ref=e176]: 3h / 40h
-                  - generic [ref=e177]: Disponible
-              - generic [ref=e181]:
-                - generic [ref=e182]: 0%
-                - generic [ref=e183]: 8%
-                - generic [ref=e184]: 100%
-            - generic [ref=e186]:
-              - generic [ref=e187]:
-                - generic [ref=e188]:
-                  - img [ref=e190]
-                  - generic [ref=e195]:
+                    - generic [ref=e191]:
+                      - generic [ref=e192]: 2 tareas
+                      - generic [ref=e193]: 2 clientes
+                - generic [ref=e194]:
+                  - generic [ref=e195]: 3h / 40h
+                  - generic [ref=e196]: Disponible
+                  - img [ref=e198]
+              - generic [ref=e202]:
+                - generic [ref=e203]: 0%
+                - generic [ref=e204]: 8%
+                - generic [ref=e205]: 100%
+            - generic [ref=e207]:
+              - generic [ref=e208] [cursor=pointer]:
+                - generic [ref=e209]:
+                  - img [ref=e211]
+                  - generic [ref=e216]:
                     - text: Nacho
-                    - generic [ref=e196]: 6 tareas
-                - generic [ref=e197]:
-                  - generic [ref=e198]: 9h / 40h
-                  - generic [ref=e199]: Disponible
-              - generic [ref=e203]:
-                - generic [ref=e204]: 0%
-                - generic [ref=e205]: 22%
-                - generic [ref=e206]: 100%
-            - generic [ref=e208]:
-              - generic [ref=e209]:
-                - generic [ref=e210]:
-                  - img [ref=e212]
-                  - generic [ref=e217]:
+                    - generic [ref=e217]:
+                      - generic [ref=e218]: 6 tareas
+                      - generic [ref=e219]: 6 clientes
+                - generic [ref=e220]:
+                  - generic [ref=e221]: 9h / 40h
+                  - generic [ref=e222]: Disponible
+                  - img [ref=e224]
+              - generic [ref=e228]:
+                - generic [ref=e229]: 0%
+                - generic [ref=e230]: 22%
+                - generic [ref=e231]: 100%
+            - generic [ref=e233]:
+              - generic [ref=e234] [cursor=pointer]:
+                - generic [ref=e235]:
+                  - img [ref=e237]
+                  - generic [ref=e242]:
+                    - text: QA Accepted User
+                    - generic [ref=e243]:
+                      - generic [ref=e244]: 0 tareas
+                      - generic [ref=e245]: 0 clientes
+                - generic [ref=e246]:
+                  - generic [ref=e247]: 0m / 40h
+                  - generic [ref=e248]: Disponible
+                  - img [ref=e250]
+              - generic [ref=e253]:
+                - generic [ref=e254]: 0%
+                - generic [ref=e255]: 0%
+                - generic [ref=e256]: 100%
+            - generic [ref=e258]:
+              - generic [ref=e259] [cursor=pointer]:
+                - generic [ref=e260]:
+                  - img [ref=e262]
+                  - generic [ref=e267]:
                     - text: QA Restricted
-                    - generic [ref=e218]: 0 tareas
-                - generic [ref=e219]:
-                  - generic [ref=e220]: 0m / 40h
-                  - generic [ref=e221]: Disponible
-              - generic [ref=e224]:
-                - generic [ref=e225]: 0%
-                - generic [ref=e226]: 0%
-                - generic [ref=e227]: 100%
-            - generic [ref=e229]:
-              - generic [ref=e230]:
-                - generic [ref=e231]:
-                  - img [ref=e233]
-                  - generic [ref=e238]:
-                    - text: QA Restricted
-                    - generic [ref=e239]: 0 tareas
-                - generic [ref=e240]:
-                  - generic [ref=e241]: 0m / 40h
-                  - generic [ref=e242]: Disponible
-              - generic [ref=e245]:
-                - generic [ref=e246]: 0%
-                - generic [ref=e247]: 0%
-                - generic [ref=e248]: 100%
-            - generic [ref=e250]:
-              - generic [ref=e251]:
-                - generic [ref=e252]:
-                  - img [ref=e254]
-                  - generic [ref=e259]:
-                    - text: QA Restricted
-                    - generic [ref=e260]: 0 tareas
-                - generic [ref=e261]:
-                  - generic [ref=e262]: 0m / 40h
-                  - generic [ref=e263]: Disponible
-              - generic [ref=e266]:
-                - generic [ref=e267]: 0%
-                - generic [ref=e268]: 0%
-                - generic [ref=e269]: 100%
-            - generic [ref=e271]:
-              - generic [ref=e272]:
-                - generic [ref=e273]:
+                    - generic [ref=e268]:
+                      - generic [ref=e269]: 0 tareas
+                      - generic [ref=e270]: 0 clientes
+                - generic [ref=e271]:
+                  - generic [ref=e272]: 0m / 40h
+                  - generic [ref=e273]: Disponible
                   - img [ref=e275]
-                  - generic [ref=e280]:
+              - generic [ref=e278]:
+                - generic [ref=e279]: 0%
+                - generic [ref=e280]: 0%
+                - generic [ref=e281]: 100%
+            - generic [ref=e283]:
+              - generic [ref=e284] [cursor=pointer]:
+                - generic [ref=e285]:
+                  - img [ref=e287]
+                  - generic [ref=e292]:
                     - text: QA Restricted
-                    - generic [ref=e281]: 0 tareas
-                - generic [ref=e282]:
-                  - generic [ref=e283]: 0m / 40h
-                  - generic [ref=e284]: Disponible
-              - generic [ref=e287]:
-                - generic [ref=e288]: 0%
-                - generic [ref=e289]: 0%
-                - generic [ref=e290]: 100%
-            - generic [ref=e292]:
-              - generic [ref=e293]:
-                - generic [ref=e294]:
-                  - img [ref=e296]
-                  - generic [ref=e301]:
+                    - generic [ref=e293]:
+                      - generic [ref=e294]: 0 tareas
+                      - generic [ref=e295]: 0 clientes
+                - generic [ref=e296]:
+                  - generic [ref=e297]: 0m / 40h
+                  - generic [ref=e298]: Disponible
+                  - img [ref=e300]
+              - generic [ref=e303]:
+                - generic [ref=e304]: 0%
+                - generic [ref=e305]: 0%
+                - generic [ref=e306]: 100%
+            - generic [ref=e308]:
+              - generic [ref=e309] [cursor=pointer]:
+                - generic [ref=e310]:
+                  - img [ref=e312]
+                  - generic [ref=e317]:
                     - text: QA Restricted
-                    - generic [ref=e302]: 0 tareas
-                - generic [ref=e303]:
-                  - generic [ref=e304]: 0m / 40h
-                  - generic [ref=e305]: Disponible
-              - generic [ref=e308]:
-                - generic [ref=e309]: 0%
-                - generic [ref=e310]: 0%
-                - generic [ref=e311]: 100%
-            - generic [ref=e313]:
-              - generic [ref=e314]:
-                - generic [ref=e315]:
-                  - img [ref=e317]
-                  - generic [ref=e322]:
-                    - text: QA Restricted
-                    - generic [ref=e323]: 0 tareas
-                - generic [ref=e324]:
-                  - generic [ref=e325]: 0m / 40h
-                  - generic [ref=e326]: Disponible
-              - generic [ref=e329]:
+                    - generic [ref=e318]:
+                      - generic [ref=e319]: 0 tareas
+                      - generic [ref=e320]: 0 clientes
+                - generic [ref=e321]:
+                  - generic [ref=e322]: 0m / 40h
+                  - generic [ref=e323]: Disponible
+                  - img [ref=e325]
+              - generic [ref=e328]:
+                - generic [ref=e329]: 0%
                 - generic [ref=e330]: 0%
-                - generic [ref=e331]: 0%
-                - generic [ref=e332]: 100%
+                - generic [ref=e331]: 100%
+            - generic [ref=e333]:
+              - generic [ref=e334] [cursor=pointer]:
+                - generic [ref=e335]:
+                  - img [ref=e337]
+                  - generic [ref=e342]:
+                    - text: QA Restricted
+                    - generic [ref=e343]:
+                      - generic [ref=e344]: 0 tareas
+                      - generic [ref=e345]: 0 clientes
+                - generic [ref=e346]:
+                  - generic [ref=e347]: 0m / 40h
+                  - generic [ref=e348]: Disponible
+                  - img [ref=e350]
+              - generic [ref=e353]:
+                - generic [ref=e354]: 0%
+                - generic [ref=e355]: 0%
+                - generic [ref=e356]: 100%
+            - generic [ref=e358]:
+              - generic [ref=e359] [cursor=pointer]:
+                - generic [ref=e360]:
+                  - img [ref=e362]
+                  - generic [ref=e367]:
+                    - text: QA Restricted
+                    - generic [ref=e368]:
+                      - generic [ref=e369]: 0 tareas
+                      - generic [ref=e370]: 0 clientes
+                - generic [ref=e371]:
+                  - generic [ref=e372]: 0m / 40h
+                  - generic [ref=e373]: Disponible
+                  - img [ref=e375]
+              - generic [ref=e378]:
+                - generic [ref=e379]: 0%
+                - generic [ref=e380]: 0%
+                - generic [ref=e381]: 100%
+            - generic [ref=e383]:
+              - generic [ref=e384] [cursor=pointer]:
+                - generic [ref=e385]:
+                  - img [ref=e387]
+                  - generic [ref=e392]:
+                    - text: QA Restricted
+                    - generic [ref=e393]:
+                      - generic [ref=e394]: 0 tareas
+                      - generic [ref=e395]: 0 clientes
+                - generic [ref=e396]:
+                  - generic [ref=e397]: 0m / 40h
+                  - generic [ref=e398]: Disponible
+                  - img [ref=e400]
+              - generic [ref=e403]:
+                - generic [ref=e404]: 0%
+                - generic [ref=e405]: 0%
+                - generic [ref=e406]: 100%
+    - button "Asistente de datos" [ref=e407]:
+      - img [ref=e408]
   - region "Notifications alt+T"
 ```

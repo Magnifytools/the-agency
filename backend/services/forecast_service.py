@@ -148,7 +148,7 @@ async def calculate_runway(db: AsyncSession) -> dict:
     latest_snapshot = r.scalars().first()
 
     if latest_snapshot:
-        cash = latest_snapshot.amount
+        cash = float(latest_snapshot.amount)
         balance_source = "manual"
         balance_date = latest_snapshot.date.isoformat()
     else:
@@ -184,8 +184,8 @@ async def calculate_runway(db: AsyncSession) -> dict:
         runway_date = (today + timedelta(days=int(runway_months * 30))).isoformat()
 
     return {
-        "current_cash": round(cash, 2),
-        "avg_monthly_burn": monthly_burn,
+        "current_cash": round(float(cash), 2),
+        "avg_monthly_burn": float(monthly_burn),
         "runway_months": runway_months,
         "runway_date": runway_date,
         "source": balance_source,
@@ -237,9 +237,9 @@ async def get_vs_actual(db: AsyncSession, year: int) -> list[dict]:
         f = forecast_map.get(m)
         result.append({
             "month": date(year, m, 1).isoformat(),
-            "projected_income": f.projected_income if f else 0,
-            "projected_expenses": f.projected_expenses if f else 0,
-            "projected_profit": f.projected_profit if f else 0,
+            "projected_income": float(f.projected_income) if f else 0,
+            "projected_expenses": float(f.projected_expenses) if f else 0,
+            "projected_profit": float(f.projected_profit) if f else 0,
             "actual_income": round(actual_income, 2),
             "actual_expenses": round(actual_expenses, 2),
             "actual_profit": round(actual_income - actual_expenses, 2),

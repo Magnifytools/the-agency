@@ -60,9 +60,9 @@ def _digest_score_from_count(digest_count: int) -> int:
 
 def _profit_score_from_cost(monthly_budget: float | None, estimated_cost: float) -> int:
     """Profitability score (20 pts)."""
-    if not monthly_budget or monthly_budget <= 0:
+    if not monthly_budget or float(monthly_budget) <= 0:
         return 10  # neutral — no budget set
-    ratio = estimated_cost / monthly_budget
+    ratio = float(estimated_cost) / float(monthly_budget)
     if ratio <= 0.7:
         return 20
     if ratio <= 0.9:
@@ -175,7 +175,7 @@ async def compute_health(client: Client, db: AsyncSession) -> dict:
     digest_score = _digest_score_from_count(digest_count)
 
     # --- 4. Profitability (20 pts) ---
-    if client.monthly_budget and client.monthly_budget > 0:
+    if client.monthly_budget and float(client.monthly_budget) > 0:
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         # Use actual user hourly rates with fallback to DEFAULT_HOURLY_RATE
         cost_result = await db.execute(
@@ -196,7 +196,7 @@ async def compute_health(client: Client, db: AsyncSession) -> dict:
         estimated_cost = float(cost_result.scalar() or 0)
     else:
         estimated_cost = 0
-    profit_score = _profit_score_from_cost(client.monthly_budget, estimated_cost)
+    profit_score = _profit_score_from_cost(float(client.monthly_budget) if client.monthly_budget is not None else None, estimated_cost)
 
     # --- 5. Follow-up compliance (15 pts) ---
     pending_followups_result = await db.execute(

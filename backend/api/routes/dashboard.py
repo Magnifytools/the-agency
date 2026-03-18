@@ -121,8 +121,8 @@ async def get_overview(
             and_(TimeEntry.minutes.isnot(None), TimeEntry.date >= start, TimeEntry.date <= end)
         )
     )
-    total_cost = round(r.scalar() or 0, 2)
-    margin = round((total_budget - total_cost), 2)
+    total_cost = round(float(r.scalar() or 0), 2)
+    margin = round(float(total_budget) - float(total_cost), 2)
     margin_percent = round((margin / total_budget * 100) if total_budget > 0 else 0, 1)
 
     return DashboardOverview(
@@ -425,7 +425,7 @@ async def get_financial_settings(
 
 
 def _financial_settings_response(record: FinancialSettings) -> FinancialSettingsResponse:
-    utilization = (record.credit_used / record.credit_limit * 100) if record.credit_limit > 0 else 0.0
+    utilization = (float(record.credit_used) / float(record.credit_limit) * 100) if record.credit_limit > 0 else 0.0
     return FinancialSettingsResponse(
         tax_reserve=record.tax_reserve,
         credit_limit=record.credit_limit,
