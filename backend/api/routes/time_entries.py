@@ -138,22 +138,28 @@ async def create_time_entry(
     db.add(entry)
     await db.commit()
 
+    # Save attributes before they expire (async SQLAlchemy lazy-load guard)
+    entry_id = entry.id
+    entry_task_id = body.task_id
+    entry_user_id = current_user.id
+    entry_minutes = body.minutes
+
     # Automation hook: time_entry_created
     try:
         from backend.api.routes.automations import execute_automations
         await execute_automations("time_entry_created", {
-            "time_entry_id": entry.id,
-            "task_id": entry.task_id,
-            "user_id": entry.user_id,
-            "minutes": entry.minutes,
+            "time_entry_id": entry_id,
+            "task_id": entry_task_id,
+            "user_id": entry_user_id,
+            "minutes": entry_minutes,
         }, db)
     except Exception as e:
         logger.debug("Automation hook time_entry_created failed (never break time entry creation): %s", e)
         pass  # Never break time entry creation
 
-    if entry.task_id:
+    if entry_task_id:
         try:
-            await _sync_task_actual_minutes(db, entry.task_id)
+            await _sync_task_actual_minutes(db, entry_task_id)
             await db.commit()
         except Exception:
             logger.warning("Non-critical: task minutes sync failed after time entry creation")
@@ -161,7 +167,7 @@ async def create_time_entry(
                 await db.rollback()
             except Exception:
                 pass
-    entry = await _load_time_entry_for_response(db, entry.id)
+    entry = await _load_time_entry_for_response(db, entry_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Time entry not found after create")
     return _entry_to_response(entry)

@@ -60,7 +60,7 @@ def render_slack(content: DigestContent) -> str:
 
     # Greeting
     if content.greeting:
-        lines.append(content.greeting)
+        lines.append(f":mega:  {content.greeting}")
     if content.date:
         lines.append(f"*{content.date}*")
     lines.append("")
@@ -115,7 +115,6 @@ ICON_NEED = "https://res.cloudinary.com/dk2qk66bj/image/upload/v1739970610/confi
 ICON_NEXT = "https://res.cloudinary.com/dk2qk66bj/image/upload/v1739970396/hechoG2_msqumr.png"
 LOGO_URL = "https://res.cloudinary.com/dk2qk66bj/image/upload/v1748505370/logo-mail_cvckaw.webp"
 LINKEDIN_ICON = "https://res.cloudinary.com/dk2qk66bj/image/upload/v1739159379/linkedin-logo_rrf6tz.png"
-X_ICON = "https://res.cloudinary.com/dk2qk66bj/image/upload/v1739159301/x-logo_efxegw.png"
 
 
 def _render_item_row(item: DigestItem, icon_url: str) -> str:
@@ -176,7 +175,7 @@ def _esc(text: str) -> str:
 def render_email(content: DigestContent) -> str:
     """Render digest content as Magnify-branded HTML email."""
 
-    greeting_text = _esc(content.greeting) if content.greeting else ""
+    greeting_text = _esc(content.greeting).replace("\n", "<br/>") if content.greeting else ""
     date_text = _esc(content.date) if content.date else ""
     closing_text = _esc(content.closing) if content.closing else ""
 
@@ -223,7 +222,7 @@ def render_email(content: DigestContent) -> str:
     <td align="left" style="padding:0 20px 10px 20px;margin:0;border-bottom:2px solid #0044FF;">
       <span style="margin:0;letter-spacing:0;font-size:16px;line-height:24px;color:#141212;">
         {greeting_text}<br/><br/>
-        Te enviamos el <strong>informe semanal: {date_text}</strong>
+        <strong>{date_text}</strong>
       </span>
     </td>
   </tr>

@@ -42,8 +42,8 @@ REGLAS:
 5. "next" = próximos pasos planificados para la semana siguiente.
 6. NO inventes datos. Solo usa la información proporcionada.
 7. Si no hay items para una sección, déjala vacía ([]).
-8. El greeting debe incluir el nombre del cliente.
-9. La date debe ser legible: "Semana del X al Y de mes año".
+8. El greeting DEBE tener este formato exacto: "Hola [nombre del contacto/cliente] 👋,\nAquí tienes el resumen de esta semana para [nombre del proyecto]". Incluye salto de línea.
+9. La date DEBE tener este formato exacto: "Te enviamos el informe semanal del [día inicio] al [día final] de [mes] [año]". Ejemplo: "Te enviamos el informe semanal del 10 al 17 de marzo 2026".
 10. El closing debe ser breve y motivador, acorde al tono.
 11. Responde SOLO con el JSON, sin markdown ni explicaciones."""
 

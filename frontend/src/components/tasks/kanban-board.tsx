@@ -133,7 +133,7 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
                     onDragEnd={handleDragEnd}
                     className={cn(
                       "cursor-grab active:cursor-grabbing hover:shadow-md transition-all group border",
-                      isOverdue && "border-red-300 bg-red-50/50"
+                      isOverdue && "border-red-300 bg-red-50/50 text-black [&_.text-muted-foreground]:text-black/60"
                     )}
                   >
                     <CardContent className="p-3">
