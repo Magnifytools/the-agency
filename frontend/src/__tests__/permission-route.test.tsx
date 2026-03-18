@@ -46,7 +46,7 @@ describe("PermissionRoute", () => {
   describe("loading state", () => {
     it("renders nothing while auth is loading", () => {
       authAs({ isLoading: true })
-      const { container } = renderRoute({})
+      renderRoute({})
       // During loading, only the route wrapper exists
       expect(screen.queryByTestId("protected-content")).not.toBeInTheDocument()
       expect(screen.queryByTestId("redirected-dashboard")).not.toBeInTheDocument()

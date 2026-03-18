@@ -45,7 +45,9 @@ async def _get_or_create_settings(db: AsyncSession) -> DiscordSettings:
     result = await db.execute(select(DiscordSettings).limit(1))
     ds = result.scalar_one_or_none()
     if ds is None:
-        ds = DiscordSettings(webhook_url=settings.DISCORD_WEBHOOK_URL or "")
+        raw_url = settings.DISCORD_WEBHOOK_URL or ""
+        encrypted_url = encrypt_vault_secret(raw_url) if raw_url.strip() else ""
+        ds = DiscordSettings(webhook_url=encrypted_url)
         db.add(ds)
         await db.commit()
         await safe_refresh(db, ds, log_context="discord")
@@ -53,16 +55,18 @@ async def _get_or_create_settings(db: AsyncSession) -> DiscordSettings:
 
 
 def _decrypt_field(value: str | None) -> str:
-    """Decrypt a vault-encrypted field, returning raw value for legacy plaintext."""
+    """Decrypt a vault-encrypted field. Rejects unencrypted legacy values."""
     if not value:
         return ""
     if value.startswith("v1:"):
         try:
             return decrypt_vault_secret(value)
         except Exception:
-            logger.warning("Failed to decrypt Discord field — may be legacy plaintext")
-            return value
-    return value  # Legacy plaintext — will be re-encrypted on next save
+            logger.error("Failed to decrypt Discord field — value is corrupt or key changed")
+            return ""
+    # Legacy plaintext rejected — must be encrypted via migration or settings update
+    logger.warning("Rejecting plaintext Discord field — run encrypt_discord_secrets migration")
+    return ""
 
 
 def _settings_to_response(ds: DiscordSettings) -> DiscordSettingsResponse:

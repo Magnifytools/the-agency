@@ -91,7 +91,7 @@ async def create_invitation(
     invitation = UserInvitation(
         email=body.email,
         token=token,
-        role=UserRole(body.role),
+        role=UserRole(body.role.value),
         invited_by=current_user.id,
         expires_at=datetime.utcnow() + timedelta(days=7),
     )

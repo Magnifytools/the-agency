@@ -1133,29 +1133,9 @@ async def _reset_admin_password():
 
 
 async def lifespan(app: FastAPI):
-    if await _schema_needs_startup_ddl():
-        logging.info("Running startup DDL (schema not yet up to date)...")
-        await _ensure_columns()
-        await _ensure_numeric_types()
-        await _ensure_columns_v2()
-        await _ensure_columns_v3()
-        await _ensure_columns_v4()
-        await _ensure_columns_v5()
-        await _ensure_columns_v6()
-        await _ensure_columns_v7()
-        await _ensure_columns_v8()
-        await _ensure_columns_v9()
-        await _ensure_columns_v10()
-    else:
-        logging.info("Schema up to date, skipping startup DDL.")
-    # One-time password reset for admin — ensures SEED_ADMIN_PASSWORD is applied
-    await _reset_admin_password()
-    await _seed_national_holidays()
-    await _cleanup_qa_test_data()
-    await _ensure_categories()
-    await _seed_recurring_templates()
-    await _generate_recurring_instances()
-    await _backfill_module_permissions()
+    # DDL, seeds, and cleanup are now handled offline via:
+    #   python -m backend.scripts.init_db
+    # The lifespan only initializes background tasks.
     task = None
     if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL:
         task = asyncio.create_task(_engine_sync_loop(), name="engine-sync")
@@ -1358,6 +1338,12 @@ if _frontend_dist.is_dir():
 
     @app.get("/{full_path:path}")
     async def serve_spa(request: Request, full_path: str):
+        # Return 404 JSON for unknown API routes instead of SPA HTML
+        if full_path.startswith("api/") or full_path.startswith("api"):
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "Not found"},
+            )
         file_path = (_frontend_dist / full_path).resolve()
         # Prevent path traversal: resolved path must stay inside frontend/dist
         if file_path.is_file() and file_path.is_relative_to(_frontend_dist.resolve()):

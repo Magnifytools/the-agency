@@ -399,12 +399,20 @@ async def send_daily_to_discord(
     ds_result = await db.execute(select(DiscordSettings).limit(1))
     ds = ds_result.scalar_one_or_none()
     raw_wh = ds.webhook_url if ds else None
-    if raw_wh and raw_wh.startswith("v1:"):
-        try:
-            raw_wh = decrypt_vault_secret(raw_wh)
-        except Exception as e:
-            logger.warning("Failed to decrypt webhook_url vault secret: %s", e)
-    webhook_url = raw_wh or settings.DISCORD_WEBHOOK_URL
+    webhook_url = ""
+    if raw_wh:
+        if raw_wh.startswith("v1:"):
+            try:
+                webhook_url = decrypt_vault_secret(raw_wh)
+            except Exception as e:
+                logger.warning("Failed to decrypt webhook_url vault secret: %s", e)
+                webhook_url = ""
+        else:
+            # Legacy plaintext rejected — must be encrypted via migration
+            logger.warning("Rejecting plaintext Discord webhook — run encrypt_discord_secrets migration")
+            webhook_url = ""
+    if not webhook_url:
+        webhook_url = settings.DISCORD_WEBHOOK_URL or ""
 
     if not webhook_url:
         raise HTTPException(status_code=400, detail="Discord webhook no configurado. Configúralo en Ajustes > Discord.")
@@ -421,12 +429,16 @@ async def send_daily_to_discord(
     try:
         async with httpx.AsyncClient(timeout=15) as http:
             raw_bt = ds.bot_token if ds else None
-            if raw_bt and raw_bt.startswith("v1:"):
-                try:
-                    raw_bt = decrypt_vault_secret(raw_bt)
-                except Exception as e:
-                    logger.warning("Failed to decrypt bot_token vault secret: %s", e)
-            bot_token = raw_bt
+            bot_token = None
+            if raw_bt:
+                if raw_bt.startswith("v1:"):
+                    try:
+                        bot_token = decrypt_vault_secret(raw_bt)
+                    except Exception as e:
+                        logger.warning("Failed to decrypt bot_token vault secret: %s", e)
+                else:
+                    logger.warning("Rejecting plaintext bot_token — run encrypt_discord_secrets migration")
+                    bot_token = None
 
             if bot_token:
                 # Thread mode: send embed as header, body in thread

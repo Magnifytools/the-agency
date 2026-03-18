@@ -1,13 +1,19 @@
 from __future__ import annotations
-from typing import Optional
+from enum import Enum
+from typing import Optional, Literal
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
+
+
+class InvitationRole(str, Enum):
+    admin = "admin"
+    member = "member"
 
 
 class InvitationCreate(BaseModel):
-    email: str
-    role: str = "member"
-    modules: list[str] = []
+    email: EmailStr
+    role: InvitationRole = InvitationRole.member
+    modules: list[str] = Field(default_factory=list)
 
 
 class InvitationResponse(BaseModel):

@@ -522,36 +522,43 @@ export default function AgencyVaultPage() {
   )
 }
 
-// --- Password reveal field (fetches on demand) ---
+// --- Password reveal field (ephemeral: auto-hides after 5s, copies to clipboard) ---
 function PasswordField({ assetId }: { assetId: number }) {
   const [show, setShow] = useState(false)
-  const [password, setPassword] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
 
-  const handleToggle = async () => {
-    if (!show && password === null) {
-      setLoading(true)
-      try {
-        const res = await vaultApi.getPassword(assetId)
-        setPassword(res.password ?? "")
-      } catch {
-        setPassword("(error al obtener)")
-      } finally {
-        setLoading(false)
-      }
+  const handleReveal = async () => {
+    if (loading) return
+    setLoading(true)
+    try {
+      const res = await vaultApi.getPassword(assetId)
+      const pw = res.password ?? ""
+      // Copy to clipboard instead of persisting in DOM state
+      await navigator.clipboard.writeText(pw)
+      setCopied(true)
+      setShow(true)
+      // Auto-hide after 5 seconds
+      setTimeout(() => {
+        setShow(false)
+        setCopied(false)
+      }, 5000)
+    } catch {
+      setCopied(false)
+    } finally {
+      setLoading(false)
     }
-    setShow((v) => !v)
   }
 
   return (
     <div className="flex items-center gap-1 mt-0.5">
       <p className="text-xs font-mono text-muted-foreground truncate flex-1">
-        {loading ? "Cargando..." : show && password !== null ? password : "••••••••••••"}
+        {loading ? "Cargando..." : show ? (copied ? "Copiado al portapapeles" : "••••••••••••") : "••••••••••••"}
       </p>
       <button
-        onClick={handleToggle}
+        onClick={show ? () => setShow(false) : handleReveal}
         className="p-0.5 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-        title={show ? "Ocultar" : "Mostrar contraseña"}
+        title={show ? "Ocultar" : "Copiar contraseña"}
       >
         {show ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
       </button>
