@@ -283,15 +283,39 @@ export default function SettingsPage() {
 
   const shortcutKeys = Object.keys(DEFAULT_SHORTCUTS)
 
+  const sections = [
+    { id: "shortcuts", label: "Atajos de teclado" },
+    ...(canManageCategories ? [{ id: "categories", label: "Categorías de tareas" }] : []),
+    { id: "location", label: "Ubicación" },
+    { id: "digest", label: "Preferencias de digest" },
+    { id: "notifications", label: "Notificaciones" },
+    ...(isAdmin ? [{ id: "holidays", label: "Festivos" }] : []),
+  ]
+
   return (
-    <div className="max-w-2xl mx-auto space-y-8">
+    <div className="flex gap-8 max-w-4xl mx-auto">
+      {/* Sidebar nav */}
+      <nav className="hidden md:block w-48 shrink-0 sticky top-8 self-start space-y-1">
+        {sections.map((s) => (
+          <a
+            key={s.id}
+            href={`#${s.id}`}
+            className="block px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
+          >
+            {s.label}
+          </a>
+        ))}
+      </nav>
+
+      {/* Content */}
+      <div className="flex-1 min-w-0 space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-foreground tracking-tight">Configuración</h1>
         <p className="text-muted-foreground mt-1">Personaliza tu experiencia en The Agency</p>
       </div>
 
       {/* Keyboard shortcuts */}
-      <div className="bg-card border border-border rounded-2xl p-6">
+      <div id="shortcuts" className="bg-card border border-border rounded-2xl p-6 scroll-mt-8">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-base font-semibold text-foreground">Atajos de teclado</h2>
@@ -367,7 +391,7 @@ export default function SettingsPage() {
 
       {/* Task categories — admin or users with tasks write permission */}
       {canManageCategories && (
-        <div className="bg-card border border-border rounded-2xl p-6">
+        <div id="categories" className="bg-card border border-border rounded-2xl p-6 scroll-mt-8">
           <div className="mb-6">
             <h2 className="text-base font-semibold text-foreground">Categorías de tareas</h2>
             <p className="text-sm text-muted-foreground mt-0.5">Gestiona las categorías disponibles para clasificar tareas</p>
@@ -469,7 +493,7 @@ export default function SettingsPage() {
       )}
 
       {/* Location / Region */}
-      <div className="bg-card border border-border rounded-2xl p-6">
+      <div id="location" className="bg-card border border-border rounded-2xl p-6 scroll-mt-8">
         <div className="flex items-center gap-2 mb-4">
           <MapPin className="h-4 w-4 text-muted-foreground" />
           <h2 className="text-base font-semibold text-foreground">Ubicación</h2>
@@ -513,7 +537,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Digest settings */}
-      <div className="bg-card border border-border rounded-2xl p-6">
+      <div id="digest" className="bg-card border border-border rounded-2xl p-6 scroll-mt-8">
         <div className="flex items-center gap-2 mb-4">
           <FileText className="h-4 w-4 text-muted-foreground" />
           <h2 className="text-base font-semibold text-foreground">Preferencias de digest</h2>
@@ -574,7 +598,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Notification preferences */}
-      <div className="bg-card border border-border rounded-2xl p-6">
+      <div id="notifications" className="bg-card border border-border rounded-2xl p-6 scroll-mt-8">
         <div className="flex items-center gap-2 mb-4">
           <Bell className="h-4 w-4 text-muted-foreground" />
           <h2 className="text-base font-semibold text-foreground">Notificaciones</h2>
@@ -632,7 +656,7 @@ export default function SettingsPage() {
 
       {/* Holiday management — admin only */}
       {isAdmin && (
-        <div className="bg-card border border-border rounded-2xl p-6">
+        <div id="holidays" className="bg-card border border-border rounded-2xl p-6 scroll-mt-8">
           <div className="flex items-center gap-2 mb-4">
             <Calendar className="h-4 w-4 text-muted-foreground" />
             <h2 className="text-base font-semibold text-foreground">Festivos {currentYear}</h2>
@@ -737,6 +761,7 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+    </div>
     </div>
   )
 }

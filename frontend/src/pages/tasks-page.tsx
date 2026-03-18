@@ -72,6 +72,7 @@ export default function TasksPage() {
   const [filterAssigned, setFilterAssigned] = useState<string>("")
   const [filterDateFrom, setFilterDateFrom] = useState<string>("")
   const [filterDateTo, setFilterDateTo] = useState<string>("")
+  const [filterDateField, setFilterDateField] = useState<"due_date" | "scheduled_date">("due_date")
 
   // QA Health Filters — initialise from URL param if present
   const urlQaFilter = searchParams.get("qaFilter") as "none" | "unassigned" | "no_date" | "no_estimate" | "overdue" | null
@@ -89,6 +90,8 @@ export default function TasksPage() {
   // Dialog — collapsible sections
   const [showAssignmentFields, setShowAssignmentFields] = useState(false)
   const [showDeadlineFields, setShowDeadlineFields] = useState(false)
+  const [showHierarchyFields, setShowHierarchyFields] = useState(false)
+  const [showAdditionalFields, setShowAdditionalFields] = useState(false)
   // Recurring fields state
   const [isRecurring, setIsRecurring] = useState(false)
   const [recurrencePattern, setRecurrencePattern] = useState<string>("weekly")
@@ -97,7 +100,7 @@ export default function TasksPage() {
   const deepLinkTaskId = searchParams.get("edit") || searchParams.get("task")
 
   const { data: tasksData, isLoading } = useQuery({
-    queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, page, pageSize, qaFilter],
+    queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, filterDateField, page, pageSize, qaFilter],
     queryFn: () =>
       tasksApi.list({
         client_id: filterClient ? Number(filterClient) : undefined,
@@ -105,8 +108,10 @@ export default function TasksPage() {
         status: filterStatus || undefined,
         priority: filterPriority || undefined,
         assigned_to: filterAssigned ? Number(filterAssigned) : undefined,
-        due_date_from: filterDateFrom || undefined,
-        due_date_to: filterDateTo || undefined,
+        due_date_from: filterDateField === "due_date" && filterDateFrom ? filterDateFrom : undefined,
+        due_date_to: filterDateField === "due_date" && filterDateTo ? filterDateTo : undefined,
+        scheduled_date_from: filterDateField === "scheduled_date" && filterDateFrom ? filterDateFrom : undefined,
+        scheduled_date_to: filterDateField === "scheduled_date" && filterDateTo ? filterDateTo : undefined,
         overdue: qaFilter === "overdue" ? true : undefined,
         page,
         page_size: pageSize,
@@ -332,7 +337,10 @@ export default function TasksPage() {
 
   const openCreate = () => {
     setEditing(null)
-    setShowAssignmentFields(true)
+    setShowAssignmentFields(false)
+    setShowDeadlineFields(false)
+    setShowHierarchyFields(false)
+    setShowAdditionalFields(false)
     setIsRecurring(false)
     setRecurrencePattern("weekly")
     setRecurrenceDay(0)
@@ -342,7 +350,10 @@ export default function TasksPage() {
 
   const openEdit = (task: Task) => {
     setEditing(task)
-    setShowAssignmentFields(true)
+    setShowAssignmentFields(false)
+    setShowDeadlineFields(false)
+    setShowHierarchyFields(false)
+    setShowAdditionalFields(false)
     setIsRecurring(task.is_recurring)
     setRecurrencePattern(task.recurrence_pattern ?? "weekly")
     setRecurrenceDay(task.recurrence_day ?? 0)
@@ -465,12 +476,16 @@ export default function TasksPage() {
             </option>
           ))}
         </Select>
+        <Select value={filterDateField} onChange={(e) => { setFilterDateField(e.target.value as "due_date" | "scheduled_date"); reset() }} className="w-40">
+          <option value="due_date">Fecha límite</option>
+          <option value="scheduled_date">Fecha planificada</option>
+        </Select>
         <Input
           type="date"
           value={filterDateFrom}
           onChange={(e) => { setFilterDateFrom(e.target.value); reset() }}
           placeholder="Desde"
-          title="Fecha límite desde"
+          title={`${filterDateField === "due_date" ? "Fecha límite" : "Fecha planificada"} desde`}
           className="w-40"
         />
         <Input
@@ -478,7 +493,7 @@ export default function TasksPage() {
           value={filterDateTo}
           onChange={(e) => { setFilterDateTo(e.target.value); reset() }}
           placeholder="Hasta"
-          title="Fecha límite hasta"
+          title={`${filterDateField === "due_date" ? "Fecha límite" : "Fecha planificada"} hasta`}
           className="w-40"
         />
       </div>
@@ -1092,7 +1107,25 @@ export default function TasksPage() {
                   )}
                 </div>
 
-                <div className="space-y-1.5 col-span-2">
+              </div>
+            </div>
+          </div>
+
+          {/* Jerarquía — collapsible */}
+          <div className="border border-border/60 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+              onClick={() => setShowHierarchyFields((v) => !v)}
+            >
+              <span>Jerarquía</span>
+              {showHierarchyFields
+                ? <ChevronUp className="h-4 w-4" />
+                : <ChevronDown className="h-4 w-4" />}
+            </button>
+            <div className={showHierarchyFields ? "p-3 pt-2 border-t border-border/60" : "hidden"}>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
                   <Label htmlFor="depends_on" className="text-xs">Depende de <span className="text-muted-foreground">(opcional)</span></Label>
                   <Input
                     placeholder="Buscar tarea..."
@@ -1141,10 +1174,18 @@ export default function TasksPage() {
 
         {/* Subtasks / Checklist — only shown when editing an existing task */}
         {editing && (
-          <div className="mt-4 border-t pt-4 space-y-3">
-            <p className="text-sm font-semibold">
-              Subtasks ({checklistItems.filter(i => i.is_done).length}/{checklistItems.length})
-            </p>
+          <div className="mt-4 border border-border/60 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+              onClick={() => setShowHierarchyFields((v) => !v)}
+            >
+              <span>Subtasks ({checklistItems.filter(i => i.is_done).length}/{checklistItems.length})</span>
+              {showHierarchyFields
+                ? <ChevronUp className="h-4 w-4" />
+                : <ChevronDown className="h-4 w-4" />}
+            </button>
+            <div className={showHierarchyFields ? "p-3 pt-2 border-t border-border/60 space-y-3" : "hidden"}>
             <div className="space-y-1.5">
               {checklistItems.map((item) => {
                 const isOverdue = item.due_date && !item.is_done && item.due_date < todayStr
@@ -1232,174 +1273,188 @@ export default function TasksPage() {
                 <Plus className="h-3 w-3" />
               </Button>
             </div>
+            </div>
           </div>
         )}
 
-        {/* Comments — only shown when editing an existing task */}
+        {/* Datos adicionales — collapsible (comments, time entries, attachments) */}
         {editing && (
-          <div className="mt-4 border-t pt-4 space-y-3">
-            <p className="text-sm font-semibold flex items-center gap-1.5">
-              <MessageSquare className="h-3.5 w-3.5" /> Comentarios ({comments.length})
-            </p>
-            {comments.length > 0 && (
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {comments.map((c) => (
-                  <div key={c.id} className="text-sm bg-muted/50 rounded p-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-xs">{c.user_name ?? `User #${c.user_id}`}</span>
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(c.created_at).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                        <Button variant="ghost" size="icon" className="h-5 w-5"
-                          onClick={() => deleteCommentMut.mutate(c.id)}>
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+          <div className="mt-4 border border-border/60 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+              onClick={() => setShowAdditionalFields((v) => !v)}
+            >
+              <span>Datos adicionales</span>
+              {showAdditionalFields
+                ? <ChevronUp className="h-4 w-4" />
+                : <ChevronDown className="h-4 w-4" />}
+            </button>
+            <div className={showAdditionalFields ? "p-3 pt-2 border-t border-border/60 space-y-4" : "hidden"}>
+              {/* Comments */}
+              <div className="space-y-3">
+                <p className="text-sm font-semibold flex items-center gap-1.5">
+                  <MessageSquare className="h-3.5 w-3.5" /> Comentarios ({comments.length})
+                </p>
+                {comments.length > 0 && (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {comments.map((c) => (
+                      <div key={c.id} className="text-sm bg-muted/50 rounded p-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-medium text-xs">{c.user_name ?? `User #${c.user_id}`}</span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(c.created_at).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                            <Button variant="ghost" size="icon" className="h-5 w-5"
+                              onClick={() => deleteCommentMut.mutate(c.id)}>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap">{c.text}</p>
                       </div>
-                    </div>
-                    <p className="text-sm whitespace-pre-wrap">{c.text}</p>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-            <div className="space-y-2">
-              <Textarea
-                value={newCommentText}
-                onChange={(e) => setNewCommentText(e.target.value)}
-                placeholder="Escribe un comentario..."
-                className="text-sm min-h-[60px] resize-y"
-                rows={2}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && newCommentText.trim()) {
-                    e.preventDefault()
-                    addCommentMut.mutate(newCommentText.trim())
-                  }
-                }}
-              />
-              <div className="flex justify-end">
-                <Button size="sm"
-                  onClick={() => newCommentText.trim() && addCommentMut.mutate(newCommentText.trim())}
-                  disabled={!newCommentText.trim() || addCommentMut.isPending}>
-                  {addCommentMut.isPending ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <Send className="h-3 w-3 mr-1.5" />}
-                  Comentar
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Time Entries — only shown when editing an existing task */}
-        {editing && taskTimeEntries.length > 0 && (
-          <div className="mt-4 border-t pt-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold flex items-center gap-1.5">
-                <Clock className="h-3.5 w-3.5" /> Tiempo registrado ({taskTimeEntries.length})
-              </p>
-              <span className="text-sm font-mono font-semibold text-brand">
-                {(() => {
-                  const total = taskTimeEntries.reduce((sum, e) => sum + (e.minutes || 0), 0)
-                  const h = Math.floor(total / 60)
-                  const m = total % 60
-                  return h > 0 ? `${h}h ${m}m` : `${m}m`
-                })()}
-              </span>
-            </div>
-            <div className="space-y-1 max-h-40 overflow-y-auto">
-              {taskTimeEntries.slice(0, 10).map((entry) => (
-                <div key={entry.id} className="flex items-center justify-between text-xs bg-muted/50 rounded px-2 py-1.5">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-muted-foreground shrink-0">
-                      {new Date(entry.date || entry.started_at || "").toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
-                    </span>
-                    <span className="font-mono font-medium shrink-0">
-                      {entry.minutes ? `${Math.floor(entry.minutes / 60)}h ${entry.minutes % 60}m` : "—"}
-                    </span>
-                    {entry.notes && (
-                      <span className="text-muted-foreground truncate">{entry.notes}</span>
-                    )}
+                )}
+                <div className="space-y-2">
+                  <Textarea
+                    value={newCommentText}
+                    onChange={(e) => setNewCommentText(e.target.value)}
+                    placeholder="Escribe un comentario..."
+                    className="text-sm min-h-[60px] resize-y"
+                    rows={2}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && newCommentText.trim()) {
+                        e.preventDefault()
+                        addCommentMut.mutate(newCommentText.trim())
+                      }
+                    }}
+                  />
+                  <div className="flex justify-end">
+                    <Button size="sm"
+                      onClick={() => newCommentText.trim() && addCommentMut.mutate(newCommentText.trim())}
+                      disabled={!newCommentText.trim() || addCommentMut.isPending}>
+                      {addCommentMut.isPending ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <Send className="h-3 w-3 mr-1.5" />}
+                      Comentar
+                    </Button>
                   </div>
                 </div>
-              ))}
-              {taskTimeEntries.length > 10 && (
-                <p className="text-xs text-muted-foreground text-center">
-                  +{taskTimeEntries.length - 10} registros más
-                </p>
-              )}
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-full"
-              onClick={() => { setTimeLogTask(editing); }}
-            >
-              <Clock className="h-3 w-3 mr-1.5" />
-              Ver todos / Añadir registro
-            </Button>
-          </div>
-        )}
-
-        {/* Attachments — only shown when editing an existing task */}
-        {editing && (
-          <div className="mt-4 border-t pt-4 space-y-3">
-            <p className="text-sm font-semibold flex items-center gap-1.5">
-              <Paperclip className="h-3.5 w-3.5" /> Adjuntos ({attachments.length})
-            </p>
-            {attachments.length > 0 && (
-              <div className="space-y-1.5">
-                {attachments.map((a) => {
-                  const isImage = a.mime_type?.startsWith("image/")
-                  const isPreviewable = isImage || a.mime_type === "application/pdf"
-                  const previewUrl = `/api/tasks/${editing!.id}/attachments/${a.id}/preview`
-                  return (
-                    <div key={a.id} className="space-y-1">
-                      <div className="flex items-center gap-2 text-sm bg-muted/50 rounded px-2 py-1.5">
-                        <Paperclip className="h-3 w-3 shrink-0" />
-                        <span className="flex-1 truncate">{a.name}</span>
-                        <span className="text-xs text-muted-foreground shrink-0">
-                          {a.size_bytes < 1024 ? `${a.size_bytes} B` : a.size_bytes < 1048576 ? `${Math.round(a.size_bytes / 1024)} KB` : `${(a.size_bytes / 1048576).toFixed(1)} MB`}
-                        </span>
-                        {isPreviewable && (
-                          <Button variant="ghost" size="icon" className="h-6 w-6"
-                            onClick={() => window.open(previewUrl, "_blank")} title="Vista previa">
-                            <Eye className="h-3 w-3" />
-                          </Button>
-                        )}
-                        <Button variant="ghost" size="icon" className="h-6 w-6"
-                          onClick={() => handleDownloadAttachment(a.id, a.name)}>
-                          <Download className="h-3 w-3" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-6 w-6"
-                          onClick={() => deleteAttachmentMut.mutate(a.id)}>
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      {isImage && (
-                        <img src={previewUrl} alt={a.name} className="ml-5 max-h-32 rounded border object-contain" />
-                      )}
-                    </div>
-                  )
-                })}
               </div>
-            )}
-            <div>
-              <input
-                type="file"
-                className="hidden"
-                ref={(el) => setAttachmentFileRef(el)}
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) {
-                    uploadAttachmentMut.mutate(file)
-                    e.target.value = ""
-                  }
-                }}
-              />
-              <Button size="sm" variant="outline" className="h-8"
-                onClick={() => attachmentFileRef?.click()}
-                disabled={uploadAttachmentMut.isPending}>
-                {uploadAttachmentMut.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Plus className="h-3 w-3 mr-1" />}
-                Subir archivo
-              </Button>
+
+              {/* Time Entries */}
+              {taskTimeEntries.length > 0 && (
+                <div className="space-y-3 border-t border-border/40 pt-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5" /> Tiempo registrado ({taskTimeEntries.length})
+                    </p>
+                    <span className="text-sm font-mono font-semibold text-brand">
+                      {(() => {
+                        const total = taskTimeEntries.reduce((sum, e) => sum + (e.minutes || 0), 0)
+                        const h = Math.floor(total / 60)
+                        const m = total % 60
+                        return h > 0 ? `${h}h ${m}m` : `${m}m`
+                      })()}
+                    </span>
+                  </div>
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {taskTimeEntries.slice(0, 10).map((entry) => (
+                      <div key={entry.id} className="flex items-center justify-between text-xs bg-muted/50 rounded px-2 py-1.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-muted-foreground shrink-0">
+                            {new Date(entry.date || entry.started_at || "").toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                          </span>
+                          <span className="font-mono font-medium shrink-0">
+                            {entry.minutes ? `${Math.floor(entry.minutes / 60)}h ${entry.minutes % 60}m` : "—"}
+                          </span>
+                          {entry.notes && (
+                            <span className="text-muted-foreground truncate">{entry.notes}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {taskTimeEntries.length > 10 && (
+                      <p className="text-xs text-muted-foreground text-center">
+                        +{taskTimeEntries.length - 10} registros más
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => { setTimeLogTask(editing); }}
+                  >
+                    <Clock className="h-3 w-3 mr-1.5" />
+                    Ver todos / Añadir registro
+                  </Button>
+                </div>
+              )}
+
+              {/* Attachments */}
+              <div className="space-y-3 border-t border-border/40 pt-3">
+                <p className="text-sm font-semibold flex items-center gap-1.5">
+                  <Paperclip className="h-3.5 w-3.5" /> Adjuntos ({attachments.length})
+                </p>
+                {attachments.length > 0 && (
+                  <div className="space-y-1.5">
+                    {attachments.map((a) => {
+                      const isImage = a.mime_type?.startsWith("image/")
+                      const isPreviewable = isImage || a.mime_type === "application/pdf"
+                      const previewUrl = `/api/tasks/${editing!.id}/attachments/${a.id}/preview`
+                      return (
+                        <div key={a.id} className="space-y-1">
+                          <div className="flex items-center gap-2 text-sm bg-muted/50 rounded px-2 py-1.5">
+                            <Paperclip className="h-3 w-3 shrink-0" />
+                            <span className="flex-1 truncate">{a.name}</span>
+                            <span className="text-xs text-muted-foreground shrink-0">
+                              {a.size_bytes < 1024 ? `${a.size_bytes} B` : a.size_bytes < 1048576 ? `${Math.round(a.size_bytes / 1024)} KB` : `${(a.size_bytes / 1048576).toFixed(1)} MB`}
+                            </span>
+                            {isPreviewable && (
+                              <Button variant="ghost" size="icon" className="h-6 w-6"
+                                onClick={() => window.open(previewUrl, "_blank")} title="Vista previa">
+                                <Eye className="h-3 w-3" />
+                              </Button>
+                            )}
+                            <Button variant="ghost" size="icon" className="h-6 w-6"
+                              onClick={() => handleDownloadAttachment(a.id, a.name)}>
+                              <Download className="h-3 w-3" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6"
+                              onClick={() => deleteAttachmentMut.mutate(a.id)}>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          {isImage && (
+                            <img src={previewUrl} alt={a.name} className="ml-5 max-h-32 rounded border object-contain" />
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                <div>
+                  <input
+                    type="file"
+                    className="hidden"
+                    ref={(el) => setAttachmentFileRef(el)}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        uploadAttachmentMut.mutate(file)
+                        e.target.value = ""
+                      }
+                    }}
+                  />
+                  <Button size="sm" variant="outline" className="h-8"
+                    onClick={() => attachmentFileRef?.click()}
+                    disabled={uploadAttachmentMut.isPending}>
+                    {uploadAttachmentMut.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Plus className="h-3 w-3 mr-1" />}
+                    Subir archivo
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         )}
