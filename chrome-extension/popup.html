@@ -157,11 +157,12 @@
     <div id="tab-tasks" class="tab-content hidden">
       <div class="tasks-header">
         <select id="tasks-filter" class="field-select compact">
+          <option value="pending,in_progress,waiting,in_review" selected>Activas</option>
           <option value="in_progress">En curso</option>
           <option value="pending">Pendientes</option>
-          <option value="in_review">En revision</option>
+          <option value="in_review">En revisión</option>
           <option value="waiting">En espera</option>
-          <option value="">Todas</option>
+          <option value="backlog">Backlog</option>
         </select>
         <button id="tasks-refresh" class="icon-btn" title="Refrescar">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>

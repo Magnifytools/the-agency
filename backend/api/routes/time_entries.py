@@ -644,32 +644,27 @@ async def start_timer(
             status_code=status.HTTP_409_CONFLICT,
             detail="Ya hay un timer activo. Detén el actual antes de iniciar otro.",
         )
-    try:
-        await safe_refresh(db, entry, log_context="timer_start")
-    except Exception:
-        logger.warning("Non-critical: safe_refresh failed after timer start")
-        pass
+    # Reload with proper eager loading (avoids async lazy-load 500s)
+    loaded = await _load_time_entry_for_response(db, entry.id)
+    if not loaded:
+        loaded = entry  # fallback to the original object
 
-    # Reload relation if it was tied to a task
     task_title = body.notes
     client_name = None
     try:
-        if task:
-            await safe_refresh(db, entry, ["task"], log_context="time_entries")
-            if entry.task:
-                task_title = entry.task.title
-                await safe_refresh(db, entry.task, ["client"], log_context="time_entries")
-                if entry.task.client:
-                    client_name = entry.task.client.name
+        if loaded.task:
+            task_title = loaded.task.title
+            if loaded.task.client:
+                client_name = loaded.task.client.name
     except Exception:
-        # Relationship loading failed — continue with fallback values
         pass
 
-    # Attach UTC tzinfo so JSON serialisation includes +00:00
-    sa = entry.started_at.replace(tzinfo=timezone.utc) if entry.started_at and entry.started_at.tzinfo is None else entry.started_at
+    sa = loaded.started_at
+    if sa and sa.tzinfo is None:
+        sa = sa.replace(tzinfo=timezone.utc)
     return ActiveTimerResponse(
-        id=entry.id,
-        task_id=entry.task_id,
+        id=loaded.id,
+        task_id=loaded.task_id,
         task_title=task_title,
         client_name=client_name,
         started_at=sa,
