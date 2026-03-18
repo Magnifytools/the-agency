@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
-import { ClipboardList, Sparkles, MessageCircle, Loader2, ChevronDown, ChevronUp, RefreshCw, Trash2, Wand2 } from "lucide-react"
+import { ClipboardList, Sparkles, MessageCircle, Loader2, ChevronDown, ChevronUp, RefreshCw, Trash2, Wand2, Pencil, Check, X } from "lucide-react"
 import { dailysApi } from "@/lib/api"
 import type { DailyUpdate, ParsedProject, ParsedTask } from "@/lib/types"
 
@@ -79,6 +79,16 @@ export default function DailysPage() {
       }
     },
     onError: (err) => { setSendingId(null); toast.error(getErrorMessage(err, "Error al enviar a Discord")) },
+  })
+
+  const editMutation = useMutation({
+    mutationFn: ({ id, raw_text }: { id: number; raw_text: string }) =>
+      dailysApi.edit(id, { raw_text }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dailys"] })
+      toast.success("Daily actualizado y re-parseado")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al editar")),
   })
 
   const deleteMutation = useMutation({
@@ -183,9 +193,11 @@ export default function DailysPage() {
               onToggle={() => setExpandedId(expandedId === daily.id ? null : daily.id)}
               onReparse={() => reparseMutation.mutate(daily.id)}
               onSendDiscord={() => discordMutation.mutate(daily.id)}
+              onEdit={(id, raw_text) => editMutation.mutate({ id, raw_text })}
               onDelete={() => setDeleteId(daily.id)}
               isReparsing={reparsingId === daily.id}
               isSending={sendingId === daily.id}
+              isEditing={editMutation.isPending}
               currentUserId={user?.id}
             />
           ))
@@ -210,9 +222,11 @@ function DailyCard({
   onToggle,
   onReparse,
   onSendDiscord,
+  onEdit,
   onDelete,
   isReparsing,
   isSending,
+  isEditing,
   currentUserId,
 }: {
   daily: DailyUpdate
@@ -220,11 +234,15 @@ function DailyCard({
   onToggle: () => void
   onReparse: () => void
   onSendDiscord: () => void
+  onEdit: (id: number, raw_text: string) => void
   onDelete: () => void
   isReparsing: boolean
   isSending: boolean
+  isEditing: boolean
   currentUserId?: number
 }) {
+  const [editMode, setEditMode] = useState(false)
+  const [editText, setEditText] = useState("")
   const parsed = daily.parsed_data
   const totalTasks = parsed
     ? parsed.projects.reduce((sum, p) => sum + p.tasks.length, 0) + parsed.general.length
@@ -262,6 +280,21 @@ function DailyCard({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {daily.status === "draft" && daily.user_id === currentUserId && (
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Editar contenido"
+              onClick={(e) => {
+                e.stopPropagation()
+                setEditText(daily.raw_text)
+                setEditMode(true)
+              }}
+              disabled={editMode}
+            >
+              <Pencil className="w-4 h-4" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -295,7 +328,46 @@ function DailyCard({
         </div>
       </div>
 
-      {expanded && parsed && (
+      {/* Edit mode */}
+      {editMode && (
+        <CardContent className="pt-0 pb-4 border-t border-border">
+          <div className="space-y-3 mt-4">
+            <textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              className="w-full min-h-[200px] rounded-xl border border-border bg-background px-4 py-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-brand/20 resize-y"
+            />
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setEditMode(false)}
+                disabled={isEditing}
+              >
+                <X className="w-4 h-4 mr-1" />
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  onEdit(daily.id, editText)
+                  setEditMode(false)
+                }}
+                disabled={isEditing || !editText.trim()}
+              >
+                {isEditing ? (
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4 mr-1" />
+                )}
+                Guardar y re-parsear
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      )}
+
+      {expanded && parsed && !editMode && (
         <CardContent className="pt-0 pb-6 border-t border-border">
           <div className="space-y-5 mt-4">
             {/* Projects */}

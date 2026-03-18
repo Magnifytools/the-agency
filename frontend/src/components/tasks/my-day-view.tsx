@@ -200,22 +200,28 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
         )}
       </div>
 
-      {plannedTasks.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <CheckCircle2 className="h-10 w-10 mx-auto mb-3 text-green-400" />
-            <p className="font-medium">¡Todo al día!</p>
-            <p className="text-sm mt-1">No tienes tareas previstas para hoy</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-2">{plannedTasks.map(renderTaskCard)}</div>
-      )}
+      {/* Tareas del día */}
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+          Tareas del día ({plannedTasks.length})
+        </p>
+        {plannedTasks.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center text-muted-foreground">
+              <CheckCircle2 className="h-10 w-10 mx-auto mb-3 text-green-400" />
+              <p className="font-medium">¡Todo al día!</p>
+              <p className="text-sm mt-1">No tienes tareas previstas para hoy</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-2">{plannedTasks.map(renderTaskCard)}</div>
+        )}
+      </div>
 
       {unplannedTasks.length > 0 && (
         <div className="mt-6">
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
-            Pendientes de planificar o asignar ({unplannedTasks.length})
+            Sin planificar ({unplannedTasks.length})
           </p>
           <div className="space-y-2">
             {unplannedTasks.map(renderTaskCard)}

@@ -540,8 +540,8 @@ async def delete_digest(
     if not is_admin and not is_owner:
         raise HTTPException(status_code=403, detail="No tienes permiso para eliminar este digest")
 
-    if not is_admin and digest.status != DigestStatus.draft:
-        raise HTTPException(status_code=409, detail="Solo puedes eliminar digests en borrador")
+    if not is_admin and digest.status == DigestStatus.sent:
+        raise HTTPException(status_code=409, detail="No puedes eliminar digests ya enviados")
 
     await db.delete(digest)
     await db.commit()

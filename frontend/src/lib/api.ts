@@ -781,6 +781,8 @@ export const dailysApi = {
     api.post<DailyUpdate>(`/dailys/${id}/reparse`).then((r) => r.data),
   sendDiscord: (id: number) =>
     api.post<DailyDiscordResponse>(`/dailys/${id}/send-discord`).then((r) => r.data),
+  edit: (id: number, data: { raw_text?: string }) =>
+    api.put<DailyUpdate>(`/dailys/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/dailys/${id}`).then((r) => r.data),
   prefill: () => api.get<{ text: string; completed_count: number; worked_on_count: number }>("/dailys/prefill").then((r) => r.data),
 }
