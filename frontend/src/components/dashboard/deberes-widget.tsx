@@ -36,11 +36,14 @@ export function DeberesWidget({ userId }: { userId: number }) {
             return (
               <li key={i} className="flex items-center gap-2 text-sm group">
                 <button
-                  onClick={() => setCompleted(prev => {
-                    const next = new Set(prev)
-                    done ? next.delete(i) : next.add(i)
-                    return next
-                  })}
+                  onClick={() => {
+                    if (done) {
+                      setCompleted(prev => { const next = new Set(prev); next.delete(i); return next })
+                    } else {
+                      setCompleted(prev => new Set(prev).add(i))
+                      setTimeout(() => setDismissed(prev => new Set(prev).add(i)), 1200)
+                    }
+                  }}
                   className={cn(
                     "shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-colors",
                     done

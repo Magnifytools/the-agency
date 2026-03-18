@@ -41,17 +41,24 @@ const ZOOM_DAY_WIDTH: Record<ZoomLevel, number> = {
   quarter: 5,
 }
 
+const ZOOM_PADDING: Record<ZoomLevel, { before: number; after: number; minDays: number }> = {
+  week: { before: 3, after: 7, minDays: 14 },
+  month: { before: 7, after: 14, minDays: 30 },
+  quarter: { before: 14, after: 30, minDays: 90 },
+}
+
 export function calculateConfig(
   projectStart: Date | null,
   projectEnd: Date | null,
   zoom: ZoomLevel
 ): GanttConfig {
   const now = new Date()
-  const start = projectStart ? subDays(projectStart, 7) : subDays(now, 30)
-  const end = projectEnd ? addDays(projectEnd, 14) : addDays(now, 90)
+  const padding = ZOOM_PADDING[zoom]
+  const start = projectStart ? subDays(projectStart, padding.before) : subDays(now, padding.minDays)
+  const end = projectEnd ? addDays(projectEnd, padding.after) : addDays(now, padding.minDays)
 
   const dayWidth = ZOOM_DAY_WIDTH[zoom]
-  const totalDays = Math.max(differenceInDays(end, start), 30)
+  const totalDays = Math.max(differenceInDays(end, start), padding.minDays)
   const totalWidth = totalDays * dayWidth
 
   return { startDate: start, endDate: end, zoom, dayWidth, totalWidth, totalDays }
@@ -87,6 +94,42 @@ export function getBarProps(
 }
 
 export function getTopHeaders(config: GanttConfig): TimeHeaderGroup[] {
+  if (config.zoom === "quarter") {
+    // Group by quarter
+    const months = eachMonthOfInterval({ start: config.startDate, end: config.endDate })
+    const quarters: TimeHeaderGroup[] = []
+    let currentQ = -1
+    let currentYear = -1
+    let qLeft = 0
+
+    months.forEach((monthStart, i) => {
+      const q = Math.floor(monthStart.getMonth() / 3)
+      const y = monthStart.getFullYear()
+      const monthEnd = dateMin([endOfMonth(monthStart), config.endDate])
+      const right = dateToX(monthEnd, config)
+
+      if (q !== currentQ || y !== currentYear) {
+        if (currentQ >= 0) {
+          quarters[quarters.length - 1].width = dateToX(dateMax([monthStart, config.startDate]), config) - qLeft
+        }
+        currentQ = q
+        currentYear = y
+        qLeft = dateToX(dateMax([monthStart, config.startDate]), config)
+        quarters.push({
+          label: `T${q + 1} ${y}`,
+          left: qLeft,
+          width: 0,
+        })
+      }
+
+      if (i === months.length - 1) {
+        quarters[quarters.length - 1].width = Math.max(right - qLeft, 0)
+      }
+    })
+
+    return quarters
+  }
+
   const months = eachMonthOfInterval({ start: config.startDate, end: config.endDate })
   return months.map((monthStart) => {
     const monthEnd = dateMin([endOfMonth(monthStart), config.endDate])

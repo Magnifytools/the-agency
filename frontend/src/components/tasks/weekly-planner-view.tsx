@@ -163,7 +163,6 @@ function DraggableTaskCard({
   const style: React.CSSProperties = transform
     ? {
         transform: `translate(${transform.x}px, ${transform.y}px)`,
-        transition: isDragging ? undefined : "transform 200ms ease",
       }
     : {}
 

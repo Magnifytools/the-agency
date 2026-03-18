@@ -361,7 +361,8 @@ export default function TasksPage() {
       .then((task) => {
         if (cancelled) return
         openEdit(task)
-        const next = new URLSearchParams(searchParams)
+        // Clean up deep link params without re-triggering
+        const next = new URLSearchParams(window.location.search)
         next.delete("edit")
         next.delete("task")
         setSearchParams(next, { replace: true })
@@ -375,7 +376,8 @@ export default function TasksPage() {
     return () => {
       cancelled = true
     }
-  }, [deepLinkTaskId, searchParams, setSearchParams])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkTaskId])
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
