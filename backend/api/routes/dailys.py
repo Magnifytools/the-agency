@@ -24,6 +24,7 @@ from backend.schemas.daily import (
 from backend.services.daily_parser import parse_daily_update, format_daily_for_discord, format_daily_embed
 from backend.api.utils.db_helpers import safe_refresh
 from backend.core.security import decrypt_vault_secret
+from backend.api.middleware.audit_log import log_audit
 
 router = APIRouter(prefix="/api/dailys", tags=["daily-updates"])
 logger = logging.getLogger(__name__)
@@ -474,6 +475,7 @@ async def send_daily_to_discord(
                 await db.rollback()
             except Exception:
                 pass
+        log_audit(current_user.id, "send_discord", "daily", daily_id)
         return DailyDiscordResponse(success=True, message="Daily enviado a Discord")
     else:
         return DailyDiscordResponse(success=False, message="Error al enviar a Discord")

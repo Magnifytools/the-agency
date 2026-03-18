@@ -39,6 +39,7 @@ from backend.services.digest_renderer import render_slack, render_email, render_
 from backend.api.deps import require_module
 from backend.core.rate_limiter import ai_limiter
 from backend.api.utils.db_helpers import safe_refresh
+from backend.api.middleware.audit_log import log_audit
 
 router = APIRouter(prefix="/api/digests", tags=["digests"])
 logger = logging.getLogger(__name__)
@@ -156,6 +157,7 @@ async def generate_digest(
     await db.commit()
     await safe_refresh(db, digest, log_context="digests")
 
+    log_audit(current_user.id, "generate", "digest", digest.id, details=f"client_id={request.client_id}")
     return _to_response(digest)
 
 
@@ -513,6 +515,7 @@ async def send_digest_email(
         digest.status = DigestStatus.sent
         await db.commit()
 
+    log_audit(current_user.id, "send_email", "digest", digest_id, details=f"to={body.to} test={body.test}")
     label = "Email de prueba enviado" if body.test else "Digest enviado"
     return {"success": True, "message": f"{label} a {body.to}"}
 
@@ -545,3 +548,4 @@ async def delete_digest(
 
     await db.delete(digest)
     await db.commit()
+    log_audit(current_user.id, "delete", "digest", digest_id)

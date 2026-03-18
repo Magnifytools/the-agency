@@ -12,6 +12,7 @@ COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ ./backend/
+COPY Procfile ./Procfile
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 COPY chrome-extension/manifest.json ./chrome-extension/manifest.json
 COPY chrome-extension/dist/ ./chrome-extension/dist/

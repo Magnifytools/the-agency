@@ -17,6 +17,7 @@ from backend.db.models import User, Project, ProjectEvidence, EvidenceType
 from backend.schemas.evidence import EvidenceCreate, EvidenceUpdate, EvidenceResponse
 from backend.api.deps import require_module
 from backend.api.utils.db_helpers import reload_for_response
+from backend.api.middleware.audit_log import log_audit
 
 router = APIRouter(prefix="/api/projects/{project_id}/evidence", tags=["evidence"])
 
@@ -163,6 +164,7 @@ async def create_evidence(
     except Exception:
         logger.warning("Non-critical: evidence reload failed after creation")
         pass  # evidence object already has the data from creation
+    log_audit(current_user.id, "create", "evidence", evidence.id, details=f"project_id={project_id}")
     return _to_response(project_id, evidence)
 
 
@@ -306,3 +308,4 @@ async def delete_evidence(
         raise HTTPException(status_code=404, detail="Evidence not found")
     await db.delete(evidence)
     await db.commit()
+    log_audit(_.id if hasattr(_, "id") else "-", "delete", "evidence", evidence_id, details=f"project_id={project_id}")

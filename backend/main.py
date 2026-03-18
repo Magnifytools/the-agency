@@ -1207,6 +1207,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        content_type = response.headers.get("content-type", "")
+        if "text/html" in content_type:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: https: blob:; "
+                "font-src 'self' data:; "
+                "connect-src 'self' https://*.supabase.co https://*.railway.app https://discord.com/api wss://*.supabase.co; "
+                "frame-ancestors 'none'; "
+                "base-uri 'self'; "
+                "form-action 'self'"
+            )
         return response
 
 

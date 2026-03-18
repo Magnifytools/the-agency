@@ -18,6 +18,7 @@ from backend.schemas.task_attachment import TaskAttachmentResponse
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module
 from backend.api.utils.db_helpers import safe_refresh
+from backend.api.middleware.audit_log import log_audit
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +257,7 @@ async def create_task(
             except Exception:
                 pass
 
+    log_audit(current_user.id, "create", "task", task.id, details=f"title={task.title}")
     return _task_to_response(task)
 
 
@@ -419,6 +421,7 @@ async def delete_task(
         await db.rollback()
         logger.error("Error eliminando tarea %d: %s", task_id, e)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
+    log_audit(_.id, "delete", "task", task_id)
 
 
 # ── Bulk operations ──────────────────────────────────────────────────────────

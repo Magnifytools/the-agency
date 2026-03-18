@@ -26,6 +26,7 @@ from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module, require_admin
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 from backend.api.utils.db_helpers import safe_refresh
+from backend.api.middleware.audit_log import log_audit
 
 EXTRACT_PROMPT = """Extrae la información de esta propuesta comercial y responde SOLO con un JSON válido:
 {
@@ -277,6 +278,7 @@ async def create_project(
     )
     project = result.scalar_one()
 
+    log_audit(_user.id if hasattr(_user, "id") else "-", "create", "project", project.id, details=f"name={project.name}")
     return _build_project_response(project)
 
 
@@ -694,6 +696,7 @@ async def delete_project(
 
     await db.delete(project)
     await db.commit()
+    log_audit(_user.id if hasattr(_user, "id") else "-", "delete", "project", project_id)
 
 
 # --- Phase endpoints ---

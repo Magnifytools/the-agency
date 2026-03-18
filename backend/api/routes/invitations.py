@@ -22,6 +22,7 @@ from backend.schemas.invitation import (
 from backend.schemas.auth import UserResponse
 from backend.api.deps import get_current_user, require_admin
 from backend.api.utils.db_helpers import safe_refresh
+from backend.api.middleware.audit_log import log_audit
 
 router = APIRouter(prefix="/api", tags=["invitations"])
 
@@ -99,6 +100,7 @@ async def create_invitation(
     await db.commit()
     await safe_refresh(db, invitation, log_context="invitations")
 
+    log_audit(current_user.id, "invite", "user", invitation.id, details=f"email={body.email} role={body.role.value}")
     return _inv_create_response(invitation)
 
 
@@ -164,6 +166,7 @@ async def revoke_invitation(
         raise HTTPException(status_code=404, detail="Invitation not found")
     await db.delete(invitation)
     await db.commit()
+    log_audit(_user.id, "revoke_invitation", "user", invitation_id)
 
 
 @router.get("/users/{user_id}/permissions", response_model=list[PermissionItem])

@@ -24,6 +24,7 @@ from backend.api.routes.dailys import _resolve_channel_id, _send_daily_as_thread
 from backend.services.digest_renderer import render_discord
 from backend.schemas.digest import DigestContent
 from backend.core.security import encrypt_vault_secret, decrypt_vault_secret
+from backend.api.middleware.audit_log import log_audit
 from backend.schemas.discord import (
     DiscordSettingsResponse,
     DiscordSettingsUpdate,
@@ -177,6 +178,7 @@ async def update_discord_settings(
 
     await db.commit()
     await safe_refresh(db, ds, log_context="discord")
+    log_audit(_.id, "update", "settings", "discord")
     return _settings_to_response(ds)
 
 
