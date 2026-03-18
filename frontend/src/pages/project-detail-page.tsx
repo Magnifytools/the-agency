@@ -618,9 +618,12 @@ function TaskRow({
   const isCompleted = task.status === "completed"
 
   return (
-    <div className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-card/50 group">
+    <div
+      className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-card/50 group cursor-pointer"
+      onClick={() => onPreview?.(task.id)}
+    >
       <button
-        onClick={() => onStatusChange(isCompleted ? "pending" : "completed")}
+        onClick={(e) => { e.stopPropagation(); onStatusChange(isCompleted ? "pending" : "completed") }}
         className={`flex-shrink-0 ${isCompleted ? "text-success" : "text-muted-foreground hover:text-brand"}`}
       >
         {isCompleted ? (
@@ -638,7 +641,7 @@ function TaskRow({
         <span className="text-xs text-muted-foreground">{task.assigned_to}</span>
       )}
       <button
-        onClick={() => onPreview?.(task.id)}
+        onClick={(e) => { e.stopPropagation(); onPreview?.(task.id) }}
         className="text-xs text-muted-foreground hover:text-brand opacity-0 group-hover:opacity-100"
       >
         Ver

@@ -34,10 +34,10 @@ export function AppLayout() {
   const { data: inboxCount } = useQuery({
     queryKey: inboxKeys.count(),
     queryFn: inboxApi.count,
-    refetchInterval: 60_000,
+    refetchInterval: 10_000,
     refetchIntervalInBackground: false,
     retry: false,
-    staleTime: 30_000,
+    staleTime: 10_000,
     // Si falla, simplemente no hay badge — no bloquear la shell
   })
 

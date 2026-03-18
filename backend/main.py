@@ -914,13 +914,13 @@ async def _check_overdue_tasks():
     from backend.db.models import Task, TaskStatus
 
     today = date_type.today()
-    now = dt_type.now()
+    today_midnight = dt_type.combine(today, dt_type.min.time())
 
     async with async_session() as session:
         result = await session.execute(
             select(Task).where(
-                Task.status.in_([TaskStatus.todo, TaskStatus.in_progress, TaskStatus.blocked]),
-                Task.due_date < now,
+                Task.status.notin_([TaskStatus.completed]),
+                Task.due_date < today_midnight,
             )
         )
         overdue_tasks = result.scalars().all()

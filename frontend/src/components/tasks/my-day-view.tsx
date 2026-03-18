@@ -66,7 +66,8 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
     const assignedToMe = t.assigned_to === user?.id
     const scheduledForToday = t.scheduled_date === today
     const scheduledPast = !!t.scheduled_date && t.scheduled_date < today
-    const overdueWithoutPlan = !t.scheduled_date && !!t.due_date && t.due_date <= today
+    const dueDateStr = t.due_date?.split("T")[0]
+    const overdueWithoutPlan = !t.scheduled_date && !!dueDateStr && dueDateStr <= today
     return (assignedToMe || !t.assigned_to) && (scheduledForToday || scheduledPast || overdueWithoutPlan)
   }))
   const unplannedTasks = sortTasks(activeTasks.filter((t) => {

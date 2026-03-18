@@ -32,7 +32,7 @@ export default function InboxPage() {
   const { data: countData } = useQuery({
     queryKey: inboxKeys.count(),
     queryFn: inboxApi.count,
-    refetchInterval: 30_000,
+    refetchInterval: 10_000,
     refetchIntervalInBackground: false,
   })
 

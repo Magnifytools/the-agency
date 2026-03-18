@@ -348,9 +348,17 @@ async def time_entries_by_project(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("timesheet")),
 ):
-    query = select(TimeEntry).where(
-        TimeEntry.minutes.isnot(None),
-        TimeEntry.task_id.isnot(None),
+    query = (
+        select(TimeEntry)
+        .options(
+            selectinload(TimeEntry.task).selectinload(Task.client),
+            selectinload(TimeEntry.task).selectinload(Task.project),
+            selectinload(TimeEntry.user),
+        )
+        .where(
+            TimeEntry.minutes.isnot(None),
+            TimeEntry.task_id.isnot(None),
+        )
     )
     # Members can only see their own time entries in aggregates
     if current_user.role != UserRole.admin:
@@ -421,9 +429,16 @@ async def time_entries_by_client(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("timesheet")),
 ):
-    query = select(TimeEntry).where(
-        TimeEntry.minutes.isnot(None),
-        TimeEntry.task_id.isnot(None),
+    query = (
+        select(TimeEntry)
+        .options(
+            selectinload(TimeEntry.task).selectinload(Task.client),
+            selectinload(TimeEntry.user),
+        )
+        .where(
+            TimeEntry.minutes.isnot(None),
+            TimeEntry.task_id.isnot(None),
+        )
     )
     # Members can only see their own time entries in aggregates
     if current_user.role != UserRole.admin:

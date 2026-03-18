@@ -97,7 +97,7 @@ export default function TasksPage() {
   const deepLinkTaskId = searchParams.get("edit") || searchParams.get("task")
 
   const { data: tasksData, isLoading } = useQuery({
-    queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, page, pageSize],
+    queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, page, pageSize, qaFilter],
     queryFn: () =>
       tasksApi.list({
         client_id: filterClient ? Number(filterClient) : undefined,
@@ -107,6 +107,7 @@ export default function TasksPage() {
         assigned_to: filterAssigned ? Number(filterAssigned) : undefined,
         due_date_from: filterDateFrom || undefined,
         due_date_to: filterDateTo || undefined,
+        overdue: qaFilter === "overdue" ? true : undefined,
         page,
         page_size: pageSize,
       }),

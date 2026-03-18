@@ -159,7 +159,7 @@ async def generate_notification_checks(
         overdue_result = await db.execute(
             select(Task).where(
                 Task.assigned_to == user.id,
-                Task.due_date < now,
+                Task.due_date < datetime.combine(today, datetime.min.time()),
                 Task.status != TaskStatus.completed,
             )
         )
