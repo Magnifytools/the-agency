@@ -56,16 +56,21 @@ def require_module(module: str, write: bool = False):
     async def checker(current_user: User = Depends(get_current_user)) -> User:
         if current_user.role == UserRole.admin:
             return current_user
-        for perm in current_user.permissions:
+        # Safely access permissions — avoid 500 if lazy-load fails
+        try:
+            perms = current_user.permissions
+        except Exception:
+            perms = []
+        for perm in perms:
             if perm.module == module:
                 if write and perm.can_write:
                     return current_user
                 if not write and perm.can_read:
                     return current_user
-        action = "write" if write else "read"
+        action = "escritura" if write else "lectura"
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"No {action} access to module: {module}",
+            detail=f"Sin acceso de {action} al módulo: {module}. Pide a un administrador que te dé acceso.",
         )
 
     return checker

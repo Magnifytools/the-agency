@@ -51,6 +51,7 @@ function profitBadge(status: string) {
 export default function DashboardPage() {
   const { user } = useAuth()
   const now = new Date()
+  const todayStr = now.toISOString().slice(0, 10)
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -524,7 +525,7 @@ export default function DashboardPage() {
                       {t.client_name && <p className="text-xs text-muted-foreground">{t.client_name}</p>}
                     </div>
                     {t.due_date && (
-                      <span className={`text-xs mono flex-shrink-0 ${new Date(t.due_date) < now ? "text-red-400" : "text-muted-foreground"}`}>
+                      <span className={`text-xs mono flex-shrink-0 ${t.due_date < todayStr ? "text-red-400" : "text-muted-foreground"}`}>
                         {new Date(t.due_date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
                       </span>
                     )}
@@ -568,7 +569,7 @@ export default function DashboardPage() {
                     <span className="text-sm flex-1 truncate">{t.title}</span>
                     {t.client_name && <span className="text-xs text-muted-foreground hidden group-hover:block">{t.client_name}</span>}
                     {t.due_date && (
-                      <span className={`text-xs mono flex-shrink-0 ${new Date(t.due_date) < now ? "text-red-400" : "text-muted-foreground"}`}>
+                      <span className={`text-xs mono flex-shrink-0 ${t.due_date < todayStr ? "text-red-400" : "text-muted-foreground"}`}>
                         {new Date(t.due_date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
                       </span>
                     )}

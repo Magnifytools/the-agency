@@ -251,9 +251,9 @@ export const clientsApi = {
 
 // Tasks
 export const tasksApi = {
-  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number; priority?: string; overdue?: boolean; scheduled_date?: string; is_recurring?: boolean; page?: number; page_size?: number }) =>
+  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number; priority?: string; overdue?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; is_recurring?: boolean; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params }).then((r) => r.data),
-  listAll: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; scheduled_date?: string; is_recurring?: boolean }) =>
+  listAll: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; is_recurring?: boolean }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params: { ...params, page_size: 200 } }).then((r) => r.data.items),
   get: (id: number) => api.get<Task>(`/tasks/${id}`).then((r) => r.data),
   create: (data: TaskCreate) => api.post<Task>("/tasks", data).then((r) => r.data),
@@ -414,6 +414,8 @@ export const discordApi = {
     api.post<import("./types").DiscordSendResponse>("/discord/send-daily-summary", null, { params: date ? { date } : {} }).then((r) => r.data),
   sendDigest: (digestId: number) =>
     api.post<import("./types").DiscordSendResponse>(`/discord/send-digest/${digestId}`).then((r) => r.data),
+  sendCustom: (content: string) =>
+    api.post<import("./types").DiscordSendResponse>("/discord/send-custom", { content }).then((r) => r.data),
 }
 
 // Task Categories
@@ -719,8 +721,8 @@ export const digestsApi = {
     api.patch<Digest>(`/digests/${id}/status`, { status }).then((r) => r.data),
   render: (id: number, format: "slack" | "email") =>
     api.get<DigestRenderResponse>(`/digests/${id}/render`, { params: { format } }).then((r) => r.data),
-  sendEmail: (id: number, to: string) =>
-    api.post<{ success: boolean; message: string }>(`/digests/${id}/send-email`, { to }).then((r) => r.data),
+  sendEmail: (id: number, to: string, test: boolean = false) =>
+    api.post<{ success: boolean; message: string }>(`/digests/${id}/send-email`, { to, test }).then((r) => r.data),
   delete: (id: number) => api.delete(`/digests/${id}`).then((r) => r.data),
 }
 

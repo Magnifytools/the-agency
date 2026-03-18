@@ -74,6 +74,16 @@ async def _sync_task_actual_minutes(db: AsyncSession, task_id: int) -> None:
 
 
 def _entry_to_response(entry: TimeEntry) -> TimeEntryResponse:
+    # Safely access relationships — avoid 500 if lazy-load fails in async
+    task_title = None
+    client_name = None
+    try:
+        if entry.task:
+            task_title = entry.task.title
+            if entry.task.client:
+                client_name = entry.task.client.name
+    except Exception:
+        pass  # Relationship not loaded — return None values
     return TimeEntryResponse(
         id=entry.id,
         minutes=entry.minutes,
@@ -84,8 +94,8 @@ def _entry_to_response(entry: TimeEntry) -> TimeEntryResponse:
         user_id=entry.user_id,
         created_at=entry.created_at,
         updated_at=entry.updated_at,
-        task_title=entry.task.title if entry.task else None,
-        client_name=entry.task.client.name if entry.task and entry.task.client else None,
+        task_title=task_title,
+        client_name=client_name,
     )
 
 
@@ -662,8 +672,9 @@ async def stop_timer(
     if entry.task_id:
         await _sync_task_actual_minutes(db, entry.task_id)
         await db.commit()
-    await safe_refresh(db, entry, log_context="timer_stop")
-    return _entry_to_response(entry)
+    # Reload with explicit eager loading instead of safe_refresh
+    loaded = await _load_time_entry_for_response(db, entry.id)
+    return _entry_to_response(loaded or entry)
 
 
 @router.get("/api/timer/active", response_model=Optional[ActiveTimerResponse])

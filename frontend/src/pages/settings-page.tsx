@@ -4,7 +4,7 @@ import { toast } from "sonner"
 import { useAuth } from "@/context/auth-context"
 import { usersApi, categoriesApi, myWeekApi } from "@/lib/api"
 import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS } from "@/hooks/use-keyboard-shortcuts"
-import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar } from "lucide-react"
+import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar, FileText, Bell } from "lucide-react"
 
 const SPAIN_REGIONS: { code: string; name: string }[] = [
   { code: "AND", name: "Andalucía" },
@@ -71,10 +71,29 @@ export default function SettingsPage() {
   const [newHolidayLocality, setNewHolidayLocality] = useState("")
   const currentYear = new Date().getFullYear()
 
+  // Digest settings state
+  const [digestTone, setDigestTone] = useState(user?.preferences?.digest_default_tone ?? "cercano")
+  const [digestRecipients, setDigestRecipients] = useState(user?.preferences?.digest_default_recipients ?? "")
+  const [digestAutoSend, setDigestAutoSend] = useState(user?.preferences?.digest_auto_send ?? "manual")
+  const [savingDigest, setSavingDigest] = useState(false)
+
+  // Notification preferences state
+  const [notifEmail, setNotifEmail] = useState(user?.preferences?.notifications_email ?? true)
+  const [notifDiscord, setNotifDiscord] = useState(user?.preferences?.notifications_discord ?? true)
+  const [savingNotif, setSavingNotif] = useState(false)
+
   // Sync with user preferences when they load
   useEffect(() => {
     setBindings({ ...DEFAULT_SHORTCUTS, ...(user?.preferences?.shortcuts ?? {}) })
   }, [user?.preferences?.shortcuts])
+
+  useEffect(() => {
+    setDigestTone(user?.preferences?.digest_default_tone ?? "cercano")
+    setDigestRecipients(user?.preferences?.digest_default_recipients ?? "")
+    setDigestAutoSend(user?.preferences?.digest_auto_send ?? "manual")
+    setNotifEmail(user?.preferences?.notifications_email ?? true)
+    setNotifDiscord(user?.preferences?.notifications_discord ?? true)
+  }, [user?.preferences])
 
   useEffect(() => {
     setUserRegion(user?.region ?? "")
@@ -180,6 +199,47 @@ export default function SettingsPage() {
       toast.error("Error al guardar los atajos")
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleSaveDigestSettings = async () => {
+    if (!user) return
+    setSavingDigest(true)
+    try {
+      await usersApi.update(user.id, {
+        preferences: {
+          ...(user.preferences ?? {}),
+          digest_default_tone: digestTone,
+          digest_default_recipients: digestRecipients,
+          digest_auto_send: digestAutoSend,
+        },
+      })
+      await refreshUser()
+      toast.success("Preferencias de digest guardadas")
+    } catch {
+      toast.error("Error al guardar preferencias de digest")
+    } finally {
+      setSavingDigest(false)
+    }
+  }
+
+  const handleSaveNotifSettings = async () => {
+    if (!user) return
+    setSavingNotif(true)
+    try {
+      await usersApi.update(user.id, {
+        preferences: {
+          ...(user.preferences ?? {}),
+          notifications_email: notifEmail,
+          notifications_discord: notifDiscord,
+        },
+      })
+      await refreshUser()
+      toast.success("Preferencias de notificación guardadas")
+    } catch {
+      toast.error("Error al guardar preferencias de notificación")
+    } finally {
+      setSavingNotif(false)
     }
   }
 
@@ -448,6 +508,124 @@ export default function SettingsPage() {
             className="px-4 py-2 bg-brand text-black text-sm font-semibold rounded-xl hover:bg-brand/90 transition-colors disabled:opacity-50"
           >
             {savingLocation ? "Guardando…" : "Guardar ubicación"}
+          </button>
+        </div>
+      </div>
+
+      {/* Digest settings */}
+      <div className="bg-card border border-border rounded-2xl p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <FileText className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-base font-semibold text-foreground">Preferencias de digest</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Configura los valores por defecto para la generación y envío de digests
+        </p>
+
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Tono por defecto</label>
+            <select
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              value={digestTone}
+              onChange={(e) => setDigestTone(e.target.value)}
+            >
+              <option value="cercano">Cercano</option>
+              <option value="formal">Formal</option>
+              <option value="equipo">Equipo</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Destinatarios por defecto</label>
+            <input
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              placeholder="email1@ejemplo.com, email2@ejemplo.com"
+              value={digestRecipients}
+              onChange={(e) => setDigestRecipients(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground mt-1">Separa múltiples emails con comas</p>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Envío automático</label>
+            <select
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              value={digestAutoSend}
+              onChange={(e) => setDigestAutoSend(e.target.value)}
+            >
+              <option value="manual">Manual (requiere confirmación)</option>
+              <option value="weekly_monday">Semanal — Lunes por la mañana</option>
+              <option value="weekly_friday">Semanal — Viernes por la tarde</option>
+              <option value="biweekly">Quincenal</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={handleSaveDigestSettings}
+            disabled={savingDigest}
+            className="px-4 py-2 bg-brand text-black text-sm font-semibold rounded-xl hover:bg-brand/90 transition-colors disabled:opacity-50"
+          >
+            {savingDigest ? "Guardando…" : "Guardar preferencias"}
+          </button>
+        </div>
+      </div>
+
+      {/* Notification preferences */}
+      <div className="bg-card border border-border rounded-2xl p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Bell className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-base font-semibold text-foreground">Notificaciones</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Controla cómo y dónde recibes notificaciones
+        </p>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <span className="text-sm text-foreground font-medium">Notificaciones por email</span>
+              <p className="text-xs text-muted-foreground mt-0.5">Recibe alertas y resúmenes por correo electrónico</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={notifEmail}
+                onChange={(e) => setNotifEmail(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-muted rounded-full peer peer-checked:bg-brand transition-colors after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" />
+            </label>
+          </div>
+
+          <div className="border-t border-border" />
+
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <span className="text-sm text-foreground font-medium">Notificaciones por Discord</span>
+              <p className="text-xs text-muted-foreground mt-0.5">Recibe alertas en el canal de Discord configurado</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={notifDiscord}
+                onChange={(e) => setNotifDiscord(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-muted rounded-full peer peer-checked:bg-brand transition-colors after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" />
+            </label>
+          </div>
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={handleSaveNotifSettings}
+            disabled={savingNotif}
+            className="px-4 py-2 bg-brand text-black text-sm font-semibold rounded-xl hover:bg-brand/90 transition-colors disabled:opacity-50"
+          >
+            {savingNotif ? "Guardando…" : "Guardar notificaciones"}
           </button>
         </div>
       </div>

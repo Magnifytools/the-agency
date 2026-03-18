@@ -70,6 +70,8 @@ export default function TasksPage() {
   const [filterStatus, setFilterStatus] = useState<string>("")
   const [filterPriority, setFilterPriority] = useState<string>("")
   const [filterAssigned, setFilterAssigned] = useState<string>("")
+  const [filterDateFrom, setFilterDateFrom] = useState<string>("")
+  const [filterDateTo, setFilterDateTo] = useState<string>("")
 
   // QA Health Filters — initialise from URL param if present
   const urlQaFilter = searchParams.get("qaFilter") as "none" | "unassigned" | "no_date" | "no_estimate" | "overdue" | null
@@ -95,7 +97,7 @@ export default function TasksPage() {
   const deepLinkTaskId = searchParams.get("edit") || searchParams.get("task")
 
   const { data: tasksData, isLoading } = useQuery({
-    queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, page, pageSize],
+    queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, page, pageSize],
     queryFn: () =>
       tasksApi.list({
         client_id: filterClient ? Number(filterClient) : undefined,
@@ -103,6 +105,8 @@ export default function TasksPage() {
         status: filterStatus || undefined,
         priority: filterPriority || undefined,
         assigned_to: filterAssigned ? Number(filterAssigned) : undefined,
+        due_date_from: filterDateFrom || undefined,
+        due_date_to: filterDateTo || undefined,
         page,
         page_size: pageSize,
       }),
@@ -110,7 +114,7 @@ export default function TasksPage() {
   const allTasks = tasksData?.items ?? []
 
   // Apply QA Health Filters on the frontend
-  const now = new Date()
+  const todayStr = new Date().toISOString().slice(0, 10)
   const tasks = allTasks.filter(t => {
     if (qaFilter === "none") return true
     if (t.status === "completed") return false // QA mostly applies to active tasks
@@ -120,7 +124,7 @@ export default function TasksPage() {
     if (qaFilter === "no_estimate") return t.estimated_minutes === null
     if (qaFilter === "overdue") {
       if (!t.due_date) return false
-      return new Date(t.due_date) < now
+      return t.due_date < todayStr
     }
     return true
   })
@@ -212,7 +216,7 @@ export default function TasksPage() {
   })
 
   // Separate mutation for drag & drop schedule changes (no dialog close, optimistic update)
-  const scheduleQueryKey = ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, page, pageSize]
+  const scheduleQueryKey = ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, page, pageSize]
   const scheduleMutation = useMutation({
     mutationFn: ({ id, scheduled_date }: { id: number; scheduled_date: string | null }) =>
       tasksApi.update(id, { scheduled_date }),
@@ -458,6 +462,22 @@ export default function TasksPage() {
             </option>
           ))}
         </Select>
+        <Input
+          type="date"
+          value={filterDateFrom}
+          onChange={(e) => { setFilterDateFrom(e.target.value); reset() }}
+          placeholder="Desde"
+          title="Fecha límite desde"
+          className="w-40"
+        />
+        <Input
+          type="date"
+          value={filterDateTo}
+          onChange={(e) => { setFilterDateTo(e.target.value); reset() }}
+          placeholder="Hasta"
+          title="Fecha límite hasta"
+          className="w-40"
+        />
       </div>
 
       {/* QA Health Filters */}
@@ -604,7 +624,7 @@ export default function TasksPage() {
               const QA_unassigned = t.assigned_to === null;
               const QA_nodate = t.scheduled_date === null;
               const QA_noestimate = t.estimated_minutes === null;
-              const QA_overdue = t.due_date && new Date(t.due_date) < now;
+              const QA_overdue = t.due_date && t.due_date < todayStr;
 
               const rowHighlight =
                 (qaFilter === "unassigned" && QA_unassigned) ||
@@ -647,11 +667,11 @@ export default function TasksPage() {
                   <TableCell>
                     <div className="flex items-center gap-1.5">
                     <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", {
-                      "bg-slate-400": t.status === "backlog",
-                      "bg-yellow-400": t.status === "pending",
-                      "bg-blue-500": t.status === "in_progress",
-                      "bg-orange-400": t.status === "waiting",
-                      "bg-purple-500": t.status === "in_review",
+                      "bg-slate-600": t.status === "backlog",
+                      "bg-yellow-600": t.status === "pending",
+                      "bg-amber-500": t.status === "in_progress",
+                      "bg-purple-500": t.status === "waiting",
+                      "bg-blue-500": t.status === "in_review",
                       "bg-green-500": t.status === "completed",
                     })} />
                     <Select
@@ -1124,7 +1144,7 @@ export default function TasksPage() {
             </p>
             <div className="space-y-1.5">
               {checklistItems.map((item) => {
-                const isOverdue = item.due_date && !item.is_done && new Date(item.due_date) < new Date()
+                const isOverdue = item.due_date && !item.is_done && item.due_date < todayStr
                 const isExpanded = expandedChecklistId === item.id
                 return (
                 <div key={item.id} className="space-y-1">

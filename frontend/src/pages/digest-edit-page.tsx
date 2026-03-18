@@ -80,6 +80,39 @@ export default function DigestEditPage() {
     onError: (err) => toast.error(getErrorMessage(err, "Error al guardar")),
   })
 
+  // Tone change: send only tone (no content) so the backend regenerates via AI
+  const toneChangeMutation = useMutation({
+    mutationFn: (newTone: DigestTone) =>
+      digestsApi.update(Number(id), { tone: newTone }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["digest", id] })
+      queryClient.invalidateQueries({ queryKey: ["digests"] })
+      // Sync the regenerated content into the form
+      if (data.content) {
+        setGreeting(data.content.greeting || "")
+        setDateStr(data.content.date || "")
+        setClosing(data.content.closing || "")
+        setSections({
+          done: data.content.sections?.done || [],
+          need: data.content.sections?.need || [],
+          next: data.content.sections?.next || [],
+        })
+      }
+      toast.success("Digest regenerado con nuevo tono")
+    },
+    onError: (err) => {
+      // Revert tone on failure
+      if (digest) setTone(digest.tone)
+      toast.error(getErrorMessage(err, "Error al regenerar con nuevo tono"))
+    },
+  })
+
+  const handleToneChange = (newTone: DigestTone) => {
+    if (newTone === tone) return
+    setTone(newTone)
+    toneChangeMutation.mutate(newTone)
+  }
+
   const renderMutation = useMutation({
     mutationFn: ({ format }: { format: "slack" | "email" }) =>
       digestsApi.render(Number(id), format),
@@ -185,11 +218,22 @@ export default function DigestEditPage() {
       {/* Tone selector */}
       <div className="flex gap-4 items-center">
         <Label>Tono</Label>
-        <Select value={tone} onChange={(e) => setTone(e.target.value as DigestTone)} className="w-40">
+        <Select
+          value={tone}
+          onChange={(e) => handleToneChange(e.target.value as DigestTone)}
+          className="w-40"
+          disabled={toneChangeMutation.isPending}
+        >
           <option value="cercano">Cercano</option>
           <option value="formal">Formal</option>
           <option value="equipo">Equipo</option>
         </Select>
+        {toneChangeMutation.isPending && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Regenerando con nuevo tono...
+          </div>
+        )}
         <Badge variant="secondary">{digest.status}</Badge>
       </div>
 

@@ -29,7 +29,14 @@ export interface User {
   hourly_rate: number | null
   is_active: boolean
   permissions: UserPermission[]
-  preferences?: { shortcuts?: Record<string, string> } | null
+  preferences?: {
+    shortcuts?: Record<string, string>
+    digest_default_tone?: string
+    digest_default_recipients?: string
+    digest_auto_send?: string
+    notifications_email?: boolean
+    notifications_discord?: boolean
+  } | null
   region?: string | null
   locality?: string | null
 }

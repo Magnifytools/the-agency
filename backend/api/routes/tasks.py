@@ -103,6 +103,8 @@ async def list_tasks(
     priority: Optional[TaskPriority] = Query(None),
     overdue: Optional[bool] = Query(None),
     scheduled_date: Optional[str] = Query(None),
+    due_date_from: Optional[str] = Query(None),
+    due_date_to: Optional[str] = Query(None),
     is_recurring: Optional[bool] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
@@ -155,6 +157,20 @@ async def list_tasks(
             base = base.where(Task.scheduled_date == sd)
         except ValueError:
             raise HTTPException(status_code=422, detail="scheduled_date must be YYYY-MM-DD")
+    if due_date_from is not None:
+        from datetime import date as date_type
+        try:
+            d = date_type.fromisoformat(due_date_from)
+            base = base.where(Task.due_date >= d)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="due_date_from must be YYYY-MM-DD")
+    if due_date_to is not None:
+        from datetime import date as date_type
+        try:
+            d = date_type.fromisoformat(due_date_to)
+            base = base.where(Task.due_date <= d)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="due_date_to must be YYYY-MM-DD")
 
     # Recurring filter: by default exclude templates from normal views
     if is_recurring is True:

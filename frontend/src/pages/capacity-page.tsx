@@ -37,7 +37,8 @@ const statusLabels: Record<string, string> = {
 
 function TaskRow({ task }: { task: CapacityTask }) {
   const prio = priorityConfig[task.priority] || priorityConfig.medium
-  const isOverdue = task.due_date && new Date(task.due_date) < new Date()
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const isOverdue = task.due_date && task.due_date < todayStr
 
   return (
     <div className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/40 group text-sm">

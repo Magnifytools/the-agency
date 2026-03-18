@@ -31,6 +31,10 @@ class DiscordTestResponse(BaseModel):
     message: str
 
 
+class DiscordSendCustomRequest(BaseModel):
+    content: str
+
+
 class DiscordSendResponse(BaseModel):
     success: bool
     message: str

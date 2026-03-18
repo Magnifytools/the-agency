@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Send, CheckCircle, Bell, Bot } from "lucide-react"
+import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Loader2, Send, CheckCircle, Bell, Bot, Eye, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 
@@ -19,6 +20,11 @@ export default function DiscordSettingsPage() {
   const [autoSendInput, setAutoSendInput] = useState(false)
   const [includeAiInput, setIncludeAiInput] = useState(true)
   const [initialized, setInitialized] = useState(false)
+
+  // Preview/edit state for daily summary
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewContent, setPreviewContent] = useState("")
+  const [isEditing, setIsEditing] = useState(false)
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ["discord-settings"],
@@ -55,11 +61,26 @@ export default function DiscordSettingsPage() {
     onError: (err) => toast.error(getErrorMessage(err, "Error al probar webhook")),
   })
 
-  const sendSummaryMutation = useMutation({
-    mutationFn: () => discordApi.sendDailySummary(),
+  const previewMutation = useMutation({
+    mutationFn: () => discordApi.preview(),
+    onSuccess: (data) => {
+      setPreviewContent(data.summary)
+      setIsEditing(false)
+      setPreviewOpen(true)
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al generar preview")),
+  })
+
+  const sendCustomMutation = useMutation({
+    mutationFn: (content: string) => discordApi.sendCustom(content),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["discord-settings"] })
-      toast.success(data.message)
+      if (data.success) {
+        toast.success(data.message)
+        setPreviewOpen(false)
+      } else {
+        toast.error(data.message)
+      }
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al enviar resumen")),
   })
@@ -97,15 +118,15 @@ export default function DiscordSettingsPage() {
         <div className="flex gap-2">
           <Button
             variant="outline"
-            onClick={() => sendSummaryMutation.mutate()}
-            disabled={sendSummaryMutation.isPending || !settings?.webhook_configured}
+            onClick={() => previewMutation.mutate()}
+            disabled={previewMutation.isPending || !settings?.webhook_configured}
           >
-            {sendSummaryMutation.isPending ? (
+            {previewMutation.isPending ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
-              <Send className="w-4 h-4 mr-2" />
+              <Eye className="w-4 h-4 mr-2" />
             )}
-            Enviar resumen de hoy
+            Previsualizar resumen de hoy
           </Button>
         </div>
       </div>
@@ -262,6 +283,57 @@ export default function DiscordSettingsPage() {
           Guardar configuración
         </Button>
       </div>
+
+      {/* Preview/Edit Daily Summary Dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogHeader>
+          <DialogTitle>Resumen diario — Preview</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              {isEditing ? "Edita el contenido antes de enviar a Discord" : "Revisa el contenido antes de enviar a Discord"}
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsEditing(!isEditing)}
+            >
+              <Pencil className="w-4 h-4 mr-1" />
+              {isEditing ? "Vista previa" : "Editar"}
+            </Button>
+          </div>
+
+          {isEditing ? (
+            <textarea
+              className="w-full min-h-[300px] rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono"
+              value={previewContent}
+              onChange={(e) => setPreviewContent(e.target.value)}
+            />
+          ) : (
+            <pre className="bg-muted p-4 rounded-lg text-sm whitespace-pre-wrap max-h-[60vh] overflow-auto">
+              {previewContent}
+            </pre>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setPreviewOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => sendCustomMutation.mutate(previewContent)}
+              disabled={!previewContent.trim() || sendCustomMutation.isPending}
+            >
+              {sendCustomMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4 mr-2" />
+              )}
+              Enviar a Discord
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   )
 }

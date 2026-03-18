@@ -7,9 +7,12 @@ const DAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-secondary text-secondary-foreground",
-  in_progress: "bg-blue-500/20 text-blue-700 dark:text-blue-300",
-  completed: "bg-green-500/20 text-green-700 dark:text-green-300 line-through opacity-60",
+  backlog: "bg-slate-600 text-white",
+  pending: "bg-yellow-600 text-white",
+  in_progress: "bg-amber-500 text-black",
+  waiting: "bg-purple-500 text-white",
+  in_review: "bg-blue-500 text-white",
+  completed: "bg-green-500 text-white line-through opacity-60",
 }
 
 interface TaskCalendarViewProps {

@@ -69,7 +69,7 @@ def render_slack(content: DigestContent) -> str:
 
     # Done section
     if sections.done:
-        lines.append(":white_check_mark:  *¿Qué hemos hecho?*")
+        lines.append(":mag_right:  *¿Qué hemos hecho?*")
         lines.append("")
         for item in sections.done:
             lines.append(f"  • *{item.title}*")
@@ -79,7 +79,7 @@ def render_slack(content: DigestContent) -> str:
 
     # Need section
     if sections.need:
-        lines.append(":mega:  *¿Qué necesitamos?*")
+        lines.append(":hourglass:  *¿Qué necesitamos?*")
         lines.append("")
         for item in sections.need:
             lines.append(f"  • *{item.title}*")
@@ -89,7 +89,7 @@ def render_slack(content: DigestContent) -> str:
 
     # Next section
     if sections.next:
-        lines.append(":rocket:  *¿Qué vamos a hacer?*")
+        lines.append(":point_right:  *¿Qué vamos a hacer?*")
         lines.append("")
         for item in sections.next:
             lines.append(f"  • *{item.title}*")
@@ -221,8 +221,8 @@ def render_email(content: DigestContent) -> str:
   </tr>
   <tr>
     <td align="left" style="padding:0 20px 10px 20px;margin:0;border-bottom:2px solid #0044FF;">
-      <span style="margin:0;letter-spacing:0;font-size:16px;line-height:22px;color:#141212;">
-        {greeting_text}<br/>
+      <span style="margin:0;letter-spacing:0;font-size:16px;line-height:24px;color:#141212;">
+        {greeting_text}<br/><br/>
         Te enviamos el <strong>informe semanal: {date_text}</strong>
       </span>
     </td>
@@ -256,16 +256,10 @@ def render_email(content: DigestContent) -> str:
             <table cellpadding="0" cellspacing="0" width="100%" role="presentation" style="border-collapse:collapse;">
               <tr>
                 <td align="center" style="padding:0;">
-                  <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="width:500px;border-collapse:collapse;">
+                  <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="width:300px;border-collapse:collapse;">
                     <tr>
-                      <td align="center" width="30%" style="padding:0 15px;">
-                        <a href="https://www.magnify.ing" target="_blank" style="color:#1C1C1C;font-size:14px;line-height:12px;font-weight:bold;text-decoration:none;">Nosotros</a>
-                      </td>
-                      <td align="center" width="30%" style="padding:0 15px;">
-                        <a href="https://www.magnify.ing" target="_blank" style="color:#1C1C1C;font-size:14px;line-height:12px;font-weight:bold;text-decoration:none;">Noticias</a>
-                      </td>
-                      <td align="center" width="30%" style="padding:0 15px;">
-                        <a href="https://www.magnify.ing" target="_blank" style="color:#1C1C1C;font-size:14px;line-height:12px;font-weight:bold;text-decoration:none;">Nuestra web</a>
+                      <td align="center" width="100%" style="padding:0 15px;">
+                        <a href="https://www.magnify.ing" target="_blank" style="color:#1C1C1C;font-size:14px;line-height:12px;font-weight:bold;text-decoration:none;">magnify.ing</a>
                       </td>
                     </tr>
                   </table>
@@ -277,13 +271,8 @@ def render_email(content: DigestContent) -> str:
                   <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                     <tr>
                       <td align="center" style="padding:0 10px;">
-                        <a href="https://www.magnify.ing" target="_blank">
+                        <a href="https://www.linkedin.com/company/magnifying" target="_blank">
                           <img src="{LINKEDIN_ICON}" width="15" height="15" alt="LinkedIn" style="display:block;">
-                        </a>
-                      </td>
-                      <td align="center" style="padding:0 10px;">
-                        <a href="https://www.magnify.ing" target="_blank">
-                          <img src="{X_ICON}" width="15" height="15" alt="X" style="display:block;">
                         </a>
                       </td>
                     </tr>

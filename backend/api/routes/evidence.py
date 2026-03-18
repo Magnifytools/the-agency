@@ -16,7 +16,7 @@ from backend.db.database import get_db
 from backend.db.models import User, Project, ProjectEvidence, EvidenceType
 from backend.schemas.evidence import EvidenceCreate, EvidenceUpdate, EvidenceResponse
 from backend.api.deps import require_module
-from backend.api.utils.db_helpers import safe_refresh
+from backend.api.utils.db_helpers import reload_for_response
 
 router = APIRouter(prefix="/api/projects/{project_id}/evidence", tags=["evidence"])
 
@@ -92,6 +92,23 @@ def _validate_upload(file: UploadFile, content: bytes) -> None:
         raise HTTPException(400, "Archivo demasiado grande (máx 20 MB)")
 
 
+_EVIDENCE_RELOAD_OPTIONS = [
+    defer(ProjectEvidence.file_content),
+    selectinload(ProjectEvidence.creator),
+    selectinload(ProjectEvidence.phase),
+]
+
+
+async def _reload_evidence(db: AsyncSession, evidence_id: int) -> ProjectEvidence:
+    """Reload evidence by ID with eager-loaded relationships (safe after commit)."""
+    ev = await reload_for_response(
+        db, ProjectEvidence, evidence_id, options=_EVIDENCE_RELOAD_OPTIONS,
+    )
+    if ev is None:
+        raise HTTPException(status_code=500, detail="Error recargando evidencia")
+    return ev
+
+
 def _safe_filename(name: str) -> str:
     return name.replace('"', "_").replace("\n", "_").replace("\r", "_")
 
@@ -141,7 +158,7 @@ async def create_evidence(
         await db.rollback()
         logger.error("Error creating evidence: %s", e)
         raise HTTPException(status_code=500, detail="Error al crear la evidencia")
-    await safe_refresh(db, evidence, log_context="create_evidence")
+    evidence = await _reload_evidence(db, evidence.id)
     return _to_response(project_id, evidence)
 
 
@@ -183,7 +200,7 @@ async def upload_evidence(
         await db.rollback()
         logger.error("Error uploading evidence: %s", e)
         raise HTTPException(status_code=500, detail="Error al subir la evidencia")
-    await safe_refresh(db, evidence, log_context="upload_evidence")
+    evidence = await _reload_evidence(db, evidence.id)
     return _to_response(project_id, evidence)
 
 
@@ -211,7 +228,7 @@ async def update_evidence(
         if field in _UPDATABLE_EVIDENCE_FIELDS:
             setattr(evidence, field, value)
     await db.commit()
-    await safe_refresh(db, evidence, log_context="update_evidence")
+    evidence = await _reload_evidence(db, evidence_id)
     return _to_response(project_id, evidence)
 
 

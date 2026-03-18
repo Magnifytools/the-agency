@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import User, WeeklyDigest, DiscordSettings
-from backend.api.deps import require_admin
+from backend.api.deps import require_admin, require_module
 from backend.services.discord import generate_daily_summary, send_to_discord
 from backend.api.routes.dailys import _resolve_channel_id, _send_daily_as_thread
 from backend.services.digest_renderer import render_discord
@@ -29,6 +29,7 @@ from backend.schemas.discord import (
     DiscordSettingsUpdate,
     DiscordTestResponse,
     DiscordSendResponse,
+    DiscordSendCustomRequest,
 )
 from backend.config import settings
 from backend.api.utils.db_helpers import safe_refresh
@@ -269,6 +270,44 @@ async def send_daily_summary(
     )
 
 
+# ── Send custom content to Discord ─────────────────────────
+
+
+@router.post("/send-custom", response_model=DiscordSendResponse)
+async def send_custom_to_discord(
+    body: DiscordSendCustomRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Send custom (edited) content to Discord. Used for preview-then-send flows."""
+    ds = await _get_or_create_settings(db)
+    url = _decrypt_field(ds.webhook_url) or settings.DISCORD_WEBHOOK_URL or ""
+
+    if not url.strip():
+        raise HTTPException(status_code=400, detail="No hay webhook configurado")
+
+    if not body.content.strip():
+        raise HTTPException(status_code=400, detail="El contenido no puede estar vacío")
+
+    success = await _send_discord_message(url, body.content.strip())
+
+    if success:
+        try:
+            ds.last_sent_at = datetime.now(timezone.utc)
+            await db.commit()
+        except Exception:
+            logger.warning("Discord message sent but failed to update last_sent_at")
+        return DiscordSendResponse(
+            success=True,
+            message="Mensaje enviado a Discord",
+        )
+
+    return DiscordSendResponse(
+        success=False,
+        message="Error al enviar a Discord. Verifica el webhook.",
+    )
+
+
 # ── Send digest to Discord ────────────────────────────────
 
 
@@ -276,7 +315,7 @@ async def send_daily_summary(
 async def send_digest_to_discord(
     digest_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_module("digests", write=True)),
 ):
     """Send a specific digest rendered as Discord markdown to the webhook."""
     ds = await _get_or_create_settings(db)

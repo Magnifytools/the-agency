@@ -37,6 +37,11 @@ export default function DigestsPage() {
   const [emailDialogDigest, setEmailDialogDigest] = useState<Digest | null>(null)
   const [emailTo, setEmailTo] = useState("")
 
+  // Discord preview/edit state
+  const [discordPreviewDigest, setDiscordPreviewDigest] = useState<Digest | null>(null)
+  const [discordPreviewContent, setDiscordPreviewContent] = useState("")
+  const [discordIsEditing, setDiscordIsEditing] = useState(false)
+
   const { data: digests = [], isLoading } = useQuery({
     queryKey: ["digests", filterStatus, filterClient],
     queryFn: () => digestsApi.list({
@@ -89,13 +94,34 @@ export default function DigestsPage() {
     onError: (err) => toast.error(getErrorMessage(err, "Error al renderizar")),
   })
 
-  const discordSendMutation = useMutation({
-    mutationFn: (digestId: number) => discordApi.sendDigest(digestId),
+  const discordPreviewMutation = useMutation({
+    mutationFn: (digestId: number) => digestsApi.render(digestId, "slack"),
     onSuccess: (data) => {
-      toast.success(data.message)
+      setDiscordPreviewContent(data.rendered)
+      setDiscordIsEditing(false)
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al renderizar para Discord")),
+  })
+
+  const discordSendCustomMutation = useMutation({
+    mutationFn: (content: string) => discordApi.sendCustom(content),
+    onSuccess: (data) => {
+      if (data.success) {
+        toast.success(data.message)
+        setDiscordPreviewDigest(null)
+      } else {
+        toast.error(data.message)
+      }
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al enviar a Discord")),
   })
+
+  const handleDiscordPreview = (digest: Digest) => {
+    setDiscordPreviewDigest(digest)
+    setDiscordPreviewContent("")
+    setDiscordIsEditing(false)
+    discordPreviewMutation.mutate(digest.id)
+  }
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => digestsApi.delete(id),
@@ -112,7 +138,7 @@ export default function DigestsPage() {
   }
 
   const emailSendMutation = useMutation({
-    mutationFn: ({ id, to }: { id: number; to: string }) => digestsApi.sendEmail(id, to),
+    mutationFn: ({ id, to, test }: { id: number; to: string; test?: boolean }) => digestsApi.sendEmail(id, to, test ?? false),
     onSuccess: (data) => {
       toast.success(data.message)
       setEmailDialogDigest(null)
@@ -252,7 +278,8 @@ export default function DigestsPage() {
                         : "—"}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
+                      <div className="flex justify-end items-center gap-1">
+                        {/* Edición */}
                         <Button
                           variant="ghost"
                           size="sm"
@@ -277,12 +304,14 @@ export default function DigestsPage() {
                         >
                           <Send className="w-4 h-4" />
                         </Button>
+                        <span className="w-px h-5 bg-border mx-0.5" />
+                        {/* Envío */}
                         <Button
                           variant="ghost"
                           size="sm"
-                          title="Enviar a Discord"
-                          onClick={() => discordSendMutation.mutate(digest.id)}
-                          disabled={discordSendMutation.isPending}
+                          title="Previsualizar y enviar a Discord"
+                          onClick={() => handleDiscordPreview(digest)}
+                          disabled={discordPreviewMutation.isPending}
                         >
                           <MessageCircle className="w-4 h-4" />
                         </Button>
@@ -295,16 +324,19 @@ export default function DigestsPage() {
                           <Mail className="w-4 h-4" />
                         </Button>
                         {digest.status !== "sent" && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            title="Eliminar"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => handleDelete(digest)}
-                            disabled={deleteMutation.isPending}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          <>
+                            <span className="w-px h-5 bg-border mx-0.5" />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Eliminar"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => handleDelete(digest)}
+                              disabled={deleteMutation.isPending}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </>
                         )}
                       </div>
                     </TableCell>
@@ -405,6 +437,64 @@ export default function DigestsPage() {
         </div>
       </Dialog>
 
+      {/* Discord preview/edit dialog */}
+      <Dialog open={!!discordPreviewDigest} onOpenChange={(open) => { if (!open) setDiscordPreviewDigest(null) }}>
+        <DialogHeader>
+          <DialogTitle>
+            Enviar a Discord — {discordPreviewDigest?.client_name}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              {discordIsEditing ? "Edita el contenido antes de enviar" : "Revisa el contenido antes de enviar a Discord"}
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDiscordIsEditing(!discordIsEditing)}
+              disabled={discordPreviewMutation.isPending}
+            >
+              <Pencil className="w-4 h-4 mr-1" />
+              {discordIsEditing ? "Vista previa" : "Editar"}
+            </Button>
+          </div>
+
+          {discordPreviewMutation.isPending ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin opacity-40" />
+            </div>
+          ) : discordIsEditing ? (
+            <textarea
+              className="w-full min-h-[300px] rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono"
+              value={discordPreviewContent}
+              onChange={(e) => setDiscordPreviewContent(e.target.value)}
+            />
+          ) : (
+            <pre className="bg-muted p-4 rounded-lg text-sm whitespace-pre-wrap max-h-[60vh] overflow-auto">
+              {discordPreviewContent}
+            </pre>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDiscordPreviewDigest(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => discordSendCustomMutation.mutate(discordPreviewContent)}
+              disabled={!discordPreviewContent.trim() || discordSendCustomMutation.isPending}
+            >
+              {discordSendCustomMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4 mr-2" />
+              )}
+              Enviar a Discord
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
       {/* Email send dialog */}
       <Dialog open={!!emailDialogDigest} onOpenChange={(open) => { if (!open) setEmailDialogDigest(null) }}>
         <div className="space-y-4 p-1">
@@ -429,6 +519,14 @@ export default function DigestsPage() {
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setEmailDialogDigest(null)}>Cancelar</Button>
+            <Button
+              variant="secondary"
+              onClick={() => emailDialogDigest && emailSendMutation.mutate({ id: emailDialogDigest.id, to: emailTo, test: true })}
+              disabled={!emailTo || emailSendMutation.isPending}
+            >
+              {emailSendMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
+              Enviar prueba
+            </Button>
             <Button
               onClick={() => emailDialogDigest && emailSendMutation.mutate({ id: emailDialogDigest.id, to: emailTo })}
               disabled={!emailTo || emailSendMutation.isPending}

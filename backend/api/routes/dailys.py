@@ -37,10 +37,16 @@ def _to_response(d: DailyUpdate) -> DailyUpdateResponse:
         except Exception:
             parsed = None
 
+    # Safely access user relationship — avoid lazy-load 500 in async
+    try:
+        user_name = d.user.full_name if d.user else None
+    except Exception:
+        user_name = None
+
     return DailyUpdateResponse(
         id=d.id,
         user_id=d.user_id,
-        user_name=d.user.full_name if d.user else None,
+        user_name=user_name,
         date=d.date,
         raw_text=d.raw_text,
         parsed_data=parsed,
@@ -189,11 +195,17 @@ async def prefill_daily(
     by_client: dict[str, list[str]] = {}
 
     for task in completed:
-        client = task.client.name if task.client else "General"
+        try:
+            client = task.client.name if task.client else "General"
+        except Exception:
+            client = "General"
         by_client.setdefault(client, []).append(f"✅ {task.title}")
 
     for task in worked_on:
-        client = task.client.name if task.client else "General"
+        try:
+            client = task.client.name if task.client else "General"
+        except Exception:
+            client = "General"
         by_client.setdefault(client, []).append(f"🔄 {task.title}")
 
     for client, tasks in sorted(by_client.items()):
@@ -397,8 +409,11 @@ async def send_daily_to_discord(
     if not webhook_url:
         raise HTTPException(status_code=400, detail="Discord webhook no configurado. Configúralo en Ajustes > Discord.")
 
-    # Format as rich embed
-    user_name = daily.user.full_name if daily.user else "Unknown"
+    # Format as rich embed — safely access user relationship
+    try:
+        user_name = daily.user.full_name if daily.user else current_user.full_name
+    except Exception:
+        user_name = current_user.full_name  # Fallback: we already have the user from auth
     date_str = daily.date.isoformat()
     embed = format_daily_embed(daily.parsed_data, user_name, date_str)
 

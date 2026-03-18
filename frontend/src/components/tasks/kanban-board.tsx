@@ -13,11 +13,11 @@ interface Props {
 }
 
 const columns: { status: TaskStatus; label: string; color: string; bgColor: string }[] = [
-  { status: "in_review", label: "En revisión", color: "text-blue-600", bgColor: "bg-blue-50/80 border-blue-200" },
-  { status: "waiting", label: "En espera", color: "text-purple-600", bgColor: "bg-purple-50/80 border-purple-200" },
-  { status: "in_progress", label: "En curso", color: "text-amber-600", bgColor: "bg-amber-50/80 border-amber-200" },
-  { status: "pending", label: "Pendiente", color: "text-slate-600", bgColor: "bg-slate-100/80 border-slate-200" },
-  { status: "backlog", label: "Backlog", color: "text-slate-400", bgColor: "bg-slate-50/80 border-slate-200" },
+  { status: "in_review", label: "En revisión", color: "text-blue-400", bgColor: "bg-blue-950/60 border-blue-700" },
+  { status: "waiting", label: "En espera", color: "text-purple-400", bgColor: "bg-purple-950/60 border-purple-700" },
+  { status: "in_progress", label: "En curso", color: "text-amber-400", bgColor: "bg-amber-950/60 border-amber-700" },
+  { status: "pending", label: "Pendiente", color: "text-yellow-400", bgColor: "bg-yellow-950/60 border-yellow-700" },
+  { status: "backlog", label: "Backlog", color: "text-slate-400", bgColor: "bg-slate-900/60 border-slate-700" },
 ]
 
 const priorityColors: Record<string, string> = {
@@ -86,7 +86,7 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
     dragTaskRef.current = null
   }
 
-  const now = new Date()
+  const todayStr = new Date().toISOString().slice(0, 10)
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -121,7 +121,7 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
             {/* Task cards */}
             <div className="space-y-2">
               {colTasks.map((task) => {
-                const isOverdue = task.due_date && new Date(task.due_date) < now && task.status !== "completed"
+                const isOverdue = task.due_date && task.due_date < todayStr && task.status !== "completed"
                 const isUnassigned = !task.assigned_to && task.status !== "completed"
                 const noDate = !task.due_date && task.status !== "completed"
 

@@ -170,3 +170,50 @@ async def sync_user_permissions(
         "added": sorted(added),
         "removed": sorted(removed),
     }
+
+
+@router.post("/sync-default-permissions", status_code=200)
+async def sync_default_permissions_all_users(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Admin-only: ensure ALL non-admin users have default module permissions.
+
+    Useful when new modules are added — adds missing permissions without
+    removing existing ones.
+    """
+    default_modules = ["dashboard", "clients", "tasks", "projects", "timesheet", "pm", "digests"]
+
+    users_result = await db.execute(
+        select(User).where(User.role != UserRole.admin)
+    )
+    users = users_result.scalars().all()
+
+    total_added = 0
+    users_updated = []
+    for user in users:
+        perms_result = await db.execute(
+            select(UserPermission.module).where(UserPermission.user_id == user.id)
+        )
+        existing_modules = {r[0] for r in perms_result.all()}
+
+        added_for_user = []
+        for mod in default_modules:
+            if mod not in existing_modules:
+                db.add(UserPermission(
+                    user_id=user.id, module=mod, can_read=True, can_write=True,
+                ))
+                added_for_user.append(mod)
+                total_added += 1
+
+        if added_for_user:
+            users_updated.append({"user_id": user.id, "name": user.full_name, "added": added_for_user})
+
+    if total_added:
+        await db.commit()
+
+    return {
+        "total_permissions_added": total_added,
+        "users_updated": users_updated,
+        "default_modules": default_modules,
+    }

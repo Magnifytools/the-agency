@@ -2,8 +2,11 @@ import type { GanttConfig } from "./gantt-utils"
 import { getBarProps } from "./gantt-utils"
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: "#6B7280",
-  in_progress: "#FEE630",
+  backlog: "#475569",
+  pending: "#CA8A04",
+  in_progress: "#F59E0B",
+  waiting: "#A855F7",
+  in_review: "#3B82F6",
   completed: "#22C55E",
   cancelled: "#EF4444",
 }

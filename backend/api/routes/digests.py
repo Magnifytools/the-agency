@@ -110,6 +110,24 @@ async def generate_digest(
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
+    # Auto-delete previous draft digests for this client
+    prev_drafts_result = await db.execute(
+        select(WeeklyDigest).where(
+            and_(
+                WeeklyDigest.client_id == request.client_id,
+                WeeklyDigest.status == DigestStatus.draft,
+            )
+        )
+    )
+    prev_drafts = prev_drafts_result.scalars().all()
+    for old_draft in prev_drafts:
+        logger.info(
+            "Auto-deleting previous draft digest id=%s for client_id=%s",
+            old_draft.id,
+            request.client_id,
+        )
+        await db.delete(old_draft)
+
     # Collect raw data
     raw_data = await collect_digest_data(db, request.client_id, period_start, period_end)
 
@@ -167,6 +185,25 @@ async def generate_batch(
 
     if not clients:
         raise HTTPException(status_code=404, detail="No active clients found")
+
+    # Auto-delete previous draft digests for all active clients
+    for client in clients:
+        prev_drafts_result = await db.execute(
+            select(WeeklyDigest).where(
+                and_(
+                    WeeklyDigest.client_id == client.id,
+                    WeeklyDigest.status == DigestStatus.draft,
+                )
+            )
+        )
+        prev_drafts = prev_drafts_result.scalars().all()
+        for old_draft in prev_drafts:
+            logger.info(
+                "Auto-deleting previous draft digest id=%s for client_id=%s (batch)",
+                old_draft.id,
+                client.id,
+            )
+            await db.delete(old_draft)
 
     # Collect data sequentially (shares DB session), then generate AI content concurrently
     client_data: list[tuple] = []
@@ -296,7 +333,11 @@ async def update_digest(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("digests", write=True)),
 ):
-    """Update a digest's content and/or tone."""
+    """Update a digest's content and/or tone.
+
+    If only the tone changes (no content update), auto-regenerate
+    the digest content using the new tone and the stored raw_context.
+    """
     result = await db.execute(select(WeeklyDigest).where(WeeklyDigest.id == digest_id))
     digest = result.scalar_one_or_none()
 
@@ -305,11 +346,35 @@ async def update_digest(
     if current_user.role != UserRole.admin and digest.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="Not your digest")
 
+    tone_changed = request.tone is not None and request.tone != digest.tone
+
     if request.content is not None:
         digest.content = request.content.model_dump()
         digest.edited_at = datetime.utcnow()
+
     if request.tone is not None:
         digest.tone = request.tone
+
+    # If tone changed without an explicit content update, regenerate content
+    if tone_changed and request.content is None:
+        if not digest.raw_context:
+            raise HTTPException(
+                status_code=400,
+                detail="No hay datos crudos para regenerar el digest con el nuevo tono",
+            )
+        ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
+        try:
+            new_content = await generate_digest_content(digest.raw_context, request.tone)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="No se pudo regenerar el digest con el nuevo tono",
+            )
+        except Exception:
+            logger.exception("Error regenerating digest id=%s with new tone=%s", digest_id, request.tone)
+            raise HTTPException(status_code=502, detail="Error regenerando digest con nuevo tono")
+        digest.content = new_content
+        digest.generated_at = datetime.utcnow()
 
     await db.commit()
     await safe_refresh(db, digest, log_context="digests")
@@ -390,6 +455,7 @@ from pydantic import BaseModel as _EmailBase
 
 class DigestSendEmailRequest(_EmailBase):
     to: str
+    test: bool = False
 
 
 @router.post("/{digest_id}/send-email")
@@ -427,6 +493,8 @@ async def send_digest_email(
             client_name = client.name
 
     subject = f"Resumen semanal — {client_name}"
+    if body.test:
+        subject = f"[TEST] {subject}"
 
     # Send email
     from backend.services.email_service import send_email
@@ -440,11 +508,13 @@ async def send_digest_email(
     if not success:
         raise HTTPException(status_code=500, detail="Error al enviar email. Verifica la configuración SMTP.")
 
-    # Update status to sent
-    digest.status = DigestStatus.sent
-    await db.commit()
+    # Update status to sent (skip if test mode)
+    if not body.test:
+        digest.status = DigestStatus.sent
+        await db.commit()
 
-    return {"success": True, "message": f"Digest enviado a {body.to}"}
+    label = "Email de prueba enviado" if body.test else "Digest enviado"
+    return {"success": True, "message": f"{label} a {body.to}"}
 
 
 # ---------------------------------------------------------------------------
