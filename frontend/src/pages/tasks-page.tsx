@@ -667,11 +667,11 @@ export default function TasksPage() {
                   <TableCell>
                     <div className="flex items-center gap-1.5">
                     <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", {
-                      "bg-slate-600": t.status === "backlog",
-                      "bg-yellow-600": t.status === "pending",
-                      "bg-amber-500": t.status === "in_progress",
-                      "bg-purple-500": t.status === "waiting",
-                      "bg-blue-500": t.status === "in_review",
+                      "bg-gray-500": t.status === "backlog",
+                      "bg-yellow-500": t.status === "pending",
+                      "bg-blue-500": t.status === "in_progress",
+                      "bg-orange-500": t.status === "waiting",
+                      "bg-purple-500": t.status === "in_review",
                       "bg-green-500": t.status === "completed",
                     })} />
                     <Select

@@ -7,12 +7,12 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
 
 const STATUS_CONFIG: Record<TaskStatus, { label: string; cls: string }> = {
-  backlog:     { label: "Backlog",     cls: "bg-slate-600 text-white border-slate-500" },
-  pending:     { label: "Pendiente",   cls: "bg-yellow-600 text-white border-yellow-500" },
-  in_progress: { label: "En curso",    cls: "bg-amber-500 text-black border-amber-400" },
-  waiting:     { label: "En espera",   cls: "bg-purple-500 text-white border-purple-400" },
-  in_review:   { label: "En revisión", cls: "bg-blue-500 text-white border-blue-400" },
-  completed:   { label: "Completada",  cls: "bg-green-500 text-white border-green-400" },
+  backlog:     { label: "Backlog",     cls: "bg-gray-500 text-white border-gray-600" },
+  pending:     { label: "Pendiente",   cls: "bg-yellow-500 text-white border-yellow-600" },
+  in_progress: { label: "En curso",    cls: "bg-blue-500 text-white border-blue-600" },
+  waiting:     { label: "En espera",   cls: "bg-orange-500 text-white border-orange-600" },
+  in_review:   { label: "En revisión", cls: "bg-purple-500 text-white border-purple-600" },
+  completed:   { label: "Completada",  cls: "bg-green-500 text-white border-green-600" },
 }
 
 interface Props {

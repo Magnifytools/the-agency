@@ -452,9 +452,16 @@ async def send_daily_to_discord(
         success = False
 
     if success:
-        daily.status = DailyUpdateStatus.sent
-        daily.discord_sent_at = datetime.now(timezone.utc)
-        await db.commit()
+        try:
+            daily.status = DailyUpdateStatus.sent
+            daily.discord_sent_at = datetime.now(timezone.utc)
+            await db.commit()
+        except Exception:
+            logger.warning("Non-critical: daily status update failed after Discord send for daily_id=%s", daily_id)
+            try:
+                await db.rollback()
+            except Exception:
+                pass
         return DailyDiscordResponse(success=True, message="Daily enviado a Discord")
     else:
         return DailyDiscordResponse(success=False, message="Error al enviar a Discord")

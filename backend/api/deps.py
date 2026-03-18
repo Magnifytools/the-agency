@@ -4,11 +4,12 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.core.security import decode_access_token
 from backend.config import settings
 from backend.db.database import get_db
-from backend.db.models import User, UserRole, Client
+from backend.db.models import User, UserRole, Client, UserPermission
 
 security = HTTPBearer(auto_error=False)
 
@@ -33,7 +34,9 @@ async def get_current_user(
     user_id = payload.get("sub")
     if user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    result = await db.execute(select(User).where(User.id == int(user_id)))
+    result = await db.execute(
+        select(User).where(User.id == int(user_id)).options(selectinload(User.permissions))
+    )
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")

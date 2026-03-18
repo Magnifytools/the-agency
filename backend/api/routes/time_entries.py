@@ -152,8 +152,15 @@ async def create_time_entry(
         pass  # Never break time entry creation
 
     if entry.task_id:
-        await _sync_task_actual_minutes(db, entry.task_id)
-        await db.commit()
+        try:
+            await _sync_task_actual_minutes(db, entry.task_id)
+            await db.commit()
+        except Exception:
+            logger.warning("Non-critical: task minutes sync failed after time entry creation")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
     entry = await _load_time_entry_for_response(db, entry.id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Time entry not found after create")
@@ -533,10 +540,17 @@ async def update_time_entry(
     await db.commit()
     # Sync actual_minutes on affected tasks
     affected_tasks = {t for t in [old_task_id, entry.task_id] if t is not None}
-    for tid in affected_tasks:
-        await _sync_task_actual_minutes(db, tid)
     if affected_tasks:
-        await db.commit()
+        try:
+            for tid in affected_tasks:
+                await _sync_task_actual_minutes(db, tid)
+            await db.commit()
+        except Exception:
+            logger.warning("Non-critical: task minutes sync failed after time entry update")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
     entry = await _load_time_entry_for_response(db, entry.id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Time entry not found after stop")
@@ -615,7 +629,11 @@ async def start_timer(
             status_code=status.HTTP_409_CONFLICT,
             detail="Ya hay un timer activo. Detén el actual antes de iniciar otro.",
         )
-    await safe_refresh(db, entry, log_context="timer_start")
+    try:
+        await safe_refresh(db, entry, log_context="timer_start")
+    except Exception:
+        logger.warning("Non-critical: safe_refresh failed after timer start")
+        pass
 
     # Reload relation if it was tied to a task
     task_title = body.notes
@@ -670,8 +688,15 @@ async def stop_timer(
 
     await db.commit()
     if entry.task_id:
-        await _sync_task_actual_minutes(db, entry.task_id)
-        await db.commit()
+        try:
+            await _sync_task_actual_minutes(db, entry.task_id)
+            await db.commit()
+        except Exception:
+            logger.warning("Non-critical: task minutes sync failed after timer stop")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
     # Reload with explicit eager loading instead of safe_refresh
     loaded = await _load_time_entry_for_response(db, entry.id)
     return _entry_to_response(loaded or entry)

@@ -7,11 +7,11 @@ const DAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 
 const STATUS_COLORS: Record<string, string> = {
-  backlog: "bg-slate-600 text-white",
-  pending: "bg-yellow-600 text-white",
-  in_progress: "bg-amber-500 text-black",
-  waiting: "bg-purple-500 text-white",
-  in_review: "bg-blue-500 text-white",
+  backlog: "bg-gray-500 text-white",
+  pending: "bg-yellow-500 text-white",
+  in_progress: "bg-blue-500 text-white",
+  waiting: "bg-orange-500 text-white",
+  in_review: "bg-purple-500 text-white",
   completed: "bg-green-500 text-white line-through opacity-60",
 }
 

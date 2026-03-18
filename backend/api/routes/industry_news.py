@@ -132,9 +132,13 @@ async def create_source(
         logger.error("Error creating news source: %s", e)
         raise HTTPException(status_code=500, detail="Error al crear la fuente")
     # Reload from DB to get server-generated fields (created_at)
-    from backend.api.utils.db_helpers import reload_for_response
-    loaded = await reload_for_response(db, NewsSource, source.id)
-    return loaded or source
+    try:
+        from backend.api.utils.db_helpers import reload_for_response
+        loaded = await reload_for_response(db, NewsSource, source.id)
+        return loaded or source
+    except Exception:
+        logger.warning("Non-critical: news source reload failed after creation")
+        return source
 
 
 @router.put("/sources/{source_id}", response_model=NewsSourceResponse)

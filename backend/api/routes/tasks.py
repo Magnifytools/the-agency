@@ -234,7 +234,11 @@ async def create_task(
             )
             await db.commit()
         except Exception:
-            logger.exception("Error sending task notification for task_id=%s", task.id)
+            logger.warning("Non-critical: notification failed after task creation for task_id=%s", task.id)
+            try:
+                await db.rollback()
+            except Exception:
+                pass
 
     return _task_to_response(task)
 
@@ -369,8 +373,12 @@ async def update_task(
                 entity_id=task.id,
             )
             await db.commit()
-        except Exception as e:
-            logger.warning("Failed to send assignment notification for task %d: %s", task.id, e)
+        except Exception:
+            logger.warning("Non-critical: notification failed after task update for task_id=%s", task.id)
+            try:
+                await db.rollback()
+            except Exception:
+                pass
 
     return _task_to_response(task)
 
@@ -458,7 +466,14 @@ async def bulk_delete_tasks(
         except Exception:
             skipped_ids.append(task.id)
     if deleted:
-        await db.commit()
+        try:
+            await db.commit()
+        except Exception:
+            logger.warning("Non-critical: final commit failed after bulk delete of %d tasks", deleted)
+            try:
+                await db.rollback()
+            except Exception:
+                pass
     detail = None
     if skipped_ids:
         detail = f"No se pudieron eliminar {len(skipped_ids)} tareas porque tienen registros de tiempo asociados. Elimínalos primero."

@@ -158,7 +158,11 @@ async def create_evidence(
         await db.rollback()
         logger.error("Error creating evidence: %s", e)
         raise HTTPException(status_code=500, detail="Error al crear la evidencia")
-    evidence = await _reload_evidence(db, evidence.id)
+    try:
+        evidence = await _reload_evidence(db, evidence.id)
+    except Exception:
+        logger.warning("Non-critical: evidence reload failed after creation")
+        pass  # evidence object already has the data from creation
     return _to_response(project_id, evidence)
 
 
@@ -200,7 +204,11 @@ async def upload_evidence(
         await db.rollback()
         logger.error("Error uploading evidence: %s", e)
         raise HTTPException(status_code=500, detail="Error al subir la evidencia")
-    evidence = await _reload_evidence(db, evidence.id)
+    try:
+        evidence = await _reload_evidence(db, evidence.id)
+    except Exception:
+        logger.warning("Non-critical: evidence reload failed after upload")
+        pass  # evidence object already has the data from creation
     return _to_response(project_id, evidence)
 
 
