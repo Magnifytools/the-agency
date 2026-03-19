@@ -1190,6 +1190,12 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS billing_amount NUMERIC(12,2)",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS next_billing_date DATE",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS last_billed_date DATE",
+                # Evidence file columns (were missing due to sentinel skip)
+                "CREATE TABLE IF NOT EXISTS project_evidence (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id), phase_id INTEGER REFERENCES project_phases(id), title VARCHAR(200) NOT NULL, url TEXT, evidence_type VARCHAR(20) DEFAULT 'other', description TEXT, created_by INTEGER REFERENCES users(id), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
+                "ALTER TABLE project_evidence ADD COLUMN IF NOT EXISTS file_name VARCHAR(255)",
+                "ALTER TABLE project_evidence ADD COLUMN IF NOT EXISTS file_mime_type VARCHAR(100)",
+                "ALTER TABLE project_evidence ADD COLUMN IF NOT EXISTS file_size_bytes INTEGER",
+                "ALTER TABLE project_evidence ADD COLUMN IF NOT EXISTS file_content BYTEA",
             ]:
                 await conn.execute(text(sql))
         logging.info("Startup DDL complete.")
