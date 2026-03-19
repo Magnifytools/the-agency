@@ -6,8 +6,10 @@ from fastapi.responses import Response
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from datetime import date, timedelta
+
 from backend.db.database import get_db
-from backend.db.models import Client, Task, TimeEntry, User, Income
+from backend.db.models import Client, Project, Task, TimeEntry, User, Income
 from backend.api.deps import require_module
 from backend.config import settings
 from backend.services.csv_utils import build_csv_response
@@ -138,6 +140,50 @@ def _build_billing_pdf(rows: list[dict], year: int, month: int) -> bytes:
     pdf.set_text_color(0, 0, 0)
 
     return bytes(pdf.output())
+
+
+@router.get("/overdue")
+async def billing_overdue(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("billing")),
+):
+    """Return projects with overdue or upcoming billing (next 3 days)."""
+    today = date.today()
+    threshold = today + timedelta(days=3)
+
+    result = await db.execute(
+        select(Project)
+        .where(
+            Project.next_billing_date.isnot(None),
+            Project.next_billing_date <= threshold,
+            Project.status == "active",
+        )
+        .order_by(Project.next_billing_date.asc())
+    )
+    projects = result.scalars().all()
+
+    items = []
+    total = 0.0
+    for p in projects:
+        is_overdue = p.next_billing_date <= today
+        amount = float(p.billing_amount or p.monthly_fee or 0)
+        total += amount if is_overdue else 0
+        items.append({
+            "project_id": p.id,
+            "project_name": p.name,
+            "client_id": p.client_id,
+            "next_billing_date": p.next_billing_date.isoformat(),
+            "billing_amount": amount,
+            "is_overdue": is_overdue,
+            "days_overdue": (today - p.next_billing_date).days if is_overdue else 0,
+        })
+
+    return {
+        "items": items,
+        "total_overdue": total,
+        "overdue_count": sum(1 for i in items if i["is_overdue"]),
+        "upcoming_count": sum(1 for i in items if not i["is_overdue"]),
+    }
 
 
 @router.get("/export")

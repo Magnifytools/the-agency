@@ -8,7 +8,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import defer, selectinload
+from sqlalchemy.orm import defer, noload, selectinload
 
 logger = logging.getLogger(__name__)
 
@@ -120,17 +120,21 @@ async def list_evidence(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("projects")),
 ):
-    result = await db.execute(
-        select(ProjectEvidence)
-        .options(
-            defer(ProjectEvidence.file_content),
-            selectinload(ProjectEvidence.creator),
-            selectinload(ProjectEvidence.phase),
+    try:
+        result = await db.execute(
+            select(ProjectEvidence)
+            .options(
+                defer(ProjectEvidence.file_content),
+                selectinload(ProjectEvidence.creator),
+                selectinload(ProjectEvidence.phase).options(noload("*")),
+            )
+            .where(ProjectEvidence.project_id == project_id)
+            .order_by(ProjectEvidence.created_at.desc())
         )
-        .where(ProjectEvidence.project_id == project_id)
-        .order_by(ProjectEvidence.created_at.desc())
-    )
-    return [_to_response(project_id, ev) for ev in result.scalars().all()]
+        return [_to_response(project_id, ev) for ev in result.scalars().all()]
+    except Exception as e:
+        logger.error("Error listing evidence for project %s: %s", project_id, e)
+        raise HTTPException(status_code=500, detail="Error al listar evidencias")
 
 
 @router.post("", response_model=EvidenceResponse, status_code=201)
