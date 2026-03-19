@@ -43,22 +43,19 @@ async def run_init():
 
     logger.info("=== Starting offline DB initialization ===")
 
-    # DDL migrations
-    if await _schema_needs_startup_ddl():
-        logger.info("Running DDL migrations (schema not yet up to date)...")
-        await _ensure_columns()
-        await _ensure_numeric_types()
-        await _ensure_columns_v2()
-        await _ensure_columns_v3()
-        await _ensure_columns_v4()
-        await _ensure_columns_v5()
-        await _ensure_columns_v6()
-        await _ensure_columns_v7()
-        await _ensure_columns_v8()
-        await _ensure_columns_v9()
-        await _ensure_columns_v10()
-    else:
-        logger.info("Schema up to date, skipping DDL migrations.")
+    # DDL migrations — always run, all statements are idempotent
+    logger.info("Running DDL migrations...")
+    await _ensure_columns()
+    await _ensure_numeric_types()
+    await _ensure_columns_v2()
+    await _ensure_columns_v3()
+    await _ensure_columns_v4()
+    await _ensure_columns_v5()
+    await _ensure_columns_v6()
+    await _ensure_columns_v7()
+    await _ensure_columns_v8()
+    await _ensure_columns_v9()
+    await _ensure_columns_v10()
 
     # One-time admin password reset
     await _reset_admin_password()

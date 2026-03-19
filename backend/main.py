@@ -1095,17 +1095,8 @@ async def _backfill_module_permissions():
 
 
 async def _schema_needs_startup_ddl() -> bool:
-    """Check if startup DDL is still needed (table from v9 missing = needs DDL)."""
-    from sqlalchemy import text
-    from backend.db.database import engine
-    try:
-        async with engine.begin() as conn:
-            r = await conn.execute(text(
-                "SELECT 1 FROM information_schema.tables WHERE table_name = 'automation_rules'"
-            ))
-            return r.scalar() is None
-    except Exception:
-        return True  # conservative: run DDL if check fails
+    """Always run DDL — all statements are idempotent (IF NOT EXISTS / IF EXISTS)."""
+    return True
 
 
 async def _reset_admin_password():
