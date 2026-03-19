@@ -171,7 +171,8 @@ export default function DiscordSettingsPage() {
               <Input
                 id="webhook"
                 type="url"
-                placeholder="https://discord.com/api/webhooks/..."
+                autoComplete="off"
+                placeholder={settings?.webhook_configured ? "••••••• (configurado)" : "https://discord.com/api/webhooks/..."}
                 value={webhookInput}
                 onChange={(e) => setWebhookInput(e.target.value)}
                 className="flex-1"
@@ -179,7 +180,7 @@ export default function DiscordSettingsPage() {
               <Button
                 variant="outline"
                 onClick={() => testMutation.mutate()}
-                disabled={testMutation.isPending || !webhookInput.trim()}
+                disabled={testMutation.isPending || (!webhookInput.trim() && !settings?.webhook_configured)}
               >
                 {testMutation.isPending ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
