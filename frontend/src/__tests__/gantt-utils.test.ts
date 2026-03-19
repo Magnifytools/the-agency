@@ -65,10 +65,18 @@ describe("calculateConfig", () => {
     expect(config.dayWidth).toBe(14)
   })
 
-  it("ensures minimum 30 days", () => {
-    // Even for a very short project
-    const config = calculateConfig(new Date(2026, 0, 1), new Date(2026, 0, 5), "week")
-    expect(config.totalDays).toBeGreaterThanOrEqual(30)
+  it("ensures minimum days per zoom level", () => {
+    // Week zoom: minDays=14, even for a very short project
+    const weekConfig = calculateConfig(new Date(2026, 0, 1), new Date(2026, 0, 5), "week")
+    expect(weekConfig.totalDays).toBeGreaterThanOrEqual(14)
+
+    // Month zoom: minDays=30
+    const monthConfig = calculateConfig(new Date(2026, 0, 1), new Date(2026, 0, 5), "month")
+    expect(monthConfig.totalDays).toBeGreaterThanOrEqual(30)
+
+    // Quarter zoom: minDays=90
+    const quarterConfig = calculateConfig(new Date(2026, 0, 1), new Date(2026, 0, 5), "quarter")
+    expect(quarterConfig.totalDays).toBeGreaterThanOrEqual(90)
   })
 })
 
