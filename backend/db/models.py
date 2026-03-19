@@ -361,6 +361,11 @@ class Project(TimestampMixin, Base):
     unit_price = Column(Numeric(12, 2), nullable=True)
     unit_label = Column(String(50), nullable=True)  # e.g. "pieza", "artículo", "hora"
     scope = Column(Text, nullable=True)
+    # Project billing schedule
+    billing_day = Column(Integer, nullable=True)  # 1-28, day of month
+    billing_amount = Column(Numeric(12, 2), nullable=True)  # amount per billing cycle
+    next_billing_date = Column(Date, nullable=True)
+    last_billed_date = Column(Date, nullable=True)
 
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
 

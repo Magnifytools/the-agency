@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { dashboardApi } from "@/lib/api"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { AlertTriangle, Clock, Users, FileText, Briefcase, ChevronRight } from "lucide-react"
+import { AlertTriangle, Clock, Users, FileText, Briefcase, ChevronRight, DollarSign } from "lucide-react"
 import { Link } from "react-router-dom"
 
 interface Alert {
@@ -26,6 +26,7 @@ const iconMap: Record<string, React.ReactNode> = {
   incomplete_timesheets: <Clock className="h-4 w-4" />,
   clients_no_hours: <Briefcase className="h-4 w-4" />,
   capacity_overload: <Users className="h-4 w-4" />,
+  billing_reminders: <DollarSign className="h-4 w-4" />,
 }
 
 const severityColors: Record<string, string> = {

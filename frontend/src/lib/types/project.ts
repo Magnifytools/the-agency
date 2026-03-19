@@ -34,6 +34,10 @@ export interface Project {
   unit_price: number | null
   unit_label: string | null
   scope: string | null
+  billing_day: number | null
+  billing_amount: number | null
+  next_billing_date: string | null
+  last_billed_date: string | null
   client_id: number
   client_name: string | null
   phases: ProjectPhase[]
@@ -78,6 +82,9 @@ export interface ProjectCreate {
   unit_price?: number | null
   unit_label?: string | null
   scope?: string | null
+  billing_day?: number | null
+  billing_amount?: number | null
+  next_billing_date?: string | null
   client_id: number
 }
 

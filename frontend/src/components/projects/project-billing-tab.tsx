@@ -3,9 +3,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Receipt, CheckCircle, Circle } from "lucide-react"
+import { Loader2, Receipt, CheckCircle, Circle, Calendar } from "lucide-react"
 import { toast } from "sonner"
 import { api } from "@/lib/api"
+import type { Project } from "@/lib/types"
 import { getErrorMessage } from "@/lib/utils"
 
 interface BillableTask {
@@ -34,7 +35,7 @@ interface BillingSummary {
   tasks: BillableTask[]
 }
 
-export function ProjectBillingTab({ projectId }: { projectId: number }) {
+export function ProjectBillingTab({ projectId, project }: { projectId: number; project?: Project }) {
   const queryClient = useQueryClient()
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
@@ -52,6 +53,16 @@ export function ProjectBillingTab({ projectId }: { projectId: number }) {
       setSelectedIds(new Set())
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al facturar")),
+  })
+
+  const markBilledMutation = useMutation({
+    mutationFn: () => api.post(`/projects/${projectId}/mark-billed`).then((r: { data: { amount: number; next_billing_date: string | null } }) => r.data),
+    onSuccess: (data: { amount: number; next_billing_date: string | null }) => {
+      queryClient.invalidateQueries({ queryKey: ["project-billing", projectId] })
+      queryClient.invalidateQueries({ queryKey: ["project", projectId.toString()] })
+      toast.success(`Facturado: ${data.amount}€${data.next_billing_date ? ` — próxima: ${data.next_billing_date}` : ""}`)
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Error al facturar")),
   })
 
   if (isLoading) {
@@ -79,8 +90,55 @@ export function ProjectBillingTab({ projectId }: { projectId: number }) {
     .filter(t => selectedIds.has(t.id))
     .reduce((sum, t) => sum + t.unit_cost, 0)
 
+  const nextDate = project?.next_billing_date ? new Date(project.next_billing_date) : null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const daysUntil = nextDate ? Math.ceil((nextDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null
+  const isOverdue = daysUntil !== null && daysUntil <= 0
+  const billingAmount = project?.billing_amount ?? 0
+
   return (
     <div className="space-y-4">
+      {/* Billing Schedule */}
+      {billingAmount > 0 && (
+        <Card className={isOverdue ? "border-red-500/50" : daysUntil !== null && daysUntil <= 3 ? "border-amber-500/50" : ""}>
+          <CardContent className="pt-4 pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <Calendar className="w-5 h-5 text-muted-foreground" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{billingAmount.toFixed(2)} €</span>
+                    {project?.is_recurring && <Badge variant="outline" className="text-xs">Recurrente</Badge>}
+                    {isOverdue ? (
+                      <Badge variant="destructive">Vencida</Badge>
+                    ) : daysUntil !== null && daysUntil <= 3 ? (
+                      <Badge variant="warning">En {daysUntil} días</Badge>
+                    ) : nextDate ? (
+                      <Badge variant="success">Al día</Badge>
+                    ) : null}
+                  </div>
+                  {nextDate && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Próxima factura: {nextDate.toLocaleDateString("es-ES")}
+                      {project?.last_billed_date && ` — Última: ${new Date(project.last_billed_date).toLocaleDateString("es-ES")}`}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => markBilledMutation.mutate()}
+                disabled={markBilledMutation.isPending}
+              >
+                {markBilledMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Receipt className="w-4 h-4 mr-2" />}
+                Marcar facturado
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>

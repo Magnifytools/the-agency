@@ -895,6 +895,27 @@ async def alerts_summary(
             "link": "/capacity",
         })
 
+    # 6. Billing: projects with upcoming or overdue billing
+    billing_result = await db.execute(
+        select(Project).where(
+            Project.status.in_([ProjectStatus.active, ProjectStatus.completed]),
+            Project.next_billing_date <= today + timedelta(days=3),
+            Project.next_billing_date.isnot(None),
+        )
+    )
+    billing_projects = billing_result.scalars().all()
+    if billing_projects:
+        overdue_billing = [p for p in billing_projects if p.next_billing_date <= today]
+        total_pending = sum(float(p.billing_amount or 0) for p in billing_projects)
+        alerts.append({
+            "type": "billing_reminders",
+            "severity": "critical" if overdue_billing else "warning",
+            "count": len(billing_projects),
+            "title": f"{len(billing_projects)} facturas pendientes ({total_pending:.0f}€)",
+            "detail": [f"{p.name}: {p.billing_amount}€" for p in billing_projects[:5]],
+            "link": "/projects",
+        })
+
     total = sum(a["count"] for a in alerts)
     critical = sum(a["count"] for a in alerts if a["severity"] == "critical")
 

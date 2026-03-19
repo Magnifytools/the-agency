@@ -624,6 +624,7 @@ _UPDATABLE_PROJECT_FIELDS = {
     "status", "progress_percent", "budget_hours", "budget_amount",
     "gsc_url", "ga4_property_id",
     "pricing_model", "monthly_fee", "unit_price", "unit_label", "scope",
+    "billing_day", "billing_amount", "next_billing_date", "last_billed_date",
 }
 
 
@@ -672,6 +673,21 @@ async def update_project(
         except Exception as e:
             import logging
             logging.warning("Automation hook failed for project %d: %s", project.id, e)
+
+        # Billing reminder on project completion
+        if new_status == "completed" and project.billing_amount:
+            try:
+                from backend.services.notification_service import create_notification, BILLING_REMINDER
+                await create_notification(
+                    db, user_id=_user.id, type=BILLING_REMINDER,
+                    title=f"Proyecto completado — facturar {project.name}",
+                    message=f"Importe: {float(project.billing_amount)}€",
+                    link_url=f"/projects/{project.id}",
+                    entity_type="project", entity_id=project.id,
+                )
+                await db.commit()
+            except Exception:
+                pass
 
     return _build_project_response(project)
 
@@ -1012,5 +1028,60 @@ async def invoice_tasks(
     return {
         "invoiced_tasks": len(tasks),
         "total_amount": round(total, 2),
+        "income_id": income.id,
+    }
+
+
+@router.post("/{project_id}/mark-billed")
+async def mark_project_billed(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Mark project as billed for current period. Creates Income record and advances next_billing_date."""
+    from datetime import date, timedelta
+    import calendar
+
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    amount = float(project.billing_amount) if project.billing_amount else float(project.monthly_fee or 0)
+    if amount <= 0:
+        raise HTTPException(400, "No billing amount configured")
+
+    today = date.today()
+    project.last_billed_date = today
+
+    # Advance next_billing_date for recurring projects
+    if project.is_recurring and project.billing_day:
+        day = min(project.billing_day, 28)
+        # Next month
+        if today.month == 12:
+            next_date = today.replace(year=today.year + 1, month=1, day=day)
+        else:
+            max_day = calendar.monthrange(today.year, today.month + 1)[1]
+            next_date = today.replace(month=today.month + 1, day=min(day, max_day))
+        project.next_billing_date = next_date
+    else:
+        project.next_billing_date = None
+
+    # Create Income record
+    income = Income(
+        date=today,
+        description=f"{project.name} — factura {today.strftime('%m/%Y')}",
+        amount=round(amount, 2),
+        type="recurrente" if project.is_recurring else "factura",
+        client_id=project.client_id,
+        status="pendiente",
+    )
+    db.add(income)
+    await db.commit()
+
+    return {
+        "success": True,
+        "amount": round(amount, 2),
+        "next_billing_date": project.next_billing_date.isoformat() if project.next_billing_date else None,
         "income_id": income.id,
     }

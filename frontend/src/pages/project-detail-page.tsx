@@ -367,15 +367,13 @@ export default function ProjectDetailPage() {
         >
           Evidencia
         </Button>
-        {project?.pricing_model === "per_piece" && (
-          <Button
-            variant={activeTab === "billing" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setActiveTab("billing")}
-          >
-            Facturación
-          </Button>
-        )}
+        <Button
+          variant={activeTab === "billing" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setActiveTab("billing")}
+        >
+          Facturación
+        </Button>
       </div>
 
       {/* Evidence Tab */}
@@ -385,7 +383,7 @@ export default function ProjectDetailPage() {
 
       {/* Billing Tab */}
       {activeTab === "billing" && project && (
-        <ProjectBillingTab projectId={project.id} />
+        <ProjectBillingTab projectId={project.id} project={project} />
       )}
 
       {/* View Toggle + Phases and Tasks */}
@@ -683,6 +681,9 @@ function EditProjectDialog({
     budget_hours: project.budget_hours?.toString() || "",
     budget_amount: project.budget_amount?.toString() || "",
     monthly_fee: project.monthly_fee?.toString() || "",
+    billing_day: project.billing_day?.toString() || "",
+    billing_amount: project.billing_amount?.toString() || "",
+    next_billing_date: project.next_billing_date || "",
     gsc_url: project.gsc_url || "",
     ga4_property_id: project.ga4_property_id || "",
   })
@@ -697,6 +698,9 @@ function EditProjectDialog({
         budget_hours: formData.budget_hours ? parseFloat(formData.budget_hours) : undefined,
         budget_amount: formData.budget_amount ? parseFloat(formData.budget_amount) : undefined,
         monthly_fee: formData.monthly_fee ? parseFloat(formData.monthly_fee) : undefined,
+        billing_day: formData.billing_day ? parseInt(formData.billing_day) : undefined,
+        billing_amount: formData.billing_amount ? parseFloat(formData.billing_amount) : undefined,
+        next_billing_date: formData.next_billing_date || undefined,
         gsc_url: formData.gsc_url || undefined,
         ga4_property_id: formData.ga4_property_id || undefined,
       }),
@@ -778,6 +782,37 @@ function EditProjectDialog({
               type="number"
               value={formData.budget_amount}
               onChange={(e) => setFormData({ ...formData, budget_amount: e.target.value })}
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label>Día factura (1-28)</Label>
+            <Input
+              type="number"
+              min="1"
+              max="28"
+              value={formData.billing_day}
+              onChange={(e) => setFormData({ ...formData, billing_day: e.target.value })}
+              placeholder="Día del mes"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Importe factura (€)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              value={formData.billing_amount}
+              onChange={(e) => setFormData({ ...formData, billing_amount: e.target.value })}
+              placeholder="0.00"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Próxima factura</Label>
+            <Input
+              type="date"
+              value={formData.next_billing_date}
+              onChange={(e) => setFormData({ ...formData, next_billing_date: e.target.value })}
             />
           </div>
         </div>

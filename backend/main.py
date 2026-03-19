@@ -1132,6 +1132,69 @@ async def _reset_admin_password():
         logging.info("Admin password reset from SEED_ADMIN_PASSWORD.")
 
 
+async def _billing_reminder_loop():
+    """Daily check for projects with upcoming billing dates."""
+    from datetime import datetime, timedelta
+    while True:
+        now = datetime.now()
+        target = now.replace(hour=8, minute=1, second=0, microsecond=0)
+        if now >= target:
+            target += timedelta(days=1)
+        await asyncio.sleep((target - now).total_seconds())
+        try:
+            await _check_project_billing()
+        except Exception as e:
+            logging.error("Billing check error: %s", e)
+
+
+async def _check_project_billing():
+    """Create notifications for projects with upcoming or overdue billing."""
+    from datetime import date, timedelta
+    from sqlalchemy import select
+    from backend.db.database import async_session
+    from backend.db.models import Project, ProjectStatus, User, UserRole
+    from backend.services.notification_service import create_notification, BILLING_REMINDER
+
+    async with async_session() as db:
+        today = date.today()
+        threshold = today + timedelta(days=3)
+
+        result = await db.execute(
+            select(Project).where(
+                Project.status.in_([ProjectStatus.active, ProjectStatus.completed]),
+                Project.next_billing_date <= threshold,
+                Project.next_billing_date.isnot(None),
+            )
+        )
+        projects = result.scalars().all()
+        if not projects:
+            return
+
+        admin_result = await db.execute(
+            select(User).where(User.role == UserRole.admin, User.is_active.is_(True))
+        )
+        admin_ids = [u.id for u in admin_result.scalars().all()]
+
+        for proj in projects:
+            amt = float(proj.billing_amount) if proj.billing_amount else 0
+            is_overdue = proj.next_billing_date <= today
+            msg = (
+                f"Factura vencida: {proj.name} ({amt}€) desde {proj.next_billing_date}"
+                if is_overdue
+                else f"Toca facturar {proj.name} ({amt}€) el {proj.next_billing_date}"
+            )
+            for admin_id in admin_ids:
+                await create_notification(
+                    db, user_id=admin_id, type=BILLING_REMINDER,
+                    title=f"Facturación: {proj.name}",
+                    message=msg,
+                    link_url=f"/projects/{proj.id}",
+                    entity_type="project", entity_id=proj.id,
+                )
+        await db.commit()
+        logging.info("Billing check: %d projects notified.", len(projects))
+
+
 async def lifespan(app: FastAPI):
     # Run idempotent DDL for new columns on startup
     from sqlalchemy import text
@@ -1142,6 +1205,10 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(12,2)",
                 "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS invoiced_at TIMESTAMPTZ",
                 "ALTER TABLE clients ADD COLUMN IF NOT EXISTS onboarding_intelligence JSONB",
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS billing_day INTEGER",
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS billing_amount NUMERIC(12,2)",
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS next_billing_date DATE",
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS last_billed_date DATE",
             ]:
                 await conn.execute(text(sql))
         logging.info("Startup DDL complete.")
@@ -1162,6 +1229,8 @@ async def lifespan(app: FastAPI):
         logging.info("Holded auto-sync started (every 6h).")
     recurring_task = asyncio.create_task(_recurring_midnight_loop(), name="recurring-gen")
     recurring_task.add_done_callback(_log_task_error)
+    billing_task = asyncio.create_task(_billing_reminder_loop(), name="billing-check")
+    billing_task.add_done_callback(_log_task_error)
     logging.info("Startup ready.")
     yield
     if task:
@@ -1179,6 +1248,11 @@ async def lifespan(app: FastAPI):
     recurring_task.cancel()
     try:
         await recurring_task
+    except asyncio.CancelledError:
+        pass
+    billing_task.cancel()
+    try:
+        await billing_task
     except asyncio.CancelledError:
         pass
 

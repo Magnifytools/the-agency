@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Optional
 
-from datetime import datetime
+from datetime import date, datetime
 from pydantic import BaseModel
 
 
@@ -80,6 +80,9 @@ class ProjectUpdate(BaseModel):
     unit_price: Optional[float] = None
     unit_label: Optional[str] = None
     scope: Optional[str] = None
+    billing_day: Optional[int] = None
+    billing_amount: Optional[float] = None
+    next_billing_date: Optional[date] = None
 
 
 class ProjectResponse(BaseModel):
@@ -102,6 +105,10 @@ class ProjectResponse(BaseModel):
     unit_price: Optional[float] = None
     unit_label: Optional[str] = None
     scope: Optional[str] = None
+    billing_day: Optional[int] = None
+    billing_amount: Optional[float] = None
+    next_billing_date: Optional[date] = None
+    last_billed_date: Optional[date] = None
     client_id: int
     client_name: Optional[str] = None
     phases: list[ProjectPhaseResponse] = []
