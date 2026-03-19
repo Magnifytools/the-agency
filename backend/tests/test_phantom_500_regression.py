@@ -157,7 +157,7 @@ async def test_create_evidence_returns_201_when_reload_fails(admin_client, admin
     fake_evidence.phase_id = None
     fake_evidence.title = "Test evidence"
     fake_evidence.url = "https://example.com"
-    fake_evidence.evidence_type = EvidenceType.other
+    fake_evidence.evidence_type = "other"
     fake_evidence.description = None
     fake_evidence.created_by = admin_user.id
     fake_evidence.created_at = datetime(2026, 1, 1)

@@ -666,7 +666,7 @@ class ProjectEvidence(TimestampMixin, Base):
     file_mime_type = Column(String(100), nullable=True)
     file_size_bytes = Column(Integer, nullable=True)
     file_content = Column(LargeBinary, nullable=True)
-    evidence_type = Column(Enum(EvidenceType), default=EvidenceType.other)
+    evidence_type = Column(String(20), default="other")
     description = Column(Text, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
