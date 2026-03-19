@@ -65,23 +65,13 @@ async def _holded_sync_loop():
 async def _ensure_columns():
     """Add columns that were added to models after initial create_all.
 
-    Uses 'preferences' column on users table as a sentinel: if it exists,
-    the schema is already up to date and we skip all DDL statements.
+    All statements use IF NOT EXISTS / IF EXISTS — safe to run every startup.
     """
     from sqlalchemy import text
     from backend.db.database import engine
 
-    # Fast path: check if schema is already current using a late-addition sentinel column
-    async with engine.begin() as conn:
-        result = await conn.execute(text(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name = 'users' AND column_name = 'preferences'"
-        ))
-        if result.fetchone():
-            logging.info("Schema sentinel found — skipping _ensure_columns DDL.")
-            return
-
-    logging.info("Schema sentinel not found — running _ensure_columns DDL...")
+    # All DDL statements use IF NOT EXISTS — safe to always run
+    logging.info("Running _ensure_columns DDL...")
     stmts = [
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_project_id INTEGER",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_content_count INTEGER",
