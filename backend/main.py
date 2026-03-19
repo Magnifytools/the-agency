@@ -1133,9 +1133,21 @@ async def _reset_admin_password():
 
 
 async def lifespan(app: FastAPI):
-    # DDL, seeds, and cleanup are now handled offline via:
-    #   python -m backend.scripts.init_db
-    # The lifespan only initializes background tasks.
+    # Run idempotent DDL for new columns on startup
+    from sqlalchemy import text
+    from backend.db.database import engine
+    try:
+        async with engine.begin() as conn:
+            for sql in [
+                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(12,2)",
+                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS invoiced_at TIMESTAMPTZ",
+                "ALTER TABLE clients ADD COLUMN IF NOT EXISTS onboarding_intelligence JSONB",
+            ]:
+                await conn.execute(text(sql))
+        logging.info("Startup DDL complete.")
+    except Exception as e:
+        logging.warning("Startup DDL failed (may be expected): %s", e)
+
     task = None
     if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL:
         task = asyncio.create_task(_engine_sync_loop(), name="engine-sync")
