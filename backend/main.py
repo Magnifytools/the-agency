@@ -1090,7 +1090,11 @@ async def _schema_needs_startup_ddl() -> bool:
 
 
 async def _reset_admin_password():
-    """One-time: reset admin password from SEED_ADMIN_PASSWORD env var."""
+    """One-time: reset admin password from SEED_ADMIN_PASSWORD env var.
+
+    Only runs once — sets password_seeded flag so subsequent deploys
+    don't overwrite a manually-changed password.
+    """
     from sqlalchemy import text
     from backend.db.database import engine
     from backend.core.security import hash_password
@@ -1099,18 +1103,24 @@ async def _reset_admin_password():
     if not pw:
         return
     async with engine.begin() as conn:
+        # Ensure flag column exists
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_seeded BOOLEAN DEFAULT FALSE"
+        ))
         result = await conn.execute(
-            text("SELECT id FROM users WHERE email = 'david@magnify.ing'")
+            text("SELECT id, password_seeded FROM users WHERE email = 'david@magnify.ing'")
         )
         row = result.fetchone()
         if not row:
             return
+        if row[1]:  # already seeded, don't overwrite
+            return
         hashed = hash_password(pw)
         await conn.execute(
-            text("UPDATE users SET hashed_password = :pw WHERE email = 'david@magnify.ing'"),
+            text("UPDATE users SET hashed_password = :pw, password_seeded = TRUE WHERE email = 'david@magnify.ing'"),
             {"pw": hashed},
         )
-        logging.info("Admin password reset from SEED_ADMIN_PASSWORD.")
+        logging.info("Admin password seeded (one-time).")
 
 
 async def _billing_reminder_loop():
