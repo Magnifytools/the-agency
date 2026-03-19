@@ -138,7 +138,7 @@ import type {
 
 export const CSRF_COOKIE_NAME = "agency_csrf_token"
 
-const api = axios.create({
+export const api = axios.create({
   baseURL: "/api",
   timeout: 30_000,
   withCredentials: true,

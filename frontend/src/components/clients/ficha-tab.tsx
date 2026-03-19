@@ -263,11 +263,11 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
 function IntelligenceSection({ client }: { client: Client }) {
   const queryClient = useQueryClient()
   const [urlInput, setUrlInput] = useState(client.website || "")
-  const intelligence = (client as Record<string, unknown>).onboarding_intelligence as Record<string, unknown> | null
+  const intelligence = (client as unknown as Record<string, unknown>).onboarding_intelligence as Record<string, unknown> | null
 
   const generateMut = useMutation({
     mutationFn: () =>
-      api.post(`/clients/${client.id}/generate-intelligence`, { url: urlInput }).then(r => r.data),
+      api.post(`/clients/${client.id}/generate-intelligence`, { url: urlInput }).then((r: { data: unknown }) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client", client.id] })
     },
@@ -311,39 +311,39 @@ function IntelligenceSection({ client }: { client: Client }) {
           <div className="space-y-4">
             <div>
               <h4 className="text-sm font-medium mb-1">Resumen</h4>
-              <p className="text-sm text-muted-foreground">{intelligence.business_summary as string}</p>
+              <p className="text-sm text-muted-foreground">{String(intelligence.business_summary || "")}</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <h4 className="text-sm font-medium mb-1">Industria</h4>
-                <p className="text-sm text-muted-foreground">{intelligence.industry as string}</p>
+                <p className="text-sm text-muted-foreground">{String(intelligence.industry || "")}</p>
               </div>
               <div>
                 <h4 className="text-sm font-medium mb-1">Target</h4>
-                <p className="text-sm text-muted-foreground">{intelligence.target_audience as string}</p>
+                <p className="text-sm text-muted-foreground">{String(intelligence.target_audience || "")}</p>
               </div>
             </div>
             {Array.isArray(intelligence.competitors) && intelligence.competitors.length > 0 && (
               <div>
                 <h4 className="text-sm font-medium mb-1">Competidores</h4>
                 <div className="flex flex-wrap gap-1">
-                  {(intelligence.competitors as string[]).map((c, i) => (
+                  {(intelligence.competitors as unknown as string[]).map((c: string, i: number) => (
                     <span key={i} className="text-xs bg-muted px-2 py-0.5 rounded">{c}</span>
                   ))}
                 </div>
               </div>
             )}
-            {intelligence.seasonality && (
+            {!!intelligence.seasonality && (
               <div>
                 <h4 className="text-sm font-medium mb-1">Estacionalidad</h4>
-                <p className="text-sm text-muted-foreground">{intelligence.seasonality as string}</p>
+                <p className="text-sm text-muted-foreground">{String(intelligence.seasonality || "")}</p>
               </div>
             )}
             {Array.isArray(intelligence.seo_opportunities) && (
               <div>
                 <h4 className="text-sm font-medium mb-1">Oportunidades SEO</h4>
                 <ul className="text-sm text-muted-foreground space-y-1">
-                  {(intelligence.seo_opportunities as string[]).map((o, i) => (
+                  {(intelligence.seo_opportunities as unknown as string[]).map((o: string, i: number) => (
                     <li key={i}>• {o}</li>
                   ))}
                 </ul>
@@ -353,8 +353,8 @@ function IntelligenceSection({ client }: { client: Client }) {
               <div>
                 <h4 className="text-sm font-medium mb-1">Recomendaciones</h4>
                 <ul className="text-sm text-muted-foreground space-y-1">
-                  {(intelligence.initial_recommendations as string[]).map((r, i) => (
-                    <li key={i}>• {r}</li>
+                  {(intelligence.initial_recommendations as unknown as string[]).map((rec: string, i: number) => (
+                    <li key={i}>• {rec}</li>
                   ))}
                 </ul>
               </div>

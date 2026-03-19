@@ -40,13 +40,13 @@ export function ProjectBillingTab({ projectId }: { projectId: number }) {
 
   const { data: billing, isLoading } = useQuery({
     queryKey: ["project-billing", projectId],
-    queryFn: () => api.get<BillingSummary>(`/projects/${projectId}/billing-summary`).then(r => r.data),
+    queryFn: () => api.get<BillingSummary>(`/projects/${projectId}/billing-summary`).then((r: { data: BillingSummary }) => r.data),
   })
 
   const invoiceMutation = useMutation({
     mutationFn: (taskIds: number[]) =>
-      api.post(`/projects/${projectId}/invoice-tasks`, { task_ids: taskIds }).then(r => r.data),
-    onSuccess: (data) => {
+      api.post<{ invoiced_tasks: number; total_amount: number; income_id: number }>(`/projects/${projectId}/invoice-tasks`, { task_ids: taskIds }).then((r: { data: { invoiced_tasks: number; total_amount: number } }) => r.data),
+    onSuccess: (data: { invoiced_tasks: number; total_amount: number }) => {
       queryClient.invalidateQueries({ queryKey: ["project-billing", projectId] })
       toast.success(`Factura creada: ${data.total_amount}€ (${data.invoiced_tasks} tareas)`)
       setSelectedIds(new Set())
