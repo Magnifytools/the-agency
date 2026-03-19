@@ -1148,6 +1148,8 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logging.warning("Startup DDL failed (may be expected): %s", e)
 
+    await _reset_admin_password()
+
     task = None
     if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL:
         task = asyncio.create_task(_engine_sync_loop(), name="engine-sync")
