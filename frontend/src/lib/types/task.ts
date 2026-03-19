@@ -34,6 +34,8 @@ export interface Task {
   recurrence_day: number | null
   recurrence_end_date: string | null
   recurring_parent_id: number | null
+  unit_cost: number | null
+  invoiced_at: string | null
   created_at: string
   updated_at: string
   client_name: string | null
@@ -85,6 +87,7 @@ export interface TaskCreate {
   recurrence_day?: number | null
   recurrence_end_date?: string | null
   recurring_parent_id?: number | null
+  unit_cost?: number | null
 }
 
 export interface TaskComment {

@@ -32,6 +32,7 @@ import { getErrorMessage } from "@/lib/utils"
 import { GanttChart } from "@/components/gantt/gantt-chart"
 import { ProjectPhaseKanban } from "@/components/projects/project-phase-kanban"
 import { EvidenceList } from "@/components/projects/evidence-list"
+import { ProjectBillingTab } from "@/components/projects/project-billing-tab"
 import { Breadcrumb } from "@/components/ui/breadcrumb"
 import { Skeleton, SkeletonCard } from "@/components/ui/skeleton"
 
@@ -64,7 +65,7 @@ export default function ProjectDetailPage() {
   const [showAddTaskDialog, setShowAddTaskDialog] = useState<number | null>(null)
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false)
   const [viewMode, setViewMode] = useState<"list" | "gantt" | "kanban">("list")
-  const [activeTab, setActiveTab] = useState<"tasks" | "evidence">("tasks")
+  const [activeTab, setActiveTab] = useState<"tasks" | "evidence" | "billing">("tasks")
   const [previewTaskId, setPreviewTaskId] = useState<number | null>(null)
   const [filterStatus, setFilterStatus] = useState<TaskStatus | "all">("all")
   const [filterSearch, setFilterSearch] = useState("")
@@ -366,11 +367,25 @@ export default function ProjectDetailPage() {
         >
           Evidencia
         </Button>
+        {project?.pricing_model === "per_piece" && (
+          <Button
+            variant={activeTab === "billing" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("billing")}
+          >
+            Facturación
+          </Button>
+        )}
       </div>
 
       {/* Evidence Tab */}
       {activeTab === "evidence" && project && (
         <EvidenceList projectId={project.id} phases={project.phases} />
+      )}
+
+      {/* Billing Tab */}
+      {activeTab === "billing" && project && (
+        <ProjectBillingTab projectId={project.id} />
       )}
 
       {/* View Toggle + Phases and Tasks */}

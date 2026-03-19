@@ -29,6 +29,7 @@ class TaskCreate(BaseModel):
     recurrence_day: Optional[int] = None
     recurrence_end_date: Optional[date] = None
     recurring_parent_id: Optional[int] = None
+    unit_cost: Optional[float] = None
 
 
 class TaskUpdate(BaseModel):
@@ -54,6 +55,7 @@ class TaskUpdate(BaseModel):
     recurrence_day: Optional[int] = None
     recurrence_end_date: Optional[date] = None
     recurring_parent_id: Optional[int] = None
+    unit_cost: Optional[float] = None
 
 
 class TaskResponse(BaseModel):
@@ -81,6 +83,8 @@ class TaskResponse(BaseModel):
     recurrence_day: Optional[int] = None
     recurrence_end_date: Optional[date] = None
     recurring_parent_id: Optional[int] = None
+    unit_cost: Optional[float] = None
+    invoiced_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 

@@ -311,6 +311,8 @@ class Client(TimestampMixin, Base):
     engine_metrics_synced_at = Column(DateTime(timezone=True), nullable=True)
     engine_summary_data = Column(JSONB, nullable=True)
     engine_alerts_data = Column(JSONB, nullable=True)
+    # AI-generated onboarding intelligence
+    onboarding_intelligence = Column(JSONB, nullable=True)
 
     tasks = relationship("Task", back_populates="client", lazy="noload")
     projects = relationship("Project", back_populates="client", lazy="noload")
@@ -509,6 +511,10 @@ class Task(TimestampMixin, Base):
     scheduled_date = Column(Date, nullable=True)
     waiting_for = Column(String(255), nullable=True)
     follow_up_date = Column(Date, nullable=True)
+
+    # Per-task billing
+    unit_cost = Column(Numeric(12, 2), nullable=True)
+    invoiced_at = Column(DateTime(timezone=True), nullable=True)
 
     # Recurring task fields
     is_recurring = Column(Boolean, nullable=False, default=False, server_default="false")

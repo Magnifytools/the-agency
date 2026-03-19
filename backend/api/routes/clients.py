@@ -645,3 +645,33 @@ async def what_if_lose_client(
         "runway_without_client": runway_without,
         "monthly_impact": round(avg_monthly, 2),
     }
+
+
+# ── Onboarding Intelligence ────────────────────────────────────
+
+
+class IntelligenceRequest(BaseModel):
+    url: str
+    extra_context: str = ""
+
+
+@router.post("/{client_id}/generate-intelligence")
+async def generate_intelligence(
+    client_id: int,
+    body: IntelligenceRequest,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(require_admin),
+):
+    """Generate AI onboarding intelligence package for a client."""
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if not client:
+        raise HTTPException(404, "Client not found")
+
+    from backend.services.onboarding_intelligence import generate_onboarding_intelligence
+    intelligence = await generate_onboarding_intelligence(body.url, body.extra_context)
+
+    client.onboarding_intelligence = intelligence
+    await db.commit()
+
+    return {"success": True, "intelligence": intelligence}

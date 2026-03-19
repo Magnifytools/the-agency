@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { BookOpen, User, Mail, Phone, FileText, Download, Trash2, Upload, File as FileIcon } from "lucide-react"
-import { clientsApi, contactsApi } from "@/lib/api"
+import { BookOpen, User, Mail, Phone, FileText, Download, Trash2, Upload, File as FileIcon, Sparkles, Loader2 } from "lucide-react"
+import { clientsApi, contactsApi, api } from "@/lib/api"
 import type { Client, ClientDocument } from "@/lib/types"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -252,6 +252,125 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
           if (deleteDocId !== null) deleteMut.mutate(deleteDocId)
         }}
       />
+
+      {/* Intelligence Package */}
+      <IntelligenceSection client={client} />
     </div>
+  )
+}
+
+
+function IntelligenceSection({ client }: { client: Client }) {
+  const queryClient = useQueryClient()
+  const [urlInput, setUrlInput] = useState(client.website || "")
+  const intelligence = (client as Record<string, unknown>).onboarding_intelligence as Record<string, unknown> | null
+
+  const generateMut = useMutation({
+    mutationFn: () =>
+      api.post(`/clients/${client.id}/generate-intelligence`, { url: urlInput }).then(r => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client", client.id] })
+    },
+  })
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center gap-2 pb-3">
+        <Sparkles className="h-4 w-4 text-yellow-400" />
+        <CardTitle className="text-base">Intelligence Package</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {!intelligence ? (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Genera un análisis automático del negocio del cliente con IA.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                placeholder="https://ejemplo.com"
+                value={urlInput}
+                onChange={e => setUrlInput(e.target.value)}
+                className="flex-1 h-9 rounded-md border bg-transparent px-3 text-sm"
+              />
+              <Button
+                size="sm"
+                onClick={() => generateMut.mutate()}
+                disabled={generateMut.isPending || !urlInput.trim()}
+              >
+                {generateMut.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4 mr-2" />
+                )}
+                Generar
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium mb-1">Resumen</h4>
+              <p className="text-sm text-muted-foreground">{intelligence.business_summary as string}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <h4 className="text-sm font-medium mb-1">Industria</h4>
+                <p className="text-sm text-muted-foreground">{intelligence.industry as string}</p>
+              </div>
+              <div>
+                <h4 className="text-sm font-medium mb-1">Target</h4>
+                <p className="text-sm text-muted-foreground">{intelligence.target_audience as string}</p>
+              </div>
+            </div>
+            {Array.isArray(intelligence.competitors) && intelligence.competitors.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium mb-1">Competidores</h4>
+                <div className="flex flex-wrap gap-1">
+                  {(intelligence.competitors as string[]).map((c, i) => (
+                    <span key={i} className="text-xs bg-muted px-2 py-0.5 rounded">{c}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {intelligence.seasonality && (
+              <div>
+                <h4 className="text-sm font-medium mb-1">Estacionalidad</h4>
+                <p className="text-sm text-muted-foreground">{intelligence.seasonality as string}</p>
+              </div>
+            )}
+            {Array.isArray(intelligence.seo_opportunities) && (
+              <div>
+                <h4 className="text-sm font-medium mb-1">Oportunidades SEO</h4>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  {(intelligence.seo_opportunities as string[]).map((o, i) => (
+                    <li key={i}>• {o}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {Array.isArray(intelligence.initial_recommendations) && (
+              <div>
+                <h4 className="text-sm font-medium mb-1">Recomendaciones</h4>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  {(intelligence.initial_recommendations as string[]).map((r, i) => (
+                    <li key={i}>• {r}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => generateMut.mutate()}
+              disabled={generateMut.isPending}
+            >
+              {generateMut.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Regenerar
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
