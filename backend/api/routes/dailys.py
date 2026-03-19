@@ -409,9 +409,16 @@ async def send_daily_to_discord(
                 logger.warning("Failed to decrypt webhook_url vault secret: %s", e)
                 webhook_url = ""
         else:
-            # Legacy plaintext rejected — must be encrypted via migration
-            logger.warning("Rejecting plaintext Discord webhook — run encrypt_discord_secrets migration")
-            webhook_url = ""
+            # Legacy plaintext — auto-encrypt on read and use it
+            logger.warning("Auto-encrypting plaintext Discord webhook for discord_settings id=%s", ds.id if ds else "?")
+            webhook_url = raw_wh
+            try:
+                from backend.core.security import encrypt_vault_secret
+                ds.webhook_url = encrypt_vault_secret(raw_wh)
+                await db.commit()
+                logger.info("Discord webhook auto-encrypted successfully")
+            except Exception as enc_err:
+                logger.warning("Auto-encryption failed (will retry next time): %s", enc_err)
     if not webhook_url:
         webhook_url = settings.DISCORD_WEBHOOK_URL or ""
 
@@ -438,7 +445,14 @@ async def send_daily_to_discord(
                     except Exception as e:
                         logger.warning("Failed to decrypt bot_token vault secret: %s", e)
                 else:
-                    logger.warning("Rejecting plaintext bot_token — run encrypt_discord_secrets migration")
+                    # Legacy plaintext — auto-encrypt and use
+                    bot_token = raw_bt
+                    try:
+                        from backend.core.security import encrypt_vault_secret
+                        ds.bot_token = encrypt_vault_secret(raw_bt)
+                        await db.commit()
+                    except Exception:
+                        pass
                     bot_token = None
 
             if bot_token:

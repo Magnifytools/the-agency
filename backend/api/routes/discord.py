@@ -65,9 +65,9 @@ def _decrypt_field(value: str | None) -> str:
         except Exception:
             logger.error("Failed to decrypt Discord field — value is corrupt or key changed")
             return ""
-    # Legacy plaintext rejected — must be encrypted via migration or settings update
-    logger.warning("Rejecting plaintext Discord field — run encrypt_discord_secrets migration")
-    return ""
+    # Legacy plaintext — accept it (will be auto-encrypted on next write/daily send)
+    logger.warning("Accepting plaintext Discord field — will be auto-encrypted on next use")
+    return value
 
 
 def _settings_to_response(ds: DiscordSettings) -> DiscordSettingsResponse:
