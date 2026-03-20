@@ -8,6 +8,7 @@ from calendar import monthrange
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
 from backend.db.models import Expense, User
@@ -58,7 +59,7 @@ async def list_expenses(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("finance_expenses")),
 ):
-    q = select(Expense)
+    q = select(Expense).options(selectinload(Expense.category))
     if date_from:
         q = q.where(Expense.date >= date_from)
     if date_to:
@@ -78,7 +79,7 @@ async def get_expense(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("finance_expenses")),
 ):
-    r = await db.execute(select(Expense).where(Expense.id == expense_id))
+    r = await db.execute(select(Expense).options(selectinload(Expense.category)).where(Expense.id == expense_id))
     item = r.scalars().first()
     if not item:
         raise HTTPException(status_code=404, detail="Gasto no encontrado")

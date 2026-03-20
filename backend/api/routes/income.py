@@ -7,6 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
 from backend.db.models import Income, User
@@ -58,7 +59,7 @@ async def list_income(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("finance_income")),
 ):
-    q = select(Income)
+    q = select(Income).options(selectinload(Income.client))
     if date_from:
         q = q.where(Income.date >= date_from)
     if date_to:
@@ -80,7 +81,7 @@ async def get_income(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("finance_income")),
 ):
-    r = await db.execute(select(Income).where(Income.id == income_id))
+    r = await db.execute(select(Income).options(selectinload(Income.client)).where(Income.id == income_id))
     item = r.scalars().first()
     if not item:
         raise HTTPException(status_code=404, detail="Ingreso no encontrado")

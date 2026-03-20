@@ -529,6 +529,7 @@ async def list_checklist(
 ):
     r = await db.execute(
         select(TaskChecklist)
+        .options(selectinload(TaskChecklist.assigned_user))
         .where(TaskChecklist.task_id == task_id)
         .order_by(TaskChecklist.order_index)
     )
@@ -597,6 +598,7 @@ async def list_comments(
 ):
     r = await db.execute(
         select(TaskComment)
+        .options(selectinload(TaskComment.user))
         .where(TaskComment.task_id == task_id)
         .order_by(TaskComment.created_at.asc())
     )
@@ -662,6 +664,7 @@ async def list_attachments(
 ):
     r = await db.execute(
         select(TaskAttachment)
+        .options(selectinload(TaskAttachment.uploader))
         .where(TaskAttachment.task_id == task_id)
         .order_by(TaskAttachment.created_at.desc())
     )

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
 from backend.db.models import PMInsight, User, InsightStatus, AlertSettings
@@ -54,7 +55,11 @@ async def list_insights(
     current_user: User = Depends(require_module("pm")),
 ):
     """List active insights, scoped to current user (admin sees all)."""
-    query = select(PMInsight)
+    query = select(PMInsight).options(
+        selectinload(PMInsight.client),
+        selectinload(PMInsight.project),
+        selectinload(PMInsight.task),
+    )
 
     # F-04: isolate by user_id for non-admin
     if current_user.role != UserRole.admin:

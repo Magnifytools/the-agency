@@ -8,6 +8,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
 from backend.db.models import DailyUpdate, DailyUpdateStatus, DiscordSettings, User
@@ -133,7 +134,7 @@ async def list_dailys(
     current_user: User = Depends(get_current_user),
 ):
     """List daily updates with optional filters."""
-    q = select(DailyUpdate).order_by(DailyUpdate.date.desc(), DailyUpdate.created_at.desc())
+    q = select(DailyUpdate).options(selectinload(DailyUpdate.user)).order_by(DailyUpdate.date.desc(), DailyUpdate.created_at.desc())
 
     # Privacy: non-admin can only see their own dailys
     if current_user.role.value != "admin":
@@ -170,6 +171,7 @@ async def prefill_daily(
     # Tasks completed today by this user
     completed_result = await db.execute(
         select(Task)
+        .options(selectinload(Task.client))
         .where(
             Task.assigned_to == current_user.id,
             Task.status == TaskStatus.completed,
@@ -181,6 +183,7 @@ async def prefill_daily(
     # Tasks with time entries today by this user
     te_result = await db.execute(
         select(Task)
+        .options(selectinload(Task.client))
         .join(TimeEntry, TimeEntry.task_id == Task.id)
         .where(
             TimeEntry.user_id == current_user.id,
