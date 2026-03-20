@@ -116,6 +116,11 @@ async def update_user(
     data = body.model_dump(exclude_unset=True)
     allowed = _ADMIN_UPDATABLE if current_user.role == UserRole.admin else _MEMBER_UPDATABLE
 
+    # Coerce empty strings to None for date/nullable fields
+    for key in ("birthday",):
+        if key in data and data[key] == "":
+            data[key] = None
+
     for field, value in data.items():
         if field not in allowed:
             raise HTTPException(
