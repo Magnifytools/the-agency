@@ -36,7 +36,7 @@ router = APIRouter(prefix="/api/clients", tags=["clients"])
 async def list_clients(
     status_filter: Optional[ClientStatus] = Query(None, alias="status"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=1, le=200),
+    page_size: int = Query(25, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients")),
 ):
@@ -184,14 +184,18 @@ async def list_health_scores(
     _: User = Depends(require_module("clients")),
 ):
     """Health scores for all active clients."""
-    result = await db.execute(
-        select(Client).where(Client.status == ClientStatus.active).order_by(Client.name)
-    )
-    clients = result.scalars().all()
-    scores = await compute_health_batch(clients, db)
-    # Sort by score ascending (worst first)
-    scores.sort(key=lambda s: s["score"])
-    return scores
+    try:
+        result = await db.execute(
+            select(Client).where(Client.status == ClientStatus.active).order_by(Client.name)
+        )
+        clients = result.scalars().all()
+        scores = await compute_health_batch(clients, db)
+        # Sort by score ascending (worst first)
+        scores.sort(key=lambda s: s["score"])
+        return scores
+    except Exception as e:
+        logger.error("Error computing batch health scores: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Error calculando health scores")
 
 
 @router.get("/{client_id}/health")
@@ -205,7 +209,11 @@ async def get_client_health(
     client = result.scalar_one_or_none()
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
-    return await compute_health(client, db)
+    try:
+        return await compute_health(client, db)
+    except Exception as e:
+        logger.error("Error computing health for client %s: %s", client_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Error calculando health score")
 
 
 @router.get("/{client_id}", response_model=ClientResponse)

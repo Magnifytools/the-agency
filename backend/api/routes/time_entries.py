@@ -652,25 +652,26 @@ async def start_timer(
         )
     # Reload with proper eager loading (avoids async lazy-load 500s)
     loaded = await _load_time_entry_for_response(db, entry.id)
-    if not loaded:
-        loaded = entry  # fallback to the original object
 
     task_title = body.notes
     client_name = None
-    try:
-        if loaded.task:
-            task_title = loaded.task.title
-            if loaded.task.client:
-                client_name = loaded.task.client.name
-    except Exception:
-        pass
+    if loaded:
+        try:
+            if loaded.task:
+                task_title = loaded.task.title
+                if loaded.task.client:
+                    client_name = loaded.task.client.name
+        except Exception:
+            pass
+    # If reload failed, task_title stays as body.notes (safe fallback)
 
-    sa = loaded.started_at
+    obj = loaded or entry
+    sa = obj.started_at
     if sa and sa.tzinfo is None:
         sa = sa.replace(tzinfo=timezone.utc)
     return ActiveTimerResponse(
-        id=loaded.id,
-        task_id=loaded.task_id,
+        id=obj.id,
+        task_id=obj.task_id,
         task_title=task_title,
         client_name=client_name,
         started_at=sa,

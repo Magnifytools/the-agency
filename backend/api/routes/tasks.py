@@ -112,7 +112,7 @@ async def list_tasks(
     scheduled_date_to: Optional[str] = Query(None),
     is_recurring: Optional[bool] = Query(None),
     page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=1, le=200),
+    page_size: int = Query(25, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_module("tasks")),

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, and_, or_, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.config import settings
 from backend.db.database import get_db
 from backend.db.models import (
     Client,
@@ -115,7 +116,7 @@ async def get_overview(
 
     # Total cost this month (hours * hourly_rate)
     r = await db.execute(
-        select(func.coalesce(func.sum(TimeEntry.minutes * User.hourly_rate / 60), 0)).select_from(
+        select(func.coalesce(func.sum(TimeEntry.minutes * func.coalesce(User.hourly_rate, settings.DEFAULT_HOURLY_RATE) / 60), 0)).select_from(
             TimeEntry
         ).join(User, TimeEntry.user_id == User.id).where(
             and_(TimeEntry.minutes.isnot(None), TimeEntry.date >= start, TimeEntry.date <= end)

@@ -366,7 +366,7 @@ async def list_invoices(
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200),
+    page_size: int = Query(50, ge=1, le=1000),
     session: AsyncSession = Depends(get_db),
     user=Depends(require_admin),
 ):
@@ -409,7 +409,7 @@ async def list_expenses(
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200),
+    page_size: int = Query(50, ge=1, le=1000),
     session: AsyncSession = Depends(get_db),
     user=Depends(require_admin),
 ):

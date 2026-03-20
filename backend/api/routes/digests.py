@@ -465,7 +465,7 @@ async def send_digest_email(
     digest_id: int,
     body: DigestSendEmailRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_module("digests")),
+    current_user: User = Depends(require_module("digests", write=True)),
 ):
     """Send a digest to a client via email."""
     result = await db.execute(select(WeeklyDigest).where(WeeklyDigest.id == digest_id))
