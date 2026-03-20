@@ -688,6 +688,7 @@ function EditProjectDialog({
     billing_day: project.billing_day?.toString() || "",
     billing_amount: project.billing_amount?.toString() || "",
     next_billing_date: project.next_billing_date || "",
+    scope: project.scope || "",
     gsc_url: project.gsc_url || "",
     ga4_property_id: project.ga4_property_id || "",
   })
@@ -708,6 +709,7 @@ function EditProjectDialog({
         billing_day: formData.billing_day ? parseInt(formData.billing_day) : undefined,
         billing_amount: formData.billing_amount ? parseFloat(formData.billing_amount) : undefined,
         next_billing_date: formData.next_billing_date || undefined,
+        scope: formData.scope || null,
         gsc_url: formData.gsc_url || undefined,
         ga4_property_id: formData.ga4_property_id || undefined,
       }),
@@ -787,72 +789,91 @@ function EditProjectDialog({
             )}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Modelo de precio</Label>
-            <select
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              value={formData.pricing_model}
-              onChange={(e) => setFormData({ ...formData, pricing_model: e.target.value })}
-            >
-              <option value="">Sin definir</option>
-              <option value="monthly">Mensual fijo</option>
-              <option value="per_piece">Por pieza/unidad</option>
-              <option value="hourly">Por hora</option>
-              <option value="project">Precio cerrado</option>
-            </select>
-          </div>
-          <div className="space-y-2">
-            <Label>Fee mensual (EUR)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              value={formData.monthly_fee}
-              onChange={(e) => setFormData({ ...formData, monthly_fee: e.target.value })}
-              placeholder="Retainer mensual"
-            />
-          </div>
+        {/* --- Pricing model --- */}
+        <div className="space-y-2">
+          <Label>Modelo de precio</Label>
+          <select
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={formData.pricing_model}
+            onChange={(e) => setFormData({ ...formData, pricing_model: e.target.value })}
+          >
+            <option value="">Sin definir</option>
+            <option value="monthly">Mensual fijo (retainer)</option>
+            <option value="per_piece">Por pieza/unidad</option>
+            <option value="hourly">Por hora</option>
+            <option value="project">Precio cerrado</option>
+          </select>
         </div>
-        {(formData.pricing_model === "per_piece" || formData.pricing_model === "hourly") && (
+
+        {/* monthly → fee mensual */}
+        {formData.pricing_model === "monthly" && (
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>{formData.pricing_model === "hourly" ? "Tarifa/hora (EUR)" : "Precio por unidad (EUR)"}</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={formData.unit_price}
-                onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })}
-                placeholder={formData.pricing_model === "hourly" ? "50" : "200"}
-              />
+              <Label>Fee mensual (EUR)</Label>
+              <Input type="number" step="0.01" value={formData.monthly_fee} onChange={(e) => setFormData({ ...formData, monthly_fee: e.target.value })} placeholder="950" />
             </div>
             <div className="space-y-2">
-              <Label>Unidad</Label>
-              <Input
-                value={formData.unit_label}
-                onChange={(e) => setFormData({ ...formData, unit_label: e.target.value })}
-                placeholder={formData.pricing_model === "hourly" ? "hora" : "briefing, pieza, articulo..."}
-              />
+              <Label>Presupuesto horas/mes</Label>
+              <Input type="number" value={formData.budget_hours} onChange={(e) => setFormData({ ...formData, budget_hours: e.target.value })} placeholder="40" />
             </div>
           </div>
         )}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Presupuesto horas</Label>
-            <Input
-              type="number"
-              value={formData.budget_hours}
-              onChange={(e) => setFormData({ ...formData, budget_hours: e.target.value })}
-            />
+
+        {/* per_piece → precio unitario + unidad */}
+        {formData.pricing_model === "per_piece" && (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Precio por unidad (EUR)</Label>
+              <Input type="number" step="0.01" value={formData.unit_price} onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })} placeholder="200" />
+            </div>
+            <div className="space-y-2">
+              <Label>Unidad</Label>
+              <Input value={formData.unit_label} onChange={(e) => setFormData({ ...formData, unit_label: e.target.value })} placeholder="briefing review, pieza, articulo..." />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label>Presupuesto total (EUR)</Label>
-            <Input
-              type="number"
-              value={formData.budget_amount}
-              onChange={(e) => setFormData({ ...formData, budget_amount: e.target.value })}
-            />
+        )}
+
+        {/* hourly → tarifa/hora */}
+        {formData.pricing_model === "hourly" && (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Tarifa/hora (EUR)</Label>
+              <Input type="number" step="0.01" value={formData.unit_price} onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })} placeholder="50" />
+            </div>
+            <div className="space-y-2">
+              <Label>Presupuesto horas</Label>
+              <Input type="number" value={formData.budget_hours} onChange={(e) => setFormData({ ...formData, budget_hours: e.target.value })} placeholder="40" />
+            </div>
           </div>
+        )}
+
+        {/* project → precio cerrado */}
+        {formData.pricing_model === "project" && (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Precio total proyecto (EUR)</Label>
+              <Input type="number" step="0.01" value={formData.budget_amount} onChange={(e) => setFormData({ ...formData, budget_amount: e.target.value })} placeholder="5000" />
+            </div>
+            <div className="space-y-2">
+              <Label>Presupuesto horas</Label>
+              <Input type="number" value={formData.budget_hours} onChange={(e) => setFormData({ ...formData, budget_hours: e.target.value })} placeholder="80" />
+            </div>
+          </div>
+        )}
+        {/* --- Propuesta / Scope --- */}
+        <div className="space-y-2">
+          <Label>Propuesta / Condiciones</Label>
+          <textarea
+            className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+            value={formData.scope}
+            onChange={(e) => setFormData({ ...formData, scope: e.target.value })}
+            placeholder="Describe las condiciones del proyecto, alcance acordado, entregables..."
+            rows={3}
+          />
+          <p className="text-xs text-muted-foreground">Para adjuntar la propuesta en PDF, usa la pestaña Evidencia con tipo &ldquo;Propuesta&rdquo;</p>
         </div>
+
+        {/* --- Facturación --- */}
         <div className="grid grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label>Día factura (1-28)</Label>

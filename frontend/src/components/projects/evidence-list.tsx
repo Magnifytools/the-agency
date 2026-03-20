@@ -6,6 +6,7 @@ import {
   BarChart3,
   TrendingUp,
   FileText,
+  ScrollText,
   Package,
   Link2,
   Plus,
@@ -37,6 +38,7 @@ const EVIDENCE_TYPES: { value: EvidenceType; label: string; icon: typeof Camera 
   { value: "ranking", label: "Ranking", icon: TrendingUp },
   { value: "content", label: "Contenido", icon: FileText },
   { value: "deliverable", label: "Entregable", icon: Package },
+  { value: "proposal", label: "Propuesta", icon: ScrollText },
   { value: "other", label: "Otro", icon: Link2 },
 ]
 

@@ -147,7 +147,7 @@ export interface ProjectTimeReport {
 }
 
 // Project Evidence
-export type EvidenceType = "screenshot" | "report" | "analytics" | "ranking" | "content" | "deliverable" | "other"
+export type EvidenceType = "screenshot" | "report" | "analytics" | "ranking" | "content" | "deliverable" | "proposal" | "other"
 
 export interface ProjectEvidence {
   id: number

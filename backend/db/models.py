@@ -657,6 +657,7 @@ class EvidenceType(str, enum.Enum):
     ranking = "ranking"
     content = "content"
     deliverable = "deliverable"
+    proposal = "proposal"
     other = "other"
 
 
