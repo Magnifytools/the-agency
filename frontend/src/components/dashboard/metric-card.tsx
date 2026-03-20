@@ -15,7 +15,7 @@ interface MetricCardProps {
 export function MetricCard({ icon: Icon, label, value, subtitle, tooltip, delta }: MetricCardProps) {
   return (
     <Card>
-      <CardContent className="p-6">
+      <CardContent className="p-4 2xl:p-6">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">

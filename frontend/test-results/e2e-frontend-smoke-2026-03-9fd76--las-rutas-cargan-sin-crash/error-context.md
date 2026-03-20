@@ -55,11 +55,11 @@
             - /url: /growth
             - img [ref=e57]
             - text: Growth
-          - link "Inbox 6" [ref=e62] [cursor=pointer]:
+          - link "Inbox 7" [ref=e62] [cursor=pointer]:
             - /url: /inbox
             - img [ref=e63]
             - text: Inbox
-            - generic [ref=e66]: "6"
+            - generic [ref=e66]: "7"
           - generic [ref=e67]:
             - paragraph [ref=e68]: Operaciones
             - link "Timesheet" [ref=e69] [cursor=pointer]:
@@ -137,10 +137,10 @@
           - generic [ref=e155]:
             - generic [ref=e157]:
               - paragraph [ref=e158]: Equipo
-              - paragraph [ref=e159]: "9"
+              - paragraph [ref=e159]: "10"
             - generic [ref=e161]:
               - paragraph [ref=e162]: Disponibles
-              - paragraph [ref=e163]: "9"
+              - paragraph [ref=e163]: "10"
             - generic [ref=e165]:
               - paragraph [ref=e166]: Sobrecargados
               - paragraph [ref=e167]: "0"
@@ -149,7 +149,7 @@
               - paragraph [ref=e171]: 3%
           - generic [ref=e174]:
             - generic [ref=e175]: Capacidad total del equipo
-            - generic [ref=e176]: 12h / 360h
+            - generic [ref=e176]: 12h / 400h
           - generic [ref=e179]:
             - generic [ref=e181]:
               - generic [ref=e182] [cursor=pointer]:
@@ -207,7 +207,7 @@
                 - generic [ref=e260]:
                   - img [ref=e262]
                   - generic [ref=e267]:
-                    - text: QA Restricted
+                    - text: QA Deep Invite
                     - generic [ref=e268]:
                       - generic [ref=e269]: 0 tareas
                       - generic [ref=e270]: 0 clientes
@@ -304,7 +304,24 @@
                 - generic [ref=e404]: 0%
                 - generic [ref=e405]: 0%
                 - generic [ref=e406]: 100%
-    - button "Asistente de datos" [ref=e407]:
-      - img [ref=e408]
+            - generic [ref=e408]:
+              - generic [ref=e409] [cursor=pointer]:
+                - generic [ref=e410]:
+                  - img [ref=e412]
+                  - generic [ref=e417]:
+                    - text: QA Restricted
+                    - generic [ref=e418]:
+                      - generic [ref=e419]: 0 tareas
+                      - generic [ref=e420]: 0 clientes
+                - generic [ref=e421]:
+                  - generic [ref=e422]: 0m / 40h
+                  - generic [ref=e423]: Disponible
+                  - img [ref=e425]
+              - generic [ref=e428]:
+                - generic [ref=e429]: 0%
+                - generic [ref=e430]: 0%
+                - generic [ref=e431]: 100%
+    - button "Asistente de datos" [ref=e432]:
+      - img [ref=e433]
   - region "Notifications alt+T"
 ```

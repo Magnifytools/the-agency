@@ -252,6 +252,12 @@ class User(TimestampMixin, Base):
     preferences = Column(JSONB, nullable=True, server_default="{}")
     region = Column(String(10), nullable=True)      # CCAA code: "MAD", "CAT"...
     locality = Column(String(100), nullable=True)    # City: "Madrid", "Barcelona"...
+    short_name = Column(String(50), nullable=True)   # Display name: "David", "Nacho"
+    birthday = Column(Date, nullable=True)
+    job_title = Column(String(100), nullable=True)   # "SEO Strategist", "PM"
+    morning_reminder_time = Column(String(5), nullable=False, default="09:00", server_default="09:00")
+    evening_reminder_time = Column(String(5), nullable=False, default="18:00", server_default="18:00")
+    onboarding_completed = Column(Boolean, nullable=False, default=False, server_default="false")
 
     tasks = relationship("Task", back_populates="assigned_user", lazy="selectin", foreign_keys="[Task.assigned_to]")
     permissions = relationship("UserPermission", back_populates="user", lazy="selectin", cascade="all, delete-orphan")

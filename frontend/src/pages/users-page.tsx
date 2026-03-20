@@ -15,6 +15,11 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
 import type { UserCreate, UserRole } from "@/lib/types"
+
+const REGIONES = [
+  "MAD", "CAT", "AND", "VAL", "GAL", "PV", "CYL", "CLM",
+  "ARA", "EXT", "MUR", "NAV", "AST", "CAN", "BAL", "RIO", "CANT", "CEU", "MEL",
+] as const
 import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
 import { SkeletonTableRow } from "@/components/ui/skeleton"
@@ -68,9 +73,16 @@ export default function UsersPage() {
     const fd = new FormData(e.currentTarget)
     const data: Partial<User> = {
       full_name: fd.get("full_name") as string,
-      hourly_rate: fd.get("hourly_rate") ? Number(fd.get("hourly_rate")) : null,
+      short_name: (fd.get("short_name") as string) || null,
+      job_title: (fd.get("job_title") as string) || null,
+      birthday: (fd.get("birthday") as string) || null,
+      locality: (fd.get("locality") as string) || null,
+      region: (fd.get("region") as string) || null,
+      morning_reminder_time: (fd.get("morning_reminder_time") as string) || null,
+      evening_reminder_time: (fd.get("evening_reminder_time") as string) || null,
     }
     if (currentUser?.role === "admin") {
+      data.hourly_rate = fd.get("hourly_rate") ? Number(fd.get("hourly_rate")) : null
       data.role = fd.get("role") as UserRole
     }
     updateMutation.mutate({ id: editing.id, data })
@@ -97,14 +109,17 @@ export default function UsersPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Nombre</TableHead>
+              <TableHead>Nombre corto</TableHead>
               <TableHead>Email</TableHead>
+              <TableHead>Puesto</TableHead>
+              <TableHead>Ciudad</TableHead>
               <TableHead>Rol</TableHead>
               <TableHead>Tarifa/h</TableHead>
               <TableHead>Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {Array.from({ length: 3 }).map((_, i) => <SkeletonTableRow key={i} cols={5} />)}
+            {Array.from({ length: 3 }).map((_, i) => <SkeletonTableRow key={i} cols={8} />)}
           </TableBody>
         </Table>
       ) : (
@@ -114,7 +129,10 @@ export default function UsersPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Nombre</TableHead>
+                  <TableHead>Nombre corto</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Puesto</TableHead>
+                  <TableHead>Ciudad</TableHead>
                   <TableHead>Rol</TableHead>
                   <TableHead>Tarifa/h</TableHead>
                   <TableHead className="w-12"></TableHead>
@@ -124,7 +142,10 @@ export default function UsersPage() {
                 {users.map((u) => (
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">{u.full_name}</TableCell>
+                    <TableCell>{u.short_name ?? "-"}</TableCell>
                     <TableCell>{u.email}</TableCell>
+                    <TableCell>{u.job_title ?? "-"}</TableCell>
+                    <TableCell>{u.locality ?? "-"}</TableCell>
                     <TableCell>
                       <Badge variant={u.role === "admin" ? "default" : "secondary"}>
                         {u.role === "admin" ? "Admin" : "Miembro"}
@@ -145,12 +166,16 @@ export default function UsersPage() {
             {users.map((u) => (
               <div key={u.id} className="rounded-lg border border-border p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium">{u.full_name}</p>
+                  <div>
+                    <p className="font-medium">{u.full_name}</p>
+                    {u.job_title && <p className="text-xs text-muted-foreground">{u.job_title}</p>}
+                  </div>
                   <Badge variant={u.role === "admin" ? "default" : "secondary"}>
                     {u.role === "admin" ? "Admin" : "Miembro"}
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground break-all">{u.email}</p>
+                {u.locality && <p className="text-xs text-muted-foreground">{u.locality}</p>}
                 <div className="flex items-center justify-between">
                   <p className="text-sm mono">{u.hourly_rate != null ? `${formatCurrency(u.hourly_rate)}/h` : "-"}</p>
                   <Button variant="outline" size="sm" onClick={() => setEditing(u)}>
@@ -173,27 +198,64 @@ export default function UsersPage() {
         </DialogHeader>
         {editing && (
           <form onSubmit={handleSubmitEdit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="full_name">Nombre completo</Label>
-              <Input id="full_name" name="full_name" defaultValue={editing?.full_name} required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="hourly_rate">Tarifa por hora (€)</Label>
-              <Input
-                id="hourly_rate"
-                name="hourly_rate"
-                type="number"
-                step="0.01"
-                defaultValue={editing?.hourly_rate ?? ""}
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="short_name">Nombre corto</Label>
+                <Input id="short_name" name="short_name" defaultValue={editing?.short_name ?? ""} placeholder="David" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="full_name">Nombre completo</Label>
+                <Input id="full_name" name="full_name" defaultValue={editing?.full_name} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="job_title">Puesto</Label>
+                <Input id="job_title" name="job_title" defaultValue={editing?.job_title ?? ""} placeholder="SEO Strategist" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="birthday">Cumpleanos</Label>
+                <Input id="birthday" name="birthday" type="date" defaultValue={editing?.birthday ?? ""} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="locality">Ciudad</Label>
+                <Input id="locality" name="locality" defaultValue={editing?.locality ?? ""} placeholder="Madrid" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="region">Comunidad Autonoma</Label>
+                <Select id="region" name="region" defaultValue={editing?.region ?? ""}>
+                  <option value="">Seleccionar...</option>
+                  {REGIONES.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="morning_reminder_time">Reminder manana</Label>
+                <Input id="morning_reminder_time" name="morning_reminder_time" type="time" defaultValue={editing?.morning_reminder_time ?? "09:00"} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="evening_reminder_time">Recap noche</Label>
+                <Input id="evening_reminder_time" name="evening_reminder_time" type="time" defaultValue={editing?.evening_reminder_time ?? "18:00"} />
+              </div>
             </div>
             {currentUser?.role === "admin" && (
-              <div className="space-y-2">
-                <Label htmlFor="role">Rol</Label>
-                <Select id="role" name="role" defaultValue={editing?.role}>
-                  <option value="admin">Admin</option>
-                  <option value="member">Miembro</option>
-                </Select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-border">
+                <div className="space-y-2">
+                  <Label htmlFor="hourly_rate">Tarifa por hora (€)</Label>
+                  <Input
+                    id="hourly_rate"
+                    name="hourly_rate"
+                    type="number"
+                    step="0.01"
+                    defaultValue={editing?.hourly_rate ?? ""}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="role">Rol</Label>
+                  <Select id="role" name="role" defaultValue={editing?.role}>
+                    <option value="admin">Admin</option>
+                    <option value="member">Miembro</option>
+                  </Select>
+                </div>
               </div>
             )}
             <div className="flex justify-end gap-2 pt-4">

@@ -12,6 +12,7 @@ import { NotificationBell } from "@/components/layout/notification-bell"
 import { SearchPalette } from "@/components/layout/search-palette"
 import { QuickCaptureDialog } from "@/components/inbox/quick-capture-dialog"
 import { ShortcutsHelpModal } from "@/components/shortcuts/shortcuts-help-modal"
+import { OnboardingModal } from "@/components/layout/onboarding-modal"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import { useMemo, useState, useCallback } from "react"
 
@@ -43,8 +44,8 @@ export function AppLayout() {
 
   const workspaceNav = useMemo(() => {
     const items = [
-      { to: "/my-week", label: "Mi Semana", icon: CalendarDays },
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
+      { to: "/my-week", label: "Mi Semana", icon: CalendarDays },
       { to: "/clients", label: "Clientes", icon: Users, module: "clients" },
       { to: "/leads", label: "Pipeline", icon: Target, module: "leads" },
       { to: "/projects", label: "Proyectos", icon: FolderKanban, module: "projects" },
@@ -317,7 +318,7 @@ export function AppLayout() {
         </aside>
 
         {/* Main content */}
-        <main id="main-content" role="main" className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 bg-background/50 relative">
+        <main id="main-content" role="main" className="flex-1 overflow-auto p-4 md:p-5 lg:p-6 2xl:p-8 bg-background/50 relative">
           <Outlet />
         </main>
       </div>
@@ -375,6 +376,7 @@ export function AppLayout() {
       <QuickCaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
       <ShortcutsHelpModal open={isHelpOpen} onOpenChange={setIsHelpOpen} shortcuts={shortcuts} />
       <DataAssistant />
+      {user?.onboarding_completed === false && <OnboardingModal />}
     </div>
   )
 }

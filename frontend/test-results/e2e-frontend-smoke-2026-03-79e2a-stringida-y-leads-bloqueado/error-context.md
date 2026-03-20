@@ -233,45 +233,46 @@
               - button "Generar insights" [ref=e295] [cursor=pointer]
           - generic [ref=e296]:
             - generic [ref=e298]:
-              - heading "Digests pendientes (27)" [level=3] [ref=e299]:
+              - heading "Digests pendientes (28)" [level=3] [ref=e299]:
                 - img [ref=e300]
-                - text: Digests pendientes (27)
+                - text: Digests pendientes (28)
               - link "Ver digests" [ref=e303] [cursor=pointer]:
                 - /url: /digests
                 - button "Ver digests" [ref=e304]
             - generic [ref=e305]:
               - generic [ref=e306]:
-                - generic [ref=e307]: QA Fixture Client 2026-03-18
-                - generic [ref=e309]: QA Audit Client 2026-03-18
-                - generic [ref=e311]: "'; DROP TABLE clients; --"
-                - generic [ref=e313]: LeadCo 63c58991
-                - generic [ref=e315]: QA Client 3621b337
-                - generic [ref=e317]: "'; DROP TABLE clients; --"
-                - generic [ref=e319]: LeadCo 8908bf38
-                - generic [ref=e321]: QA Client 3578ee01
-                - generic [ref=e323]: "'; DROP TABLE clients; --"
-                - generic [ref=e325]: LostCo 889409ad
-                - generic [ref=e327]: LeadCo 889409ad
-                - generic [ref=e329]: Negative Budget 2b0e8ae9
-                - generic [ref=e331]: QA Client 2b0e8ae9
-                - generic [ref=e333]: "'; DROP TABLE clients; --"
-                - generic [ref=e335]: LostCo 1fed4e20
-                - generic [ref=e337]: LeadCo 1fed4e20
-                - generic [ref=e339]: Negative Budget 635cde42
-                - generic [ref=e341]: QA Client 635cde42
-                - generic [ref=e343]: "'; DROP TABLE clients; --"
-                - generic [ref=e345]: LostCo b07c0ade
-                - generic [ref=e347]: LeadCo b07c0ade
-                - generic [ref=e349]: Negative Budget e2e88142
-                - generic [ref=e351]: QA Client e2e88142
-                - generic [ref=e353]: Negative Budget e1102ba3
-                - generic [ref=e355]: QA Client e1102ba3
-                - generic [ref=e357]: AUDIT-20260225074727-lqsr Cliente
-                - generic [ref=e359]: AUDIT-20260225073908-bcmc Cliente
-              - paragraph [ref=e361]: Estos clientes no tienen digest generado esta semana.
+                - generic [ref=e307]: QA Deep Agency Client 1773919048
+                - generic [ref=e309]: QA Fixture Client 2026-03-18
+                - generic [ref=e311]: QA Audit Client 2026-03-18
+                - generic [ref=e313]: "'; DROP TABLE clients; --"
+                - generic [ref=e315]: LeadCo 63c58991
+                - generic [ref=e317]: QA Client 3621b337
+                - generic [ref=e319]: "'; DROP TABLE clients; --"
+                - generic [ref=e321]: LeadCo 8908bf38
+                - generic [ref=e323]: QA Client 3578ee01
+                - generic [ref=e325]: "'; DROP TABLE clients; --"
+                - generic [ref=e327]: LostCo 889409ad
+                - generic [ref=e329]: LeadCo 889409ad
+                - generic [ref=e331]: Negative Budget 2b0e8ae9
+                - generic [ref=e333]: QA Client 2b0e8ae9
+                - generic [ref=e335]: "'; DROP TABLE clients; --"
+                - generic [ref=e337]: LostCo 1fed4e20
+                - generic [ref=e339]: LeadCo 1fed4e20
+                - generic [ref=e341]: Negative Budget 635cde42
+                - generic [ref=e343]: QA Client 635cde42
+                - generic [ref=e345]: "'; DROP TABLE clients; --"
+                - generic [ref=e347]: LostCo b07c0ade
+                - generic [ref=e349]: LeadCo b07c0ade
+                - generic [ref=e351]: Negative Budget e2e88142
+                - generic [ref=e353]: QA Client e2e88142
+                - generic [ref=e355]: Negative Budget e1102ba3
+                - generic [ref=e357]: QA Client e1102ba3
+                - generic [ref=e359]: AUDIT-20260225074727-lqsr Cliente
+                - generic [ref=e361]: AUDIT-20260225073908-bcmc Cliente
+              - paragraph [ref=e363]: Estos clientes no tienen digest generado esta semana.
   - region "Notifications alt+T":
     - list:
-      - listitem [ref=e362]:
-        - img [ref=e364]
-        - generic [ref=e367]: Error del servidor. Intenta de nuevo.
+      - listitem [ref=e364]:
+        - img [ref=e366]
+        - generic [ref=e369]: Error del servidor. Intenta de nuevo.
 ```

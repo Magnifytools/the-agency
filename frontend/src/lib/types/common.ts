@@ -39,6 +39,12 @@ export interface User {
   } | null
   region?: string | null
   locality?: string | null
+  short_name?: string | null
+  birthday?: string | null
+  job_title?: string | null
+  morning_reminder_time?: string | null
+  evening_reminder_time?: string | null
+  onboarding_completed?: boolean
 }
 
 export interface UserCreate {

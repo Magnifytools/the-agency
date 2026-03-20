@@ -33,5 +33,11 @@ class UserResponse(BaseModel):
     preferences: Optional[dict] = None
     region: Optional[str] = None
     locality: Optional[str] = None
+    short_name: Optional[str] = None
+    birthday: Optional[str] = None
+    job_title: Optional[str] = None
+    morning_reminder_time: Optional[str] = None
+    evening_reminder_time: Optional[str] = None
+    onboarding_completed: Optional[bool] = None
 
     model_config = {"from_attributes": True}

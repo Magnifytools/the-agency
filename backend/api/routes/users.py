@@ -14,7 +14,7 @@ from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
-_MEMBER_UPDATABLE = {"full_name", "preferences", "region", "locality"}
+_MEMBER_UPDATABLE = {"full_name", "preferences", "region", "locality", "short_name", "birthday", "job_title", "morning_reminder_time", "evening_reminder_time", "onboarding_completed"}
 _ADMIN_UPDATABLE = _MEMBER_UPDATABLE | {"role", "hourly_rate", "is_active", "email", "weekly_hours"}
 
 @router.get("", response_model=PaginatedResponse[UserListResponse])

@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { clientsApi, clientHealthApi, engineApi, projectsApi } from "@/lib/api"
+import { clientsApi, clientHealthApi, contactsApi, engineApi, projectsApi } from "@/lib/api"
 import type { Client, ClientCreate, ClientExtract, ClientStatus, ClientHealthScore } from "@/lib/types"
 import { usePagination } from "@/hooks/use-pagination"
 import { Pagination } from "@/components/ui/pagination"
@@ -103,6 +103,20 @@ export default function ClientsPage() {
   const createMutation = useMutation({
     mutationFn: async (data: ClientCreate) => {
       const client = await clientsApi.create(data)
+      // Create primary contact if provided
+      const contactName = (data as Record<string, unknown>).__contact_name as string | undefined
+      const contactEmail = (data as Record<string, unknown>).__contact_email as string | undefined
+      const contactPhone = (data as Record<string, unknown>).__contact_phone as string | undefined
+      const contactPosition = (data as Record<string, unknown>).__contact_position as string | undefined
+      if (contactName) {
+        await contactsApi.create(client.id, {
+          name: contactName,
+          email: contactEmail || null,
+          phone: contactPhone || null,
+          position: contactPosition || null,
+          is_primary: true,
+        })
+      }
       if (prefill?.project?.name) {
         await projectsApi.create({
           name: prefill.project.name,
@@ -196,7 +210,12 @@ export default function ClientsPage() {
       is_intermediary_deal: fd.get("is_intermediary_deal") === "on",
       intermediary_name: (fd.get("intermediary_name") as string) || null,
       context: (fd.get("context") as string) || undefined,
-    }
+      // Contact fields (not sent to client API, extracted in mutation)
+      __contact_name: (fd.get("contact_name") as string) || undefined,
+      __contact_email: (fd.get("contact_email") as string) || undefined,
+      __contact_phone: (fd.get("contact_phone") as string) || undefined,
+      __contact_position: (fd.get("contact_position") as string) || undefined,
+    } as ClientCreate & Record<string, unknown>
     if (editing) {
       updateMutation.mutate({ id: editing.id, data })
     } else {
@@ -548,6 +567,30 @@ export default function ClientsPage() {
             <Label htmlFor="intermediary_name">Agencia intermediaria</Label>
             <Input id="intermediary_name" name="intermediary_name" defaultValue={prefill?.intermediary_name ?? editing?.intermediary_name ?? ""} placeholder="Peak Ace, etc." />
           </div>
+          {/* Contacto principal (solo al crear) */}
+          {!editing && (
+            <div className="space-y-3 border border-border rounded-lg p-3">
+              <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Contacto principal</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="contact_name" className="text-xs">Nombre</Label>
+                  <Input id="contact_name" name="contact_name" placeholder="Nombre del contacto" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="contact_email" className="text-xs">Email</Label>
+                  <Input id="contact_email" name="contact_email" type="email" placeholder="contacto@empresa.com" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="contact_phone" className="text-xs">Teléfono</Label>
+                  <Input id="contact_phone" name="contact_phone" placeholder="+34 600 000 000" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="contact_position" className="text-xs">Cargo</Label>
+                  <Input id="contact_position" name="contact_position" placeholder="CEO, Marketing Director..." />
+                </div>
+              </div>
+            </div>
+          )}
           {prefill?.context && (
             <div className="space-y-2">
               <Label htmlFor="context">Contexto (generado por IA)</Label>

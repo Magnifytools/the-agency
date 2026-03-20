@@ -63,6 +63,12 @@ class TestUsersEndpoint:
         u1.preferences = None
         u1.region = None
         u1.locality = None
+        u1.short_name = None
+        u1.birthday = None
+        u1.job_title = None
+        u1.morning_reminder_time = "09:00"
+        u1.evening_reminder_time = "18:00"
+        u1.onboarding_completed = True
         u1.permissions = []
 
         u2 = MagicMock(spec=User)
@@ -73,6 +79,14 @@ class TestUsersEndpoint:
         u2.hourly_rate = 30.0
         u2.is_active = True
         u2.preferences = None
+        u2.region = None
+        u2.locality = None
+        u2.short_name = None
+        u2.birthday = None
+        u2.job_title = None
+        u2.morning_reminder_time = "09:00"
+        u2.evening_reminder_time = "18:00"
+        u2.onboarding_completed = False
         u2.permissions = []
 
         # Mock the DB execute chain
@@ -115,6 +129,12 @@ class TestUsersEndpoint:
         u1.preferences = None
         u1.region = None
         u1.locality = None
+        u1.short_name = None
+        u1.birthday = None
+        u1.job_title = None
+        u1.morning_reminder_time = "09:00"
+        u1.evening_reminder_time = "18:00"
+        u1.onboarding_completed = True
         u1.permissions = []
 
         count_result = MagicMock()

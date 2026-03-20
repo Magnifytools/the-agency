@@ -30,6 +30,12 @@ def _make_digest_member():
     user.preferences = None
     user.region = None
     user.locality = None
+    user.short_name = None
+    user.birthday = None
+    user.job_title = None
+    user.morning_reminder_time = "09:00"
+    user.evening_reminder_time = "18:00"
+    user.onboarding_completed = False
 
     read_perm = MagicMock(spec=UserPermission)
     read_perm.module = "digests"

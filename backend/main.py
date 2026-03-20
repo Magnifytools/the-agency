@@ -1138,6 +1138,59 @@ async def _billing_reminder_loop():
             logging.error("Billing check error: %s", e)
 
 
+async def _daily_reminders_loop():
+    """Check every minute if any user needs morning/evening reminder."""
+    from datetime import datetime
+    from sqlalchemy import select
+    from backend.db.database import async_session
+    from backend.db.models import User
+    from backend.services.daily_reminders import (
+        is_working_day, generate_morning_plan, generate_evening_recap, send_reminder,
+    )
+
+    sent_today: set[tuple[int, str]] = set()
+    current_date = None
+
+    while True:
+        await asyncio.sleep(60)
+        try:
+            now = datetime.now()
+            today = now.date()
+            if current_date != today:
+                sent_today.clear()
+                current_date = today
+
+            current_time = now.strftime("%H:%M")
+
+            async with async_session() as db:
+                result = await db.execute(
+                    select(User).where(User.is_active.is_(True))
+                )
+                users = result.scalars().all()
+
+                for user in users:
+                    if not await is_working_day(db, today, user.region):
+                        continue
+
+                    # Morning reminder
+                    if (user.id, "morning") not in sent_today:
+                        target = user.morning_reminder_time or "09:00"
+                        if current_time == target:
+                            msg = await generate_morning_plan(db, user)
+                            if await send_reminder(msg):
+                                sent_today.add((user.id, "morning"))
+
+                    # Evening recap
+                    if (user.id, "evening") not in sent_today:
+                        target = user.evening_reminder_time or "18:00"
+                        if current_time == target:
+                            msg = await generate_evening_recap(db, user, today)
+                            if await send_reminder(msg):
+                                sent_today.add((user.id, "evening"))
+        except Exception as e:
+            logging.error("Daily reminders error: %s", e)
+
+
 async def _check_project_billing():
     """Create notifications for projects with upcoming or overdue billing."""
     from datetime import date, timedelta
@@ -1206,6 +1259,13 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE project_evidence ADD COLUMN IF NOT EXISTS file_mime_type VARCHAR(100)",
                 "ALTER TABLE project_evidence ADD COLUMN IF NOT EXISTS file_size_bytes INTEGER",
                 "ALTER TABLE project_evidence ADD COLUMN IF NOT EXISTS file_content BYTEA",
+                # User profile fields for onboarding + reminders
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS short_name VARCHAR(50)",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS birthday DATE",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS job_title VARCHAR(100)",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS morning_reminder_time VARCHAR(5) DEFAULT '09:00'",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS evening_reminder_time VARCHAR(5) DEFAULT '18:00'",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE",
             ]:
                 await conn.execute(text(sql))
         logging.info("Startup DDL complete.")
@@ -1228,6 +1288,8 @@ async def lifespan(app: FastAPI):
     recurring_task.add_done_callback(_log_task_error)
     billing_task = asyncio.create_task(_billing_reminder_loop(), name="billing-check")
     billing_task.add_done_callback(_log_task_error)
+    reminders_task = asyncio.create_task(_daily_reminders_loop(), name="daily-reminders")
+    reminders_task.add_done_callback(_log_task_error)
     logging.info("Startup ready.")
     yield
     if task:
@@ -1250,6 +1312,11 @@ async def lifespan(app: FastAPI):
     billing_task.cancel()
     try:
         await billing_task
+    except asyncio.CancelledError:
+        pass
+    reminders_task.cancel()
+    try:
+        await reminders_task
     except asyncio.CancelledError:
         pass
 
