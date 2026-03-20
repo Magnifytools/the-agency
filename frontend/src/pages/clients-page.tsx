@@ -101,19 +101,15 @@ export default function ClientsPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: async (data: ClientCreate) => {
-      const client = await clientsApi.create(data)
+    mutationFn: async ({ clientData, contact }: { clientData: ClientCreate; contact?: { name: string; email?: string | null; phone?: string | null; position?: string | null } }) => {
+      const client = await clientsApi.create(clientData)
       // Create primary contact if provided
-      const contactName = (data as Record<string, unknown>).__contact_name as string | undefined
-      const contactEmail = (data as Record<string, unknown>).__contact_email as string | undefined
-      const contactPhone = (data as Record<string, unknown>).__contact_phone as string | undefined
-      const contactPosition = (data as Record<string, unknown>).__contact_position as string | undefined
-      if (contactName) {
+      if (contact?.name) {
         await contactsApi.create(client.id, {
-          name: contactName,
-          email: contactEmail || null,
-          phone: contactPhone || null,
-          position: contactPosition || null,
+          name: contact.name,
+          email: contact.email || null,
+          phone: contact.phone || null,
+          position: contact.position || null,
           is_primary: true,
         })
       }
@@ -210,16 +206,18 @@ export default function ClientsPage() {
       is_intermediary_deal: fd.get("is_intermediary_deal") === "on",
       intermediary_name: (fd.get("intermediary_name") as string) || null,
       context: (fd.get("context") as string) || undefined,
-      // Contact fields (not sent to client API, extracted in mutation)
-      __contact_name: (fd.get("contact_name") as string) || undefined,
-      __contact_email: (fd.get("contact_email") as string) || undefined,
-      __contact_phone: (fd.get("contact_phone") as string) || undefined,
-      __contact_position: (fd.get("contact_position") as string) || undefined,
-    } as ClientCreate & Record<string, unknown>
+    }
     if (editing) {
       updateMutation.mutate({ id: editing.id, data })
     } else {
-      createMutation.mutate(data)
+      const contactName = (fd.get("contact_name") as string) || ""
+      const contact = contactName ? {
+        name: contactName,
+        email: (fd.get("contact_email") as string) || null,
+        phone: (fd.get("contact_phone") as string) || null,
+        position: (fd.get("contact_position") as string) || null,
+      } : undefined
+      createMutation.mutate({ clientData: data, contact })
     }
   }
 
