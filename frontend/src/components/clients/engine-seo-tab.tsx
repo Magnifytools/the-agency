@@ -19,7 +19,7 @@ import {
   Link2,
 } from "lucide-react"
 import { toast } from "sonner"
-import { formatTimeAgo } from "@/lib/utils"
+import { formatTimeAgo, getErrorMessage } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
 
 interface Props {
@@ -72,7 +72,7 @@ function LinkProjectDialog({ client }: { client: Client }) {
       toast.success("Proyecto vinculado correctamente")
       setOpen(false)
     },
-    onError: (err: any) => toast.error(err?.response?.data?.detail || "Error al vincular proyecto"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al vincular proyecto")),
   })
 
   if (!open) {

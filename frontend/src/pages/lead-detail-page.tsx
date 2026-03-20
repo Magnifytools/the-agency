@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { formatCurrency } from "@/lib/format"
+import { getErrorMessage } from "@/lib/utils"
 
 const SOURCE_LABELS: Record<string, string> = {
   website: "Web",
@@ -115,7 +116,7 @@ export default function LeadDetailPage() {
       toast.success(`Lead convertido a cliente: ${data.client_name}`)
       navigate(`/clients/${data.client_id}`)
     },
-    onError: (err: any) => toast.error(err?.response?.data?.detail || "Error al convertir"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al convertir")),
   })
 
   const handleAdvanceStage = () => {

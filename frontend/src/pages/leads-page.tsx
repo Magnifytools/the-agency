@@ -21,6 +21,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
 import { formatCurrency } from "@/lib/format"
+import { getErrorMessage } from "@/lib/utils"
 
 const PIPELINE_STAGES: { key: LeadStatus; label: string; color: string }[] = [
   { key: "new", label: "Nuevo", color: "bg-blue-500" },
@@ -108,7 +109,7 @@ export default function LeadsPage() {
       qc.invalidateQueries({ queryKey: ["pipeline-summary"] })
       setDeleteLeadId(null)
     },
-    onError: (err: any) => toast.error(err?.response?.data?.detail || "Error al eliminar lead"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar lead")),
   })
 
   const convertMutation = useMutation({
@@ -119,7 +120,7 @@ export default function LeadsPage() {
       qc.invalidateQueries({ queryKey: ["pipeline-summary"] })
       setShowConvertDialog(null)
     },
-    onError: (err: any) => toast.error(err?.response?.data?.detail || "Error al convertir lead"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al convertir lead")),
   })
 
   const handleDrop = (lead: Lead, newStatus: LeadStatus) => {
@@ -532,7 +533,7 @@ function CreateLeadDialog({
       onOpenChange(false)
       setForm({ company_name: "" })
     },
-    onError: (err: any) => toast.error(err?.response?.data?.detail || "Error al crear lead"),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al crear lead")),
   })
 
   return (
