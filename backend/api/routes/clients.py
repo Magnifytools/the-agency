@@ -59,15 +59,28 @@ Responde SOLO con un JSON válido con los campos que puedas extraer (omite los q
 {
   "name": "nombre del cliente/empresa principal (el cliente final, no intermediarios)",
   "company": "nombre de la empresa (puede ser igual a name)",
-  "email": "email de contacto o null",
-  "phone": "teléfono o null",
-  "website": "URL de su web o null",
+  "email": "email de contacto principal o null",
+  "phone": "teléfono de contacto principal o null",
+  "website": "URL del site/dominio del proyecto o del cliente (ej: https://www.ejemplo.com) o null",
   "contract_type": "monthly si es recurrente/retención, one_time si es puntual",
   "monthly_budget": importe mensual numérico o null (solo si es fijo; si es variable, dejarlo null)",
   "notes": "resumen breve de la relación y contexto importante (2-3 frases)",
+  "business_model": "sector/modelo de negocio del cliente (ej: ecommerce, saas, igaming, media, fintech, etc.) o null",
   "is_intermediary_deal": true si hay una agencia intermediaria entre nosotros y el cliente final,
   "intermediary_name": "nombre de la agencia intermediaria o null",
   "context": "resumen ejecutivo completo: quién es el cliente, cómo llegó, qué se ha hecho, qué se ha prometido, particularidades del trato",
+  "contacts": [
+    {
+      "name": "nombre completo de la persona",
+      "email": "email o null",
+      "phone": "teléfono o null",
+      "position": "cargo/rol o null",
+      "company": "empresa a la que pertenece (si diferente del cliente) o null",
+      "is_primary": true solo para el contacto principal de comunicación,
+      "notes": "contexto relevante sobre esta persona (preferencias, idioma, etc.) o null",
+      "language": "es o en según el idioma de comunicación con esta persona, o null"
+    }
+  ],
   "project": {
     "name": "nombre del proyecto/servicio activo o más reciente (breve, máx 60 chars)",
     "description": "resumen del alcance en 2-3 frases",
@@ -83,7 +96,9 @@ Responde SOLO con un JSON válido con los campos que puedas extraer (omite los q
     "target_end_date": "YYYY-MM-DD o null"
   }
 }
+Extrae TODAS las personas mencionadas como contactos (contacto del cliente, intermediarios, equipo del cliente, etc.).
 Si no hay información suficiente para el proyecto, omite el campo "project".
+Si no se mencionan personas con nombre, omite el campo "contacts".
 Sin texto adicional. Solo el JSON."""
 
 
@@ -102,6 +117,17 @@ class ProjectExtractInline(BaseModel):
     target_end_date: Optional[str] = None
 
 
+class ContactExtractInline(BaseModel):
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    position: Optional[str] = None
+    company: Optional[str] = None
+    is_primary: bool = False
+    notes: Optional[str] = None
+    language: Optional[str] = None
+
+
 class ClientExtract(BaseModel):
     name: Optional[str] = None
     company: Optional[str] = None
@@ -111,9 +137,11 @@ class ClientExtract(BaseModel):
     contract_type: Optional[str] = None
     monthly_budget: Optional[float] = None
     notes: Optional[str] = None
+    business_model: Optional[str] = None
     is_intermediary_deal: bool = False
     intermediary_name: Optional[str] = None
     context: Optional[str] = None
+    contacts: Optional[list[ContactExtractInline]] = None
     project: Optional[ProjectExtractInline] = None
 
 
@@ -143,7 +171,7 @@ async def extract_client_context(
     client = get_anthropic_client()
     message = await client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1024,
+        max_tokens=2048,
         messages=[{"role": "user", "content": [
             {"type": "text", "text": f"Documento de contexto:\n\n{text_content}\n\n---\n\n{_CLIENT_EXTRACT_PROMPT}"},
         ]}],

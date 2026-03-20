@@ -101,9 +101,13 @@ export default function ClientsPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: async ({ clientData, contact }: { clientData: ClientCreate; contact?: { name: string; email?: string | null; phone?: string | null; position?: string | null } }) => {
+    mutationFn: async ({ clientData, contact, extraContacts }: {
+      clientData: ClientCreate;
+      contact?: { name: string; email?: string | null; phone?: string | null; position?: string | null };
+      extraContacts?: Array<{ name: string; email?: string | null; phone?: string | null; position?: string | null; is_primary?: boolean; notes?: string | null; language?: string | null; company?: string | null }>;
+    }) => {
       const client = await clientsApi.create(clientData)
-      // Create primary contact if provided
+      // Create primary contact if provided manually
       if (contact?.name) {
         await contactsApi.create(client.id, {
           name: contact.name,
@@ -112,6 +116,26 @@ export default function ClientsPage() {
           position: contact.position || null,
           is_primary: true,
         })
+      }
+      // Create additional AI-extracted contacts
+      let contactsCreated = contact?.name ? 1 : 0
+      if (extraContacts?.length) {
+        for (const c of extraContacts) {
+          try {
+            await contactsApi.create(client.id, {
+              name: c.name,
+              email: c.email || null,
+              phone: c.phone || null,
+              position: [c.position, c.company].filter(Boolean).join(" - ") || null,
+              is_primary: !contact?.name && c.is_primary === true,
+              notes: c.notes || null,
+              language: c.language || null,
+            })
+            contactsCreated++
+          } catch {
+            // Skip if contact creation fails (e.g. duplicate)
+          }
+        }
       }
       if (prefill?.project?.name) {
         await projectsApi.create({
@@ -130,13 +154,16 @@ export default function ClientsPage() {
           client_id: client.id,
         })
       }
-      return { client, hadProject: !!prefill?.project?.name }
+      return { client, hadProject: !!prefill?.project?.name, contactsCreated }
     },
-    onSuccess: ({ hadProject }) => {
+    onSuccess: ({ hadProject, contactsCreated }) => {
       queryClient.invalidateQueries({ queryKey: ["clients"] })
       queryClient.invalidateQueries({ queryKey: ["projects"] })
       closeDialog()
-      toast.success(hadProject ? "Cliente y proyecto creados" : "Cliente creado")
+      const parts = ["Cliente creado"]
+      if (contactsCreated > 0) parts.push(`${contactsCreated} contacto${contactsCreated > 1 ? "s" : ""}`)
+      if (hadProject) parts.push("proyecto")
+      toast.success(parts.join(" + "))
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al crear cliente")),
   })
@@ -206,18 +233,23 @@ export default function ClientsPage() {
       is_intermediary_deal: fd.get("is_intermediary_deal") === "on",
       intermediary_name: (fd.get("intermediary_name") as string) || null,
       context: (fd.get("context") as string) || undefined,
+      business_model: (fd.get("business_model") as string) || prefill?.business_model || undefined,
     }
     if (editing) {
       updateMutation.mutate({ id: editing.id, data })
     } else {
       const contactName = (fd.get("contact_name") as string) || ""
-      const contact = contactName ? {
+      const manualContact = contactName ? {
         name: contactName,
         email: (fd.get("contact_email") as string) || null,
         phone: (fd.get("contact_phone") as string) || null,
         position: (fd.get("contact_position") as string) || null,
       } : undefined
-      createMutation.mutate({ clientData: data, contact })
+      // Merge manual contact with AI-extracted contacts (avoid duplicates)
+      const aiContacts = prefill?.contacts?.filter(
+        (c) => !manualContact || c.name.toLowerCase() !== manualContact.name.toLowerCase()
+      ) ?? []
+      createMutation.mutate({ clientData: data, contact: manualContact, extraContacts: aiContacts })
     }
   }
 
@@ -566,29 +598,40 @@ export default function ClientsPage() {
             <Input id="intermediary_name" name="intermediary_name" defaultValue={prefill?.intermediary_name ?? editing?.intermediary_name ?? ""} placeholder="Peak Ace, etc." />
           </div>
           {/* Contacto principal (solo al crear) */}
-          {!editing && (
-            <div className="space-y-3 border border-border rounded-lg p-3">
-              <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Contacto principal</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="contact_name" className="text-xs">Nombre</Label>
-                  <Input id="contact_name" name="contact_name" placeholder="Nombre del contacto" />
+          {!editing && (() => {
+            const primaryContact = prefill?.contacts?.find((c) => c.is_primary) ?? prefill?.contacts?.[0]
+            return (
+              <div className="space-y-3 border border-border rounded-lg p-3">
+                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Contacto principal</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="contact_name" className="text-xs">Nombre</Label>
+                    <Input id="contact_name" name="contact_name" defaultValue={primaryContact?.name ?? ""} placeholder="Nombre del contacto" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="contact_email" className="text-xs">Email</Label>
+                    <Input id="contact_email" name="contact_email" type="email" defaultValue={primaryContact?.email ?? ""} placeholder="contacto@empresa.com" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="contact_phone" className="text-xs">Teléfono</Label>
+                    <Input id="contact_phone" name="contact_phone" defaultValue={primaryContact?.phone ?? ""} placeholder="+34 600 000 000" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="contact_position" className="text-xs">Cargo</Label>
+                    <Input id="contact_position" name="contact_position" defaultValue={primaryContact?.position ?? ""} placeholder="CEO, Marketing Director..." />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="contact_email" className="text-xs">Email</Label>
-                  <Input id="contact_email" name="contact_email" type="email" placeholder="contacto@empresa.com" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="contact_phone" className="text-xs">Teléfono</Label>
-                  <Input id="contact_phone" name="contact_phone" placeholder="+34 600 000 000" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="contact_position" className="text-xs">Cargo</Label>
-                  <Input id="contact_position" name="contact_position" placeholder="CEO, Marketing Director..." />
-                </div>
+                {prefill?.contacts && prefill.contacts.length > 1 && (
+                  <div className="text-xs text-muted-foreground mt-2 space-y-1">
+                    <p className="font-medium flex items-center gap-1"><Sparkles className="h-3 w-3 text-primary" /> {prefill.contacts.length - 1} contacto{prefill.contacts.length > 2 ? "s" : ""} adicional{prefill.contacts.length > 2 ? "es" : ""} detectado{prefill.contacts.length > 2 ? "s" : ""} (se crearán automáticamente):</p>
+                    {prefill.contacts.filter((c) => c !== primaryContact).map((c, i) => (
+                      <p key={i} className="ml-4">· {c.name}{c.position ? ` — ${c.position}` : ""}{c.company ? ` (${c.company})` : ""}</p>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )
+          })()}
           {prefill?.context && (
             <div className="space-y-2">
               <Label htmlFor="context">Contexto (generado por IA)</Label>

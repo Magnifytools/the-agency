@@ -33,6 +33,7 @@ class ClientCreate(BaseModel):
     conversion_rate: Optional[float] = None
     ltv: Optional[float] = None
     seo_maturity_level: Optional[str] = None
+    context: Optional[str] = None
 
 
 class ClientUpdate(BaseModel):

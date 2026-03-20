@@ -993,7 +993,7 @@ function AddTaskDialog({
         project_id: projectId,
         phase_id: phaseId,
         assigned_to: assignedTo ? parseInt(assignedTo) : undefined,
-        priority: priority || undefined,
+        priority: (priority as "urgent" | "high" | "medium" | "low") || undefined,
         due_date: dueDate || undefined,
         estimated_minutes: estimatedMinutes ? parseInt(estimatedMinutes) : undefined,
       }),

@@ -108,7 +108,19 @@ export interface ClientExtractProject {
   target_end_date?: string
 }
 
+export interface ClientExtractContact {
+  name: string
+  email?: string | null
+  phone?: string | null
+  position?: string | null
+  company?: string | null
+  is_primary?: boolean
+  notes?: string | null
+  language?: string | null
+}
+
 export interface ClientExtract extends Partial<ClientCreate> {
+  contacts?: ClientExtractContact[] | null
   project?: ClientExtractProject | null
 }
 
