@@ -592,7 +592,7 @@ export const invitationsApi = {
 
 // Growth Operations
 export const growthApi = {
-  list: (params?: { status?: string; funnel_stage?: string }) =>
+  list: (params?: { status?: string; funnel_stage?: string; project_id?: number }) =>
     api.get<GrowthIdea[]>("/growth", { params }).then((r) => r.data),
   create: (data: GrowthIdeaCreate) =>
     api.post<GrowthIdea>("/growth", data).then((r) => r.data),

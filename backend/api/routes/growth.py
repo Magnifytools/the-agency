@@ -18,6 +18,7 @@ router = APIRouter(tags=["growth"])
 async def list_growth_ideas(
     status: Optional[str] = None,
     funnel_stage: Optional[str] = None,
+    project_id: Optional[int] = None,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -31,6 +32,8 @@ async def list_growth_ideas(
         query = query.where(GrowthIdea.status == status)
     if funnel_stage:
         query = query.where(GrowthIdea.funnel_stage == funnel_stage)
+    if project_id is not None:
+        query = query.where(GrowthIdea.project_id == project_id)
 
     # Order by ICE score descending
     query = query.order_by(desc(GrowthIdea.ice_score)).limit(limit).offset(offset)

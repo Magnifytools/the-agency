@@ -33,6 +33,7 @@ import { GanttChart } from "@/components/gantt/gantt-chart"
 import { ProjectPhaseKanban } from "@/components/projects/project-phase-kanban"
 import { EvidenceList } from "@/components/projects/evidence-list"
 import { ProjectBillingTab } from "@/components/projects/project-billing-tab"
+import { ProjectIdeasTab } from "@/components/projects/project-ideas-tab"
 import { Breadcrumb } from "@/components/ui/breadcrumb"
 import { Skeleton, SkeletonCard } from "@/components/ui/skeleton"
 
@@ -65,7 +66,7 @@ export default function ProjectDetailPage() {
   const [showAddTaskDialog, setShowAddTaskDialog] = useState<number | null>(null)
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false)
   const [viewMode, setViewMode] = useState<"list" | "gantt" | "kanban">("list")
-  const [activeTab, setActiveTab] = useState<"tasks" | "evidence" | "billing">("tasks")
+  const [activeTab, setActiveTab] = useState<"tasks" | "ideas" | "evidence" | "billing">("tasks")
   const [previewTaskId, setPreviewTaskId] = useState<number | null>(null)
   const [filterStatus, setFilterStatus] = useState<TaskStatus | "all">("all")
   const [filterSearch, setFilterSearch] = useState("")
@@ -361,6 +362,13 @@ export default function ProjectDetailPage() {
           Fases y Tareas
         </Button>
         <Button
+          variant={activeTab === "ideas" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setActiveTab("ideas")}
+        >
+          Ideas / Backlog
+        </Button>
+        <Button
           variant={activeTab === "evidence" ? "default" : "ghost"}
           size="sm"
           onClick={() => setActiveTab("evidence")}
@@ -375,6 +383,11 @@ export default function ProjectDetailPage() {
           Facturación
         </Button>
       </div>
+
+      {/* Ideas Tab */}
+      {activeTab === "ideas" && project && (
+        <ProjectIdeasTab projectId={project.id} />
+      )}
 
       {/* Evidence Tab */}
       {activeTab === "evidence" && project && (

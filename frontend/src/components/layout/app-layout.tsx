@@ -47,10 +47,9 @@ export function AppLayout() {
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
       { to: "/my-week", label: "Mi Semana", icon: CalendarDays },
       { to: "/clients", label: "Clientes", icon: Users, module: "clients" },
-      { to: "/leads", label: "Pipeline", icon: Target, module: "leads" },
       { to: "/projects", label: "Proyectos", icon: FolderKanban, module: "projects" },
+      { to: "/leads", label: "Pipeline", icon: Target, module: "leads" },
       { to: "/tasks", label: "Tareas", icon: CheckSquare, module: "tasks" },
-      { to: "/growth", label: "Growth", icon: Rocket, module: "growth" },
       { to: "/inbox", label: "Inbox", icon: Inbox, module: "tasks" },
     ]
     return items.filter((item) => !item.module || hasPermission(item.module))
