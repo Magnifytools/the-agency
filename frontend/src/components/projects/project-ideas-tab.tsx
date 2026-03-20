@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { growthApi } from "@/lib/api"
-import type { GrowthIdea, GrowthIdeaCreate } from "@/lib/types"
+import type { GrowthIdea, GrowthIdeaCreate, GrowthStatus } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -279,10 +279,10 @@ export function ProjectIdeasTab({ projectId }: ProjectIdeasTabProps) {
       {/* Delete Confirm */}
       <ConfirmDialog
         open={deleteId !== null}
+        onOpenChange={(open) => { if (!open) setDeleteId(null) }}
         title="Eliminar idea"
         description="¿Seguro que quieres eliminar esta idea del backlog?"
         onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
-        onCancel={() => setDeleteId(null)}
       />
     </div>
   )
@@ -297,7 +297,7 @@ function IdeaCard({
   idea: GrowthIdea
   onEdit: () => void
   onDelete: () => void
-  onStatusChange: (status: string) => void
+  onStatusChange: (status: GrowthStatus) => void
 }) {
   const status = STATUS_LABELS[idea.status] || STATUS_LABELS.idea
 
