@@ -214,7 +214,7 @@ export default function DashboardPage() {
     enabled: isAdmin && !!viewAsUserId,
   })
   const { data: viewAsWeekly } = useQuery({
-    queryKey: ["weekly-timesheet-viewas"],
+    queryKey: ["weekly-timesheet-viewas", viewAsUserId],
     queryFn: () => timeEntriesApi.weekly(),
     enabled: isAdmin && !!viewAsUserId,
   })

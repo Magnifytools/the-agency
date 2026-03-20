@@ -50,8 +50,10 @@ function formatValue(v: number | null, currency = "EUR") {
   return formatCurrency(v, currency)
 }
 
-function daysInStage(createdAt: string): number {
-  return Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000)
+// TODO: Lead model lacks a `status_changed_at` field, so we fall back to `updated_at`.
+// Backend should add `status_changed_at` (set on every status transition) for accurate tracking.
+function daysInStage(updatedAt: string): number {
+  return Math.floor((Date.now() - new Date(updatedAt).getTime()) / 86400000)
 }
 
 export default function LeadsPage() {
@@ -488,7 +490,7 @@ function LeadCard({
             {new Date(lead.next_followup_date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
           </span>
         )}
-        <span>{daysInStage(lead.created_at)}d</span>
+        <span>{daysInStage(lead.updated_at)}d</span>
       </div>
     </div>
   )
