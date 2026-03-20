@@ -96,9 +96,10 @@ Responde SOLO con un JSON válido con los campos que puedas extraer (omite los q
     "target_end_date": "YYYY-MM-DD o null"
   }
 }
-Extrae TODAS las personas mencionadas como contactos (contacto del cliente, intermediarios, equipo del cliente, etc.).
+Extrae como contactos SOLO personas del lado del cliente, intermediarios o stakeholders externos.
+NO incluyas personas de nuestro propio equipo (los remitentes/destinatarios del lado "nosotros", como David, Nacho u otros del equipo SEO/Magnify).
 Si no hay información suficiente para el proyecto, omite el campo "project".
-Si no se mencionan personas con nombre, omite el campo "contacts".
+Si no se mencionan personas externas con nombre, omite el campo "contacts".
 Sin texto adicional. Solo el JSON."""
 
 
