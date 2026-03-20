@@ -54,6 +54,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     onError: (err) => toast.error(getErrorMessage(err, "Error al capturar")),
   })
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset form + focus on dialog open; focus requires effect
   useEffect(() => {
     if (open) {
       setText("")

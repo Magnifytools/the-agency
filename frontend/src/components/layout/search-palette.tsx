@@ -39,6 +39,7 @@ export function SearchPalette({ open, onOpenChange }: Props) {
     }
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset + focus on palette open; focus requires effect
   useEffect(() => {
     if (open) {
       setQuery("")
@@ -47,9 +48,12 @@ export function SearchPalette({ open, onOpenChange }: Props) {
     }
   }, [open])
 
-  useEffect(() => {
+  // Reset selection when query changes — derived via ref comparison during render
+  const prevQueryRef = useRef(query)
+  if (query !== prevQueryRef.current) {
+    prevQueryRef.current = query
     setSelectedIndex(0)
-  }, [query])
+  }
 
   const handleNavigate = useCallback((href: string) => {
     onOpenChange(false)

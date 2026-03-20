@@ -235,11 +235,13 @@ export function ProposalWizard({
     const queryClient = useQueryClient()
     const [wizardStep, setWizardStep] = useState(0)
     const roiResultRef = useRef<InvestmentCalculateResponse | null>(null)
+    const prevOpenRef = useRef(open)
 
     // Reset step when opened
-    useEffect(() => {
-        if (open) setWizardStep(0)
-    }, [open])
+    if (open && !prevOpenRef.current) {
+        setWizardStep(0)
+    }
+    prevOpenRef.current = open
 
     const saveInvestmentIfAvailable = async (proposalId: number) => {
         if (roiResultRef.current) {

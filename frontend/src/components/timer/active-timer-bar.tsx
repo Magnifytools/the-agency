@@ -55,6 +55,7 @@ export function ActiveTimerBar() {
     staleTime: 60_000,
   })
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- Timer tick requires setInterval in effect
   useEffect(() => {
     if (!timer?.started_at) return
     setElapsed(formatElapsed(timer.started_at))
@@ -64,6 +65,7 @@ export function ActiveTimerBar() {
     return () => clearInterval(interval)
   }, [timer?.started_at])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- Reminder state tracks async 4h threshold
   useEffect(() => {
     if (!timer?.started_at) {
       setReminderShown(false)

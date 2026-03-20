@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useRef } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { BookOpen, User, Mail, Phone, FileText, Download, Trash2, Upload, File as FileIcon, Sparkles, Loader2 } from "lucide-react"
 import { clientsApi, contactsApi, api } from "@/lib/api"
@@ -46,10 +46,13 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
   const [deleteDocId, setDeleteDocId] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prevContextRef = useRef(client.context)
 
-  useEffect(() => {
+  // Sync local state when prop changes externally (e.g. query refetch)
+  if (client.context !== prevContextRef.current) {
+    prevContextRef.current = client.context
     setContextValue(client.context ?? "")
-  }, [client.context])
+  }
 
   const updateMut = useMutation({
     mutationFn: (ctx: string) => clientsApi.update(client.id, { context: ctx }),

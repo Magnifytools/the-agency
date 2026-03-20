@@ -138,6 +138,7 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
     refetchInterval: 10_000,
   })
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- Timer tick requires setInterval in effect
   useEffect(() => {
     if (!activeTimer?.started_at) { setElapsed(""); return }
     const tick = () => {

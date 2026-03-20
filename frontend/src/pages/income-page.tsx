@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useRef } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { financeIncomeApi, clientsApi } from "@/lib/api"
 import type { Income, IncomeCreate } from "@/lib/types"
@@ -33,12 +33,20 @@ export default function IncomePage() {
   const [editing, setEditing] = useState<Income | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [filters, setFilters] = useState<{ type?: string; status?: string }>({})
-  const [vatCalc, setVatCalc] = useState<{ amount: number; rate: number }>({ amount: 0, rate: 21 })
+  const [vatOverride, setVatOverride] = useState<{ amount: number; rate: number } | null>(null)
+  const prevDialogKeyRef = useRef<string>("")
 
-  useEffect(() => {
-    setVatCalc({ amount: editing?.amount ?? 0, rate: editing?.vat_rate ?? 21 })
-  }, [dialogOpen, editing])
+  // Reset override when dialog opens/closes or editing item changes
+  const dialogKey = `${dialogOpen}-${editing?.id ?? "null"}`
+  if (dialogKey !== prevDialogKeyRef.current) {
+    prevDialogKeyRef.current = dialogKey
+    setVatOverride(null)
+  }
 
+  const vatCalc = vatOverride ?? { amount: editing?.amount ?? 0, rate: editing?.vat_rate ?? 21 }
+  const setVatCalc = (updater: (v: { amount: number; rate: number }) => { amount: number; rate: number }) => {
+    setVatOverride(updater(vatCalc))
+  }
   const computedVat = +(vatCalc.amount * vatCalc.rate / 100).toFixed(2)
 
   const { data: items = [], isLoading } = useQuery({

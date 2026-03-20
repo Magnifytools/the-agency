@@ -236,7 +236,7 @@ export function WeeklyPlannerView({ tasks, onScheduleChange, onOpenEdit }: Props
   const [isMobile, setIsMobile] = useState(false)
   const [openDays, setOpenDays] = useState<Set<string>>(new Set())
 
-  // Detect mobile
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- Media query listener requires effect
   useEffect(() => {
     const mql = window.matchMedia("(max-width: 639px)")
     const handler = (e: MediaQueryListEvent | MediaQueryList) => setIsMobile(e.matches)
@@ -253,7 +253,7 @@ export function WeeklyPlannerView({ tasks, onScheduleChange, onOpenEdit }: Props
   const { dates, label } = useMemo(() => getWeekDates(weekOffset), [weekOffset])
   const today = new Date().toISOString().slice(0, 10)
 
-  // Pre-open today's accordion
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- Pre-open today's accordion on mobile detection
   useEffect(() => {
     if (isMobile && dates.includes(today)) {
       setOpenDays(new Set([today]))

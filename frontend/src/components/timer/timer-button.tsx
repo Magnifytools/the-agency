@@ -31,6 +31,7 @@ export function TimerButton({ taskId }: TimerButtonProps) {
 
   const isThisTaskRunning = timer?.task_id === taskId
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- Timer tick requires setInterval in effect
   useEffect(() => {
     if (!isThisTaskRunning || !timer?.started_at) {
       setElapsed("")
