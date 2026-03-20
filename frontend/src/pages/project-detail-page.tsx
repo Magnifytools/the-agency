@@ -19,7 +19,7 @@ import {
   Copy,
 } from "lucide-react"
 import { toast } from "sonner"
-import { projectsApi, tasksApi } from "@/lib/api"
+import { projectsApi, tasksApi, usersApi } from "@/lib/api"
 import type { Project, ProjectPhase, ProjectStatus, PhaseStatus, Task, TaskStatus } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -28,6 +28,7 @@ import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 import { getErrorMessage } from "@/lib/utils"
 import { GanttChart } from "@/components/gantt/gantt-chart"
 import { ProjectPhaseKanban } from "@/components/projects/project-phase-kanban"
@@ -379,7 +380,7 @@ export default function ProjectDetailPage() {
           size="sm"
           onClick={() => setActiveTab("evidence")}
         >
-          Evidencia
+          Documentos
         </Button>
         <Button
           variant={activeTab === "billing" ? "default" : "ghost"}
@@ -889,7 +890,7 @@ function EditProjectDialog({
             placeholder="Describe las condiciones del proyecto, alcance acordado, entregables..."
             rows={3}
           />
-          <p className="text-xs text-muted-foreground">Para adjuntar la propuesta en PDF, usa la pestaña Evidencia con tipo &ldquo;Propuesta&rdquo;</p>
+          <p className="text-xs text-muted-foreground">Para adjuntar la propuesta en PDF, usa la pestaña Documentos con tipo &ldquo;Propuesta&rdquo;</p>
         </div>
 
         {/* --- Facturación --- */}
@@ -972,15 +973,28 @@ function AddTaskDialog({
 }) {
   const queryClient = useQueryClient()
   const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  const [assignedTo, setAssignedTo] = useState("")
+  const [priority, setPriority] = useState("")
+  const [dueDate, setDueDate] = useState("")
   const [estimatedMinutes, setEstimatedMinutes] = useState("")
+
+  const { data: users = [] } = useQuery({
+    queryKey: ["users-all"],
+    queryFn: () => usersApi.listAll(),
+  })
 
   const createMutation = useMutation({
     mutationFn: () =>
       tasksApi.create({
         title,
+        description: description || undefined,
         client_id: clientId,
         project_id: projectId,
         phase_id: phaseId,
+        assigned_to: assignedTo ? parseInt(assignedTo) : undefined,
+        priority: priority || undefined,
+        due_date: dueDate || undefined,
         estimated_minutes: estimatedMinutes ? parseInt(estimatedMinutes) : undefined,
       }),
     onSuccess: () => {
@@ -989,6 +1003,10 @@ function AddTaskDialog({
       toast.success("Tarea añadida")
       onOpenChange(false)
       setTitle("")
+      setDescription("")
+      setAssignedTo("")
+      setPriority("")
+      setDueDate("")
       setEstimatedMinutes("")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al crear tarea")),
@@ -1015,13 +1033,53 @@ function AddTaskDialog({
             required
           />
         </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Asignado a</Label>
+            <Select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
+              <option value="">Sin asignar</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>{u.full_name}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Prioridad</Label>
+            <Select value={priority} onChange={(e) => setPriority(e.target.value)}>
+              <option value="">Media (por defecto)</option>
+              <option value="urgent">Urgente</option>
+              <option value="high">Alta</option>
+              <option value="medium">Media</option>
+              <option value="low">Baja</option>
+            </Select>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Fecha límite</Label>
+            <Input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Tiempo estimado (minutos)</Label>
+            <Input
+              type="number"
+              value={estimatedMinutes}
+              onChange={(e) => setEstimatedMinutes(e.target.value)}
+              placeholder="60"
+            />
+          </div>
+        </div>
         <div className="space-y-2">
-          <Label>Tiempo estimado (minutos)</Label>
-          <Input
-            type="number"
-            value={estimatedMinutes}
-            onChange={(e) => setEstimatedMinutes(e.target.value)}
-            placeholder="60"
+          <Label>Descripción</Label>
+          <Textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Descripción de la tarea (opcional)"
+            rows={3}
           />
         </div>
         <div className="flex justify-end gap-2 pt-4">
