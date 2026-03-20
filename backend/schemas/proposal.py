@@ -117,6 +117,11 @@ class ProposalUpdate(BaseModel):
     response_notes: Optional[str] = None
 
 
+class InvestmentModelInput(BaseModel):
+    """Investment model data to save on a proposal."""
+    model_config = ConfigDict(extra="allow")
+    # Accept flexible JSON but validate it's at least a valid object
+
 class ProposalStatusUpdate(BaseModel):
     status: ProposalStatus
     response_notes: Optional[str] = None

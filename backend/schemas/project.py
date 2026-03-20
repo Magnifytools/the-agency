@@ -157,6 +157,47 @@ class ProjectExtract(BaseModel):
     scope: Optional[str] = None
 
 
+# --- Template Schemas ---
+
+class TemplatePhaseInput(BaseModel):
+    name: str
+    default_days: int = 7
+
+class TemplateTaskInput(BaseModel):
+    phase: int = 0
+    title: str
+    minutes: int = 60
+
+class TemplateCreate(BaseModel):
+    name: str
+    key: Optional[str] = None
+    description: Optional[str] = None
+    project_type: Optional[str] = None
+    is_recurring: bool = False
+    phases: list[TemplatePhaseInput] = []
+    default_tasks: list[TemplateTaskInput] = []
+    pricing_model: Optional[str] = None
+    monthly_fee: Optional[float] = None
+
+class TemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    project_type: Optional[str] = None
+    is_recurring: Optional[bool] = None
+    phases: Optional[list[TemplatePhaseInput]] = None
+    default_tasks: Optional[list[TemplateTaskInput]] = None
+    pricing_model: Optional[str] = None
+    monthly_fee: Optional[float] = None
+
+class SaveAsTemplateInput(BaseModel):
+    name: Optional[str] = None
+    key: Optional[str] = None
+    description: Optional[str] = None
+
+class InvoiceTasksInput(BaseModel):
+    task_ids: list[int]
+
+
 # --- Project Templates ---
 
 PROJECT_TEMPLATES = {

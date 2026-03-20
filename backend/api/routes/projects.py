@@ -21,6 +21,10 @@ from backend.schemas.project import (
     ProjectPhaseUpdate,
     ProjectPhaseResponse,
     PROJECT_TEMPLATES,
+    TemplateCreate,
+    TemplateUpdate,
+    SaveAsTemplateInput,
+    InvoiceTasksInput,
 )
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module, require_admin
@@ -337,13 +341,13 @@ async def get_template_detail(
 
 @router.post("/templates", status_code=status.HTTP_201_CREATED)
 async def create_template(
-    body: dict,
+    body: TemplateCreate,
     db: AsyncSession = Depends(get_db),
     user=Depends(require_admin),
 ):
     """Create a new project template."""
     import re
-    key = body.get("key") or re.sub(r"[^a-z0-9_]", "_", body["name"].lower().strip())[:50]
+    key = body.key or re.sub(r"[^a-z0-9_]", "_", body.name.lower().strip())[:50]
 
     # Check unique key
     existing = await db.execute(select(ProjectTemplateDB).where(ProjectTemplateDB.key == key))
@@ -352,14 +356,14 @@ async def create_template(
 
     tpl = ProjectTemplateDB(
         key=key,
-        name=body["name"],
-        description=body.get("description"),
-        project_type=body.get("project_type"),
-        is_recurring=body.get("is_recurring", False),
-        phases=body.get("phases", []),
-        default_tasks=body.get("default_tasks", []),
-        pricing_model=body.get("pricing_model"),
-        monthly_fee=body.get("monthly_fee"),
+        name=body.name,
+        description=body.description,
+        project_type=body.project_type,
+        is_recurring=body.is_recurring,
+        phases=[p.model_dump() for p in body.phases],
+        default_tasks=[t.model_dump() for t in body.default_tasks],
+        pricing_model=body.pricing_model,
+        monthly_fee=body.monthly_fee,
         created_by=user.id,
     )
     db.add(tpl)
@@ -371,7 +375,7 @@ async def create_template(
 @router.put("/templates/{template_id}")
 async def update_template(
     template_id: int,
-    body: dict,
+    body: TemplateUpdate,
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_admin),
 ):
@@ -381,9 +385,13 @@ async def update_template(
     if not tpl:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    for field in ("name", "description", "project_type", "is_recurring", "phases", "default_tasks", "pricing_model", "monthly_fee"):
-        if field in body:
-            setattr(tpl, field, body[field])
+    update_data = body.model_dump(exclude_unset=True)
+    if "phases" in update_data and update_data["phases"] is not None:
+        update_data["phases"] = [p.model_dump() if hasattr(p, "model_dump") else p for p in update_data["phases"]]
+    if "default_tasks" in update_data and update_data["default_tasks"] is not None:
+        update_data["default_tasks"] = [t.model_dump() if hasattr(t, "model_dump") else t for t in update_data["default_tasks"]]
+    for field, value in update_data.items():
+        setattr(tpl, field, value)
     await db.commit()
     return {"id": tpl.id, "key": tpl.key, "name": tpl.name}
 
@@ -406,7 +414,7 @@ async def delete_template(
 @router.post("/{project_id}/save-as-template")
 async def save_project_as_template(
     project_id: int,
-    body: dict,
+    body: SaveAsTemplateInput,
     db: AsyncSession = Depends(get_db),
     user=Depends(require_admin),
 ):
@@ -420,8 +428,8 @@ async def save_project_as_template(
         raise HTTPException(status_code=404, detail="Project not found")
 
     import re
-    name = body.get("name", f"Template: {project.name}")
-    key = body.get("key") or re.sub(r"[^a-z0-9_]", "_", name.lower().strip())[:50]
+    name = body.name or f"Template: {project.name}"
+    key = body.key or re.sub(r"[^a-z0-9_]", "_", name.lower().strip())[:50]
 
     # Build phases
     phases = []
@@ -446,7 +454,7 @@ async def save_project_as_template(
     tpl = ProjectTemplateDB(
         key=key,
         name=name,
-        description=body.get("description", f"Based on project: {project.name}"),
+        description=body.description or f"Based on project: {project.name}",
         project_type=project.project_type,
         is_recurring=project.is_recurring,
         phases=phases,
@@ -924,7 +932,7 @@ async def get_project_tasks(
 async def get_billing_summary(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    _user=Depends(require_module("billing")),
 ):
     """Billing summary for per-piece projects."""
     result = await db.execute(
@@ -979,12 +987,12 @@ async def get_billing_summary(
 @router.post("/{project_id}/invoice-tasks")
 async def invoice_tasks(
     project_id: int,
-    body: dict,
+    body: InvoiceTasksInput,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(require_module("billing", write=True)),
 ):
     """Mark selected tasks as invoiced and create an Income record."""
-    task_ids: list[int] = body.get("task_ids", [])
+    task_ids = body.task_ids
     if not task_ids:
         raise HTTPException(400, "No tasks selected")
 
@@ -1036,7 +1044,7 @@ async def invoice_tasks(
 async def mark_project_billed(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(require_module("billing", write=True)),
 ):
     """Mark project as billed for current period. Creates Income record and advances next_billing_date."""
     from datetime import date, timedelta

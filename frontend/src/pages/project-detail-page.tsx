@@ -72,30 +72,34 @@ export default function ProjectDetailPage() {
   const [filterSearch, setFilterSearch] = useState("")
   const navigate = useNavigate()
 
+  const projectId = id ? parseInt(id) : NaN
+  const validId = !isNaN(projectId)
+
   const { data: project, isLoading } = useQuery({
     queryKey: ["project", id],
-    queryFn: () => projectsApi.get(parseInt(id!)),
-    enabled: !!id,
+    queryFn: () => projectsApi.get(projectId),
+    enabled: validId,
   })
 
   const { data: tasksData } = useQuery({
     queryKey: ["project-tasks", id],
-    queryFn: () => projectsApi.tasks(parseInt(id!)),
-    enabled: !!id,
+    queryFn: () => projectsApi.tasks(projectId),
+    enabled: validId,
   })
 
   const { data: burndown } = useQuery({
     queryKey: ["project-burndown", id],
-    queryFn: () => projectsApi.burndown(parseInt(id!)),
-    enabled: !!id,
+    queryFn: () => projectsApi.burndown(projectId),
+    enabled: validId,
   })
 
   const updateStatusMutation = useMutation({
-    mutationFn: (status: string) => projectsApi.update(parseInt(id!), { status }),
+    mutationFn: (status: string) => projectsApi.update(projectId, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["project", id] })
       toast.success("Estado actualizado")
     },
+    onError: () => toast.error("Error al actualizar estado"),
   })
 
   const updatePhaseMutation = useMutation({
@@ -106,6 +110,7 @@ export default function ProjectDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["project-tasks", id] })
       toast.success("Fase actualizada")
     },
+    onError: () => toast.error("Error al actualizar fase"),
   })
 
   const updateTaskMutation = useMutation({
@@ -115,6 +120,7 @@ export default function ProjectDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["project", id] })
       queryClient.invalidateQueries({ queryKey: ["project-tasks", id] })
     },
+    onError: () => toast.error("Error al actualizar tarea"),
   })
 
   const filterTask = (t: Task) => {
@@ -610,7 +616,7 @@ export default function ProjectDetailPage() {
         <AddTaskDialog
           open={showAddTaskDialog !== null}
           onOpenChange={(open) => !open && setShowAddTaskDialog(null)}
-          projectId={parseInt(id!)}
+          projectId={projectId}
           phaseId={showAddTaskDialog}
           clientId={project.client_id}
         />

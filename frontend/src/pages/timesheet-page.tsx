@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, Fragment } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { timeEntriesApi, tasksApi, timerApi } from "@/lib/api"
 import { useAuth } from "@/context/auth-context"
@@ -247,9 +247,6 @@ interface WorkerTabProps {
 function WorkerTab({ weeklyData, weekLoading, assignedTasks }: WorkerTabProps) {
   const [expandedWorkers, setExpandedWorkers] = useState<Set<number>>(new Set())
 
-  if (weekLoading) return <div className="text-sm text-muted-foreground p-4">Cargando...</div>
-  if (!weeklyData?.users.length) return <div className="text-sm text-muted-foreground p-4">Sin datos para esta semana.</div>
-
   // Build a map of task IDs that have time entries this week per user
   const userTasksWithTime = useMemo(() => {
     const map = new Map<number, Set<number>>()
@@ -275,6 +272,9 @@ function WorkerTab({ weeklyData, weekLoading, assignedTasks }: WorkerTabProps) {
     }
     return map
   }, [weeklyData, assignedTasks, userTasksWithTime])
+
+  if (weekLoading) return <div className="text-sm text-muted-foreground p-4">Cargando...</div>
+  if (!weeklyData?.users.length) return <div className="text-sm text-muted-foreground p-4">Sin datos para esta semana.</div>
 
   const toggleWorker = (uid: number) => {
     setExpandedWorkers((prev) => {
@@ -769,9 +769,8 @@ export default function TimesheetPage() {
                     const isExpanded = expandedUsers.has(u.user_id)
                     const hasTasks = u.tasks && u.tasks.length > 0
                     return (
-                      <>{/* User summary row */}
+                      <Fragment key={u.user_id}>{/* User summary row */}
                         <TableRow
-                          key={u.user_id}
                           className={hasTasks ? "cursor-pointer hover:bg-muted/50" : ""}
                           onClick={() => hasTasks && toggleUser(u.user_id)}
                         >
@@ -800,7 +799,7 @@ export default function TimesheetPage() {
                             <TableCell className="text-right mono text-sm">{fmtMin(t.total_minutes)}</TableCell>
                           </TableRow>
                         ))}
-                      </>
+                      </Fragment>
                     )
                   })}
                   {weeklyData.users.length > 1 && (

@@ -21,7 +21,7 @@ from backend.db.models import (
 from backend.api.deps import get_current_user, require_module, require_admin
 from backend.schemas.proposal import (
     ProposalCreate, ProposalUpdate, ProposalResponse,
-    ProposalStatusUpdate,
+    ProposalStatusUpdate, InvestmentModelInput,
 )
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 from backend.core.rate_limiter import ai_limiter
@@ -740,7 +740,7 @@ PDF_HTML_TEMPLATE = """
 @router.post("/{proposal_id}/save-investment", response_model=ProposalResponse)
 async def save_investment_model(
     proposal_id: int,
-    body: dict,
+    body: InvestmentModelInput,
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("proposals")),
 ):
@@ -751,7 +751,7 @@ async def save_investment_model(
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
 
     content = prop.generated_content or {}
-    content["investment_model"] = body
+    content["investment_model"] = body.model_dump()
     prop.generated_content = content
     flag_modified(prop, "generated_content")
     await db.commit()
