@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import User
-from backend.core.security import verify_password, hash_password, create_access_token, create_csrf_token
+from backend.core.security import verify_password, hash_password, create_access_token, create_csrf_token, decode_access_token
 from backend.core.rate_limiter import login_limiter
+from backend.core.token_blacklist import token_blacklist
 from backend.schemas.auth import ChangePassword, LoginRequest, TokenResponse, UserResponse
 from backend.api.deps import get_current_user
 from backend.config import settings
@@ -87,6 +88,16 @@ async def change_password(
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(response: Response, _current_user: User = Depends(get_current_user)):
+async def logout(request: Request, response: Response, _current_user: User = Depends(get_current_user)):
+    # Extract and blacklist the current token
+    token = request.cookies.get(settings.AUTH_COOKIE_NAME)
+    if not token:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+    if token:
+        payload = decode_access_token(token)
+        if payload and payload.get("jti") and payload.get("exp"):
+            token_blacklist.add(payload["jti"], payload["exp"])
     _clear_auth_cookies(response)
     return None

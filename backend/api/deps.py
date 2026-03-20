@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.core.security import decode_access_token
+from backend.core.token_blacklist import token_blacklist
 from backend.config import settings
 from backend.db.database import get_db
 from backend.db.models import User, UserRole, Client, UserPermission
@@ -31,6 +32,9 @@ async def get_current_user(
     payload = decode_access_token(token)
     if payload is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    jti = payload.get("jti")
+    if jti and token_blacklist.is_blacklisted(jti):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked")
     user_id = payload.get("sub")
     if user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")

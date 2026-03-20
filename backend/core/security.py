@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import secrets
@@ -49,7 +50,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "jti": uuid.uuid4().hex})
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
