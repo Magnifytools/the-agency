@@ -309,7 +309,11 @@ async def export_time_entries_csv(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("timesheet")),
 ):
-    query = select(TimeEntry).where(TimeEntry.minutes.isnot(None))
+    query = select(TimeEntry).options(
+        selectinload(TimeEntry.user),
+        selectinload(TimeEntry.task).selectinload(Task.client),
+        selectinload(TimeEntry.task).selectinload(Task.project),
+    ).where(TimeEntry.minutes.isnot(None))
     # Members can only export their own entries
     if current_user.role != UserRole.admin:
         query = query.where(TimeEntry.user_id == current_user.id)
@@ -725,7 +729,9 @@ async def get_active_timer(
     current_user: User = Depends(require_module("timesheet")),
 ):
     result = await db.execute(
-        select(TimeEntry).where(
+        select(TimeEntry)
+        .options(selectinload(TimeEntry.task).selectinload(Task.client))
+        .where(
             and_(TimeEntry.user_id == current_user.id, TimeEntry.minutes.is_(None))
         )
     )
@@ -733,16 +739,12 @@ async def get_active_timer(
     if entry is None:
         return None
     sa = entry.started_at.replace(tzinfo=timezone.utc) if entry.started_at and entry.started_at.tzinfo is None else entry.started_at
-    # Safe relationship access — avoid 500 if relations fail to load
     task_title = entry.notes
     client_name = None
-    try:
-        if entry.task:
-            task_title = entry.task.title
-            if entry.task.client:
-                client_name = entry.task.client.name
-    except Exception as e:
-        logger.debug("Failed to load task/client relationships for active timer: %s", e)
+    if entry.task:
+        task_title = entry.task.title
+        if entry.task.client:
+            client_name = entry.task.client.name
     return ActiveTimerResponse(
         id=entry.id,
         task_id=entry.task_id,

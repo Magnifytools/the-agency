@@ -178,7 +178,7 @@ async def get_profitability(
         select(
             Task.client_id,
             func.coalesce(func.sum(TimeEntry.minutes), 0).label("actual_minutes"),
-            func.coalesce(func.sum(TimeEntry.minutes * User.hourly_rate / 60), 0).label("cost"),
+            func.coalesce(func.sum(TimeEntry.minutes * func.coalesce(User.hourly_rate, settings.DEFAULT_HOURLY_RATE) / 60), 0).label("cost"),
         )
         .select_from(TimeEntry)
         .join(Task, TimeEntry.task_id == Task.id)
@@ -845,20 +845,26 @@ async def alerts_summary(
     if today.weekday() >= 2:
         week_start = today - timedelta(days=today.weekday())
         active_clients = await db.execute(
-            select(Client).where(Client.status == ClientStatus.active)
+            select(Client.id, Client.name).where(Client.status == ClientStatus.active)
         )
-        no_hours_clients: list[str] = []
-        for client in active_clients.scalars().all():
-            hrs = await db.execute(
-                select(func.coalesce(func.sum(TimeEntry.minutes), 0))
-                .join(Task, TimeEntry.task_id == Task.id)
-                .where(
-                    Task.client_id == client.id,
-                    func.date(TimeEntry.date) >= week_start,
-                )
+        all_active = active_clients.all()
+        active_ids = [r.id for r in all_active]
+        # Batch: find clients WITH hours this week
+        clients_with_hours_result = await db.execute(
+            select(Task.client_id)
+            .join(TimeEntry, TimeEntry.task_id == Task.id)
+            .where(
+                Task.client_id.in_(active_ids),
+                func.date(TimeEntry.date) >= week_start,
+                TimeEntry.minutes.isnot(None),
             )
-            if (hrs.scalar() or 0) == 0:
-                no_hours_clients.append(client.name)
+            .group_by(Task.client_id)
+            .having(func.sum(TimeEntry.minutes) > 0)
+        )
+        clients_with_hours = {r[0] for r in clients_with_hours_result.all()}
+        no_hours_clients: list[str] = [
+            r.name for r in all_active if r.id not in clients_with_hours
+        ]
         if no_hours_clients:
             alerts.append({
                 "type": "clients_no_hours",
@@ -880,12 +886,13 @@ async def alerts_summary(
             Task.estimated_minutes.isnot(None),
         ).group_by(Task.assigned_to)
     )
+    overloaded_rows = [row for row in overloaded.all() if row.total and row.total > 1200]
     overloaded_names: list[str] = []
-    for row in overloaded.all():
-        if row.total and row.total > 1200:
-            u_res = await db.execute(select(User.full_name).where(User.id == row.assigned_to))
-            name = u_res.scalar() or f"#{row.assigned_to}"
-            overloaded_names.append(name)
+    if overloaded_rows:
+        overloaded_user_ids = [row.assigned_to for row in overloaded_rows]
+        u_res = await db.execute(select(User.id, User.full_name).where(User.id.in_(overloaded_user_ids)))
+        user_name_map = {uid: name for uid, name in u_res.all()}
+        overloaded_names = [user_name_map.get(row.assigned_to, f"#{row.assigned_to}") for row in overloaded_rows]
     if overloaded_names:
         alerts.append({
             "type": "capacity_overload",

@@ -365,7 +365,14 @@ async def hard_delete_client(
 
     # Step 4: Delete the client
     await db.delete(client)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="No se puede eliminar: el cliente tiene registros asociados que no se pudieron borrar",
+        )
 
 
 @router.delete("/{client_id}", response_model=ClientResponse)

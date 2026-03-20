@@ -942,7 +942,7 @@ async def get_billing_summary(
     if not project:
         raise HTTPException(404, "Project not found")
 
-    unit_price = float(project.unit_price) if project.unit_price else 0
+    unit_price = float(project.unit_price or 0)
 
     result = await db.execute(
         select(Task).where(Task.project_id == project_id)
@@ -1003,7 +1003,7 @@ async def invoice_tasks(
     if not project:
         raise HTTPException(404, "Project not found")
 
-    unit_price = float(project.unit_price) if project.unit_price else 0
+    unit_price = float(project.unit_price or 0)
 
     result = await db.execute(
         select(Task).where(Task.id.in_(task_ids), Task.project_id == project_id)
