@@ -678,6 +678,10 @@ function EditProjectDialog({
     description: project.description || "",
     start_date: project.start_date?.split("T")[0] || "",
     target_end_date: project.target_end_date?.split("T")[0] || "",
+    is_ongoing: !project.target_end_date,
+    pricing_model: project.pricing_model || "",
+    unit_price: project.unit_price?.toString() || "",
+    unit_label: project.unit_label || "",
     budget_hours: project.budget_hours?.toString() || "",
     budget_amount: project.budget_amount?.toString() || "",
     monthly_fee: project.monthly_fee?.toString() || "",
@@ -694,7 +698,10 @@ function EditProjectDialog({
         name: formData.name,
         description: formData.description || undefined,
         start_date: formData.start_date || undefined,
-        target_end_date: formData.target_end_date || undefined,
+        target_end_date: formData.is_ongoing ? null : (formData.target_end_date || undefined),
+        pricing_model: formData.pricing_model || null,
+        unit_price: formData.unit_price ? parseFloat(formData.unit_price) : null,
+        unit_label: formData.unit_label || null,
         budget_hours: formData.budget_hours ? parseFloat(formData.budget_hours) : undefined,
         budget_amount: formData.budget_amount ? parseFloat(formData.budget_amount) : undefined,
         monthly_fee: formData.monthly_fee ? parseFloat(formData.monthly_fee) : undefined,
@@ -749,15 +756,52 @@ function EditProjectDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label>Fecha objetivo</Label>
-            <Input
-              type="date"
-              value={formData.target_end_date}
-              onChange={(e) => setFormData({ ...formData, target_end_date: e.target.value })}
-            />
+            <Label>Fecha fin</Label>
+            {formData.is_ongoing ? (
+              <div className="flex items-center gap-2 h-10">
+                <span className="text-sm text-green-400 font-medium">En curso</span>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground underline"
+                  onClick={() => setFormData({ ...formData, is_ongoing: false })}
+                >
+                  Poner fecha fin
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  value={formData.target_end_date}
+                  onChange={(e) => setFormData({ ...formData, target_end_date: e.target.value })}
+                  className="flex-1"
+                />
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground underline whitespace-nowrap"
+                  onClick={() => setFormData({ ...formData, is_ongoing: true, target_end_date: "" })}
+                >
+                  En curso
+                </button>
+              </div>
+            )}
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Modelo de precio</Label>
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={formData.pricing_model}
+              onChange={(e) => setFormData({ ...formData, pricing_model: e.target.value })}
+            >
+              <option value="">Sin definir</option>
+              <option value="monthly">Mensual fijo</option>
+              <option value="per_piece">Por pieza/unidad</option>
+              <option value="hourly">Por hora</option>
+              <option value="project">Precio cerrado</option>
+            </select>
+          </div>
           <div className="space-y-2">
             <Label>Fee mensual (EUR)</Label>
             <Input
@@ -765,9 +809,33 @@ function EditProjectDialog({
               step="0.01"
               value={formData.monthly_fee}
               onChange={(e) => setFormData({ ...formData, monthly_fee: e.target.value })}
-              placeholder="Retainer"
+              placeholder="Retainer mensual"
             />
           </div>
+        </div>
+        {(formData.pricing_model === "per_piece" || formData.pricing_model === "hourly") && (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>{formData.pricing_model === "hourly" ? "Tarifa/hora (EUR)" : "Precio por unidad (EUR)"}</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={formData.unit_price}
+                onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })}
+                placeholder={formData.pricing_model === "hourly" ? "50" : "200"}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Unidad</Label>
+              <Input
+                value={formData.unit_label}
+                onChange={(e) => setFormData({ ...formData, unit_label: e.target.value })}
+                placeholder={formData.pricing_model === "hourly" ? "hora" : "briefing, pieza, articulo..."}
+              />
+            </div>
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Presupuesto horas</Label>
             <Input
@@ -777,7 +845,7 @@ function EditProjectDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label>Presupuesto €</Label>
+            <Label>Presupuesto total (EUR)</Label>
             <Input
               type="number"
               value={formData.budget_amount}
