@@ -61,7 +61,17 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
       setSaveStatus("saved")
       setTimeout(() => setSaveStatus("idle"), 2000)
     },
+    onError: () => {
+      setSaveStatus("idle")
+    },
   })
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    }
+  }, [])
 
   const handleContextChange = (v: string) => {
     setContextValue(v)

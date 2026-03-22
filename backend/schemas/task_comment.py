@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 
 class TaskCommentCreate(BaseModel):
-    text: str = Field(..., min_length=1, max_length=5000)
+    text: str = Field(..., min_length=1, max_length=2000)
 
 
 class TaskCommentResponse(BaseModel):

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import date
 from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field
@@ -39,7 +40,7 @@ class UserResponse(BaseModel):
     region: Optional[str] = None
     locality: Optional[str] = None
     short_name: Optional[str] = None
-    birthday: Optional[str] = None
+    birthday: Optional[date] = None
     job_title: Optional[str] = None
     morning_reminder_time: Optional[str] = None
     evening_reminder_time: Optional[str] = None

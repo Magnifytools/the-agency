@@ -10,6 +10,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 from jinja2 import Environment, BaseLoader
 
@@ -97,6 +98,11 @@ async def list_proposals(
         query = query.where(Proposal.client_id == client_id)
     if service_type:
         query = query.where(Proposal.service_type == service_type)
+    query = query.options(
+        selectinload(Proposal.client),
+        selectinload(Proposal.lead),
+        selectinload(Proposal.created_by_user),
+    )
     query = query.order_by(Proposal.created_at.desc()).limit(limit).offset(offset)
 
     result = await db.execute(query)
@@ -131,7 +137,15 @@ async def create_proposal(
     await safe_refresh(db, new_prop, log_context="proposals")
 
     # Reload with relations
-    result = await db.execute(select(Proposal).where(Proposal.id == new_prop.id))
+    result = await db.execute(
+        select(Proposal)
+        .where(Proposal.id == new_prop.id)
+        .options(
+            selectinload(Proposal.client),
+            selectinload(Proposal.lead),
+            selectinload(Proposal.created_by_user),
+        )
+    )
     return _to_response(result.scalar_one())
 
 
@@ -141,7 +155,15 @@ async def get_proposal(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("proposals")),
 ):
-    result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
+    result = await db.execute(
+        select(Proposal)
+        .where(Proposal.id == proposal_id)
+        .options(
+            selectinload(Proposal.client),
+            selectinload(Proposal.lead),
+            selectinload(Proposal.created_by_user),
+        )
+    )
     prop = result.scalar_one_or_none()
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
@@ -187,7 +209,10 @@ async def update_proposal(
     await db.commit()
     await safe_refresh(db, prop, log_context="proposals")
 
-    result = await db.execute(select(Proposal).where(Proposal.id == prop.id))
+    result = await db.execute(
+        select(Proposal).where(Proposal.id == prop.id)
+        .options(selectinload(Proposal.client), selectinload(Proposal.lead), selectinload(Proposal.created_by_user))
+    )
     return _to_response(result.scalar_one())
 
 
@@ -235,7 +260,10 @@ async def change_proposal_status(
     await db.commit()
     await safe_refresh(db, prop, log_context="proposals")
 
-    result = await db.execute(select(Proposal).where(Proposal.id == prop.id))
+    result = await db.execute(
+        select(Proposal).where(Proposal.id == prop.id)
+        .options(selectinload(Proposal.client), selectinload(Proposal.lead), selectinload(Proposal.created_by_user))
+    )
     return _to_response(result.scalar_one())
 
 
@@ -280,7 +308,10 @@ async def duplicate_proposal(
     await db.commit()
     await safe_refresh(db, new_prop, log_context="proposals")
 
-    result = await db.execute(select(Proposal).where(Proposal.id == new_prop.id))
+    result = await db.execute(
+        select(Proposal).where(Proposal.id == new_prop.id)
+        .options(selectinload(Proposal.client), selectinload(Proposal.lead), selectinload(Proposal.created_by_user))
+    )
     return _to_response(result.scalar_one())
 
 
@@ -361,7 +392,10 @@ async def convert_proposal(
     await db.commit()
     await safe_refresh(db, prop, log_context="proposals")
 
-    result = await db.execute(select(Proposal).where(Proposal.id == prop.id))
+    result = await db.execute(
+        select(Proposal).where(Proposal.id == prop.id)
+        .options(selectinload(Proposal.client), selectinload(Proposal.lead), selectinload(Proposal.created_by_user))
+    )
     return _to_response(result.scalar_one())
 
 
@@ -504,7 +538,10 @@ Responde SOLO con el JSON, sin markdown ni texto adicional."""
     await db.commit()
     await safe_refresh(db, prop, log_context="proposals")
 
-    result = await db.execute(select(Proposal).where(Proposal.id == prop.id))
+    result = await db.execute(
+        select(Proposal).where(Proposal.id == prop.id)
+        .options(selectinload(Proposal.client), selectinload(Proposal.lead), selectinload(Proposal.created_by_user))
+    )
     return _to_response(result.scalar_one())
 
 
@@ -745,7 +782,10 @@ async def save_investment_model(
     _user: User = Depends(require_module("proposals")),
 ):
     """Save calculated investment model to proposal's generated_content."""
-    result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
+    result = await db.execute(
+        select(Proposal).where(Proposal.id == proposal_id)
+        .options(selectinload(Proposal.client), selectinload(Proposal.lead), selectinload(Proposal.created_by_user))
+    )
     prop = result.scalar_one_or_none()
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")

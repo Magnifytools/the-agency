@@ -490,7 +490,7 @@ async def get_daily_briefing(db: AsyncSession, user_id: Optional[int] = None) ->
     """
     Generate a daily briefing summary.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()  # naive UTC — matches DB DateTime columns (no tz)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = today_start + timedelta(days=1)
 

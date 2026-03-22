@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, and_, or_, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.config import settings
 from backend.db.database import get_db
@@ -702,10 +703,11 @@ async def get_today(
 
     query = (
         select(Task)
+        .options(selectinload(Task.assigned_user), selectinload(Task.client))
         .where(Task.scheduled_date == today)
         .where(Task.status != TaskStatus.completed)
     )
-    if current_user.role != "admin":
+    if current_user.role != UserRole.admin:
         query = query.where(Task.assigned_to == current_user.id)
 
     result = await db.execute(query.order_by(Task.priority.asc()))

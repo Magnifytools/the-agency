@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date as date_type
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,7 +73,7 @@ async def create_user(
 
     # Auto-grant default module permissions for non-admin users
     if user.role != UserRole.admin:
-        default_modules = ["dashboard", "clients", "tasks", "projects", "timesheet", "pm", "digests"]
+        default_modules = ["dashboard", "clients", "tasks", "projects", "timesheet", "pm"]
         for mod in default_modules:
             db.add(UserPermission(user_id=user.id, module=mod, can_read=True, can_write=True))
 
@@ -116,10 +117,13 @@ async def update_user(
     data = body.model_dump(exclude_unset=True)
     allowed = _ADMIN_UPDATABLE if current_user.role == UserRole.admin else _MEMBER_UPDATABLE
 
-    # Coerce empty strings to None for date/nullable fields
+    # Coerce empty strings to None for date/nullable fields, and convert date strings to date objects
     for key in ("birthday",):
-        if key in data and data[key] == "":
-            data[key] = None
+        if key in data:
+            if data[key] == "" or data[key] is None:
+                data[key] = None
+            elif isinstance(data[key], str):
+                data[key] = date_type.fromisoformat(data[key])
 
     for field, value in data.items():
         if field not in allowed:
@@ -187,7 +191,7 @@ async def sync_default_permissions_all_users(
     Useful when new modules are added — adds missing permissions without
     removing existing ones.
     """
-    default_modules = ["dashboard", "clients", "tasks", "projects", "timesheet", "pm", "digests"]
+    default_modules = ["dashboard", "clients", "tasks", "projects", "timesheet", "pm"]
 
     users_result = await db.execute(
         select(User).where(User.role != UserRole.admin)

@@ -147,6 +147,7 @@ async def get_my_week(
             Event.start_time >= week_start_dt,
             Event.start_time <= week_end_dt,
         )
+        .options(selectinload(Event.client))
         .order_by(Event.start_time.asc())
     )
     event_result = await db.execute(event_q)
@@ -351,6 +352,13 @@ async def create_event(
     await db.commit()
     await safe_refresh(db, event, log_context="my_week")
 
+    # Reload with client relationship
+    ev_result = await db.execute(
+        select(Event).where(Event.id == event.id)
+        .options(selectinload(Event.client))
+    )
+    event = ev_result.scalar_one()
+
     return EventResponse(
         id=event.id,
         title=event.title,
@@ -375,7 +383,7 @@ async def update_event(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    q = select(Event).where(Event.id == event_id, Event.user_id == user.id)
+    q = select(Event).where(Event.id == event_id, Event.user_id == user.id).options(selectinload(Event.client))
     result = await db.execute(q)
     event = result.scalar_one_or_none()
     if not event:

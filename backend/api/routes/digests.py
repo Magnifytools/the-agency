@@ -20,6 +20,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
 from backend.db.models import (
@@ -158,7 +159,12 @@ async def generate_digest(
     await safe_refresh(db, digest, log_context="digests")
 
     log_audit(current_user.id, "generate", "digest", digest.id, details=f"client_id={request.client_id}")
-    return _to_response(digest)
+    # Reload with relationships for response
+    result = await db.execute(
+        select(WeeklyDigest).where(WeeklyDigest.id == digest.id)
+        .options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
+    )
+    return _to_response(result.scalar_one())
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +275,14 @@ async def generate_batch(
             logger.debug("Notification for batch digest generation failed (never break digest generation): %s", e)
             pass  # Notification failure should never break digest generation
 
+    # Reload with relationships for response
+    if digests:
+        digest_ids = [d.id for d in digests]
+        reload_result = await db.execute(
+            select(WeeklyDigest).where(WeeklyDigest.id.in_(digest_ids))
+            .options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
+        )
+        digests = reload_result.scalars().all()
     return [_to_response(d) for d in digests]
 
 
@@ -296,6 +310,7 @@ async def list_digests(
     if current_user.role != UserRole.admin:
         query = query.where(WeeklyDigest.created_by == current_user.id)
 
+    query = query.options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
     query = query.order_by(WeeklyDigest.created_at.desc()).limit(limit).offset(offset)
     result = await db.execute(query)
 
@@ -313,7 +328,11 @@ async def get_digest(
     current_user: User = Depends(require_module("digests")),
 ):
     """Get a specific digest by ID."""
-    result = await db.execute(select(WeeklyDigest).where(WeeklyDigest.id == digest_id))
+    result = await db.execute(
+        select(WeeklyDigest)
+        .where(WeeklyDigest.id == digest_id)
+        .options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
+    )
     digest = result.scalar_one_or_none()
 
     if not digest:
@@ -340,7 +359,10 @@ async def update_digest(
     If only the tone changes (no content update), auto-regenerate
     the digest content using the new tone and the stored raw_context.
     """
-    result = await db.execute(select(WeeklyDigest).where(WeeklyDigest.id == digest_id))
+    result = await db.execute(
+        select(WeeklyDigest).where(WeeklyDigest.id == digest_id)
+        .options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
+    )
     digest = result.scalar_one_or_none()
 
     if not digest:
@@ -396,7 +418,10 @@ async def update_digest_status(
     current_user: User = Depends(require_module("digests", write=True)),
 ):
     """Update a digest's status (draft → reviewed → sent)."""
-    result = await db.execute(select(WeeklyDigest).where(WeeklyDigest.id == digest_id))
+    result = await db.execute(
+        select(WeeklyDigest).where(WeeklyDigest.id == digest_id)
+        .options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
+    )
     digest = result.scalar_one_or_none()
 
     if not digest:

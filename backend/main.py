@@ -1437,6 +1437,9 @@ app.add_middleware(HttpsRedirectMiddleware)
 
 # Global error handler — structured JSON for all unhandled exceptions
 from backend.api.middleware.error_handler import unhandled_exception_handler
+from sqlalchemy.exc import DataError, IntegrityError
+app.add_exception_handler(DataError, unhandled_exception_handler)
+app.add_exception_handler(IntegrityError, unhandled_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
 
 app.include_router(auth.router)

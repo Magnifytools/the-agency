@@ -188,7 +188,14 @@ async def share_briefing_to_discord(
     # Resolve webhook URL: DB settings first, then env var fallback
     ds_result = await db.execute(select(DiscordSettings).limit(1))
     ds = ds_result.scalar_one_or_none()
-    webhook_url = (ds.webhook_url if ds else None) or settings.DISCORD_WEBHOOK_URL
+    from backend.core.security import decrypt_vault_secret
+    raw_url = ds.webhook_url if ds else None
+    if raw_url and raw_url.startswith("v1:"):
+        try:
+            raw_url = decrypt_vault_secret(raw_url)
+        except Exception:
+            raw_url = None
+    webhook_url = raw_url or settings.DISCORD_WEBHOOK_URL
 
     if not webhook_url:
         raise HTTPException(

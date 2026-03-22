@@ -7,7 +7,7 @@ from backend.db.models import TaskStatus, TaskPriority
 
 
 class TaskCreate(BaseModel):
-    title: str = Field(..., min_length=1, max_length=500)
+    title: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     status: TaskStatus = TaskStatus.pending
     priority: TaskPriority = TaskPriority.medium
@@ -33,7 +33,7 @@ class TaskCreate(BaseModel):
 
 
 class TaskUpdate(BaseModel):
-    title: Optional[str] = Field(None, max_length=500)
+    title: Optional[str] = Field(None, max_length=255)
     description: Optional[str] = None
     status: Optional[TaskStatus] = None
     priority: Optional[TaskPriority] = None

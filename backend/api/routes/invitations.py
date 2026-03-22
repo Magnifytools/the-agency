@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
 from backend.db.models import User, UserRole, UserInvitation, UserPermission
@@ -61,7 +62,9 @@ async def list_invitations(
 ):
     """List all invitations (admin only)."""
     result = await db.execute(
-        select(UserInvitation).order_by(UserInvitation.created_at.desc())
+        select(UserInvitation)
+        .options(selectinload(UserInvitation.inviter))
+        .order_by(UserInvitation.created_at.desc())
     )
     return [_inv_response(i) for i in result.scalars().all()]
 
@@ -101,7 +104,12 @@ async def create_invitation(
     await safe_refresh(db, invitation, log_context="invitations")
 
     log_audit(current_user.id, "invite", "user", invitation.id, details=f"email={body.email} role={body.role.value}")
-    return _inv_create_response(invitation)
+    # Reload with relationships for response
+    result = await db.execute(
+        select(UserInvitation).where(UserInvitation.id == invitation.id)
+        .options(selectinload(UserInvitation.inviter))
+    )
+    return _inv_create_response(result.scalar_one())
 
 
 @router.post("/invitations/accept", response_model=UserResponse)

@@ -70,14 +70,14 @@ async def tax_summary(
 ):
     r = await db.execute(select(Tax).where(Tax.year == year))
     taxes = r.scalars().all()
-    total_pending = sum(t.tax_amount for t in taxes if t.status == "pendiente")
-    total_paid = sum(t.tax_amount for t in taxes if t.status == "pagado")
+    total_pending = sum((t.tax_amount or 0) for t in taxes if t.status == "pendiente")
+    total_paid = sum((t.tax_amount or 0) for t in taxes if t.status == "pagado")
     by_model: dict = {}
     for t in taxes:
         if t.model not in by_model:
             by_model[t.model] = {"total": 0, "pendiente": 0, "pagado": 0}
-        by_model[t.model]["total"] += t.tax_amount
-        by_model[t.model][t.status] = by_model[t.model].get(t.status, 0) + t.tax_amount
+        by_model[t.model]["total"] += (t.tax_amount or 0)
+        by_model[t.model][t.status] = by_model[t.model].get(t.status, 0) + (t.tax_amount or 0)
     return {
         "year": year,
         "total_pending": round(total_pending, 2),

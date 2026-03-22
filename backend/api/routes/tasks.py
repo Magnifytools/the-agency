@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select, func
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -229,6 +229,10 @@ async def create_task(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conflicto al crear tarea (datos duplicados o referencia inválida)")
+    except DataError as e:
+        await db.rollback()
+        logger.warning("DataError creando tarea: %s", e)
+        raise HTTPException(status_code=422, detail="Datos inválidos: uno o más campos exceden la longitud máxima")
     except Exception as e:
         await db.rollback()
         logger.error("Error creando tarea: %s", e)
@@ -352,6 +356,10 @@ async def update_task(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conflicto al actualizar tarea")
+    except DataError as e:
+        await db.rollback()
+        logger.warning("DataError actualizando tarea %d: %s", task_id, e)
+        raise HTTPException(status_code=422, detail="Datos inválidos: uno o más campos exceden la longitud máxima")
     except Exception as e:
         await db.rollback()
         logger.error("Error actualizando tarea %d: %s", task_id, e)

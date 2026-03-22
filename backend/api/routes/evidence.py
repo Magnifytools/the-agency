@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, Upl
 import logging
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, noload, selectinload
 
@@ -159,6 +159,9 @@ async def create_evidence(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=400, detail="Referencia inválida (fase o proyecto inexistente)")
+    except DataError as e:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail="Datos inválidos: campo excede longitud máxima")
     except Exception as e:
         await db.rollback()
         logger.error("Error creating evidence: %s", e)
@@ -206,6 +209,9 @@ async def upload_evidence(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=400, detail="Referencia inválida (fase o proyecto inexistente)")
+    except DataError as e:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail="Datos inválidos: campo excede longitud máxima")
     except Exception as e:
         await db.rollback()
         logger.error("Error uploading evidence: %s", e)

@@ -26,7 +26,10 @@ logger = logging.getLogger(__name__)
 
 
 def _to_response(report: GeneratedReport) -> ReportResponse:
-    content = json.loads(report.content)
+    try:
+        content = json.loads(report.content) if report.content else {}
+    except (json.JSONDecodeError, TypeError):
+        content = {}
     return ReportResponse(
         id=report.id,
         type=report.report_type.value,

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from pydantic import BaseModel
 from fastapi.responses import Response
 from sqlalchemy import select, func, delete, update, or_
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
@@ -199,6 +199,9 @@ async def create_client(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ya existe un cliente con esos datos")
+    except DataError as e:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail="Datos inválidos: campo excede longitud máxima")
     except Exception as e:
         await db.rollback()
         logger.error("Error creando cliente: %s", e)
@@ -286,6 +289,9 @@ async def update_client(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conflicto al actualizar cliente")
+    except DataError as e:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail="Datos inválidos: campo excede longitud máxima")
     except Exception as e:
         await db.rollback()
         logger.error("Error actualizando cliente %d: %s", client_id, e)

@@ -175,7 +175,9 @@ api.interceptors.response.use(
           requestUrl.includes("/auth/me") ||
           requestUrl.includes("/auth/logout")
         if (!isAuthRequest) {
-          window.location.href = "/login"
+          // Signal AuthContext to clear user — ProtectedRoute handles redirect
+          localStorage.removeItem("token")
+          window.dispatchEvent(new Event("auth:expired"))
         }
       } else if (status === 403) {
         // GET 403: silencioso — PermissionRoute ya redirige antes de que llegue aquí

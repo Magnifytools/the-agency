@@ -113,14 +113,14 @@ async def get_client_activity(
         "other": "Otro",
     }
     for c in comms:
-        direction_label = "entrante" if c.direction.value == "inbound" else "saliente"
+        direction_label = "entrante" if (c.direction and c.direction.value == "inbound") else "saliente"
         events.append({
             "id": f"comm-{c.id}",
             "type": "communication",
-            "subtype": c.channel.value,
+            "subtype": c.channel.value if c.channel else "other",
             "timestamp": c.occurred_at.isoformat(),
-            "title": f"{channel_labels.get(c.channel.value, c.channel.value)} {direction_label}",
-            "description": c.subject or c.summary[:120],
+            "title": f"{channel_labels.get(c.channel.value if c.channel else 'other', 'Otro')} {direction_label}",
+            "description": c.subject or (c.summary[:120] if c.summary else ""),
             "detail": c.summary,
             "user_name": _user_name(users_map.get(c.user_id)),
             "contact_name": c.contact_name,

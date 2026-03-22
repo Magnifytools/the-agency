@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func as sa_func, case
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
 from backend.db.models import (
@@ -147,7 +148,7 @@ async def lead_reminders(
     today = date.today()
     threshold = today + timedelta(days=3)
 
-    query = select(Lead).where(
+    query = select(Lead).options(selectinload(Lead.assigned_user)).where(
         Lead.next_followup_date <= threshold,
         Lead.status.notin_([LeadStatus.won, LeadStatus.lost]),
     )
@@ -185,7 +186,7 @@ async def list_leads(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("leads")),
 ):
-    query = select(Lead)
+    query = select(Lead).options(selectinload(Lead.assigned_user))
     # IDOR: workers only see their assigned leads
     if current_user.role != UserRole.admin:
         query = query.where(Lead.assigned_to == current_user.id)
@@ -234,7 +235,12 @@ async def create_lead(
     db.add(lead)
     await db.commit()
     await safe_refresh(db, lead, log_context="leads")
-    return _lead_to_response(lead)
+    # Reload with relationship for response
+    lead_result = await db.execute(
+        select(Lead).where(Lead.id == lead.id)
+        .options(selectinload(Lead.assigned_user))
+    )
+    return _lead_to_response(lead_result.scalar_one())
 
 
 @router.get("/{lead_id}", response_model=LeadDetailResponse)
@@ -243,7 +249,14 @@ async def get_lead(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("leads")),
 ):
-    result = await db.execute(select(Lead).where(Lead.id == lead_id))
+    result = await db.execute(
+        select(Lead)
+        .where(Lead.id == lead_id)
+        .options(
+            selectinload(Lead.assigned_user),
+            selectinload(Lead.activities).selectinload(LeadActivity.user),
+        )
+    )
     lead = result.scalar_one_or_none()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
@@ -300,7 +313,12 @@ async def update_lead(
 
     await db.commit()
     await safe_refresh(db, lead, log_context="leads")
-    return _lead_to_response(lead)
+    # Reload with relationship for response
+    lead_result = await db.execute(
+        select(Lead).where(Lead.id == lead.id)
+        .options(selectinload(Lead.assigned_user))
+    )
+    return _lead_to_response(lead_result.scalar_one())
 
 
 @router.delete("/{lead_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -362,7 +380,12 @@ async def add_activity(
 
     await db.commit()
     await safe_refresh(db, activity, log_context="leads")
-    return _activity_to_response(activity)
+    # Reload with user relationship for response
+    act_result = await db.execute(
+        select(LeadActivity).where(LeadActivity.id == activity.id)
+        .options(selectinload(LeadActivity.user))
+    )
+    return _activity_to_response(act_result.scalar_one())
 
 
 # --- Convert to Client ---

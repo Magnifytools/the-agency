@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
@@ -101,7 +102,7 @@ class NewsSourceResponse(BaseModel):
     name: str
     url: str
     category: str | None = None
-    created_at: str | None = None
+    created_at: datetime | None = None
     model_config = {"from_attributes": True}
 
 
@@ -127,6 +128,9 @@ async def create_source(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Ya existe una fuente con ese nombre o URL")
+    except DataError as e:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail="Datos inválidos: campo excede longitud máxima")
     except Exception as e:
         await db.rollback()
         logger.error("Error creating news source: %s", e)

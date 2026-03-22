@@ -25,6 +25,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(setUser)
       .catch(() => setUser(null))
       .finally(() => setIsLoading(false))
+
+    // Listen for 401 from API interceptor — clear user so ProtectedRoute redirects
+    const onExpired = () => setUser(null)
+    window.addEventListener("auth:expired", onExpired)
+    return () => window.removeEventListener("auth:expired", onExpired)
   }, [])
 
   const login = async (email: string, password: string) => {
