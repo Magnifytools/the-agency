@@ -24,26 +24,26 @@ import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
 import { SkeletonTableRow } from "@/components/ui/skeleton"
 
-const ALL_MODULES: { key: string; label: string; group: string }[] = [
-  { key: "dashboard", label: "Dashboard", group: "General" },
-  { key: "clients", label: "Clientes", group: "General" },
-  { key: "projects", label: "Proyectos", group: "General" },
-  { key: "tasks", label: "Tareas", group: "General" },
-  { key: "timesheet", label: "Timesheet", group: "General" },
-  { key: "pm", label: "PM", group: "General" },
-  { key: "digests", label: "Digests", group: "General" },
-  { key: "billing", label: "Facturación", group: "General" },
-  { key: "communications", label: "Comunicaciones", group: "General" },
-  { key: "growth", label: "Pipeline + Buffer", group: "Crecimiento" },
-  { key: "proposals", label: "Presupuestos", group: "Crecimiento" },
-  { key: "reports", label: "Informes", group: "Crecimiento" },
-  { key: "finance_dashboard", label: "Dashboard Financiero", group: "Finanzas" },
-  { key: "finance_income", label: "Ingresos", group: "Finanzas" },
-  { key: "finance_expenses", label: "Gastos", group: "Finanzas" },
-  { key: "finance_taxes", label: "Impuestos", group: "Finanzas" },
-  { key: "finance_forecasts", label: "Previsiones", group: "Finanzas" },
-  { key: "finance_advisor", label: "Advisor", group: "Finanzas" },
-  { key: "finance_import", label: "Importar", group: "Finanzas" },
+const ALL_MODULES: { key: string; label: string; group: string; hint: string }[] = [
+  { key: "dashboard", label: "Dashboard", group: "General", hint: "KPIs, alertas y resumen ejecutivo" },
+  { key: "clients", label: "Clientes", group: "General", hint: "Gestión de clientes y contactos" },
+  { key: "projects", label: "Proyectos", group: "General", hint: "Proyectos, fases, Gantt y detalle" },
+  { key: "tasks", label: "Tareas", group: "General", hint: "Crear, editar y gestionar tareas" },
+  { key: "timesheet", label: "Timesheet", group: "General", hint: "Timer, time entries y registro de horas" },
+  { key: "pm", label: "PM", group: "General", hint: "Vista de project manager y asignaciones" },
+  { key: "digests", label: "Digests", group: "General", hint: "Resúmenes semanales con IA para clientes" },
+  { key: "billing", label: "Facturación", group: "General", hint: "Facturación por tarea y control de costes" },
+  { key: "communications", label: "Comunicaciones", group: "General", hint: "Seguimiento de emails y contactos" },
+  { key: "growth", label: "Pipeline + Buffer", group: "Crecimiento", hint: "CRM de leads y buffer de ideas ICE" },
+  { key: "proposals", label: "Presupuestos", group: "Crecimiento", hint: "Creación y envío de propuestas" },
+  { key: "reports", label: "Informes", group: "Crecimiento", hint: "Informes y métricas de rendimiento" },
+  { key: "finance_dashboard", label: "Dashboard Financiero", group: "Finanzas", hint: "Resumen financiero global" },
+  { key: "finance_income", label: "Ingresos", group: "Finanzas", hint: "Registro y gestión de ingresos" },
+  { key: "finance_expenses", label: "Gastos", group: "Finanzas", hint: "Registro y categorización de gastos" },
+  { key: "finance_taxes", label: "Impuestos", group: "Finanzas", hint: "IVA, IRPF y obligaciones fiscales" },
+  { key: "finance_forecasts", label: "Previsiones", group: "Finanzas", hint: "Proyecciones y flujo de caja" },
+  { key: "finance_advisor", label: "Advisor", group: "Finanzas", hint: "Recomendaciones financieras con IA" },
+  { key: "finance_import", label: "Importar", group: "Finanzas", hint: "Importar datos desde CSV/Holded" },
 ]
 
 const MODULE_GROUPS = [...new Set(ALL_MODULES.map((m) => m.group))]
@@ -374,7 +374,10 @@ export default function UsersPage() {
                     const state = permissionsState[mod.key] || { read: false, write: false }
                     return (
                       <div key={mod.key} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/50">
-                        <span className="text-sm">{mod.label}</span>
+                        <div className="min-w-0">
+                          <span className="text-sm">{mod.label}</span>
+                          <p className="text-[11px] text-muted-foreground leading-tight">{mod.hint}</p>
+                        </div>
                         <div className="flex gap-3">
                           <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                             <input
