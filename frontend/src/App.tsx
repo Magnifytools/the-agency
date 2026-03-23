@@ -108,8 +108,8 @@ export default function App() {
               <Route path="/timesheet" element={<ErrorBoundary section="Timesheet"><Suspense fallback={<PageLoader />}><TimesheetPage /></Suspense></ErrorBoundary>} />
               <Route path="/billing" element={<PermissionRoute adminOnly><ErrorBoundary section="Billing"><Suspense fallback={<PageLoader />}><BillingPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/proposals" element={<PermissionRoute module="proposals"><ErrorBoundary section="Proposals"><Suspense fallback={<PageLoader />}><ProposalsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
-              <Route path="/digests" element={<ErrorBoundary section="Digests"><Suspense fallback={<PageLoader />}><DigestsPage /></Suspense></ErrorBoundary>} />
-              <Route path="/digests/:id/edit" element={<ErrorBoundary section="DigestEdit"><Suspense fallback={<PageLoader />}><DigestEditPage /></Suspense></ErrorBoundary>} />
+              <Route path="/digests" element={<PermissionRoute module="digests"><ErrorBoundary section="Digests"><Suspense fallback={<PageLoader />}><DigestsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/digests/:id/edit" element={<PermissionRoute module="digests"><ErrorBoundary section="DigestEdit"><Suspense fallback={<PageLoader />}><DigestEditPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/dailys" element={<ErrorBoundary section="Dailys"><Suspense fallback={<PageLoader />}><DailysPage /></Suspense></ErrorBoundary>} />
               <Route path="/reports" element={<PermissionRoute module="reports"><ErrorBoundary section="Reports"><Suspense fallback={<PageLoader />}><ReportsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Finance — admin only */}

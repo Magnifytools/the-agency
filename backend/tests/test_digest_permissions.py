@@ -113,9 +113,6 @@ async def test_member_with_digest_write_can_generate(digest_member_client):
     client_result = MagicMock()
     client_result.scalar_one_or_none.return_value = fake_client
 
-    # DB execute returns different things on successive calls
-    mock_db.execute.side_effect = [client_result, drafts_result]
-
     fake_digest = MagicMock(spec=WeeklyDigest)
     fake_digest.id = 1
     fake_digest.client_id = 1
@@ -132,6 +129,12 @@ async def test_member_with_digest_write_can_generate(digest_member_client):
     fake_digest.creator = member
     fake_digest.created_at = "2026-01-01T00:00:00"
     fake_digest.updated_at = "2026-01-01T00:00:00"
+
+    # DB execute returns different things on successive calls:
+    # 1. client lookup, 2. drafts check, 3. reload with selectinload
+    reload_result = MagicMock()
+    reload_result.scalar_one.return_value = fake_digest
+    mock_db.execute.side_effect = [client_result, drafts_result, reload_result]
 
     with (
         patch(
