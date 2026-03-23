@@ -205,7 +205,7 @@ async def weekly_timesheet(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("timesheet")),
 ):
-    today = datetime.now(timezone.utc).date()
+    today = datetime.utcnow().date()
     if week_start is None:
         week_start = today - timedelta(days=today.weekday())  # Monday
     start_dt = datetime.combine(week_start, datetime.min.time())

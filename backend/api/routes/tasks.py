@@ -317,7 +317,7 @@ async def update_task(
     # If actual_minutes changed manually, sync a "manual" TimeEntry so it
     # counts toward daily hours even without a timer.
     if manual_minutes_changed and new_actual is not None:
-        from datetime import datetime, timezone
+        from datetime import datetime
         timer_sum_result = await db.execute(
             select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
                 TimeEntry.task_id == task_id,
@@ -339,13 +339,13 @@ async def update_task(
         if manual_diff > 0:
             if manual_entry:
                 manual_entry.minutes = manual_diff
-                manual_entry.date = datetime.now(timezone.utc)
+                manual_entry.date = datetime.utcnow()
             else:
                 db.add(TimeEntry(
                     task_id=task_id,
                     user_id=_.id,
                     minutes=manual_diff,
-                    date=datetime.now(timezone.utc),
+                    date=datetime.utcnow(),
                     notes="[manual]",
                 ))
         elif manual_entry:

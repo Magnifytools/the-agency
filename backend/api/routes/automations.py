@@ -1,7 +1,7 @@
 """Automation rules engine — CRUD + execution."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -341,13 +341,13 @@ async def execute_automations(
             action_result=action_result,
             success=success,
             error_message=error_msg,
-            executed_at=datetime.now(timezone.utc),
+            executed_at=datetime.utcnow(),
         )
         db.add(log)
 
         # Update rule stats
         rule.run_count = (rule.run_count or 0) + 1
-        rule.last_run_at = datetime.now(timezone.utc)
+        rule.last_run_at = datetime.utcnow()
 
     await db.commit()
 

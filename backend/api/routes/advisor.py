@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -58,7 +58,7 @@ async def _sum_expenses_month(db: AsyncSession, year: int, month: int) -> float:
 
 
 async def _build_insights(db: AsyncSession) -> list[dict]:
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     y, m = now.year, now.month
     income = await _sum_income_month(db, y, m)
     expenses = await _sum_expenses_month(db, y, m)
@@ -173,7 +173,7 @@ async def _sync_insights(db: AsyncSession):
 
 
 async def _build_tasks(db: AsyncSession):
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
 
     # Check for overdue taxes
     r = await db.execute(
@@ -202,7 +202,7 @@ async def advisor_overview(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("finance_advisor")),
 ):
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     y, m = now.year, now.month
 
     await _sync_insights(db)
@@ -378,7 +378,7 @@ async def get_monthly_close(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("finance_advisor")),
 ):
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     y = year or now.year
     m = month or now.month
     r = await db.execute(
@@ -414,7 +414,7 @@ async def update_monthly_close(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("finance_advisor")),
 ):
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     y = year or now.year
     m = month or now.month
     r = await db.execute(

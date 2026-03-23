@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 
 import httpx
 from sqlalchemy import select
@@ -63,7 +63,7 @@ async def sync_engine_metrics() -> dict:
                     client.engine_avg_position = data.get("avg_position")
                     client.engine_clicks_30d = data.get("clicks_30d")
                     client.engine_impressions_30d = data.get("impressions_30d")
-                    client.engine_metrics_synced_at = datetime.now(timezone.utc)
+                    client.engine_metrics_synced_at = datetime.utcnow()
 
                     # Fetch summary data (keep cached value on failure)
                     try:

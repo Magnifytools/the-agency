@@ -5,7 +5,7 @@ from __future__ import annotations
 import calendar
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 
 import httpx
 from sqlalchemy import select, func
@@ -215,7 +215,7 @@ Escribe en espanol profesional. Se conciso pero informativo. Usa los datos reale
     report = GeneratedReport(
         report_type=ReportType.client_monthly,
         title=f"Informe mensual SEO — {client.name} — {month_name} {year}",
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.utcnow(),
         period_start=period_start,
         period_end=period_end,
         content=content,

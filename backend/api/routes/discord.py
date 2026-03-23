@@ -110,7 +110,7 @@ async def preview_summary(
     if date:
         d = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     else:
-        d = datetime.now(timezone.utc)
+        d = datetime.utcnow()
     summary = await generate_daily_summary(db, d)
     return {"summary": summary, "date": d.strftime("%Y-%m-%d")}
 
@@ -127,7 +127,7 @@ async def send_summary(
     if date:
         d = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     else:
-        d = datetime.now(timezone.utc)
+        d = datetime.utcnow()
 
     summary = await generate_daily_summary(db, d)
     success = await send_to_discord(summary)
@@ -224,7 +224,7 @@ async def send_daily_summary(
     if date:
         d = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     else:
-        d = datetime.now(timezone.utc)
+        d = datetime.utcnow()
 
     try:
         summary = await generate_daily_summary(db, d)
@@ -259,7 +259,7 @@ async def send_daily_summary(
 
     if success:
         try:
-            ds.last_sent_at = datetime.now(timezone.utc)
+            ds.last_sent_at = datetime.utcnow()
             await db.commit()
         except Exception:
             logger.warning("Discord message sent but failed to update last_sent_at")
@@ -299,7 +299,7 @@ async def send_custom_to_discord(
 
     if success:
         try:
-            ds.last_sent_at = datetime.now(timezone.utc)
+            ds.last_sent_at = datetime.utcnow()
             await db.commit()
         except Exception:
             logger.warning("Discord message sent but failed to update last_sent_at")
@@ -347,7 +347,7 @@ async def send_digest_to_discord(
     success = await _send_discord_message(url, rendered)
 
     if success:
-        ds.last_sent_at = datetime.now(timezone.utc)
+        ds.last_sent_at = datetime.utcnow()
         await db.commit()
         return DiscordSendResponse(
             success=True,

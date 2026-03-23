@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func, update, and_
@@ -136,7 +136,7 @@ async def generate_notification_checks(
 
     created = 0
     today = date.today()
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
 
     # ── Pre-load ALL unread notifications for this user (1 query) ──
     existing_result = await db.execute(

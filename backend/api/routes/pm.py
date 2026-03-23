@@ -2,7 +2,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from datetime import datetime, timezone
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -130,7 +130,7 @@ async def dismiss_insight(
         raise HTTPException(status_code=403, detail="Not your insight")
 
     insight.status = InsightStatus.dismissed
-    insight.dismissed_at = datetime.now(timezone.utc)
+    insight.dismissed_at = datetime.utcnow()
 
     await db.commit()
     await safe_refresh(db, insight, log_context="pm")
@@ -156,7 +156,7 @@ async def act_on_insight(
         raise HTTPException(status_code=403, detail="Not your insight")
 
     insight.status = InsightStatus.acted
-    insight.acted_at = datetime.now(timezone.utc)
+    insight.acted_at = datetime.utcnow()
 
     await db.commit()
     await safe_refresh(db, insight, log_context="pm")

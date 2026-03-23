@@ -970,6 +970,8 @@ _SERVICE_LABELS = {
 
 def _safe(text: str) -> str:
     """Strip characters outside latin-1 so fpdf2 (built-in fonts) won't crash."""
+    # Replace € with EUR before encoding (€ is not in latin-1)
+    text = text.replace("€", "EUR").replace("\u20ac", "EUR")
     return text.encode("latin-1", errors="replace").decode("latin-1")
 
 

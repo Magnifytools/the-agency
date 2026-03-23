@@ -5,6 +5,7 @@ import { tasksApi, clientsApi, categoriesApi, usersApi, timeEntriesApi, projects
 import type { Task, TaskCreate, TaskStatus, TaskPriority, TimeEntry } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { usePagination } from "@/hooks/use-pagination"
+import { useAuth } from "@/context/auth-context"
 import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -50,6 +51,7 @@ const formatMinutes = (mins: number) => {
 }
 
 export default function TasksPage() {
+  const { user } = useAuth()
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const { page, pageSize, setPage, reset } = usePagination(25)
@@ -69,7 +71,9 @@ export default function TasksPage() {
   const [filterCategory, setFilterCategory] = useState<string>("")
   const [filterStatus, setFilterStatus] = useState<string>("")
   const [filterPriority, setFilterPriority] = useState<string>("")
-  const [filterAssigned, setFilterAssigned] = useState<string>("")
+  const [filterAssigned, setFilterAssigned] = useState<string>(() =>
+    user && user.role !== "admin" ? String(user.id) : ""
+  )
   const [filterDateFrom, setFilterDateFrom] = useState<string>("")
   const [filterDateTo, setFilterDateTo] = useState<string>("")
   const [filterDateField, setFilterDateField] = useState<"due_date" | "scheduled_date">("due_date")
@@ -1008,7 +1012,7 @@ export default function TasksPage() {
                     id="scheduled_date"
                     name="scheduled_date"
                     type="date"
-                    defaultValue={editing?.scheduled_date ?? ""}
+                    defaultValue={editing?.scheduled_date ?? (editing ? "" : new Date().toISOString().split("T")[0])}
                   />
                 </div>
                 <div className="space-y-1.5">

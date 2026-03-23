@@ -8,7 +8,7 @@ to generate actionable insights for the PM.
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -121,7 +121,7 @@ async def _enhance_insights_with_ai(
     # Build optional strategic suggestion insight
     overall = data.get("overall_suggestion")
     if overall and isinstance(overall, str) and overall.strip():
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
         return PMInsight(
             insight_type=InsightType.suggestion,
             priority=InsightPriority.low,
@@ -239,7 +239,7 @@ async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> 
     Returns list of newly created insights.
     Uses user's alert settings for thresholds.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     new_insights = []
 
     # Get user's thresholds
