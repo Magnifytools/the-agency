@@ -146,8 +146,8 @@ export default function DigestsPage() {
     renderMutation.mutate({ id: digest.id, format: fmt })
   }
 
-  const handleCopyToClipboard = async (text?: string) => {
-    const content = text || previewContent
+  const handleCopyToClipboard = async () => {
+    const content = previewContent
     if (!content) return
     try {
       await navigator.clipboard.writeText(content)
