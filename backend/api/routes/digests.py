@@ -464,12 +464,14 @@ async def render_digest(
     except Exception:
         raise HTTPException(status_code=400, detail="Digest content is malformed")
 
+    tone = digest.tone if digest.tone else None
+
     if format == "slack":
-        rendered = render_slack(content)
+        rendered = render_slack(content, tone=tone)
     elif format == "discord":
-        rendered = render_discord(content)
+        rendered = render_discord(content, tone=tone)
     else:
-        rendered = render_email(content)
+        rendered = render_email(content, tone=tone)
 
     return DigestRenderResponse(format=format, rendered=rendered)
 
@@ -509,7 +511,8 @@ async def send_digest_email(
         raise HTTPException(status_code=400, detail="Digest content is malformed")
 
     # Render as email HTML
-    html_body = render_email(content)
+    tone = digest.tone if digest.tone else None
+    html_body = render_email(content, tone=tone)
 
     # Get client name for subject
     client_name = "tu proyecto"

@@ -1,20 +1,47 @@
 """Digest Renderer: converts digest content into Slack or HTML email format.
 
-Two output modes:
+Three output modes:
 - Slack: emoji-based plain text with bullets, ready to paste into Slack.
+- Discord: Markdown-formatted text with emojis.
 - Email: HTML email with inline CSS, table-based layout, Magnify branding.
 """
 from __future__ import annotations
 
+from backend.db.models import DigestTone
 from backend.schemas.digest import DigestContent, DigestItem
+
+
+# ---------------------------------------------------------------------------
+# Section titles by person (singular vs plural)
+# ---------------------------------------------------------------------------
+
+SECTION_TITLES_SINGULAR = {
+    "done": "¿Qué he hecho?",
+    "need": "¿Qué necesito?",
+    "next": "¿Qué voy a hacer?",
+}
+
+SECTION_TITLES_PLURAL = {
+    "done": "¿Qué hemos hecho?",
+    "need": "¿Qué necesitamos?",
+    "next": "¿Qué vamos a hacer?",
+}
+
+
+def _section_titles(tone: DigestTone | None = None) -> dict[str, str]:
+    """Return section titles based on tone — singular for cercano/formal, plural for equipo."""
+    if tone == DigestTone.equipo:
+        return SECTION_TITLES_PLURAL
+    return SECTION_TITLES_SINGULAR
 
 
 # ---------------------------------------------------------------------------
 # Slack renderer
 # ---------------------------------------------------------------------------
 
-def render_discord(content: DigestContent) -> str:
+def render_discord(content: DigestContent, tone: DigestTone | None = None) -> str:
     """Render digest content as Discord-formatted Markdown message."""
+    titles = _section_titles(tone)
     lines: list[str] = []
 
     # Header
@@ -24,7 +51,7 @@ def render_discord(content: DigestContent) -> str:
 
     # Done section
     if content.sections.done:
-        lines.append("**🎯 ¿Qué hemos hecho?**")
+        lines.append(f"**🎯 {titles['done']}**")
         for item in content.sections.done:
             desc = f" — {item.description}" if item.description else ""
             lines.append(f"• {item.title}{desc}")
@@ -32,7 +59,7 @@ def render_discord(content: DigestContent) -> str:
 
     # Need section
     if content.sections.need:
-        lines.append("**⚠️ ¿Qué necesitamos?**")
+        lines.append(f"**⚠️ {titles['need']}**")
         for item in content.sections.need:
             desc = f" — {item.description}" if item.description else ""
             lines.append(f"• {item.title}{desc}")
@@ -40,7 +67,7 @@ def render_discord(content: DigestContent) -> str:
 
     # Next section
     if content.sections.next:
-        lines.append("**📋 ¿Qué vamos a hacer?**")
+        lines.append(f"**📋 {titles['next']}**")
         for item in content.sections.next:
             desc = f" — {item.description}" if item.description else ""
             lines.append(f"• {item.title}{desc}")
@@ -54,8 +81,9 @@ def render_discord(content: DigestContent) -> str:
     return "\n".join(lines)
 
 
-def render_slack(content: DigestContent) -> str:
+def render_slack(content: DigestContent, tone: DigestTone | None = None) -> str:
     """Render digest content as Slack-formatted text with emojis."""
+    titles = _section_titles(tone)
     lines: list[str] = []
 
     # Greeting
@@ -69,7 +97,7 @@ def render_slack(content: DigestContent) -> str:
 
     # Done section
     if sections.done:
-        lines.append(":mag_right:  *¿Qué hemos hecho?*")
+        lines.append(f":mag_right:  *{titles['done']}*")
         lines.append("")
         for item in sections.done:
             lines.append(f"  • *{item.title}*")
@@ -79,7 +107,7 @@ def render_slack(content: DigestContent) -> str:
 
     # Need section
     if sections.need:
-        lines.append(":hourglass:  *¿Qué necesitamos?*")
+        lines.append(f":hourglass:  *{titles['need']}*")
         lines.append("")
         for item in sections.need:
             lines.append(f"  • *{item.title}*")
@@ -89,7 +117,7 @@ def render_slack(content: DigestContent) -> str:
 
     # Next section
     if sections.next:
-        lines.append(":point_right:  *¿Qué vamos a hacer?*")
+        lines.append(f":point_right:  *{titles['next']}*")
         lines.append("")
         for item in sections.next:
             lines.append(f"  • *{item.title}*")
@@ -172,23 +200,25 @@ def _esc(text: str) -> str:
     )
 
 
-def render_email(content: DigestContent) -> str:
+def render_email(content: DigestContent, tone: DigestTone | None = None) -> str:
     """Render digest content as Magnify-branded HTML email."""
+    titles = _section_titles(tone)
 
     greeting_text = _esc(content.greeting).replace("\n", "<br/>") if content.greeting else ""
     date_text = _esc(content.date) if content.date else ""
-    closing_text = _esc(content.closing) if content.closing else ""
+    # Closing supports HTML (for links like Google Sheets trackers)
+    closing_text = content.closing.replace("\n", "<br/>") if content.closing else ""
 
     # Build dynamic sections
     sections_html = ""
     sections_html += _render_section(
-        "¿Qué hemos hecho?", content.sections.done, ICON_DONE
+        titles["done"], content.sections.done, ICON_DONE
     )
     sections_html += _render_section(
-        "¿Qué necesitamos?", content.sections.need, ICON_NEED
+        titles["need"], content.sections.need, ICON_NEED
     )
     sections_html += _render_section(
-        "¿Qué vamos a hacer?", content.sections.next, ICON_NEXT
+        titles["next"], content.sections.next, ICON_NEXT
     )
 
     return f"""\

@@ -318,6 +318,7 @@ export default function DigestEditPage() {
               placeholder="Mensaje de cierre..."
               rows={3}
             />
+            <p className="text-xs text-muted-foreground">Soporta HTML en email (ej: enlaces con &lt;a href=&quot;...&quot;&gt;)</p>
           </div>
         </CardContent>
       </Card>

@@ -342,6 +342,9 @@ export const usersApi = {
   create: (data: UserCreate) => api.post<User>("/users", data).then((r) => r.data),
   get: (id: number) => api.get<User>(`/users/${id}`).then((r) => r.data),
   update: (id: number, data: Partial<User>) => api.put<User>(`/users/${id}`, data).then((r) => r.data),
+  getPermissions: (id: number) => api.get<UserPermission[]>(`/users/${id}/permissions`).then((r) => r.data),
+  updatePermissions: (id: number, permissions: UserPermission[]) =>
+    api.put<UserPermission[]>(`/users/${id}/permissions`, { permissions }).then((r) => r.data),
 }
 
 // Dashboard

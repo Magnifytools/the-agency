@@ -1,7 +1,7 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { usersApi } from "@/lib/api"
-import type { User } from "@/lib/types"
+import type { User, UserPermission } from "@/lib/types"
 import { useAuth } from "@/context/auth-context"
 import { usePagination } from "@/hooks/use-pagination"
 import { Pagination } from "@/components/ui/pagination"
@@ -12,7 +12,7 @@ import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { Pencil, Plus } from "lucide-react"
+import { Pencil, Plus, Shield } from "lucide-react"
 import { toast } from "sonner"
 import type { UserCreate, UserRole } from "@/lib/types"
 
@@ -24,11 +24,38 @@ import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
 import { SkeletonTableRow } from "@/components/ui/skeleton"
 
+const ALL_MODULES: { key: string; label: string; group: string }[] = [
+  { key: "dashboard", label: "Dashboard", group: "General" },
+  { key: "clients", label: "Clientes", group: "General" },
+  { key: "projects", label: "Proyectos", group: "General" },
+  { key: "tasks", label: "Tareas", group: "General" },
+  { key: "timesheet", label: "Timesheet", group: "General" },
+  { key: "pm", label: "PM", group: "General" },
+  { key: "digests", label: "Digests", group: "General" },
+  { key: "billing", label: "Facturación", group: "General" },
+  { key: "communications", label: "Comunicaciones", group: "General" },
+  { key: "leads", label: "Leads", group: "Crecimiento" },
+  { key: "proposals", label: "Propuestas", group: "Crecimiento" },
+  { key: "growth", label: "Crecimiento", group: "Crecimiento" },
+  { key: "reports", label: "Informes", group: "Crecimiento" },
+  { key: "finance_dashboard", label: "Dashboard Financiero", group: "Finanzas" },
+  { key: "finance_income", label: "Ingresos", group: "Finanzas" },
+  { key: "finance_expenses", label: "Gastos", group: "Finanzas" },
+  { key: "finance_taxes", label: "Impuestos", group: "Finanzas" },
+  { key: "finance_forecasts", label: "Previsiones", group: "Finanzas" },
+  { key: "finance_advisor", label: "Advisor", group: "Finanzas" },
+  { key: "finance_import", label: "Importar", group: "Finanzas" },
+]
+
+const MODULE_GROUPS = [...new Set(ALL_MODULES.map((m) => m.group))]
+
 export default function UsersPage() {
   const queryClient = useQueryClient()
   const { page, pageSize, setPage } = usePagination(25)
   const { user: currentUser } = useAuth()
   const [editing, setEditing] = useState<User | null>(null)
+  const [permissionsUser, setPermissionsUser] = useState<User | null>(null)
+  const [permissionsState, setPermissionsState] = useState<Record<string, { read: boolean; write: boolean }>>({})
 
   const [isInviteOpen, setIsInviteOpen] = useState(false)
   const [inviteData, setInviteData] = useState<UserCreate>({
@@ -66,6 +93,54 @@ export default function UsersPage() {
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al invitar")),
   })
+
+  // Permissions
+  const permissionsQuery = useQuery({
+    queryKey: ["user-permissions", permissionsUser?.id],
+    queryFn: () => usersApi.getPermissions(permissionsUser!.id),
+    enabled: !!permissionsUser,
+  })
+
+  useEffect(() => {
+    if (permissionsQuery.data) {
+      const state: Record<string, { read: boolean; write: boolean }> = {}
+      for (const p of permissionsQuery.data) {
+        state[p.module] = { read: p.can_read, write: p.can_write }
+      }
+      setPermissionsState(state)
+    }
+  }, [permissionsQuery.data])
+
+  const permissionsMutation = useMutation({
+    mutationFn: (perms: UserPermission[]) =>
+      usersApi.updatePermissions(permissionsUser!.id, perms),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user-permissions", permissionsUser?.id] })
+      queryClient.invalidateQueries({ queryKey: ["users"] })
+      toast.success("Permisos actualizados")
+      setPermissionsUser(null)
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar permisos")),
+  })
+
+  const handleSavePermissions = () => {
+    const perms: UserPermission[] = Object.entries(permissionsState)
+      .filter(([, v]) => v.read || v.write)
+      .map(([module, v]) => ({ module, can_read: v.read, can_write: v.write }))
+    permissionsMutation.mutate(perms)
+  }
+
+  const toggleModule = (mod: string, field: "read" | "write") => {
+    setPermissionsState((prev) => {
+      const cur = prev[mod] || { read: false, write: false }
+      const next = { ...cur, [field]: !cur[field] }
+      // If enabling write, also enable read
+      if (field === "write" && next.write) next.read = true
+      // If disabling read, also disable write
+      if (field === "read" && !next.read) next.write = false
+      return { ...prev, [mod]: next }
+    })
+  }
 
   const handleSubmitEdit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -153,9 +228,16 @@ export default function UsersPage() {
                     </TableCell>
                     <TableCell className="mono">{u.hourly_rate != null ? `${formatCurrency(u.hourly_rate)}/h` : "-"}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" aria-label="Editar usuario" onClick={() => setEditing(u)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" aria-label="Editar usuario" onClick={() => setEditing(u)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        {currentUser?.role === "admin" && u.role !== "admin" && (
+                          <Button variant="ghost" size="icon" aria-label="Permisos" onClick={() => setPermissionsUser(u)}>
+                            <Shield className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -178,10 +260,18 @@ export default function UsersPage() {
                 {u.locality && <p className="text-xs text-muted-foreground">{u.locality}</p>}
                 <div className="flex items-center justify-between">
                   <p className="text-sm mono">{u.hourly_rate != null ? `${formatCurrency(u.hourly_rate)}/h` : "-"}</p>
-                  <Button variant="outline" size="sm" onClick={() => setEditing(u)}>
-                    <Pencil className="h-4 w-4 mr-2" />
-                    Editar
-                  </Button>
+                  <div className="flex gap-2">
+                    {currentUser?.role === "admin" && u.role !== "admin" && (
+                      <Button variant="outline" size="sm" onClick={() => setPermissionsUser(u)}>
+                        <Shield className="h-4 w-4 mr-2" />
+                        Permisos
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" onClick={() => setEditing(u)}>
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Editar
+                    </Button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -265,6 +355,60 @@ export default function UsersPage() {
               <Button type="submit">Guardar</Button>
             </div>
           </form>
+        )}
+      </Dialog>
+
+      {/* Permissions Dialog */}
+      <Dialog open={!!permissionsUser} onOpenChange={(open) => !open && setPermissionsUser(null)}>
+        <DialogHeader>
+          <DialogTitle>Permisos — {permissionsUser?.full_name}</DialogTitle>
+        </DialogHeader>
+        {permissionsQuery.isLoading ? (
+          <p className="text-sm text-muted-foreground py-4">Cargando permisos...</p>
+        ) : (
+          <div className="space-y-5 pt-4">
+            {MODULE_GROUPS.map((group) => (
+              <div key={group}>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{group}</p>
+                <div className="space-y-1">
+                  {ALL_MODULES.filter((m) => m.group === group).map((mod) => {
+                    const state = permissionsState[mod.key] || { read: false, write: false }
+                    return (
+                      <div key={mod.key} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/50">
+                        <span className="text-sm">{mod.label}</span>
+                        <div className="flex gap-3">
+                          <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={state.read}
+                              onChange={() => toggleModule(mod.key, "read")}
+                              className="rounded border-border"
+                            />
+                            Leer
+                          </label>
+                          <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={state.write}
+                              onChange={() => toggleModule(mod.key, "write")}
+                              className="rounded border-border"
+                            />
+                            Escribir
+                          </label>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+            <div className="flex justify-end gap-2 pt-4 border-t border-border">
+              <Button variant="outline" onClick={() => setPermissionsUser(null)}>Cancelar</Button>
+              <Button onClick={handleSavePermissions} disabled={permissionsMutation.isPending}>
+                {permissionsMutation.isPending ? "Guardando..." : "Guardar permisos"}
+              </Button>
+            </div>
+          </div>
         )}
       </Dialog>
 

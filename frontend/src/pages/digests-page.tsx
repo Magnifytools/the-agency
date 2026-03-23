@@ -3,7 +3,7 @@ import DOMPurify from "dompurify"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle, Mail, Trash2 } from "lucide-react"
+import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle, Trash2, ClipboardCopy } from "lucide-react"
 import { digestsApi, clientsApi, discordApi } from "@/lib/api"
 import type { Digest, DigestStatus, DigestTone } from "@/lib/types"
 
@@ -34,10 +34,7 @@ export default function DigestsPage() {
   const [previewDigest, setPreviewDigest] = useState<Digest | null>(null)
   const [previewFormat, setPreviewFormat] = useState<"slack" | "email">("slack")
   const [previewContent, setPreviewContent] = useState("")
-  const [emailDialogDigest, setEmailDialogDigest] = useState<Digest | null>(null)
-  const [emailTo, setEmailTo] = useState("")
-
-  // Discord preview/edit state
+  // Discord preview/edit state (internal only)
   const [discordPreviewDigest, setDiscordPreviewDigest] = useState<Digest | null>(null)
   const [discordPreviewContent, setDiscordPreviewContent] = useState("")
   const [discordIsEditing, setDiscordIsEditing] = useState(false)
@@ -137,23 +134,6 @@ export default function DigestsPage() {
     deleteMutation.mutate(digest.id)
   }
 
-  const emailSendMutation = useMutation({
-    mutationFn: ({ id, to, test }: { id: number; to: string; test?: boolean }) => digestsApi.sendEmail(id, to, test ?? false),
-    onSuccess: (data) => {
-      toast.success(data.message)
-      setEmailDialogDigest(null)
-      setEmailTo("")
-      queryClient.invalidateQueries({ queryKey: ["digests"] })
-    },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al enviar email")),
-  })
-
-  const openEmailDialog = (digest: Digest) => {
-    const client = clients.find((c) => c.id === digest.client_id)
-    setEmailTo(client?.email || "")
-    setEmailDialogDigest(digest)
-  }
-
   const handleGenerate = () => {
     if (!selectedClientId) return
     generateMutation.mutate({ client_id: selectedClientId as number, tone: selectedTone })
@@ -166,13 +146,24 @@ export default function DigestsPage() {
     renderMutation.mutate({ id: digest.id, format: fmt })
   }
 
-  const handleCopyToClipboard = async () => {
-    if (!previewContent) return
+  const handleCopyToClipboard = async (text?: string) => {
+    const content = text || previewContent
+    if (!content) return
     try {
-      await navigator.clipboard.writeText(previewContent)
+      await navigator.clipboard.writeText(content)
       toast.success("Copiado al portapapeles")
     } catch {
       toast.error("Error al copiar")
+    }
+  }
+
+  const handleQuickCopy = async (digest: Digest, format: "slack" | "email") => {
+    try {
+      const data = await digestsApi.render(digest.id, format)
+      await navigator.clipboard.writeText(data.rendered)
+      toast.success(`${format === "slack" ? "Slack" : "Email HTML"} copiado`)
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Error al copiar"))
     }
   }
 
@@ -291,37 +282,39 @@ export default function DigestsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          title="Preview Slack"
+                          title="Preview"
                           onClick={() => handlePreview(digest, "slack")}
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
+                        <span className="w-px h-5 bg-border mx-0.5" />
+                        {/* Copiar para pegar en Slack / email */}
                         <Button
                           variant="ghost"
                           size="sm"
-                          title="Preview Email"
-                          onClick={() => handlePreview(digest, "email")}
+                          title="Copiar Slack"
+                          onClick={() => handleQuickCopy(digest, "slack")}
                         >
-                          <Send className="w-4 h-4" />
+                          <ClipboardCopy className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Copiar Email HTML"
+                          onClick={() => handleQuickCopy(digest, "email")}
+                        >
+                          <Copy className="w-4 h-4" />
                         </Button>
                         <span className="w-px h-5 bg-border mx-0.5" />
-                        {/* Envío */}
+                        {/* Discord (interno) */}
                         <Button
                           variant="ghost"
                           size="sm"
-                          title="Previsualizar y enviar a Discord"
+                          title="Discord (interno)"
                           onClick={() => handleDiscordPreview(digest)}
                           disabled={discordPreviewMutation.isPending}
                         >
                           <MessageCircle className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Enviar por email"
-                          onClick={() => openEmailDialog(digest)}
-                        >
-                          <Mail className="w-4 h-4" />
                         </Button>
                         {digest.status !== "sent" && (
                           <>
@@ -495,48 +488,6 @@ export default function DigestsPage() {
         </div>
       </Dialog>
 
-      {/* Email send dialog */}
-      <Dialog open={!!emailDialogDigest} onOpenChange={(open) => { if (!open) setEmailDialogDigest(null) }}>
-        <div className="space-y-4 p-1">
-          <DialogHeader>
-            <DialogTitle>Enviar digest por email</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {emailDialogDigest?.client_name} — Semana del{" "}
-            {emailDialogDigest?.period_start && format(new Date(emailDialogDigest.period_start + "T00:00"), "d MMM", { locale: es })}
-            {" al "}
-            {emailDialogDigest?.period_end && format(new Date(emailDialogDigest.period_end + "T00:00"), "d MMM yyyy", { locale: es })}
-          </p>
-          <div>
-            <Label>Destinatario</Label>
-            <input
-              type="email"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm mt-1"
-              placeholder="email@cliente.com"
-              value={emailTo}
-              onChange={(e) => setEmailTo(e.target.value)}
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setEmailDialogDigest(null)}>Cancelar</Button>
-            <Button
-              variant="secondary"
-              onClick={() => emailDialogDigest && emailSendMutation.mutate({ id: emailDialogDigest.id, to: emailTo, test: true })}
-              disabled={!emailTo || emailSendMutation.isPending}
-            >
-              {emailSendMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
-              Enviar prueba
-            </Button>
-            <Button
-              onClick={() => emailDialogDigest && emailSendMutation.mutate({ id: emailDialogDigest.id, to: emailTo })}
-              disabled={!emailTo || emailSendMutation.isPending}
-            >
-              {emailSendMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
-              Enviar
-            </Button>
-          </div>
-        </div>
-      </Dialog>
     </div>
   )
 }
