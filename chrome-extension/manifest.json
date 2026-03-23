@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "The Agency",
   "description": "Captura notas, gestiona tareas y registra tiempo desde cualquier pagina",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "update_url": "https://agency.magnifytools.com/extension/update.xml",
   "permissions": [
     "contextMenus",
