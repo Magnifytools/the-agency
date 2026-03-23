@@ -15,9 +15,8 @@ import { SkeletonCard } from "@/components/ui/skeleton"
 
 const REPORT_TYPES: { value: ReportType; label: string; icon: typeof FileText }[] = [
   { value: "client_status", label: "Estado de cliente", icon: Building2 },
-  { value: "weekly_summary", label: "Resumen semanal", icon: Calendar },
   { value: "project_status", label: "Estado de proyecto", icon: FolderKanban },
-  { value: "client_monthly", label: "Informe mensual", icon: FileText },
+  { value: "client_monthly", label: "Informe", icon: FileText },
 ]
 
 const AUDIENCE_LABELS: Record<string, string> = {
@@ -366,18 +365,13 @@ function GenerateReportDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (type === "client_monthly") {
-      if (!clientId) return
-      monthlyMutation.mutate({ client_id: clientId, year: monthlyYear, month: monthlyMonth })
-    } else {
-      generateMutation.mutate({
-        type,
-        client_id: type === "client_status" ? clientId : null,
-        project_id: type === "project_status" ? projectId : null,
-        period,
-        audience: audience || null,
-      })
-    }
+    generateMutation.mutate({
+      type,
+      client_id: (type === "client_status" || type === "client_monthly") ? clientId : null,
+      project_id: type === "project_status" ? projectId : null,
+      period,
+      audience: audience || null,
+    })
   }
 
   return (
@@ -436,54 +430,32 @@ function GenerateReportDialog({
           </div>
         )}
 
-        {type === "client_monthly" && (
-          <div className="space-y-2">
-            <Label>Periodo</Label>
-            <div className="flex gap-2">
-              <Select value={monthlyMonth.toString()} onChange={(e) => setMonthlyMonth(Number(e.target.value))}>
-                {["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"].map((m, i) => (
-                  <option key={i} value={i + 1}>{m}</option>
-                ))}
-              </Select>
-              <Select value={monthlyYear.toString()} onChange={(e) => setMonthlyYear(Number(e.target.value))}>
-                {[now.getFullYear() - 1, now.getFullYear()].map((y) => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </Select>
-            </div>
-          </div>
-        )}
+        <div className="space-y-2">
+          <Label>Periodo</Label>
+          <Select
+            value={period}
+            onChange={(e) => setPeriod(e.target.value as ReportPeriod)}
+          >
+            <option value="week">Semanal</option>
+            <option value="month">Mensual</option>
+          </Select>
+        </div>
 
-        {(type === "client_status" || type === "weekly_summary") && (
-          <div className="space-y-2">
-            <Label>Periodo</Label>
-            <Select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value as ReportPeriod)}
-            >
-              <option value="week">Última semana</option>
-              <option value="month">Último mes</option>
-            </Select>
-          </div>
-        )}
-
-        {type !== "client_monthly" && (
-          <div className="space-y-2">
-            <Label>Audiencia <span className="text-muted-foreground font-normal">(opcional)</span></Label>
-            <Select
-              value={audience}
-              onChange={(e) => setAudience(e.target.value as ReportAudience | "")}
-            >
-              <option value="">General (sin audiencia especifica)</option>
-              <option value="executive">Ejecutivo</option>
-              <option value="marketing">Marketing</option>
-              <option value="operational">Operativo</option>
-            </Select>
-            {audience && (
-              <p className="text-xs text-muted-foreground">{AUDIENCE_DESCRIPTIONS[audience]}</p>
-            )}
-          </div>
-        )}
+        <div className="space-y-2">
+          <Label>Audiencia <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+          <Select
+            value={audience}
+            onChange={(e) => setAudience(e.target.value as ReportAudience | "")}
+          >
+            <option value="">General (sin audiencia especifica)</option>
+            <option value="executive">Ejecutivo</option>
+            <option value="marketing">Marketing</option>
+            <option value="operational">Operativo</option>
+          </Select>
+          {audience && (
+            <p className="text-xs text-muted-foreground">{AUDIENCE_DESCRIPTIONS[audience]}</p>
+          )}
+        </div>
 
         <div className="flex justify-end gap-2 pt-4">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
