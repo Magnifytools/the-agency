@@ -25,7 +25,7 @@ const FUNNEL_STAGES: Record<GrowthFunnelStage, string> = {
 }
 
 const STATUS_LABELS: Record<GrowthStatus, string> = {
-    idea: "Idea / Backlog",
+    idea: "Idea",
     in_progress: "En Progreso",
     completed: "Completado",
     discarded: "Descartado",
