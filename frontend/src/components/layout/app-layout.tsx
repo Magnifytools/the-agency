@@ -48,7 +48,7 @@ export function AppLayout() {
       { to: "/my-week", label: "Mi Semana", icon: CalendarDays },
       { to: "/clients", label: "Clientes", icon: Users, module: "clients" },
       { to: "/projects", label: "Proyectos", icon: FolderKanban, module: "projects" },
-      { to: "/leads", label: "Pipeline", icon: Target, module: "leads" },
+      { to: "/leads", label: "Pipeline", icon: Target, module: "growth" },
       { to: "/tasks", label: "Tareas", icon: CheckSquare, module: "tasks" },
       { to: "/inbox", label: "Inbox", icon: Inbox, module: "tasks" },
     ]
