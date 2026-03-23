@@ -155,9 +155,15 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
 
   const clients = Array.from(new Map(tasks.filter((t) => t.client_id).map((t) => [t.client_id, t.client_name])).entries())
   const projects = Array.from(new Map(tasks.filter((t) => t.project_id && (!filterClient || String(t.client_id) === filterClient)).map((t) => [t.project_id, t.project_name])).entries())
+  const today = new Date().toISOString().split("T")[0]
   const filteredTasks = tasks.filter((t) => {
+    if (t.status === "completed") return false
     if (filterClient && String(t.client_id) !== filterClient) return false
     if (filterProject && String(t.project_id) !== filterProject) return false
+    // Show tasks scheduled for today, or with no date (backlog available)
+    const scheduled = t.scheduled_date?.split("T")[0]
+    const due = t.due_date?.split("T")[0]
+    if (scheduled && scheduled !== today && (!due || due > today)) return false
     return true
   })
 

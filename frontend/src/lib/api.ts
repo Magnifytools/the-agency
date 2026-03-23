@@ -493,7 +493,7 @@ export const pmApi = {
   insights: (params?: { status?: string; priority?: string }) =>
     api.get<Insight[]>("/pm/insights", { params }).then((r) => r.data),
   generateInsights: () =>
-    api.post<Insight[]>("/pm/generate-insights").then((r) => r.data),
+    api.post<Insight[]>("/pm/generate-insights", {}, { timeout: 90_000 }).then((r) => r.data),
   dismissInsight: (id: number) =>
     api.put<Insight>(`/pm/insights/${id}/dismiss`).then((r) => r.data),
   actOnInsight: (id: number) =>
@@ -517,7 +517,7 @@ export const reportsApi = {
   get: (id: number) =>
     api.get<Report>(`/reports/${id}`).then((r) => r.data),
   generate: (data: ReportRequest) =>
-    api.post<Report>("/reports/generate", data).then((r) => r.data),
+    api.post<Report>("/reports/generate", data, { timeout: 90_000 }).then((r) => r.data),
   delete: (id: number) =>
     api.delete(`/reports/${id}`).then((r) => r.data),
   aiNarrative: (id: number) =>
@@ -564,7 +564,7 @@ export const proposalsApi = {
     api.put<Proposal>(`/proposals/${id}/status`, data).then((r) => r.data),
   duplicate: (id: number) => api.post<Proposal>(`/proposals/${id}/duplicate`).then((r) => r.data),
   convert: (id: number) => api.post<Proposal>(`/proposals/${id}/convert`).then((r) => r.data),
-  generate: (id: number) => api.post<Proposal>(`/proposals/${id}/generate`).then((r) => r.data),
+  generate: (id: number) => api.post<Proposal>(`/proposals/${id}/generate`, {}, { timeout: 90_000 }).then((r) => r.data),
   pdf: (id: number) => api.get(`/proposals/${id}/pdf`, { responseType: "blob" }).then((r) => r.data),
   pdfUrl: (id: number) => `/api/proposals/${id}/pdf`,
   draftEmail: (id: number) =>

@@ -590,8 +590,23 @@ export default function MyWeekPage() {
   const completeMutation = useMutation({
     mutationFn: (taskId: number) =>
       tasksApi.update(taskId, { status: "completed" }),
-    onSuccess: () => { invalidate(); toast.success("Tarea completada") },
+    onSuccess: (_data, taskId) => {
+      invalidate()
+      toast("Tarea completada", {
+        action: {
+          label: "Deshacer",
+          onClick: () => undoCompleteMutation.mutate(taskId),
+        },
+      })
+    },
     onError: (err) => toast.error(getErrorMessage(err, "Error al completar tarea")),
+  })
+
+  const undoCompleteMutation = useMutation({
+    mutationFn: (taskId: number) =>
+      tasksApi.update(taskId, { status: "pending" }),
+    onSuccess: () => { invalidate(); toast.success("Tarea restaurada") },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al restaurar tarea")),
   })
 
   const commentMutation = useMutation({

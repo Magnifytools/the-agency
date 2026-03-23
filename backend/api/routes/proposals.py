@@ -989,8 +989,8 @@ def _build_pdf(prop: "Proposal") -> bytes:  # type: ignore[name-defined]
     company = _safe(prop.company_name or "Cliente")
 
     pdf = FPDF(unit="mm", format="A4")
-    pdf.set_auto_page_break(auto=True, margin=20)
-    pdf.set_margins(20, 15, 20)
+    pdf.set_auto_page_break(auto=True, margin=25)
+    pdf.set_margins(25, 20, 25)
 
     # ── Cover ──────────────────────────────────────────────────────────────
     pdf.add_page()

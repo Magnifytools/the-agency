@@ -19,6 +19,14 @@ function handle401(res) {
   return false;
 }
 
+// Helper: extract error message from API response
+function getDetail(err, fallback) {
+  if (typeof err.detail === "string") return err.detail;
+  if (Array.isArray(err.detail)) return err.detail.map((d) => d.msg || d).join(", ");
+  if (err.detail && typeof err.detail === "object") return JSON.stringify(err.detail);
+  return fallback;
+}
+
 // ── DOM refs ──────────────────────────────────────────────
 // Views
 const loginView = document.getElementById("login-view");
@@ -564,7 +572,7 @@ timerStartBtn.addEventListener("click", async () => {
     if (handle401(res)) return;
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Error al iniciar timer");
+      throw new Error(getDetail(err, "Error al iniciar timer"));
     }
 
     const data = await res.json();
@@ -596,7 +604,7 @@ timerStopBtn.addEventListener("click", async () => {
     if (handle401(res)) return;
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Error al detener timer");
+      throw new Error(getDetail(err, "Error al detener timer"));
     }
 
     showIdleTimer();
@@ -650,7 +658,7 @@ manualSaveBtn.addEventListener("click", async () => {
     if (handle401(res)) return;
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Error al guardar");
+      throw new Error(getDetail(err, "Error al guardar"));
     }
 
     // Reset form
@@ -754,7 +762,7 @@ async function loadTasks() {
           if (handle401(res)) return;
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "Error al iniciar timer");
+            throw new Error(getDetail(err, "Error al iniciar timer"));
           }
           const data = await res.json();
           showActiveTimer(data);
@@ -856,7 +864,7 @@ function setupQuickCreate(linkEl, formEl, titleEl, clientEl, cancelEl, saveEl, t
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "Error al crear tarea");
+        throw new Error(getDetail(err, "Error al crear tarea"));
       }
 
       const task = await res.json();

@@ -36,6 +36,10 @@ export function getErrorMessage(error: unknown, fallback = "Error inesperado"): 
     if (Array.isArray(data.detail)) {
       return data.detail.map((d) => d.msg).join(", ")
     }
+    // Handle object detail (e.g. {detail: {key: "value"}})
+    if (data.detail && typeof data.detail === "object") {
+      return JSON.stringify(data.detail)
+    }
   }
   if (error instanceof Error) {
     return error.message
