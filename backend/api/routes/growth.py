@@ -140,12 +140,12 @@ async def convert_to_project(
         raise HTTPException(status_code=404, detail="Idea no encontrada")
 
     desc_parts = [idea.description] if idea.description else []
-    desc_parts.append(f"Origen: Growth Idea (ICE: {idea.ice_score})")
+    desc_parts.append(f"Origen: Buffer de Ideas (ICE: {idea.ice_score})")
     if idea.results_notes:
         desc_parts.append(f"Resultados: {idea.results_notes}")
 
     project = Project(
-        name=f"[Growth] {idea.title}",
+        name=f"[Buffer] {idea.title}",
         description="\n\n".join(desc_parts),
         client_id=client_id,
         status="planning",
@@ -175,12 +175,12 @@ async def create_task_from_idea(
         raise HTTPException(status_code=404, detail="Idea no encontrada")
 
     desc_parts = [idea.description] if idea.description else []
-    desc_parts.append(f"Origen: Growth Idea (ICE: {idea.ice_score})")
+    desc_parts.append(f"Origen: Buffer de Ideas (ICE: {idea.ice_score})")
     if idea.results_notes:
         desc_parts.append(f"Resultados: {idea.results_notes}")
 
     task = Task(
-        title=f"[Growth] {idea.title}",
+        title=f"[Buffer] {idea.title}",
         description="\n\n".join(desc_parts),
         client_id=client_id,
         status="pending",

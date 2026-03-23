@@ -76,7 +76,7 @@ export function ProjectIdeasTab({ projectId }: ProjectIdeasTabProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["growth-ideas", "project", projectId] })
       setShowDialog(false)
-      toast.success("Idea añadida al backlog")
+      toast.success("Idea añadida al buffer")
       resetForm()
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al crear idea")),
@@ -182,7 +182,7 @@ export function ProjectIdeasTab({ projectId }: ProjectIdeasTabProps) {
           <CardContent className="p-8 text-center">
             <Lightbulb className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
             <p className="text-sm text-muted-foreground mb-3">
-              No hay ideas en el backlog de este proyecto.
+              No hay ideas en el buffer de este proyecto.
             </p>
             <p className="text-xs text-muted-foreground mb-4">
               Añade ideas, ordénalas por ICE y conviértelas en tareas cuando estén listas.
@@ -269,7 +269,7 @@ export function ProjectIdeasTab({ projectId }: ProjectIdeasTabProps) {
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={() => setShowDialog(false)}>Cancelar</Button>
               <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                {editingIdea ? "Guardar" : "Añadir al backlog"}
+                {editingIdea ? "Guardar" : "Añadir al buffer"}
               </Button>
             </div>
           </form>
@@ -281,7 +281,7 @@ export function ProjectIdeasTab({ projectId }: ProjectIdeasTabProps) {
         open={deleteId !== null}
         onOpenChange={(open) => { if (!open) setDeleteId(null) }}
         title="Eliminar idea"
-        description="¿Seguro que quieres eliminar esta idea del backlog?"
+        description="¿Seguro que quieres eliminar esta idea del buffer?"
         onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
       />
     </div>

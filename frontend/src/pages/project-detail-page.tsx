@@ -373,7 +373,7 @@ export default function ProjectDetailPage() {
           size="sm"
           onClick={() => setActiveTab("ideas")}
         >
-          Ideas / Backlog
+          Buffer
         </Button>
         <Button
           variant={activeTab === "evidence" ? "default" : "ghost"}

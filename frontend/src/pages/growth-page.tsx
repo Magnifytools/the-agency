@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { growthApi, clientsApi } from "@/lib/api"
+import { growthApi, clientsApi, projectsApi } from "@/lib/api"
 import type { GrowthIdeaCreate, GrowthFunnelStage, GrowthStatus } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,7 +10,7 @@ import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { Plus, Rocket, Trash2, FolderKanban, CheckSquare } from "lucide-react"
+import { Plus, Lightbulb, Trash2, FolderKanban, CheckSquare } from "lucide-react"
 import { toast } from "sonner"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { getErrorMessage } from "@/lib/utils"
@@ -47,6 +47,7 @@ export default function GrowthPage() {
     // Filters
     const [filterStatus, setFilterStatus] = useState<string>("")
     const [filterFunnel, setFilterFunnel] = useState<string>("")
+    const [filterProject, setFilterProject] = useState<string>("")
 
     // Form State
     const [formData, setFormData] = useState<Partial<GrowthIdeaCreate>>({
@@ -60,11 +61,18 @@ export default function GrowthPage() {
         ease: 5,
     })
 
+    const { data: projects = [] } = useQuery({
+        queryKey: ["projects-all"],
+        queryFn: () => projectsApi.listAll(),
+        staleTime: 5 * 60_000,
+    })
+
     const { data: ideas = [], isLoading } = useQuery({
-        queryKey: ["growth-ideas", filterStatus, filterFunnel],
+        queryKey: ["growth-ideas", filterStatus, filterFunnel, filterProject],
         queryFn: () => growthApi.list({
             status: filterStatus || undefined,
-            funnel_stage: filterFunnel || undefined
+            funnel_stage: filterFunnel || undefined,
+            project_id: filterProject ? Number(filterProject) : undefined,
         }),
     })
 
@@ -73,7 +81,7 @@ export default function GrowthPage() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["growth-ideas"] })
             setShowDialog(false)
-            toast.success("Idea añadida al backlog")
+            toast.success("Idea añadida al buffer")
             setFormData({
                 title: "", description: "", funnel_stage: "other", target_kpi: "", status: "idea", impact: 5, confidence: 5, ease: 5
             })
@@ -160,11 +168,11 @@ export default function GrowthPage() {
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <Rocket className="h-6 w-6 text-brand" />
-                        Operaciones de Growth
+                        <Lightbulb className="h-6 w-6 text-brand" />
+                        Buffer de Ideas
                     </h1>
                     <p className="text-muted-foreground text-sm mt-1">
-                        {ideas.length} ideas · Priorización ICE y gestión de ideas
+                        {ideas.length} ideas · Priorización ICE por proyecto
                     </p>
                 </div>
                 <Button onClick={() => setShowDialog(true)}>
@@ -173,7 +181,17 @@ export default function GrowthPage() {
                 </Button>
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-4">
+                <Select
+                    value={filterProject}
+                    onChange={(e) => setFilterProject(e.target.value)}
+                    className="w-48"
+                >
+                    <option value="">Todos los proyectos</option>
+                    {projects.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                </Select>
                 <Select
                     value={filterFunnel}
                     onChange={(e) => setFilterFunnel(e.target.value)}
@@ -216,9 +234,9 @@ export default function GrowthPage() {
                             <TableRow className="hover:bg-transparent">
                                 <TableCell colSpan={9} className="py-12">
                                     <div className="flex flex-col items-center">
-                                        <Rocket className="h-8 w-8 text-muted-foreground/30 mb-3" />
-                                        <p className="text-sm font-medium text-foreground mb-1">Sin ideas</p>
-                                        <p className="text-xs text-muted-foreground">Añade ideas, prioriza con ICE y decide qué ejecutar.</p>
+                                        <Lightbulb className="h-8 w-8 text-muted-foreground/30 mb-3" />
+                                        <p className="text-sm font-medium text-foreground mb-1">Buffer vacío</p>
+                                        <p className="text-xs text-muted-foreground">Añade ideas, prioriza con ICE y pásalas a tareas o proyectos.</p>
                                     </div>
                                 </TableCell>
                             </TableRow>
@@ -308,7 +326,7 @@ export default function GrowthPage() {
 
             <Dialog open={showDialog} onOpenChange={setShowDialog}>
                 <DialogHeader>
-                    <DialogTitle>Añadir Idea al Backlog</DialogTitle>
+                    <DialogTitle>Añadir Idea al Buffer</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleCreate} className="space-y-4 mt-4">
                     <div className="space-y-2">
@@ -331,6 +349,18 @@ export default function GrowthPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
+                            <Label>Proyecto</Label>
+                            <Select
+                                value={formData.project_id ? String(formData.project_id) : ""}
+                                onChange={(e) => setFormData({ ...formData, project_id: e.target.value ? Number(e.target.value) : undefined })}
+                            >
+                                <option value="">Sin proyecto</option>
+                                {projects.map((p) => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
                             <Label>Fase del Funnel</Label>
                             <Select
                                 value={formData.funnel_stage}
@@ -341,14 +371,14 @@ export default function GrowthPage() {
                                 ))}
                             </Select>
                         </div>
-                        <div className="space-y-2">
-                            <Label>KPI Objetivo</Label>
-                            <Input
-                                value={formData.target_kpi || ""}
-                                onChange={(e) => setFormData({ ...formData, target_kpi: e.target.value })}
-                                placeholder="Ej. Leads, MAU, SQLs"
-                            />
-                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <Label>KPI Objetivo</Label>
+                        <Input
+                            value={formData.target_kpi || ""}
+                            onChange={(e) => setFormData({ ...formData, target_kpi: e.target.value })}
+                            placeholder="Ej. Leads, MAU, SQLs"
+                        />
                     </div>
 
                     <div className="pt-2 border-t mt-4">

@@ -34,7 +34,7 @@ const ALL_MODULES: { key: string; label: string; group: string }[] = [
   { key: "digests", label: "Digests", group: "General" },
   { key: "billing", label: "Facturación", group: "General" },
   { key: "communications", label: "Comunicaciones", group: "General" },
-  { key: "growth", label: "Pipeline / Leads", group: "Crecimiento" },
+  { key: "growth", label: "Pipeline + Buffer", group: "Crecimiento" },
   { key: "proposals", label: "Presupuestos", group: "Crecimiento" },
   { key: "reports", label: "Informes", group: "Crecimiento" },
   { key: "finance_dashboard", label: "Dashboard Financiero", group: "Finanzas" },

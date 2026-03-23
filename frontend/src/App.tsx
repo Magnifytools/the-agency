@@ -102,7 +102,7 @@ export default function App() {
               <Route path="/tasks" element={<ErrorBoundary section="Tasks"><Suspense fallback={<PageLoader />}><TasksPage /></Suspense></ErrorBoundary>} />
               <Route path="/projects" element={<ErrorBoundary section="Projects"><Suspense fallback={<PageLoader />}><ProjectsPage /></Suspense></ErrorBoundary>} />
               <Route path="/projects/:id" element={<ErrorBoundary section="ProjectDetail"><Suspense fallback={<PageLoader />}><ProjectDetailPage /></Suspense></ErrorBoundary>} />
-              <Route path="/growth" element={<ErrorBoundary section="Growth"><Suspense fallback={<PageLoader />}><GrowthPage /></Suspense></ErrorBoundary>} />
+              <Route path="/growth" element={<PermissionRoute module="growth"><ErrorBoundary section="Buffer"><Suspense fallback={<PageLoader />}><GrowthPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/capacity" element={<PermissionRoute adminOnly><ErrorBoundary section="Capacity"><Suspense fallback={<PageLoader />}><CapacityPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/users" element={<PermissionRoute adminOnly><ErrorBoundary section="Users"><Suspense fallback={<PageLoader />}><UsersPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/timesheet" element={<ErrorBoundary section="Timesheet"><Suspense fallback={<PageLoader />}><TimesheetPage /></Suspense></ErrorBoundary>} />

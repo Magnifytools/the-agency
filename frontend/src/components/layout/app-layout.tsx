@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/context/auth-context"
 import { inboxApi } from "@/lib/api"
 import { inboxKeys } from "@/lib/query-keys"
-import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, FolderKanban, FileText, ScrollText, Wallet, Newspaper, Target, MessageCircle, ClipboardList, Gauge, Search, Archive, Megaphone, Inbox, Settings, LayoutGrid, CalendarDays, Zap } from "lucide-react"
+import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, FolderKanban, FileText, ScrollText, Wallet, Newspaper, Target, MessageCircle, ClipboardList, Gauge, Search, Archive, Megaphone, Inbox, Settings, LayoutGrid, CalendarDays, Zap, Lightbulb } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { BottomDrawer } from "@/components/ui/bottom-drawer"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
@@ -49,6 +49,7 @@ export function AppLayout() {
       { to: "/clients", label: "Clientes", icon: Users, module: "clients" },
       { to: "/projects", label: "Proyectos", icon: FolderKanban, module: "projects" },
       { to: "/leads", label: "Pipeline", icon: Target, module: "growth" },
+      { to: "/growth", label: "Buffer", icon: Lightbulb, module: "growth" },
       { to: "/tasks", label: "Tareas", icon: CheckSquare, module: "tasks" },
       { to: "/inbox", label: "Inbox", icon: Inbox, module: "tasks" },
     ]
@@ -110,6 +111,9 @@ export function AppLayout() {
     }
     if (path === "/leads") {
       return location.pathname === "/leads" || location.pathname.startsWith("/leads/")
+    }
+    if (path === "/growth") {
+      return location.pathname === "/growth"
     }
     if (path === "/projects") {
       return location.pathname === "/projects" || location.pathname.startsWith("/projects/")

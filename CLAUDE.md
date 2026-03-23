@@ -93,7 +93,7 @@ frontend/src/
 ## Permission Modules
 ```
 dashboard, clients, projects, tasks, timesheet, billing, proposals,
-reports, growth, communications, digests,
+reports, growth (Pipeline + Buffer), communications, digests,
 finance_income, finance_expenses, finance_taxes, finance_forecasts,
 finance_advisor, finance_import, finance_dashboard,
 admin_users, admin_settings
@@ -109,11 +109,23 @@ admin_users, admin_settings
 ## Weekly Digests (Claude AI)
 - Collector: `backend/services/digest_collector.py` — recopila datos crudos (tareas, comunicaciones, tiempo)
 - Generator: `backend/services/digest_generator.py` — genera contenido via Claude API (anthropic==0.49.0)
-- Renderer: `backend/services/digest_renderer.py` — render a Slack (emoji text) o Email (HTML Magnify branded)
+- Renderer: `backend/services/digest_renderer.py` — render a Slack (emoji text), Discord (MD), Email (HTML Magnify branded)
 - API: `backend/api/routes/digests.py` — CRUD completo + generate + generate-batch + render
 - Frontend: pages `digests-page.tsx` (lista) y `digest-edit-page.tsx` (editor con preview)
 - Estructura contenido: `{greeting, date, sections: {done, need, next}, closing}`
 - Tonos: formal | cercano | equipo
+- Títulos sección: 1ª persona singular (cercano/formal), plural (equipo)
+- Closing soporta HTML en email (para links tipo Google Sheets)
+- **Flujo**: Generar → Editar → Copiar al portapapeles → Pegar en Gmail/Slack manualmente
+- NO se envían emails ni mensajes desde la app. Discord solo para uso interno.
+
+## Buffer de Ideas (Growth)
+- **Concepto**: Backlog de ideas **por proyecto**, priorizadas con ICE (Impact/Confidence/Ease)
+- **Flujo**: Idea → Puntuar ICE → Convertir a Tarea o Proyecto
+- **Backend**: tabla `growth_ideas` con `project_id` FK, rutas en `/api/growth`, módulo `growth`
+- **Frontend**: página `/growth` (Buffer global con filtro por proyecto) + tab "Buffer" en detalle de proyecto
+- **Nomenclatura**: UI dice "Buffer de Ideas" / "Buffer", código interno sigue usando `growth` (evita migración DB)
+- **No confundir** con Pipeline/Leads (`/leads`) que es el CRM comercial
 
 ## No tocar
 - Módulos financieros custom: tax_service, forecast_service, income, expenses, taxes, forecasts
