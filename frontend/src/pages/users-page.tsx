@@ -36,7 +36,7 @@ const ALL_MODULES: { key: string; label: string; group: string }[] = [
   { key: "communications", label: "Comunicaciones", group: "General" },
   { key: "leads", label: "Leads", group: "Crecimiento" },
   { key: "proposals", label: "Propuestas", group: "Crecimiento" },
-  { key: "growth", label: "Crecimiento", group: "Crecimiento" },
+  { key: "growth", label: "Pipeline", group: "Crecimiento" },
   { key: "reports", label: "Informes", group: "Crecimiento" },
   { key: "finance_dashboard", label: "Dashboard Financiero", group: "Finanzas" },
   { key: "finance_income", label: "Ingresos", group: "Finanzas" },
