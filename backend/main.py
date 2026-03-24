@@ -1169,12 +1169,19 @@ async def _daily_reminders_loop():
                 users = result.scalars().all()
 
                 for user in users:
+                    # Skip test/QA users that may have been created by audits
+                    _skip = {"qa", "test", "audit", "example.com"}
+                    _name_lower = (user.full_name or "").lower()
+                    _email_lower = (user.email or "").lower()
+                    if any(kw in _name_lower or kw in _email_lower for kw in _skip):
+                        continue
+
                     if not await is_working_day(db, today, user.region):
                         continue
 
                     # Morning reminder
                     if (user.id, "morning") not in sent_today:
-                        target = user.morning_reminder_time or "09:00"
+                        target = user.morning_reminder_time or "08:00"
                         if current_time == target:
                             msg = await generate_morning_plan(db, user)
                             if await send_reminder(msg):

@@ -255,7 +255,7 @@ class User(TimestampMixin, Base):
     short_name = Column(String(50), nullable=True)   # Display name: "David", "Nacho"
     birthday = Column(Date, nullable=True)
     job_title = Column(String(100), nullable=True)   # "SEO Strategist", "PM"
-    morning_reminder_time = Column(String(5), nullable=False, default="09:00", server_default="09:00")
+    morning_reminder_time = Column(String(5), nullable=False, default="08:00", server_default="08:00")
     evening_reminder_time = Column(String(5), nullable=False, default="18:00", server_default="18:00")
     onboarding_completed = Column(Boolean, nullable=False, default=False, server_default="false")
 
