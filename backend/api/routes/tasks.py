@@ -222,7 +222,11 @@ async def create_task(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("tasks", write=True)),
 ):
-    task = Task(**body.model_dump(), created_by=current_user.id)
+    data = body.model_dump()
+    # Auto-assign to creator if no assignee specified
+    if not data.get("assigned_to"):
+        data["assigned_to"] = current_user.id
+    task = Task(**data, created_by=current_user.id)
     db.add(task)
     try:
         await db.commit()
