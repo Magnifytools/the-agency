@@ -733,11 +733,40 @@ async function loadTasks() {
     tasksEmpty.classList.add("hidden");
     tasksList.innerHTML = tasks.map((t) => renderTaskCard(t)).join("");
 
+    // Check button: toggle task completion
+    tasksList.querySelectorAll(".task-check-btn").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const taskId = parseInt(btn.dataset.taskId, 10);
+        const currentStatus = btn.dataset.status;
+        const newStatus = currentStatus === "completed" ? "pending" : "completed";
+        btn.disabled = true;
+        try {
+          const res = await fetch(`${API_URL}/api/tasks/${taskId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ status: newStatus }),
+          });
+          if (handle401(res)) return;
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(getDetail(err, "Error al actualizar"));
+          }
+          loadTasks(); // Reload task list
+        } catch (err) {
+          timerError.textContent = err.message;
+          timerError.classList.remove("hidden");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+
     // Add click handlers to open tasks in webapp
     tasksList.querySelectorAll(".task-card").forEach((card) => {
       card.addEventListener("click", (e) => {
-        // Don't navigate if play button was clicked
-        if (e.target.closest(".task-play-btn")) return;
+        // Don't navigate if play button or check button was clicked
+        if (e.target.closest(".task-play-btn") || e.target.closest(".task-check-btn")) return;
         const taskId = card.dataset.id;
         chrome.tabs.create({ url: `${API_URL}/tasks?edit=${taskId}` });
         window.close();
@@ -787,10 +816,13 @@ function renderTaskCard(task) {
   const priorityIcon = priority === "high" ? "↑" : priority === "low" ? "↓" : "";
   const projectName = task.project_name ? `<span class="task-project">${escapeHtml(task.project_name)}</span>` : "";
 
+  const isCompleted = task.status === "completed";
   return `
-    <div class="task-card" data-id="${task.id}">
+    <div class="task-card ${isCompleted ? "task-completed" : ""}" data-id="${task.id}">
       <div class="task-header">
-        <span class="task-status-dot" style="background:${statusColor}"></span>
+        <button class="task-check-btn ${isCompleted ? "checked" : ""}" data-task-id="${task.id}" data-status="${task.status}" title="${isCompleted ? "Reabrir" : "Completar"}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        </button>
         <span class="task-title">${escapeHtml(task.title)}</span>
         ${priorityIcon ? `<span class="task-priority task-priority-${priority}">${priorityIcon}</span>` : ""}
         <button class="task-play-btn" data-task-id="${task.id}" title="Iniciar timer">
