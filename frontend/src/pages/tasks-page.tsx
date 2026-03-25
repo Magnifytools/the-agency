@@ -1012,7 +1012,7 @@ export default function TasksPage() {
                     id="scheduled_date"
                     name="scheduled_date"
                     type="date"
-                    defaultValue={editing?.scheduled_date ?? (editing ? "" : new Date().toISOString().split("T")[0])}
+                    defaultValue={editing?.scheduled_date ?? ""}
                   />
                 </div>
                 <div className="space-y-1.5">

@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 
 from backend.api.utils.db_helpers import safe_refresh
 from backend.config import settings
-from backend.db.models import TimeEntry, Task, User, UserRole, Project, Client
+from backend.db.models import TimeEntry, Task, TaskStatus, User, UserRole, Project, Client
 from backend.schemas.time_entry import (
     TimeEntryCreate,
     TimeEntryUpdate,
@@ -621,10 +621,21 @@ async def start_timer(
     )
     active = result.scalar_one_or_none()
     if active is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Ya hay un timer activo. Detén el actual antes de iniciar otro.",
-        )
+        # Auto-stop the current timer before starting a new one
+        now_stop = datetime.utcnow()
+        sa = active.started_at if active.started_at and active.started_at.tzinfo is None else (active.started_at.replace(tzinfo=None) if active.started_at else now_stop)
+        elapsed = (now_stop - sa).total_seconds()
+        active.minutes = max(1, min(480, round(elapsed / 60)))
+        await db.commit()
+        if active.task_id:
+            try:
+                await _sync_task_actual_minutes(db, active.task_id)
+                await db.commit()
+            except Exception:
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
         
     if body.task_id is None and not body.notes:
         raise HTTPException(status_code=400, detail="Debes enviar un task_id o una nota")
@@ -636,6 +647,9 @@ async def start_timer(
         task = task_result.scalar_one_or_none()
         if task is None:
             raise HTTPException(status_code=404, detail="Task not found")
+        # Auto-set task to in_progress when starting timer
+        if task.status in (TaskStatus.pending, TaskStatus.backlog):
+            task.status = TaskStatus.in_progress
 
     now = datetime.utcnow()
     entry = TimeEntry(
