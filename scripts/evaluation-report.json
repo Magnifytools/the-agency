@@ -1,0 +1,593 @@
+{
+  "timestamp": "2026-03-26T12:43:52.585307",
+  "base_url": "https://agency.magnifytools.com",
+  "overall_score": 95,
+  "users": {
+    "admin": {
+      "role": "admin",
+      "score": 95,
+      "passed": 19,
+      "total": 20,
+      "modules": {
+        "auth": {
+          "score": 50,
+          "passed": 1,
+          "total": 2,
+          "results": [
+            {
+              "pass": false,
+              "status": 422,
+              "expected": 200,
+              "elapsed_ms": 403,
+              "description": "Login",
+              "path": "/api/auth/login",
+              "detail": [
+                {
+                  "type": "missing",
+                  "loc": [
+                    "body",
+                    "email"
+                  ],
+                  "msg": "Field required",
+                  "input": {}
+                },
+                {
+                  "type": "missing",
+                  "loc": [
+                    "body",
+                    "password"
+                  ],
+                  "msg": "Field required",
+                  "input": {}
+                }
+              ]
+            },
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 429,
+              "description": "Current user",
+              "path": "/api/auth/me"
+            }
+          ]
+        },
+        "dashboard": {
+          "score": 100,
+          "passed": 2,
+          "total": 2,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 512,
+              "description": "Dashboard overview",
+              "path": "/api/dashboard/overview"
+            },
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 431,
+              "description": "Today tasks",
+              "path": "/api/dashboard/today"
+            }
+          ]
+        },
+        "tasks": {
+          "score": 100,
+          "passed": 2,
+          "total": 2,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 408,
+              "description": "List tasks",
+              "path": "/api/tasks?page_size=5"
+            },
+            {
+              "pass": true,
+              "status": 201,
+              "expected": 201,
+              "elapsed_ms": 524,
+              "description": "Create task",
+              "path": "/api/tasks"
+            }
+          ]
+        },
+        "timer": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 442,
+              "description": "Active timer",
+              "path": "/api/timer/active"
+            }
+          ]
+        },
+        "time_entries": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 357,
+              "description": "List time entries",
+              "path": "/api/time-entries?page_size=5"
+            }
+          ]
+        },
+        "clients": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 518,
+              "description": "List clients",
+              "path": "/api/clients?page_size=5"
+            }
+          ]
+        },
+        "projects": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 451,
+              "description": "List projects",
+              "path": "/api/projects?page_size=5"
+            }
+          ]
+        },
+        "inbox": {
+          "score": 100,
+          "passed": 2,
+          "total": 2,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 271,
+              "description": "List inbox",
+              "path": "/api/inbox?page_size=5"
+            },
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 501,
+              "description": "Inbox count",
+              "path": "/api/inbox/count"
+            }
+          ]
+        },
+        "notifications": {
+          "score": 100,
+          "passed": 2,
+          "total": 2,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 517,
+              "description": "List notifications",
+              "path": "/api/notifications?page_size=5"
+            },
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 422,
+              "description": "Unread count",
+              "path": "/api/notifications/unread-count"
+            }
+          ]
+        },
+        "users": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 438,
+              "description": "List users",
+              "path": "/api/users"
+            }
+          ]
+        },
+        "digests": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 557,
+              "description": "List digests",
+              "path": "/api/digests?page_size=5"
+            }
+          ]
+        },
+        "reports": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 284,
+              "description": "List reports",
+              "path": "/api/reports?page_size=5"
+            }
+          ]
+        },
+        "pm": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 596,
+              "description": "List insights",
+              "path": "/api/pm/insights"
+            }
+          ]
+        },
+        "leads": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 438,
+              "description": "List leads",
+              "path": "/api/leads?page_size=5"
+            }
+          ]
+        },
+        "vault": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 523,
+              "description": "List vault assets (admin only)",
+              "path": "/api/vault/assets"
+            }
+          ]
+        }
+      }
+    },
+    "member": {
+      "role": "member",
+      "score": 95,
+      "passed": 19,
+      "total": 20,
+      "modules": {
+        "auth": {
+          "score": 50,
+          "passed": 1,
+          "total": 2,
+          "results": [
+            {
+              "pass": false,
+              "status": 422,
+              "expected": 200,
+              "elapsed_ms": 392,
+              "description": "Login",
+              "path": "/api/auth/login",
+              "detail": [
+                {
+                  "type": "missing",
+                  "loc": [
+                    "body",
+                    "email"
+                  ],
+                  "msg": "Field required",
+                  "input": {}
+                },
+                {
+                  "type": "missing",
+                  "loc": [
+                    "body",
+                    "password"
+                  ],
+                  "msg": "Field required",
+                  "input": {}
+                }
+              ]
+            },
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 294,
+              "description": "Current user",
+              "path": "/api/auth/me"
+            }
+          ]
+        },
+        "dashboard": {
+          "score": 100,
+          "passed": 2,
+          "total": 2,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 545,
+              "description": "Dashboard overview",
+              "path": "/api/dashboard/overview"
+            },
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 588,
+              "description": "Today tasks",
+              "path": "/api/dashboard/today"
+            }
+          ]
+        },
+        "tasks": {
+          "score": 100,
+          "passed": 2,
+          "total": 2,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 484,
+              "description": "List tasks",
+              "path": "/api/tasks?page_size=5"
+            },
+            {
+              "pass": true,
+              "status": 201,
+              "expected": 201,
+              "elapsed_ms": 566,
+              "description": "Create task",
+              "path": "/api/tasks"
+            }
+          ]
+        },
+        "timer": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 609,
+              "description": "Active timer",
+              "path": "/api/timer/active"
+            }
+          ]
+        },
+        "time_entries": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 461,
+              "description": "List time entries",
+              "path": "/api/time-entries?page_size=5"
+            }
+          ]
+        },
+        "clients": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 450,
+              "description": "List clients",
+              "path": "/api/clients?page_size=5"
+            }
+          ]
+        },
+        "projects": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 554,
+              "description": "List projects",
+              "path": "/api/projects?page_size=5"
+            }
+          ]
+        },
+        "inbox": {
+          "score": 100,
+          "passed": 2,
+          "total": 2,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 493,
+              "description": "List inbox",
+              "path": "/api/inbox?page_size=5"
+            },
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 515,
+              "description": "Inbox count",
+              "path": "/api/inbox/count"
+            }
+          ]
+        },
+        "notifications": {
+          "score": 100,
+          "passed": 2,
+          "total": 2,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 390,
+              "description": "List notifications",
+              "path": "/api/notifications?page_size=5"
+            },
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 319,
+              "description": "Unread count",
+              "path": "/api/notifications/unread-count"
+            }
+          ]
+        },
+        "users": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 445,
+              "description": "List users",
+              "path": "/api/users"
+            }
+          ]
+        },
+        "digests": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 466,
+              "description": "List digests",
+              "path": "/api/digests?page_size=5"
+            }
+          ]
+        },
+        "reports": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 533,
+              "description": "List reports",
+              "path": "/api/reports?page_size=5"
+            }
+          ]
+        },
+        "pm": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 540,
+              "description": "List insights",
+              "path": "/api/pm/insights"
+            }
+          ]
+        },
+        "leads": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 200,
+              "expected": 200,
+              "elapsed_ms": 289,
+              "description": "List leads",
+              "path": "/api/leads?page_size=5"
+            }
+          ]
+        },
+        "vault": {
+          "score": 100,
+          "passed": 1,
+          "total": 1,
+          "results": [
+            {
+              "pass": true,
+              "status": 403,
+              "expected": 403,
+              "elapsed_ms": 499,
+              "description": "List vault assets (admin only)",
+              "path": "/api/vault/assets"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
