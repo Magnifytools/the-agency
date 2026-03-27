@@ -473,6 +473,21 @@ async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> 
     if ai_suggestion is not None:
         new_insights.append(ai_suggestion)
 
+    # Fallback: if no issues found, generate a positive insight
+    if not new_insights:
+        insight = PMInsight(
+            insight_type=InsightType.positive,
+            priority=InsightPriority.low,
+            title="Todo en orden",
+            description="No se detectan tareas vencidas, clientes inactivos ni horas sin registrar. Buen trabajo del equipo.",
+            recommendation="Aprovecha para planificar la semana que viene o revisar proyectos en curso.",
+            status=InsightStatus.active,
+            generated_at=now,
+            expires_at=now + timedelta(days=1),
+            user_id=user_id,
+        )
+        new_insights.append(insight)
+
     # Save all new insights
     for insight in new_insights:
         db.add(insight)

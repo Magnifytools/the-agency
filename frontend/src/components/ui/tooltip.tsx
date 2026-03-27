@@ -1,4 +1,5 @@
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { HelpCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -12,14 +13,26 @@ interface TooltipProps {
 
 export function Tooltip({ content, children, side = "bottom", align = "center", className }: TooltipProps) {
   const [open, setOpen] = React.useState(false)
+  const triggerRef = React.useRef<HTMLSpanElement>(null)
+  const [pos, setPos] = React.useState({ top: 0, left: 0 })
 
-  const alignClass =
-    align === "start" ? "left-0" :
-    align === "end" ? "right-0" :
-    "left-1/2 -translate-x-1/2"
+  React.useEffect(() => {
+    if (open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect()
+      const top = side === "bottom" ? rect.bottom + 8 : rect.top - 8
+      const left = align === "end" ? rect.right : align === "start" ? rect.left : rect.left + rect.width / 2
+      setPos({ top, left })
+    }
+  }, [open, side, align])
+
+  const transformClass =
+    align === "start" ? "translate-x-0" :
+    align === "end" ? "-translate-x-full" :
+    "-translate-x-1/2"
 
   return (
     <span
+      ref={triggerRef}
       className="relative inline-flex"
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
@@ -28,18 +41,20 @@ export function Tooltip({ content, children, side = "bottom", align = "center", 
       onClick={() => setOpen((v) => !v)}
     >
       {children}
-      {open && (
+      {open && createPortal(
         <span
           role="tooltip"
+          style={{ top: pos.top, left: pos.left, position: "fixed" }}
           className={cn(
-            "absolute z-50 w-max max-w-[260px] rounded-[10px] border border-border bg-surface px-3 py-2 text-xs leading-relaxed text-foreground shadow-lg pointer-events-none",
-            side === "bottom" ? "top-full mt-2" : "bottom-full mb-2",
-            alignClass,
+            "z-[9999] w-max max-w-[260px] rounded-[10px] border border-border bg-surface px-3 py-2 text-xs leading-relaxed text-foreground shadow-lg pointer-events-none",
+            side === "top" && "-translate-y-full",
+            transformClass,
             className
           )}
         >
           {content}
-        </span>
+        </span>,
+        document.body
       )}
     </span>
   )
