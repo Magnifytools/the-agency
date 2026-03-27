@@ -1503,7 +1503,7 @@ app.include_router(automations.router)
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint for monitoring and deployment probes."""
-    return {"status": "ok"}
+    return {"status": "ok", "build": "v5-timer-pause", "routes": len(app.routes)}
 
 
 # Serve frontend static files in production
