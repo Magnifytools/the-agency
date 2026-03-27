@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { FileText, Plus, Trash2, Copy, Building2, FolderKanban, Calendar, Sparkles, Loader2, FileDown } from "lucide-react"
+import { FileText, Plus, Trash2, Copy, Building2, FolderKanban, Sparkles, Loader2, FileDown } from "lucide-react"
 import { toast } from "sonner"
 import { reportsApi, clientsApi, projectsApi } from "@/lib/api"
 import type { Report, ReportType, ReportPeriod, ReportAudience, ReportNarrative } from "@/lib/types"
@@ -325,9 +325,9 @@ function GenerateReportDialog({
   const [projectId, setProjectId] = useState<number | null>(null)
   const [period, setPeriod] = useState<ReportPeriod>("month")
   const [audience, setAudience] = useState<ReportAudience | "">("")
-  const now = new Date()
-  const [monthlyMonth, setMonthlyMonth] = useState(now.getMonth() + 1)
-  const [monthlyYear, setMonthlyYear] = useState(now.getFullYear())
+  const _now = new Date()
+  const [_monthlyMonth, _setMonthlyMonth] = useState(_now.getMonth() + 1)
+  const [_monthlyYear, _setMonthlyYear] = useState(_now.getFullYear())
 
   const { data: clients = [] } = useQuery({
     queryKey: ["clients-all-active"],

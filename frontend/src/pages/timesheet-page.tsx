@@ -125,7 +125,7 @@ function ClientReportRow({ client }: { client: ClientTimeReport }) {
   )
 }
 
-function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: string; client_id?: number | null; client_name?: string | null; project_id?: number | null; project_name?: string | null }[]; onTimerChange: () => void }) {
+function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: string; status?: string; client_id?: number | null; client_name?: string | null; project_id?: number | null; project_name?: string | null; scheduled_date?: string | null; due_date?: string | null }[]; onTimerChange: () => void }) {
   const queryClient = useQueryClient()
   const [filterClient, setFilterClient] = useState("")
   const [filterProject, setFilterProject] = useState("")
