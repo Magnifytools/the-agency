@@ -393,8 +393,29 @@ textarea::placeholder {
   margin-top: 4px;
 }
 
+.timer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.pause-btn, .resume-btn {
+  flex: 1;
+  padding: 10px;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  transition: background 0.15s;
+  cursor: pointer;
+}
+.pause-btn { background: #f59e0b; }
+.pause-btn:hover { background: #d97706; }
+.resume-btn { background: #22c55e; }
+.resume-btn:hover { background: #16a34a; }
+
 .stop-btn {
-  width: 100%;
+  flex: 1;
   padding: 10px;
   background: #dc2626;
   color: #fff;
@@ -403,10 +424,14 @@ textarea::placeholder {
   font-weight: 700;
   font-size: 13px;
   transition: background 0.15s;
+  cursor: pointer;
 }
 
 .stop-btn:hover:not(:disabled) { background: #b91c1c; }
 .stop-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.timer-paused .timer-clock { opacity: 0.5; animation: blink 1.5s infinite; }
+@keyframes blink { 50% { opacity: 1; } }
 
 .section-label {
   font-size: 11px;

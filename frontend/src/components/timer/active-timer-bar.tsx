@@ -10,11 +10,16 @@ import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import type { Task, Client, TimeEntry } from "@/lib/types"
 
-function formatElapsed(startedAt: string): string {
-  const elapsed = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)
-  const h = Math.floor(elapsed / 3600)
-  const m = Math.floor((elapsed % 3600) / 60)
-  const s = elapsed % 60
+function formatElapsed(startedAt: string, accumulatedSeconds = 0, isPaused = false): string {
+  let total: number
+  if (isPaused) {
+    total = accumulatedSeconds
+  } else {
+    total = accumulatedSeconds + Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)
+  }
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
 }
 
@@ -45,7 +50,7 @@ export function ActiveTimerBar() {
   // Fetch user's tasks for selector
   const { data: tasks = [] } = useQuery({
     queryKey: ["my-tasks-timer"],
-    queryFn: () => tasksApi.listAll({ assigned_to: "me", status: "pending,in_progress,waiting,in_review" }),
+    queryFn: () => tasksApi.listAll({ assigned_to: "me", status: "pending,in_progress,waiting,in_review", scheduled_date: new Date().toISOString().split("T")[0] }),
   })
 
   // Fetch clients for quick create
@@ -58,12 +63,15 @@ export function ActiveTimerBar() {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- Timer tick requires setInterval in effect
   useEffect(() => {
     if (!timer?.started_at) return
-    setElapsed(formatElapsed(timer.started_at))
+    const acc = timer.accumulated_seconds || 0
+    const paused = timer.is_paused || false
+    setElapsed(formatElapsed(timer.started_at, acc, paused))
+    if (paused) return // Don't tick when paused
     const interval = setInterval(() => {
-      setElapsed(formatElapsed(timer.started_at))
+      setElapsed(formatElapsed(timer.started_at, acc, false))
     }, 1000)
     return () => clearInterval(interval)
-  }, [timer?.started_at])
+  }, [timer?.started_at, timer?.is_paused, timer?.accumulated_seconds])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- Reminder state tracks async 4h threshold
   useEffect(() => {
@@ -99,7 +107,6 @@ export function ActiveTimerBar() {
     onSuccess: (entry: TimeEntry) => {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       queryClient.invalidateQueries({ queryKey: ["time-entries"] })
-      // If stopped entry had no task assigned, prompt to assign
       if (!entry.task_id) {
         setStoppedEntryId(entry.id)
         setAssignTaskId("")
@@ -110,6 +117,24 @@ export function ActiveTimerBar() {
       }
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al detener timer")),
+  })
+
+  const pauseMutation = useMutation({
+    mutationFn: () => timerApi.pause(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
+      toast.success("Timer en pausa ⏸")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al pausar")),
+  })
+
+  const resumeMutation = useMutation({
+    mutationFn: () => timerApi.resume(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
+      toast.success("Timer reanudado ▶")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al reanudar")),
   })
 
   // Assign task to stopped entry
@@ -255,7 +280,30 @@ export function ActiveTimerBar() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <span className="font-mono font-bold">{elapsed}</span>
+          <span className={`font-mono font-bold ${timer?.is_paused ? "opacity-50 animate-pulse" : ""}`}>
+            {timer?.is_paused ? "⏸ " : ""}{elapsed}
+          </span>
+          {timer?.is_paused ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => resumeMutation.mutate()}
+              disabled={resumeMutation.isPending}
+              className="bg-green-500 text-white hover:bg-green-600 font-semibold"
+            >
+              <Play className="h-3 w-3 mr-1" /> Reanudar
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => pauseMutation.mutate()}
+              disabled={pauseMutation.isPending}
+              className="bg-yellow-500 text-white hover:bg-yellow-600 font-semibold"
+            >
+              ⏸ Pausa
+            </Button>
+          )}
           <Button
             size="sm"
             variant="secondary"

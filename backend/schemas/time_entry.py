@@ -51,6 +51,8 @@ class ActiveTimerResponse(BaseModel):
     task_title: Optional[str] = None
     client_name: Optional[str] = None
     started_at: datetime
+    is_paused: bool = False
+    accumulated_seconds: int = 0
 
     model_config = {"from_attributes": True}
 

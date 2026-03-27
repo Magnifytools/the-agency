@@ -94,6 +94,8 @@ async def test_stop_timer_returns_200_when_sync_fails(admin_client, admin_user):
     fake_entry.started_at = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     fake_entry.date = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     fake_entry.notes = None
+    fake_entry.paused_at = None
+    fake_entry.accumulated_seconds = 0
     fake_entry.created_at = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     fake_entry.updated_at = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     fake_entry.task = None

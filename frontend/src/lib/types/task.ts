@@ -141,4 +141,6 @@ export interface ActiveTimer {
   task_title: string | null
   client_name: string | null
   started_at: string
+  is_paused?: boolean
+  accumulated_seconds?: number
 }

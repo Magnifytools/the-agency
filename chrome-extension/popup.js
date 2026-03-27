@@ -71,6 +71,8 @@ const timerIdle = document.getElementById("timer-idle");
 const timerElapsed = document.getElementById("timer-elapsed");
 const timerTaskName = document.getElementById("timer-task-name");
 const timerStopBtn = document.getElementById("timer-stop-btn");
+const timerPauseBtn = document.getElementById("timer-pause-btn");
+const timerResumeBtn = document.getElementById("timer-resume-btn");
 const timerTaskSelect = document.getElementById("timer-task-select");
 const timerStartBtn = document.getElementById("timer-start-btn");
 const manualTaskSelect = document.getElementById("manual-task-select");
@@ -107,6 +109,8 @@ const tasksEmpty = document.getElementById("tasks-empty");
 let token = "";
 let timerInterval = null;
 let activeTimerStart = null;
+let timerIsPaused = false;
+let timerAccumulatedSeconds = 0;
 let clientsList = []; // cached for quick-create forms
 
 // ── Init ──────────────────────────────────────────────────
@@ -468,7 +472,20 @@ function showActiveTimer(data) {
   timerIdle.classList.add("hidden");
 
   activeTimerStart = new Date(data.started_at);
+  timerAccumulatedSeconds = data.accumulated_seconds || 0;
+  timerIsPaused = data.is_paused || false;
   timerTaskName.textContent = data.task_title || "Sin tarea";
+
+  // Show/hide pause/resume buttons
+  if (timerIsPaused) {
+    timerPauseBtn.classList.add("hidden");
+    timerResumeBtn.classList.remove("hidden");
+    timerActive.classList.add("timer-paused");
+  } else {
+    timerPauseBtn.classList.remove("hidden");
+    timerResumeBtn.classList.add("hidden");
+    timerActive.classList.remove("timer-paused");
+  }
 
   // Show header timer indicator
   headerTimer.classList.remove("hidden");
@@ -496,14 +513,18 @@ function showIdleTimer() {
 
 function updateTimerDisplay() {
   if (!activeTimerStart) return;
-  const now = new Date();
-  const diff = Math.floor((now - activeTimerStart) / 1000);
+  let diff;
+  if (timerIsPaused) {
+    diff = timerAccumulatedSeconds;
+  } else {
+    const now = new Date();
+    diff = timerAccumulatedSeconds + Math.floor((now - activeTimerStart) / 1000);
+  }
   const h = Math.floor(diff / 3600);
   const m = Math.floor((diff % 3600) / 60);
   const s = diff % 60;
   timerElapsed.textContent = `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  // Update header compact timer
-  headerTimerText.textContent = `${h}:${String(m).padStart(2, "0")}`;
+  headerTimerText.textContent = timerIsPaused ? `⏸ ${h}:${String(m).padStart(2, "0")}` : `${h}:${String(m).padStart(2, "0")}`;
 }
 
 async function loadTimerTasks() {
@@ -615,6 +636,68 @@ timerStopBtn.addEventListener("click", async () => {
   } finally {
     timerStopBtn.disabled = false;
     timerStopBtn.textContent = "Detener";
+  }
+});
+
+// Pause timer
+timerPauseBtn.addEventListener("click", async () => {
+  timerPauseBtn.disabled = true;
+  timerError.classList.add("hidden");
+
+  try {
+    const res = await fetch(`${API_URL}/api/timer/pause`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (handle401(res)) return;
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(getDetail(err, "Error al pausar timer"));
+    }
+
+    const data = await res.json();
+    showActiveTimer(data);
+    showTimerSuccess("Timer en pausa ⏸");
+  } catch (err) {
+    timerError.textContent = err.message;
+    timerError.classList.remove("hidden");
+  } finally {
+    timerPauseBtn.disabled = false;
+  }
+});
+
+// Resume timer
+timerResumeBtn.addEventListener("click", async () => {
+  timerResumeBtn.disabled = true;
+  timerError.classList.add("hidden");
+
+  try {
+    const res = await fetch(`${API_URL}/api/timer/resume`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (handle401(res)) return;
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(getDetail(err, "Error al reanudar timer"));
+    }
+
+    const data = await res.json();
+    showActiveTimer(data);
+    showTimerSuccess("Timer reanudado ▶");
+  } catch (err) {
+    timerError.textContent = err.message;
+    timerError.classList.remove("hidden");
+  } finally {
+    timerResumeBtn.disabled = false;
   }
 });
 

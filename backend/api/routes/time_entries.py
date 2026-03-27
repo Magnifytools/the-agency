@@ -716,8 +716,16 @@ async def stop_timer(
     now = datetime.utcnow()
     # Use naive UTC to match DB TIMESTAMP WITHOUT TIME ZONE columns
     sa = entry.started_at if entry.started_at.tzinfo is None else entry.started_at.replace(tzinfo=None)
-    elapsed = (now - sa).total_seconds()
+    # Include accumulated seconds from pause/resume cycles
+    accumulated = getattr(entry, 'accumulated_seconds', 0) or 0
+    if entry.paused_at:
+        # Timer was paused — don't add time since pause
+        elapsed = accumulated
+    else:
+        elapsed = accumulated + (now - sa).total_seconds()
     entry.minutes = max(1, min(480, round(elapsed / 60)))  # Cap at 8 hours
+    entry.paused_at = None
+    entry.accumulated_seconds = 0
     if body.notes:
         entry.notes = body.notes
 
@@ -735,6 +743,84 @@ async def stop_timer(
     # Reload with explicit eager loading instead of safe_refresh
     loaded = await _load_time_entry_for_response(db, entry.id)
     return _entry_to_response(loaded or entry)
+
+
+@router.post("/api/timer/pause", response_model=ActiveTimerResponse)
+async def pause_timer(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("timesheet", write=True)),
+):
+    """Pause the active timer without stopping it. Accumulated time is preserved."""
+    result = await db.execute(
+        select(TimeEntry)
+        .options(selectinload(TimeEntry.task).selectinload(Task.client))
+        .where(
+            and_(TimeEntry.user_id == current_user.id, TimeEntry.minutes.is_(None))
+        )
+    )
+    entry = result.scalar_one_or_none()
+    if entry is None:
+        raise HTTPException(status_code=404, detail="No hay timer activo")
+    if entry.paused_at:
+        raise HTTPException(status_code=400, detail="El timer ya está en pausa")
+
+    now = datetime.utcnow()
+    sa = entry.started_at if entry.started_at.tzinfo is None else entry.started_at.replace(tzinfo=None)
+    current_segment = (now - sa).total_seconds()
+    entry.accumulated_seconds = (entry.accumulated_seconds or 0) + int(current_segment)
+    entry.paused_at = now
+    await db.commit()
+
+    task_title = entry.notes
+    client_name = None
+    if entry.task:
+        task_title = entry.task.title
+        if entry.task.client:
+            client_name = entry.task.client.name
+    sa_tz = entry.started_at.replace(tzinfo=timezone.utc) if entry.started_at and entry.started_at.tzinfo is None else entry.started_at
+    return ActiveTimerResponse(
+        id=entry.id, task_id=entry.task_id, task_title=task_title,
+        client_name=client_name, started_at=sa_tz,
+        is_paused=True, accumulated_seconds=entry.accumulated_seconds,
+    )
+
+
+@router.post("/api/timer/resume", response_model=ActiveTimerResponse)
+async def resume_timer(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("timesheet", write=True)),
+):
+    """Resume a paused timer."""
+    result = await db.execute(
+        select(TimeEntry)
+        .options(selectinload(TimeEntry.task).selectinload(Task.client))
+        .where(
+            and_(TimeEntry.user_id == current_user.id, TimeEntry.minutes.is_(None))
+        )
+    )
+    entry = result.scalar_one_or_none()
+    if entry is None:
+        raise HTTPException(status_code=404, detail="No hay timer activo")
+    if not entry.paused_at:
+        raise HTTPException(status_code=400, detail="El timer no está en pausa")
+
+    now = datetime.utcnow()
+    entry.started_at = now  # Reset start to now; accumulated_seconds keeps the history
+    entry.paused_at = None
+    await db.commit()
+
+    task_title = entry.notes
+    client_name = None
+    if entry.task:
+        task_title = entry.task.title
+        if entry.task.client:
+            client_name = entry.task.client.name
+    sa_tz = now.replace(tzinfo=timezone.utc)
+    return ActiveTimerResponse(
+        id=entry.id, task_id=entry.task_id, task_title=task_title,
+        client_name=client_name, started_at=sa_tz,
+        is_paused=False, accumulated_seconds=entry.accumulated_seconds or 0,
+    )
 
 
 @router.get("/api/timer/active", response_model=Optional[ActiveTimerResponse])
@@ -765,4 +851,6 @@ async def get_active_timer(
         task_title=task_title,
         client_name=client_name,
         started_at=sa,
+        is_paused=bool(entry.paused_at),
+        accumulated_seconds=entry.accumulated_seconds or 0,
     )

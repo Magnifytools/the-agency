@@ -594,6 +594,8 @@ class TimeEntry(TimestampMixin, Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     minutes = Column(Integer, nullable=True)  # null = timer running
     started_at = Column(DateTime, nullable=True)  # set when timer starts
+    paused_at = Column(DateTime, nullable=True)  # set when timer is paused
+    accumulated_seconds = Column(Integer, nullable=False, default=0, server_default="0")  # seconds accumulated before pause
     date = Column(DateTime, nullable=False, default=func.now())
     notes = Column(Text, nullable=True)
 
