@@ -1168,6 +1168,20 @@ export default function TasksPage() {
               </Button>
             )}
             <div className="flex gap-2 ml-auto">
+              {editing && editing.status !== "completed" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-1.5 text-green-600 border-green-600/30 hover:bg-green-600/10 hover:text-green-500"
+                  onClick={() => {
+                    updateMutation.mutate({ id: editing.id, data: { status: "completed" } })
+                    closeDialog()
+                  }}
+                >
+                  <CheckSquare className="h-3.5 w-3.5" />
+                  Completar
+                </Button>
+              )}
               <Button type="button" variant="outline" onClick={closeDialog}>
                 Cancelar
               </Button>
@@ -1281,7 +1295,57 @@ export default function TasksPage() {
           </div>
         )}
 
-        {/* Datos adicionales — collapsible (comments, time entries, attachments) */}
+        {/* Time entries — always visible when editing */}
+        {editing && taskTimeEntries.length > 0 && (
+          <div className="mt-4 border border-border/60 rounded-lg p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5" /> Tiempo registrado ({taskTimeEntries.length})
+              </p>
+              <span className="text-sm font-mono font-semibold text-brand">
+                {(() => {
+                  const total = taskTimeEntries.reduce((sum, e) => sum + (e.minutes || 0), 0)
+                  const h = Math.floor(total / 60)
+                  const m = total % 60
+                  return h > 0 ? `${h}h ${m}m` : `${m}m`
+                })()}
+              </span>
+            </div>
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {taskTimeEntries.slice(0, 10).map((entry) => (
+                <div key={entry.id} className="flex items-center justify-between text-xs bg-muted/50 rounded px-2 py-1.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-muted-foreground shrink-0">
+                      {new Date(entry.date || entry.started_at || "").toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                    </span>
+                    <span className="font-mono font-medium shrink-0">
+                      {entry.minutes ? `${Math.floor(entry.minutes / 60)}h ${entry.minutes % 60}m` : "—"}
+                    </span>
+                    {entry.notes && (
+                      <span className="text-muted-foreground truncate">{entry.notes}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {taskTimeEntries.length > 10 && (
+                <p className="text-xs text-muted-foreground text-center">
+                  +{taskTimeEntries.length - 10} registros más
+                </p>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full"
+              onClick={() => { setTimeLogTask(editing); }}
+            >
+              <Clock className="h-3 w-3 mr-1.5" />
+              Ver todos / Añadir registro
+            </Button>
+          </div>
+        )}
+
+        {/* Datos adicionales — collapsible (comments, attachments) */}
         {editing && (
           <div className="mt-4 border border-border/60 rounded-lg overflow-hidden">
             <button
@@ -1289,7 +1353,7 @@ export default function TasksPage() {
               className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
               onClick={() => setShowAdditionalFields((v) => !v)}
             >
-              <span>Datos adicionales</span>
+              <span>Comentarios y adjuntos</span>
               {showAdditionalFields
                 ? <ChevronUp className="h-4 w-4" />
                 : <ChevronDown className="h-4 w-4" />}
@@ -1345,56 +1409,6 @@ export default function TasksPage() {
                   </div>
                 </div>
               </div>
-
-              {/* Time Entries */}
-              {taskTimeEntries.length > 0 && (
-                <div className="space-y-3 border-t border-border/40 pt-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5" /> Tiempo registrado ({taskTimeEntries.length})
-                    </p>
-                    <span className="text-sm font-mono font-semibold text-brand">
-                      {(() => {
-                        const total = taskTimeEntries.reduce((sum, e) => sum + (e.minutes || 0), 0)
-                        const h = Math.floor(total / 60)
-                        const m = total % 60
-                        return h > 0 ? `${h}h ${m}m` : `${m}m`
-                      })()}
-                    </span>
-                  </div>
-                  <div className="space-y-1 max-h-40 overflow-y-auto">
-                    {taskTimeEntries.slice(0, 10).map((entry) => (
-                      <div key={entry.id} className="flex items-center justify-between text-xs bg-muted/50 rounded px-2 py-1.5">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-muted-foreground shrink-0">
-                            {new Date(entry.date || entry.started_at || "").toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
-                          </span>
-                          <span className="font-mono font-medium shrink-0">
-                            {entry.minutes ? `${Math.floor(entry.minutes / 60)}h ${entry.minutes % 60}m` : "—"}
-                          </span>
-                          {entry.notes && (
-                            <span className="text-muted-foreground truncate">{entry.notes}</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {taskTimeEntries.length > 10 && (
-                      <p className="text-xs text-muted-foreground text-center">
-                        +{taskTimeEntries.length - 10} registros más
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => { setTimeLogTask(editing); }}
-                  >
-                    <Clock className="h-3 w-3 mr-1.5" />
-                    Ver todos / Añadir registro
-                  </Button>
-                </div>
-              )}
 
               {/* Attachments */}
               <div className="space-y-3 border-t border-border/40 pt-3">

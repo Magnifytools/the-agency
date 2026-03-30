@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Select } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Building2, Pencil, Check, X, Play, Square, ChevronLeft, AlertTriangle, User as UserIcon } from "lucide-react"
+import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Building2, Pencil, Check, X, Play, Square, ChevronLeft, AlertTriangle, User as UserIcon, CheckSquare } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { EmptyTableState } from "@/components/ui/empty-state"
 import { toast } from "sonner"
@@ -59,6 +59,7 @@ function fmtMin(m: number) {
 const TABS = [
   { key: "resumen", label: "Resumen", icon: Clock },
   { key: "trabajador", label: "Por Trabajador", icon: UserIcon },
+  { key: "tarea", label: "Por Tarea", icon: CheckSquare },
   { key: "cliente", label: "Por Cliente", icon: Building2 },
   { key: "proyecto", label: "Por Proyecto", icon: FolderKanban },
 ] as const
@@ -236,6 +237,112 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
   )
 }
 
+
+// ─── Task Tab ────────────────────────────────────────────────
+
+interface TaskTabProps {
+  weeklyData: WorkerTabProps["weeklyData"]
+  weekLoading: boolean
+}
+
+function TaskTab({ weeklyData, weekLoading }: TaskTabProps) {
+  const taskMap = useMemo(() => {
+    const map = new Map<number | string, {
+      task_id: number | null
+      task_title: string
+      client_name: string | null
+      users: string[]
+      daily_minutes: Record<string, number>
+      total_minutes: number
+    }>()
+    for (const u of weeklyData?.users || []) {
+      for (const t of u.tasks) {
+        const key = t.task_id ?? `noTask-${u.user_id}`
+        const existing = map.get(key)
+        if (existing) {
+          if (!existing.users.includes(u.full_name)) existing.users.push(u.full_name)
+          existing.total_minutes += t.total_minutes
+          for (const [day, mins] of Object.entries(t.daily_minutes)) {
+            existing.daily_minutes[day] = (existing.daily_minutes[day] || 0) + mins
+          }
+        } else {
+          map.set(key, {
+            task_id: t.task_id,
+            task_title: t.task_title || "Sin tarea",
+            client_name: t.client_name || null,
+            users: [u.full_name],
+            daily_minutes: { ...t.daily_minutes },
+            total_minutes: t.total_minutes,
+          })
+        }
+      }
+    }
+    return [...map.values()].sort((a, b) => b.total_minutes - a.total_minutes)
+  }, [weeklyData])
+
+  if (weekLoading) return <div className="text-sm text-muted-foreground p-4">Cargando...</div>
+  if (!taskMap.length) return <EmptyTableState colSpan={5} icon={CheckSquare} title="Sin datos por tarea" description="Registra tiempo en tareas para ver el desglose." />
+
+  const days = weeklyData?.days || []
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <CheckSquare className="h-5 w-5" />
+          Por Tarea
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">Horas agrupadas por tarea para la semana seleccionada.</p>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tarea</TableHead>
+                <TableHead>Cliente</TableHead>
+                {days.map((d) => (
+                  <TableHead key={d} className="text-right w-16 text-xs">
+                    {parseLocalDate(d).toLocaleDateString("es-ES", { weekday: "short", day: "numeric" })}
+                  </TableHead>
+                ))}
+                <TableHead className="text-right font-bold">Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {taskMap.map((t, i) => (
+                <TableRow key={i}>
+                  <TableCell className="font-medium max-w-[200px] truncate" title={t.task_title}>
+                    {t.task_title}
+                    {t.users.length > 1 && (
+                      <span className="text-[10px] text-muted-foreground ml-1">({t.users.length} personas)</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm">{t.client_name || "—"}</TableCell>
+                  {days.map((d) => (
+                    <TableCell key={d} className="text-right mono text-sm">
+                      {t.daily_minutes[d] ? fmtMin(t.daily_minutes[d]) : "—"}
+                    </TableCell>
+                  ))}
+                  <TableCell className="text-right font-bold mono">{fmtMin(t.total_minutes)}</TableCell>
+                </TableRow>
+              ))}
+              <TableRow className="font-bold border-t-2">
+                <TableCell>Total</TableCell>
+                <TableCell />
+                {days.map((d) => {
+                  const total = taskMap.reduce((sum, t) => sum + (t.daily_minutes[d] || 0), 0)
+                  return <TableCell key={d} className="text-right mono">{fmtMin(total)}</TableCell>
+                })}
+                <TableCell className="text-right mono">{fmtMin(taskMap.reduce((sum, t) => sum + t.total_minutes, 0))}</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 // ─── Worker Tab ──────────────────────────────────────────────
 
@@ -822,6 +929,10 @@ export default function TimesheetPage() {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {activeTab === "tarea" && (
+        <TaskTab weeklyData={weeklyData} weekLoading={weekLoading} />
       )}
 
       {activeTab === "trabajador" && (

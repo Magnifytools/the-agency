@@ -8,6 +8,7 @@ import { digestsApi, clientsApi, discordApi } from "@/lib/api"
 import type { Digest, DigestStatus, DigestTone } from "@/lib/types"
 
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -31,6 +32,8 @@ export default function DigestsPage() {
   const [selectedTone, setSelectedTone] = useState<DigestTone>("cercano")
   const [filterStatus, setFilterStatus] = useState<DigestStatus | "">("")
   const [filterClient, setFilterClient] = useState<number | "">("")
+  const [filterPeriodFrom, setFilterPeriodFrom] = useState("")
+  const [filterPeriodTo, setFilterPeriodTo] = useState("")
   const [previewDigest, setPreviewDigest] = useState<Digest | null>(null)
   const [previewFormat, setPreviewFormat] = useState<"slack" | "email">("slack")
   const [previewContent, setPreviewContent] = useState("")
@@ -40,10 +43,12 @@ export default function DigestsPage() {
   const [discordIsEditing, setDiscordIsEditing] = useState(false)
 
   const { data: digests = [], isLoading } = useQuery({
-    queryKey: ["digests", filterStatus, filterClient],
+    queryKey: ["digests", filterStatus, filterClient, filterPeriodFrom, filterPeriodTo],
     queryFn: () => digestsApi.list({
       status: filterStatus || undefined,
       client_id: filterClient || undefined,
+      period_from: filterPeriodFrom || undefined,
+      period_to: filterPeriodTo || undefined,
     }),
   })
 
@@ -192,7 +197,7 @@ export default function DigestsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-4">
+      <div className="flex flex-wrap gap-3">
         <div className="w-48">
           <Select value={String(filterClient)} onChange={(e) => setFilterClient(e.target.value ? Number(e.target.value) : "")}>
             <option value="">Todos los clientes</option>
@@ -208,6 +213,23 @@ export default function DigestsPage() {
             <option value="reviewed">Revisado</option>
             <option value="sent">Enviado</option>
           </Select>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Input
+            type="date"
+            value={filterPeriodFrom}
+            onChange={(e) => setFilterPeriodFrom(e.target.value)}
+            className="w-36 h-9"
+            title="Periodo desde"
+          />
+          <span className="text-muted-foreground text-sm">—</span>
+          <Input
+            type="date"
+            value={filterPeriodTo}
+            onChange={(e) => setFilterPeriodTo(e.target.value)}
+            className="w-36 h-9"
+            title="Periodo hasta"
+          />
         </div>
       </div>
 

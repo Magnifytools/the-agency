@@ -346,6 +346,7 @@ async def convert_to_task(
         priority = TaskPriority.medium
 
     from datetime import date as _date
+    today = _date.today()
     task = Task(
         title=title,
         description=note.raw_text,
@@ -354,7 +355,8 @@ async def convert_to_task(
         client_id=client_id,
         project_id=project_id,
         assigned_to=body.assigned_to or user.id,
-        due_date=body.due_date or _date.today(),
+        due_date=body.due_date,
+        scheduled_date=today,
     )
     db.add(task)
 

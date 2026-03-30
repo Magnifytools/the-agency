@@ -243,7 +243,7 @@ function InsightCard({
   return link ? (
     <Link
       to={link}
-      onClick={onAct}
+      onClick={() => { setTimeout(onAct, 300) }}
       className={`block p-3 rounded-lg border border-border bg-card border-l-4 ${PRIORITY_COLORS[insight.priority]} group hover:shadow-sm transition-shadow cursor-pointer`}
     >
       {cardContent}

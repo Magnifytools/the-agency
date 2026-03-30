@@ -423,6 +423,8 @@ export const discordApi = {
     api.post<import("./types").DiscordSendResponse>(`/discord/send-digest/${digestId}`).then((r) => r.data),
   sendCustom: (content: string) =>
     api.post<import("./types").DiscordSendResponse>("/discord/send-custom", { content }).then((r) => r.data),
+  sendWeeklyReport: (weekStart?: string) =>
+    api.post<import("./types").DiscordSendResponse>("/discord/send-weekly-report", null, { params: weekStart ? { week_start: weekStart } : {} }).then((r) => r.data),
 }
 
 // Task Categories
@@ -715,7 +717,7 @@ export const financeSyncApi = {
 
 // --- Weekly Digests ---
 export const digestsApi = {
-  list: (params?: { client_id?: number; status?: string; limit?: number; offset?: number }) =>
+  list: (params?: { client_id?: number; status?: string; period_from?: string; period_to?: string; limit?: number; offset?: number }) =>
     api.get<Digest[]>("/digests", { params }).then((r) => r.data),
   get: (id: number) => api.get<Digest>(`/digests/${id}`).then((r) => r.data),
   generate: (data: DigestGenerateRequest) =>

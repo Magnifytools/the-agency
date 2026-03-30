@@ -358,3 +358,195 @@ async def send_digest_to_discord(
         success=False,
         message=f"Error al enviar digest #{digest_id} a Discord. Verifica el webhook.",
     )
+
+
+# ── Weekly Report via Discord DM ─────────────────────────────
+
+
+async def _send_discord_dm(bot_token: str, user_id: str, message: str) -> bool:
+    """Send a Discord DM to a specific user using the Bot API."""
+    headers = {"Authorization": f"Bot {bot_token}", "Content-Type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            # Create DM channel
+            resp = await client.post(
+                "https://discord.com/api/v10/users/@me/channels",
+                headers=headers,
+                json={"recipient_id": user_id},
+            )
+            if resp.status_code not in (200, 201):
+                logger.error("Failed to create DM channel: %s", resp.text)
+                return False
+            channel_id = resp.json()["id"]
+
+            # Send message (split if > 2000 chars)
+            chunks = [message[i:i+1990] for i in range(0, len(message), 1990)]
+            for chunk in chunks:
+                resp = await client.post(
+                    f"https://discord.com/api/v10/channels/{channel_id}/messages",
+                    headers=headers,
+                    json={"content": chunk},
+                )
+                if resp.status_code not in (200, 201):
+                    logger.error("Failed to send DM: %s", resp.text)
+                    return False
+            return True
+    except Exception as exc:
+        logger.error("Discord DM error: %s", exc)
+        return False
+
+
+@router.post("/send-weekly-report", response_model=DiscordSendResponse)
+async def send_weekly_report(
+    week_start: Optional[str] = Query(None, description="YYYY-MM-DD (Monday)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Generate and send a weekly timesheet report via Discord DM to the owner."""
+    from datetime import date as date_type, timedelta
+    from sqlalchemy.orm import selectinload
+
+    ds = await _get_or_create_settings(db)
+    bot_token = _decrypt_field(ds.bot_token) if ds else None
+    owner_id = settings.DISCORD_OWNER_USER_ID
+
+    if not bot_token:
+        raise HTTPException(status_code=400, detail="Bot token no configurado en Discord settings")
+    if not owner_id:
+        raise HTTPException(status_code=400, detail="DISCORD_OWNER_USER_ID no configurado en variables de entorno")
+
+    # Calculate week range
+    today = datetime.utcnow().date()
+    if week_start:
+        ws = datetime.strptime(week_start, "%Y-%m-%d").date()
+    else:
+        ws = today - timedelta(days=today.weekday() + 7)  # Last week's Monday
+
+    we = ws + timedelta(days=6)  # Sunday
+    start_dt = datetime.combine(ws, datetime.min.time())
+    end_dt = datetime.combine(we + timedelta(days=1), datetime.min.time())
+
+    # Load all users
+    from backend.db.models import TimeEntry, Task, Client, Project
+
+    users_result = await db.execute(select(User).order_by(User.full_name))
+    users = users_result.scalars().all()
+    user_map = {u.id: u for u in users}
+
+    # Load time entries for the week
+    entries_result = await db.execute(
+        select(TimeEntry).where(
+            TimeEntry.minutes.isnot(None),
+            TimeEntry.date >= start_dt,
+            TimeEntry.date < end_dt,
+        )
+    )
+    entries = entries_result.scalars().all()
+
+    # Aggregate by user and client
+    user_hours: dict[int, float] = {}
+    client_hours: dict[str, float] = {}
+    client_cost: dict[str, float] = {}
+
+    task_ids = {e.task_id for e in entries if e.task_id}
+    tasks_map: dict[int, dict] = {}
+    if task_ids:
+        task_result = await db.execute(
+            select(Task, Client.name.label("client_name"), Project.monthly_fee)
+            .outerjoin(Client, Task.client_id == Client.id)
+            .outerjoin(Project, Task.project_id == Project.id)
+            .where(Task.id.in_(task_ids))
+        )
+        for row in task_result.all():
+            tasks_map[row[0].id] = {
+                "client_name": row[1] or "Sin cliente",
+                "monthly_fee": row[2] or 0,
+            }
+
+    for entry in entries:
+        mins = entry.minutes or 0
+        uid = entry.user_id
+        user_hours[uid] = user_hours.get(uid, 0) + mins / 60.0
+
+        client_name = "Sin cliente"
+        if entry.task_id and entry.task_id in tasks_map:
+            client_name = tasks_map[entry.task_id]["client_name"]
+
+        client_hours[client_name] = client_hours.get(client_name, 0) + mins / 60.0
+        rate = user_map[uid].hourly_rate if uid in user_map and user_map[uid].hourly_rate else settings.DEFAULT_HOURLY_RATE
+        client_cost[client_name] = client_cost.get(client_name, 0) + (mins / 60.0) * rate
+
+    # Get overdue tasks
+    from backend.db.models import TaskStatus
+    overdue_result = await db.execute(
+        select(Task)
+        .outerjoin(Client, Task.client_id == Client.id)
+        .where(
+            Task.status.notin_([TaskStatus.completed]),
+            Task.due_date < start_dt,
+            Task.due_date.isnot(None),
+        )
+        .options(selectinload(Task.client))
+        .limit(10)
+    )
+    overdue_tasks = overdue_result.scalars().all()
+
+    # Build report
+    total_hours = sum(user_hours.values())
+    total_capacity = sum((u.weekly_hours or 40) for u in users)
+
+    lines = [
+        f"📊 **Informe Semanal — {ws.strftime('%d/%m')} al {we.strftime('%d/%m/%Y')}**",
+        "",
+        f"**Horas totales equipo:** {total_hours:.1f}h / {total_capacity}h ({total_hours/total_capacity*100:.0f}%)" if total_capacity else f"**Horas totales:** {total_hours:.1f}h",
+        "",
+    ]
+
+    # Per-user breakdown
+    lines.append("👥 **Por persona:**")
+    for u in users:
+        h = user_hours.get(u.id, 0)
+        cap = u.weekly_hours or 40
+        lines.append(f"  • {u.full_name}: {h:.1f}h / {cap}h ({h/cap*100:.0f}%)" if cap else f"  • {u.full_name}: {h:.1f}h")
+    lines.append("")
+
+    # Per-client breakdown
+    lines.append("🏢 **Por cliente:**")
+    sorted_clients = sorted(client_hours.items(), key=lambda x: x[1], reverse=True)
+    for name, hours in sorted_clients:
+        cost = client_cost.get(name, 0)
+        pct = (hours / total_hours * 100) if total_hours else 0
+        alert = " ⚠️" if pct > 40 else ""
+        lines.append(f"  • {name}: {hours:.1f}h ({pct:.0f}%) — {cost:.0f}€{alert}")
+
+    # Zero-activity clients
+    active_clients_result = await db.execute(
+        select(Client.name).where(Client.status == "active")
+    )
+    active_names = {r[0] for r in active_clients_result.all()}
+    inactive = active_names - set(client_hours.keys())
+    if inactive:
+        lines.append("")
+        lines.append("💤 **Sin actividad esta semana:**")
+        for name in sorted(inactive):
+            lines.append(f"  • {name}")
+
+    # Overdue tasks
+    if overdue_tasks:
+        lines.append("")
+        lines.append(f"⚠️ **{len(overdue_tasks)} tareas vencidas:**")
+        for t in overdue_tasks[:5]:
+            client_label = t.client.name if t.client else "Sin cliente"
+            due = t.due_date.strftime("%d/%m") if t.due_date else "?"
+            lines.append(f"  • [{client_label}] {t.title} (vencía {due})")
+        if len(overdue_tasks) > 5:
+            lines.append(f"  ... y {len(overdue_tasks) - 5} más")
+
+    report = "\n".join(lines)
+
+    # Send via Discord DM
+    success = await _send_discord_dm(bot_token, owner_id, report)
+
+    if success:
+        return DiscordSendResponse(success=True, message="Informe semanal enviado por DM")
+    return DiscordSendResponse(success=False, message="Error al enviar DM. Verifica bot_token y DISCORD_OWNER_USER_ID.")

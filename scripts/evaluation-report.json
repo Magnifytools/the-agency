@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-03-26T12:43:52.585307",
+  "timestamp": "2026-03-30T05:14:12.367167",
   "base_url": "https://agency.magnifytools.com",
   "overall_score": 95,
   "users": {
@@ -18,7 +18,7 @@
               "pass": false,
               "status": 422,
               "expected": 200,
-              "elapsed_ms": 403,
+              "elapsed_ms": 433,
               "description": "Login",
               "path": "/api/auth/login",
               "detail": [
@@ -46,7 +46,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 429,
+              "elapsed_ms": 472,
               "description": "Current user",
               "path": "/api/auth/me"
             }
@@ -61,7 +61,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 512,
+              "elapsed_ms": 518,
               "description": "Dashboard overview",
               "path": "/api/dashboard/overview"
             },
@@ -69,7 +69,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 431,
+              "elapsed_ms": 538,
               "description": "Today tasks",
               "path": "/api/dashboard/today"
             }
@@ -84,7 +84,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 408,
+              "elapsed_ms": 530,
               "description": "List tasks",
               "path": "/api/tasks?page_size=5"
             },
@@ -92,7 +92,7 @@
               "pass": true,
               "status": 201,
               "expected": 201,
-              "elapsed_ms": 524,
+              "elapsed_ms": 544,
               "description": "Create task",
               "path": "/api/tasks"
             }
@@ -107,7 +107,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 442,
+              "elapsed_ms": 552,
               "description": "Active timer",
               "path": "/api/timer/active"
             }
@@ -122,7 +122,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 357,
+              "elapsed_ms": 588,
               "description": "List time entries",
               "path": "/api/time-entries?page_size=5"
             }
@@ -137,7 +137,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 518,
+              "elapsed_ms": 355,
               "description": "List clients",
               "path": "/api/clients?page_size=5"
             }
@@ -152,7 +152,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 451,
+              "elapsed_ms": 498,
               "description": "List projects",
               "path": "/api/projects?page_size=5"
             }
@@ -167,7 +167,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 271,
+              "elapsed_ms": 468,
               "description": "List inbox",
               "path": "/api/inbox?page_size=5"
             },
@@ -175,7 +175,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 501,
+              "elapsed_ms": 339,
               "description": "Inbox count",
               "path": "/api/inbox/count"
             }
@@ -190,7 +190,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 517,
+              "elapsed_ms": 513,
               "description": "List notifications",
               "path": "/api/notifications?page_size=5"
             },
@@ -198,7 +198,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 422,
+              "elapsed_ms": 326,
               "description": "Unread count",
               "path": "/api/notifications/unread-count"
             }
@@ -213,7 +213,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 438,
+              "elapsed_ms": 520,
               "description": "List users",
               "path": "/api/users"
             }
@@ -228,7 +228,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 557,
+              "elapsed_ms": 544,
               "description": "List digests",
               "path": "/api/digests?page_size=5"
             }
@@ -243,7 +243,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 284,
+              "elapsed_ms": 514,
               "description": "List reports",
               "path": "/api/reports?page_size=5"
             }
@@ -258,7 +258,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 596,
+              "elapsed_ms": 614,
               "description": "List insights",
               "path": "/api/pm/insights"
             }
@@ -273,7 +273,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 438,
+              "elapsed_ms": 497,
               "description": "List leads",
               "path": "/api/leads?page_size=5"
             }
@@ -288,7 +288,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 523,
+              "elapsed_ms": 470,
               "description": "List vault assets (admin only)",
               "path": "/api/vault/assets"
             }
@@ -311,7 +311,7 @@
               "pass": false,
               "status": 422,
               "expected": 200,
-              "elapsed_ms": 392,
+              "elapsed_ms": 420,
               "description": "Login",
               "path": "/api/auth/login",
               "detail": [
@@ -339,7 +339,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 294,
+              "elapsed_ms": 331,
               "description": "Current user",
               "path": "/api/auth/me"
             }
@@ -354,7 +354,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 545,
+              "elapsed_ms": 511,
               "description": "Dashboard overview",
               "path": "/api/dashboard/overview"
             },
@@ -362,7 +362,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 588,
+              "elapsed_ms": 520,
               "description": "Today tasks",
               "path": "/api/dashboard/today"
             }
@@ -377,7 +377,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 484,
+              "elapsed_ms": 496,
               "description": "List tasks",
               "path": "/api/tasks?page_size=5"
             },
@@ -385,7 +385,7 @@
               "pass": true,
               "status": 201,
               "expected": 201,
-              "elapsed_ms": 566,
+              "elapsed_ms": 390,
               "description": "Create task",
               "path": "/api/tasks"
             }
@@ -400,7 +400,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 609,
+              "elapsed_ms": 468,
               "description": "Active timer",
               "path": "/api/timer/active"
             }
@@ -415,7 +415,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 461,
+              "elapsed_ms": 573,
               "description": "List time entries",
               "path": "/api/time-entries?page_size=5"
             }
@@ -430,7 +430,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 450,
+              "elapsed_ms": 349,
               "description": "List clients",
               "path": "/api/clients?page_size=5"
             }
@@ -445,7 +445,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 554,
+              "elapsed_ms": 567,
               "description": "List projects",
               "path": "/api/projects?page_size=5"
             }
@@ -460,7 +460,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 493,
+              "elapsed_ms": 613,
               "description": "List inbox",
               "path": "/api/inbox?page_size=5"
             },
@@ -468,7 +468,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 515,
+              "elapsed_ms": 489,
               "description": "Inbox count",
               "path": "/api/inbox/count"
             }
@@ -483,7 +483,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 390,
+              "elapsed_ms": 480,
               "description": "List notifications",
               "path": "/api/notifications?page_size=5"
             },
@@ -491,7 +491,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 319,
+              "elapsed_ms": 457,
               "description": "Unread count",
               "path": "/api/notifications/unread-count"
             }
@@ -506,7 +506,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 445,
+              "elapsed_ms": 346,
               "description": "List users",
               "path": "/api/users"
             }
@@ -521,7 +521,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 466,
+              "elapsed_ms": 477,
               "description": "List digests",
               "path": "/api/digests?page_size=5"
             }
@@ -536,7 +536,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 533,
+              "elapsed_ms": 491,
               "description": "List reports",
               "path": "/api/reports?page_size=5"
             }
@@ -551,7 +551,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 540,
+              "elapsed_ms": 411,
               "description": "List insights",
               "path": "/api/pm/insights"
             }
@@ -566,7 +566,7 @@
               "pass": true,
               "status": 200,
               "expected": 200,
-              "elapsed_ms": 289,
+              "elapsed_ms": 470,
               "description": "List leads",
               "path": "/api/leads?page_size=5"
             }
@@ -581,7 +581,7 @@
               "pass": true,
               "status": 403,
               "expected": 403,
-              "elapsed_ms": 499,
+              "elapsed_ms": 450,
               "description": "List vault assets (admin only)",
               "path": "/api/vault/assets"
             }

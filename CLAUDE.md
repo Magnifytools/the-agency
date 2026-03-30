@@ -141,7 +141,7 @@ admin_users, admin_settings
 
 ## Testing
 ```bash
-# Backend (pytest, 99+ tests)
+# Backend (pytest, 177+ tests)
 cd backend && source venv/bin/activate && python -m pytest tests/ -v
 
 # Frontend (vitest, 39+ tests)
@@ -168,4 +168,4 @@ cd frontend && npm run test
 
 ---
 
-*Actualizado: 17 Mar 2026*
+*Actualizado: 30 Mar 2026*

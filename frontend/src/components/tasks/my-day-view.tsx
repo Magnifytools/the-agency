@@ -130,11 +130,17 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
               </span>
               {priorityBadge(task.priority)}
             </div>
-            <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground flex-wrap">
               {task.client_name && <span>{task.client_name}</span>}
+              {task.project_name && <span className="text-muted-foreground/70">· {task.project_name}</span>}
               {task.estimated_minutes && (
                 <span className="flex items-center gap-0.5">
                   <Clock className="h-2.5 w-2.5" />{formatMinutes(task.estimated_minutes)}
+                </span>
+              )}
+              {task.checklist_count > 0 && (
+                <span className="flex items-center gap-0.5">
+                  <CheckCircle2 className="h-2.5 w-2.5" />{task.checklist_count} subtask{task.checklist_count !== 1 ? "s" : ""}
                 </span>
               )}
               {task.scheduled_date ? (

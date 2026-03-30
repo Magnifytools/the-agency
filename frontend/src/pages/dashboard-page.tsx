@@ -22,7 +22,7 @@ import { Select } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { InfoTooltip } from "@/components/ui/tooltip"
-import { Users, CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink, Play, Square, Check, UserCog, AlertTriangle, MessageSquare, ChevronLeft, ChevronRight, Newspaper } from "lucide-react"
+import { Users, CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink, Play, Square, Check, UserCog, AlertTriangle, MessageSquare, ChevronLeft, ChevronRight, Newspaper, BarChart3 } from "lucide-react"
 import { toast } from "sonner"
 import { Link } from "react-router-dom"
 import { InboxWidget } from "@/components/dashboard/inbox-widget"
@@ -284,6 +284,15 @@ export default function DashboardPage() {
     onError: (err) => toast.error(getErrorMessage(err, "Error al generar digests")),
   })
 
+  const weeklyReportMutation = useMutation({
+    mutationFn: () => discordApi.sendWeeklyReport(),
+    onSuccess: (data) => {
+      if (data.success) toast.success(data.message)
+      else toast.error(data.message)
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al enviar informe semanal")),
+  })
+
   // ─── Computed ───────────────────────────────────────────────
   const getMondayOfWeek = (d: Date) => {
     const day = d.getDay()
@@ -363,6 +372,18 @@ export default function DashboardPage() {
             >
               <Newspaper className={`h-4 w-4 mr-1 ${generateDigestsMutation.isPending ? "animate-spin" : ""}`} />
               {generateDigestsMutation.isPending ? "Generando..." : `Generar digests (${clientsMissingDigest.length})`}
+            </Button>
+          )}
+          {isAdmin && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={weeklyReportMutation.isPending}
+              onClick={() => weeklyReportMutation.mutate()}
+              title="Enviar informe semanal por Discord DM"
+            >
+              <BarChart3 className={`h-4 w-4 mr-1 ${weeklyReportMutation.isPending ? "animate-spin" : ""}`} />
+              {weeklyReportMutation.isPending ? "Enviando..." : "Informe semanal"}
             </Button>
           )}
           {isAdmin && memberUsers.length > 0 && (

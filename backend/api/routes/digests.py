@@ -294,6 +294,8 @@ async def generate_batch(
 async def list_digests(
     client_id: Optional[int] = Query(None),
     status: Optional[DigestStatus] = Query(None),
+    period_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    period_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -306,6 +308,10 @@ async def list_digests(
         query = query.where(WeeklyDigest.client_id == client_id)
     if status:
         query = query.where(WeeklyDigest.status == status)
+    if period_from:
+        query = query.where(WeeklyDigest.period_start >= period_from)
+    if period_to:
+        query = query.where(WeeklyDigest.period_end <= period_to)
     # Members only see their own digests
     if current_user.role != UserRole.admin:
         query = query.where(WeeklyDigest.created_by == current_user.id)
