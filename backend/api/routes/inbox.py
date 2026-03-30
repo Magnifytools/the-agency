@@ -377,15 +377,21 @@ async def convert_to_task(
 
     # Refresh to re-load relationships (project, client) after commit
     try:
-        await safe_refresh(db, note, ["project", "client"], log_context="inbox")
+        await safe_refresh(db, note, ["project", "client", "attachments"], log_context="inbox")
     except Exception as e:
         logger.debug("Failed to refresh note relationships after convert-to-task (not critical): %s", e)
         pass  # relationships not critical for response
 
+    try:
+        note_data = _to_response(note).model_dump()
+    except Exception as e:
+        logger.debug("Failed to serialize note after convert-to-task: %s", e)
+        note_data = {"id": note_id, "status": "processed"}
+
     return {
         "ok": True,
         "task_id": task.id,
-        "note": _to_response(note).model_dump(),
+        "note": note_data,
     }
 
 
