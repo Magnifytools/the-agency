@@ -420,7 +420,12 @@ async def send_weekly_report(
     if week_start:
         ws = datetime.strptime(week_start, "%Y-%m-%d").date()
     else:
-        ws = today - timedelta(days=today.weekday() + 7)  # Last week's Monday
+        # If Sat/Sun, show the week that just ended (Mon-Fri)
+        # If Mon-Fri, show the current week (Mon-today)
+        if today.weekday() >= 5:  # Saturday or Sunday
+            ws = today - timedelta(days=today.weekday())  # This week's Monday (just ended)
+        else:
+            ws = today - timedelta(days=today.weekday())  # This week's Monday (in progress)
 
     we = ws + timedelta(days=6)  # Sunday
     start_dt = datetime.combine(ws, datetime.min.time())
