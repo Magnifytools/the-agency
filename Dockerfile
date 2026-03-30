@@ -22,7 +22,7 @@ USER appuser
 
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8004
-# Build: 2026-03-27-v5-timer-pause
+# Build: 2026-03-30-v6-sprint-digest-timer
 
 EXPOSE ${PORT}
 CMD uvicorn backend.main:app --host 0.0.0.0 --port ${PORT} --timeout-keep-alive 75
