@@ -473,7 +473,7 @@ async def send_weekly_report(
             client_name = tasks_map[entry.task_id]["client_name"]
 
         client_hours[client_name] = client_hours.get(client_name, 0) + mins / 60.0
-        rate = user_map[uid].hourly_rate if uid in user_map and user_map[uid].hourly_rate else settings.DEFAULT_HOURLY_RATE
+        rate = float(user_map[uid].hourly_rate) if uid in user_map and user_map[uid].hourly_rate else float(settings.DEFAULT_HOURLY_RATE)
         client_cost[client_name] = client_cost.get(client_name, 0) + (mins / 60.0) * rate
 
     # Get overdue tasks
