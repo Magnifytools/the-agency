@@ -146,7 +146,7 @@ ICON_DONE = "https://res.cloudinary.com/dk2qk66bj/image/upload/v1739970609/pulsa
 ICON_NEED = "https://res.cloudinary.com/dk2qk66bj/image/upload/v1739970610/confirmarG_d6visb.png"
 ICON_NEXT = "https://res.cloudinary.com/dk2qk66bj/image/upload/v1739970396/hechoG2_msqumr.png"
 LOGO_URL = "https://res.cloudinary.com/dk2qk66bj/image/upload/v1748505370/logo-mail_cvckaw.webp"
-LINKEDIN_ICON = "https://res.cloudinary.com/dk2qk66bj/image/upload/v1739159379/linkedin-logo_rrf6tz.png"
+# LinkedIn icon removed per David's request (digest emails are now plain text only)
 
 
 def _render_item_row(item: DigestItem, icon_url: str) -> str:
