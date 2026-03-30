@@ -520,8 +520,9 @@ async def send_digest_email(
 
     # Render as email HTML + plain text
     tone = digest.tone if digest.tone else None
-    html_body = render_email(content, tone=tone)
+    # Use plain text only (David preference — simpler, no heavy HTML)
     plain_body = render_email_plain(content, tone=tone)
+    html_body = None  # No HTML — email clients will render plain text
 
     # Get client name for subject
     client_name = "tu proyecto"
