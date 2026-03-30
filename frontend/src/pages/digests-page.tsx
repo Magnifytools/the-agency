@@ -3,7 +3,7 @@ import DOMPurify from "dompurify"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle, Trash2, ClipboardCopy } from "lucide-react"
+import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle, Trash2, ClipboardCopy, CheckCircle2 } from "lucide-react"
 import { digestsApi, clientsApi, discordApi } from "@/lib/api"
 import type { Digest, DigestStatus, DigestTone } from "@/lib/types"
 
@@ -30,6 +30,8 @@ export default function DigestsPage() {
   const [generateOpen, setGenerateOpen] = useState(false)
   const [selectedClientId, setSelectedClientId] = useState<number | "">("")
   const [selectedTone, setSelectedTone] = useState<DigestTone>("cercano")
+  const [genPeriodStart, setGenPeriodStart] = useState("")
+  const [genPeriodEnd, setGenPeriodEnd] = useState("")
   const [filterStatus, setFilterStatus] = useState<DigestStatus | "">("")
   const [filterClient, setFilterClient] = useState<number | "">("")
   const [filterPeriodFrom, setFilterPeriodFrom] = useState("")
@@ -58,8 +60,8 @@ export default function DigestsPage() {
   })
 
   const generateMutation = useMutation({
-    mutationFn: (data: { client_id: number; tone: DigestTone }) =>
-      digestsApi.generate({ client_id: data.client_id, tone: data.tone }),
+    mutationFn: (data: { client_id: number; tone: DigestTone; period_start?: string; period_end?: string }) =>
+      digestsApi.generate({ client_id: data.client_id, tone: data.tone, period_start: data.period_start, period_end: data.period_end }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["digests"] })
       setGenerateOpen(false)
@@ -141,7 +143,12 @@ export default function DigestsPage() {
 
   const handleGenerate = () => {
     if (!selectedClientId) return
-    generateMutation.mutate({ client_id: selectedClientId as number, tone: selectedTone })
+    generateMutation.mutate({
+      client_id: selectedClientId as number,
+      tone: selectedTone,
+      period_start: genPeriodStart || undefined,
+      period_end: genPeriodEnd || undefined,
+    })
   }
 
   const handlePreview = async (digest: Digest, fmt: "slack" | "email") => {
@@ -162,11 +169,12 @@ export default function DigestsPage() {
     }
   }
 
-  const handleQuickCopy = async (digest: Digest, format: "slack" | "email") => {
+  const handleQuickCopy = async (digest: Digest, format: "slack" | "email" | "email_plain") => {
     try {
       const data = await digestsApi.render(digest.id, format)
       await navigator.clipboard.writeText(data.rendered)
-      toast.success(`${format === "slack" ? "Slack" : "Email HTML"} copiado`)
+      const labels: Record<string, string> = { slack: "Slack", email: "Email HTML", email_plain: "Texto plano" }
+      toast.success(`${labels[format] || format} copiado`)
     } catch (err) {
       toast.error(getErrorMessage(err, "Error al copiar"))
     }
@@ -270,7 +278,7 @@ export default function DigestsPage() {
                     <TableCell className="font-medium">{digest.client_name || "—"}</TableCell>
                     <TableCell>
                       {digest.period_start && digest.period_end
-                        ? `${format(new Date(digest.period_start), "d MMM", { locale: es })} — ${format(new Date(digest.period_end), "d MMM", { locale: es })}`
+                        ? `${format(new Date(digest.period_start + "T12:00:00"), "d MMM", { locale: es })} — ${format(new Date(digest.period_end + "T12:00:00"), "d MMM", { locale: es })}`
                         : "—"}
                     </TableCell>
                     <TableCell>{toneLabels[digest.tone]}</TableCell>
@@ -322,10 +330,10 @@ export default function DigestsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          title="Copiar Email HTML"
-                          onClick={() => handleQuickCopy(digest, "email")}
+                          title="Copiar Email (texto plano)"
+                          onClick={() => handleQuickCopy(digest, "email_plain")}
                         >
-                          <Copy className="w-4 h-4" />
+                          <FileText className="w-3.5 h-3.5" />
                         </Button>
                         <span className="w-px h-5 bg-border mx-0.5" />
                         {/* Discord (interno) */}
@@ -341,6 +349,16 @@ export default function DigestsPage() {
                         {digest.status !== "sent" && (
                           <>
                             <span className="w-px h-5 bg-border mx-0.5" />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Marcar como enviado"
+                              className="text-green-600 hover:text-green-500"
+                              onClick={() => statusMutation.mutate({ id: digest.id, status: "sent" as DigestStatus })}
+                              disabled={statusMutation.isPending}
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -386,9 +404,26 @@ export default function DigestsPage() {
               <option value="equipo">Equipo</option>
             </Select>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Se generará el digest de la semana anterior automáticamente.
-          </p>
+          <div className="space-y-2">
+            <Label>Periodo (opcional — por defecto semana pasada)</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="date"
+                value={genPeriodStart}
+                onChange={(e) => setGenPeriodStart(e.target.value)}
+                className="flex-1"
+                placeholder="Desde"
+              />
+              <span className="text-muted-foreground text-sm">—</span>
+              <Input
+                type="date"
+                value={genPeriodEnd}
+                onChange={(e) => setGenPeriodEnd(e.target.value)}
+                className="flex-1"
+                placeholder="Hasta"
+              />
+            </div>
+          </div>
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="outline" onClick={() => setGenerateOpen(false)}>Cancelar</Button>
             <Button onClick={handleGenerate} disabled={!selectedClientId || generateMutation.isPending}>

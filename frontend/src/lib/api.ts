@@ -728,7 +728,7 @@ export const digestsApi = {
     api.put<Digest>(`/digests/${id}`, data).then((r) => r.data),
   updateStatus: (id: number, status: string) =>
     api.patch<Digest>(`/digests/${id}/status`, { status }).then((r) => r.data),
-  render: (id: number, format: "slack" | "email") =>
+  render: (id: number, format: "slack" | "email" | "email_plain" | "discord") =>
     api.get<DigestRenderResponse>(`/digests/${id}/render`, { params: { format } }).then((r) => r.data),
   sendEmail: (id: number, to: string, test: boolean = false) =>
     api.post<{ success: boolean; message: string }>(`/digests/${id}/send-email`, { to, test }).then((r) => r.data),

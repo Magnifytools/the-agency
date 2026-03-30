@@ -294,20 +294,7 @@ def render_email(content: DigestContent, tone: DigestTone | None = None) -> str:
                   </table>
                 </td>
               </tr>
-              <!-- Social icons -->
-              <tr>
-                <td align="center" style="padding:20px 0;">
-                  <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
-                    <tr>
-                      <td align="center" style="padding:0 10px;">
-                        <a href="https://www.linkedin.com/company/magnifying" target="_blank">
-                          <img src="{LINKEDIN_ICON}" width="15" height="15" alt="LinkedIn" style="display:block;">
-                        </a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
+              <!-- Social icons removed -->
             </table>
           </td>
         </tr>
@@ -328,3 +315,45 @@ def render_email(content: DigestContent, tone: DigestTone | None = None) -> str:
 </div>
 </body>
 </html>"""
+
+
+def render_email_plain(content: DigestContent, tone: DigestTone | None = None) -> str:
+    """Render digest content as plain text for email (no HTML)."""
+    titles = _section_titles(tone)
+    lines: list[str] = []
+
+    if content.greeting:
+        lines.append(content.greeting)
+    if content.date:
+        lines.append(content.date)
+    lines.append("")
+
+    if content.sections.done:
+        lines.append(f"--- {titles['done']} ---")
+        for item in content.sections.done:
+            desc = f" — {item.description}" if item.description else ""
+            lines.append(f"  - {item.title}{desc}")
+        lines.append("")
+
+    if content.sections.need:
+        lines.append(f"--- {titles['need']} ---")
+        for item in content.sections.need:
+            desc = f" — {item.description}" if item.description else ""
+            lines.append(f"  - {item.title}{desc}")
+        lines.append("")
+
+    if content.sections.next:
+        lines.append(f"--- {titles['next']} ---")
+        for item in content.sections.next:
+            desc = f" — {item.description}" if item.description else ""
+            lines.append(f"  - {item.title}{desc}")
+        lines.append("")
+
+    if content.closing:
+        lines.append(content.closing)
+        lines.append("")
+
+    lines.append("—")
+    lines.append("Magnify · magnify.ing")
+
+    return "\n".join(lines)

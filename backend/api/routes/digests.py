@@ -36,7 +36,7 @@ from backend.schemas.digest import (
 )
 from backend.services.digest_collector import collect_digest_data
 from backend.services.digest_generator import generate_digest_content
-from backend.services.digest_renderer import render_slack, render_email, render_discord
+from backend.services.digest_renderer import render_slack, render_email, render_email_plain, render_discord
 from backend.api.deps import require_module
 from backend.core.rate_limiter import ai_limiter
 from backend.api.utils.db_helpers import safe_refresh
@@ -449,7 +449,7 @@ async def update_digest_status(
 @router.get("/{digest_id}/render", response_model=DigestRenderResponse)
 async def render_digest(
     digest_id: int,
-    format: str = Query("slack", pattern="^(slack|email|discord)$"),
+    format: str = Query("slack", pattern="^(slack|email|email_plain|discord)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("digests")),
 ):
@@ -476,6 +476,8 @@ async def render_digest(
         rendered = render_slack(content, tone=tone)
     elif format == "discord":
         rendered = render_discord(content, tone=tone)
+    elif format == "email_plain":
+        rendered = render_email_plain(content, tone=tone)
     else:
         rendered = render_email(content, tone=tone)
 
@@ -516,9 +518,10 @@ async def send_digest_email(
     except Exception:
         raise HTTPException(status_code=400, detail="Digest content is malformed")
 
-    # Render as email HTML
+    # Render as email HTML + plain text
     tone = digest.tone if digest.tone else None
     html_body = render_email(content, tone=tone)
+    plain_body = render_email_plain(content, tone=tone)
 
     # Get client name for subject
     client_name = "tu proyecto"
@@ -532,13 +535,13 @@ async def send_digest_email(
     if body.test:
         subject = f"[TEST] {subject}"
 
-    # Send email
+    # Send email with both HTML and plain text (clients choose)
     from backend.services.email_service import send_email
     success = await send_email(
         to=body.to,
         subject=subject,
         body_html=html_body,
-        body_text=f"Resumen semanal de {client_name}. Abre el email en un cliente que soporte HTML para ver el contenido completo.",
+        body_text=plain_body,
     )
 
     if not success:
