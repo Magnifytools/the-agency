@@ -31,6 +31,25 @@ async def generate_daily_summary(db: AsyncSession, date: datetime) -> str:
     if not entries:
         return f"**Resumen del dia -- {date.strftime('%d/%m/%Y')}**\n\nNo se registraron horas."
 
+    # Filter out entries from QA/test users
+    def _is_test_user(e: TimeEntry) -> bool:
+        if not e.user:
+            return False
+        name = (e.user.full_name or "").lower()
+        email = (e.user.email or "").lower()
+        return (
+            "example.com" in email
+            or email.startswith("test@")
+            or email.startswith("qa-")
+            or name.startswith("qa ")
+            or "audit" in name
+            or "test" in name
+        )
+
+    entries = [e for e in entries if not _is_test_user(e)]
+    if not entries:
+        return f"**Resumen del dia -- {date.strftime('%d/%m/%Y')}**\n\nNo se registraron horas."
+
     # Group by user -> client -> tasks
     user_data: dict[int, dict] = {}
     for entry in entries:

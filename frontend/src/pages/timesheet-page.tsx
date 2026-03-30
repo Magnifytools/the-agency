@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Select } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Building2, Pencil, Check, X, Play, Square, ChevronLeft, AlertTriangle, User as UserIcon, CheckSquare } from "lucide-react"
+import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Building2, Pencil, Check, X, Play, Square, ChevronLeft, AlertTriangle, User as UserIcon, CheckSquare, CalendarDays } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { EmptyTableState } from "@/components/ui/empty-state"
 import { toast } from "sonner"
@@ -65,6 +65,53 @@ const TABS = [
 ] as const
 
 type TabKey = typeof TABS[number]["key"]
+
+type PeriodType = "esta-semana" | "semana-pasada" | "este-mes" | "mes-pasado" | "este-año" | "personalizado"
+
+const PERIOD_OPTIONS: { value: PeriodType; label: string }[] = [
+  { value: "esta-semana", label: "Esta semana" },
+  { value: "semana-pasada", label: "Semana pasada" },
+  { value: "este-mes", label: "Este mes" },
+  { value: "mes-pasado", label: "Mes pasado" },
+  { value: "este-año", label: "Este año" },
+  { value: "personalizado", label: "Personalizado" },
+]
+
+function computePeriodDates(period: PeriodType): { from: string; to: string } {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  switch (period) {
+    case "esta-semana": {
+      const mon = getMonday(today)
+      const sun = new Date(mon)
+      sun.setDate(sun.getDate() + 6)
+      return { from: toInputDate(mon), to: toInputDate(sun) }
+    }
+    case "semana-pasada": {
+      const mon = getMonday(today)
+      mon.setDate(mon.getDate() - 7)
+      const sun = new Date(mon)
+      sun.setDate(sun.getDate() + 6)
+      return { from: toInputDate(mon), to: toInputDate(sun) }
+    }
+    case "este-mes": {
+      const first = new Date(today.getFullYear(), today.getMonth(), 1)
+      const last = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+      return { from: toInputDate(first), to: toInputDate(last) }
+    }
+    case "mes-pasado": {
+      const first = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+      const last = new Date(today.getFullYear(), today.getMonth(), 0)
+      return { from: toInputDate(first), to: toInputDate(last) }
+    }
+    case "este-año": {
+      const first = new Date(today.getFullYear(), 0, 1)
+      return { from: toInputDate(first), to: toInputDate(today) }
+    }
+    default:
+      return { from: toInputDate(getMonday(today)), to: toInputDate(today) }
+  }
+}
 
 // ─── Subcomponents ───────────────────────────────────────────
 
@@ -528,6 +575,9 @@ export default function TimesheetPage() {
   const queryClient = useQueryClient()
   const [weekStart, setWeekStart] = useState(() => toInputDate(getMonday(new Date())))
   const [activeTab, setActiveTab] = useState<TabKey>("resumen")
+  const [period, setPeriod] = useState<PeriodType>("esta-semana")
+  const [customFrom, setCustomFrom] = useState("")
+  const [customTo, setCustomTo] = useState("")
   const todayDate = toInputDate(new Date())
 
   const weekEnd = (() => {
@@ -535,6 +585,34 @@ export default function TimesheetPage() {
     d.setDate(d.getDate() + 6)
     return toInputDate(d)
   })()
+
+  // Compute effective date range based on period
+  const isWeekPeriod = period === "esta-semana" || period === "semana-pasada"
+  const { dateFrom, dateTo } = useMemo(() => {
+    if (isWeekPeriod) {
+      return { dateFrom: weekStart, dateTo: weekEnd }
+    }
+    if (period === "personalizado") {
+      return { dateFrom: customFrom || weekStart, dateTo: customTo || weekEnd }
+    }
+    const { from, to } = computePeriodDates(period)
+    return { dateFrom: from, dateTo: to }
+  }, [period, weekStart, weekEnd, customFrom, customTo, isWeekPeriod])
+
+  // When period changes (non-custom, non-week), also sync weekStart for the weekly query
+  useEffect(() => {
+    if (period === "esta-semana") {
+      setWeekStart(toInputDate(getMonday(new Date())))
+    } else if (period === "semana-pasada") {
+      const d = getMonday(new Date())
+      d.setDate(d.getDate() - 7)
+      setWeekStart(toInputDate(d))
+    }
+    // For non-week periods, switch away from resumen if needed
+    if (!isWeekPeriod && activeTab === "resumen") {
+      setActiveTab("trabajador")
+    }
+  }, [period]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: weeklyData, isLoading: weekLoading, error: weekError, refetch: weekRefetch } = useQuery({
     queryKey: ["timesheet-week", weekStart],
@@ -562,14 +640,14 @@ export default function TimesheetPage() {
   })
 
   const { data: projectReport = [], isLoading: projectLoading } = useQuery({
-    queryKey: ["time-entries-by-project", weekStart, weekEnd],
-    queryFn: () => timeEntriesApi.byProject({ date_from: weekStart + "T00:00:00Z", date_to: weekEnd + "T23:59:59Z" }),
+    queryKey: ["time-entries-by-project", dateFrom, dateTo],
+    queryFn: () => timeEntriesApi.byProject({ date_from: dateFrom + "T00:00:00Z", date_to: dateTo + "T23:59:59Z" }),
     enabled: activeTab === "proyecto",
   })
 
   const { data: clientReport = [], isLoading: clientLoading } = useQuery({
-    queryKey: ["time-entries-by-client", weekStart, weekEnd],
-    queryFn: () => timeEntriesApi.byClient({ date_from: weekStart + "T00:00:00Z", date_to: weekEnd + "T23:59:59Z" }),
+    queryKey: ["time-entries-by-client", dateFrom, dateTo],
+    queryFn: () => timeEntriesApi.byClient({ date_from: dateFrom + "T00:00:00Z", date_to: dateTo + "T23:59:59Z" }),
     enabled: activeTab === "cliente",
   })
 
@@ -618,13 +696,13 @@ export default function TimesheetPage() {
   const handleExportCsv = async () => {
     try {
       const blob = await timeEntriesApi.exportCsv({
-        date_from: weekStart + "T00:00:00Z",
-        date_to: weekEnd + "T23:59:59Z",
+        date_from: dateFrom + "T00:00:00Z",
+        date_to: dateTo + "T23:59:59Z",
       })
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      a.download = `timesheet-${weekStart}.csv`
+      a.download = `timesheet-${dateFrom}.csv`
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
@@ -649,7 +727,7 @@ export default function TimesheetPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold uppercase tracking-wide">Timesheet</h2>
-          <p className="text-sm text-muted-foreground mt-1">Semana actual · {todaysEntries.length} registros hoy</p>
+          <p className="text-sm text-muted-foreground mt-1">{PERIOD_OPTIONS.find(o => o.value === period)?.label} · {todaysEntries.length} registros hoy</p>
         </div>
         <Button variant="outline" size="sm" onClick={handleExportCsv}>
           <Download className="h-4 w-4 mr-2" />
@@ -809,45 +887,90 @@ export default function TimesheetPage() {
         </CardContent>
       </Card>
 
-      {/* Week navigation + Tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
-            const d = parseLocalDate(weekStart)
-            d.setDate(d.getDate() - 7)
-            setWeekStart(toInputDate(getMonday(d)))
-          }}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <input
-            type="date"
-            value={weekStart}
-            onChange={(e) => setWeekStart(toInputDate(getMonday(parseLocalDate(e.target.value))))}
-            className="border border-border rounded-md px-3 py-2 text-sm bg-background"
-          />
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
-            const d = parseLocalDate(weekStart)
-            d.setDate(d.getDate() + 7)
-            setWeekStart(toInputDate(getMonday(d)))
-          }}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="flex items-center gap-1 bg-muted p-1 rounded-lg">
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                activeTab === key
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </button>
-          ))}
+      {/* Period selector + Week navigation + Tabs */}
+      <div className="flex flex-col gap-3 pt-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+              <Select
+                value={period}
+                onChange={(e) => setPeriod(e.target.value as PeriodType)}
+                className="h-9 text-sm w-auto"
+              >
+                {PERIOD_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </Select>
+            </div>
+            {isWeekPeriod && (
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                  const d = parseLocalDate(weekStart)
+                  d.setDate(d.getDate() - 7)
+                  setWeekStart(toInputDate(getMonday(d)))
+                  setPeriod(period) // keep current period type
+                }}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <input
+                  type="date"
+                  value={weekStart}
+                  onChange={(e) => {
+                    setWeekStart(toInputDate(getMonday(parseLocalDate(e.target.value))))
+                    setPeriod("esta-semana")
+                  }}
+                  className="border border-border rounded-md px-3 py-2 text-sm bg-background"
+                />
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                  const d = parseLocalDate(weekStart)
+                  d.setDate(d.getDate() + 7)
+                  setWeekStart(toInputDate(getMonday(d)))
+                  setPeriod(period)
+                }}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+            {period === "personalizado" && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className="border border-border rounded-md px-3 py-2 text-sm bg-background"
+                  placeholder="Desde"
+                />
+                <span className="text-muted-foreground text-sm">–</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="border border-border rounded-md px-3 py-2 text-sm bg-background"
+                  placeholder="Hasta"
+                />
+              </div>
+            )}
+            {!isWeekPeriod && period !== "personalizado" && (
+              <span className="text-xs text-muted-foreground">{dateFrom} → {dateTo}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1 bg-muted p-1 rounded-lg overflow-x-auto">
+            {TABS.filter(({ key }) => isWeekPeriod || key !== "resumen").map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  activeTab === key
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -950,7 +1073,7 @@ export default function TimesheetPage() {
               <Building2 className="h-5 w-5" />
               Por Cliente
             </CardTitle>
-            <p className="text-sm text-muted-foreground">Horas y coste agrupados por cliente para la semana seleccionada.</p>
+            <p className="text-sm text-muted-foreground">Horas y coste agrupados por cliente para el periodo seleccionado.</p>
           </CardHeader>
           <CardContent>
             {clientLoading ? (
@@ -986,7 +1109,7 @@ export default function TimesheetPage() {
               <FolderKanban className="h-5 w-5" />
               Por Proyecto
             </CardTitle>
-            <p className="text-sm text-muted-foreground">Horas agrupadas por proyecto para la semana seleccionada.</p>
+            <p className="text-sm text-muted-foreground">Horas agrupadas por proyecto para el periodo seleccionado.</p>
           </CardHeader>
           <CardContent>
             {projectLoading ? (

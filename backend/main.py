@@ -1170,10 +1170,16 @@ async def _daily_reminders_loop():
 
                 for user in users:
                     # Skip test/QA users that may have been created by audits
-                    _skip = {"qa", "test", "audit", "example.com"}
                     _name_lower = (user.full_name or "").lower()
                     _email_lower = (user.email or "").lower()
-                    if any(kw in _name_lower or kw in _email_lower for kw in _skip):
+                    if (
+                        "example.com" in _email_lower
+                        or _email_lower.startswith("test@")
+                        or _email_lower.startswith("qa-")
+                        or _name_lower.startswith("qa ")
+                        or "audit" in _name_lower
+                        or "test" in _name_lower
+                    ):
                         continue
 
                     if not await is_working_day(db, today, user.region):
@@ -1278,6 +1284,33 @@ async def lifespan(app: FastAPI):
         logging.info("Startup DDL complete.")
     except Exception as e:
         logging.warning("Startup DDL failed (may be expected): %s", e)
+
+    # One-time cleanup of QA/test data created by audits
+    try:
+        async with engine.begin() as conn:
+            for sql in [
+                # Delete time entries for QA users/tasks first (FK)
+                "DELETE FROM time_entries WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%example.com' OR full_name LIKE 'QA %')",
+                "DELETE FROM time_entries WHERE task_id IN (SELECT id FROM tasks WHERE title LIKE 'QA Task%' OR title LIKE 'AUDIT-%')",
+                # Delete task-related data (checklist, comments, attachments cascade via FK)
+                "DELETE FROM tasks WHERE title LIKE 'QA Task%' OR title LIKE 'AUDIT-%'",
+                # Delete daily updates for QA users
+                "DELETE FROM daily_updates WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%example.com' OR full_name LIKE 'QA %')",
+                # Delete user permissions for QA users
+                "DELETE FROM user_permissions WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%example.com' OR full_name LIKE 'QA %')",
+                # Delete notifications for QA users
+                "DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%example.com' OR full_name LIKE 'QA %')",
+                # Delete QA clients (projects + related data cascade)
+                "DELETE FROM projects WHERE client_id IN (SELECT id FROM clients WHERE name LIKE 'QA%' OR name LIKE 'AUDIT%' OR name LIKE '__TEST%')",
+                "DELETE FROM clients WHERE name LIKE 'QA%' OR name LIKE 'AUDIT%' OR name LIKE '__TEST%'",
+                # Delete QA users last
+                "DELETE FROM users WHERE email LIKE '%example.com' OR full_name LIKE 'QA %'",
+            ]:
+                result = await conn.execute(text(sql))
+                if result.rowcount > 0:
+                    logging.info("QA cleanup: %s -> %d rows", sql[:60], result.rowcount)
+    except Exception as e:
+        logging.warning("QA data cleanup failed (non-fatal): %s", e)
 
     await _reset_admin_password()
 
