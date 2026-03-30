@@ -82,13 +82,20 @@ def render_discord(content: DigestContent, tone: DigestTone | None = None) -> st
 
 
 def render_slack(content: DigestContent, tone: DigestTone | None = None) -> str:
-    """Render digest content as Slack-formatted text with emojis."""
+    """Render digest content as Slack mrkdwn text (paste-friendly).
+
+    Uses Slack-native formatting:
+    - *bold* for titles and section headers
+    - ``- `` for list items (Slack interprets as bullets on paste)
+    - No leading spaces (breaks Slack bold parsing)
+    - No :emoji: codes (don't render on paste, only via API)
+    """
     titles = _section_titles(tone)
     lines: list[str] = []
 
     # Greeting
     if content.greeting:
-        lines.append(f":mega:  {content.greeting}")
+        lines.append(content.greeting)
     if content.date:
         lines.append(f"*{content.date}*")
     lines.append("")
@@ -97,32 +104,29 @@ def render_slack(content: DigestContent, tone: DigestTone | None = None) -> str:
 
     # Done section
     if sections.done:
-        lines.append(f":mag_right:  *{titles['done']}*")
-        lines.append("")
+        lines.append(f"*{titles['done']}*")
         for item in sections.done:
-            lines.append(f"  • *{item.title}*")
+            lines.append(f"- *{item.title}*")
             if item.description:
-                lines.append(f"    {item.description}")
+                lines.append(f"  {item.description}")
         lines.append("")
 
     # Need section
     if sections.need:
-        lines.append(f":hourglass:  *{titles['need']}*")
-        lines.append("")
+        lines.append(f"*{titles['need']}*")
         for item in sections.need:
-            lines.append(f"  • *{item.title}*")
+            lines.append(f"- *{item.title}*")
             if item.description:
-                lines.append(f"    {item.description}")
+                lines.append(f"  {item.description}")
         lines.append("")
 
     # Next section
     if sections.next:
-        lines.append(f":point_right:  *{titles['next']}*")
-        lines.append("")
+        lines.append(f"*{titles['next']}*")
         for item in sections.next:
-            lines.append(f"  • *{item.title}*")
+            lines.append(f"- *{item.title}*")
             if item.description:
-                lines.append(f"    {item.description}")
+                lines.append(f"  {item.description}")
         lines.append("")
 
     # Closing
