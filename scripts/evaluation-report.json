@@ -1,593 +1,1207 @@
 {
-  "timestamp": "2026-03-30T12:41:29.648616",
+  "generated_at": "2026-03-30T17:02:31.365133Z",
   "base_url": "https://agency.magnifytools.com",
-  "overall_score": 95,
-  "users": {
-    "admin": {
-      "role": "admin",
-      "score": 95,
-      "passed": 19,
-      "total": 20,
-      "modules": {
-        "auth": {
-          "score": 50,
-          "passed": 1,
-          "total": 2,
-          "results": [
-            {
-              "pass": false,
-              "status": 422,
-              "expected": 200,
-              "elapsed_ms": 406,
-              "description": "Login",
-              "path": "/api/auth/login",
-              "detail": [
-                {
-                  "type": "missing",
-                  "loc": [
-                    "body",
-                    "email"
-                  ],
-                  "msg": "Field required",
-                  "input": {}
-                },
-                {
-                  "type": "missing",
-                  "loc": [
-                    "body",
-                    "password"
-                  ],
-                  "msg": "Field required",
-                  "input": {}
-                }
-              ]
-            },
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 811,
-              "description": "Current user",
-              "path": "/api/auth/me"
-            }
-          ]
-        },
-        "dashboard": {
-          "score": 100,
-          "passed": 2,
-          "total": 2,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 603,
-              "description": "Dashboard overview",
-              "path": "/api/dashboard/overview"
-            },
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 572,
-              "description": "Today tasks",
-              "path": "/api/dashboard/today"
-            }
-          ]
-        },
-        "tasks": {
-          "score": 100,
-          "passed": 2,
-          "total": 2,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 587,
-              "description": "List tasks",
-              "path": "/api/tasks?page_size=5"
-            },
-            {
-              "pass": true,
-              "status": 201,
-              "expected": 201,
-              "elapsed_ms": 528,
-              "description": "Create task",
-              "path": "/api/tasks"
-            }
-          ]
-        },
-        "timer": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 536,
-              "description": "Active timer",
-              "path": "/api/timer/active"
-            }
-          ]
-        },
-        "time_entries": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 634,
-              "description": "List time entries",
-              "path": "/api/time-entries?page_size=5"
-            }
-          ]
-        },
-        "clients": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 361,
-              "description": "List clients",
-              "path": "/api/clients?page_size=5"
-            }
-          ]
-        },
-        "projects": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 623,
-              "description": "List projects",
-              "path": "/api/projects?page_size=5"
-            }
-          ]
-        },
-        "inbox": {
-          "score": 100,
-          "passed": 2,
-          "total": 2,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 613,
-              "description": "List inbox",
-              "path": "/api/inbox?page_size=5"
-            },
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 491,
-              "description": "Inbox count",
-              "path": "/api/inbox/count"
-            }
-          ]
-        },
-        "notifications": {
-          "score": 100,
-          "passed": 2,
-          "total": 2,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 735,
-              "description": "List notifications",
-              "path": "/api/notifications?page_size=5"
-            },
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 385,
-              "description": "Unread count",
-              "path": "/api/notifications/unread-count"
-            }
-          ]
-        },
-        "users": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 635,
-              "description": "List users",
-              "path": "/api/users"
-            }
-          ]
-        },
-        "digests": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 638,
-              "description": "List digests",
-              "path": "/api/digests?page_size=5"
-            }
-          ]
-        },
-        "reports": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 585,
-              "description": "List reports",
-              "path": "/api/reports?page_size=5"
-            }
-          ]
-        },
-        "pm": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 701,
-              "description": "List insights",
-              "path": "/api/pm/insights"
-            }
-          ]
-        },
-        "leads": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 548,
-              "description": "List leads",
-              "path": "/api/leads?page_size=5"
-            }
-          ]
-        },
-        "vault": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 530,
-              "description": "List vault assets (admin only)",
-              "path": "/api/vault/assets"
-            }
-          ]
-        }
+  "marker": "__AUDIT__1774890151",
+  "local_checks": {
+    "pytest": {
+      "passed": 177,
+      "failed": 0,
+      "warnings": 5
+    },
+    "typescript_errors": 0,
+    "vite_build": {
+      "ok": true,
+      "warnings": [
+        "CSS @import order warning in build output"
+      ]
+    }
+  },
+  "admin": {
+    "endpoints": [
+      {
+        "module": "auth",
+        "label": "Login",
+        "method": "POST",
+        "path": "/api/auth/login",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 723,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"access_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzc0OTE4OTUyLCJqdGkiOiIxOWRjYTk3NWFjOTU0NDI5OWM2MzkxOGQ3MGZmYzViMiJ9.8i28o_vrxkMrDDo-CDqJWtUtVHZQayLSXHk-6WD6-cE\", \"token_type\": \"bearer\"}"
+      },
+      {
+        "module": "auth",
+        "label": "Current User",
+        "method": "GET",
+        "path": "/api/auth/me",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 218,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 1, \"email\": \"david@magnify.ing\", \"full_name\": \"David Carrasco\", \"role\": \"admin\", \"hourly_rate\": 50.0, \"is_active\": true, \"permissions\": [], \"preferences\": {}, \"region\": \"MAD\", \"locality\": \"Madrid\", \"short_name\": \"David\", \"birthday\": \"1990-01-15\", \"job_title\": \"SEO Strategist\", \"morning_remind"
+      },
+      {
+        "module": "auth",
+        "label": "Change Password (safe probe)",
+        "method": "POST",
+        "path": "/api/auth/change-password",
+        "status": 400,
+        "expected": 400,
+        "elapsed_ms": 614,
+        "ok": true,
+        "safe_probe": true,
+        "note": "Intentional non-destructive probe using an invalid current password.",
+        "response_snippet": "{\"detail\": \"Current password is incorrect\"}"
+      },
+      {
+        "module": "dashboard",
+        "label": "Dashboard Overview",
+        "method": "GET",
+        "path": "/api/dashboard/overview",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 231,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"active_clients\": 4, \"pending_tasks\": 7, \"in_progress_tasks\": 6, \"hours_this_month\": 90.2, \"total_budget\": 3750.0, \"total_cost\": 2725.67, \"margin\": 1024.33, \"margin_percent\": 27.3}"
+      },
+      {
+        "module": "dashboard",
+        "label": "Dashboard Today",
+        "method": "GET",
+        "path": "/api/dashboard/today",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 229,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"date\": \"2026-03-30\", \"total_tasks\": 3, \"by_user\": {\"Ignacio García Alonso\": [{\"id\": 142, \"title\": \"Gestión tablero edgar\", \"status\": \"waiting\", \"priority\": \"medium\", \"client_name\": \"Fit Generation\", \"estimated_minutes\": null}, {\"id\": 150, \"title\": \"contestaciones slack\", \"status\": \"in_progress\", \""
+      },
+      {
+        "module": "tasks",
+        "label": "Tasks List",
+        "method": "GET",
+        "path": "/api/tasks?page=1&page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 242,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"items\": [{\"id\": 160, \"title\": \"Facturar proyecto Renta 2025 (~6.000€)\", \"description\": \"Overhead 1.000€ + HIGH 41×90€ (3.690€) + MEDIUM 5×55€ (275€) + LOW 44×22€ (968€) = ~5.933€. Enviar factura al completar.\", \"status\": \"pending\", \"priority\": \"high\", \"estimated_minutes\": null, \"actual_minutes\": n"
+      },
+      {
+        "module": "timer",
+        "label": "Active Timer",
+        "method": "GET",
+        "path": "/api/timer/active",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 232,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "null"
+      },
+      {
+        "module": "time_entries",
+        "label": "Time Entries List",
+        "method": "GET",
+        "path": "/api/time-entries?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 503,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[{\"id\": 137, \"minutes\": 67, \"started_at\": \"2026-03-30T14:17:01.586797\", \"date\": \"2026-03-30T14:17:01.586797\", \"notes\": null, \"task_id\": 151, \"user_id\": 2, \"created_at\": \"2026-03-30T14:17:01.525722\", \"updated_at\": \"2026-03-30T15:24:26.038937\", \"task_title\": \"Creación logo mirror\", \"client_name\": \"Mag"
+      },
+      {
+        "module": "time_entries",
+        "label": "Time Entries Weekly",
+        "method": "GET",
+        "path": "/api/time-entries/weekly",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 275,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"week_start\": \"2026-03-30\", \"week_end\": \"2026-04-05\", \"days\": [\"2026-03-30\", \"2026-03-31\", \"2026-04-01\", \"2026-04-02\", \"2026-04-03\", \"2026-04-04\", \"2026-04-05\"], \"users\": [{\"user_id\": 1, \"full_name\": \"David Carrasco\", \"daily_minutes\": {\"2026-03-30\": 0, \"2026-03-31\": 0, \"2026-04-01\": 0, \"2026-04-02\""
+      },
+      {
+        "module": "time_entries",
+        "label": "Time Entries By Client",
+        "method": "GET",
+        "path": "/api/time-entries/by-client",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 259,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[{\"client_id\": 3, \"client_name\": \"Magnify\", \"total_minutes\": 2415, \"entries_count\": 38, \"cost_eur\": 1207.83, \"team_breakdown\": [{\"user_id\": 2, \"user_name\": \"Ignacio García Alonso\", \"total_minutes\": 2414, \"cost_eur\": 1207.0}, {\"user_id\": 1, \"user_name\": \"David Carrasco\", \"total_minutes\": 1, \"cost_eur"
+      },
+      {
+        "module": "time_entries",
+        "label": "Time Entries By Project",
+        "method": "GET",
+        "path": "/api/time-entries/by-project",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 268,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[{\"project_id\": 2, \"project_name\": \"Web Magnify\", \"client_id\": 3, \"client_name\": \"Magnify\", \"total_minutes\": 1446, \"entries_count\": 13, \"team_breakdown\": [{\"user_id\": 2, \"user_name\": \"Ignacio García Alonso\", \"total_minutes\": 1445, \"entries_count\": 12}, {\"user_id\": 1, \"user_name\": \"David Carrasco\", \""
+      },
+      {
+        "module": "time_entries",
+        "label": "Time Entries Export",
+        "method": "GET",
+        "path": "/api/time-entries/export",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 290,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "Fecha,Usuario,Horas,Minutos,Tarea,Proyecto,Cliente,Notas\r\n2026-03-30,Ignacio García Alonso,1.12,67,Creación logo mirror,Web Magnify,Magnify,\r\n2026-03-30,Ignacio García Alonso,0.13,8,contestaciones slack,Fit Generation,Fit Generation,\r\n2026-03-30,Ignacio García Alonso,0.55,33,Creación logo mirror,Web"
+      },
+      {
+        "module": "clients",
+        "label": "Clients List",
+        "method": "GET",
+        "path": "/api/clients?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 440,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"items\": [{\"id\": 17, \"name\": \"Kinetic Digital\", \"email\": null, \"phone\": null, \"company\": \"Kinetic Digital\", \"website\": \"https://www.megacasinos.es/\", \"contract_type\": \"monthly\", \"monthly_budget\": null, \"status\": \"active\", \"notes\": \"Kinetic Digital gestiona la cuenta de Mega Casino y ha solicitado u"
+      },
+      {
+        "module": "clients",
+        "label": "Client 17",
+        "method": "GET",
+        "path": "/api/clients/17",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 228,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 17, \"name\": \"Kinetic Digital\", \"email\": null, \"phone\": null, \"company\": \"Kinetic Digital\", \"website\": \"https://www.megacasinos.es/\", \"contract_type\": \"monthly\", \"monthly_budget\": null, \"status\": \"active\", \"notes\": \"Kinetic Digital gestiona la cuenta de Mega Casino y ha solicitado una estrateg"
+      },
+      {
+        "module": "clients",
+        "label": "Client 17 Contacts",
+        "method": "GET",
+        "path": "/api/clients/17/contacts",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 283,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[{\"id\": 9, \"client_id\": 17, \"name\": \"Carla García Pérez-Moneo\", \"email\": \"carla.garcia@mindthegapdigital.com\", \"phone\": \"+34 627594469\", \"position\": \"Client Services Director\", \"is_primary\": true, \"notes\": \"Contacto principal en Mind The Gap Digital. Comunicación en español.\", \"department\": \"Mind Th"
+      },
+      {
+        "module": "clients",
+        "label": "Client 17 Health",
+        "method": "GET",
+        "path": "/api/clients/17/health",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 233,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"client_id\": 17, \"client_name\": \"Kinetic Digital\", \"score\": 33, \"factors\": {\"communication\": 0, \"tasks\": 8, \"digests\": 0, \"profitability\": 10, \"followups\": 15}, \"risk_level\": \"at_risk\"}"
+      },
+      {
+        "module": "clients",
+        "label": "Client 17 Activity",
+        "method": "GET",
+        "path": "/api/clients/17/activity",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 278,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[{\"id\": \"task-96\", \"type\": \"task_completed\", \"subtype\": \"medium\", \"timestamp\": \"2026-03-24T20:54:01.191980\", \"title\": \"Tarea completada\", \"description\": \"Solucionar duda técnica Prime Casino\", \"detail\": \"solucionar duda técnica Prime Casino\", \"user_name\": \"Ignacio García Alonso\", \"icon\": \"check\"}, {"
+      },
+      {
+        "module": "clients",
+        "label": "Client 17 Dashboard",
+        "method": "GET",
+        "path": "/api/clients/17/dashboard",
+        "status": 500,
+        "expected": 200,
+        "elapsed_ms": 237,
+        "ok": false,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"detail\": \"Error interno del servidor\", \"ref\": \"052747f3\"}"
+      },
+      {
+        "module": "clients",
+        "label": "Client 17 Billing",
+        "method": "GET",
+        "path": "/api/clients/17/billing",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 377,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[]"
+      },
+      {
+        "module": "projects",
+        "label": "Projects List",
+        "method": "GET",
+        "path": "/api/projects?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 233,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"items\": [{\"id\": 12, \"name\": \"Taxfix Renta 2025 — Manual Update\", \"project_type\": null, \"is_recurring\": false, \"start_date\": \"2026-03-30T00:00:00\", \"target_end_date\": null, \"status\": \"active\", \"progress_percent\": 0, \"gsc_url\": null, \"ga4_property_id\": null, \"client_id\": 16, \"client_name\": \"Taxfix\","
+      },
+      {
+        "module": "inbox",
+        "label": "Inbox List",
+        "method": "GET",
+        "path": "/api/inbox?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 214,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[]"
+      },
+      {
+        "module": "inbox",
+        "label": "Inbox Count",
+        "method": "GET",
+        "path": "/api/inbox/count",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 217,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"count\": 0}"
+      },
+      {
+        "module": "notifications",
+        "label": "Notifications List",
+        "method": "GET",
+        "path": "/api/notifications?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 228,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[{\"id\": 38, \"user_id\": 1, \"type\": \"task_assigned\", \"title\": \"Nueva tarea asignada: Facturar proyecto Renta 2025 (~6.000€)\", \"message\": \"Se te ha asignado la tarea 'Facturar proyecto Renta 2025 (~6.000€)'\", \"is_read\": false, \"link_url\": \"/tasks\", \"entity_type\": \"task\", \"entity_id\": 160, \"created_at\":"
+      },
+      {
+        "module": "notifications",
+        "label": "Notifications Unread Count",
+        "method": "GET",
+        "path": "/api/notifications/unread-count",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 237,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"count\": 6}"
+      },
+      {
+        "module": "digests",
+        "label": "Digests List",
+        "method": "GET",
+        "path": "/api/digests?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 234,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[{\"id\": 7, \"client_id\": 2, \"client_name\": \"Sage Sales Management\", \"period_start\": \"2026-03-09\", \"period_end\": \"2026-03-15\", \"status\": \"sent\", \"tone\": \"cercano\", \"content\": {\"greeting\": \"Hola Alberto,\", \"date\": \"Semana del 23 al 29 de marzo 2026\", \"sections\": {\"done\": [{\"title\": \"Categorización artí"
+      },
+      {
+        "module": "leads",
+        "label": "Leads List",
+        "method": "GET",
+        "path": "/api/leads?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 224,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[]"
+      },
+      {
+        "module": "reports",
+        "label": "Reports List",
+        "method": "GET",
+        "path": "/api/reports?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 219,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[]"
+      },
+      {
+        "module": "pm",
+        "label": "PM Insights",
+        "method": "GET",
+        "path": "/api/pm/insights",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 346,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[{\"id\": 20, \"insight_type\": \"quality\", \"priority\": \"high\", \"title\": \"🚨 2 tareas sin responsable\", \"description\": \"Hay 2 tareas en tu lista de trabajo sin responsable asignado. Ej: 'Revisión de artículo de Gerard'\", \"suggested_action\": \"Identifica los 2 propietarios de tareas pendientes en la próxima"
+      },
+      {
+        "module": "users",
+        "label": "Users List",
+        "method": "GET",
+        "path": "/api/users",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 232,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"items\": [{\"id\": 1, \"email\": \"david@magnify.ing\", \"full_name\": \"David Carrasco\", \"role\": \"admin\", \"hourly_rate\": 50.0, \"preferences\": {}, \"region\": \"MAD\", \"locality\": \"Madrid\", \"short_name\": \"David\", \"birthday\": \"1990-01-15\", \"job_title\": \"SEO Strategist\", \"morning_reminder_time\": \"08:00\", \"evening"
+      },
+      {
+        "module": "vault",
+        "label": "Vault Assets",
+        "method": "GET",
+        "path": "/api/vault/assets",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 218,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[{\"id\": 1, \"category\": \"tool\", \"name\": \"Airtable\", \"value\": null, \"provider\": null, \"url\": \"https://airtable.com\", \"notes\": null, \"associated_domain\": null, \"registrar\": null, \"expiry_date\": null, \"auto_renew\": false, \"dns_provider\": null, \"hosting_type\": null, \"tool_category\": \"Herramientas\", \"mont"
+      },
+      {
+        "module": "finance",
+        "label": "Finance Income",
+        "method": "GET",
+        "path": "/api/finance/income?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 372,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[{\"id\": 9, \"date\": \"2026-03-19\", \"description\": \"SEO Partnership Retainer — factura 03/2026\", \"amount\": 950.0, \"type\": \"recurrente\", \"client_id\": 2, \"client_name\": \"Sage Sales Management\", \"invoice_number\": \"\", \"vat_rate\": 21.0, \"vat_amount\": 0.0, \"tax_regime\": \"standard\", \"irpf_withholding_rate\": 0"
+      },
+      {
+        "module": "finance",
+        "label": "Finance Expenses",
+        "method": "GET",
+        "path": "/api/finance/expenses?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 232,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[]"
+      },
+      {
+        "module": "finance",
+        "label": "Finance Balance",
+        "method": "GET",
+        "path": "/api/finance/balance",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 373,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[]"
+      },
+      {
+        "module": "billing",
+        "label": "Billing Export",
+        "method": "GET",
+        "path": "/api/billing/export?year=2026&month=3",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 233,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "client_id,client_name,period,hours,cost,budget,invoiced,margin\r\n1,Fit Generation,2026-03,22.93,688.0,2450.0,2450.0,1762.0\r\n17,Kinetic Digital,2026-03,0.32,12.5,0.0,0.0,-12.5\r\n2,Sage Sales Management,2026-03,2.18,65.5,950.0,950.0,884.5\r\n"
+      },
+      {
+        "module": "pm",
+        "label": "Generate Insights",
+        "method": "POST",
+        "path": "/api/pm/generate-insights",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 5300,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[{\"id\": 23, \"insight_type\": \"deadline\", \"priority\": \"medium\", \"title\": \"⏰ 'Preparar entregables setup Mega Casino' vence en 2 días\", \"description\": \"Tarea de Kinetic Digital vence el 02/04.\", \"suggested_action\": \"Prioriza hoy la revisión de entregables de Mega Casino con el equipo de Kinetic Digital"
+      },
+      {
+        "module": "tasks",
+        "label": "Create Task",
+        "method": "POST",
+        "path": "/api/tasks",
+        "status": 201,
+        "expected": 201,
+        "elapsed_ms": 242,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 166, \"title\": \"__AUDIT__1774890151-crud\", \"description\": null, \"status\": \"pending\", \"priority\": \"medium\", \"estimated_minutes\": null, \"actual_minutes\": null, \"start_date\": null, \"due_date\": null, \"client_id\": null, \"category_id\": null, \"assigned_to\": 1, \"project_id\": null, \"phase_id\": null, \"d"
+      },
+      {
+        "module": "tasks",
+        "label": "Update Task",
+        "method": "PUT",
+        "path": "/api/tasks/166",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 244,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 166, \"title\": \"__AUDIT__1774890151-crud-updated\", \"description\": null, \"status\": \"pending\", \"priority\": \"medium\", \"estimated_minutes\": null, \"actual_minutes\": null, \"start_date\": null, \"due_date\": null, \"client_id\": null, \"category_id\": null, \"assigned_to\": 1, \"project_id\": null, \"phase_id\": "
+      },
+      {
+        "module": "tasks",
+        "label": "Delete Task",
+        "method": "DELETE",
+        "path": "/api/tasks/166",
+        "status": 204,
+        "expected": 204,
+        "elapsed_ms": 432,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": ""
+      },
+      {
+        "module": "tasks",
+        "label": "Create Auto-Assign Task",
+        "method": "POST",
+        "path": "/api/tasks",
+        "status": 201,
+        "expected": 201,
+        "elapsed_ms": 234,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 167, \"title\": \"__AUDIT__1774890151-auto-assign\", \"description\": null, \"status\": \"pending\", \"priority\": \"medium\", \"estimated_minutes\": null, \"actual_minutes\": null, \"start_date\": null, \"due_date\": null, \"client_id\": null, \"category_id\": null, \"assigned_to\": 1, \"project_id\": null, \"phase_id\": n"
+      },
+      {
+        "module": "timer",
+        "label": "Create Timer Task",
+        "method": "POST",
+        "path": "/api/tasks",
+        "status": 201,
+        "expected": 201,
+        "elapsed_ms": 257,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 168, \"title\": \"__AUDIT__1774890151-timer\", \"description\": null, \"status\": \"pending\", \"priority\": \"medium\", \"estimated_minutes\": null, \"actual_minutes\": null, \"start_date\": null, \"due_date\": null, \"client_id\": null, \"category_id\": null, \"assigned_to\": 1, \"project_id\": null, \"phase_id\": null, \""
+      },
+      {
+        "module": "timer",
+        "label": "Start Timer",
+        "method": "POST",
+        "path": "/api/timer/start",
+        "status": 201,
+        "expected": 201,
+        "elapsed_ms": 349,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 139, \"task_id\": 168, \"task_title\": \"__AUDIT__1774890151-timer\", \"client_name\": null, \"started_at\": \"2026-03-30T17:02:48.205856Z\", \"is_paused\": false, \"accumulated_seconds\": 0}"
+      },
+      {
+        "module": "timer",
+        "label": "Get Timer Task After Start",
+        "method": "GET",
+        "path": "/api/tasks/168",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 240,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 168, \"title\": \"__AUDIT__1774890151-timer\", \"description\": null, \"status\": \"in_progress\", \"priority\": \"medium\", \"estimated_minutes\": null, \"actual_minutes\": null, \"start_date\": null, \"due_date\": null, \"client_id\": null, \"category_id\": null, \"assigned_to\": 1, \"project_id\": null, \"phase_id\": nul"
+      },
+      {
+        "module": "timer",
+        "label": "Pause Timer",
+        "method": "POST",
+        "path": "/api/timer/pause",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 234,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 139, \"task_id\": 168, \"task_title\": \"__AUDIT__1774890151-timer\", \"client_name\": null, \"started_at\": \"2026-03-30T17:02:48.205856Z\", \"is_paused\": true, \"accumulated_seconds\": 0}"
+      },
+      {
+        "module": "timer",
+        "label": "Active Timer After Pause",
+        "method": "GET",
+        "path": "/api/timer/active",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 272,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 139, \"task_id\": 168, \"task_title\": \"__AUDIT__1774890151-timer\", \"client_name\": null, \"started_at\": \"2026-03-30T17:02:48.205856Z\", \"is_paused\": true, \"accumulated_seconds\": 0}"
+      },
+      {
+        "module": "timer",
+        "label": "Resume Timer",
+        "method": "POST",
+        "path": "/api/timer/resume",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 232,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 139, \"task_id\": 168, \"task_title\": \"__AUDIT__1774890151-timer\", \"client_name\": null, \"started_at\": \"2026-03-30T17:02:49.305960Z\", \"is_paused\": false, \"accumulated_seconds\": 0}"
+      },
+      {
+        "module": "timer",
+        "label": "Active Timer After Resume",
+        "method": "GET",
+        "path": "/api/timer/active",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 237,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 139, \"task_id\": 168, \"task_title\": \"__AUDIT__1774890151-timer\", \"client_name\": null, \"started_at\": \"2026-03-30T17:02:49.305960Z\", \"is_paused\": false, \"accumulated_seconds\": 0}"
+      },
+      {
+        "module": "timer",
+        "label": "Stop Timer",
+        "method": "POST",
+        "path": "/api/timer/stop",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 273,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 139, \"minutes\": 1, \"started_at\": \"2026-03-30T17:02:49.305960\", \"date\": \"2026-03-30T17:02:48.205856\", \"notes\": \"__AUDIT__1774890151-timer-stop\", \"task_id\": 168, \"user_id\": 1, \"created_at\": \"2026-03-30T17:02:48.191374\", \"updated_at\": \"2026-03-30T17:02:49.758437\", \"task_title\": \"__AUDIT__1774890"
+      },
+      {
+        "module": "time_entries",
+        "label": "Delete Timer Entry",
+        "method": "DELETE",
+        "path": "/api/time-entries/139",
+        "status": 204,
+        "expected": 204,
+        "elapsed_ms": 260,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": ""
+      },
+      {
+        "module": "inbox",
+        "label": "Create Inbox Note",
+        "method": "POST",
+        "path": "/api/inbox",
+        "status": 201,
+        "expected": 201,
+        "elapsed_ms": 234,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 105, \"user_id\": 1, \"raw_text\": \"__AUDIT__1774890151 inbox note\", \"source\": \"dashboard\", \"status\": \"classified\", \"project_id\": null, \"client_id\": 17, \"project_name\": null, \"client_name\": \"Kinetic Digital\", \"resolved_as\": null, \"resolved_entity_id\": null, \"ai_suggestion\": null, \"link_url\": null"
+      },
+      {
+        "module": "inbox",
+        "label": "Classify Inbox Note",
+        "method": "POST",
+        "path": "/api/inbox/105/classify",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 3736,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 105, \"user_id\": 1, \"raw_text\": \"__AUDIT__1774890151 inbox note\", \"source\": \"dashboard\", \"status\": \"classified\", \"project_id\": null, \"client_id\": 17, \"project_name\": null, \"client_name\": \"Kinetic Digital\", \"resolved_as\": null, \"resolved_entity_id\": null, \"ai_suggestion\": {\"reasoning\": \"La nota"
+      },
+      {
+        "module": "inbox",
+        "label": "Convert Inbox Note To Task",
+        "method": "POST",
+        "path": "/api/inbox/105/convert-to-task",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 257,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"ok\": true, \"task_id\": 169, \"note\": {\"id\": 105, \"status\": \"processed\"}}"
+      },
+      {
+        "module": "inbox",
+        "label": "Get Converted Task",
+        "method": "GET",
+        "path": "/api/tasks/169",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 230,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 169, \"title\": \"Review audit item 1774890151\", \"description\": \"__AUDIT__1774890151 inbox note\", \"status\": \"pending\", \"priority\": \"medium\", \"estimated_minutes\": null, \"actual_minutes\": null, \"start_date\": null, \"due_date\": null, \"client_id\": 17, \"category_id\": null, \"assigned_to\": 1, \"project_i"
+      },
+      {
+        "module": "digests",
+        "label": "List Digests For Flow",
+        "method": "GET",
+        "path": "/api/digests?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 377,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[{\"id\": 7, \"client_id\": 2, \"client_name\": \"Sage Sales Management\", \"period_start\": \"2026-03-09\", \"period_end\": \"2026-03-15\", \"status\": \"sent\", \"tone\": \"cercano\", \"content\": {\"greeting\": \"Hola Alberto,\", \"date\": \"Semana del 23 al 29 de marzo 2026\", \"sections\": {\"done\": [{\"title\": \"Categorización artí"
+      },
+      {
+        "module": "digests",
+        "label": "Generate Digest",
+        "method": "POST",
+        "path": "/api/digests/generate",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 7404,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 8, \"client_id\": 2, \"client_name\": \"Sage Sales Management\", \"period_start\": \"2026-03-23\", \"period_end\": \"2026-03-29\", \"status\": \"draft\", \"tone\": \"cercano\", \"content\": {\"greeting\": \"Hola equipo de Sage Sales Management 👋,\\nAquí tienes el resumen de esta semana para SEO Partnership Retainer\", \"d"
+      },
+      {
+        "module": "digests",
+        "label": "Patch Digest To Reviewed",
+        "method": "PATCH",
+        "path": "/api/digests/8/status",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 244,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 8, \"client_id\": 2, \"client_name\": \"Sage Sales Management\", \"period_start\": \"2026-03-23\", \"period_end\": \"2026-03-29\", \"status\": \"reviewed\", \"tone\": \"cercano\", \"content\": {\"greeting\": \"Hola equipo de Sage Sales Management 👋,\\nAquí tienes el resumen de esta semana para SEO Partnership Retainer\","
+      },
+      {
+        "module": "digests",
+        "label": "Patch Digest Back To Draft",
+        "method": "PATCH",
+        "path": "/api/digests/8/status",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 394,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 8, \"client_id\": 2, \"client_name\": \"Sage Sales Management\", \"period_start\": \"2026-03-23\", \"period_end\": \"2026-03-29\", \"status\": \"draft\", \"tone\": \"cercano\", \"content\": {\"greeting\": \"Hola equipo de Sage Sales Management 👋,\\nAquí tienes el resumen de esta semana para SEO Partnership Retainer\", \"d"
+      },
+      {
+        "module": "discord",
+        "label": "Send Weekly Report",
+        "method": "POST",
+        "path": "/api/discord/send-weekly-report",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 999,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"success\": true, \"message\": \"Informe semanal enviado por DM\", \"date\": null}"
+      },
+      {
+        "module": "cleanup",
+        "label": "Delete Digest 8",
+        "method": "DELETE",
+        "path": "/api/digests/8",
+        "status": 204,
+        "expected": 204,
+        "elapsed_ms": 390,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": ""
+      },
+      {
+        "module": "cleanup",
+        "label": "Delete Inbox Note 105",
+        "method": "DELETE",
+        "path": "/api/inbox/105",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 247,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"ok\": true}"
+      },
+      {
+        "module": "cleanup",
+        "label": "Delete Task 167",
+        "method": "DELETE",
+        "path": "/api/tasks/167",
+        "status": 204,
+        "expected": 204,
+        "elapsed_ms": 225,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": ""
+      },
+      {
+        "module": "cleanup",
+        "label": "Delete Task 168",
+        "method": "DELETE",
+        "path": "/api/tasks/168",
+        "status": 204,
+        "expected": 204,
+        "elapsed_ms": 221,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": ""
+      },
+      {
+        "module": "cleanup",
+        "label": "Delete Task 169",
+        "method": "DELETE",
+        "path": "/api/tasks/169",
+        "status": 204,
+        "expected": 204,
+        "elapsed_ms": 227,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": ""
+      }
+    ],
+    "flows": {
+      "auto_assign": {
+        "task_id": 167,
+        "assigned_to": 1,
+        "expected_user_id": 1,
+        "ok": true
+      },
+      "default_scheduled_date": {
+        "task_id": 167,
+        "scheduled_date": null,
+        "expected": "2026-03-30",
+        "ok": false
+      },
+      "timer_flow": {
+        "task_status_after_start": "in_progress",
+        "pause_is_paused": true,
+        "active_after_pause": true,
+        "resume_is_paused": false,
+        "active_after_resume": false,
+        "stopped_minutes": 1
+      },
+      "inbox_flow": {
+        "note_id": 105,
+        "classified_status": "classified",
+        "task_id": 169,
+        "task_assigned_to": 1,
+        "task_scheduled_date": "2026-03-30"
+      },
+      "digest_flow": {
+        "digest_id": 8,
+        "period_start": "2026-03-23",
+        "period_end": "2026-03-29",
+        "expected_start": "2026-03-23",
+        "expected_end": "2026-03-29"
+      },
+      "weekly_report": {
+        "success": true,
+        "message": "Informe semanal enviado por DM",
+        "date": null
       }
     },
-    "member": {
-      "role": "member",
-      "score": 95,
-      "passed": 19,
-      "total": 20,
-      "modules": {
-        "auth": {
-          "score": 50,
-          "passed": 1,
-          "total": 2,
-          "results": [
-            {
-              "pass": false,
-              "status": 422,
-              "expected": 200,
-              "elapsed_ms": 272,
-              "description": "Login",
-              "path": "/api/auth/login",
-              "detail": [
-                {
-                  "type": "missing",
-                  "loc": [
-                    "body",
-                    "email"
-                  ],
-                  "msg": "Field required",
-                  "input": {}
-                },
-                {
-                  "type": "missing",
-                  "loc": [
-                    "body",
-                    "password"
-                  ],
-                  "msg": "Field required",
-                  "input": {}
-                }
-              ]
-            },
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 511,
-              "description": "Current user",
-              "path": "/api/auth/me"
-            }
-          ]
-        },
-        "dashboard": {
-          "score": 100,
-          "passed": 2,
-          "total": 2,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 435,
-              "description": "Dashboard overview",
-              "path": "/api/dashboard/overview"
-            },
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 585,
-              "description": "Today tasks",
-              "path": "/api/dashboard/today"
-            }
-          ]
-        },
-        "tasks": {
-          "score": 100,
-          "passed": 2,
-          "total": 2,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 606,
-              "description": "List tasks",
-              "path": "/api/tasks?page_size=5"
-            },
-            {
-              "pass": true,
-              "status": 201,
-              "expected": 201,
-              "elapsed_ms": 604,
-              "description": "Create task",
-              "path": "/api/tasks"
-            }
-          ]
-        },
-        "timer": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 485,
-              "description": "Active timer",
-              "path": "/api/timer/active"
-            }
-          ]
-        },
-        "time_entries": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 669,
-              "description": "List time entries",
-              "path": "/api/time-entries?page_size=5"
-            }
-          ]
-        },
-        "clients": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 495,
-              "description": "List clients",
-              "path": "/api/clients?page_size=5"
-            }
-          ]
-        },
-        "projects": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 545,
-              "description": "List projects",
-              "path": "/api/projects?page_size=5"
-            }
-          ]
-        },
-        "inbox": {
-          "score": 100,
-          "passed": 2,
-          "total": 2,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 710,
-              "description": "List inbox",
-              "path": "/api/inbox?page_size=5"
-            },
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 682,
-              "description": "Inbox count",
-              "path": "/api/inbox/count"
-            }
-          ]
-        },
-        "notifications": {
-          "score": 100,
-          "passed": 2,
-          "total": 2,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 570,
-              "description": "List notifications",
-              "path": "/api/notifications?page_size=5"
-            },
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 521,
-              "description": "Unread count",
-              "path": "/api/notifications/unread-count"
-            }
-          ]
-        },
-        "users": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 614,
-              "description": "List users",
-              "path": "/api/users"
-            }
-          ]
-        },
-        "digests": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 582,
-              "description": "List digests",
-              "path": "/api/digests?page_size=5"
-            }
-          ]
-        },
-        "reports": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 376,
-              "description": "List reports",
-              "path": "/api/reports?page_size=5"
-            }
-          ]
-        },
-        "pm": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 636,
-              "description": "List insights",
-              "path": "/api/pm/insights"
-            }
-          ]
-        },
-        "leads": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 200,
-              "expected": 200,
-              "elapsed_ms": 483,
-              "description": "List leads",
-              "path": "/api/leads?page_size=5"
-            }
-          ]
-        },
-        "vault": {
-          "score": 100,
-          "passed": 1,
-          "total": 1,
-          "results": [
-            {
-              "pass": true,
-              "status": 403,
-              "expected": 403,
-              "elapsed_ms": 330,
-              "description": "List vault assets (admin only)",
-              "path": "/api/vault/assets"
-            }
-          ]
-        }
+    "cleanup": []
+  },
+  "member": {
+    "endpoints": [
+      {
+        "module": "auth",
+        "label": "Login",
+        "method": "POST",
+        "path": "/api/auth/login",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 659,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"access_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyIiwiZXhwIjoxNzc0OTE4OTg0LCJqdGkiOiJmMmY0N2U4YmZkM2Q0MDRjYWQ5Mjc0ZTQzYWJlMWM1MSJ9.Z_rp4lBjyFz-c-4jR3A3Cf_MfzWclPgCUa2QXi6fGik\", \"token_type\": \"bearer\"}"
+      },
+      {
+        "module": "auth",
+        "label": "Current User",
+        "method": "GET",
+        "path": "/api/auth/me",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 373,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 2, \"email\": \"nacho@magnify.ing\", \"full_name\": \"Ignacio García Alonso\", \"role\": \"member\", \"hourly_rate\": 30.0, \"is_active\": true, \"permissions\": [{\"module\": \"dashboard\", \"can_read\": true, \"can_write\": true}, {\"module\": \"clients\", \"can_read\": true, \"can_write\": true}, {\"module\": \"tasks\", \"can_r"
+      },
+      {
+        "module": "dashboard",
+        "label": "Member Dashboard Overview",
+        "method": "GET",
+        "path": "/api/dashboard/overview",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 422,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"active_clients\": 4, \"pending_tasks\": 8, \"in_progress_tasks\": 6, \"hours_this_month\": 90.2, \"total_budget\": 3750.0, \"total_cost\": 2725.67, \"margin\": 1024.33, \"margin_percent\": 27.3}"
+      },
+      {
+        "module": "tasks",
+        "label": "Member Tasks List",
+        "method": "GET",
+        "path": "/api/tasks?page=1&page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 412,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"items\": [{\"id\": 169, \"title\": \"Review audit item 1774890151\", \"description\": \"__AUDIT__1774890151 inbox note\", \"status\": \"pending\", \"priority\": \"medium\", \"estimated_minutes\": null, \"actual_minutes\": null, \"start_date\": null, \"due_date\": null, \"client_id\": 17, \"category_id\": null, \"assigned_to\": 1,"
+      },
+      {
+        "module": "timer",
+        "label": "Member Active Timer",
+        "method": "GET",
+        "path": "/api/timer/active",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 241,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"id\": 138, \"task_id\": 151, \"task_title\": \"Creación logo mirror\", \"client_name\": \"Magnify\", \"started_at\": \"2026-03-30T15:28:49.730757Z\", \"is_paused\": false, \"accumulated_seconds\": 0}"
+      },
+      {
+        "module": "time_entries",
+        "label": "Member Time Entries List",
+        "method": "GET",
+        "path": "/api/time-entries?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 408,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[{\"id\": 137, \"minutes\": 67, \"started_at\": \"2026-03-30T14:17:01.586797\", \"date\": \"2026-03-30T14:17:01.586797\", \"notes\": null, \"task_id\": 151, \"user_id\": 2, \"created_at\": \"2026-03-30T14:17:01.525722\", \"updated_at\": \"2026-03-30T15:24:26.038937\", \"task_title\": \"Creación logo mirror\", \"client_name\": \"Mag"
+      },
+      {
+        "module": "clients",
+        "label": "Member Clients List",
+        "method": "GET",
+        "path": "/api/clients?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 223,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"items\": [{\"id\": 17, \"name\": \"Kinetic Digital\", \"email\": null, \"phone\": null, \"company\": \"Kinetic Digital\", \"website\": \"https://www.megacasinos.es/\", \"contract_type\": \"monthly\", \"monthly_budget\": null, \"status\": \"active\", \"notes\": \"Kinetic Digital gestiona la cuenta de Mega Casino y ha solicitado u"
+      },
+      {
+        "module": "projects",
+        "label": "Member Projects List",
+        "method": "GET",
+        "path": "/api/projects?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 232,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"items\": [{\"id\": 12, \"name\": \"Taxfix Renta 2025 — Manual Update\", \"project_type\": null, \"is_recurring\": false, \"start_date\": \"2026-03-30T00:00:00\", \"target_end_date\": null, \"status\": \"active\", \"progress_percent\": 0, \"gsc_url\": null, \"ga4_property_id\": null, \"client_id\": 16, \"client_name\": \"Taxfix\","
+      },
+      {
+        "module": "inbox",
+        "label": "Member Inbox List",
+        "method": "GET",
+        "path": "/api/inbox?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 250,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[{\"id\": 104, \"user_id\": 2, \"raw_text\": \"Modificación tabla Pipeline y Calendario editorial a petición  de Gabi\", \"source\": \"chrome_extension\", \"status\": \"processed\", \"project_id\": null, \"client_id\": 1, \"project_name\": null, \"client_name\": \"Fit Generation\", \"resolved_as\": \"task\", \"resolved_entity_id\""
+      },
+      {
+        "module": "inbox",
+        "label": "Member Inbox Count",
+        "method": "GET",
+        "path": "/api/inbox/count",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 279,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"count\": 1}"
+      },
+      {
+        "module": "notifications",
+        "label": "Member Notifications List",
+        "method": "GET",
+        "path": "/api/notifications?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 229,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[{\"id\": 32, \"user_id\": 2, \"type\": \"task_assigned\", \"title\": \"Nueva tarea asignada: Revisión tabla pipeline\", \"message\": \"Se te ha asignado la tarea 'Revisión tabla pipeline'\", \"is_read\": false, \"link_url\": \"/tasks\", \"entity_type\": \"task\", \"entity_id\": 154, \"created_at\": \"2026-03-30T11:13:09.285158Z\""
+      },
+      {
+        "module": "digests",
+        "label": "Member Digests List",
+        "method": "GET",
+        "path": "/api/digests?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 236,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[{\"id\": 7, \"client_id\": 2, \"client_name\": \"Sage Sales Management\", \"period_start\": \"2026-03-09\", \"period_end\": \"2026-03-15\", \"status\": \"sent\", \"tone\": \"cercano\", \"content\": {\"greeting\": \"Hola Alberto,\", \"date\": \"Semana del 23 al 29 de marzo 2026\", \"sections\": {\"done\": [{\"title\": \"Categorización artí"
+      },
+      {
+        "module": "leads",
+        "label": "Member Leads List",
+        "method": "GET",
+        "path": "/api/leads?page_size=5",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 234,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "[]"
+      },
+      {
+        "module": "vault",
+        "label": "Member Vault Assets",
+        "method": "GET",
+        "path": "/api/vault/assets",
+        "status": 403,
+        "expected": 403,
+        "elapsed_ms": 223,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"detail\": \"Admin required\"}"
+      },
+      {
+        "module": "finance",
+        "label": "Member Finance Income",
+        "method": "GET",
+        "path": "/api/finance/income?page_size=5",
+        "status": 403,
+        "expected": 403,
+        "elapsed_ms": 216,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"detail\": \"Sin acceso de lectura al módulo: finance_income. Pide a un administrador que te dé acceso.\"}"
+      },
+      {
+        "module": "finance",
+        "label": "Member Finance Expenses",
+        "method": "GET",
+        "path": "/api/finance/expenses?page_size=5",
+        "status": 403,
+        "expected": 403,
+        "elapsed_ms": 219,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"detail\": \"Sin acceso de lectura al módulo: finance_expenses. Pide a un administrador que te dé acceso.\"}"
+      },
+      {
+        "module": "billing",
+        "label": "Member Billing Export",
+        "method": "GET",
+        "path": "/api/billing/export?year=2026&month=3",
+        "status": 403,
+        "expected": 403,
+        "elapsed_ms": 372,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"detail\": \"Sin acceso de lectura al módulo: billing. Pide a un administrador que te dé acceso.\"}"
+      },
+      {
+        "module": "users",
+        "label": "Member Users List",
+        "method": "GET",
+        "path": "/api/users",
+        "status": 200,
+        "expected": 200,
+        "elapsed_ms": 243,
+        "ok": true,
+        "safe_probe": false,
+        "note": null,
+        "response_snippet": "{\"items\": [{\"id\": 1, \"email\": null, \"full_name\": \"David Carrasco\", \"role\": null, \"hourly_rate\": null, \"preferences\": null, \"region\": null, \"locality\": null, \"short_name\": null, \"birthday\": null, \"job_title\": null, \"morning_reminder_time\": null, \"evening_reminder_time\": null, \"onboarding_completed\": "
       }
+    ]
+  },
+  "db_checks": {
+    "user_count": [
+      [
+        2
+      ]
+    ],
+    "qa_users": [
+      [
+        0
+      ]
+    ],
+    "audit_tasks": [
+      [
+        0
+      ]
+    ],
+    "qa_clients": [
+      [
+        0
+      ]
+    ],
+    "time_entries_columns": [
+      [
+        "accumulated_seconds"
+      ],
+      [
+        "paused_at"
+      ]
+    ],
+    "vault_encryption": [
+      [
+        7,
+        0,
+        7
+      ]
+    ]
+  },
+  "scores": {
+    "auth": 100,
+    "auto_assign": 100,
+    "billing": 100,
+    "cleanup": 100,
+    "clients": 88,
+    "dashboard": 100,
+    "data_integrity": 100,
+    "default_scheduled_date": 0,
+    "digest_flow": 100,
+    "digests": 100,
+    "discord": 100,
+    "finance": 100,
+    "inbox": 100,
+    "inbox_flow": 100,
+    "leads": 100,
+    "notifications": 100,
+    "pm": 100,
+    "projects": 100,
+    "reports": 100,
+    "tasks": 100,
+    "time_entries": 100,
+    "timer": 100,
+    "timer_flow": 50,
+    "users": 100,
+    "vault": 100,
+    "weekly_report": 100
+  },
+  "findings": [
+    {
+      "module": "clients",
+      "severity": "high",
+      "title": "Client 17 Dashboard failed",
+      "detail": "Expected 200, got 500",
+      "endpoint": "GET /api/clients/17/dashboard",
+      "http_code": 500,
+      "evidence": "{\"detail\": \"Error interno del servidor\", \"ref\": \"052747f3\"}"
+    },
+    {
+      "module": "tasks",
+      "severity": "medium",
+      "title": "Task default scheduled_date missing",
+      "detail": "Expected scheduled_date=2026-03-30 for a new task without explicit date, got None.",
+      "endpoint": "POST /api/tasks",
+      "http_code": 201,
+      "evidence": "{\"id\": 167, \"title\": \"__AUDIT__1774890151-auto-assign\", \"description\": null, \"status\": \"pending\", \"priority\": \"medium\", \"estimated_minutes\": null, \"actual_minutes\": null, \"start_date\": null, \"due_date\": null, \"client_id\": null, \"category_id\": null, \"assigned_to\": 1, \"project_id\": null, \"phase_id\": n"
     }
+  ],
+  "executive_summary": {
+    "works": [
+      "Local backend tests, TypeScript checks, and production builds passed.",
+      "Core admin flows mostly work: login, dashboard, CRUD tasks, timer lifecycle, inbox convert-to-task, users, vault, finance, and billing endpoints all responded.",
+      "Member RBAC behaved correctly for vault, finance, and billing, and member users only received sanitized user rows."
+    ],
+    "broken": [
+      "Client 17 Dashboard failed"
+    ],
+    "needs_attention": [
+      "Task default scheduled_date missing"
+    ]
   }
 }

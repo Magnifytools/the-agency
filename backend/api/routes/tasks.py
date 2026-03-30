@@ -226,6 +226,10 @@ async def create_task(
     # Auto-assign to creator if no assignee specified
     if not data.get("assigned_to"):
         data["assigned_to"] = current_user.id
+    # Default scheduled_date to today if not specified
+    if not data.get("scheduled_date"):
+        from datetime import date as _date
+        data["scheduled_date"] = _date.today()
     task = Task(**data, created_by=current_user.id)
     db.add(task)
     try:

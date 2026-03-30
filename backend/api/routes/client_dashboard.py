@@ -80,7 +80,7 @@ async def client_dashboard(
     for minutes, user_id, full_name, hourly_rate in entries_this_month.all():
         hrs = (minutes or 0) / 60
         hours_this_month += hrs
-        rate = hourly_rate or 0
+        rate = float(hourly_rate or 0)
         cost = hrs * rate
         total_cost_this_month += cost
 
