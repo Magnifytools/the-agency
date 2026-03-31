@@ -543,6 +543,10 @@ async function createTaskDirect() {
       if (timerRes.ok) {
         const timerData = await timerRes.json();
         showActiveTimer(timerData);
+      } else {
+        const timerErr = await timerRes.json().catch(() => ({}));
+        taskCaptureError.textContent = "Tarea creada, pero error al iniciar timer: " + getDetail(timerErr, `Error ${timerRes.status}`);
+        taskCaptureError.classList.remove("hidden");
       }
     }
 
