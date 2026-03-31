@@ -51,7 +51,7 @@ const tabContents = {
   tasks: document.getElementById("tab-tasks"),
 };
 
-// Capture
+// Capture — Note mode
 const noteText = document.getElementById("note-text");
 const linkUrl = document.getElementById("link-url");
 const captureBtn = document.getElementById("capture-btn");
@@ -64,6 +64,19 @@ const captureError = document.getElementById("capture-error");
 const inboxBar = document.getElementById("inbox-bar");
 const inboxCount = document.getElementById("inbox-count");
 const openInbox = document.getElementById("open-inbox");
+
+// Capture — Task mode
+const captureNoteMode = document.getElementById("capture-note-mode");
+const captureTaskMode = document.getElementById("capture-task-mode");
+const modeBtns = document.querySelectorAll(".mode-btn");
+const taskTitle = document.getElementById("task-title");
+const taskClientSelect = document.getElementById("task-client-select");
+const taskProjectSelect = document.getElementById("task-project-select");
+const taskStartTimer = document.getElementById("task-start-timer");
+const taskCreateBtn = document.getElementById("task-create-btn");
+const taskBtnText = document.getElementById("task-btn-text");
+const taskBtnLoading = document.getElementById("task-btn-loading");
+const taskCaptureError = document.getElementById("task-capture-error");
 
 // Timer
 const timerActive = document.getElementById("timer-active");
@@ -112,6 +125,7 @@ let activeTimerStart = null;
 let timerIsPaused = false;
 let timerAccumulatedSeconds = 0;
 let clientsList = []; // cached for quick-create forms
+let projectsList = []; // cached for task mode
 
 // ── Init ──────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
@@ -276,6 +290,7 @@ async function loadProjectsAndClients() {
     if (projRes.ok) {
       const projData = await projRes.json();
       const projects = projData.items || projData;
+      projectsList = projects; // cache for task mode
       if (projects.length > 0) {
         const grp = document.createElement("optgroup");
         grp.label = "Proyectos";
@@ -307,6 +322,8 @@ async function loadProjectsAndClients() {
       }
       // Populate quick-create client selectors
       populateQuickCreateClients();
+      // Populate task mode selects (needs both clients + projects)
+      populateTaskModeSelects();
     }
   } catch {
     // silently ignore — assignment is optional
@@ -404,6 +421,155 @@ async function captureNote() {
     captureBtn.disabled = !noteText.value.trim();
     btnText.classList.remove("hidden");
     btnLoading.classList.add("hidden");
+  }
+}
+
+// ── Capture Mode Toggle (Note vs Task) ───────────────────
+modeBtns.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    modeBtns.forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    const mode = btn.dataset.mode;
+    if (mode === "note") {
+      captureNoteMode.classList.remove("hidden");
+      captureTaskMode.classList.add("hidden");
+      noteText.focus();
+    } else {
+      captureNoteMode.classList.add("hidden");
+      captureTaskMode.classList.remove("hidden");
+      taskTitle.focus();
+    }
+    // Hide any previous success/error
+    successMsg.classList.add("hidden");
+    taskCaptureError.classList.add("hidden");
+    captureError.classList.add("hidden");
+  });
+});
+
+// ── Task Mode: populate selects ──────────────────────────
+function populateTaskModeSelects() {
+  // Clients
+  while (taskClientSelect.options.length > 1) taskClientSelect.remove(1);
+  clientsList.forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = c.name;
+    taskClientSelect.appendChild(opt);
+  });
+
+  // Projects
+  while (taskProjectSelect.options.length > 1) taskProjectSelect.remove(1);
+  projectsList.forEach((p) => {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = p.name;
+    taskProjectSelect.appendChild(opt);
+  });
+}
+
+// ── Task Mode: enable/disable button ─────────────────────
+function updateTaskCreateBtn() {
+  taskCreateBtn.disabled = !(taskTitle.value.trim() && taskClientSelect.value);
+}
+
+taskTitle.addEventListener("input", updateTaskCreateBtn);
+taskClientSelect.addEventListener("change", updateTaskCreateBtn);
+
+// ── Task Mode: button text based on timer checkbox ───────
+taskStartTimer.addEventListener("change", () => {
+  taskBtnText.textContent = taskStartTimer.checked ? "Crear tarea + Timer" : "Crear tarea";
+});
+
+// ── Task Mode: Cmd+Enter ─────────────────────────────────
+taskTitle.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+    e.preventDefault();
+    if (taskTitle.value.trim() && taskClientSelect.value) createTaskDirect();
+  }
+});
+
+// ── Task Mode: create task + optional timer ──────────────
+taskCreateBtn.addEventListener("click", () => createTaskDirect());
+
+async function createTaskDirect() {
+  const title = taskTitle.value.trim();
+  const clientId = taskClientSelect.value;
+  if (!title || !clientId) return;
+
+  taskCreateBtn.disabled = true;
+  taskBtnText.classList.add("hidden");
+  taskBtnLoading.classList.remove("hidden");
+  taskCaptureError.classList.add("hidden");
+  successMsg.classList.add("hidden");
+
+  try {
+    // 1. Create task
+    const body = {
+      title,
+      client_id: parseInt(clientId, 10),
+      status: "in_progress",
+    };
+    const projectId = taskProjectSelect.value;
+    if (projectId) body.project_id = parseInt(projectId, 10);
+
+    const res = await fetch(`${API_URL}/api/tasks`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (handle401(res)) return;
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(getDetail(err, "Error al crear tarea"));
+    }
+
+    const task = await res.json();
+
+    // 2. Optionally start timer
+    if (taskStartTimer.checked) {
+      const timerRes = await fetch(`${API_URL}/api/timer/start`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ task_id: task.id }),
+      });
+
+      if (timerRes.ok) {
+        const timerData = await timerRes.json();
+        showActiveTimer(timerData);
+      }
+    }
+
+    // 3. Success — reset form
+    taskTitle.value = "";
+    taskClientSelect.value = "";
+    taskProjectSelect.value = "";
+    updateTaskCreateBtn();
+
+    if (taskStartTimer.checked) {
+      successText.textContent = "Tarea creada — timer iniciado";
+      successMsg.classList.remove("hidden");
+      // Switch to timer tab after brief delay
+      setTimeout(() => switchToTab("timer"), 1200);
+    } else {
+      successText.textContent = "Tarea creada";
+      successMsg.classList.remove("hidden");
+    }
+
+    setTimeout(() => successMsg.classList.add("hidden"), 3000);
+  } catch (err) {
+    taskCaptureError.textContent = err.message || "Error al crear tarea.";
+    taskCaptureError.classList.remove("hidden");
+  } finally {
+    taskBtnText.classList.remove("hidden");
+    taskBtnLoading.classList.add("hidden");
+    updateTaskCreateBtn();
   }
 }
 

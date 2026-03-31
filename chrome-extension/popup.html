@@ -55,7 +55,14 @@
 
     <!-- ═══ CAPTURE TAB ═══ -->
     <div id="tab-capture" class="tab-content">
-      <div class="capture-area">
+      <!-- Mode toggle: Nota vs Tarea -->
+      <div class="capture-mode-toggle">
+        <button class="mode-btn active" data-mode="note">Nota</button>
+        <button class="mode-btn" data-mode="task">Tarea directa</button>
+      </div>
+
+      <!-- NOTE mode (inbox) -->
+      <div id="capture-note-mode" class="capture-area">
         <textarea id="note-text" placeholder="Escribe tu nota rapida... (Cmd+Enter para enviar)" rows="4" autofocus></textarea>
         <p id="capture-error" class="error hidden"></p>
         <div class="field-row">
@@ -74,6 +81,36 @@
           </button>
         </div>
       </div>
+
+      <!-- TASK mode (direct task creation) -->
+      <div id="capture-task-mode" class="capture-area hidden">
+        <input type="text" id="task-title" placeholder="Titulo de la tarea *" class="field-input" autofocus>
+        <p id="task-capture-error" class="error hidden"></p>
+        <div class="field-row">
+          <select id="task-client-select" class="field-select">
+            <option value="">Cliente *</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <select id="task-project-select" class="field-select">
+            <option value="">Proyecto (opcional)</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label class="checkbox-row">
+            <input type="checkbox" id="task-start-timer" checked>
+            <span>Iniciar timer al crear</span>
+          </label>
+        </div>
+        <div class="actions">
+          <span class="hint">Cmd+Enter</span>
+          <button id="task-create-btn" class="primary-btn" disabled>
+            <span id="task-btn-text">Crear tarea + Timer</span>
+            <span id="task-btn-loading" class="hidden">Creando...</span>
+          </button>
+        </div>
+      </div>
+
       <div id="success-msg" class="success hidden">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
         <span id="success-text">Nota capturada</span>

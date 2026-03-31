@@ -291,6 +291,48 @@ textarea::placeholder {
   stroke: #FFD600;
 }
 
+/* ── Capture mode toggle ───────────────────────────────── */
+.capture-mode-toggle {
+  display: flex;
+  padding: 8px 16px 0;
+  gap: 4px;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  color: #71717a;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+.mode-btn:hover { color: #a1a1aa; border-color: #3f3f46; }
+
+.mode-btn.active {
+  background: #FFD600;
+  color: #0a0a0a;
+  border-color: #FFD600;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #a1a1aa;
+  cursor: pointer;
+}
+
+.checkbox-row input[type="checkbox"] {
+  accent-color: #FFD600;
+  width: 14px;
+  height: 14px;
+}
+
 /* ── Capture tab ────────────────────────────────────────── */
 .capture-area {
   padding: 12px 16px;
