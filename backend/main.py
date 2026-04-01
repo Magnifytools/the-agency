@@ -1285,30 +1285,46 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logging.warning("Startup DDL failed (may be expected): %s", e)
 
-    # One-time cleanup of QA/test data created by audits
+    # Cleanup QA/test data and set correct reminder times
     try:
         async with engine.begin() as conn:
+            # Define QA user condition
+            qa_user_cond = "email LIKE '%example.com' OR full_name LIKE 'QA %' OR full_name LIKE 'AUDIT%'"
+            qa_task_cond = "title LIKE 'QA Task%' OR title LIKE 'AUDIT-%'"
+            qa_client_cond = "name LIKE 'QA%' OR name LIKE 'AUDIT%' OR name LIKE '__TEST%' OR name LIKE 'QA Client%'"
             for sql in [
-                # Delete time entries for QA users/tasks first (FK)
-                "DELETE FROM time_entries WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%example.com' OR full_name LIKE 'QA %')",
-                "DELETE FROM time_entries WHERE task_id IN (SELECT id FROM tasks WHERE title LIKE 'QA Task%' OR title LIKE 'AUDIT-%')",
-                # Delete task-related data (checklist, comments, attachments cascade via FK)
-                "DELETE FROM tasks WHERE title LIKE 'QA Task%' OR title LIKE 'AUDIT-%'",
-                # Delete daily updates for QA users
-                "DELETE FROM daily_updates WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%example.com' OR full_name LIKE 'QA %')",
-                # Delete user permissions for QA users
-                "DELETE FROM user_permissions WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%example.com' OR full_name LIKE 'QA %')",
-                # Delete notifications for QA users
-                "DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%example.com' OR full_name LIKE 'QA %')",
-                # Delete QA clients (projects + related data cascade)
-                "DELETE FROM projects WHERE client_id IN (SELECT id FROM clients WHERE name LIKE 'QA%' OR name LIKE 'AUDIT%' OR name LIKE '__TEST%')",
-                "DELETE FROM clients WHERE name LIKE 'QA%' OR name LIKE 'AUDIT%' OR name LIKE '__TEST%'",
+                # Unassign QA tasks from real users first (Nacho has QA tasks assigned)
+                f"UPDATE tasks SET assigned_to = NULL WHERE ({qa_task_cond})",
+                # Delete FKs pointing to QA users/tasks
+                f"DELETE FROM time_entries WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
+                f"DELETE FROM time_entries WHERE task_id IN (SELECT id FROM tasks WHERE {qa_task_cond})",
+                f"DELETE FROM task_comments WHERE task_id IN (SELECT id FROM tasks WHERE {qa_task_cond})",
+                f"DELETE FROM task_attachments WHERE task_id IN (SELECT id FROM tasks WHERE {qa_task_cond})",
+                # Delete checklist items if table exists
+                f"DELETE FROM task_checklist_items WHERE task_id IN (SELECT id FROM tasks WHERE {qa_task_cond})",
+                # Delete QA tasks
+                f"DELETE FROM tasks WHERE {qa_task_cond}",
+                # Delete daily updates, permissions, notifications for QA users
+                f"DELETE FROM daily_updates WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
+                f"DELETE FROM user_permissions WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
+                f"DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
+                # Delete inbox notes for QA users
+                f"DELETE FROM inbox_notes WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
+                # Delete QA projects and clients
+                f"DELETE FROM projects WHERE client_id IN (SELECT id FROM clients WHERE {qa_client_cond})",
+                f"DELETE FROM clients WHERE {qa_client_cond}",
                 # Delete QA users last
-                "DELETE FROM users WHERE email LIKE '%example.com' OR full_name LIKE 'QA %'",
+                f"DELETE FROM users WHERE {qa_user_cond}",
+                # Set David's morning reminder to 08:00
+                "UPDATE users SET morning_reminder_time = '08:00' WHERE email = 'david@magnify.ing'",
+                "UPDATE users SET morning_reminder_time = '08:00' WHERE email = 'nacho@magnify.ing'",
             ]:
-                result = await conn.execute(text(sql))
-                if result.rowcount > 0:
-                    logging.info("QA cleanup: %s -> %d rows", sql[:60], result.rowcount)
+                try:
+                    result = await conn.execute(text(sql))
+                    if result.rowcount > 0:
+                        logging.info("QA cleanup: %s -> %d rows", sql[:60], result.rowcount)
+                except Exception as sql_err:
+                    logging.warning("QA cleanup SQL failed (skipping): %s — %s", sql[:60], sql_err)
     except Exception as e:
         logging.warning("QA data cleanup failed (non-fatal): %s", e)
 
