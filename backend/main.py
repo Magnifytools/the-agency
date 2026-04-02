@@ -30,7 +30,7 @@ from backend.api.routes import (
 )
 
 # ── Re-export migration/seed functions so scripts/init_db.py keeps working ──
-from startup.migrations import (  # noqa: F401
+from backend.startup.migrations import (  # noqa: F401
     _schema_needs_startup_ddl,
     _ensure_columns,
     _ensure_numeric_types,
@@ -51,7 +51,7 @@ from startup.migrations import (  # noqa: F401
     _backfill_module_permissions,
     run_migrations,
 )
-from startup.background_tasks import (  # noqa: F401
+from backend.startup.background_tasks import (  # noqa: F401
     _generate_recurring_instances,
     start_background_tasks,
 )
