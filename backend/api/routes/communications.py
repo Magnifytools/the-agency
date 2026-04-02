@@ -52,6 +52,7 @@ async def list_client_communications(
         select(CommunicationLog)
         .where(CommunicationLog.client_id == client_id)
         .order_by(CommunicationLog.occurred_at.desc())
+        .limit(500)
     )
     return [_to_response(c) for c in result.scalars().all()]
 

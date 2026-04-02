@@ -95,11 +95,13 @@ async def _fetch_context(db: AsyncSession) -> tuple[list[dict], list[dict]]:
         .join(Client, Project.client_id == Client.id)
         .where(Project.status == ProjectStatus.active)
         .order_by(Project.name)
+        .limit(200)
     )
     cli_coro = db.execute(
         select(Client.id, Client.name)
         .where(Client.status == ClientStatus.active)
         .order_by(Client.name)
+        .limit(200)
     )
     proj_result, cli_result = await asyncio.gather(proj_coro, cli_coro)
     projects = [{"id": r.id, "name": r.name, "client_name": r.client_name} for r in proj_result.all()]

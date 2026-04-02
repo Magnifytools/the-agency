@@ -7,7 +7,7 @@ Generates status reports for clients, projects, and weekly summaries.
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +25,7 @@ async def generate_client_status_report(
     audience: str | None = None,
 ) -> GeneratedReport:
     """Generate a status report for a specific client."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # Calculate period
     if period == "week":
@@ -163,7 +163,7 @@ async def generate_weekly_summary_report(
     audience: str | None = None,
 ) -> GeneratedReport:
     """Generate a weekly summary report for all clients."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     week_start = now - timedelta(days=7)
 
     # Fetch all completed tasks this week
@@ -268,7 +268,7 @@ async def generate_project_status_report(
     audience: str | None = None,
 ) -> GeneratedReport:
     """Generate a status report for a specific project."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # Fetch project
     result = await db.execute(select(Project).where(Project.id == project_id))

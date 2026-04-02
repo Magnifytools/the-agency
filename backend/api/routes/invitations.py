@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
@@ -86,7 +86,7 @@ async def create_invitation(
         select(UserInvitation)
         .where(UserInvitation.email == body.email)
         .where(UserInvitation.accepted_at.is_(None))
-        .where(UserInvitation.expires_at > datetime.utcnow())
+        .where(UserInvitation.expires_at > datetime.now(timezone.utc).replace(tzinfo=None))
     )
     if existing_inv.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Pending invitation already exists for this email")
@@ -97,7 +97,7 @@ async def create_invitation(
         token=token,
         role=UserRole(body.role.value),
         invited_by=current_user.id,
-        expires_at=datetime.utcnow() + timedelta(days=7),
+        expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=7),
     )
     db.add(invitation)
     await db.commit()
@@ -132,7 +132,7 @@ async def accept_invitation(
         raise HTTPException(status_code=404, detail="Invalid invitation token")
     if invitation.accepted_at:
         raise HTTPException(status_code=400, detail="Invitation already used")
-    if invitation.expires_at < datetime.utcnow():
+    if invitation.expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
         raise HTTPException(status_code=400, detail="Invitation expired")
 
     # Create user
@@ -153,7 +153,7 @@ async def accept_invitation(
             db.add(UserPermission(user_id=user.id, module=mod, can_read=True, can_write=True))
 
     # Mark invitation as accepted
-    invitation.accepted_at = datetime.utcnow()
+    invitation.accepted_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     await db.commit()
     await safe_refresh(db, user, log_context="invitations")

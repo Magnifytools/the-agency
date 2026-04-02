@@ -110,7 +110,7 @@ async def preview_summary(
     if date:
         d = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     else:
-        d = datetime.utcnow()
+        d = datetime.now(timezone.utc).replace(tzinfo=None)
     summary = await generate_daily_summary(db, d)
     return {"summary": summary, "date": d.strftime("%Y-%m-%d")}
 
@@ -127,7 +127,7 @@ async def send_summary(
     if date:
         d = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     else:
-        d = datetime.utcnow()
+        d = datetime.now(timezone.utc).replace(tzinfo=None)
 
     summary = await generate_daily_summary(db, d)
     success = await send_to_discord(summary)
@@ -224,7 +224,7 @@ async def send_daily_summary(
     if date:
         d = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     else:
-        d = datetime.utcnow()
+        d = datetime.now(timezone.utc).replace(tzinfo=None)
 
     try:
         summary = await generate_daily_summary(db, d)
@@ -259,7 +259,7 @@ async def send_daily_summary(
 
     if success:
         try:
-            ds.last_sent_at = datetime.utcnow()
+            ds.last_sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
             await db.commit()
         except Exception:
             logger.warning("Discord message sent but failed to update last_sent_at")
@@ -299,7 +299,7 @@ async def send_custom_to_discord(
 
     if success:
         try:
-            ds.last_sent_at = datetime.utcnow()
+            ds.last_sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
             await db.commit()
         except Exception:
             logger.warning("Discord message sent but failed to update last_sent_at")
@@ -347,7 +347,7 @@ async def send_digest_to_discord(
     success = await _send_discord_message(url, rendered)
 
     if success:
-        ds.last_sent_at = datetime.utcnow()
+        ds.last_sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await db.commit()
         return DiscordSendResponse(
             success=True,
@@ -416,7 +416,7 @@ async def send_weekly_report(
         raise HTTPException(status_code=400, detail="DISCORD_OWNER_USER_ID no configurado en variables de entorno")
 
     # Calculate week range
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
     if week_start:
         ws = datetime.strptime(week_start, "%Y-%m-%d").date()
     else:

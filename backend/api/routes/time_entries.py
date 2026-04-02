@@ -133,7 +133,7 @@ async def create_time_entry(
         task_id=body.task_id,
         user_id=current_user.id,
         notes=body.notes,
-        date=entry_date or datetime.utcnow(),
+        date=entry_date or datetime.now(timezone.utc).replace(tzinfo=None),
     )
     db.add(entry)
     await db.commit()
@@ -205,7 +205,7 @@ async def weekly_timesheet(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("timesheet")),
 ):
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
     if week_start is None:
         week_start = today - timedelta(days=today.weekday())  # Monday
     start_dt = datetime.combine(week_start, datetime.min.time())
@@ -525,7 +525,7 @@ async def admin_active_timers(
         select(TimeEntry).where(TimeEntry.minutes.is_(None))
     )
     entries = result.scalars().all()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     return [
         AdminActiveTimerResponse(
             id=e.id,
@@ -622,7 +622,7 @@ async def start_timer(
     active = result.scalar_one_or_none()
     if active is not None:
         # Auto-stop the current timer before starting a new one
-        now_stop = datetime.utcnow()
+        now_stop = datetime.now(timezone.utc).replace(tzinfo=None)
         sa = active.started_at if active.started_at and active.started_at.tzinfo is None else (active.started_at.replace(tzinfo=None) if active.started_at else now_stop)
         elapsed = (now_stop - sa).total_seconds()
         active.minutes = max(1, min(480, round(elapsed / 60)))
@@ -651,7 +651,7 @@ async def start_timer(
         if task.status in (TaskStatus.pending, TaskStatus.backlog):
             task.status = TaskStatus.in_progress
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     entry = TimeEntry(
         task_id=body.task_id,
         user_id=current_user.id,
@@ -713,7 +713,7 @@ async def stop_timer(
     if not entry.started_at:
         raise HTTPException(status_code=400, detail="Timer has no start time")
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     # Use naive UTC to match DB TIMESTAMP WITHOUT TIME ZONE columns
     sa = entry.started_at if entry.started_at.tzinfo is None else entry.started_at.replace(tzinfo=None)
     # Include accumulated seconds from pause/resume cycles
@@ -764,7 +764,7 @@ async def pause_timer(
     if entry.paused_at:
         raise HTTPException(status_code=400, detail="El timer ya está en pausa")
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     sa = entry.started_at if entry.started_at.tzinfo is None else entry.started_at.replace(tzinfo=None)
     current_segment = (now - sa).total_seconds()
     entry.accumulated_seconds = (entry.accumulated_seconds or 0) + int(current_segment)
@@ -804,7 +804,7 @@ async def resume_timer(
     if not entry.paused_at:
         raise HTTPException(status_code=400, detail="El timer no está en pausa")
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     entry.started_at = now  # Reset start to now; accumulated_seconds keeps the history
     entry.paused_at = None
     await db.commit()

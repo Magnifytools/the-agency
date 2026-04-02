@@ -111,7 +111,7 @@ def _build_result(client_id: int, client_name: str, comm: int, tasks: int,
 
 def _utc_now_naive() -> datetime:
     """Use naive UTC datetimes to match TIMESTAMP WITHOUT TIME ZONE columns."""
-    return datetime.utcnow()
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _as_naive_utc(value: datetime | None) -> datetime | None:

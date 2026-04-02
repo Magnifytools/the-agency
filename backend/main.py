@@ -1139,7 +1139,7 @@ async def _billing_reminder_loop():
 
 
 async def _daily_reminders_loop():
-    """Check every minute if any user needs morning/evening reminder."""
+    """Check every 5 minutes if any user needs morning/evening reminder."""
     from datetime import datetime
     from sqlalchemy import select
     from backend.db.database import async_session
@@ -1152,7 +1152,7 @@ async def _daily_reminders_loop():
     current_date = None
 
     while True:
-        await asyncio.sleep(60)
+        await asyncio.sleep(300)  # 5 min interval (was 60s)
         try:
             now = datetime.now()
             today = now.date()

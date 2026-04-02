@@ -3,7 +3,7 @@ import asyncio
 import logging
 from io import BytesIO
 from typing import Any, Optional
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
@@ -247,7 +247,7 @@ async def change_proposal_status(
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     prop.status = body.status
 
     if body.status == ProposalStatus.sent:
@@ -948,7 +948,7 @@ async def send_proposal_email(
         raise HTTPException(status_code=500, detail="Error al enviar el email. Verifica la configuración SMTP.")
 
     # Mark as sent
-    prop.sent_at = datetime.utcnow()
+    prop.sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
     prop.status = ProposalStatus.sent
     await db.commit()
 
@@ -985,7 +985,7 @@ def _build_pdf(prop: "Proposal") -> bytes:  # type: ignore[name-defined]
         prop.service_type.value if prop.service_type else "custom",
         "Propuesta de servicios",
     )
-    date_str = (prop.created_at or datetime.utcnow()).strftime("%d/%m/%Y")
+    date_str = (prop.created_at or datetime.now(timezone.utc).replace(tzinfo=None)).strftime("%d/%m/%Y")
     company = _safe(prop.company_name or "Cliente")
 
     pdf = FPDF(unit="mm", format="A4")
@@ -1249,7 +1249,7 @@ async def _build_proposal_html(proposal_id: int, db: AsyncSession) -> str:
         title=prop.title,
         company_name=prop.company_name or "Cliente",
         service_label=service_label,
-        date_str=(prop.created_at or datetime.utcnow()).strftime("%d de %B de %Y"),
+        date_str=(prop.created_at or datetime.now(timezone.utc).replace(tzinfo=None)).strftime("%d de %B de %Y"),
         content=content,
         pricing=pricing_safe,
     )

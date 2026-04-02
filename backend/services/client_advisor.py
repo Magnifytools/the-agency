@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -67,7 +67,7 @@ async def get_client_advice(
     overdue_result = await db.execute(
         select(func.count(Task.id)).where(
             Task.client_id == client_id,
-            Task.due_date < datetime.utcnow(),
+            Task.due_date < datetime.now(timezone.utc).replace(tzinfo=None),
             Task.status != TaskStatus.completed,
         )
     )

@@ -150,7 +150,7 @@ async def list_tasks(
     if priority is not None:
         base = base.where(Task.priority == priority)
     if overdue:
-        from datetime import date as _date
+        from datetime import date as _date, timezone
         base = base.where(
             Task.due_date < _date.today(),
             Task.status != TaskStatus.completed,
@@ -347,13 +347,13 @@ async def update_task(
         if manual_diff > 0:
             if manual_entry:
                 manual_entry.minutes = manual_diff
-                manual_entry.date = datetime.utcnow()
+                manual_entry.date = datetime.now(timezone.utc).replace(tzinfo=None)
             else:
                 db.add(TimeEntry(
                     task_id=task_id,
                     user_id=_.id,
                     minutes=manual_diff,
-                    date=datetime.utcnow(),
+                    date=datetime.now(timezone.utc).replace(tzinfo=None),
                     notes="[manual]",
                 ))
         elif manual_entry:

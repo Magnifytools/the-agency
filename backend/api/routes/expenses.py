@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from calendar import monthrange
 
@@ -145,7 +145,7 @@ async def generate_recurring_expenses(
     _user: User = Depends(require_module("finance_expenses", write=True)),
 ):
     """Generate copies of recurring expenses for the given month (defaults to current month)."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     y = year or now.year
     m = month or now.month
     _, last_day = monthrange(y, m)

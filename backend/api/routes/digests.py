@@ -151,7 +151,7 @@ async def generate_digest(
         tone=request.tone,
         content=content,
         raw_context=raw_data,
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc).replace(tzinfo=None),
         created_by=current_user.id,
     )
     db.add(digest)
@@ -246,7 +246,7 @@ async def generate_batch(
             tone=tone,
             content=result,
             raw_context=raw_data,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc).replace(tzinfo=None),
             created_by=current_user.id,
         )
         db.add(digest)
@@ -380,7 +380,7 @@ async def update_digest(
 
     if request.content is not None:
         digest.content = request.content.model_dump()
-        digest.edited_at = datetime.utcnow()
+        digest.edited_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     if request.tone is not None:
         digest.tone = request.tone
@@ -404,7 +404,7 @@ async def update_digest(
             logger.exception("Error regenerating digest id=%s with new tone=%s", digest_id, request.tone)
             raise HTTPException(status_code=502, detail="Error regenerando digest con nuevo tono")
         digest.content = new_content
-        digest.generated_at = datetime.utcnow()
+        digest.generated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     await db.commit()
     await safe_refresh(db, digest, log_context="digests")

@@ -8,7 +8,7 @@ to generate actionable insights for the PM.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -121,7 +121,7 @@ async def _enhance_insights_with_ai(
     # Build optional strategic suggestion insight
     overall = data.get("overall_suggestion")
     if overall and isinstance(overall, str) and overall.strip():
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         return PMInsight(
             insight_type=InsightType.suggestion,
             priority=InsightPriority.low,
@@ -239,7 +239,7 @@ async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> 
     Returns list of newly created insights.
     Uses user's alert settings for thresholds.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     new_insights = []
 
     # Get user's thresholds
@@ -505,7 +505,7 @@ async def get_daily_briefing(db: AsyncSession, user_id: Optional[int] = None) ->
     """
     Generate a daily briefing summary.
     """
-    now = datetime.utcnow()  # naive UTC — matches DB DateTime columns (no tz)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)  # naive UTC — matches DB DateTime columns (no tz)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = today_start + timedelta(days=1)
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -38,7 +38,7 @@ def _task_to_response(task: Task, last_comment: Optional[str] = None, last_comme
     checklist = task.checklist_items or []
     weeks_open = 0
     if task.status not in (TaskStatus.completed,) and task.created_at:
-        days_open = (datetime.utcnow() - task.created_at).days
+        days_open = (datetime.now(timezone.utc).replace(tzinfo=None) - task.created_at).days
         weeks_open = max(0, days_open // 7)
 
     return MyWeekTask(
@@ -247,7 +247,7 @@ async def get_my_week(
         total_tasks=len(all_relevant),
         estimated_minutes=sum(t.estimated_minutes or 0 for t in all_relevant),
         available_hours=round(available_days * daily_hours, 1),
-        tasks_dragging=sum(1 for t in all_relevant if t.created_at and (datetime.utcnow() - t.created_at).days > 7),
+        tasks_dragging=sum(1 for t in all_relevant if t.created_at and (datetime.now(timezone.utc).replace(tzinfo=None) - t.created_at).days > 7),
         tasks_no_estimate=sum(1 for t in all_relevant if not t.estimated_minutes),
         tasks_no_date=len(backlog_tasks),
         by_client=sorted(by_client.values(), key=lambda x: x["count"], reverse=True),

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -289,7 +289,7 @@ def _render_report_html(
         title=report.title,
         client_name=report.client.name if report.client else None,
         project_name=report.project.name if report.project else None,
-        date=datetime.utcnow().strftime("%d/%m/%Y"),
+        date=datetime.now(timezone.utc).replace(tzinfo=None).strftime("%d/%m/%Y"),
         period_start=report.period_start.strftime("%d/%m/%Y") if report.period_start else None,
         period_end=report.period_end.strftime("%d/%m/%Y") if report.period_end else None,
         audience=audience,
@@ -449,7 +449,7 @@ def _build_report_pdf(report: "GeneratedReport") -> bytes:
     pdf.ln(8)
     pdf.set_font("Helvetica", "", 8)
     pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 4, _safe_r(f"magnify.ing | Generado {datetime.utcnow().strftime('%d/%m/%Y')}"), align="C")
+    pdf.cell(0, 4, _safe_r(f"magnify.ing | Generado {datetime.now(timezone.utc).replace(tzinfo=None).strftime('%d/%m/%Y')}"), align="C")
     pdf.set_text_color(0, 0, 0)
 
     return bytes(pdf.output())
@@ -627,7 +627,7 @@ async def get_monthly_report_pdf(
         title=report.title,
         client_name=report.client.name if report.client else "",
         period=period,
-        date=datetime.utcnow().strftime("%d/%m/%Y"),
+        date=datetime.now(timezone.utc).replace(tzinfo=None).strftime("%d/%m/%Y"),
         executive_summary=summary,
         kpi_table=kpi_table,
         sections=sections,

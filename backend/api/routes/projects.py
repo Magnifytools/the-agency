@@ -3,7 +3,7 @@ import logging
 from typing import Optional
 
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -485,7 +485,7 @@ async def create_project_from_template(
     if not tpl:
         raise HTTPException(status_code=400, detail=f"Template '{template_key}' not found")
 
-    base_date = start_date or datetime.utcnow()
+    base_date = start_date or datetime.now(timezone.utc).replace(tzinfo=None)
     template_phases = tpl.phases or []
     template_tasks = tpl.default_tasks or []
 
@@ -782,7 +782,7 @@ async def update_phase(
         if field == "status" and value:
             value = PhaseStatus(value)
             if value == PhaseStatus.completed and not phase.completed_at:
-                phase.completed_at = datetime.utcnow()
+                phase.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         setattr(phase, field, value)
 
     await db.commit()
@@ -1010,7 +1010,7 @@ async def invoice_tasks(
     )
     tasks = result.scalars().all()
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     total = 0.0
     descriptions = []
     for t in tasks:

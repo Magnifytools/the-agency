@@ -47,6 +47,10 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Run frontend tests
+        run: npx vitest run --reporter=verbose
+        continue-on-error: true
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -73,7 +77,6 @@ jobs:
 
       - name: Frontend npm audit
         run: cd frontend && npm ci && npm audit --audit-level=high
-        continue-on-error: true
 
       - uses: actions/setup-python@v5
         with:
@@ -81,4 +84,3 @@ jobs:
 
       - name: Backend pip audit
         run: pip install pip-audit && pip-audit -r backend/requirements.txt
-        continue-on-error: true

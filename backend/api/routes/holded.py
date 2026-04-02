@@ -1,6 +1,6 @@
 """Holded integration API routes."""
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -88,7 +88,7 @@ async def sync_contacts(
 
         log.status = "success"
         log.records_synced = synced
-        log.completed_at = datetime.utcnow()
+        log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await session.commit()
 
         return SyncResult(sync_type="contacts", status="success", records_synced=synced)
@@ -96,13 +96,13 @@ async def sync_contacts(
     except HoldedError as e:
         log.status = "error"
         log.error_message = str(e)
-        log.completed_at = datetime.utcnow()
+        log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await session.commit()
         raise HTTPException(status_code=502, detail=f"Error de Holded: {e.detail}")
     except Exception:
         log.status = "error"
         log.error_message = "Unexpected contacts sync error"
-        log.completed_at = datetime.utcnow()
+        log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await session.commit()
         logger.exception("Unexpected error syncing Holded contacts")
         raise HTTPException(status_code=500, detail="Error interno sincronizando contactos")
@@ -173,7 +173,7 @@ async def sync_invoices(
                 cached.status = status
                 cached.currency = inv.get("currency", "EUR") or "EUR"
                 cached.raw_data = inv
-                cached.synced_at = datetime.utcnow()
+                cached.synced_at = datetime.now(timezone.utc).replace(tzinfo=None)
             else:
                 session.add(HoldedInvoiceCache(
                     holded_id=holded_id,
@@ -194,7 +194,7 @@ async def sync_invoices(
 
         log.status = "success"
         log.records_synced = synced
-        log.completed_at = datetime.utcnow()
+        log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await session.commit()
 
         return SyncResult(sync_type="invoices", status="success", records_synced=synced)
@@ -202,13 +202,13 @@ async def sync_invoices(
     except HoldedError as e:
         log.status = "error"
         log.error_message = str(e)
-        log.completed_at = datetime.utcnow()
+        log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await session.commit()
         raise HTTPException(status_code=502, detail=f"Error de Holded: {e.detail}")
     except Exception:
         log.status = "error"
         log.error_message = "Unexpected invoices sync error"
-        log.completed_at = datetime.utcnow()
+        log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await session.commit()
         logger.exception("Unexpected error syncing Holded invoices")
         raise HTTPException(status_code=500, detail="Error interno sincronizando facturas")
@@ -255,7 +255,7 @@ async def sync_expenses(
                 cached.supplier = exp.get("contactName", cached.supplier)
                 cached.status = status
                 cached.raw_data = exp
-                cached.synced_at = datetime.utcnow()
+                cached.synced_at = datetime.now(timezone.utc).replace(tzinfo=None)
             else:
                 session.add(HoldedExpenseCache(
                     holded_id=holded_id,
@@ -274,7 +274,7 @@ async def sync_expenses(
 
         log.status = "success"
         log.records_synced = synced
-        log.completed_at = datetime.utcnow()
+        log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await session.commit()
 
         return SyncResult(sync_type="expenses", status="success", records_synced=synced)
@@ -282,13 +282,13 @@ async def sync_expenses(
     except HoldedError as e:
         log.status = "error"
         log.error_message = str(e)
-        log.completed_at = datetime.utcnow()
+        log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await session.commit()
         raise HTTPException(status_code=502, detail=f"Error de Holded: {e.detail}")
     except Exception:
         log.status = "error"
         log.error_message = "Unexpected expenses sync error"
-        log.completed_at = datetime.utcnow()
+        log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await session.commit()
         logger.exception("Unexpected error syncing Holded expenses")
         raise HTTPException(status_code=500, detail="Error interno sincronizando gastos")

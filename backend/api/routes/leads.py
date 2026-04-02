@@ -1,7 +1,7 @@
 """CRM Leads — Pipeline de ventas."""
 from __future__ import annotations
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -376,7 +376,7 @@ async def add_activity(
         LeadActivityType.email_sent, LeadActivityType.call,
         LeadActivityType.meeting, LeadActivityType.email_received,
     ):
-        lead.last_contacted_at = datetime.utcnow()
+        lead.last_contacted_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     await db.commit()
     await safe_refresh(db, activity, log_context="leads")
@@ -427,7 +427,7 @@ async def convert_to_client(
     # Update lead
     lead.status = LeadStatus.won
     lead.converted_client_id = client.id
-    lead.converted_at = datetime.utcnow()
+    lead.converted_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # Create status_change activity
     activity = LeadActivity(

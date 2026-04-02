@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from calendar import monthrange
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Tuple
 
 MIN_REPORT_YEAR = 2000
@@ -9,7 +9,7 @@ MAX_REPORT_YEAR = 2100
 
 
 def resolve_default_period(year: Optional[int], month: Optional[int]) -> Tuple[int, int]:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     return year or now.year, month or now.month
 
 

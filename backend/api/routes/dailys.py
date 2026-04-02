@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date as date_type, datetime
+from datetime import date as date_type, datetime, timezone
 from typing import Optional
 
 import httpx
@@ -484,7 +484,7 @@ async def send_daily_to_discord(
     if success:
         try:
             daily.status = DailyUpdateStatus.sent
-            daily.discord_sent_at = datetime.utcnow()
+            daily.discord_sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
             await db.commit()
         except Exception:
             logger.warning("Non-critical: daily status update failed after Discord send for daily_id=%s", daily_id)
