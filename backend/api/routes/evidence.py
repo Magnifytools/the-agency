@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
@@ -18,6 +16,7 @@ from backend.schemas.evidence import EvidenceCreate, EvidenceUpdate, EvidenceRes
 from backend.api.deps import require_module
 from backend.api.utils.db_helpers import reload_for_response
 from backend.api.middleware.audit_log import log_audit
+from backend.api.utils.error_handler import safe_endpoint
 
 router = APIRouter(prefix="/api/projects/{project_id}/evidence", tags=["evidence"])
 
@@ -115,29 +114,27 @@ def _safe_filename(name: str) -> str:
 
 
 @router.get("", response_model=list[EvidenceResponse])
+@safe_endpoint
 async def list_evidence(
     project_id: int,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("projects")),
 ):
-    try:
-        result = await db.execute(
-            select(ProjectEvidence)
-            .options(
-                defer(ProjectEvidence.file_content),
-                selectinload(ProjectEvidence.creator),
-                selectinload(ProjectEvidence.phase).options(noload("*")),
-            )
-            .where(ProjectEvidence.project_id == project_id)
-            .order_by(ProjectEvidence.created_at.desc())
+    result = await db.execute(
+        select(ProjectEvidence)
+        .options(
+            defer(ProjectEvidence.file_content),
+            selectinload(ProjectEvidence.creator),
+            selectinload(ProjectEvidence.phase).options(noload("*")),
         )
-        return [_to_response(project_id, ev) for ev in result.scalars().all()]
-    except Exception as e:
-        logger.error("Error listing evidence for project %s: %s", project_id, e)
-        raise HTTPException(status_code=500, detail="Error al listar evidencias")
+        .where(ProjectEvidence.project_id == project_id)
+        .order_by(ProjectEvidence.created_at.desc())
+    )
+    return [_to_response(project_id, ev) for ev in result.scalars().all()]
 
 
 @router.post("", response_model=EvidenceResponse, status_code=201)
+@safe_endpoint
 async def create_evidence(
     project_id: int,
     body: EvidenceCreate,
@@ -176,6 +173,7 @@ async def create_evidence(
 
 
 @router.post("/upload", response_model=EvidenceResponse, status_code=201)
+@safe_endpoint
 async def upload_evidence(
     project_id: int,
     title: str = Form(...),

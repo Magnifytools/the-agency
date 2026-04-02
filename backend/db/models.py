@@ -23,6 +23,69 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
+"""SQLAlchemy ORM models for The Agency.
+
+Model inventory (38 models, ~1,500 lines):
+
+  --- Core ---
+  Base, TimestampMixin
+  User, UserPermission, UserInvitation
+
+  --- Client Management ---
+  Client, ClientContact, ClientResource, ClientDocument
+
+  --- Project Management ---
+  Project, ProjectPhase, ProjectEvidence, ProjectTemplateDB
+
+  --- Tasks & Time ---
+  TaskCategory, Task, TaskChecklist, TaskComment, TaskAttachment, TimeEntry
+
+  --- Proposals & Leads ---
+  ServiceTemplate, Proposal, Lead, LeadActivity
+
+  --- Calendar & Events ---
+  Event
+
+  --- Communications ---
+  CommunicationLog
+
+  --- PM Intelligence ---
+  PMInsight, AlertSettings
+
+  --- Growth ---
+  GrowthIdea
+
+  --- Financial ---
+  Income, Expense, ExpenseCategory, Tax, Forecast,
+  FinancialSettings, FinancialInsight, MonthlyClose,
+  AdvisorTask, AdvisorAiBrief, AdvisorAiBriefPayload,
+  Invoice, InvoiceItem, BillingEvent, BalanceSnapshot
+
+  --- Integrations ---
+  HoldedSyncLog, HoldedInvoiceCache, HoldedExpenseCache,
+  DiscordSettings, SyncLog, CsvMapping
+
+  --- Reports & Digests ---
+  GeneratedReport, WeeklyDigest, DailyUpdate
+
+  --- Notifications & Inbox ---
+  Notification, InboxNote, InboxAttachment
+
+  --- Agency Assets & News ---
+  AgencyAsset, IndustryNews, NewsSource
+
+  --- My Week ---
+  UserDayStatus, CompanyHoliday
+
+  --- Automations ---
+  AutomationRule, AutomationLog
+
+NOTE: Do NOT split this file into separate modules.
+SQLAlchemy relationships require all models to share the same
+DeclarativeBase registry and be importable from a single place.
+"""
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -32,7 +95,9 @@ class TimestampMixin:
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
 
-# --- Enums ---
+# ═══════════════════════════════════════════════════════════════
+# ENUMS
+# ═══════════════════════════════════════════════════════════════
 
 class UserRole(str, enum.Enum):
     admin = "admin"
@@ -234,7 +299,9 @@ class GrowthStatus(str, enum.Enum):
     discarded = "discarded"
 
 
-# --- Models ---
+# ═══════════════════════════════════════════════════════════════
+# CORE: Users & Permissions
+# ═══════════════════════════════════════════════════════════════
 
 class User(TimestampMixin, Base):
     __tablename__ = "users"
@@ -262,6 +329,10 @@ class User(TimestampMixin, Base):
     tasks = relationship("Task", back_populates="assigned_user", lazy="selectin", foreign_keys="[Task.assigned_to]")
     permissions = relationship("UserPermission", back_populates="user", lazy="selectin", cascade="all, delete-orphan")
 
+
+# ═══════════════════════════════════════════════════════════════
+# CLIENT MANAGEMENT: Clients, Contacts, Resources, Documents
+# ═══════════════════════════════════════════════════════════════
 
 class Client(TimestampMixin, Base):
     __tablename__ = "clients"
@@ -329,6 +400,10 @@ class Client(TimestampMixin, Base):
     billing_events = relationship("BillingEvent", back_populates="client", lazy="noload", order_by="BillingEvent.event_date.desc()")
 
 
+# ═══════════════════════════════════════════════════════════════
+# TASKS & TIME TRACKING
+# ═══════════════════════════════════════════════════════════════
+
 class TaskCategory(TimestampMixin, Base):
     __tablename__ = "task_categories"
 
@@ -338,6 +413,10 @@ class TaskCategory(TimestampMixin, Base):
 
     tasks = relationship("Task", back_populates="category", lazy="selectin")
 
+
+# ═══════════════════════════════════════════════════════════════
+# PROJECT MANAGEMENT: Projects, Phases, Evidence
+# ═══════════════════════════════════════════════════════════════
 
 class Project(TimestampMixin, Base):
     __tablename__ = "projects"
@@ -399,6 +478,10 @@ class ProjectPhase(TimestampMixin, Base):
     project = relationship("Project", back_populates="phases", lazy="selectin")
     tasks = relationship("Task", back_populates="phase", lazy="selectin")
 
+
+# ═══════════════════════════════════════════════════════════════
+# PROPOSALS & SALES: Templates, Proposals, Leads
+# ═══════════════════════════════════════════════════════════════
 
 class ServiceTemplate(TimestampMixin, Base):
     __tablename__ = "service_templates"
@@ -477,6 +560,10 @@ class Proposal(TimestampMixin, Base):
     created_by_user = relationship("User", lazy="selectin")
     converted_project = relationship("Project", foreign_keys=[converted_project_id], lazy="selectin")
 
+
+# ═══════════════════════════════════════════════════════════════
+# CALENDAR & EVENTS
+# ═══════════════════════════════════════════════════════════════
 
 class Event(TimestampMixin, Base):
     __tablename__ = "events"
@@ -606,6 +693,8 @@ class TimeEntry(TimestampMixin, Base):
     user = relationship("User", lazy="selectin")
 
 
+# ── Client sub-models (contacts, resources, documents) ────────
+
 class ClientContact(TimestampMixin, Base):
     __tablename__ = "client_contacts"
 
@@ -684,6 +773,10 @@ class ProjectEvidence(TimestampMixin, Base):
     creator = relationship("User", lazy="selectin")
 
 
+# ═══════════════════════════════════════════════════════════════
+# BILLING & INVOICING
+# ═══════════════════════════════════════════════════════════════
+
 class BillingEvent(TimestampMixin, Base):
     __tablename__ = "billing_events"
 
@@ -697,6 +790,10 @@ class BillingEvent(TimestampMixin, Base):
 
     client = relationship("Client", back_populates="billing_events", lazy="selectin")
 
+
+# ═══════════════════════════════════════════════════════════════
+# COMMUNICATIONS & PM INTELLIGENCE
+# ═══════════════════════════════════════════════════════════════
 
 class CommunicationLog(TimestampMixin, Base):
     __tablename__ = "communication_logs"
@@ -776,6 +873,10 @@ class InvoiceItem(TimestampMixin, Base):
     invoice = relationship("Invoice", lazy="selectin")
     task = relationship("Task", lazy="selectin")
 
+
+# ═══════════════════════════════════════════════════════════════
+# AUDIT, SETTINGS & REPORTS
+# ═══════════════════════════════════════════════════════════════
 
 class AuditLog(TimestampMixin, Base):
     __tablename__ = "audit_logs"
@@ -889,6 +990,8 @@ class GeneratedReport(TimestampMixin, Base):
     project = relationship("Project", lazy="selectin")
 
 
+# ── User Permissions & Invitations ────────────────────────────
+
 class UserPermission(TimestampMixin, Base):
     __tablename__ = "user_permissions"
 
@@ -914,6 +1017,10 @@ class UserInvitation(TimestampMixin, Base):
 
     inviter = relationship("User", lazy="selectin")
 
+
+# ═══════════════════════════════════════════════════════════════
+# GROWTH ENGINE (ICE experiments)
+# ═══════════════════════════════════════════════════════════════
 
 class GrowthIdea(TimestampMixin, Base):
     __tablename__ = "growth_ideas"
@@ -945,7 +1052,10 @@ class GrowthIdea(TimestampMixin, Base):
     task = relationship("Task", lazy="selectin")
 
 
-# --- Financial Models (ported from Gestor Financiero) ---
+# ═══════════════════════════════════════════════════════════════
+# FINANCIAL (ported from Gestor Financiero)
+# Income, Expenses, Taxes, Forecasts, Advisor
+# ═══════════════════════════════════════════════════════════════
 
 class WeeklyDigest(TimestampMixin, Base):
     __tablename__ = "weekly_digests"
