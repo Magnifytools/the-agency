@@ -297,7 +297,7 @@ async def update_task(
     task_id: int,
     body: TaskUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("tasks", write=True)),
+    current_user: User = Depends(require_module("tasks", write=True)),
 ):
     result = await db.execute(select(Task).where(Task.id == task_id))
     task = result.scalar_one_or_none()
@@ -351,7 +351,7 @@ async def update_task(
             else:
                 db.add(TimeEntry(
                     task_id=task_id,
-                    user_id=_.id,
+                    user_id=current_user.id,
                     minutes=manual_diff,
                     date=datetime.now(timezone.utc).replace(tzinfo=None),
                     notes="[manual]",
