@@ -111,6 +111,7 @@ async def list_tasks(
     scheduled_date_from: Optional[str] = Query(None),
     scheduled_date_to: Optional[str] = Query(None),
     is_recurring: Optional[bool] = Query(None),
+    search: Optional[str] = Query(None, description="Search tasks by title or description"),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
@@ -118,6 +119,11 @@ async def list_tasks(
     _: User = Depends(require_module("tasks")),
 ):
     base = select(Task)
+    if search is not None and search.strip():
+        term = f"%{search.strip()}%"
+        base = base.where(
+            Task.title.ilike(term) | Task.description.ilike(term)
+        )
     if client_id is not None:
         base = base.where(Task.client_id == client_id)
     if status_filter is not None:
