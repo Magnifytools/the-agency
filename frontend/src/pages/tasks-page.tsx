@@ -77,6 +77,7 @@ export default function TasksPage() {
   const [filterDateFrom, setFilterDateFrom] = useState<string>("")
   const [filterDateTo, setFilterDateTo] = useState<string>("")
   const [filterDateField, setFilterDateField] = useState<"due_date" | "scheduled_date">("due_date")
+  const [searchQuery, setSearchQuery] = useState<string>("")
 
   // QA Health Filters — initialise from URL param if present
   const urlQaFilter = searchParams.get("qaFilter") as "none" | "unassigned" | "no_date" | "no_estimate" | "overdue" | null
@@ -104,7 +105,7 @@ export default function TasksPage() {
   const deepLinkTaskId = searchParams.get("edit") || searchParams.get("task")
 
   const { data: tasksData, isLoading } = useQuery({
-    queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, filterDateField, page, pageSize, qaFilter],
+    queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, filterDateField, searchQuery, page, pageSize, qaFilter],
     queryFn: () =>
       tasksApi.list({
         client_id: filterClient ? Number(filterClient) : undefined,
@@ -117,6 +118,7 @@ export default function TasksPage() {
         scheduled_date_from: filterDateField === "scheduled_date" && filterDateFrom ? filterDateFrom : undefined,
         scheduled_date_to: filterDateField === "scheduled_date" && filterDateTo ? filterDateTo : undefined,
         overdue: qaFilter === "overdue" ? true : undefined,
+        search: searchQuery || undefined,
         page,
         page_size: pageSize,
       }),
@@ -438,8 +440,15 @@ export default function TasksPage() {
         </Button>
       </div>
 
-      {/* Filters */}
+      {/* Search + Filters */}
       <div className="flex flex-wrap gap-3">
+        <Input
+          type="search"
+          placeholder="Buscar tareas..."
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); reset() }}
+          className="w-64"
+        />
         <Select value={filterClient} onChange={(e) => { setFilterClient(e.target.value); reset() }} className="w-48">
           <option value="">Todos los clientes</option>
           {clients.map((c) => (
