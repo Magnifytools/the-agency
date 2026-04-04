@@ -50,10 +50,11 @@ def _clear_auth_cookies(response: Response) -> None:
     )
 
 
-@router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
-    # Rate limit: 5 attempts per email per 5 minutes
-    login_limiter.check(body.email.lower(), max_requests=5, window_seconds=300)
+@router.post("/login")
+async def login(body: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    # Rate limit: 5 attempts per email+IP per 5 minutes (prevents lockout attacks)
+    client_ip = request.client.host if request.client else "unknown"
+    login_limiter.check(f"{body.email.lower()}:{client_ip}", max_requests=5, window_seconds=300)
 
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
@@ -65,7 +66,8 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Password reset required")
     token = create_access_token({"sub": str(user.id)})
     _set_auth_cookies(response, token)
-    return TokenResponse(access_token=token)
+    # Don't expose token in response body — session is managed via httpOnly cookie
+    return {"message": "ok"}
 
 
 @router.get("/me", response_model=UserResponse)
