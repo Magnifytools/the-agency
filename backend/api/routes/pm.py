@@ -108,7 +108,11 @@ async def trigger_generate_insights(
     await db.commit()
 
     # Generate new insights
-    new_insights = await generate_insights(db, user_id=current_user.id)
+    try:
+        new_insights = await generate_insights(db, user_id=current_user.id)
+    except Exception as e:
+        logger.error(f"Insights generation failed: {e}")
+        raise HTTPException(status_code=502, detail="Error generando insights con IA")
 
     return [_to_response(i) for i in new_insights]
 

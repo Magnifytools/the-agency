@@ -65,6 +65,9 @@ async def create_report(
         return _to_response(report)
     except ValueError:
         raise HTTPException(status_code=400, detail="No se pudo generar el reporte con esos datos")
+    except Exception as e:
+        logger.error(f"Report generation failed: {e}")
+        raise HTTPException(status_code=500, detail="Error generando el informe")
 
 
 @router.get("", response_model=list[ReportResponse])

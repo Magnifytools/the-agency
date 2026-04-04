@@ -1,5 +1,6 @@
 """Proposals CRUD operations, status changes, duplicate, convert, and AI generation."""
 from __future__ import annotations
+import asyncio
 import logging
 from typing import Any, Optional
 from datetime import datetime, date, timedelta, timezone
@@ -518,11 +519,17 @@ Responde SOLO con el JSON, sin markdown ni texto adicional."""
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    message = await client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=4000,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    try:
+        message = await asyncio.wait_for(
+            client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=4000,
+                messages=[{"role": "user", "content": prompt}],
+            ),
+            timeout=55,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="La IA tardo demasiado en responder")
 
     try:
         generated = parse_claude_json(message)
