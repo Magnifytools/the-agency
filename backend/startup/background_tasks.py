@@ -250,9 +250,29 @@ async def _check_project_billing():
 
 # ── Daily reminders ──────────────────────────────────────────
 
+def _is_qa_user(user) -> bool:
+    """Return True for test/QA users that should never get notifications."""
+    _name_lower = (user.full_name or "").lower()
+    _short_lower = (user.short_name or "").lower()
+    _email_lower = (user.email or "").lower()
+    return (
+        "example.com" in _email_lower
+        or _email_lower.startswith("test@")
+        or _email_lower.startswith("qa-")
+        or _email_lower.startswith("qa_")
+        or _name_lower.startswith("qa ")
+        or _name_lower.startswith("qa_")
+        or _short_lower.startswith("qa ")
+        or _short_lower.startswith("qa_")
+        or "audit" in _name_lower
+        or "test" in _name_lower
+    )
+
+
 async def _daily_reminders_loop():
     """Check every 5 minutes if any user needs morning/evening reminder."""
     from datetime import datetime
+    from zoneinfo import ZoneInfo
     from sqlalchemy import select
     from backend.db.database import async_session
     from backend.db.models import User
@@ -260,13 +280,14 @@ async def _daily_reminders_loop():
         is_working_day, generate_morning_plan, generate_evening_recap, send_reminder,
     )
 
+    MADRID_TZ = ZoneInfo("Europe/Madrid")
     sent_today: set[tuple[int, str]] = set()
     current_date = None
 
     while True:
-        await asyncio.sleep(300)  # 5 min interval (was 60s)
+        await asyncio.sleep(300)  # 5 min interval
         try:
-            now = datetime.now()
+            now = datetime.now(MADRID_TZ)
             today = now.date()
             if current_date != today:
                 sent_today.clear()
@@ -281,17 +302,7 @@ async def _daily_reminders_loop():
                 users = result.scalars().all()
 
                 for user in users:
-                    # Skip test/QA users that may have been created by audits
-                    _name_lower = (user.full_name or "").lower()
-                    _email_lower = (user.email or "").lower()
-                    if (
-                        "example.com" in _email_lower
-                        or _email_lower.startswith("test@")
-                        or _email_lower.startswith("qa-")
-                        or _name_lower.startswith("qa ")
-                        or "audit" in _name_lower
-                        or "test" in _name_lower
-                    ):
+                    if _is_qa_user(user):
                         continue
 
                     if not await is_working_day(db, today, user.region):
@@ -314,6 +325,179 @@ async def _daily_reminders_loop():
                                 sent_today.add((user.id, "evening"))
         except Exception as e:
             logging.error("Daily reminders error: %s", e)
+
+
+# ── Weekly report via Discord DM (Monday 08:30 Madrid) ──────
+
+async def _weekly_report_loop():
+    """Send the weekly report DM every Monday at 08:30 Europe/Madrid."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    from sqlalchemy import select
+    from backend.db.database import async_session
+    from backend.db.models import (
+        User, TimeEntry, Task, Client, Project, TaskStatus, DiscordSettings,
+    )
+    from backend.core.security import decrypt_vault_secret
+
+    MADRID_TZ = ZoneInfo("Europe/Madrid")
+    sent_this_week: str | None = None  # ISO week string to prevent re-sends
+
+    while True:
+        await asyncio.sleep(300)  # check every 5 min
+        try:
+            now = datetime.now(MADRID_TZ)
+            week_key = now.strftime("%G-W%V")
+
+            # Only Monday, from 08:30 onwards, once per week
+            if now.weekday() != 0 or now.hour < 8 or (now.hour == 8 and now.minute < 30):
+                continue
+            if sent_this_week == week_key:
+                continue
+
+            # Get bot_token + owner_id
+            owner_id = settings.DISCORD_OWNER_USER_ID
+            if not owner_id:
+                continue
+
+            async with async_session() as db:
+                ds_result = await db.execute(select(DiscordSettings).limit(1))
+                ds = ds_result.scalar_one_or_none()
+                if not ds or not ds.bot_token:
+                    continue
+
+                try:
+                    bot_token = decrypt_vault_secret(ds.bot_token) if ds.bot_token.startswith("v1:") else ds.bot_token
+                except Exception:
+                    continue
+
+                # Previous week range (Mon-Sun)
+                ws = (now - timedelta(days=7)).date()
+                ws = ws - timedelta(days=ws.weekday())  # last Monday
+                we = ws + timedelta(days=6)
+                start_dt = datetime.combine(ws, datetime.min.time())
+                end_dt = datetime.combine(we + timedelta(days=1), datetime.min.time())
+
+                users_result = await db.execute(select(User).where(User.is_active.is_(True)).order_by(User.full_name))
+                users = [u for u in users_result.scalars().all() if not _is_qa_user(u)]
+                user_map = {u.id: u for u in users}
+
+                entries_result = await db.execute(
+                    select(TimeEntry).where(
+                        TimeEntry.minutes.isnot(None),
+                        TimeEntry.date >= start_dt,
+                        TimeEntry.date < end_dt,
+                    )
+                )
+                entries = entries_result.scalars().all()
+
+                # Aggregate
+                user_hours: dict[int, float] = {}
+                client_hours: dict[str, float] = {}
+                client_cost: dict[str, float] = {}
+
+                task_ids = {e.task_id for e in entries if e.task_id}
+                tasks_map: dict[int, dict] = {}
+                if task_ids:
+                    from sqlalchemy.orm import selectinload
+                    task_result = await db.execute(
+                        select(Task, Client.name.label("client_name"), Project.monthly_fee)
+                        .outerjoin(Client, Task.client_id == Client.id)
+                        .outerjoin(Project, Task.project_id == Project.id)
+                        .where(Task.id.in_(task_ids))
+                    )
+                    for row in task_result.all():
+                        tasks_map[row[0].id] = {
+                            "client_name": row[1] or "Sin cliente",
+                            "monthly_fee": row[2] or 0,
+                        }
+
+                for entry in entries:
+                    mins = entry.minutes or 0
+                    uid = entry.user_id
+                    if uid not in user_map:
+                        continue
+                    user_hours[uid] = user_hours.get(uid, 0) + mins / 60.0
+                    client_name = "Sin cliente"
+                    if entry.task_id and entry.task_id in tasks_map:
+                        client_name = tasks_map[entry.task_id]["client_name"]
+                    client_hours[client_name] = client_hours.get(client_name, 0) + mins / 60.0
+                    rate = float(user_map[uid].hourly_rate) if user_map[uid].hourly_rate else float(settings.DEFAULT_HOURLY_RATE)
+                    client_cost[client_name] = client_cost.get(client_name, 0) + (mins / 60.0) * rate
+
+                # Overdue tasks
+                overdue_result = await db.execute(
+                    select(Task).outerjoin(Client, Task.client_id == Client.id).where(
+                        Task.status.notin_([TaskStatus.completed]),
+                        Task.due_date < start_dt,
+                        Task.due_date.isnot(None),
+                    ).limit(10)
+                )
+                overdue_tasks = overdue_result.scalars().all()
+
+                # Build report
+                total_hours = sum(user_hours.values())
+                total_capacity = sum((u.weekly_hours or 40) for u in users)
+
+                lines = [
+                    f"\U0001f4ca **Informe Semanal — {ws.strftime('%d/%m')} al {we.strftime('%d/%m/%Y')}**",
+                    "",
+                ]
+                if total_capacity:
+                    lines.append(f"**Horas totales equipo:** {total_hours:.1f}h / {total_capacity}h ({total_hours/total_capacity*100:.0f}%)")
+                else:
+                    lines.append(f"**Horas totales:** {total_hours:.1f}h")
+                lines.append("")
+
+                lines.append("\U0001f465 **Por persona:**")
+                for u in users:
+                    h = user_hours.get(u.id, 0)
+                    cap = u.weekly_hours or 40
+                    lines.append(f"  \u2022 {u.full_name}: {h:.1f}h / {cap}h ({h/cap*100:.0f}%)" if cap else f"  \u2022 {u.full_name}: {h:.1f}h")
+                lines.append("")
+
+                lines.append("\U0001f3e2 **Por cliente:**")
+                sorted_clients = sorted(client_hours.items(), key=lambda x: x[1], reverse=True)
+                for name, hours in sorted_clients:
+                    cost = client_cost.get(name, 0)
+                    pct = (hours / total_hours * 100) if total_hours else 0
+                    alert = " \u26a0\ufe0f" if pct > 40 else ""
+                    lines.append(f"  \u2022 {name}: {hours:.1f}h ({pct:.0f}%) — {cost:.0f}\u20ac{alert}")
+
+                active_clients_result = await db.execute(
+                    select(Client.name).where(Client.status == "active")
+                )
+                active_names = {r[0] for r in active_clients_result.all()}
+                inactive = active_names - set(client_hours.keys())
+                if inactive:
+                    lines.append("")
+                    lines.append("\U0001f4a4 **Sin actividad esta semana:**")
+                    for name in sorted(inactive):
+                        lines.append(f"  \u2022 {name}")
+
+                if overdue_tasks:
+                    lines.append("")
+                    lines.append(f"\u26a0\ufe0f **{len(overdue_tasks)} tareas vencidas:**")
+                    for t in overdue_tasks[:5]:
+                        client_label = t.client.name if t.client else "Sin cliente"
+                        due = t.due_date.strftime("%d/%m") if t.due_date else "?"
+                        lines.append(f"  \u2022 [{client_label}] {t.title} (venc\u00eda {due})")
+                    if len(overdue_tasks) > 5:
+                        lines.append(f"  ... y {len(overdue_tasks) - 5} más")
+
+                report = "\n".join(lines)
+
+                # Send DM
+                from backend.api.routes.discord import _send_discord_dm
+                success = await _send_discord_dm(bot_token, owner_id, report)
+                if success:
+                    sent_this_week = week_key
+                    logging.info("Weekly report DM sent for %s", week_key)
+                else:
+                    logging.warning("Weekly report DM failed for %s", week_key)
+
+        except Exception as e:
+            logging.error("Weekly report loop error: %s", e)
 
 
 # ── Public API ───────────────────────────────────────────────
@@ -348,5 +532,11 @@ def start_background_tasks() -> list[asyncio.Task]:
     t = asyncio.create_task(_daily_reminders_loop(), name="daily-reminders")
     t.add_done_callback(_log_task_error)
     tasks.append(t)
+
+    if settings.DISCORD_OWNER_USER_ID:
+        t = asyncio.create_task(_weekly_report_loop(), name="weekly-report")
+        t.add_done_callback(_log_task_error)
+        tasks.append(t)
+        logging.info("Weekly report DM enabled (Monday 08:30 Madrid)")
 
     return tasks

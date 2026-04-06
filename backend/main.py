@@ -81,7 +81,7 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS short_name VARCHAR(50)",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS birthday DATE",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS job_title VARCHAR(100)",
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS morning_reminder_time VARCHAR(5) DEFAULT '09:00'",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS morning_reminder_time VARCHAR(5) DEFAULT '08:00'",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS evening_reminder_time VARCHAR(5) DEFAULT '18:00'",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE",
             ]:
@@ -91,6 +91,9 @@ async def lifespan(app: FastAPI):
         logging.warning("Startup DDL failed (may be expected): %s", e)
 
     # Cleanup QA/test data and set correct reminder times
+    # NOTE: Each SQL uses a SAVEPOINT so that a single failure does not
+    # poison the entire PostgreSQL transaction (PG aborts all commands
+    # after an error until ROLLBACK, even inside a Python try/except).
     try:
         async with engine.begin() as conn:
             # Define QA user condition
@@ -105,30 +108,46 @@ async def lifespan(app: FastAPI):
                 f"DELETE FROM time_entries WHERE task_id IN (SELECT id FROM tasks WHERE {qa_task_cond})",
                 f"DELETE FROM task_comments WHERE task_id IN (SELECT id FROM tasks WHERE {qa_task_cond})",
                 f"DELETE FROM task_attachments WHERE task_id IN (SELECT id FROM tasks WHERE {qa_task_cond})",
-                # Delete checklist items if table exists
                 f"DELETE FROM task_checklist_items WHERE task_id IN (SELECT id FROM tasks WHERE {qa_task_cond})",
-                # Delete QA tasks
                 f"DELETE FROM tasks WHERE {qa_task_cond}",
-                # Delete daily updates, permissions, notifications for QA users
+                # Delete all user-FK tables for QA users
                 f"DELETE FROM daily_updates WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
                 f"DELETE FROM user_permissions WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
                 f"DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
-                # Delete inbox notes for QA users
                 f"DELETE FROM inbox_notes WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
+                f"DELETE FROM inbox_attachments WHERE uploaded_by IN (SELECT id FROM users WHERE {qa_user_cond})",
+                f"DELETE FROM alert_settings WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
+                f"DELETE FROM user_day_status WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
+                f"DELETE FROM generated_reports WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
+                # Nullify nullable created_by/assigned_to FKs for QA users
+                f"UPDATE communication_logs SET created_by = NULL WHERE created_by IN (SELECT id FROM users WHERE {qa_user_cond})",
+                f"UPDATE proposals SET created_by = NULL WHERE created_by IN (SELECT id FROM users WHERE {qa_user_cond})",
+                f"UPDATE growth_ideas SET created_by = NULL WHERE created_by IN (SELECT id FROM users WHERE {qa_user_cond})",
+                f"UPDATE lead_activities SET created_by = NULL WHERE created_by IN (SELECT id FROM users WHERE {qa_user_cond})",
+                f"UPDATE advisor_tasks SET assigned_to = NULL WHERE assigned_to IN (SELECT id FROM users WHERE {qa_user_cond})",
+                f"UPDATE audit_logs SET user_id = NULL WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
+                f"UPDATE client_documents SET created_by = NULL WHERE created_by IN (SELECT id FROM users WHERE {qa_user_cond})",
+                f"UPDATE project_evidence SET created_by = NULL WHERE created_by IN (SELECT id FROM users WHERE {qa_user_cond})",
+                # Nullify self-referencing invited_by
+                f"UPDATE users SET invited_by = NULL WHERE invited_by IN (SELECT id FROM users WHERE {qa_user_cond})",
+                # Delete QA invitations
+                f"DELETE FROM user_invitations WHERE invited_by IN (SELECT id FROM users WHERE {qa_user_cond})",
                 # Delete QA projects and clients
                 f"DELETE FROM projects WHERE client_id IN (SELECT id FROM clients WHERE {qa_client_cond})",
                 f"DELETE FROM clients WHERE {qa_client_cond}",
                 # Delete QA users last
                 f"DELETE FROM users WHERE {qa_user_cond}",
-                # Set David's morning reminder to 08:00
-                "UPDATE users SET morning_reminder_time = '08:00' WHERE email = 'david@magnify.ing'",
-                "UPDATE users SET morning_reminder_time = '08:00' WHERE email = 'nacho@magnify.ing'",
+                # Fix morning reminder default (DDL had wrong default '09:00')
+                "UPDATE users SET morning_reminder_time = '08:00' WHERE morning_reminder_time = '09:00'",
             ]:
                 try:
+                    await conn.execute(text("SAVEPOINT cleanup_sp"))
                     result = await conn.execute(text(sql))
+                    await conn.execute(text("RELEASE SAVEPOINT cleanup_sp"))
                     if result.rowcount > 0:
                         logging.info("QA cleanup: %s -> %d rows", sql[:60], result.rowcount)
                 except Exception as sql_err:
+                    await conn.execute(text("ROLLBACK TO SAVEPOINT cleanup_sp"))
                     logging.warning("QA cleanup SQL failed (skipping): %s — %s", sql[:60], sql_err)
     except Exception as e:
         logging.warning("QA data cleanup failed (non-fatal): %s", e)

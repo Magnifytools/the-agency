@@ -431,11 +431,12 @@ async def send_weekly_report(
     start_dt = datetime.combine(ws, datetime.min.time())
     end_dt = datetime.combine(we + timedelta(days=1), datetime.min.time())
 
-    # Load all users
+    # Load all users (excluding QA/test)
     from backend.db.models import TimeEntry, Task, Client, Project
+    from backend.startup.background_tasks import _is_qa_user
 
-    users_result = await db.execute(select(User).order_by(User.full_name))
-    users = users_result.scalars().all()
+    users_result = await db.execute(select(User).where(User.is_active.is_(True)).order_by(User.full_name))
+    users = [u for u in users_result.scalars().all() if not _is_qa_user(u)]
     user_map = {u.id: u for u in users}
 
     # Load time entries for the week
