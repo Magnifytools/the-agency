@@ -143,7 +143,7 @@ def render_slack(content: DigestContent, tone: DigestTone | None = None) -> str:
 # Email renderer — Magnify minimal HTML
 # ---------------------------------------------------------------------------
 
-LOGO_URL = "https://res.cloudinary.com/dk2qk66bj/image/upload/v1748505370/logo-mail_cvckaw.webp"
+LOGO_URL = "https://magnify.ing/wp-content/uploads/2026/01/magnify-c.png"
 
 # Brand color
 _BLUE = "#0044FF"
