@@ -1,11 +1,13 @@
-"""Digest Renderer: converts digest content into Slack or HTML email format.
+"""Digest Renderer: converts digest content into Slack, Discord or HTML email format.
 
 Three output modes:
 - Slack: emoji-based plain text with bullets, ready to paste into Slack.
 - Discord: Markdown-formatted text with emojis.
-- Email: HTML email with inline CSS, table-based layout, Magnify branding.
+- Email: Minimal HTML email with Magnify branding.
 """
 from __future__ import annotations
+
+from datetime import date
 
 from backend.db.models import DigestTone
 from backend.schemas.digest import DigestContent, DigestItem
@@ -36,7 +38,7 @@ def _section_titles(tone: DigestTone | None = None) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Slack renderer
+# Discord renderer
 # ---------------------------------------------------------------------------
 
 def render_discord(content: DigestContent, tone: DigestTone | None = None) -> str:
@@ -138,60 +140,24 @@ def render_slack(content: DigestContent, tone: DigestTone | None = None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Email renderer — Magnify branded HTML
+# Email renderer — Magnify minimal HTML
 # ---------------------------------------------------------------------------
 
-# Cloudinary icon URLs from the Magnify email template
-ICON_DONE = "https://res.cloudinary.com/dk2qk66bj/image/upload/v1739970609/pulsaG2_cfu8x2.png"
-ICON_NEED = "https://res.cloudinary.com/dk2qk66bj/image/upload/v1739970610/confirmarG_d6visb.png"
-ICON_NEXT = "https://res.cloudinary.com/dk2qk66bj/image/upload/v1739970396/hechoG2_msqumr.png"
 LOGO_URL = "https://res.cloudinary.com/dk2qk66bj/image/upload/v1748505370/logo-mail_cvckaw.webp"
-# LinkedIn icon removed per David's request (digest emails are now plain text only)
 
+# Brand color
+_BLUE = "#0044FF"
+_DARK = "#1A1A1A"
+_GRAY = "#666666"
+_LIGHT_BG = "#F7F7F7"
+_BORDER = "#E5E5E5"
 
-def _render_item_row(item: DigestItem, icon_url: str) -> str:
-    """Render a single item row with icon, title and description."""
-    return f"""\
-<tr style="border:none!important;">
-  <td style="padding:9px;border:none!important;">
-    <table role="presentation" style="width:100%;border-collapse:collapse;border:none!important;">
-      <tr style="border:none!important;">
-        <td style="width:50px;vertical-align:top;border:none!important;">
-          <img src="{icon_url}" alt="" style="display:block;width:24px;height:24px;max-width:28px;max-height:28px;object-fit:contain;">
-        </td>
-        <td style="vertical-align:top;padding-left:12px;border:none!important;">
-          <h3 style="margin:0 0 6px 0;font-size:16px;color:#333333;line-height:18px;font-weight:600;">{_esc(item.title)}</h3>
-          <p style="margin:0;font-size:14px;color:#333333;line-height:16px;opacity:0.85;">{_esc(item.description)}</p>
-        </td>
-      </tr>
-    </table>
-  </td>
-</tr>"""
-
-
-def _render_section(title: str, items: list[DigestItem], icon_url: str) -> str:
-    """Render a full section (header + divider + items)."""
-    if not items:
-        return ""
-
-    items_html = "\n".join(_render_item_row(item, icon_url) for item in items)
-
-    return f"""\
-<tbody>
-  <tr>
-    <td colspan="2" style="padding:20px 15px 10px 15px;">
-      <h2 style="font-size:18px;line-height:20px;margin:0!important;color:#1C1C1C;font-weight:700;">{_esc(title)}</h2>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" style="padding:10px 0;font-size:0;">
-      <table border="0" width="100%" height="100%" cellpadding="0" cellspacing="0" role="presentation" style="border-collapse:collapse;border-spacing:0px;">
-        <tr><td style="border-bottom:2px solid #cccccc;height:1px;"></td></tr>
-      </table>
-    </td>
-  </tr>
-  {items_html}
-</tbody>"""
+# Section accent dots
+_SECTION_COLORS = {
+    "done": "#22C55E",   # green
+    "need": "#F59E0B",   # amber
+    "next": "#3B82F6",   # blue
+}
 
 
 def _esc(text: str) -> str:
@@ -204,26 +170,75 @@ def _esc(text: str) -> str:
     )
 
 
-def render_email(content: DigestContent, tone: DigestTone | None = None) -> str:
-    """Render digest content as Magnify-branded HTML email."""
+def _format_period(period_start: date | None, period_end: date | None) -> str:
+    """Format period dates in Spanish. Returns e.g. 'Semana del 31 de marzo al 4 de abril 2026'."""
+    if not period_start or not period_end:
+        return ""
+    months = [
+        "", "enero", "febrero", "marzo", "abril", "mayo", "junio",
+        "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+    ]
+    if period_start.month == period_end.month:
+        return f"Semana del {period_start.day} al {period_end.day} de {months[period_end.month]} {period_end.year}"
+    return f"Semana del {period_start.day} de {months[period_start.month]} al {period_end.day} de {months[period_end.month]} {period_end.year}"
+
+
+def _render_item_email(item: DigestItem) -> str:
+    """Render a single item as a clean row."""
+    return f"""\
+      <tr>
+        <td style="padding:10px 0;border-bottom:1px solid {_BORDER};">
+          <p style="margin:0 0 4px 0;font-size:15px;color:{_DARK};font-weight:600;line-height:1.4;">{_esc(item.title)}</p>
+          <p style="margin:0;font-size:14px;color:{_GRAY};line-height:1.5;">{_esc(item.description)}</p>
+        </td>
+      </tr>"""
+
+
+def _render_section_email(title: str, items: list[DigestItem], color: str) -> str:
+    """Render a full section with colored accent."""
+    if not items:
+        return ""
+
+    items_html = "\n".join(_render_item_email(item) for item in items)
+
+    return f"""\
+    <tr>
+      <td style="padding:28px 0 0 0;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+          <tr>
+            <td style="padding-bottom:12px;">
+              <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{color};margin-right:10px;vertical-align:middle;"></span>
+              <span style="font-size:16px;font-weight:700;color:{_DARK};vertical-align:middle;">{_esc(title)}</span>
+            </td>
+          </tr>
+          {items_html}
+        </table>
+      </td>
+    </tr>"""
+
+
+def render_email(
+    content: DigestContent,
+    tone: DigestTone | None = None,
+    period_start: date | None = None,
+    period_end: date | None = None,
+    logo_url: str | None = None,
+) -> str:
+    """Render digest content as a clean, minimal HTML email."""
     titles = _section_titles(tone)
 
-    greeting_text = _esc(content.greeting).replace("\n", "<br/>") if content.greeting else ""
-    date_text = _esc(content.date) if content.date else ""
+    greeting_text = _esc(content.greeting).replace("\n", "<br>") if content.greeting else ""
+    # Use real dates from the digest period, falling back to AI-generated text
+    date_text = _format_period(period_start, period_end) or _esc(content.date) if content.date else _format_period(period_start, period_end)
     # Closing supports HTML (for links like Google Sheets trackers)
-    closing_text = content.closing.replace("\n", "<br/>") if content.closing else ""
+    closing_text = content.closing.replace("\n", "<br>") if content.closing else ""
+    logo = logo_url or LOGO_URL
 
-    # Build dynamic sections
+    # Build sections
     sections_html = ""
-    sections_html += _render_section(
-        titles["done"], content.sections.done, ICON_DONE
-    )
-    sections_html += _render_section(
-        titles["need"], content.sections.need, ICON_NEED
-    )
-    sections_html += _render_section(
-        titles["next"], content.sections.next, ICON_NEXT
-    )
+    sections_html += _render_section_email(titles["done"], content.sections.done, _SECTION_COLORS["done"])
+    sections_html += _render_section_email(titles["need"], content.sections.need, _SECTION_COLORS["need"])
+    sections_html += _render_section_email(titles["next"], content.sections.next, _SECTION_COLORS["next"])
 
     return f"""\
 <!DOCTYPE html>
@@ -231,92 +246,55 @@ def render_email(content: DigestContent, tone: DigestTone | None = None) -> str:
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta content="telephone=no" name="format-detection">
   <title>Resumen Semanal — Magnify</title>
-  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
-<body style="font-family:'Lato',sans-serif;margin:0;padding:0;width:100%;background-color:#1C1C1C;">
+<body style="margin:0;padding:0;background-color:{_LIGHT_BG};font-family:'Inter','Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;">
 
-<!-- WRAPPER -->
-<div style="background-color:#1C1C1C;padding:15px 0;">
-<table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;border-spacing:0px;">
-<tr><td valign="top" style="padding:0;margin:0;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:{_LIGHT_BG};padding:32px 16px;">
+<tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:#FFFFFF;border-radius:12px;overflow:hidden;">
 
-<!-- HEADER -->
-<table align="center" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-spacing:0px;background-color:#E0E0E0;border-radius:20px 20px 0 0;width:100%;max-width:600px;" role="none">
+  <!-- Header -->
   <tr>
-    <td align="left" style="padding:20px;margin:0;">
-      <table cellpadding="0" cellspacing="0" width="100%" role="presentation" style="border-collapse:collapse;border-spacing:0px;">
-        <tr><td align="center" height="8" style="padding:0;margin:0;"></td></tr>
-      </table>
+    <td style="padding:32px 32px 24px 32px;border-bottom:3px solid {_BLUE};">
+      <p style="margin:0 0 12px 0;font-size:15px;color:{_DARK};line-height:1.5;">{greeting_text}</p>
+      <p style="margin:0;font-size:13px;color:{_GRAY};font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">{date_text}</p>
     </td>
   </tr>
-  <tr>
-    <td align="left" style="padding:0 20px 10px 20px;margin:0;border-bottom:2px solid #0044FF;">
-      <span style="margin:0;letter-spacing:0;font-size:16px;line-height:24px;color:#141212;">
-        {greeting_text}<br/><br/>
-        <strong>{date_text}</strong>
-      </span>
-    </td>
-  </tr>
-</table>
 
-<!-- CONTENT BODY -->
-<table align="center" cellpadding="0" cellspacing="0" style="width:600px;min-width:600px;background-color:#FFFFFF;padding-bottom:20px;" role="none">
+  <!-- Content -->
   <tr>
-    <td align="left" style="padding:0px 25px;">
-      <table cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;border-spacing:0px;">
+    <td style="padding:0 32px 24px 32px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
         {sections_html}
       </table>
     </td>
   </tr>
-  <!-- Closing message -->
-  <tr>
-    <td align="left" style="padding:20px 25px 10px 25px;">
-      <p style="margin:0;font-size:14px;color:#333333;line-height:20px;">{closing_text}</p>
-    </td>
-  </tr>
-</table>
 
-<!-- FOOTER -->
-<table align="center" cellpadding="0" cellspacing="0" style="margin-top:-2px;width:600px;background-color:#E0E0E0;border-radius:0 0 20px 20px;" role="none">
+  <!-- Closing -->
   <tr>
-    <td align="center" style="margin:0;padding-top:30px;padding-bottom:10px;">
-      <table cellpadding="0" cellspacing="0" width="100%" role="none" style="border-collapse:collapse;border-spacing:0px;">
-        <tr>
-          <td align="center" style="width:600px;">
-            <table cellpadding="0" cellspacing="0" width="100%" role="presentation" style="border-collapse:collapse;">
-              <tr>
-                <td align="center" style="padding:0;">
-                  <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="width:300px;border-collapse:collapse;">
-                    <tr>
-                      <td align="center" width="100%" style="padding:0 15px;">
-                        <a href="https://www.magnify.ing" target="_blank" style="color:#1C1C1C;font-size:14px;line-height:12px;font-weight:bold;text-decoration:none;">magnify.ing</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-              <!-- Social icons removed -->
-            </table>
-          </td>
-        </tr>
-      </table>
+    <td style="padding:16px 32px 32px 32px;">
+      <p style="margin:0;font-size:14px;color:{_DARK};line-height:1.6;">{closing_text}</p>
     </td>
   </tr>
+
+  <!-- Footer -->
   <tr>
-    <td align="center" style="padding:20px 0 35px 0;text-align:center;width:100%;">
-      <a href="https://www.magnify.ing" target="_blank" style="display:block;text-align:center;width:100%;">
-        <img src="{LOGO_URL}" alt="Magnify" width="80" style="display:block;margin:0 auto;">
+    <td style="padding:20px 32px;background-color:{_LIGHT_BG};text-align:center;">
+      <a href="https://www.magnify.ing" target="_blank" style="text-decoration:none;">
+        <img src="{logo}" alt="Magnify" width="64" style="display:inline-block;">
       </a>
+      <p style="margin:10px 0 0 0;font-size:12px;color:#999999;">
+        <a href="https://www.magnify.ing" target="_blank" style="color:#999999;text-decoration:none;">magnify.ing</a>
+      </p>
     </td>
   </tr>
-</table>
 
+</table>
 </td></tr>
 </table>
-</div>
+
 </body>
 </html>"""
 

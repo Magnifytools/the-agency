@@ -479,7 +479,11 @@ async def render_digest(
     elif format == "email_plain":
         rendered = render_email_plain(content, tone=tone)
     else:
-        rendered = render_email(content, tone=tone)
+        rendered = render_email(
+            content, tone=tone,
+            period_start=digest.period_start,
+            period_end=digest.period_end,
+        )
 
     return DigestRenderResponse(format=format, rendered=rendered)
 
