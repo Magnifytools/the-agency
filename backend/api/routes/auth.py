@@ -66,8 +66,9 @@ async def login(body: LoginRequest, request: Request, response: Response, db: As
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Password reset required")
     token = create_access_token({"sub": str(user.id)})
     _set_auth_cookies(response, token)
-    # Don't expose token in response body — session is managed via httpOnly cookie
-    return {"message": "ok"}
+    # Return token in body for API clients (Chrome extension, etc.)
+    # Web frontend uses httpOnly cookies; extension uses Bearer token
+    return {"access_token": token, "message": "ok"}
 
 
 @router.get("/me", response_model=UserResponse)

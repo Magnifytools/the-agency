@@ -269,6 +269,15 @@ def _is_qa_user(user) -> bool:
     )
 
 
+def _time_in_window(current_time: str, target: str, window_minutes: int = 5) -> bool:
+    """Check if current_time (HH:MM) is within [target, target+window)."""
+    ch, cm = int(current_time[:2]), int(current_time[3:])
+    th, tm = int(target[:2]), int(target[3:])
+    current_total = ch * 60 + cm
+    target_total = th * 60 + tm
+    return 0 <= (current_total - target_total) < window_minutes
+
+
 async def _daily_reminders_loop():
     """Check every 5 minutes if any user needs morning/evening reminder."""
     from datetime import datetime
@@ -308,10 +317,10 @@ async def _daily_reminders_loop():
                     if not await is_working_day(db, today, user.region):
                         continue
 
-                    # Morning reminder
+                    # Morning reminder (window: target to target+5min)
                     if (user.id, "morning") not in sent_today:
                         target = user.morning_reminder_time or "08:00"
-                        if current_time == target:
+                        if _time_in_window(current_time, target):
                             msg = await generate_morning_plan(db, user)
                             if await send_reminder(msg):
                                 sent_today.add((user.id, "morning"))
@@ -319,7 +328,7 @@ async def _daily_reminders_loop():
                     # Evening recap
                     if (user.id, "evening") not in sent_today:
                         target = user.evening_reminder_time or "18:00"
-                        if current_time == target:
+                        if _time_in_window(current_time, target):
                             msg = await generate_evening_recap(db, user, today)
                             if await send_reminder(msg):
                                 sent_today.add((user.id, "evening"))
