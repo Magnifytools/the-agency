@@ -7,6 +7,9 @@ Extracted from main.py to keep the entry point lean.
 """
 import asyncio
 import logging
+from zoneinfo import ZoneInfo
+
+MADRID_TZ = ZoneInfo("Europe/Madrid")
 
 from backend.config import settings
 
@@ -281,7 +284,6 @@ def _time_in_window(current_time: str, target: str, window_minutes: int = 5) -> 
 async def _daily_reminders_loop():
     """Check every 5 minutes if any user needs morning/evening reminder."""
     from datetime import datetime
-    from zoneinfo import ZoneInfo
     from sqlalchemy import select
     from backend.db.database import async_session
     from backend.db.models import User
@@ -289,7 +291,6 @@ async def _daily_reminders_loop():
         is_working_day, generate_morning_plan, generate_evening_recap, send_reminder,
     )
 
-    MADRID_TZ = ZoneInfo("Europe/Madrid")
     sent_today: set[tuple[int, str]] = set()
     current_date = None
 
@@ -347,7 +348,6 @@ def _fmt_h(minutes: float) -> str:
 async def _weekly_report_loop():
     """Send the weekly report DM every Saturday at 08:00 Europe/Madrid."""
     from datetime import datetime, timedelta
-    from zoneinfo import ZoneInfo
     from sqlalchemy import select, func, and_
     from sqlalchemy.orm import selectinload
     from backend.db.database import async_session
@@ -356,7 +356,6 @@ async def _weekly_report_loop():
     )
     from backend.core.security import decrypt_vault_secret
 
-    MADRID_TZ = ZoneInfo("Europe/Madrid")
     sent_this_week: str | None = None  # ISO week string to prevent re-sends
 
     while True:

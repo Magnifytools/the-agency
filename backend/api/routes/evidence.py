@@ -134,7 +134,6 @@ async def list_evidence(
 
 
 @router.post("", response_model=EvidenceResponse, status_code=201)
-@safe_endpoint
 async def create_evidence(
     project_id: int,
     body: EvidenceCreate,

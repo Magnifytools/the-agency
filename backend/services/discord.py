@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from collections import defaultdict
 
 import httpx
+
+logger = logging.getLogger(__name__)
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -96,9 +99,24 @@ async def generate_daily_summary(db: AsyncSession, date: datetime) -> str:
 
 
 async def send_to_discord(message: str) -> bool:
+    """Send a message to the Discord webhook with retry on transient failures."""
     url = settings.DISCORD_WEBHOOK_URL
     if not url:
         return False
     async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.post(url, json={"content": message})
-        return resp.status_code in (200, 204)
+        for attempt in range(2):
+            try:
+                resp = await client.post(url, json={"content": message[:2000]})
+                if resp.status_code in (200, 204):
+                    return True
+                logger.warning("Discord webhook returned %s: %s", resp.status_code, resp.text[:200])
+                if resp.status_code < 500:
+                    return False  # client error, don't retry
+            except httpx.TimeoutException:
+                logger.warning("Discord webhook timeout (attempt %d)", attempt + 1)
+            except httpx.HTTPError as e:
+                logger.warning("Discord webhook error (attempt %d): %s", attempt + 1, e)
+            if attempt == 0:
+                import asyncio
+                await asyncio.sleep(2)
+        return False

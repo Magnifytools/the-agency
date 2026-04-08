@@ -307,7 +307,7 @@ async def list_tasks(
     q = select(AdvisorTask)
     if task_status:
         q = q.where(AdvisorTask.status == task_status)
-    q = q.order_by(AdvisorTask.created_at.desc())
+    q = q.order_by(AdvisorTask.created_at.desc()).limit(100)
     r = await db.execute(q)
     return [AdvisorTaskResponse.model_validate(t) for t in r.scalars().all()]
 

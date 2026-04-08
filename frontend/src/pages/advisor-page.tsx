@@ -29,6 +29,7 @@ export default function AdvisorPage() {
   const dismissMut = useMutation({
     mutationFn: (id: number) => financeAdvisorApi.dismissInsight(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["advisor-insights"] }),
+    onError: () => toast.error("Error al descartar insight"),
   })
 
   const completeTaskMut = useMutation({

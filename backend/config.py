@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://agency:agency@localhost:5432/the_agency"
     REDIS_URL: Optional[str] = None
     SECRET_KEY: str = DEFAULT_SECRET_KEY
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 720
     ALGORITHM: str = "HS256"
     AUTH_COOKIE_NAME: str = "agency_access_token"
     CSRF_COOKIE_NAME: str = "agency_csrf_token"

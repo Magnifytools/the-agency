@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useParams, Link, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 import { clientsApi, projectsApi, holdedApi, clientHealthApi, engineApi } from "@/lib/api"
 import type { TaskStatus, Client } from "@/lib/types"
 import { Input } from "@/components/ui/input"
@@ -81,6 +82,7 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
       queryClient.invalidateQueries({ queryKey: ["client-summary", client.id] })
       setEditing(false)
     },
+    onError: () => toast.error("Error al guardar los datos del cliente"),
   })
 
   const handleSave = () => {

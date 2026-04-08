@@ -721,9 +721,9 @@ export const digestsApi = {
     api.get<Digest[]>("/digests", { params }).then((r) => r.data),
   get: (id: number) => api.get<Digest>(`/digests/${id}`).then((r) => r.data),
   generate: (data: DigestGenerateRequest) =>
-    api.post<Digest>("/digests/generate", data).then((r) => r.data),
+    api.post<Digest>("/digests/generate", data, { timeout: 90_000 }).then((r) => r.data),
   generateBatch: (params?: { period_start?: string; period_end?: string; tone?: string }) =>
-    api.post<Digest[]>("/digests/generate-batch", null, { params }).then((r) => r.data),
+    api.post<Digest[]>("/digests/generate-batch", null, { params, timeout: 90_000 }).then((r) => r.data),
   update: (id: number, data: DigestUpdateRequest) =>
     api.put<Digest>(`/digests/${id}`, data).then((r) => r.data),
   updateStatus: (id: number, status: string) =>

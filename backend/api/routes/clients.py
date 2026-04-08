@@ -150,10 +150,13 @@ class ClientExtract(BaseModel):
 async def extract_client_context(
     file: Optional[UploadFile] = File(None),
     raw_text: Optional[str] = Form(None),
-    _: User = Depends(require_module("clients", write=True)),
+    current_user: User = Depends(require_module("clients", write=True)),
 ):
     """Extract client info from a text file (.txt/.md) or pasted raw text."""
+    from backend.core.rate_limiter import ai_limiter
     from backend.services.ai_utils import get_anthropic_client, parse_claude_json
+
+    ai_limiter.check(current_user.id, max_requests=10, window_seconds=300)
 
     text_content = ""
     if file and file.filename:

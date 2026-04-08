@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,8 @@ router = APIRouter(prefix="/api/clients/{client_id}/contacts", tags=["contacts"]
 @router.get("", response_model=list[ContactResponse])
 async def list_contacts(
     client_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients")),
 ):
@@ -23,6 +25,8 @@ async def list_contacts(
         select(ClientContact)
         .where(ClientContact.client_id == client_id)
         .order_by(ClientContact.is_primary.desc(), ClientContact.name)
+        .limit(limit)
+        .offset(offset)
     )
     return result.scalars().all()
 
