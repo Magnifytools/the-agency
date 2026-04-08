@@ -11,9 +11,14 @@ from backend.db.models import (
     Task, TaskStatus, TaskPriority, TimeEntry, DailyUpdate,
     CompanyHoliday, User,
 )
+import re
+
 from backend.services.discord import send_to_discord
 
 logger = logging.getLogger(__name__)
+
+# Strip monetary amounts from task titles shown in shared channels
+_MONEY_RE = re.compile(r"\s*\(?\s*[\d.,]+\s*€\s*\)?|\s*\(?\s*€\s*[\d.,]+\s*\)?", re.IGNORECASE)
 
 # Priority display order and emoji mapping
 _PRIORITY_ORDER = {
@@ -79,10 +84,11 @@ async def generate_morning_plan(db: AsyncSession, user: User) -> str:
         order, emoji = _PRIORITY_ORDER.get(t.priority, (4, "\u26aa"))
         client_name = t.client.name if t.client else None
 
+        title = _MONEY_RE.sub("", t.title).strip()
         parts = [emoji]
         if t.priority == TaskPriority.urgent:
             parts.append("[URGENTE]")
-        parts.append(t.title)
+        parts.append(title)
         if client_name:
             parts.append(f"\u2014 {client_name}")
 
