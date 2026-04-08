@@ -281,7 +281,7 @@ async def update_client(
         "gsc_url", "billing_cycle", "billing_day", "next_invoice_date",
         "last_invoiced_date", "engine_project_id", "business_model", "aov",
         "conversion_rate", "ltv", "seo_maturity_level", "context",
-        "cif", "vat_number",
+        "cif", "vat_number", "slack_template",
     }
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
