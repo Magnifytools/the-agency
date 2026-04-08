@@ -390,6 +390,8 @@ class Client(TimestampMixin, Base):
     engine_alerts_data = Column(JSONB, nullable=True)
     # AI-generated onboarding intelligence
     onboarding_intelligence = Column(JSONB, nullable=True)
+    # Per-client Slack digest template (null = default format)
+    slack_template = Column(JSONB, nullable=True)
 
     tasks = relationship("Task", back_populates="client", lazy="noload")
     projects = relationship("Project", back_populates="client", lazy="noload")

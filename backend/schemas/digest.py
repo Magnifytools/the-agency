@@ -18,6 +18,7 @@ class DigestSections(BaseModel):
     done: list[DigestItem] = []
     need: list[DigestItem] = []
     next: list[DigestItem] = []
+    metrics: list[DigestItem] = []
 
 
 class DigestContent(BaseModel):

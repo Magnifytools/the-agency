@@ -35,13 +35,14 @@ resúmenes semanales (digests) para clientes. Tu trabajo es transformar datos \
 técnicos internos en un resumen claro, conciso y orientado al cliente.
 
 REGLAS:
-1. El digest tiene 4 partes: greeting, date, sections (done/need/next), closing.
+1. El digest tiene 4 partes: greeting, date, sections (done/need/next/metrics), closing.
 2. Cada sección tiene items con title (corto, 5-10 palabras) y description (1-2 frases).
 3. "done" = lo que se completó esta semana. Celebra logros sin exagerar.
 4. "need" = lo que necesita atención del cliente (aprobaciones, feedback, accesos, contenido).
 5. "next" = próximos pasos planificados para la semana siguiente.
-6. NO inventes datos. Solo usa la información proporcionada.
-7. Si no hay items para una sección, déjala vacía ([]).
+6. "metrics" = métricas clave de la semana (horas invertidas, progreso, KPIs si hay datos). Máximo 2-3 items.
+7. NO inventes datos. Solo usa la información proporcionada.
+8. Si no hay items para una sección, déjala vacía ([]).
 8. El greeting DEBE tener este formato exacto: "Hola [nombre del contacto/cliente] 👋,\nAquí tienes el resumen de esta semana para [nombre del proyecto]". Incluye salto de línea.
 9. La date DEBE tener este formato exacto: "Te enviamos el informe semanal del [día inicio] al [día final] de [mes] [año]". Ejemplo: "Te enviamos el informe semanal del 10 al 17 de marzo 2026".
 10. El closing debe ser breve y motivador, acorde al tono.
@@ -79,7 +80,8 @@ Responde con un JSON con esta estructura exacta:
   "sections": {{
     "done": [{{"title": "...", "description": "..."}}],
     "need": [{{"title": "...", "description": "..."}}],
-    "next": [{{"title": "...", "description": "..."}}]
+    "next": [{{"title": "...", "description": "..."}}],
+    "metrics": [{{"title": "...", "description": "..."}}]
   }},
   "closing": "..."
 }}"""
@@ -185,12 +187,13 @@ async def generate_digest_content(
             "done": content.get("sections", {}).get("done", []),
             "need": content.get("sections", {}).get("need", []),
             "next": content.get("sections", {}).get("next", []),
+            "metrics": content.get("sections", {}).get("metrics", []),
         },
         "closing": content.get("closing", ""),
     }
 
     # Validate items have title+description
-    for section_name in ("done", "need", "next"):
+    for section_name in ("done", "need", "next", "metrics"):
         items = result["sections"][section_name]
         validated = []
         for item in items:
@@ -202,10 +205,11 @@ async def generate_digest_content(
         result["sections"][section_name] = validated
 
     logger.info(
-        "Digest generated: done=%d, need=%d, next=%d",
+        "Digest generated: done=%d, need=%d, next=%d, metrics=%d",
         len(result["sections"]["done"]),
         len(result["sections"]["need"]),
         len(result["sections"]["next"]),
+        len(result["sections"]["metrics"]),
     )
 
     return result

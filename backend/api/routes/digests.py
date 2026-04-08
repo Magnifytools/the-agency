@@ -472,8 +472,18 @@ async def render_digest(
 
     tone = digest.tone if digest.tone else None
 
+    # Load client's Slack template if available
+    client_template = None
+    if digest.client and hasattr(digest.client, "slack_template"):
+        client_template = digest.client.slack_template
+
     if format == "slack":
-        rendered = render_slack(content, tone=tone)
+        rendered = render_slack(
+            content, tone=tone,
+            slack_template=client_template,
+            period_start=digest.period_start,
+            period_end=digest.period_end,
+        )
     elif format == "discord":
         rendered = render_discord(content, tone=tone)
     elif format == "email_plain":

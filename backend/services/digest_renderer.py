@@ -21,12 +21,14 @@ SECTION_TITLES_SINGULAR = {
     "done": "¿Qué he hecho?",
     "need": "¿Qué necesito?",
     "next": "¿Qué voy a hacer?",
+    "metrics": "Métricas clave",
 }
 
 SECTION_TITLES_PLURAL = {
     "done": "¿Qué hemos hecho?",
     "need": "¿Qué necesitamos?",
     "next": "¿Qué vamos a hacer?",
+    "metrics": "Métricas clave",
 }
 
 
@@ -83,19 +85,28 @@ def render_discord(content: DigestContent, tone: DigestTone | None = None) -> st
     return "\n".join(lines)
 
 
-def render_slack(content: DigestContent, tone: DigestTone | None = None) -> str:
+def render_slack(
+    content: DigestContent,
+    tone: DigestTone | None = None,
+    slack_template: dict | None = None,
+    period_start: date | None = None,
+    period_end: date | None = None,
+) -> str:
     """Render digest content as Slack mrkdwn text (paste-friendly).
 
-    Uses Slack-native formatting:
-    - *bold* for titles and section headers
-    - ``- `` for list items (Slack interprets as bullets on paste)
-    - No leading spaces (breaks Slack bold parsing)
-    - No :emoji: codes (don't render on paste, only via API)
+    If slack_template is provided, uses the custom per-client format.
+    Otherwise uses the default Magnify format.
     """
+    if slack_template:
+        return _render_slack_custom(content, slack_template, period_start, period_end)
+    return _render_slack_default(content, tone)
+
+
+def _render_slack_default(content: DigestContent, tone: DigestTone | None = None) -> str:
+    """Default Slack format — Magnify standard."""
     titles = _section_titles(tone)
     lines: list[str] = []
 
-    # Greeting
     if content.greeting:
         lines.append(content.greeting)
     if content.date:
@@ -104,39 +115,84 @@ def render_slack(content: DigestContent, tone: DigestTone | None = None) -> str:
 
     sections = content.sections
 
-    # Done section
-    if sections.done:
-        lines.append(f"*{titles['done']}*")
-        for item in sections.done:
-            lines.append(f"- *{item.title}*")
-            if item.description:
-                lines.append(f"  {item.description}")
-        lines.append("")
+    for key in ("done", "need", "next", "metrics"):
+        items = getattr(sections, key, [])
+        if items:
+            title = titles.get(key, key.capitalize())
+            lines.append(f"*{title}*")
+            for item in items:
+                lines.append(f"- *{item.title}*")
+                if item.description:
+                    lines.append(f"  {item.description}")
+            lines.append("")
 
-    # Need section
-    if sections.need:
-        lines.append(f"*{titles['need']}*")
-        for item in sections.need:
-            lines.append(f"- *{item.title}*")
-            if item.description:
-                lines.append(f"  {item.description}")
-        lines.append("")
-
-    # Next section
-    if sections.next:
-        lines.append(f"*{titles['next']}*")
-        for item in sections.next:
-            lines.append(f"- *{item.title}*")
-            if item.description:
-                lines.append(f"  {item.description}")
-        lines.append("")
-
-    # Closing
     if content.closing:
         lines.append("---")
         lines.append(content.closing)
 
     return "\n".join(lines)
+
+
+def _render_slack_custom(
+    content: DigestContent,
+    template: dict,
+    period_start: date | None = None,
+    period_end: date | None = None,
+) -> str:
+    """Custom per-client Slack format based on template config."""
+    lines: list[str] = []
+    sections_data = content.sections
+
+    # Header
+    header_tpl = template.get("header", "")
+    if header_tpl:
+        area = template.get("area", "")
+        week_num = period_start.isocalendar()[1] if period_start else ""
+        header = header_tpl.format(area=area, week=week_num, project=area)
+        lines.append(header)
+        lines.append("")
+
+    # Greeting (optional)
+    if template.get("show_greeting", False) and content.greeting:
+        lines.append(content.greeting)
+        lines.append("")
+
+    # Sections in template order
+    item_format = template.get("item_format", "simple")
+    for sec in template.get("sections", []):
+        key = sec.get("key", "")
+        title = sec.get("title", "")
+        empty_text = sec.get("empty_text")
+        items = getattr(sections_data, key, [])
+
+        if not items and not empty_text:
+            continue
+
+        if title:
+            lines.append(title)
+
+        if items:
+            for item in items:
+                if item_format == "simple":
+                    text = item.title
+                    if item.description:
+                        text = f"{item.title}: {item.description}"
+                    lines.append(f"- {text}")
+                else:
+                    lines.append(f"- *{item.title}*")
+                    if item.description:
+                        lines.append(f"  {item.description}")
+        elif empty_text:
+            lines.append(f"- {empty_text}")
+
+        lines.append("")
+
+    # Closing (optional)
+    if template.get("show_closing", False) and content.closing:
+        lines.append("---")
+        lines.append(content.closing)
+
+    return "\n".join(lines).rstrip()
 
 
 # ---------------------------------------------------------------------------

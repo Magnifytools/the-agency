@@ -65,6 +65,7 @@ class ClientUpdate(BaseModel):
     ltv: Optional[float] = None
     seo_maturity_level: Optional[str] = None
     context: Optional[str] = None
+    slack_template: Optional[dict] = None
 
 
 class ClientResponse(BaseModel):
@@ -105,6 +106,7 @@ class ClientResponse(BaseModel):
     cif: Optional[str] = None
     vat_number: Optional[str] = None
     context: Optional[str] = None
+    slack_template: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
 

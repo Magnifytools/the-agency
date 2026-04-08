@@ -84,6 +84,7 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS morning_reminder_time VARCHAR(5) DEFAULT '08:00'",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS evening_reminder_time VARCHAR(5) DEFAULT '18:00'",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE clients ADD COLUMN IF NOT EXISTS slack_template JSONB",
             ]:
                 await conn.execute(text(sql))
         logging.info("Startup DDL complete.")
