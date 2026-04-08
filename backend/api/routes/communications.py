@@ -109,7 +109,6 @@ async def create_communication(
 # Static paths BEFORE dynamic {comm_id} to avoid 422
 
 @router.post("/communications/draft-email", response_model=EmailDraftResponse)
-@safe_endpoint
 async def draft_email_endpoint(
     body: EmailDraftRequest,
     db: AsyncSession = Depends(get_db),
