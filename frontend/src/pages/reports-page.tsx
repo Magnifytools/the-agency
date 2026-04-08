@@ -365,13 +365,21 @@ function GenerateReportDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    generateMutation.mutate({
-      type,
-      client_id: (type === "client_status" || type === "client_monthly") ? clientId : null,
-      project_id: type === "project_status" ? projectId : null,
-      period,
-      audience: audience || null,
-    })
+    if (type === "client_monthly" && clientId) {
+      monthlyMutation.mutate({
+        client_id: clientId,
+        year: _monthlyYear,
+        month: _monthlyMonth,
+      })
+    } else {
+      generateMutation.mutate({
+        type,
+        client_id: type === "client_status" ? clientId : null,
+        project_id: type === "project_status" ? projectId : null,
+        period,
+        audience: audience || null,
+      })
+    }
   }
 
   return (
@@ -430,32 +438,55 @@ function GenerateReportDialog({
           </div>
         )}
 
-        <div className="space-y-2">
-          <Label>Periodo</Label>
-          <Select
-            value={period}
-            onChange={(e) => setPeriod(e.target.value as ReportPeriod)}
-          >
-            <option value="week">Semanal</option>
-            <option value="month">Mensual</option>
-          </Select>
-        </div>
+        {type === "client_monthly" ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Mes</Label>
+              <Select value={_monthlyMonth} onChange={(e) => _setMonthlyMonth(Number(e.target.value))}>
+                {[1,2,3,4,5,6,7,8,9,10,11,12].map((m) => (
+                  <option key={m} value={m}>{new Date(2026, m-1).toLocaleString("es", { month: "long" })}</option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Año</Label>
+              <Select value={_monthlyYear} onChange={(e) => _setMonthlyYear(Number(e.target.value))}>
+                {[2025, 2026, 2027].map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </Select>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <Label>Periodo</Label>
+              <Select
+                value={period}
+                onChange={(e) => setPeriod(e.target.value as ReportPeriod)}
+              >
+                <option value="week">Semanal</option>
+                <option value="month">Mensual</option>
+              </Select>
+            </div>
 
-        <div className="space-y-2">
-          <Label>Audiencia <span className="text-muted-foreground font-normal">(opcional)</span></Label>
-          <Select
-            value={audience}
-            onChange={(e) => setAudience(e.target.value as ReportAudience | "")}
-          >
-            <option value="">General (sin audiencia especifica)</option>
-            <option value="executive">Ejecutivo</option>
-            <option value="marketing">Marketing</option>
-            <option value="operational">Operativo</option>
-          </Select>
-          {audience && (
-            <p className="text-xs text-muted-foreground">{AUDIENCE_DESCRIPTIONS[audience]}</p>
-          )}
-        </div>
+            <div className="space-y-2">
+              <Label>Audiencia <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+              <Select
+                value={audience}
+                onChange={(e) => setAudience(e.target.value as ReportAudience | "")}
+              >
+                <option value="">General (sin audiencia especifica)</option>
+                <option value="executive">Ejecutivo</option>
+                <option value="marketing">Marketing</option>
+                <option value="operational">Operativo</option>
+              </Select>
+              {audience && (
+                <p className="text-xs text-muted-foreground">{AUDIENCE_DESCRIPTIONS[audience]}</p>
+              )}
+            </div>
+          </>
+        )}
 
         <div className="flex justify-end gap-2 pt-4">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
