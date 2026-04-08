@@ -323,7 +323,7 @@ async def _daily_reminders_loop():
                         target = user.morning_reminder_time or "08:00"
                         if _time_in_window(current_time, target):
                             msg = await generate_morning_plan(db, user)
-                            if await send_reminder(msg):
+                            if await send_reminder(msg, db=db):
                                 sent_today.add((user.id, "morning"))
 
                     # Evening recap
@@ -331,7 +331,7 @@ async def _daily_reminders_loop():
                         target = user.evening_reminder_time or "18:00"
                         if _time_in_window(current_time, target):
                             msg = await generate_evening_recap(db, user, today)
-                            if await send_reminder(msg):
+                            if await send_reminder(msg, db=db):
                                 sent_today.add((user.id, "evening"))
         except Exception as e:
             logging.error("Daily reminders error: %s", e)
