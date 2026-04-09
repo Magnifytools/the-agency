@@ -66,6 +66,8 @@ export default function ResourcesPage() {
 
 
   const [editingResource, setEditingResource] = useState<TeamResource | null>(null)
+  const [viewResource, setViewResource] = useState<TeamResource | null>(null)
+  const [filterType, setFilterType] = useState<string>("")
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => teamResourcesApi.delete(id),
@@ -82,8 +84,9 @@ export default function ResourcesPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["team-resources"] }),
   })
 
-  const resources: TeamResource[] = (data as { items: TeamResource[]; total: number } | undefined)?.items || []
-  const total = (data as { items: TeamResource[]; total: number } | undefined)?.total || 0
+  const allResources: TeamResource[] = (data as { items: TeamResource[]; total: number } | undefined)?.items || []
+  const resources = filterType ? allResources.filter(r => r.resource_type === filterType) : allResources
+  const total = resources.length
 
   return (
     <div className="space-y-6">
@@ -97,7 +100,7 @@ export default function ResourcesPage() {
         </Button>
       </div>
 
-      {/* Search + filters */}
+      {/* Search + filters (Level 1: Category + Level 2: Type) */}
       <div className="space-y-3">
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -108,22 +111,35 @@ export default function ResourcesPage() {
             className="pl-9"
           />
         </div>
-        <div className="flex flex-wrap gap-1">
-          <button
-            onClick={() => setFilterCat("")}
-            className={`px-3 py-1.5 text-xs rounded-full transition-colors ${!filterCat ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
-          >
-            Todos
-          </button>
-          {Object.keys(CATEGORY_COLORS).map((cat) => (
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-1">
             <button
-              key={cat}
-              onClick={() => setFilterCat(filterCat === cat ? "" : cat)}
-              className={`px-3 py-1.5 text-xs rounded-full transition-colors ${filterCat === cat ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+              onClick={() => { setFilterCat(""); setFilterType("") }}
+              className={`px-3 py-1.5 text-xs rounded-full transition-colors ${!filterCat && !filterType ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
             >
-              {displayLabel(cat)}
+              Todos
             </button>
-          ))}
+            {Object.keys(CATEGORY_COLORS).map((cat) => (
+              <button
+                key={cat}
+                onClick={() => { setFilterCat(filterCat === cat ? "" : cat); setFilterType("") }}
+                className={`px-3 py-1.5 text-xs rounded-full transition-colors ${filterCat === cat ? CATEGORY_COLORS[cat] || "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+              >
+                {displayLabel(cat)}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {Object.keys(TYPE_ICONS).map((t) => (
+              <button
+                key={t}
+                onClick={() => setFilterType(filterType === t ? "" : t)}
+                className={`px-2.5 py-1 text-[11px] rounded-full transition-colors ${filterType === t ? "bg-foreground text-background" : "bg-muted/60 text-muted-foreground hover:bg-muted"}`}
+              >
+                {displayLabel(t)}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -138,10 +154,7 @@ export default function ResourcesPage() {
             <ResourceCard
               key={r.id}
               resource={r}
-              isOwner={user?.id === r.shared_by || user?.role === "admin"}
-              onDelete={() => deleteMut.mutate(r.id)}
-              onPin={() => pinMut.mutate({ id: r.id, pinned: !r.is_pinned })}
-              onEdit={() => setEditingResource(r)}
+              onClick={() => setViewResource(r)}
             />
           ))}
         </div>
@@ -150,8 +163,19 @@ export default function ResourcesPage() {
       {/* Total */}
       {total > 0 && <p className="text-xs text-muted-foreground text-center">{total} recursos</p>}
 
-      {/* Add dialog */}
+      {/* Dialogs */}
       <AddResourceDialog open={showAdd} onOpenChange={setShowAdd} />
+      {viewResource && (
+        <ResourceDetailDialog
+          resource={viewResource}
+          open={!!viewResource}
+          onOpenChange={(v) => { if (!v) setViewResource(null) }}
+          isOwner={user?.id === viewResource.shared_by || user?.role === "admin"}
+          onEdit={() => { setEditingResource(viewResource); setViewResource(null) }}
+          onDelete={() => { deleteMut.mutate(viewResource.id); setViewResource(null) }}
+          onPin={() => { pinMut.mutate({ id: viewResource.id, pinned: !viewResource.is_pinned }); setViewResource(null) }}
+        />
+      )}
       {editingResource && (
         <EditResourceDialog
           resource={editingResource}
@@ -166,78 +190,133 @@ export default function ResourcesPage() {
 
 function ResourceCard({
   resource: r,
-  isOwner,
-  onDelete,
-  onPin,
-  onEdit,
+  onClick,
 }: {
   resource: TeamResource
-  isOwner: boolean
-  onDelete: () => void
-  onPin: () => void
-  onEdit: () => void
+  onClick: () => void
 }) {
   const catColor = CATEGORY_COLORS[r.category] || "bg-gray-100 text-gray-700"
   const Icon = TYPE_ICONS[r.resource_type] || Wrench
 
   return (
-    <Card className="p-4 flex flex-col gap-3 hover:border-brand/30 transition-colors relative group">
+    <Card
+      className="p-4 flex flex-col gap-2 hover:border-brand/30 transition-colors cursor-pointer relative"
+      onClick={onClick}
+    >
       {r.is_pinned && (
-        <Pin className="absolute top-3 right-3 h-3.5 w-3.5 text-brand fill-brand" />
+        <Pin className="absolute top-3 right-3 h-3 w-3 text-brand fill-brand" />
       )}
 
       <div className="flex items-start gap-3">
-        <div className={`p-2 rounded-lg ${catColor}`}>
+        <div className={`p-2 rounded-lg shrink-0 ${catColor}`}>
           <Icon className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-sm leading-tight truncate">{r.title}</h3>
-          <div className="flex gap-1.5 mt-1">
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${catColor}`}>{displayLabel(r.category)}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{displayLabel(r.resource_type)}</span>
-          </div>
+          <h3 className="font-semibold text-sm leading-tight">{r.title}</h3>
           {r.description && (
             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{r.description}</p>
           )}
         </div>
       </div>
 
-      {r.tags && (
-        <div className="flex flex-wrap gap-1">
-          {r.tags.split(",").map((tag) => (
-            <Badge key={tag.trim()} variant="secondary" className="text-[10px] px-1.5 py-0">
-              {tag.trim()}
-            </Badge>
-          ))}
-        </div>
-      )}
-
       <div className="flex items-center justify-between mt-auto pt-2 border-t border-border">
-        <span className="text-[11px] text-muted-foreground">
-          {r.shared_by_name} · {new Date(r.created_at).toLocaleDateString("es")}
-        </span>
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {r.url && (
-            <a href={r.url} target="_blank" rel="noopener noreferrer" className="p-1 hover:bg-muted rounded">
-              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-            </a>
-          )}
-          {isOwner && (
-            <>
-              <button onClick={onEdit} className="p-1 hover:bg-muted rounded">
-                <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-              </button>
-              <button onClick={onPin} className="p-1 hover:bg-muted rounded">
-                <Pin className={`h-3.5 w-3.5 ${r.is_pinned ? "text-brand fill-brand" : "text-muted-foreground"}`} />
-              </button>
-              <button onClick={onDelete} className="p-1 hover:bg-red-50 rounded">
-                <Trash2 className="h-3.5 w-3.5 text-red-500" />
-              </button>
-            </>
-          )}
-        </div>
+        <span className="text-[11px] text-muted-foreground">{r.shared_by_name}</span>
+        {r.url && (
+          <a
+            href={r.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-[11px] text-brand hover:underline flex items-center gap-1"
+          >
+            Abrir <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
       </div>
     </Card>
+  )
+}
+
+
+function ResourceDetailDialog({
+  resource: r,
+  open,
+  onOpenChange,
+  isOwner,
+  onEdit,
+  onDelete,
+  onPin,
+}: {
+  resource: TeamResource
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  isOwner: boolean
+  onEdit: () => void
+  onDelete: () => void
+  onPin: () => void
+}) {
+  const catColor = CATEGORY_COLORS[r.category] || "bg-gray-100 text-gray-700"
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogHeader>
+        <DialogTitle>{r.title}</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4 mt-2">
+        {/* Category + Type badges */}
+        <div className="flex gap-2">
+          <span className={`text-xs px-2 py-1 rounded-full ${catColor}`}>{displayLabel(r.category)}</span>
+          <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">{displayLabel(r.resource_type)}</span>
+        </div>
+
+        {/* Description */}
+        {r.description && (
+          <p className="text-sm text-muted-foreground leading-relaxed">{r.description}</p>
+        )}
+
+        {/* URL */}
+        {r.url && (
+          <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-sm text-brand hover:underline flex items-center gap-1">
+            {r.url} <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        )}
+
+        {/* Tags */}
+        {r.tags && (
+          <div className="space-y-1">
+            <span className="text-xs text-muted-foreground font-medium">Tags</span>
+            <div className="flex flex-wrap gap-1.5">
+              {r.tags.split(",").map((tag) => (
+                <Badge key={tag.trim()} variant="secondary" className="text-xs">
+                  {tag.trim()}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Meta */}
+        <div className="text-xs text-muted-foreground pt-2 border-t border-border">
+          Compartido por {r.shared_by_name} · {new Date(r.created_at).toLocaleDateString("es", { day: "numeric", month: "long", year: "numeric" })}
+        </div>
+
+        {/* Actions */}
+        {isOwner && (
+          <div className="flex gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={onEdit}>
+              <Pencil className="h-3.5 w-3.5 mr-1.5" /> Editar
+            </Button>
+            <Button variant="outline" size="sm" onClick={onPin}>
+              <Pin className={`h-3.5 w-3.5 mr-1.5 ${r.is_pinned ? "fill-brand text-brand" : ""}`} />
+              {r.is_pinned ? "Desfijar" : "Fijar"}
+            </Button>
+            <Button variant="outline" size="sm" className="text-red-500 hover:text-red-600" onClick={() => { onDelete(); onOpenChange(false) }}>
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Eliminar
+            </Button>
+          </div>
+        )}
+      </div>
+    </Dialog>
   )
 }
 
