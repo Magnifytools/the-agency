@@ -719,6 +719,15 @@ export const financeSyncApi = {
   logs: () => api.get<SyncLog[]>("/finance/sync/logs").then((r) => r.data),
 }
 
+export const bankImportApi = {
+  preview: (content: string) =>
+    api.post<{ transactions: { row: number; date: string; description: string; amount: number; is_income: boolean }[]; total: number }>("/finance/bank-import/preview", { content }).then((r) => r.data),
+  match: (content: string) =>
+    api.post<{ transactions: { row: number; date: string; description: string; amount: number; is_income: boolean; match: { income_id: number; invoice_number: string | null; client_name: string | null; amount: number } | null; confidence: number }[]; total: number; matched: number }>("/finance/bank-import/match", { content }).then((r) => r.data),
+  apply: (matches: { income_id: number }[]) =>
+    api.post<{ ok: boolean; applied: number }>("/finance/bank-import/apply", { matches }).then((r) => r.data),
+}
+
 // --- Weekly Digests ---
 export const digestsApi = {
   list: (params?: { client_id?: number; status?: string; period_from?: string; period_to?: string; limit?: number; offset?: number }) =>

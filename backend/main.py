@@ -28,6 +28,7 @@ from backend.api.routes import (
     my_week,
     automations,
     google_calendar,
+    bank_import,
 )
 
 # ── Re-export migration/seed functions so scripts/init_db.py keeps working ──
@@ -345,6 +346,7 @@ app.include_router(assistant.router)
 app.include_router(my_week.router)
 app.include_router(automations.router)
 app.include_router(google_calendar.router)
+app.include_router(bank_import.router)
 
 
 @app.get("/api/health")
