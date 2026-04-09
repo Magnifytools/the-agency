@@ -16,6 +16,13 @@ router = APIRouter(prefix="/api/resources", tags=["team-resources"])
 
 CATEGORIES = {"tool", "article", "video", "template", "other"}
 
+PREDEFINED_TAGS = [
+    "seo", "ia", "diseño", "ui", "ux", "css", "wordpress", "contenido",
+    "analytics", "social", "email", "automatización", "productividad",
+    "desarrollo", "frontend", "backend", "claude", "cursor", "figma",
+    "copywriting", "branding", "crm", "ads", "video", "datos",
+]
+
 
 class ResourceCreate(BaseModel):
     title: str
@@ -61,6 +68,12 @@ def _to_response(r: TeamResource) -> ResourceResponse:
         is_pinned=r.is_pinned,
         created_at=r.created_at.isoformat() if r.created_at else "",
     )
+
+
+@router.get("/tags")
+async def list_tags():
+    """Return predefined tags."""
+    return PREDEFINED_TAGS
 
 
 @router.get("")

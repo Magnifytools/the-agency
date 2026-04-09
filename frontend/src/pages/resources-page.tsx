@@ -208,7 +208,21 @@ function AddResourceDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const [url, setUrl] = useState("")
   const [description, setDescription] = useState("")
   const [category, setCategory] = useState("tool")
-  const [tags, setTags] = useState("")
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
+
+  const { data: availableTags = [] } = useQuery({
+    queryKey: ["resource-tags"],
+    queryFn: teamResourcesApi.tags,
+  })
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) => {
+      const next = new Set(prev)
+      if (next.has(tag)) next.delete(tag)
+      else next.add(tag)
+      return next
+    })
+  }
 
   const createMut = useMutation({
     mutationFn: () =>
@@ -217,7 +231,7 @@ function AddResourceDialog({ open, onOpenChange }: { open: boolean; onOpenChange
         url: url || undefined,
         description: description || undefined,
         category,
-        tags: tags || undefined,
+        tags: selectedTags.size > 0 ? [...selectedTags].join(", ") : undefined,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["team-resources"] })
@@ -251,18 +265,31 @@ function AddResourceDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           <Label>Descripción</Label>
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Para qué sirve, por qué es útil..." rows={2} />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label>Categoría</Label>
-            <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-              {CATEGORIES.map((c) => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Tags</Label>
-            <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="seo, wordpress, ia" />
+        <div className="space-y-2">
+          <Label>Categoría</Label>
+          <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+            {CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Tags</Label>
+          <div className="flex flex-wrap gap-1.5">
+            {availableTags.map((tag: string) => (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => toggleTag(tag)}
+                className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                  selectedTags.has(tag)
+                    ? "bg-foreground text-background border-foreground"
+                    : "bg-background text-muted-foreground border-border hover:border-foreground/30"
+                }`}
+              >
+                {tag}
+              </button>
+            ))}
           </div>
         </div>
         <div className="flex justify-end gap-2 pt-2">

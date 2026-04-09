@@ -1051,6 +1051,8 @@ export const inboxApi = {
 
 // ── Team Resources ────────────────────────────────────────
 export const teamResourcesApi = {
+  tags: () =>
+    api.get<string[]>("/resources/tags").then((r) => r.data),
   list: (params?: { search?: string; category?: string; limit?: number; offset?: number }) =>
     api.get<{ items: TeamResource[]; total: number }>("/resources", { params }).then((r) => r.data),
   create: (data: { title: string; url?: string; description?: string; category?: string; tags?: string }) =>
