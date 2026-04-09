@@ -88,11 +88,15 @@ export default function AdvisorPage() {
         </div>
       )}
 
-      {insights.length > 0 && (
-        <div>
-          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
             <Bell className="h-5 w-5" />Alertas e insights ({insights.length})
           </h2>
+          {isAdmin && <GenerateInsightsButton />}
+        </div>
+        {insights.length > 0 && (
+          <div>
           <div className="space-y-2">
             {insights.map(insight => (
               <Card key={insight.id} className="p-4 flex items-start gap-3">
@@ -110,8 +114,9 @@ export default function AdvisorPage() {
               </Card>
             ))}
           </div>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
       {tasks.length > 0 && (
         <div>
@@ -269,5 +274,24 @@ function FiscalBriefSection() {
         </div>
       )}
     </Card>
+  )
+}
+
+
+function GenerateInsightsButton() {
+  const qc = useQueryClient()
+  const mut = useMutation({
+    mutationFn: financeAdvisorApi.generateInsights,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["advisor-insights"] })
+      toast.success(`${data.insights_created} insights generados con IA`)
+    },
+    onError: () => toast.error("Error al generar insights"),
+  })
+
+  return (
+    <Button variant="outline" size="sm" onClick={() => mut.mutate()} disabled={mut.isPending}>
+      {mut.isPending ? "Analizando..." : "Generar insights IA"}
+    </Button>
   )
 }

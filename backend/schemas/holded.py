@@ -29,6 +29,7 @@ class SyncResult(BaseModel):
     status: str
     records_synced: int
     error_message: Optional[str] = None
+    detail: Optional[str] = None
 
 
 # ── Invoices ───────────────────────────────────────────────

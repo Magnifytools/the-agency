@@ -359,6 +359,59 @@ async def delete_task(
     await db.commit()
 
 
+@router.post("/generate-insights")
+async def generate_ai_insights(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_admin),
+):
+    """Generate AI-powered financial insights. Admin only."""
+    from backend.services.fiscal_brief_service import collect_fiscal_data
+    from backend.services.ai_utils import get_anthropic_client, parse_claude_json
+    from backend.core.rate_limiter import ai_limiter
+    import json as _json
+
+    ai_limiter.check(_user.id, max_requests=5, window_seconds=300)
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    current_q = f"Q{(now.month - 1) // 3 + 1}"
+    data = await collect_fiscal_data(db, now.year, current_q)
+
+    prompt = f"""Analiza estos datos financieros y genera 3-6 insights accionables.
+Cada insight debe ser específico (con nombres de clientes, cifras exactas, fechas).
+
+Datos del {current_q} {now.year}:
+{_json.dumps(data, default=str, ensure_ascii=False)[:3000]}
+
+Responde con JSON: {{"insights": [{{"title": "...", "description": "...", "severity": "critical|warning|info"}}]}}"""
+
+    client = get_anthropic_client()
+    message = await client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1500,
+        system="Eres el asesor financiero interno de Magnify (agencia de marketing digital en España). Genera insights útiles y accionables. Español, directo, con cifras.",
+        messages=[{"role": "user", "content": prompt}],
+    )
+    result = parse_claude_json(message)
+    insights = result.get("insights", [])
+
+    # Save to DB
+    created = 0
+    for ins in insights:
+        if not isinstance(ins, dict) or "title" not in ins:
+            continue
+        fi = FinancialInsight(
+            type=ins.get("severity", "info"),
+            title=ins["title"],
+            description=ins.get("description", ""),
+            severity=ins.get("severity", "info"),
+        )
+        db.add(fi)
+        created += 1
+
+    await db.commit()
+    return {"ok": True, "insights_created": created, "insights": insights}
+
+
 @router.post("/generate-brief")
 async def generate_brief(
     year: int = Query(...),
