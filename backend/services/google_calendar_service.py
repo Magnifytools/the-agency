@@ -31,26 +31,41 @@ def _client_config() -> dict:
 
 
 def get_auth_url(state: str = "") -> str:
-    """Generate the Google OAuth2 authorization URL."""
-    flow = Flow.from_client_config(_client_config(), scopes=SCOPES)
-    flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
-    url, _ = flow.authorization_url(
-        access_type="offline",
-        prompt="consent",
-        state=state,
-    )
-    return url
+    """Generate the Google OAuth2 authorization URL (no PKCE — server-side flow)."""
+    from urllib.parse import urlencode
+    params = {
+        "client_id": settings.GOOGLE_CLIENT_ID,
+        "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": " ".join(SCOPES),
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": state,
+    }
+    return f"https://accounts.google.com/o/oauth2/auth?{urlencode(params)}"
 
 
 def exchange_code(code: str) -> dict:
-    """Exchange authorization code for tokens. Returns {access_token, refresh_token}."""
-    flow = Flow.from_client_config(_client_config(), scopes=SCOPES)
-    flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
-    flow.fetch_token(code=code)
-    creds = flow.credentials
+    """Exchange authorization code for tokens via direct HTTP (no PKCE)."""
+    import httpx
+    resp = httpx.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "code": code,
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+            "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+            "grant_type": "authorization_code",
+        },
+        timeout=15,
+    )
+    if resp.status_code != 200:
+        logger.error("Google token exchange failed: %s", resp.text)
+        raise ValueError(f"Token exchange failed: {resp.status_code}")
+    data = resp.json()
     return {
-        "access_token": creds.token,
-        "refresh_token": creds.refresh_token,
+        "access_token": data.get("access_token"),
+        "refresh_token": data.get("refresh_token"),
     }
 
 
