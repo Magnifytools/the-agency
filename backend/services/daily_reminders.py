@@ -247,7 +247,7 @@ async def send_reminder(message: str, db=None) -> bool:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(url, json={
                 "content": message[:2000],
-                "username": "☀️ Morning Update",
+                "username": "Morning Update",
             })
             return resp.status_code in (200, 204)
     except Exception as e:
