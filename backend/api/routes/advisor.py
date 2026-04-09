@@ -23,7 +23,7 @@ from backend.schemas.advisor import (
     AdvisorAiBriefResponse, AdvisorOverview,
 )
 from backend.schemas.dashboard import MonthlyCloseResponse, MonthlyCloseUpdate
-from backend.api.deps import require_module
+from backend.api.deps import require_module, require_admin
 from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/finance/advisor", tags=["finance-advisor"])
@@ -357,6 +357,27 @@ async def delete_task(
         raise HTTPException(status_code=404, detail="Tarea no encontrada")
     await db.delete(task)
     await db.commit()
+
+
+@router.post("/generate-brief")
+async def generate_brief(
+    year: int = Query(...),
+    quarter: str = Query(..., regex="^Q[1-4]$"),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_admin),
+):
+    """Generate AI-powered fiscal brief for a quarter. Admin only."""
+    from backend.services.fiscal_brief_service import generate_fiscal_brief
+    from backend.core.rate_limiter import ai_limiter
+    ai_limiter.check(_user.id, max_requests=5, window_seconds=300)
+
+    brief, content = await generate_fiscal_brief(db, year, quarter)
+    return {
+        "id": brief.id,
+        "period_start": brief.period_start.isoformat() if brief.period_start else None,
+        "period_end": brief.period_end.isoformat() if brief.period_end else None,
+        "content": content,
+    }
 
 
 @router.get("/ai-briefs", response_model=list[AdvisorAiBriefResponse])

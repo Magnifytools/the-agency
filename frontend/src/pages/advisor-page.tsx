@@ -1,15 +1,19 @@
+import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { financeAdvisorApi } from "@/lib/api"
+import { useAuth } from "@/context/auth-context"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
-import { AlertTriangle, Bell, CheckCircle2, ListTodo } from "lucide-react"
+import { AlertTriangle, Bell, CheckCircle2, ListTodo, FileText } from "lucide-react"
 import { toast } from "sonner"
 import { formatCurrency } from "@/lib/format"
 import { FinanceTabNav } from "@/components/finance/finance-tab-nav"
 
 export default function AdvisorPage() {
   const qc = useQueryClient()
+  const { user } = useAuth()
+  const isAdmin = user?.role === "admin"
 
   const { data: overview } = useQuery({
     queryKey: ["advisor-overview"],
@@ -153,6 +157,117 @@ export default function AdvisorPage() {
           </div>
         </Card>
       )}
+
+      {/* Fiscal Brief — admin only */}
+      {isAdmin && <FiscalBriefSection />}
     </div>
+  )
+}
+
+
+function FiscalBriefSection() {
+  const now = new Date()
+  const currentQ = `Q${Math.ceil((now.getMonth() + 1) / 3)}`
+  const [year, setYear] = useState(now.getFullYear())
+  const [quarter, setQuarter] = useState(currentQ)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [brief, setBrief] = useState<Record<string, any> | null>(null)
+
+  const generateMut = useMutation({
+    mutationFn: () => financeAdvisorApi.generateBrief(year, quarter),
+    onSuccess: (data) => {
+      setBrief(data.content)
+      toast.success("Informe fiscal generado")
+    },
+    onError: () => toast.error("Error al generar informe fiscal"),
+  })
+
+  return (
+    <Card className="p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <FileText className="h-5 w-5" />
+          <h2 className="text-lg font-semibold">Informe fiscal IA</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <select value={quarter} onChange={(e) => setQuarter(e.target.value)} className="rounded-md border border-border bg-background px-2 py-1 text-sm">
+            <option value="Q1">Q1</option>
+            <option value="Q2">Q2</option>
+            <option value="Q3">Q3</option>
+            <option value="Q4">Q4</option>
+          </select>
+          <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="rounded-md border border-border bg-background px-2 py-1 text-sm">
+            <option value={2025}>2025</option>
+            <option value={2026}>2026</option>
+            <option value={2027}>2027</option>
+          </select>
+          <Button onClick={() => generateMut.mutate()} disabled={generateMut.isPending} size="sm">
+            {generateMut.isPending ? "Generando..." : "Generar informe"}
+          </Button>
+        </div>
+      </div>
+
+      {brief && (
+        <div className="space-y-4 text-sm">
+          <div className="bg-muted/30 rounded-lg p-4">
+            <h3 className="font-semibold text-base mb-2">{brief.title}</h3>
+            <p className="text-muted-foreground leading-relaxed">{brief.executive_summary}</p>
+          </div>
+
+          {brief.income_analysis && (
+            <div>
+              <h4 className="font-semibold mb-1">Ingresos</h4>
+              <p className="text-muted-foreground">{brief.income_analysis}</p>
+            </div>
+          )}
+
+          {brief.expense_analysis && (
+            <div>
+              <h4 className="font-semibold mb-1">Gastos</h4>
+              <p className="text-muted-foreground">{brief.expense_analysis}</p>
+            </div>
+          )}
+
+          {brief.tax_status && (
+            <div>
+              <h4 className="font-semibold mb-1">Impuestos</h4>
+              <p className="text-muted-foreground">{brief.tax_status}</p>
+            </div>
+          )}
+
+          {brief.alerts?.length > 0 && (
+            <div>
+              <h4 className="font-semibold mb-1 text-red-600">Alertas</h4>
+              <ul className="space-y-1">
+                {brief.alerts.map((a: string, i: number) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                    <span className="text-muted-foreground">{a}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {brief.pending_actions?.length > 0 && (
+            <div>
+              <h4 className="font-semibold mb-1">Acciones pendientes</h4>
+              <ul className="space-y-1 list-disc list-inside text-muted-foreground">
+                {brief.pending_actions.map((a: string, i: number) => <li key={i}>{a}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {brief.recommendations?.length > 0 && (
+            <div>
+              <h4 className="font-semibold mb-1">Recomendaciones</h4>
+              <ul className="space-y-1 list-disc list-inside text-muted-foreground">
+                {brief.recommendations.map((r: string, i: number) => <li key={i}>{r}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
   )
 }

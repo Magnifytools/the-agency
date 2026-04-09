@@ -697,6 +697,8 @@ export const financeAdvisorApi = {
   deleteTask: (id: number) => api.delete(`/finance/advisor/tasks/${id}`).then((r) => r.data),
   aiBriefs: (limit?: number) =>
     api.get<AdvisorAiBrief[]>("/finance/advisor/ai-briefs", { params: limit ? { limit } : {} }).then((r) => r.data),
+  generateBrief: (year: number, quarter: string) =>
+    api.post<{ id: number; content: Record<string, unknown> }>("/finance/advisor/generate-brief", null, { params: { year, quarter }, timeout: 90_000 }).then((r) => r.data),
   monthlyClose: (params?: { year?: number; month?: number }) =>
     api.get<MonthlyClose>("/finance/advisor/monthly-close", { params }).then((r) => r.data),
   updateMonthlyClose: (data: Partial<MonthlyClose>, params?: { year?: number; month?: number }) =>
