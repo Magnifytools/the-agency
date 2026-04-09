@@ -52,22 +52,22 @@ export default function ResourcesPage() {
   const { user } = useAuth()
   const qc = useQueryClient()
   const [search, setSearch] = useState("")
-  const [filterCat, setFilterCat] = useState<string>("")
+  const [filterCats, setFilterCats] = useState<Set<string>>(new Set())
+  const [filterTypes, setFilterTypes] = useState<Set<string>>(new Set())
   const [showAdd, setShowAdd] = useState(false)
 
   const { data } = useQuery({
-    queryKey: ["team-resources", search, filterCat] as const,
+    queryKey: ["team-resources", search, [...filterCats].join(","), [...filterTypes].join(",")] as const,
     queryFn: () => teamResourcesApi.list({
       search: search || undefined,
-      category: filterCat || undefined,
-      limit: 100,
+      category: filterCats.size === 1 ? [...filterCats][0] : undefined,
+      limit: 200,
     }),
   })
 
 
   const [editingResource, setEditingResource] = useState<TeamResource | null>(null)
   const [viewResource, setViewResource] = useState<TeamResource | null>(null)
-  const [filterType, setFilterType] = useState<string>("")
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => teamResourcesApi.delete(id),
@@ -85,7 +85,11 @@ export default function ResourcesPage() {
   })
 
   const allResources: TeamResource[] = (data as { items: TeamResource[]; total: number } | undefined)?.items || []
-  const resources = filterType ? allResources.filter(r => r.resource_type === filterType) : allResources
+  const resources = allResources.filter(r => {
+    if (filterCats.size > 0 && !filterCats.has(r.category)) return false
+    if (filterTypes.size > 0 && !filterTypes.has(r.resource_type)) return false
+    return true
+  })
   const total = resources.length
 
   return (
@@ -100,7 +104,7 @@ export default function ResourcesPage() {
         </Button>
       </div>
 
-      {/* Search + filters (Level 1: Category + Level 2: Type) */}
+      {/* Search + filters */}
       <div className="space-y-3">
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -111,36 +115,20 @@ export default function ResourcesPage() {
             className="pl-9"
           />
         </div>
-        <div className="space-y-2">
-          <div className="flex flex-wrap gap-1">
-            <button
-              onClick={() => { setFilterCat(""); setFilterType("") }}
-              className={`px-3 py-1.5 text-xs rounded-full transition-colors ${!filterCat && !filterType ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
-            >
-              Todos
-            </button>
-            {Object.keys(CATEGORY_COLORS).map((cat) => (
-              <button
-                key={cat}
-                onClick={() => { setFilterCat(filterCat === cat ? "" : cat); setFilterType("") }}
-                className={`px-3 py-1.5 text-xs rounded-full transition-colors ${filterCat === cat ? CATEGORY_COLORS[cat] || "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
-              >
-                {displayLabel(cat)}
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {Object.keys(TYPE_ICONS).map((t) => (
-              <button
-                key={t}
-                onClick={() => setFilterType(filterType === t ? "" : t)}
-                className={`px-2.5 py-1 text-[11px] rounded-full transition-colors ${filterType === t ? "bg-foreground text-background" : "bg-muted/60 text-muted-foreground hover:bg-muted"}`}
-              >
-                {displayLabel(t)}
-              </button>
-            ))}
-          </div>
-        </div>
+        <FilterRow
+          label="Categoría"
+          items={Object.keys(CATEGORY_COLORS)}
+          selected={filterCats}
+          onToggle={(v) => setFilterCats(prev => { const next = new Set(prev); if (next.has(v)) next.delete(v); else next.add(v); return next })}
+          maxVisible={5}
+        />
+        <FilterRow
+          label="Tipo"
+          items={Object.keys(TYPE_ICONS)}
+          selected={filterTypes}
+          onToggle={(v) => setFilterTypes(prev => { const next = new Set(prev); if (next.has(v)) next.delete(v); else next.add(v); return next })}
+          maxVisible={5}
+        />
       </div>
 
       {/* Resource grid */}
@@ -183,6 +171,74 @@ export default function ResourcesPage() {
           onOpenChange={(v) => { if (!v) setEditingResource(null) }}
         />
       )}
+    </div>
+  )
+}
+
+
+function FilterRow({
+  label,
+  items,
+  selected,
+  onToggle,
+  maxVisible = 5,
+}: {
+  label: string
+  items: string[]
+  selected: Set<string>
+  onToggle: (value: string) => void
+  maxVisible?: number
+}) {
+  const [showAll, setShowAll] = useState(false)
+  const visible = items.slice(0, maxVisible)
+  const hidden = items.slice(maxVisible)
+
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <span className="text-xs text-muted-foreground font-medium w-20 shrink-0">{label}</span>
+      <div className="flex items-center gap-0.5 flex-wrap">
+        {visible.map((item, i) => (
+          <span key={item} className="flex items-center gap-1.5">
+            {i > 0 && <span className="text-muted-foreground/30 text-xs">·</span>}
+            <button
+              onClick={() => onToggle(item)}
+              className={`py-0.5 text-xs transition-colors ${
+                selected.has(item) ? "text-foreground font-semibold" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {displayLabel(item)}
+            </button>
+          </span>
+        ))}
+        {hidden.length > 0 && (
+          <div className="relative">
+            <button
+              onClick={() => setShowAll(!showAll)}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              +{hidden.length}
+            </button>
+            {showAll && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowAll(false)} />
+                <div className="absolute top-6 left-0 z-50 bg-popover border border-border rounded-lg shadow-lg p-2 min-w-[140px]">
+                  {hidden.map((item) => (
+                    <button
+                      key={item}
+                      onClick={() => { onToggle(item); setShowAll(false) }}
+                      className={`block w-full text-left px-2 py-1.5 text-xs rounded transition-colors ${
+                        selected.has(item) ? "text-foreground font-semibold bg-muted" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      }`}
+                    >
+                      {displayLabel(item)}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
