@@ -1052,10 +1052,12 @@ export const inboxApi = {
 // ── Team Resources ────────────────────────────────────────
 export const teamResourcesApi = {
   tags: () =>
-    api.get<string[]>("/resources/tags").then((r) => r.data),
+    api.get<Record<string, string[]>>("/resources/tags").then((r) => r.data),
+  categories: () =>
+    api.get<{ categories: string[]; resource_types: string[] }>("/resources/categories").then((r) => r.data),
   list: (params?: { search?: string; category?: string; limit?: number; offset?: number }) =>
     api.get<{ items: TeamResource[]; total: number }>("/resources", { params }).then((r) => r.data),
-  create: (data: { title: string; url?: string; description?: string; category?: string; tags?: string }) =>
+  create: (data: { title: string; url?: string; description?: string; category?: string; resource_type?: string; tags?: string }) =>
     api.post<TeamResource>("/resources", data).then((r) => r.data),
   update: (id: number, data: Record<string, unknown>) =>
     api.put<TeamResource>(`/resources/${id}`, data).then((r) => r.data),
@@ -1069,6 +1071,7 @@ export interface TeamResource {
   url: string | null
   description: string | null
   category: string
+  resource_type: string
   tags: string | null
   shared_by: number
   shared_by_name: string | null

@@ -14,19 +14,33 @@ import { Textarea } from "@/components/ui/textarea"
 import { Search, Plus, ExternalLink, Pin, Trash2, Wrench, FileText, Video, Layout, Lightbulb } from "lucide-react"
 import { toast } from "sonner"
 
-const CATEGORIES = [
-  { value: "herramienta", label: "Herramienta", icon: Wrench, color: "bg-blue-100 text-blue-700" },
-  { value: "artículo", label: "Artículo", icon: FileText, color: "bg-green-100 text-green-700" },
-  { value: "librería", label: "Librería", icon: Layout, color: "bg-indigo-100 text-indigo-700" },
-  { value: "caso de estudio", label: "Caso de estudio", icon: Search, color: "bg-amber-100 text-amber-700" },
-  { value: "post", label: "Post", icon: FileText, color: "bg-teal-100 text-teal-700" },
-  { value: "vídeo", label: "Vídeo", icon: Video, color: "bg-red-100 text-red-700" },
-  { value: "plantilla", label: "Plantilla", icon: Layout, color: "bg-purple-100 text-purple-700" },
-  { value: "idea", label: "Idea", icon: Lightbulb, color: "bg-yellow-100 text-yellow-700" },
-]
+// Categoría = temática
+const CATEGORY_COLORS: Record<string, string> = {
+  "ia": "bg-violet-100 text-violet-700",
+  "seo": "bg-green-100 text-green-700",
+  "diseño": "bg-pink-100 text-pink-700",
+  "desarrollo": "bg-blue-100 text-blue-700",
+  "marketing": "bg-orange-100 text-orange-700",
+  "producto": "bg-cyan-100 text-cyan-700",
+  "ventas": "bg-amber-100 text-amber-700",
+  "contenido": "bg-teal-100 text-teal-700",
+  "analítica": "bg-indigo-100 text-indigo-700",
+}
 
-function categoryMeta(cat: string) {
-  return CATEGORIES.find((c) => c.value === cat) || CATEGORIES[0]
+// Tipo = formato del recurso
+const TYPE_ICONS: Record<string, typeof Wrench> = {
+  "herramienta": Wrench,
+  "guía": FileText,
+  "prompt": FileText,
+  "template": Layout,
+  "extensión": Wrench,
+  "dataset": Layout,
+  "inspiración": Lightbulb,
+  "caso de estudio": Search,
+  "artículo": FileText,
+  "vídeo": Video,
+  "librería": Layout,
+  "idea": Lightbulb,
 }
 
 export default function ResourcesPage() {
@@ -77,8 +91,8 @@ export default function ResourcesPage() {
       </div>
 
       {/* Search + filters */}
-      <div className="flex gap-3 items-center">
-        <div className="relative flex-1 max-w-md">
+      <div className="space-y-3">
+        <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Buscar recursos..."
@@ -87,20 +101,20 @@ export default function ResourcesPage() {
             className="pl-9"
           />
         </div>
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           <button
             onClick={() => setFilterCat("")}
             className={`px-3 py-1.5 text-xs rounded-full transition-colors ${!filterCat ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
           >
             Todos
           </button>
-          {CATEGORIES.map((c) => (
+          {Object.keys(CATEGORY_COLORS).map((cat) => (
             <button
-              key={c.value}
-              onClick={() => setFilterCat(filterCat === c.value ? "" : c.value)}
-              className={`px-3 py-1.5 text-xs rounded-full transition-colors ${filterCat === c.value ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+              key={cat}
+              onClick={() => setFilterCat(filterCat === cat ? "" : cat)}
+              className={`px-3 py-1.5 text-xs rounded-full capitalize transition-colors ${filterCat === cat ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
             >
-              {c.label}
+              {cat}
             </button>
           ))}
         </div>
@@ -146,8 +160,8 @@ function ResourceCard({
   onDelete: () => void
   onPin: () => void
 }) {
-  const cat = categoryMeta(r.category)
-  const Icon = cat.icon
+  const catColor = CATEGORY_COLORS[r.category] || "bg-gray-100 text-gray-700"
+  const Icon = TYPE_ICONS[r.resource_type] || Wrench
 
   return (
     <Card className="p-4 flex flex-col gap-3 hover:border-brand/30 transition-colors relative group">
@@ -156,11 +170,15 @@ function ResourceCard({
       )}
 
       <div className="flex items-start gap-3">
-        <div className={`p-2 rounded-lg ${cat.color}`}>
+        <div className={`p-2 rounded-lg ${catColor}`}>
           <Icon className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-sm leading-tight truncate">{r.title}</h3>
+          <div className="flex gap-1.5 mt-1">
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full capitalize ${catColor}`}>{r.category}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground capitalize">{r.resource_type}</span>
+          </div>
           {r.description && (
             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{r.description}</p>
           )}
@@ -210,12 +228,18 @@ function AddResourceDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const [title, setTitle] = useState("")
   const [url, setUrl] = useState("")
   const [description, setDescription] = useState("")
-  const [category, setCategory] = useState("herramienta")
+  const [category, setCategory] = useState("ia")
+  const [resourceType, setResourceType] = useState("herramienta")
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
 
-  const { data: availableTags = [] } = useQuery({
+  const { data: availableTags = {} } = useQuery({
     queryKey: ["resource-tags"],
     queryFn: teamResourcesApi.tags,
+  })
+
+  const { data: catData } = useQuery({
+    queryKey: ["resource-categories"],
+    queryFn: teamResourcesApi.categories,
   })
 
   const toggleTag = (tag: string) => {
@@ -234,6 +258,7 @@ function AddResourceDialog({ open, onOpenChange }: { open: boolean; onOpenChange
         url: url || undefined,
         description: description || undefined,
         category,
+        resource_type: resourceType,
         tags: selectedTags.size > 0 ? [...selectedTags].join(", ") : undefined,
       }),
     onSuccess: () => {
@@ -268,18 +293,31 @@ function AddResourceDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           <Label>Descripción</Label>
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Para qué sirve, por qué es útil..." rows={2} />
         </div>
-        <div className="space-y-2">
-          <Label>Categoría</Label>
-          <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-            {CATEGORIES.map((c) => (
-              <option key={c.value} value={c.value}>{c.label}</option>
-            ))}
-          </Select>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <Label>Categoría *</Label>
+            <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+              {(catData?.categories || []).map((c: string) => (
+                <option key={c} value={c} className="capitalize">{c}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Tipo *</Label>
+            <Select value={resourceType} onChange={(e) => setResourceType(e.target.value)}>
+              {(catData?.resource_types || []).map((t: string) => (
+                <option key={t} value={t} className="capitalize">{t}</option>
+              ))}
+            </Select>
+          </div>
         </div>
         <div className="space-y-2">
           <Label>Tags</Label>
-          <div className="flex flex-wrap gap-1.5">
-            {availableTags.map((tag: string) => (
+          {Object.entries(availableTags as Record<string, string[]>).map(([group, tags]) => (
+            <div key={group} className="space-y-1">
+              <span className="text-[11px] text-muted-foreground uppercase tracking-wide">{group}</span>
+              <div className="flex flex-wrap gap-1.5">
+                {tags.map((tag: string) => (
               <button
                 key={tag}
                 type="button"
@@ -293,7 +331,9 @@ function AddResourceDialog({ open, onOpenChange }: { open: boolean; onOpenChange
                 {tag}
               </button>
             ))}
-          </div>
+              </div>
+            </div>
+          ))}
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>

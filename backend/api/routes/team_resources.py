@@ -14,19 +14,31 @@ from backend.api.deps import get_current_user
 
 router = APIRouter(prefix="/api/resources", tags=["team-resources"])
 
-CATEGORIES = {"herramienta", "artículo", "librería", "caso de estudio", "post", "vídeo", "plantilla", "idea"}
+# Categoría = temática del recurso
+CATEGORIES = {"ia", "seo", "diseño", "desarrollo", "marketing", "producto", "ventas", "contenido", "analítica"}
 
-PREDEFINED_TAGS = [
-    "seo", "ia", "diseño", "wordpress", "contenido", "analítica",
-    "marketing", "branding", "automatización", "productividad", "desarrollo",
-]
+# Tipo = formato del recurso
+RESOURCE_TYPES = {
+    "herramienta", "guía", "prompt", "template", "extensión", "dataset",
+    "inspiración", "caso de estudio", "artículo", "vídeo", "librería", "idea",
+}
+
+# Tags agrupados (el frontend los muestra por grupo)
+PREDEFINED_TAGS = {
+    "tecnología": ["chatgpt", "claude", "cursor", "midjourney", "wordpress", "airtable", "webflow", "zapier"],
+    "uso": ["automatización", "generación de contenido", "scraping", "análisis", "diseño ui", "branding", "copywriting", "prototipado", "productividad"],
+    "nivel": ["básico", "intermedio", "avanzado"],
+    "formato": ["framework", "checklist", "sistema", "workflow", "librería"],
+    "objetivo": ["captar leads", "mejorar ctr", "escalar contenido", "ahorrar tiempo", "aumentar conversión"],
+}
 
 
 class ResourceCreate(BaseModel):
     title: str
     url: Optional[str] = None
     description: Optional[str] = None
-    category: str = "herramienta"
+    category: str = "ia"
+    resource_type: str = "herramienta"
     tags: Optional[str] = None
 
 
@@ -35,6 +47,7 @@ class ResourceUpdate(BaseModel):
     url: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
+    resource_type: Optional[str] = None
     tags: Optional[str] = None
     is_pinned: Optional[bool] = None
 
@@ -45,6 +58,7 @@ class ResourceResponse(BaseModel):
     url: Optional[str] = None
     description: Optional[str] = None
     category: str
+    resource_type: str = "herramienta"
     tags: Optional[str] = None
     shared_by: int
     shared_by_name: Optional[str] = None
@@ -60,6 +74,7 @@ def _to_response(r: TeamResource) -> ResourceResponse:
         url=r.url,
         description=r.description,
         category=r.category,
+        resource_type=r.resource_type or "herramienta",
         tags=r.tags,
         shared_by=r.shared_by,
         shared_by_name=r.user.short_name or r.user.full_name if r.user else None,
@@ -70,8 +85,17 @@ def _to_response(r: TeamResource) -> ResourceResponse:
 
 @router.get("/tags")
 async def list_tags():
-    """Return predefined tags."""
+    """Return predefined tags grouped by category."""
     return PREDEFINED_TAGS
+
+
+@router.get("/categories")
+async def list_categories():
+    """Return available categories and resource types."""
+    return {
+        "categories": sorted(CATEGORIES),
+        "resource_types": sorted(RESOURCE_TYPES),
+    }
 
 
 @router.get("")
@@ -134,7 +158,9 @@ async def create_resource(
     current_user: User = Depends(get_current_user),
 ):
     if body.category not in CATEGORIES:
-        raise HTTPException(status_code=400, detail=f"Categoría inválida. Opciones: {', '.join(CATEGORIES)}")
+        raise HTTPException(status_code=400, detail=f"Categoría inválida. Opciones: {', '.join(sorted(CATEGORIES))}")
+    if body.resource_type not in RESOURCE_TYPES:
+        raise HTTPException(status_code=400, detail=f"Tipo inválido. Opciones: {', '.join(sorted(RESOURCE_TYPES))}")
     if not body.title.strip():
         raise HTTPException(status_code=400, detail="El título es obligatorio")
 
@@ -143,6 +169,7 @@ async def create_resource(
         url=body.url.strip() if body.url else None,
         description=body.description.strip() if body.description else None,
         category=body.category,
+        resource_type=body.resource_type,
         tags=body.tags.strip() if body.tags else None,
         shared_by=current_user.id,
     )

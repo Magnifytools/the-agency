@@ -90,6 +90,7 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE clients ADD COLUMN IF NOT EXISTS slack_template JSONB",
                 "CREATE TABLE IF NOT EXISTS team_resources (id SERIAL PRIMARY KEY, title VARCHAR(300) NOT NULL, url VARCHAR(500), description TEXT, category VARCHAR(30) NOT NULL DEFAULT 'tool', tags VARCHAR(500), shared_by INTEGER NOT NULL REFERENCES users(id), is_pinned BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
                 "CREATE INDEX IF NOT EXISTS ix_team_resources_category ON team_resources(category)",
+                "ALTER TABLE team_resources ADD COLUMN IF NOT EXISTS resource_type VARCHAR(30) DEFAULT 'herramienta'",
                 # Google Calendar integration
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_refresh_token VARCHAR(500)",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_calendar_id VARCHAR(200)",
