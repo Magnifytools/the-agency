@@ -16,7 +16,6 @@ from backend.api.deps import get_current_user, require_module
 from backend.core.rate_limiter import ai_limiter
 from backend.services.email_drafter import draft_email
 from backend.api.utils.db_helpers import safe_refresh
-from backend.api.utils.error_handler import safe_endpoint
 
 router = APIRouter(prefix="/api", tags=["communications"])
 logger = logging.getLogger(__name__)

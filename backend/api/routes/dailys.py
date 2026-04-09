@@ -15,7 +15,6 @@ from backend.db.models import DailyUpdate, DailyUpdateStatus, DiscordSettings, U
 from backend.api.deps import get_current_user
 from backend.config import settings
 from backend.core.rate_limiter import ai_limiter
-from backend.api.utils.error_handler import safe_endpoint
 from backend.schemas.daily import (
     DailySubmitRequest,
     DailyEditRequest,

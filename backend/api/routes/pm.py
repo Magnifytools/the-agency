@@ -17,7 +17,6 @@ from backend.api.deps import get_current_user, require_module
 from backend.core.rate_limiter import ai_limiter
 from backend.db.models import UserRole
 from backend.api.utils.db_helpers import safe_refresh
-from backend.api.utils.error_handler import safe_endpoint
 
 router = APIRouter(prefix="/api/pm", tags=["pm"])
 logger = logging.getLogger(__name__)
@@ -181,7 +180,6 @@ async def get_briefing(
 
 
 @router.post("/briefing/discord")
-@safe_endpoint
 async def share_briefing_to_discord(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("pm", write=True)),

@@ -16,7 +16,6 @@ from backend.schemas.evidence import EvidenceCreate, EvidenceUpdate, EvidenceRes
 from backend.api.deps import require_module
 from backend.api.utils.db_helpers import reload_for_response
 from backend.api.middleware.audit_log import log_audit
-from backend.api.utils.error_handler import safe_endpoint
 
 router = APIRouter(prefix="/api/projects/{project_id}/evidence", tags=["evidence"])
 
@@ -114,7 +113,6 @@ def _safe_filename(name: str) -> str:
 
 
 @router.get("", response_model=list[EvidenceResponse])
-@safe_endpoint
 async def list_evidence(
     project_id: int,
     db: AsyncSession = Depends(get_db),
@@ -172,7 +170,6 @@ async def create_evidence(
 
 
 @router.post("/upload", response_model=EvidenceResponse, status_code=201)
-@safe_endpoint
 async def upload_evidence(
     project_id: int,
     title: str = Form(...),

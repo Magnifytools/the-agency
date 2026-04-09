@@ -227,38 +227,11 @@ def _fmt_hours(minutes: int) -> str:
 
 
 async def send_reminder(message: str, db=None) -> bool:
-    """Send a reminder message via Discord.
-
-    Reads the webhook URL from discord_settings (DB) first, falling back
-    to the DISCORD_WEBHOOK_URL env var.  Previous code only checked the
-    env var which was never set in production.
-    """
+    """Send a reminder message via Discord webhook."""
     import httpx
-    from backend.config import settings
+    from backend.core.discord_utils import get_webhook_url
 
-    url: str = ""
-    # Try DB-stored webhook first
-    if db is not None:
-        try:
-            from sqlalchemy import select
-            from backend.db.models import DiscordSettings
-            from backend.core.security import decrypt_vault_secret
-
-            result = await db.execute(select(DiscordSettings).limit(1))
-            ds = result.scalar_one_or_none()
-            if ds and ds.webhook_url:
-                raw = ds.webhook_url
-                if raw.startswith("v1:"):
-                    url = decrypt_vault_secret(raw)
-                else:
-                    url = raw
-        except Exception as e:
-            logger.warning("Failed to read Discord settings from DB: %s", e)
-
-    # Fallback to env var
-    if not url:
-        url = settings.DISCORD_WEBHOOK_URL or ""
-
+    url = await get_webhook_url(db) if db else ""
     if not url.strip():
         return False
 
