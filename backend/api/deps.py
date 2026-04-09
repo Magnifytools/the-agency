@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -90,3 +90,19 @@ async def get_client_or_404(client_id: int, db: AsyncSession) -> Client:
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
     return client
+
+
+# ── Pagination ─────────────────────────────────────────────
+
+class PaginationParams:
+    """Reusable pagination dependency. Use as Depends(PaginationParams)."""
+
+    def __init__(
+        self,
+        page: int = Query(1, ge=1, description="Page number"),
+        page_size: int = Query(50, ge=1, le=500, description="Items per page"),
+    ):
+        self.page = page
+        self.page_size = page_size
+        self.offset = (page - 1) * page_size
+        self.limit = page_size

@@ -111,44 +111,27 @@ async def lifespan(app: FastAPI):
             qa_task_cond = "title LIKE 'QA Task%' OR title LIKE 'AUDIT-%'"
             qa_client_cond = "name LIKE 'QA%' OR name LIKE 'AUDIT%' OR name LIKE '__TEST%' OR name LIKE 'QA Client%'"
             for sql in [
-                # Unassign QA tasks from real users first (Nacho has QA tasks assigned)
                 f"UPDATE tasks SET assigned_to = NULL WHERE ({qa_task_cond})",
-                # Delete FKs pointing to QA users/tasks
                 f"DELETE FROM time_entries WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
                 f"DELETE FROM time_entries WHERE task_id IN (SELECT id FROM tasks WHERE {qa_task_cond})",
                 f"DELETE FROM task_comments WHERE task_id IN (SELECT id FROM tasks WHERE {qa_task_cond})",
                 f"DELETE FROM task_attachments WHERE task_id IN (SELECT id FROM tasks WHERE {qa_task_cond})",
-                f"DELETE FROM task_checklist_items WHERE task_id IN (SELECT id FROM tasks WHERE {qa_task_cond})",
                 f"DELETE FROM tasks WHERE {qa_task_cond}",
-                # Delete all user-FK tables for QA users
                 f"DELETE FROM daily_updates WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
                 f"DELETE FROM user_permissions WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
                 f"DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
                 f"DELETE FROM inbox_notes WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
                 f"DELETE FROM inbox_attachments WHERE uploaded_by IN (SELECT id FROM users WHERE {qa_user_cond})",
                 f"DELETE FROM alert_settings WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"DELETE FROM user_day_status WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
                 f"DELETE FROM generated_reports WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
-                # Nullify nullable created_by/assigned_to FKs for QA users
-                f"UPDATE communication_logs SET created_by = NULL WHERE created_by IN (SELECT id FROM users WHERE {qa_user_cond})",
                 f"UPDATE proposals SET created_by = NULL WHERE created_by IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"UPDATE growth_ideas SET created_by = NULL WHERE created_by IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"UPDATE lead_activities SET created_by = NULL WHERE created_by IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"UPDATE advisor_tasks SET assigned_to = NULL WHERE assigned_to IN (SELECT id FROM users WHERE {qa_user_cond})",
                 f"UPDATE audit_logs SET user_id = NULL WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"UPDATE client_documents SET created_by = NULL WHERE created_by IN (SELECT id FROM users WHERE {qa_user_cond})",
                 f"UPDATE project_evidence SET created_by = NULL WHERE created_by IN (SELECT id FROM users WHERE {qa_user_cond})",
-                # Nullify self-referencing invited_by
                 f"UPDATE users SET invited_by = NULL WHERE invited_by IN (SELECT id FROM users WHERE {qa_user_cond})",
-                # Delete QA invitations
                 f"DELETE FROM user_invitations WHERE invited_by IN (SELECT id FROM users WHERE {qa_user_cond})",
-                # Delete QA projects and clients
                 f"DELETE FROM projects WHERE client_id IN (SELECT id FROM clients WHERE {qa_client_cond})",
                 f"DELETE FROM clients WHERE {qa_client_cond}",
-                # Delete QA users last
                 f"DELETE FROM users WHERE {qa_user_cond}",
-                # Fix morning reminder default (DDL had wrong default '09:00')
-                "UPDATE users SET morning_reminder_time = '08:00' WHERE morning_reminder_time = '09:00'",
             ]:
                 try:
                     await conn.execute(text("SAVEPOINT cleanup_sp"))
