@@ -1,11 +1,17 @@
 """Tests for fiscal brief service and advisor AI endpoints."""
 from __future__ import annotations
 
+import os
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from datetime import date
 
 from backend.services.fiscal_brief_service import _quarter_dates, _format_list
+
+skip_no_ai = pytest.mark.skipif(
+    not os.environ.get("ANTHROPIC_API_KEY"),
+    reason="ANTHROPIC_API_KEY not set",
+)
 
 
 class TestQuarterDates:
@@ -49,6 +55,7 @@ class TestGenerateBriefEndpoint:
         )
         assert resp.status_code == 422
 
+    @skip_no_ai
     async def test_valid_quarter_format(self, admin_client):
         # Validate Q1-Q4 pattern works, Q5 doesn't
         resp_ok = await admin_client.post(
@@ -60,6 +67,7 @@ class TestGenerateBriefEndpoint:
 
 @pytest.mark.asyncio
 class TestGenerateInsightsEndpoint:
+    @skip_no_ai
     async def test_endpoint_exists(self, admin_client):
         resp = await admin_client.post("/api/finance/advisor/generate-insights")
         # Will fail at Claude API, but route exists
