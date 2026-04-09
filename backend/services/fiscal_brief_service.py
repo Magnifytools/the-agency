@@ -354,5 +354,5 @@ async def generate_fiscal_brief(
     await db.commit()
     await db.refresh(brief)
 
-    logger.info("Fiscal brief generated for %s %d (id=%d)", quarter, year, brief.id)
+    logger.info("Fiscal brief generated for %s %s (id=%s)", quarter, year, brief.id)
     return brief, content

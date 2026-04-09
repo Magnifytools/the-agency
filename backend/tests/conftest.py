@@ -35,6 +35,9 @@ def _make_admin():
     user.morning_reminder_time = "09:00"
     user.evening_reminder_time = "18:00"
     user.onboarding_completed = True
+    user.google_calendar_connected = False
+    user.google_refresh_token = None
+    user.google_calendar_id = None
     user.permissions = []
     return user
 
@@ -84,6 +87,7 @@ def _make_mock_db():
     execute return value avoids that.
     """
     mock_db = AsyncMock()
+    mock_db.add = MagicMock()  # db.add() is sync, not async
     execute_result = MagicMock()
     execute_result.scalar.return_value = 0
     execute_result.scalar_one_or_none.return_value = None

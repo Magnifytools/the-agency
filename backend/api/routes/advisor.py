@@ -415,7 +415,7 @@ Responde con JSON: {{"insights": [{{"title": "...", "description": "...", "sever
 @router.post("/generate-brief")
 async def generate_brief(
     year: int = Query(...),
-    quarter: str = Query(..., regex="^Q[1-4]$"),
+    quarter: str = Query(..., pattern="^Q[1-4]$"),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_admin),
 ):

@@ -119,6 +119,7 @@ async def test_stop_timer_returns_200_when_sync_fails(admin_client, admin_user):
 
     mock_db = AsyncMock()
     mock_db.execute.return_value = mock_execute_result
+    mock_db.add = MagicMock()
 
     from backend.db.database import get_db
     from backend.api.deps import get_current_user

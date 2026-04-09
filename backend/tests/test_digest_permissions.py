@@ -48,6 +48,7 @@ def _make_digest_member():
 
 def _make_mock_db():
     mock_db = AsyncMock()
+    mock_db.add = MagicMock()
     execute_result = MagicMock()
     execute_result.scalar.return_value = 0
     execute_result.scalar_one_or_none.return_value = None
