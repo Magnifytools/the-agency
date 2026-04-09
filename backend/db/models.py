@@ -1446,6 +1446,25 @@ class AgencyAsset(TimestampMixin, Base):
     purpose = Column(String(200))         # Uso: Contacto general, Cuentas herramientas...
 
 
+# ═══════════════════════════════════════════════════════════════
+# TEAM RESOURCES: shared bookmarks, tools, articles
+# ═══════════════════════════════════════════════════════════════
+
+class TeamResource(TimestampMixin, Base):
+    __tablename__ = "team_resources"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(300), nullable=False)
+    url = Column(String(500), nullable=True)
+    description = Column(Text, nullable=True)
+    category = Column(String(30), nullable=False, default="tool")  # tool, article, video, template, other
+    tags = Column(String(500), nullable=True)  # comma-separated
+    shared_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    is_pinned = Column(Boolean, nullable=False, default=False)
+
+    user = relationship("User", lazy="selectin")
+
+
 class IndustryNews(TimestampMixin, Base):
     __tablename__ = "industry_news"
 

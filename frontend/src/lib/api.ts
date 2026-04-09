@@ -1049,6 +1049,31 @@ export const inboxApi = {
     api.delete(`/inbox/${noteId}/attachments/${attachmentId}`).then((r) => r.data),
 }
 
+// ── Team Resources ────────────────────────────────────────
+export const teamResourcesApi = {
+  list: (params?: { search?: string; category?: string; limit?: number; offset?: number }) =>
+    api.get<{ items: TeamResource[]; total: number }>("/resources", { params }).then((r) => r.data),
+  create: (data: { title: string; url?: string; description?: string; category?: string; tags?: string }) =>
+    api.post<TeamResource>("/resources", data).then((r) => r.data),
+  update: (id: number, data: Record<string, unknown>) =>
+    api.put<TeamResource>(`/resources/${id}`, data).then((r) => r.data),
+  delete: (id: number) =>
+    api.delete(`/resources/${id}`).then((r) => r.data),
+}
+
+export interface TeamResource {
+  id: number
+  title: string
+  url: string | null
+  description: string | null
+  category: string
+  tags: string | null
+  shared_by: number
+  shared_by_name: string | null
+  is_pinned: boolean
+  created_at: string
+}
+
 // ── Google Calendar ───────────────────────────────────────
 export const calendarApi = {
   getAuthUrl: () =>

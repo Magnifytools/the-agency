@@ -16,7 +16,6 @@ async def _ensure_columns():
     from sqlalchemy import text
     from backend.db.database import engine
 
-    # All DDL statements use IF NOT EXISTS — safe to always run
     logging.info("Running _ensure_columns DDL...")
     stmts = [
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_project_id INTEGER",

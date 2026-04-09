@@ -42,6 +42,7 @@ const CapacityPage = lazy(() => import("@/pages/capacity-page"))
 const ExecutiveDashboardPage = lazy(() => import("@/pages/executive-dashboard-page"))
 const AgencyVaultPage = lazy(() => import("@/pages/agency-vault-page"))
 const IndustryNewsPage = lazy(() => import("@/pages/industry-news-page"))
+const ResourcesPage = lazy(() => import("@/pages/resources-page"))
 const InboxPage = lazy(() => import("@/pages/inbox-page"))
 const MyWeekPage = lazy(() => import("@/pages/my-week-page"))
 const SettingsPage = lazy(() => import("@/pages/settings-page"))
@@ -124,6 +125,7 @@ export default function App() {
               <Route path="/finance-holded" element={<PermissionRoute adminOnly><ErrorBoundary section="HoldedFinance"><Suspense fallback={<PageLoader />}><HoldedFinancePage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Agency */}
               <Route path="/news" element={<ErrorBoundary section="News"><Suspense fallback={<PageLoader />}><IndustryNewsPage /></Suspense></ErrorBoundary>} />
+              <Route path="/resources" element={<ErrorBoundary section="Resources"><Suspense fallback={<PageLoader />}><ResourcesPage /></Suspense></ErrorBoundary>} />
               <Route path="/vault" element={<PermissionRoute adminOnly><ErrorBoundary section="Vault"><Suspense fallback={<PageLoader />}><AgencyVaultPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/inbox" element={<ErrorBoundary section="Inbox"><Suspense fallback={<PageLoader />}><InboxPage /></Suspense></ErrorBoundary>} />
               <Route path="/my-week" element={<ErrorBoundary section="MyWeek"><Suspense fallback={<PageLoader />}><MyWeekPage /></Suspense></ErrorBoundary>} />

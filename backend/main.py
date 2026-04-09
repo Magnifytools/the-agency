@@ -29,6 +29,7 @@ from backend.api.routes import (
     automations,
     google_calendar,
     bank_import,
+    team_resources,
 )
 
 # ── Re-export migration/seed functions so scripts/init_db.py keeps working ──
@@ -87,6 +88,8 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS evening_reminder_time VARCHAR(5) DEFAULT '18:00'",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE",
                 "ALTER TABLE clients ADD COLUMN IF NOT EXISTS slack_template JSONB",
+                "CREATE TABLE IF NOT EXISTS team_resources (id SERIAL PRIMARY KEY, title VARCHAR(300) NOT NULL, url VARCHAR(500), description TEXT, category VARCHAR(30) NOT NULL DEFAULT 'tool', tags VARCHAR(500), shared_by INTEGER NOT NULL REFERENCES users(id), is_pinned BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
+                "CREATE INDEX IF NOT EXISTS ix_team_resources_category ON team_resources(category)",
                 # Google Calendar integration
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_refresh_token VARCHAR(500)",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_calendar_id VARCHAR(200)",
@@ -330,6 +333,7 @@ app.include_router(my_week.router)
 app.include_router(automations.router)
 app.include_router(google_calendar.router)
 app.include_router(bank_import.router)
+app.include_router(team_resources.router)
 
 
 @app.get("/api/health")
