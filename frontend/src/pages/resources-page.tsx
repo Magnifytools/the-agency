@@ -11,19 +11,22 @@ import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Search, Plus, ExternalLink, Pin, Trash2, Wrench, FileText, Video, Layout, HelpCircle } from "lucide-react"
+import { Search, Plus, ExternalLink, Pin, Trash2, Wrench, FileText, Video, Layout, Lightbulb } from "lucide-react"
 import { toast } from "sonner"
 
 const CATEGORIES = [
-  { value: "tool", label: "Herramienta", icon: Wrench, color: "bg-blue-100 text-blue-700" },
-  { value: "article", label: "Artículo", icon: FileText, color: "bg-green-100 text-green-700" },
-  { value: "video", label: "Vídeo", icon: Video, color: "bg-red-100 text-red-700" },
-  { value: "template", label: "Plantilla", icon: Layout, color: "bg-purple-100 text-purple-700" },
-  { value: "other", label: "Otro", icon: HelpCircle, color: "bg-gray-100 text-gray-700" },
+  { value: "herramienta", label: "Herramienta", icon: Wrench, color: "bg-blue-100 text-blue-700" },
+  { value: "artículo", label: "Artículo", icon: FileText, color: "bg-green-100 text-green-700" },
+  { value: "librería", label: "Librería", icon: Layout, color: "bg-indigo-100 text-indigo-700" },
+  { value: "caso de estudio", label: "Caso de estudio", icon: Search, color: "bg-amber-100 text-amber-700" },
+  { value: "post", label: "Post", icon: FileText, color: "bg-teal-100 text-teal-700" },
+  { value: "vídeo", label: "Vídeo", icon: Video, color: "bg-red-100 text-red-700" },
+  { value: "plantilla", label: "Plantilla", icon: Layout, color: "bg-purple-100 text-purple-700" },
+  { value: "idea", label: "Idea", icon: Lightbulb, color: "bg-yellow-100 text-yellow-700" },
 ]
 
 function categoryMeta(cat: string) {
-  return CATEGORIES.find((c) => c.value === cat) || CATEGORIES[4]
+  return CATEGORIES.find((c) => c.value === cat) || CATEGORIES[0]
 }
 
 export default function ResourcesPage() {
@@ -207,7 +210,7 @@ function AddResourceDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const [title, setTitle] = useState("")
   const [url, setUrl] = useState("")
   const [description, setDescription] = useState("")
-  const [category, setCategory] = useState("tool")
+  const [category, setCategory] = useState("herramienta")
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
 
   const { data: availableTags = [] } = useQuery({

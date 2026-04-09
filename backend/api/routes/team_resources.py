@@ -14,13 +14,11 @@ from backend.api.deps import get_current_user
 
 router = APIRouter(prefix="/api/resources", tags=["team-resources"])
 
-CATEGORIES = {"tool", "article", "video", "template", "other"}
+CATEGORIES = {"herramienta", "artículo", "librería", "caso de estudio", "post", "vídeo", "plantilla", "idea"}
 
 PREDEFINED_TAGS = [
-    "seo", "ia", "diseño", "ui", "ux", "css", "wordpress", "contenido",
-    "analytics", "social", "email", "automatización", "productividad",
-    "desarrollo", "frontend", "backend", "claude", "cursor", "figma",
-    "copywriting", "branding", "crm", "ads", "video", "datos",
+    "seo", "ia", "diseño", "wordpress", "contenido", "analítica",
+    "marketing", "branding", "automatización", "productividad", "desarrollo",
 ]
 
 
@@ -28,7 +26,7 @@ class ResourceCreate(BaseModel):
     title: str
     url: Optional[str] = None
     description: Optional[str] = None
-    category: str = "tool"
+    category: str = "herramienta"
     tags: Optional[str] = None
 
 

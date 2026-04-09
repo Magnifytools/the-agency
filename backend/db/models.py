@@ -1457,7 +1457,7 @@ class TeamResource(TimestampMixin, Base):
     title = Column(String(300), nullable=False)
     url = Column(String(500), nullable=True)
     description = Column(Text, nullable=True)
-    category = Column(String(30), nullable=False, default="tool")  # tool, article, video, template, other
+    category = Column(String(30), nullable=False, default="herramienta")
     tags = Column(String(500), nullable=True)  # comma-separated
     shared_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     is_pinned = Column(Boolean, nullable=False, default=False)
