@@ -11,8 +11,13 @@ import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Search, Plus, ExternalLink, Pin, Trash2, Wrench, FileText, Video, Layout, Lightbulb } from "lucide-react"
+import { Search, Plus, ExternalLink, Pin, Trash2, Pencil, Wrench, FileText, Video, Layout, Lightbulb } from "lucide-react"
 import { toast } from "sonner"
+
+const UPPERCASE_WORDS = new Set(["ia", "seo", "ui", "ux", "ctr", "crm", "css"])
+function displayLabel(s: string) {
+  return s.split(" ").map(w => UPPERCASE_WORDS.has(w.toLowerCase()) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+}
 
 // Categoría = temática
 const CATEGORY_COLORS: Record<string, string> = {
@@ -59,6 +64,8 @@ export default function ResourcesPage() {
     }),
   })
 
+
+  const [editingResource, setEditingResource] = useState<TeamResource | null>(null)
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => teamResourcesApi.delete(id),
@@ -112,9 +119,9 @@ export default function ResourcesPage() {
             <button
               key={cat}
               onClick={() => setFilterCat(filterCat === cat ? "" : cat)}
-              className={`px-3 py-1.5 text-xs rounded-full capitalize transition-colors ${filterCat === cat ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+              className={`px-3 py-1.5 text-xs rounded-full transition-colors ${filterCat === cat ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
             >
-              {cat}
+              {displayLabel(cat)}
             </button>
           ))}
         </div>
@@ -134,6 +141,7 @@ export default function ResourcesPage() {
               isOwner={user?.id === r.shared_by || user?.role === "admin"}
               onDelete={() => deleteMut.mutate(r.id)}
               onPin={() => pinMut.mutate({ id: r.id, pinned: !r.is_pinned })}
+              onEdit={() => setEditingResource(r)}
             />
           ))}
         </div>
@@ -144,6 +152,13 @@ export default function ResourcesPage() {
 
       {/* Add dialog */}
       <AddResourceDialog open={showAdd} onOpenChange={setShowAdd} />
+      {editingResource && (
+        <EditResourceDialog
+          resource={editingResource}
+          open={!!editingResource}
+          onOpenChange={(v) => { if (!v) setEditingResource(null) }}
+        />
+      )}
     </div>
   )
 }
@@ -154,11 +169,13 @@ function ResourceCard({
   isOwner,
   onDelete,
   onPin,
+  onEdit,
 }: {
   resource: TeamResource
   isOwner: boolean
   onDelete: () => void
   onPin: () => void
+  onEdit: () => void
 }) {
   const catColor = CATEGORY_COLORS[r.category] || "bg-gray-100 text-gray-700"
   const Icon = TYPE_ICONS[r.resource_type] || Wrench
@@ -176,8 +193,8 @@ function ResourceCard({
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-sm leading-tight truncate">{r.title}</h3>
           <div className="flex gap-1.5 mt-1">
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full capitalize ${catColor}`}>{r.category}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground capitalize">{r.resource_type}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${catColor}`}>{displayLabel(r.category)}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{displayLabel(r.resource_type)}</span>
           </div>
           {r.description && (
             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{r.description}</p>
@@ -207,6 +224,9 @@ function ResourceCard({
           )}
           {isOwner && (
             <>
+              <button onClick={onEdit} className="p-1 hover:bg-muted rounded">
+                <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+              </button>
               <button onClick={onPin} className="p-1 hover:bg-muted rounded">
                 <Pin className={`h-3.5 w-3.5 ${r.is_pinned ? "text-brand fill-brand" : "text-muted-foreground"}`} />
               </button>
@@ -298,7 +318,7 @@ function AddResourceDialog({ open, onOpenChange }: { open: boolean; onOpenChange
             <Label>Categoría *</Label>
             <Select value={category} onChange={(e) => setCategory(e.target.value)}>
               {(catData?.categories || []).map((c: string) => (
-                <option key={c} value={c} className="capitalize">{c}</option>
+                <option key={c} value={c}>{displayLabel(c)}</option>
               ))}
             </Select>
           </div>
@@ -306,7 +326,7 @@ function AddResourceDialog({ open, onOpenChange }: { open: boolean; onOpenChange
             <Label>Tipo *</Label>
             <Select value={resourceType} onChange={(e) => setResourceType(e.target.value)}>
               {(catData?.resource_types || []).map((t: string) => (
-                <option key={t} value={t} className="capitalize">{t}</option>
+                <option key={t} value={t}>{displayLabel(t)}</option>
               ))}
             </Select>
           </div>
@@ -339,6 +359,90 @@ function AddResourceDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
           <Button type="submit" disabled={!title.trim() || createMut.isPending}>
             {createMut.isPending ? "Guardando..." : "Añadir"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
+
+
+function EditResourceDialog({ resource, open, onOpenChange }: { resource: TeamResource; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const onClose = () => onOpenChange(false)
+  const qc = useQueryClient()
+  const [title, setTitle] = useState(resource.title)
+  const [url, setUrl] = useState(resource.url || "")
+  const [description, setDescription] = useState(resource.description || "")
+  const [category, setCategory] = useState(resource.category)
+  const [resourceType, setResourceType] = useState(resource.resource_type)
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set(resource.tags?.split(",").map(t => t.trim()).filter(Boolean) || []))
+
+  const { data: availableTags = {} } = useQuery({ queryKey: ["resource-tags"], queryFn: teamResourcesApi.tags })
+  const { data: catData } = useQuery({ queryKey: ["resource-categories"], queryFn: teamResourcesApi.categories })
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) => { const next = new Set(prev); if (next.has(tag)) next.delete(tag); else next.add(tag); return next })
+  }
+
+  const updateMut = useMutation({
+    mutationFn: () => teamResourcesApi.update(resource.id, {
+      title, url: url || null, description: description || null,
+      category, resource_type: resourceType,
+      tags: selectedTags.size > 0 ? [...selectedTags].join(", ") : null,
+    }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["team-resources"] }); toast.success("Recurso actualizado"); onClose() },
+    onError: () => toast.error("Error al actualizar"),
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogHeader><DialogTitle>Editar recurso</DialogTitle></DialogHeader>
+      <form onSubmit={(e) => { e.preventDefault(); updateMut.mutate() }} className="space-y-4 mt-4">
+        <div className="space-y-2">
+          <Label>Título *</Label>
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} required />
+        </div>
+        <div className="space-y-2">
+          <Label>URL</Label>
+          <Input value={url} onChange={(e) => setUrl(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label>Descripción</Label>
+          <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <Label>Categoría</Label>
+            <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+              {(catData?.categories || []).map((c: string) => (<option key={c} value={c}>{displayLabel(c)}</option>))}
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Tipo</Label>
+            <Select value={resourceType} onChange={(e) => setResourceType(e.target.value)}>
+              {(catData?.resource_types || []).map((t: string) => (<option key={t} value={t}>{displayLabel(t)}</option>))}
+            </Select>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label>Tags</Label>
+          {Object.entries(availableTags as Record<string, string[]>).map(([group, tags]) => (
+            <div key={group} className="space-y-1">
+              <span className="text-[11px] text-muted-foreground uppercase tracking-wide">{group}</span>
+              <div className="flex flex-wrap gap-1.5">
+                {tags.map((tag: string) => (
+                  <button key={tag} type="button" onClick={() => toggleTag(tag)}
+                    className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${selectedTags.has(tag) ? "bg-foreground text-background border-foreground" : "bg-background text-muted-foreground border-border hover:border-foreground/30"}`}
+                  >{tag}</button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button type="submit" disabled={!title.trim() || updateMut.isPending}>
+            {updateMut.isPending ? "Guardando..." : "Guardar"}
           </Button>
         </div>
       </form>
