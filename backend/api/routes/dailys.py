@@ -476,7 +476,10 @@ async def send_daily_to_discord(
 
             if not success:
                 # Send as rich embed (no thread)
-                resp = await http.post(webhook_url, json={"embeds": [embed]})
+                resp = await http.post(webhook_url, json={
+                    "embeds": [embed],
+                    "username": "📋 Daily Recap",
+                })
                 success = resp.status_code in (200, 204)
     except Exception as exc:
         logger.error("Error sending daily to Discord: %s", exc)

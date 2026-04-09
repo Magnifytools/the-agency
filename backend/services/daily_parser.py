@@ -119,34 +119,31 @@ async def parse_daily_update(raw_text: str) -> dict:
 
 
 def format_daily_for_discord(parsed_data: dict, user_name: str, date_str: str) -> str:
-    """Format parsed daily data into a Discord-friendly message."""
+    """Format parsed daily data into a clean Discord message (one line per task)."""
     lines = []
-    lines.append(f"📋 **Daily Update — {user_name}** ({date_str})")
+    lines.append(f"**{user_name}** — {date_str}")
     lines.append("")
 
     for proj in parsed_data.get("projects", []):
-        client_tag = f" ({proj['client']})" if proj.get("client") else ""
-        lines.append(f"**🔹 {proj['name']}{client_tag}**")
+        proj_name = proj.get("name") or proj.get("client") or "General"
+        lines.append(f"**{proj_name}**")
         for task in proj.get("tasks", []):
-            lines.append(f"  • {task['description']}")
-            if task.get("details"):
-                lines.append(f"    ↳ {task['details'][:150]}")
+            lines.append(f"✅ {task['description']}")
         lines.append("")
 
     if parsed_data.get("general"):
-        lines.append("**🔸 General**")
+        lines.append("**General**")
         for task in parsed_data["general"]:
-            lines.append(f"  • {task['description']}")
+            lines.append(f"✅ {task['description']}")
         lines.append("")
 
     if parsed_data.get("tomorrow"):
         lines.append("**📅 Mañana**")
         for item in parsed_data["tomorrow"]:
-            lines.append(f"  • {item}")
+            lines.append(f"• {item}")
 
-    result = "\n".join(lines)
+    result = "\n".join(lines).rstrip()
 
-    # Discord limit
     if len(result) > 2000:
         result = result[:1997] + "..."
 
@@ -161,21 +158,14 @@ def format_daily_embed(parsed_data: dict, user_name: str, date_str: str) -> dict
     """Format parsed daily data as a Discord rich embed dict.
 
     Returns a single embed dict ready to include in ``{"embeds": [embed]}``.
+    Clean format: client header + ✅ per task.
     """
     fields: list[dict] = []
 
     for proj in parsed_data.get("projects", []):
-        name = f"🔹 {proj['name']}"
-        if proj.get("client"):
-            name += f" ({proj['client']})"
-        task_lines = []
-        for task in proj.get("tasks", []):
-            line = f"• {task['description']}"
-            if task.get("details"):
-                line += f"\n  ↳ {task['details'][:120]}"
-            task_lines.append(line)
+        name = proj.get("name") or proj.get("client") or "General"
+        task_lines = [f"✅ {t['description']}" for t in proj.get("tasks", [])]
         value = "\n".join(task_lines) or "—"
-        # Discord field limits
         fields.append({
             "name": name[:256],
             "value": value[:1024],
@@ -183,9 +173,9 @@ def format_daily_embed(parsed_data: dict, user_name: str, date_str: str) -> dict
         })
 
     if parsed_data.get("general"):
-        lines = [f"• {t['description']}" for t in parsed_data["general"]]
+        lines = [f"✅ {t['description']}" for t in parsed_data["general"]]
         fields.append({
-            "name": "🔸 General",
+            "name": "General",
             "value": "\n".join(lines)[:1024],
             "inline": False,
         })
@@ -199,9 +189,9 @@ def format_daily_embed(parsed_data: dict, user_name: str, date_str: str) -> dict
         })
 
     embed: dict = {
-        "title": f"📋 Daily Update — {user_name} ({date_str})",
+        "title": f"{user_name} — {date_str}",
         "color": _EMBED_COLOR,
-        "fields": fields[:25],  # Discord max 25 fields
+        "fields": fields[:25],
     }
 
     return embed

@@ -245,7 +245,10 @@ async def send_reminder(message: str, db=None) -> bool:
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(url, json={"content": message[:2000]})
+            resp = await client.post(url, json={
+                "content": message[:2000],
+                "username": "☀️ Morning Update",
+            })
             return resp.status_code in (200, 204)
     except Exception as e:
         logger.warning("Failed to send daily reminder via Discord: %s", e)
