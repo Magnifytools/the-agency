@@ -120,13 +120,17 @@ async function updateBadge(token) {
 
 // ── Periodic badge refresh (every 2 minutes) ──────────────
 chrome.alarms.create("refresh-badge", { periodInMinutes: 2 });
+chrome.alarms.create("check-meetings", { periodInMinutes: 1 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  const stored = await chrome.storage.local.get([STORAGE_KEYS.token]);
+  if (!stored[STORAGE_KEYS.token]) return;
+
   if (alarm.name === "refresh-badge") {
-    const stored = await chrome.storage.local.get([STORAGE_KEYS.token]);
-    if (stored[STORAGE_KEYS.token]) {
-      updateBadge(stored[STORAGE_KEYS.token]);
-    }
+    updateBadge(stored[STORAGE_KEYS.token]);
+  }
+  if (alarm.name === "check-meetings") {
+    checkUpcomingMeetings(stored[STORAGE_KEYS.token]);
   }
 });
 
@@ -138,6 +142,31 @@ chrome.runtime.onStartup.addListener(async () => {
   }
 });
 
+// ── Meeting check ────────────────────────────────────────
+const _notifiedMeetings = new Set();
+
+async function checkUpcomingMeetings(token) {
+  try {
+    const res = await fetch(`${API_URL}/api/calendar/upcoming?minutes=35`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const meetings = await res.json();
+    for (const m of meetings) {
+      if (_notifiedMeetings.has(m.id)) continue;
+      if (m.minutes_until <= 30) {
+        showNotification(
+          `📅 Reunión en ${m.minutes_until} min`,
+          m.title
+        );
+        _notifiedMeetings.add(m.id);
+      }
+    }
+  } catch {
+    // silently ignore
+  }
+}
+
 // ── Notifications helper ──────────────────────────────────
 function showNotification(title, message) {
   chrome.notifications.create({
@@ -145,6 +174,6 @@ function showNotification(title, message) {
     iconUrl: "icons/icon48.png",
     title,
     message,
-    priority: 1,
+    priority: 2,
   });
 }

@@ -1036,6 +1036,22 @@ export const inboxApi = {
     api.delete(`/inbox/${noteId}/attachments/${attachmentId}`).then((r) => r.data),
 }
 
+// ── Google Calendar ───────────────────────────────────────
+export const calendarApi = {
+  getAuthUrl: () =>
+    api.get<{ url: string }>("/calendar/auth-url").then((r) => r.data),
+  getStatus: () =>
+    api.get<{ connected: boolean; calendar_id: string | null; meeting_alerts: { minutes_before: number; discord_dm: boolean; extension: boolean } | null }>("/calendar/status").then((r) => r.data),
+  disconnect: () =>
+    api.post("/calendar/disconnect").then((r) => r.data),
+  updateAlerts: (data: { minutes_before: number; discord_dm: boolean; extension: boolean }) =>
+    api.put("/calendar/alerts", data).then((r) => r.data),
+  sync: () =>
+    api.post<{ ok: boolean; events_synced: number }>("/calendar/sync").then((r) => r.data),
+  upcoming: (minutes: number = 60) =>
+    api.get<{ id: number; title: string; start_time: string; minutes_until: number }[]>(`/calendar/upcoming?minutes=${minutes}`).then((r) => r.data),
+}
+
 // ── My Week ──────────────────────────────────────────────────
 
 export interface MyWeekTask {

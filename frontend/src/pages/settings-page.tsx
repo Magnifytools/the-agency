@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { useAuth } from "@/context/auth-context"
-import { usersApi, categoriesApi, myWeekApi } from "@/lib/api"
+import { usersApi, categoriesApi, myWeekApi, calendarApi } from "@/lib/api"
 import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS } from "@/hooks/use-keyboard-shortcuts"
 import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar, FileText, Bell } from "lucide-react"
 
@@ -289,6 +289,7 @@ export default function SettingsPage() {
     { id: "location", label: "Ubicación" },
     { id: "digest", label: "Preferencias de digest" },
     { id: "notifications", label: "Notificaciones" },
+    { id: "calendar", label: "Google Calendar" },
     ...(isAdmin ? [{ id: "holidays", label: "Festivos" }] : []),
   ]
 
@@ -654,6 +655,9 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* Google Calendar */}
+      <CalendarSection />
+
       {/* Holiday management — admin only */}
       {isAdmin && (
         <div id="holidays" className="bg-card border border-border rounded-2xl p-6 scroll-mt-8">
@@ -762,6 +766,167 @@ export default function SettingsPage() {
         </div>
       )}
     </div>
+    </div>
+  )
+}
+
+
+function CalendarSection() {
+  const queryClient = useQueryClient()
+  const [params] = useState(() => new URLSearchParams(window.location.search))
+  const calendarParam = params.get("calendar")
+
+  const { data: status, isLoading } = useQuery({
+    queryKey: ["calendar-status"],
+    queryFn: calendarApi.getStatus,
+  })
+
+  const [minutesBefore, setMinutesBefore] = useState(30)
+  const [discordDm, setDiscordDm] = useState(true)
+  const [extensionAlert, setExtensionAlert] = useState(true)
+
+  useEffect(() => {
+    if (status?.meeting_alerts) {
+      setMinutesBefore(status.meeting_alerts.minutes_before)
+      setDiscordDm(status.meeting_alerts.discord_dm)
+      setExtensionAlert(status.meeting_alerts.extension)
+    }
+  }, [status])
+
+  useEffect(() => {
+    if (calendarParam === "connected") {
+      toast.success("Google Calendar conectado")
+      window.history.replaceState({}, "", "/settings")
+      queryClient.invalidateQueries({ queryKey: ["calendar-status"] })
+    } else if (calendarParam === "error") {
+      toast.error("Error al conectar Google Calendar")
+      window.history.replaceState({}, "", "/settings")
+    }
+  }, [calendarParam, queryClient])
+
+  const connectMut = useMutation({
+    mutationFn: async () => {
+      const { url } = await calendarApi.getAuthUrl()
+      window.location.href = url
+    },
+    onError: () => toast.error("Error al obtener URL de autorización"),
+  })
+
+  const disconnectMut = useMutation({
+    mutationFn: calendarApi.disconnect,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["calendar-status"] })
+      toast.success("Google Calendar desconectado")
+    },
+    onError: () => toast.error("Error al desconectar"),
+  })
+
+  const syncMut = useMutation({
+    mutationFn: calendarApi.sync,
+    onSuccess: (data) => toast.success(`Sincronizados ${data.events_synced} eventos`),
+    onError: () => toast.error("Error al sincronizar"),
+  })
+
+  const alertsMut = useMutation({
+    mutationFn: () => calendarApi.updateAlerts({ minutes_before: minutesBefore, discord_dm: discordDm, extension: extensionAlert }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["calendar-status"] })
+      toast.success("Alertas actualizadas")
+    },
+    onError: () => toast.error("Error al guardar alertas"),
+  })
+
+  if (isLoading) return null
+
+  return (
+    <div id="calendar" className="bg-card border border-border rounded-2xl p-6 scroll-mt-8">
+      <div className="flex items-center gap-2 mb-4">
+        <Calendar className="h-4 w-4 text-muted-foreground" />
+        <h2 className="text-base font-semibold text-foreground">Google Calendar</h2>
+      </div>
+      <p className="text-sm text-muted-foreground mb-4">
+        Conecta tu calendario para ver reuniones en el morning update y recibir alertas
+      </p>
+
+      {status?.connected ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-green-500" />
+              <span className="text-sm text-foreground">Conectado</span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => syncMut.mutate()}
+                disabled={syncMut.isPending}
+                className="px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-muted/50 transition-colors disabled:opacity-50"
+              >
+                {syncMut.isPending ? "Sincronizando…" : "Sincronizar ahora"}
+              </button>
+              <button
+                onClick={() => disconnectMut.mutate()}
+                disabled={disconnectMut.isPending}
+                className="px-3 py-1.5 text-xs text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+              >
+                Desconectar
+              </button>
+            </div>
+          </div>
+
+          <div className="border-t border-border pt-4">
+            <h3 className="text-sm font-medium text-foreground mb-3">Alertas de reuniones</h3>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-muted-foreground w-32">Avisar antes</label>
+                <select
+                  value={minutesBefore}
+                  onChange={(e) => setMinutesBefore(Number(e.target.value))}
+                  className="rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+                >
+                  <option value={10}>10 minutos</option>
+                  <option value={15}>15 minutos</option>
+                  <option value={30}>30 minutos</option>
+                  <option value={60}>1 hora</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <span className="text-sm text-muted-foreground">DM por Discord</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" checked={discordDm} onChange={(e) => setDiscordDm(e.target.checked)} className="sr-only peer" />
+                  <div className="w-9 h-5 bg-muted rounded-full peer peer-checked:bg-brand transition-colors after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" />
+                </label>
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <span className="text-sm text-muted-foreground">Notificación extensión</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" checked={extensionAlert} onChange={(e) => setExtensionAlert(e.target.checked)} className="sr-only peer" />
+                  <div className="w-9 h-5 bg-muted rounded-full peer peer-checked:bg-brand transition-colors after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" />
+                </label>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  onClick={() => alertsMut.mutate()}
+                  disabled={alertsMut.isPending}
+                  className="px-4 py-2 bg-brand text-black text-sm font-semibold rounded-xl hover:bg-brand/90 transition-colors disabled:opacity-50"
+                >
+                  {alertsMut.isPending ? "Guardando…" : "Guardar alertas"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => connectMut.mutate()}
+          disabled={connectMut.isPending}
+          className="px-4 py-2 bg-brand text-black text-sm font-semibold rounded-xl hover:bg-brand/90 transition-colors disabled:opacity-50"
+        >
+          {connectMut.isPending ? "Redirigiendo…" : "Conectar Google Calendar"}
+        </button>
+      )}
     </div>
   )
 }

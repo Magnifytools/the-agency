@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import (
     Task, TaskStatus, TaskPriority, TimeEntry, DailyUpdate,
-    CompanyHoliday, User,
+    CompanyHoliday, User, Event, EventType,
 )
 import re
 
@@ -103,6 +103,25 @@ async def generate_morning_plan(db: AsyncSession, user: User) -> str:
                 parts.append(f"(vence {due_day.strftime('%d/%m')})")
 
         lines.append(" ".join(parts))
+
+    # Meetings today (from Google Calendar sync)
+    from datetime import datetime as dt_type
+    today_start = dt_type.combine(today, dt_type.min.time())
+    today_end = dt_type.combine(today + __import__('datetime').timedelta(days=1), dt_type.min.time())
+    meetings_result = await db.execute(
+        select(Event).where(
+            Event.user_id == user.id,
+            Event.event_type == EventType.meeting,
+            Event.start_time >= today_start,
+            Event.start_time < today_end,
+        ).order_by(Event.start_time.asc())
+    )
+    meetings = meetings_result.scalars().all()
+    if meetings:
+        lines.append("\n\U0001f4c5 Reuniones hoy:")
+        for m in meetings:
+            time_str = m.start_time.strftime("%H:%M") if m.start_time else ""
+            lines.append(f"  \u2022 {time_str} \u2014 {m.title}")
 
     lines.append(f"\n\U0001f4aa \u00a1A por ello!")
     return "\n".join(lines)

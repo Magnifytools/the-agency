@@ -325,6 +325,10 @@ class User(TimestampMixin, Base):
     morning_reminder_time = Column(String(5), nullable=False, default="08:00", server_default="08:00")
     evening_reminder_time = Column(String(5), nullable=False, default="18:00", server_default="18:00")
     onboarding_completed = Column(Boolean, nullable=False, default=False, server_default="false")
+    # Google Calendar integration
+    google_refresh_token = Column(String(500), nullable=True)   # encrypted v1:
+    google_calendar_id = Column(String(200), nullable=True)     # "primary" or specific
+    google_calendar_connected = Column(Boolean, nullable=False, default=False, server_default="false")
 
     tasks = relationship("Task", back_populates="assigned_user", lazy="selectin", foreign_keys="[Task.assigned_to]")
     permissions = relationship("UserPermission", back_populates="user", lazy="selectin", cascade="all, delete-orphan")
@@ -581,6 +585,10 @@ class Event(TimestampMixin, Base):
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    # Google Calendar sync
+    google_event_id = Column(String(300), nullable=True, unique=True)
+    source = Column(String(20), nullable=False, default="manual", server_default="manual")
+    alert_sent_at = Column(DateTime, nullable=True)
 
     client = relationship("Client", lazy="selectin")
     project = relationship("Project", lazy="selectin")

@@ -627,6 +627,120 @@ async def _weekly_report_loop():
             logging.error("Weekly report loop error: %s", e)
 
 
+# ── Google Calendar sync + meeting alerts ───────────────────
+
+async def _calendar_sync_loop():
+    """Sync Google Calendar events every 15 minutes."""
+    from datetime import datetime
+    from sqlalchemy import select
+    from backend.db.database import async_session
+    from backend.db.models import User
+    from backend.api.routes.google_calendar import sync_user_events
+
+    while True:
+        await asyncio.sleep(900)  # 15 min
+        try:
+            async with async_session() as db:
+                result = await db.execute(
+                    select(User).where(
+                        User.is_active.is_(True),
+                        User.google_calendar_connected.is_(True),
+                    )
+                )
+                users = result.scalars().all()
+                for user in users:
+                    if _is_qa_user(user):
+                        continue
+                    try:
+                        count = await sync_user_events(db, user)
+                        if count:
+                            logging.debug("Calendar sync: %d events for user %s", count, user.id)
+                    except Exception as e:
+                        logging.warning("Calendar sync failed for user %s: %s", user.id, e)
+        except Exception as e:
+            logging.error("Calendar sync loop error: %s", e)
+
+
+async def _meeting_alert_loop():
+    """Check every minute for upcoming meetings and send alerts."""
+    from datetime import datetime, timedelta
+    from sqlalchemy import select, and_
+    from backend.db.database import async_session
+    from backend.db.models import User, Event, EventType
+    from backend.api.routes.discord import _send_discord_dm
+
+    sent_alerts: set[int] = set()  # event IDs already alerted
+
+    while True:
+        await asyncio.sleep(60)  # every minute
+        try:
+            now = datetime.now(MADRID_TZ).replace(tzinfo=None)
+
+            async with async_session() as db:
+                # Get users with calendar connected
+                users_result = await db.execute(
+                    select(User).where(
+                        User.is_active.is_(True),
+                        User.google_calendar_connected.is_(True),
+                    )
+                )
+                users = users_result.scalars().all()
+
+                for user in users:
+                    if _is_qa_user(user):
+                        continue
+
+                    prefs = (user.preferences or {}).get("meeting_alerts", {})
+                    minutes_before = prefs.get("minutes_before", 30)
+                    send_discord = prefs.get("discord_dm", True)
+
+                    # Find events starting in [now, now + minutes_before]
+                    cutoff = now + timedelta(minutes=minutes_before)
+                    events_result = await db.execute(
+                        select(Event).where(
+                            Event.user_id == user.id,
+                            Event.event_type == EventType.meeting,
+                            Event.start_time > now,
+                            Event.start_time <= cutoff,
+                            Event.alert_sent_at.is_(None),
+                        )
+                    )
+                    events = events_result.scalars().all()
+
+                    for event in events:
+                        if event.id in sent_alerts:
+                            continue
+
+                        mins = int((event.start_time - now).total_seconds() / 60)
+                        time_str = event.start_time.strftime("%H:%M")
+                        name = user.short_name or user.full_name
+
+                        # Discord DM
+                        if send_discord and settings.DISCORD_OWNER_USER_ID:
+                            try:
+                                from backend.db.models import DiscordSettings
+                                from backend.core.security import decrypt_vault_secret
+
+                                ds_result = await db.execute(select(DiscordSettings).limit(1))
+                                ds = ds_result.scalar_one_or_none()
+                                if ds and ds.bot_token:
+                                    bot_token = decrypt_vault_secret(ds.bot_token) if ds.bot_token.startswith("v1:") else ds.bot_token
+                                    # Send DM to this user's Discord (use owner_id for now)
+                                    msg = f"📅 **Reunión en {mins} min** ({time_str})\n{event.title}"
+                                    await _send_discord_dm(bot_token, settings.DISCORD_OWNER_USER_ID, msg)
+                            except Exception as e:
+                                logging.warning("Meeting alert DM failed for event %s: %s", event.id, e)
+
+                        # Mark as alerted
+                        event.alert_sent_at = now
+                        sent_alerts.add(event.id)
+
+                    await db.commit()
+
+        except Exception as e:
+            logging.error("Meeting alert loop error: %s", e)
+
+
 # ── Public API ───────────────────────────────────────────────
 
 def start_background_tasks() -> list[asyncio.Task]:
@@ -665,5 +779,15 @@ def start_background_tasks() -> list[asyncio.Task]:
         t.add_done_callback(_log_task_error)
         tasks.append(t)
         logging.info("Weekly report DM enabled (Saturday 08:00 Madrid)")
+
+    if settings.GOOGLE_CLIENT_ID:
+        t = asyncio.create_task(_calendar_sync_loop(), name="calendar-sync")
+        t.add_done_callback(_log_task_error)
+        tasks.append(t)
+
+        t = asyncio.create_task(_meeting_alert_loop(), name="meeting-alerts")
+        t.add_done_callback(_log_task_error)
+        tasks.append(t)
+        logging.info("Google Calendar sync + meeting alerts enabled")
 
     return tasks

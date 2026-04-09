@@ -27,6 +27,7 @@ from backend.api.routes import (
     assistant,
     my_week,
     automations,
+    google_calendar,
 )
 
 # ── Re-export migration/seed functions so scripts/init_db.py keeps working ──
@@ -85,6 +86,13 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS evening_reminder_time VARCHAR(5) DEFAULT '18:00'",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE",
                 "ALTER TABLE clients ADD COLUMN IF NOT EXISTS slack_template JSONB",
+                # Google Calendar integration
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_refresh_token VARCHAR(500)",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_calendar_id VARCHAR(200)",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_calendar_connected BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS google_event_id VARCHAR(300) UNIQUE",
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'manual'",
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS alert_sent_at TIMESTAMPTZ",
             ]:
                 await conn.execute(text(sql))
         logging.info("Startup DDL complete.")
@@ -336,6 +344,7 @@ app.include_router(extension.router)
 app.include_router(assistant.router)
 app.include_router(my_week.router)
 app.include_router(automations.router)
+app.include_router(google_calendar.router)
 
 
 @app.get("/api/health")

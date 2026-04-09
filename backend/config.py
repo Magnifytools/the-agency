@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     ENGINE_FRONTEND_URL: Optional[str] = None
     VOYAGE_API_KEY: Optional[str] = None
 
+    # Google Calendar OAuth2
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_REDIRECT_URI: str = "https://agency.magnifytools.com/api/calendar/callback"
+
     # SMTP email
     SMTP_HOST: Optional[str] = None
     SMTP_PORT: int = 587
