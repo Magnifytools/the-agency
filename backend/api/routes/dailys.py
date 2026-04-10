@@ -342,7 +342,11 @@ async def _send_daily_as_thread(
     # Step 1: Send header message via webhook with ?wait=true to get message_id
     resp = await http.post(
         f"{webhook_url}?wait=true",
-        json={"content": header},
+        json={
+            "content": header,
+            "username": "Daily Recap",
+            "avatar_url": "https://agency.magnifytools.com/daily_recap_icon.png",
+        },
     )
     if resp.status_code not in (200, 201):
         return False
@@ -370,7 +374,11 @@ async def _send_daily_as_thread(
         body = body[:1997] + "..."
     resp = await http.post(
         f"{webhook_url}?wait=true&thread_id={thread_id}",
-        json={"content": body},
+        json={
+            "content": body,
+            "username": "Daily Recap",
+            "avatar_url": "https://agency.magnifytools.com/daily_recap_icon.png",
+        },
     )
     if resp.status_code not in (200, 201):
         logger.warning("Failed to post thread body: %s", resp.status_code)
