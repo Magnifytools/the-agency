@@ -17,6 +17,8 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     hourly_rate: Optional[float] = None
+    cost_per_hour: Optional[float] = None
+    available_hours_month: Optional[float] = None
     role: Optional[UserRole] = None
     preferences: Optional[dict[str, Any]] = None
     region: Optional[str] = None
@@ -35,6 +37,8 @@ class UserListResponse(BaseModel):
     full_name: str
     role: Optional[UserRole] = None
     hourly_rate: Optional[float] = None
+    cost_per_hour: Optional[float] = None
+    available_hours_month: Optional[float] = None
     preferences: Optional[dict[str, Any]] = None
     region: Optional[str] = None
     locality: Optional[str] = None

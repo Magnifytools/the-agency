@@ -115,6 +115,13 @@ class ClientStatus(str, enum.Enum):
     finished = "finished"
 
 
+class VATTreatment(str, enum.Enum):
+    domestic_21 = "domestic_21"          # SL a SL en España: factura incluye 21% IVA
+    intracom_exempt = "intracom_exempt"  # UE intracomunitario (inversión sujeto pasivo)
+    andorra_exempt = "andorra_exempt"    # Andorra (sin IVA)
+    extracom_exempt = "extracom_exempt"  # Fuera UE (exportación de servicios)
+
+
 class TaskStatus(str, enum.Enum):
     backlog = "backlog"
     pending = "pending"
@@ -312,6 +319,8 @@ class User(TimestampMixin, Base):
     full_name = Column(String(255), nullable=False)
     role = Column(Enum(UserRole), nullable=False, default=UserRole.member)
     hourly_rate = Column(Numeric(10, 2), nullable=True)
+    cost_per_hour = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")
+    available_hours_month = Column(Numeric(5, 1), nullable=False, default=147, server_default="147")
     weekly_hours = Column(Float, nullable=False, default=40.0)
     is_active = Column(Boolean, nullable=False, default=True)
     password_reset_required = Column(Boolean, nullable=False, default=False)
@@ -361,6 +370,7 @@ class Client(TimestampMixin, Base):
     # Holded integration
     holded_contact_id = Column(String(100), nullable=True)
     vat_number = Column(String(50), nullable=True)
+    vat_treatment = Column(Enum(VATTreatment), nullable=False, default=VATTreatment.domestic_21, server_default="domestic_21")
     # Analytics settings
     ga4_property_id = Column(String(50), nullable=True)
     gsc_url = Column(String(255), nullable=True)
@@ -448,7 +458,8 @@ class Project(TimestampMixin, Base):
     engine_project_id = Column(Integer, nullable=True)
     # Pricing & scope
     pricing_model = Column(String(20), nullable=True)  # monthly, per_piece, hourly, project
-    monthly_fee = Column(Numeric(12, 2), nullable=True)  # retainer mensual que factura este proyecto
+    monthly_fee = Column(Numeric(12, 2), nullable=True)  # retainer mensual que factura este proyecto (BASE sin IVA)
+    fee_is_base = Column(Boolean, nullable=False, default=True, server_default="true")  # monthly_fee en base imponible
     unit_price = Column(Numeric(12, 2), nullable=True)
     unit_label = Column(String(50), nullable=True)  # e.g. "pieza", "artículo", "hora"
     scope = Column(Text, nullable=True)

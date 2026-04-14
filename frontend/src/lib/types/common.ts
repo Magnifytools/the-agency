@@ -27,6 +27,8 @@ export interface User {
   full_name: string
   role: UserRole
   hourly_rate: number | null
+  cost_per_hour?: number | null
+  available_hours_month?: number | null
   is_active: boolean
   permissions: UserPermission[]
   preferences?: {

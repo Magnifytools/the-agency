@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 
 const TABS = [
   { to: "/finance", label: "Dashboard", exact: true },
+  { to: "/finance/cfo", label: "CFO" },
   { to: "/executive", label: "Ejecutivo" },
   { to: "/finance/income", label: "Ingresos" },
   { to: "/finance/expenses", label: "Gastos" },

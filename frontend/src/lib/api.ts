@@ -373,6 +373,51 @@ export const dashboardApi = {
     api.get("/dashboard/utilization", { params }).then((r) => r.data),
 }
 
+// CFO — delivery margin, utilization, P&L, alerts
+export interface CfoProjectMargin {
+  project_id: number
+  project_name: string
+  client_id: number
+  client_name: string
+  monthly_fee: number
+  total_hours: number
+  labor_cost: number
+  delivery_margin: number
+  abr: number | null
+  margin_pct: number | null
+}
+export interface CfoUtilization {
+  user_id: number
+  user_name: string
+  cost_per_hour: number
+  available_hours_month: number
+  total_hours: number
+  billable_hours: number
+  internal_hours: number
+  utilization_pct: number
+}
+export interface CfoAlert {
+  severity: "critical" | "high" | "medium" | "low"
+  type: string
+  message: string
+  project_id?: number
+  client_id?: number
+  user_id?: number
+}
+export const cfoApi = {
+  deliveryMargin: (month?: string) =>
+    api.get<{ month: string; projects: CfoProjectMargin[] }>("/cfo/delivery-margin", { params: { month } }).then((r) => r.data),
+  utilization: (month?: string) =>
+    api.get<{ month: string; users: CfoUtilization[] }>("/cfo/utilization", { params: { month } }).then((r) => r.data),
+  monthlyPL: (month?: string, overhead?: number) =>
+    api.get<{ month: string; revenue: number; labor_cost: number; delivery_margin: number; overhead: number; net_before_tax: number }>(
+      "/cfo/monthly-pl",
+      { params: { month, overhead } },
+    ).then((r) => r.data),
+  alerts: (month?: string) =>
+    api.get<{ month: string; alerts: CfoAlert[] }>("/cfo/alerts", { params: { month } }).then((r) => r.data),
+}
+
 // Assistant
 export const assistantApi = {
   ask: (question: string) =>

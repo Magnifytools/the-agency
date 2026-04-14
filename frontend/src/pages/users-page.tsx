@@ -157,6 +157,8 @@ export default function UsersPage() {
     }
     if (currentUser?.role === "admin") {
       data.hourly_rate = fd.get("hourly_rate") ? Number(fd.get("hourly_rate")) : null
+      data.cost_per_hour = fd.get("cost_per_hour") ? Number(fd.get("cost_per_hour")) : 0
+      data.available_hours_month = fd.get("available_hours_month") ? Number(fd.get("available_hours_month")) : 147
       data.role = fd.get("role") as UserRole
     }
     updateMutation.mutate({ id: editing.id, data })
@@ -336,6 +338,26 @@ export default function UsersPage() {
                     type="number"
                     step="0.01"
                     defaultValue={editing?.hourly_rate ?? ""}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cost_per_hour">Coste real por hora (€)</Label>
+                  <Input
+                    id="cost_per_hour"
+                    name="cost_per_hour"
+                    type="number"
+                    step="0.01"
+                    defaultValue={editing?.cost_per_hour ?? 0}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="available_hours_month">Horas disponibles/mes</Label>
+                  <Input
+                    id="available_hours_month"
+                    name="available_hours_month"
+                    type="number"
+                    step="0.5"
+                    defaultValue={editing?.available_hours_month ?? 147}
                   />
                 </div>
                 <div className="space-y-2">

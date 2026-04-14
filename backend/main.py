@@ -30,6 +30,7 @@ from backend.api.routes import (
     google_calendar,
     bank_import,
     team_resources,
+    cfo,
 )
 
 # ── Re-export migration/seed functions so scripts/init_db.py keeps working ──
@@ -98,6 +99,31 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS google_event_id VARCHAR(300) UNIQUE",
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'manual'",
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS alert_sent_at TIMESTAMPTZ",
+                # CFO module — costes reales y fees
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS cost_per_hour NUMERIC(10,2) NOT NULL DEFAULT 0",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS available_hours_month NUMERIC(5,1) NOT NULL DEFAULT 147",
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS fee_is_base BOOLEAN NOT NULL DEFAULT TRUE",
+                "ALTER TABLE clients ADD COLUMN IF NOT EXISTS vat_treatment VARCHAR(30) NOT NULL DEFAULT 'domestic_21'",
+                # Seed valores CFO (solo primera ejecución, idempotente)
+                "UPDATE users SET cost_per_hour = 20.10, available_hours_month = 147 WHERE (full_name ILIKE '%nacho%' OR full_name ILIKE '%ignacio%' OR email ILIKE 'nacho@%') AND cost_per_hour = 0",
+                "UPDATE users SET cost_per_hour = 23.52, available_hours_month = 147 WHERE (full_name ILIKE '%david%' OR email ILIKE 'david@%') AND cost_per_hour = 0",
+                # Seed monthly_fee (BASE, sin IVA) solo si no está configurado
+                "UPDATE projects SET monthly_fee = 2450.00, fee_is_base = TRUE WHERE name ILIKE '%fit%' AND name ILIKE '%seo%' AND (monthly_fee IS NULL OR monthly_fee = 0)",
+                "UPDATE projects SET monthly_fee = 2300.00, fee_is_base = TRUE WHERE (name ILIKE '%mind the gap%' OR name ILIKE '%casino%') AND (monthly_fee IS NULL OR monthly_fee = 0)",
+                "UPDATE projects SET monthly_fee = 950.00, fee_is_base = TRUE WHERE name ILIKE '%sage%' AND (name ILIKE '%retainer%' OR name ILIKE '%partnership%') AND (monthly_fee IS NULL OR monthly_fee = 0)",
+                # VAT treatment según país
+                "UPDATE clients SET vat_treatment = 'andorra_exempt' WHERE name ILIKE '%fit%generation%'",
+                # Crear proyecto AI-Driven Content bajo Sage si no existe (fee en base, proyecto puntual)
+                """
+                INSERT INTO projects (name, client_id, status, monthly_fee, fee_is_base, pricing_model, is_recurring, progress_percent, created_at, updated_at)
+                SELECT 'AI-Driven Content', c.id, 'active', 3000.00, TRUE, 'project', FALSE, 0, NOW(), NOW()
+                FROM clients c
+                WHERE c.name ILIKE '%sage%'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM projects p WHERE p.client_id = c.id AND p.name ILIKE '%ai%driven%content%'
+                  )
+                LIMIT 1
+                """,
             ]:
                 await conn.execute(text(sql))
         logging.info("Startup DDL complete.")
@@ -335,6 +361,7 @@ app.include_router(automations.router)
 app.include_router(google_calendar.router)
 app.include_router(bank_import.router)
 app.include_router(team_resources.router)
+app.include_router(cfo.router)
 
 
 @app.get("/api/health")

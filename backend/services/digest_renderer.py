@@ -187,8 +187,8 @@ def _render_slack_custom(
 
         lines.append("")
 
-    # Closing (optional)
-    if template.get("show_closing", False) and content.closing:
+    # Closing — incluir siempre si existe, salvo que el template lo desactive explícitamente
+    if template.get("show_closing", True) and content.closing:
         lines.append("---")
         lines.append(content.closing)
 
@@ -201,18 +201,18 @@ def _render_slack_custom(
 
 LOGO_URL = "https://magnify.ing/wp-content/uploads/2026/01/magnify-c.png"
 
-# Brand color
-_BLUE = "#0044FF"
-_DARK = "#1A1A1A"
+# Magnify brand palette
+_BRAND = "#FFD600"    # Magnify yellow
+_DARK = "#0A0A0A"     # Magnify near-black
 _GRAY = "#666666"
-_LIGHT_BG = "#F7F7F7"
-_BORDER = "#E5E5E5"
+_LIGHT_BG = "#F5F5F3"
+_BORDER = "#E8E8E5"
 
-# Section accent dots
+# Section accent dots — aligned to Magnify palette
 _SECTION_COLORS = {
-    "done": "#22C55E",   # green
-    "need": "#F59E0B",   # amber
-    "next": "#3B82F6",   # blue
+    "done": "#22C55E",   # success green
+    "need": "#F59E0B",   # warning amber
+    "next": "#FFD600",   # brand yellow
 }
 
 
@@ -307,15 +307,24 @@ def render_email(
 </head>
 <body style="margin:0;padding:0;background-color:{_LIGHT_BG};font-family:'Inter','Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;">
 
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:{_LIGHT_BG};padding:32px 16px;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:{_LIGHT_BG};padding:16px 16px 32px 16px;">
 <tr><td align="center">
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:#FFFFFF;border-radius:12px;overflow:hidden;">
 
+  <!-- Brand bar -->
+  <tr>
+    <td style="padding:20px 32px 0 32px;">
+      <a href="https://www.magnify.ing" target="_blank" style="text-decoration:none;display:inline-block;">
+        <img src="{logo}" alt="Magnify" height="24" style="display:block;height:24px;width:auto;">
+      </a>
+    </td>
+  </tr>
+
   <!-- Header -->
   <tr>
-    <td style="padding:32px 32px 24px 32px;border-bottom:3px solid {_BLUE};">
-      <p style="margin:0 0 12px 0;font-size:15px;color:{_DARK};line-height:1.5;">{greeting_text}</p>
-      <p style="margin:0;font-size:13px;color:{_GRAY};font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">{date_text}</p>
+    <td style="padding:20px 32px 20px 32px;border-bottom:3px solid {_BRAND};">
+      <p style="margin:0 0 10px 0;font-size:13px;color:{_GRAY};font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">{date_text}</p>
+      <p style="margin:0;font-size:18px;color:{_DARK};font-weight:600;line-height:1.4;">{greeting_text}</p>
     </td>
   </tr>
 
