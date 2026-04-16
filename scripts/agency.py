@@ -4,7 +4,7 @@
 Uso básico:
     python scripts/agency.py login
     python scripts/agency.py tasks list --search taxfix
-    python scripts/agency.py tasks close --search taxfix --status done
+    python scripts/agency.py tasks close --search taxfix --status completed
     python scripts/agency.py tasks close 1234
 
 Guarda el token en ~/.agency_cli.json.
@@ -98,7 +98,7 @@ def cmd_tasks_list(args):
 
 def cmd_tasks_close(args):
     token = _token()
-    status = args.status or "done"
+    status = args.status or "completed"
 
     # Resolver IDs a cerrar
     ids: list[int] = []
@@ -109,7 +109,7 @@ def cmd_tasks_close(args):
         resp = _request("GET", "/tasks", token=token, params=params)
         items = resp.get("items") if isinstance(resp, dict) else resp
         # Filtrar por estado abierto por defecto
-        open_states = {"todo", "in_progress", "blocked", "review"}
+        open_states = {"backlog", "pending", "in_progress", "waiting", "in_review"}
         if not args.all_states:
             items = [t for t in items if t.get("status") in open_states]
         ids = [t["id"] for t in items]
@@ -155,7 +155,7 @@ def main():
     pc = ptsub.add_parser("close")
     pc.add_argument("ids", nargs="*", help="IDs específicos (opcional)")
     pc.add_argument("--search", help="Cerrar por coincidencia de título")
-    pc.add_argument("--status", default="done", help="Estado destino (default: done)")
+    pc.add_argument("--status", default="completed", help="Estado destino (default: completed)")
     pc.add_argument("--all-states", action="store_true", help="No filtrar por estados abiertos")
     pc.add_argument("-y", "--yes", action="store_true", help="Sin confirmación")
     pc.set_defaults(func=cmd_tasks_close)
