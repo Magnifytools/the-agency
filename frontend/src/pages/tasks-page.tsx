@@ -69,7 +69,7 @@ export default function TasksPage() {
   // Filters
   const [filterClient, setFilterClient] = useState<string>("")
   const [filterCategory, setFilterCategory] = useState<string>("")
-  const [filterStatus, setFilterStatus] = useState<string>("")
+  const [filterStatus, setFilterStatus] = useState<string>("backlog,pending,in_progress,waiting,in_review")
   const [filterPriority, setFilterPriority] = useState<string>("")
   const [filterAssigned, setFilterAssigned] = useState<string>(() =>
     user && user.role !== "admin" ? String(user.id) : ""
@@ -104,42 +104,38 @@ export default function TasksPage() {
   const [showRecurringFields, setShowRecurringFields] = useState(false)
   const deepLinkTaskId = searchParams.get("edit") || searchParams.get("task")
 
+  // Calendar date range: first and last day of the selected month
+  const calDateFrom = view === "calendar"
+    ? `${calMonth.year}-${String(calMonth.month + 1).padStart(2, "0")}-01`
+    : undefined
+  const calDateTo = view === "calendar"
+    ? (() => { const d = new Date(calMonth.year, calMonth.month + 1, 0); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` })()
+    : undefined
+
   const { data: tasksData, isLoading } = useQuery({
-    queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, filterDateField, searchQuery, page, pageSize, qaFilter],
+    queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, filterDateField, searchQuery, page, pageSize, qaFilter, view, calMonth.year, calMonth.month],
     queryFn: () =>
       tasksApi.list({
         client_id: filterClient ? Number(filterClient) : undefined,
         category_id: filterCategory ? Number(filterCategory) : undefined,
         status: filterStatus || undefined,
         priority: filterPriority || undefined,
-        assigned_to: filterAssigned ? Number(filterAssigned) : undefined,
-        due_date_from: filterDateField === "due_date" && filterDateFrom ? filterDateFrom : undefined,
-        due_date_to: filterDateField === "due_date" && filterDateTo ? filterDateTo : undefined,
+        assigned_to: qaFilter === "unassigned" ? ("unassigned" as unknown as number) : (filterAssigned ? Number(filterAssigned) : undefined),
+        due_date_from: calDateFrom ?? (filterDateField === "due_date" && filterDateFrom ? filterDateFrom : undefined),
+        due_date_to: calDateTo ?? (filterDateField === "due_date" && filterDateTo ? filterDateTo : undefined),
         scheduled_date_from: filterDateField === "scheduled_date" && filterDateFrom ? filterDateFrom : undefined,
         scheduled_date_to: filterDateField === "scheduled_date" && filterDateTo ? filterDateTo : undefined,
         overdue: qaFilter === "overdue" ? true : undefined,
+        no_date: qaFilter === "no_date" ? true : undefined,
+        no_estimate: qaFilter === "no_estimate" ? true : undefined,
         search: searchQuery || undefined,
-        page,
-        page_size: pageSize,
+        page: view === "calendar" ? 1 : page,
+        page_size: view === "calendar" ? 500 : pageSize,
       }),
   })
   const allTasks = tasksData?.items ?? []
 
-  // Apply QA Health Filters on the frontend
-  const todayStr = new Date().toISOString().slice(0, 10)
-  const tasks = allTasks.filter(t => {
-    if (qaFilter === "none") return true
-    if (t.status === "completed") return false // QA mostly applies to active tasks
-
-    if (qaFilter === "unassigned") return t.assigned_to === null
-    if (qaFilter === "no_date") return t.scheduled_date === null
-    if (qaFilter === "no_estimate") return t.estimated_minutes === null
-    if (qaFilter === "overdue") {
-      if (!t.due_date) return false
-      return t.due_date < todayStr
-    }
-    return true
-  })
+  const tasks = allTasks
 
   const { sortedItems: sortedTasks, sortConfig: taskSortConfig, requestSort: requestTaskSort } = useTableSort(tasks)
   const { selectedIds: selectedTaskIds, isSelected: isTaskSelected, toggleItem: toggleTask, toggleAll: toggleAllTasks, clearSelection: clearTaskSelection, selectedCount: selectedTaskCount, allSelected: allTasksSelected } = useBulkSelect(tasks)
@@ -466,7 +462,8 @@ export default function TasksPage() {
           ))}
         </Select>
         <Select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); reset() }} className="w-48">
-          <option value="">Todos los estados</option>
+          <option value="">Todos (incl. completadas)</option>
+          <option value="backlog,pending,in_progress,waiting,in_review">Activas</option>
           <option value="backlog">Backlog</option>
           <option value="pending">Pendiente</option>
           <option value="in_progress">En curso</option>
@@ -516,7 +513,7 @@ export default function TasksPage() {
         <Button
           variant={qaFilter === "unassigned" ? "secondary" : "outline"}
           size="sm"
-          onClick={() => setQaFilter(f => f === "unassigned" ? "none" : "unassigned")}
+          onClick={() => { setQaFilter(f => f === "unassigned" ? "none" : "unassigned"); reset() }}
           className="text-xs h-8 bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 border-orange-500/20"
         >
           ⚠️ Sin Asignar
@@ -524,7 +521,7 @@ export default function TasksPage() {
         <Button
           variant={qaFilter === "no_date" ? "secondary" : "outline"}
           size="sm"
-          onClick={() => setQaFilter(f => f === "no_date" ? "none" : "no_date")}
+          onClick={() => { setQaFilter(f => f === "no_date" ? "none" : "no_date"); reset() }}
           className="text-xs h-8 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border-blue-500/20"
         >
           ⚠️ Sin Fechas
@@ -532,7 +529,7 @@ export default function TasksPage() {
         <Button
           variant={qaFilter === "no_estimate" ? "secondary" : "outline"}
           size="sm"
-          onClick={() => setQaFilter(f => f === "no_estimate" ? "none" : "no_estimate")}
+          onClick={() => { setQaFilter(f => f === "no_estimate" ? "none" : "no_estimate"); reset() }}
           className="text-xs h-8 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 border-purple-500/20"
         >
           ⚠️ Sin Estimación
@@ -540,13 +537,13 @@ export default function TasksPage() {
         <Button
           variant={qaFilter === "overdue" ? "secondary" : "outline"}
           size="sm"
-          onClick={() => setQaFilter(f => f === "overdue" ? "none" : "overdue")}
+          onClick={() => { setQaFilter(f => f === "overdue" ? "none" : "overdue"); reset() }}
           className="text-xs h-8 bg-red-500/10 hover:bg-red-500/20 text-red-600 border-red-500/20"
         >
           🔥 Atrasadas
         </Button>
         {qaFilter !== "none" && (
-          <Button variant="ghost" size="sm" onClick={() => setQaFilter("none")} className="text-xs h-8 text-muted-foreground">
+          <Button variant="ghost" size="sm" onClick={() => { setQaFilter("none"); reset() }} className="text-xs h-8 text-muted-foreground">
             Limpiar filtros QA
           </Button>
         )}

@@ -65,6 +65,7 @@ async def generate_morning_plan(db: AsyncSession, user: User) -> str:
         .where(
             Task.assigned_to == user.id,
             Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
+            Task.is_recurring == False,
         )
         .order_by(priority_sort, Task.due_date.asc().nulls_last())
     )
@@ -163,6 +164,7 @@ async def generate_evening_recap(db: AsyncSession, user: User, day: date) -> str
         select(Task).where(
             Task.assigned_to == user.id,
             Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
+            Task.is_recurring == False,
         )
     )
     pending_tasks = [t for t in pending_result.scalars().all() if t.id not in completed_ids]
