@@ -143,7 +143,16 @@ chrome.runtime.onStartup.addListener(async () => {
 });
 
 // ── Meeting check ────────────────────────────────────────
-const _notifiedMeetings = new Set();
+async function _getNotifiedMeetings() {
+  const data = await chrome.storage.session.get("notifiedMeetings");
+  return new Set(data.notifiedMeetings || []);
+}
+
+async function _addNotifiedMeeting(id) {
+  const notified = await _getNotifiedMeetings();
+  notified.add(id);
+  await chrome.storage.session.set({ notifiedMeetings: [...notified] });
+}
 
 async function checkUpcomingMeetings(token) {
   try {
@@ -152,14 +161,15 @@ async function checkUpcomingMeetings(token) {
     });
     if (!res.ok) return;
     const meetings = await res.json();
+    const notified = await _getNotifiedMeetings();
     for (const m of meetings) {
-      if (_notifiedMeetings.has(m.id)) continue;
+      if (notified.has(m.id)) continue;
       if (m.minutes_until <= 30) {
         showNotification(
           `📅 Reunión en ${m.minutes_until} min`,
           m.title
         );
-        _notifiedMeetings.add(m.id);
+        await _addNotifiedMeeting(m.id);
       }
     }
   } catch {

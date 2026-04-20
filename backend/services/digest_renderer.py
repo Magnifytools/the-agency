@@ -152,9 +152,12 @@ def _render_slack_custom(
         lines.append(header)
         lines.append("")
 
-    # Greeting (optional)
-    if template.get("show_greeting", False) and content.greeting:
+    # Greeting + date — incluir siempre salvo que el template lo desactive
+    if template.get("show_greeting", True) and content.greeting:
         lines.append(content.greeting)
+    if template.get("show_date", True) and content.date:
+        lines.append(f"*{content.date}*")
+    if (template.get("show_greeting", True) and content.greeting) or (template.get("show_date", True) and content.date):
         lines.append("")
 
     # Sections in template order
