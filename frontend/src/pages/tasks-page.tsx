@@ -135,6 +135,7 @@ export default function TasksPage() {
   })
   const allTasks = tasksData?.items ?? []
 
+  const todayStr = new Date().toISOString().slice(0, 10)
   const tasks = allTasks
 
   const { sortedItems: sortedTasks, sortConfig: taskSortConfig, requestSort: requestTaskSort } = useTableSort(tasks)
