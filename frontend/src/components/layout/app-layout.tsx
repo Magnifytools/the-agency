@@ -146,14 +146,9 @@ export function AppLayout() {
         <aside className="hidden md:flex w-[260px] flex-col flex-shrink-0 border-r border-border py-6 px-4 gap-6 bg-card/50" role="complementary" aria-label="Barra lateral">
           {/* Brand */}
           <div className="flex items-center gap-3 pl-1">
-            <svg width="28" height="28" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-              <rect width="100" height="100" rx="20" fill="#0A0A0A"/>
-              <path d="M50 18 L74 80 L65 80 L59 63 L41 63 L35 80 L26 80 Z M50 32 L43 56 L57 56 Z" fill="#FFD600" fillRule="evenodd"/>
+            <svg width="120" height="16" viewBox="300 610 2200 200" xmlns="http://www.w3.org/2000/svg">
+              <path fill="currentColor" d="M772.2,645.1l-44,147h-26.6l62.8-166.8h7.8h7.8l62.8,166.8h-26.6L772.2,645.1z M1741.7,625.2h32.4v167.1h-32.4V625.2z M353.7,625.2v167.1h29.7V659.1l47.9,133.2h23.9l47.9-133.2v133.2h29.7V625.2c-15.1,0-30.3,0-45.4,0l-44.1,113.6l-44.1-113.6C384,625.2,368.8,625.2,353.7,625.2z M1376.2,625.2v167.1h30.1V666.5l72.6,125.8h34.2V625.2h-30.1v127.1l-72.6-127.1H1376.2z M1999.6,625.2v167.1h31.1v-73h66v-25.9h-66v-41.3h76v-27H1999.6z M2337.3,625.2l54.1,97.3v69.8h33.2v-69.8l54.1-97.3h-34l-36.7,70l-36.7-70H2337.3z M1077.2,703.4v24.2h43.6v27.8l-1.2,0.9c-9.3,6.8-20.2,11.1-31.6,12.6c-10.9,1.4-22.1,0.3-32.3-3.8c-10.3-4-19.1-10.8-25.3-20c-7.2-10.5-10.2-22.9-10.2-35.5c0-16,5.6-31.6,16.5-43.4c10.8-11.6,25.4-18.1,41.3-18.1c17.6,0,33.6,8.4,44.4,22.1h31c-11.4-30.9-43.9-47.7-75.8-47.7c-23.8,0-46.5,8.7-63.5,25.5c-16.5,16.3-25.5,38.4-25.5,61.6c0,31.2,14.5,59.3,42.4,74.2c9.5,5.1,20.2,8.3,30.9,9.9c11.4,1.7,23.1,1.7,34.4,0.1c21.4-3.1,43.2-12.2,57.4-29v-61.4H1077.2z"/>
             </svg>
-            <div className="flex flex-col">
-              <span className="text-[15px] font-semibold text-foreground tracking-tight leading-tight">The Agency</span>
-              <span className="text-[10px] text-muted-foreground font-medium tracking-wider">by Magnify</span>
-            </div>
           </div>
 
           {/* Search Button */}
