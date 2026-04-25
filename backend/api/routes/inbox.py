@@ -349,9 +349,14 @@ async def convert_to_task(
 
     from datetime import date as _date
     today = _date.today()
+    # Preserve link_url from inbox (e.g. Drive, Slack) in task description
+    description = note.raw_text
+    if note.link_url:
+        description = f"{description}\n\n🔗 {note.link_url}" if description else note.link_url
+
     task = Task(
         title=title,
-        description=note.raw_text,
+        description=description,
         status=TaskStatus.pending,
         priority=priority,
         client_id=client_id,
