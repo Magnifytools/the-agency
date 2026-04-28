@@ -126,7 +126,18 @@ async def lifespan(app: FastAPI):
                 LIMIT 1
                 """,
             ]:
-                await conn.execute(text(sql))
+                # Each statement runs in its own SAVEPOINT so a single failure
+                # does not abort the whole transaction (PG aborts all subsequent
+                # commands until ROLLBACK after any error). Without this, one
+                # broken seed UPDATE silently rolls back unrelated migrations
+                # and the affected columns never get created.
+                try:
+                    await conn.execute(text("SAVEPOINT ddl_sp"))
+                    await conn.execute(text(sql))
+                    await conn.execute(text("RELEASE SAVEPOINT ddl_sp"))
+                except Exception as sql_err:
+                    await conn.execute(text("ROLLBACK TO SAVEPOINT ddl_sp"))
+                    logging.warning("Startup DDL stmt failed (skipping): %s — %s", sql[:80].replace("\n", " "), sql_err)
         logging.info("Startup DDL complete.")
     except Exception as e:
         logging.warning("Startup DDL failed (may be expected): %s", e)
