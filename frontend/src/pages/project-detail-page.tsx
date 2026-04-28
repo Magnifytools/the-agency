@@ -1144,6 +1144,18 @@ function TaskPreviewDialog({
           {task.description && (
             <p className="text-sm text-muted-foreground whitespace-pre-wrap">{task.description}</p>
           )}
+          {task.link_url && (
+            <a
+              href={task.link_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-brand hover:underline"
+            >
+              <ExternalLink className="w-3 h-3" />
+              {task.link_url.replace(/^https?:\/\//, "").slice(0, 60)}
+              {task.link_url.replace(/^https?:\/\//, "").length > 60 ? "…" : ""}
+            </a>
+          )}
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
               <span className="text-xs text-muted-foreground block">Estado</span>

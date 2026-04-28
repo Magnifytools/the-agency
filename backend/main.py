@@ -70,6 +70,7 @@ async def lifespan(app: FastAPI):
             for sql in [
                 "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(12,2)",
                 "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS invoiced_at TIMESTAMPTZ",
+                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS link_url TEXT",
                 "ALTER TABLE clients ADD COLUMN IF NOT EXISTS onboarding_intelligence JSONB",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS billing_day INTEGER",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS billing_amount NUMERIC(12,2)",

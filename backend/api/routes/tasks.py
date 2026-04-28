@@ -75,6 +75,7 @@ def _task_to_response(task: Task) -> TaskResponse:
         recurring_parent_id=task.recurring_parent_id,
         unit_cost=float(task.unit_cost) if task.unit_cost is not None else None,
         invoiced_at=task.invoiced_at,
+        link_url=task.link_url,
         client_name=_safe_attr(task, "client", "name"),
         category_name=_safe_attr(task, "category", "name"),
         assigned_user_name=_safe_attr(task, "assigned_user", "full_name"),
@@ -325,7 +326,7 @@ async def update_task(
         "scheduled_date", "waiting_for", "follow_up_date",
         "is_recurring", "recurrence_pattern", "recurrence_day",
         "recurrence_end_date", "recurring_parent_id",
-        "unit_cost",
+        "unit_cost", "link_url",
     }
     update_data = body.model_dump(exclude_unset=True)
     manual_minutes_changed = "actual_minutes" in update_data

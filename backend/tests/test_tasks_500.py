@@ -41,6 +41,7 @@ class TestTaskToResponse:
         task.recurrence_day = None
         task.recurrence_end_date = None
         task.recurring_parent_id = None
+        task.link_url = None
         # All relationships are None
         task.client = None
         task.category = None
@@ -90,6 +91,7 @@ class TestTaskToResponse:
         task.recurrence_day = None
         task.recurrence_end_date = None
         task.recurring_parent_id = None
+        task.link_url = None
 
         # Simulate a broken relationship where accessing .name raises
         class BrokenClient:

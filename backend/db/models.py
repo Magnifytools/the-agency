@@ -630,6 +630,7 @@ class Task(TimestampMixin, Base):
     scheduled_date = Column(Date, nullable=True)
     waiting_for = Column(String(255), nullable=True)
     follow_up_date = Column(Date, nullable=True)
+    link_url = Column(Text, nullable=True)
 
     # Per-task billing
     unit_cost = Column(Numeric(12, 2), nullable=True)
