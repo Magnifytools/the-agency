@@ -242,8 +242,20 @@ async def weekly_timesheet(
     result = await db.execute(entry_query)
     entries = result.scalars().all()
 
+    # Fetch any RUNNING timers up front so their task ids participate in the
+    # task lookup below and their elapsed time can be added to today's totals.
+    active_query = select(TimeEntry).where(
+        TimeEntry.minutes.is_(None),
+        TimeEntry.started_at.isnot(None),
+    )
+    if current_user.role != UserRole.admin:
+        active_query = active_query.where(TimeEntry.user_id == current_user.id)
+    active_result = await db.execute(active_query)
+    active_timers = active_result.scalars().all()
+
     # Batch-load tasks and their clients for task-level breakdown
     task_ids = {e.task_id for e in entries if e.task_id}
+    task_ids.update(a.task_id for a in active_timers if a.task_id)
     tasks_map: dict[int, dict] = {}
     if task_ids:
         task_result = await db.execute(
@@ -283,6 +295,41 @@ async def weekly_timesheet(
             }
         tasks[tid]["daily_minutes"][day_key] = tasks[tid]["daily_minutes"].get(day_key, 0) + mins
         tasks[tid]["total_minutes"] += mins
+
+    # Add elapsed time of running timers to the relevant day's total so the
+    # weekly view reflects in-progress work (otherwise minutes IS NULL hides it).
+    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    for active in active_timers:
+        if active.user_id not in user_map:
+            continue
+        sa = active.started_at if active.started_at.tzinfo is None else active.started_at.replace(tzinfo=None)
+        accumulated = (active.accumulated_seconds or 0)
+        if active.paused_at:
+            elapsed_s = accumulated
+        else:
+            elapsed_s = accumulated + (now_naive - sa).total_seconds()
+        mins = max(0, round(elapsed_s / 60))
+        if mins == 0:
+            continue
+        # Bucket the active timer by its date column (matches how completed
+        # entries are grouped — same UTC day semantics).
+        day_key = active.date.date().isoformat()
+        if day_key in user_map[active.user_id]["daily_minutes"]:
+            user_map[active.user_id]["daily_minutes"][day_key] += mins
+            user_map[active.user_id]["total_minutes"] += mins
+            tid = active.task_id or 0
+            tasks = user_map[active.user_id]["tasks"]
+            if tid not in tasks:
+                info = tasks_map.get(tid, {"title": "Sin tarea asignada", "client_name": None})
+                tasks[tid] = {
+                    "task_id": tid if tid else None,
+                    "task_title": info["title"],
+                    "client_name": info.get("client_name"),
+                    "daily_minutes": {k: 0 for k in day_keys},
+                    "total_minutes": 0,
+                }
+            tasks[tid]["daily_minutes"][day_key] = tasks[tid]["daily_minutes"].get(day_key, 0) + mins
+            tasks[tid]["total_minutes"] += mins
 
     # Convert tasks dict to sorted list
     for uid in user_map:
@@ -621,11 +668,19 @@ async def start_timer(
     )
     active = result.scalar_one_or_none()
     if active is not None:
-        # Auto-stop the current timer before starting a new one
+        # Auto-stop the current timer before starting a new one — must mirror
+        # stop_timer's logic: include accumulated_seconds from pause/resume
+        # cycles, and don't count time elapsed while paused.
         now_stop = datetime.now(timezone.utc).replace(tzinfo=None)
         sa = active.started_at if active.started_at and active.started_at.tzinfo is None else (active.started_at.replace(tzinfo=None) if active.started_at else now_stop)
-        elapsed = (now_stop - sa).total_seconds()
+        accumulated = getattr(active, 'accumulated_seconds', 0) or 0
+        if active.paused_at:
+            elapsed = accumulated
+        else:
+            elapsed = accumulated + (now_stop - sa).total_seconds()
         active.minutes = max(1, min(480, round(elapsed / 60)))
+        active.paused_at = None
+        active.accumulated_seconds = 0
         await db.commit()
         if active.task_id:
             try:
