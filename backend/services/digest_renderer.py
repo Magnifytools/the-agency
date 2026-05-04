@@ -230,16 +230,14 @@ def _esc(text: str) -> str:
 
 
 def _format_period(period_start: date | None, period_end: date | None) -> str:
-    """Format period dates in Spanish. Returns e.g. 'Semana del 31 de marzo al 4 de abril 2026'."""
-    if not period_start or not period_end:
+    """Format period as 'Semana del {Monday}' — only the start (Monday) date."""
+    if not period_start:
         return ""
     months = [
         "", "enero", "febrero", "marzo", "abril", "mayo", "junio",
         "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
     ]
-    if period_start.month == period_end.month:
-        return f"Semana del {period_start.day} al {period_end.day} de {months[period_end.month]} {period_end.year}"
-    return f"Semana del {period_start.day} de {months[period_start.month]} al {period_end.day} de {months[period_end.month]} {period_end.year}"
+    return f"Semana del {period_start.day} de {months[period_start.month]} de {period_start.year}"
 
 
 def _render_item_email(item: DigestItem) -> str:
