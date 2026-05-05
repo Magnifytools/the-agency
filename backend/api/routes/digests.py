@@ -51,13 +51,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _default_period() -> tuple[date, date]:
-    """Return (Monday, Sunday) of the previous week — the most recently
-    completed week. Matches the UI hint "por defecto semana pasada"."""
+    """Return (Monday, Sunday) of the current week — the digest reports on
+    what's happening this week, not the previous one."""
     today = date.today()
-    this_monday = today - timedelta(days=today.weekday())
-    last_monday = this_monday - timedelta(days=7)
-    last_sunday = last_monday + timedelta(days=6)
-    return last_monday, last_sunday
+    monday = today - timedelta(days=today.weekday())
+    sunday = monday + timedelta(days=6)
+    return monday, sunday
 
 
 def _to_response(digest: WeeklyDigest) -> DigestResponse:

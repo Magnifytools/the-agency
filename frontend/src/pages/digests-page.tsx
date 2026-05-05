@@ -405,7 +405,7 @@ export default function DigestsPage() {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Periodo (opcional — por defecto semana pasada)</Label>
+            <Label>Periodo (opcional — por defecto semana actual)</Label>
             <div className="flex items-center gap-2">
               <Input
                 type="date"
