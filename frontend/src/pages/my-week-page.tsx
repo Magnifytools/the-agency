@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { myWeekApi, tasksApi } from "@/lib/api"
-import type { MyWeekResponse, MyWeekTask, MyWeekDay, EventResponse } from "@/lib/api"
+import type { MyWeekResponse, MyWeekTask, MyWeekDay, EventResponse, TeamMemberWeek } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -472,6 +472,63 @@ function BacklogSection({
   )
 }
 
+// ── Team Strip ─────────────────────────────────────────────
+
+const TEAM_STATUS_ICONS: Record<string, { Icon: React.ComponentType<{ className?: string }>; cls: string; lbl: string }> = {
+  vacation: { Icon: Palmtree, cls: "text-blue-500", lbl: "Vacaciones" },
+  sick: { Icon: Thermometer, cls: "text-red-500", lbl: "Baja" },
+  away: { Icon: MapPin, cls: "text-amber-500", lbl: "Fuera" },
+  holiday: { Icon: PartyPopper, cls: "text-purple-500", lbl: "Festivo" },
+}
+
+function TeamStrip({ team }: { team: TeamMemberWeek[] }) {
+  if (!team || team.length === 0) return null
+  // Only weekdays (first 5)
+  const todayStr = toDateStr(new Date())
+
+  return (
+    <Card>
+      <CardHeader className="py-2 px-3">
+        <CardTitle className="text-xs uppercase tracking-wider">Equipo esta semana</CardTitle>
+      </CardHeader>
+      <CardContent className="px-3 pb-3 space-y-1">
+        {team.map((member) => (
+          <div key={member.user_id} className="grid grid-cols-[80px_repeat(5,1fr)] items-center gap-1">
+            <span className="text-xs font-medium truncate" title={member.full_name}>
+              {member.short_name || member.full_name.split(" ")[0]}
+            </span>
+            {member.days.slice(0, 5).map((d) => {
+              const isToday = d.date === todayStr
+              const meta = d.status ? TEAM_STATUS_ICONS[d.status] : null
+              const holidayMeta = !meta && d.holiday_name ? TEAM_STATUS_ICONS.holiday : null
+              const effective = meta || holidayMeta
+              const label = d.label || d.holiday_name || effective?.lbl || ""
+              return (
+                <div
+                  key={d.date}
+                  className={`h-7 rounded border flex items-center gap-1 px-1.5 text-[10px] ${
+                    effective ? "border-border/60 bg-muted/30" : "border-border/30"
+                  } ${isToday ? "ring-1 ring-primary/40" : ""}`}
+                  title={label ? `${effective?.lbl ?? ""}${label ? ` — ${label}` : ""}` : "Disponible"}
+                >
+                  {effective ? (
+                    <>
+                      <effective.Icon className={`h-3 w-3 shrink-0 ${effective.cls}`} />
+                      <span className="truncate">{label}</span>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground/40">·</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ── Summary Panel ──────────────────────────────────────────
 
 function SummaryPanel({ data }: { data: MyWeekResponse }) {
@@ -684,6 +741,10 @@ export default function MyWeekPage() {
             Reintentar
           </button>
         </div>
+      )}
+
+      {data && data.team && data.team.length > 0 && (
+        <TeamStrip team={data.team} />
       )}
 
       {data && (

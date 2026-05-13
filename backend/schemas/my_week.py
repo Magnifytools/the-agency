@@ -122,9 +122,24 @@ class MyWeekSummary(BaseModel):
     by_client: list[dict] = []
 
 
+class TeamMemberDay(BaseModel):
+    date: date
+    status: Optional[str] = None       # vacation | sick | away | holiday | None (available)
+    label: Optional[str] = None
+    holiday_name: Optional[str] = None
+
+
+class TeamMemberWeek(BaseModel):
+    user_id: int
+    full_name: str
+    short_name: Optional[str] = None
+    days: list[TeamMemberDay] = []
+
+
 class MyWeekResponse(BaseModel):
     week_start: date
     week_end: date
     days: list[MyWeekDay] = []
     backlog: list[MyWeekTask] = []
     summary: MyWeekSummary = MyWeekSummary()
+    team: list[TeamMemberWeek] = []

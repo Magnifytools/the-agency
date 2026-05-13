@@ -1215,12 +1215,27 @@ export interface MyWeekSummary {
   by_client: { client_id: number | null; client_name: string; count: number }[]
 }
 
+export interface TeamMemberDay {
+  date: string
+  status: string | null
+  label: string | null
+  holiday_name: string | null
+}
+
+export interface TeamMemberWeek {
+  user_id: number
+  full_name: string
+  short_name: string | null
+  days: TeamMemberDay[]
+}
+
 export interface MyWeekResponse {
   week_start: string
   week_end: string
   days: MyWeekDay[]
   backlog: MyWeekTask[]
   summary: MyWeekSummary
+  team: TeamMemberWeek[]
 }
 
 export const myWeekApi = {

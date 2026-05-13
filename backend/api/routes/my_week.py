@@ -21,6 +21,7 @@ from backend.schemas.my_week import (
     EventCreate, EventUpdate, EventResponse,
     CompanyHolidayCreate, CompanyHolidayResponse,
     MyWeekTask, MyWeekDay, MyWeekSummary, MyWeekResponse,
+    TeamMemberDay, TeamMemberWeek,
 )
 
 logger = logging.getLogger(__name__)
@@ -253,12 +254,70 @@ async def get_my_week(
         by_client=sorted(by_client.values(), key=lambda x: x["count"], reverse=True),
     )
 
+    # 10. Team strip — status + holidays per day for every other active user
+    team_q = (
+        select(User)
+        .where(User.id != user.id, User.is_active.is_(True))
+        .order_by(User.full_name)
+    )
+    team_users = (await db.execute(team_q)).scalars().all()
+    team: list[TeamMemberWeek] = []
+    if team_users:
+        team_ids = [u.id for u in team_users]
+        ts_q = select(UserDayStatus).where(
+            UserDayStatus.user_id.in_(team_ids),
+            UserDayStatus.date >= week_start,
+            UserDayStatus.date <= week_end,
+        )
+        ts_rows = (await db.execute(ts_q)).scalars().all()
+        ts_map: dict[tuple[int, date], UserDayStatus] = {(s.user_id, s.date): s for s in ts_rows}
+
+        # All holidays in the week (we filter per-user below)
+        all_holidays_q = select(CompanyHoliday).where(
+            CompanyHoliday.date >= week_start,
+            CompanyHoliday.date <= week_end,
+        )
+        all_holidays = (await db.execute(all_holidays_q)).scalars().all()
+
+        for tu in team_users:
+            tu_days: list[TeamMemberDay] = []
+            for i in range(7):
+                d = week_start + timedelta(days=i)
+                # Resolve holiday for this user/day
+                tu_holiday = None
+                for h in all_holidays:
+                    if h.date != d:
+                        continue
+                    if h.region is None and h.locality is None:
+                        tu_holiday = h
+                        break
+                    if h.region == tu.region and h.locality is None:
+                        tu_holiday = h
+                        break
+                    if h.region == tu.region and h.locality == tu.locality:
+                        tu_holiday = h
+                        break
+                tu_status = ts_map.get((tu.id, d))
+                tu_days.append(TeamMemberDay(
+                    date=d,
+                    status=(tu_status.status.value if tu_status else None),
+                    label=(tu_status.label if tu_status else None),
+                    holiday_name=(tu_holiday.name if tu_holiday else None),
+                ))
+            team.append(TeamMemberWeek(
+                user_id=tu.id,
+                full_name=tu.full_name,
+                short_name=tu.short_name,
+                days=tu_days,
+            ))
+
     return MyWeekResponse(
         week_start=week_start,
         week_end=week_end,
         days=days,
         backlog=backlog,
         summary=summary,
+        team=team,
     )
 
 
