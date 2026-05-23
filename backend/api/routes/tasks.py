@@ -108,6 +108,7 @@ async def list_tasks(
     overdue: Optional[bool] = Query(None),
     no_date: Optional[bool] = Query(None),
     no_estimate: Optional[bool] = Query(None),
+    no_project: Optional[bool] = Query(None),
     scheduled_date: Optional[str] = Query(None),
     due_date_from: Optional[str] = Query(None),
     due_date_to: Optional[str] = Query(None),
@@ -168,6 +169,8 @@ async def list_tasks(
         base = base.where(Task.due_date.is_(None), Task.scheduled_date.is_(None))
     if no_estimate:
         base = base.where(Task.estimated_minutes.is_(None))
+    if no_project:
+        base = base.where(Task.project_id.is_(None))
     if scheduled_date is not None:
         from datetime import date as date_type
         try:

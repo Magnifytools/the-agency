@@ -15,6 +15,7 @@ import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
+import { InfoTooltip } from "@/components/ui/tooltip"
 import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare, Loader2, CalendarDays, ChevronDown, ChevronUp, MessageSquare, Paperclip, Download, Send, Repeat, Eye } from "lucide-react"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
@@ -80,8 +81,8 @@ export default function TasksPage() {
   const [searchQuery, setSearchQuery] = useState<string>("")
 
   // QA Health Filters — initialise from URL param if present
-  const urlQaFilter = searchParams.get("qaFilter") as "none" | "unassigned" | "no_date" | "no_estimate" | "overdue" | null
-  const [qaFilter, setQaFilter] = useState<"none" | "unassigned" | "no_date" | "no_estimate" | "overdue">(
+  const urlQaFilter = searchParams.get("qaFilter") as "none" | "unassigned" | "no_date" | "no_estimate" | "no_project" | "overdue" | null
+  const [qaFilter, setQaFilter] = useState<"none" | "unassigned" | "no_date" | "no_estimate" | "no_project" | "overdue">(
     urlQaFilter ?? "none"
   )
   const [bulkStatus, setBulkStatus] = useState("")
@@ -128,6 +129,7 @@ export default function TasksPage() {
         overdue: qaFilter === "overdue" ? true : undefined,
         no_date: qaFilter === "no_date" ? true : undefined,
         no_estimate: qaFilter === "no_estimate" ? true : undefined,
+        no_project: qaFilter === "no_project" ? true : undefined,
         search: searchQuery || undefined,
         page: view === "calendar" ? 1 : page,
         page_size: view === "calendar" ? 500 : pageSize,
@@ -430,7 +432,14 @@ export default function TasksPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold uppercase tracking-wide">Tareas</h2>
-          {tasksData && <p className="text-sm text-muted-foreground mt-1">{tasksData.total} tareas · {tasks.filter(t => t.status === "in_progress").length} en curso</p>}
+          {tasksData && (
+            <p className="text-sm text-muted-foreground mt-1">
+              {tasksData.total} tareas
+              <span className="text-muted-foreground/70 text-xs ml-1">(según filtros)</span>
+              {" · "}
+              {tasks.filter(t => t.status === "in_progress").length} en curso
+            </p>
+          )}
         </div>
         <Button onClick={openCreate}>
           <Plus className="h-4 w-4 mr-2" /> Nueva tarea
@@ -536,6 +545,15 @@ export default function TasksPage() {
           ⚠️ Sin Estimación
         </Button>
         <Button
+          variant={qaFilter === "no_project" ? "secondary" : "outline"}
+          size="sm"
+          onClick={() => { setQaFilter(f => f === "no_project" ? "none" : "no_project"); reset() }}
+          className="text-xs h-8 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 border-amber-500/20"
+          title="Tareas sin proyecto asignado (no cuentan en métricas de proyecto)"
+        >
+          ⚠️ Sin Proyecto
+        </Button>
+        <Button
           variant={qaFilter === "overdue" ? "secondary" : "outline"}
           size="sm"
           onClick={() => { setQaFilter(f => f === "overdue" ? "none" : "overdue"); reset() }}
@@ -615,7 +633,7 @@ export default function TasksPage() {
               <TableHead>Prioridad</TableHead>
               <TableHead>Asignado</TableHead>
               <TableHead>Estado</TableHead>
-              <TableHead>Est / Real</TableHead>
+              <TableHead><span className="inline-flex items-center gap-1">Est / Real <InfoTooltip content="Estimado: minutos previstos al crear la tarea. Real: minutos declarados al cerrarla. Para horas fichadas con el cronómetro, mira la columna Tiempo/Timer." /></span></TableHead>
               <TableHead>Fecha limite</TableHead>
               <TableHead>Tiempo</TableHead>
               <TableHead className="w-24">Acciones</TableHead>
@@ -642,7 +660,7 @@ export default function TasksPage() {
               <SortableTableHead sortKey="priority" currentSort={taskSortConfig} onSort={requestTaskSort}>Prioridad</SortableTableHead>
               <TableHead>Asignado</TableHead>
               <SortableTableHead sortKey="status" currentSort={taskSortConfig} onSort={requestTaskSort}>Estado</SortableTableHead>
-              <TableHead>Est / Real</TableHead>
+              <TableHead><span className="inline-flex items-center gap-1">Est / Real <InfoTooltip content="Estimado: minutos previstos al crear la tarea. Real: minutos declarados al cerrarla. Para horas fichadas con el cronómetro, mira la columna Tiempo/Timer." /></span></TableHead>
               <SortableTableHead sortKey="due_date" currentSort={taskSortConfig} onSort={requestTaskSort}>Fecha limite</SortableTableHead>
               <TableHead>Timer</TableHead>
               <TableHead className="w-24">Acciones</TableHead>

@@ -330,30 +330,34 @@ export default function ClientDetailPage() {
         </Button>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* Summary Cards — Tracked es la métrica canónica.
+          Estimado/Real quedan como subtexto secundario (datos declarados vs fichados). */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total tareas</p>
             <p className="kpi-value mt-1">{summary.total_tasks}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card
+          className="lg:col-span-2"
+          title="Tiempo tracked: suma del timer real del equipo. Estimado: lo previsto al crear la tarea. Declarado: lo que el responsable apuntó al cerrarla."
+        >
           <CardContent className="p-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Tiempo estimado</p>
-            <p className="kpi-value mt-1">{formatMinutes(summary.total_estimated_minutes)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Tiempo real</p>
-            <p className="kpi-value mt-1">{formatMinutes(summary.total_actual_minutes)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Tiempo tracked</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+              Tiempo tracked
+              <span className="text-muted-foreground/60 cursor-help">ⓘ</span>
+            </p>
             <p className="kpi-value mt-1">{formatMinutes(summary.total_tracked_minutes)}</p>
+            <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
+              <span>
+                Estimado: <span className="mono">{formatMinutes(summary.total_estimated_minutes)}</span>
+              </span>
+              <span className="text-muted-foreground/40">·</span>
+              <span>
+                Declarado: <span className="mono">{formatMinutes(summary.total_actual_minutes)}</span>
+              </span>
+            </div>
           </CardContent>
         </Card>
         {health && (
@@ -386,20 +390,80 @@ export default function ClientDetailPage() {
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center space-x-1 bg-muted/30 p-1 w-fit rounded-lg border border-border overflow-x-auto">
-        {(["ficha", "actividad", "tareas", "proyectos", "panel", "comunicaciones", "contactos", "tiempo", "facturacion", "recursos", ...(client.engine_project_id ? ["seo" as const] : []), "informes", ...(holdedEnabled ? ["facturas" as const] : []), "ajustes"] as const).map((tab) => (
-          <Button
-            key={tab}
-            variant={activeTab === tab ? "default" : "ghost"}
-            size="sm"
-            className="capitalize whitespace-nowrap"
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab}
-          </Button>
-        ))}
-      </div>
+      {/* Tabs — agrupadas en 8 grupos para reducir sobrecarga cognitiva.
+          Los nombres internos de `tab` (URL ?tab=xxx) NO cambian: solo el menú visual. */}
+      {(() => {
+        type TabKey = Tab
+        type GroupDef = { key: string; label: string; tabs: TabKey[] }
+        const groups: GroupDef[] = [
+          { key: "ficha", label: "Ficha", tabs: ["ficha"] },
+          { key: "actividad", label: "Actividad", tabs: ["actividad"] },
+          { key: "tareas", label: "Tareas", tabs: ["tareas"] },
+          { key: "proyectos", label: "Proyectos", tabs: ["proyectos"] },
+          { key: "panel", label: "Panel", tabs: ["panel"] },
+          {
+            key: "relacion",
+            label: "Relación",
+            tabs: ["comunicaciones", "contactos"],
+          },
+          {
+            key: "outputs",
+            label: "Outputs",
+            tabs: [
+              ...(client.engine_project_id ? (["seo"] as TabKey[]) : []),
+              "informes",
+            ],
+          },
+          {
+            key: "tiempo-dinero",
+            label: "Tiempo y dinero",
+            tabs: [
+              "tiempo",
+              "facturacion",
+              ...(holdedEnabled ? (["facturas"] as TabKey[]) : []),
+            ],
+          },
+          { key: "recursos", label: "Recursos", tabs: ["recursos"] },
+          { key: "ajustes", label: "Ajustes", tabs: ["ajustes"] },
+        ]
+        const activeGroup =
+          groups.find((g) => g.tabs.includes(activeTab as TabKey)) ?? groups[0]
+        const goToGroup = (g: GroupDef) => setActiveTab(g.tabs[0])
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center space-x-1 bg-muted/30 p-1 w-fit rounded-lg border border-border overflow-x-auto">
+              {groups
+                .filter((g) => g.tabs.length > 0)
+                .map((g) => (
+                  <Button
+                    key={g.key}
+                    variant={activeGroup.key === g.key ? "default" : "ghost"}
+                    size="sm"
+                    className="whitespace-nowrap"
+                    onClick={() => goToGroup(g)}
+                  >
+                    {g.label}
+                  </Button>
+                ))}
+            </div>
+            {activeGroup.tabs.length > 1 && (
+              <div className="flex items-center gap-1 pl-2 overflow-x-auto">
+                {activeGroup.tabs.map((t) => (
+                  <Button
+                    key={t}
+                    variant={activeTab === t ? "secondary" : "ghost"}
+                    size="sm"
+                    className="capitalize text-xs h-7 whitespace-nowrap"
+                    onClick={() => setActiveTab(t as Tab)}
+                  >
+                    {t}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Tab: Ficha */}
       {activeTab === "ficha" && (

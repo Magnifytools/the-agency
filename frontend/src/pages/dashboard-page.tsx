@@ -786,7 +786,14 @@ export default function DashboardPage() {
       {isAdmin && profitability && profitability.clients.length > 0 && (
         <div className="grid lg:grid-cols-2 gap-6">
           <Card>
-            <CardHeader><CardTitle>Rentabilidad por cliente</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                Rentabilidad por cliente
+                <span className="text-xs font-normal text-muted-foreground">
+                  (datos del mes seleccionado arriba, no acumulado)
+                </span>
+              </CardTitle>
+            </CardHeader>
             <CardContent className="pt-4">
               <div className="overflow-x-auto"><Table aria-label="Rentabilidad por cliente" className="min-w-[700px]">
                 <TableHeader>
@@ -794,8 +801,8 @@ export default function DashboardPage() {
                     <TableHead>Cliente</TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">Presupuesto <InfoTooltip content="Fee mensual del cliente" /></span></TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">Coste <InfoTooltip content="Horas trabajadas × tarifa/hora" /></span></TableHead>
-                    <TableHead><span className="inline-flex items-center gap-1">Estimado <InfoTooltip content="Horas estimadas en las tareas" /></span></TableHead>
-                    <TableHead><span className="inline-flex items-center gap-1">Real <InfoTooltip content="Horas realmente registradas" /></span></TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">Estimado <InfoTooltip content="Suma de horas estimadas declaradas en las tareas del mes (campo opcional)" /></span></TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">Real <InfoTooltip content="Tiempo tracked del mes (timesheet/cronómetro real). Es la fuente de verdad para horas trabajadas." /></span></TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">Δ <InfoTooltip content="Diferencia real − estimado" /></span></TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">Margen <InfoTooltip content="Presupuesto − Coste" /></span></TableHead>
                     <TableHead>Estado</TableHead>

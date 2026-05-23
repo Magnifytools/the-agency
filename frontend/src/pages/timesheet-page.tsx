@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { timeEntriesApi, tasksApi, timerApi } from "@/lib/api"
+import { timeEntriesApi, tasksApi, timerApi, clientsApi, projectsApi } from "@/lib/api"
 import { useAuth } from "@/context/auth-context"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
@@ -186,6 +186,24 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
     refetchInterval: 10_000,
   })
 
+  // Source of truth for the Cliente dropdown: ALL active clients (not just those
+  // with tasks assigned to the current user). Fixes the bug where only Taxfix +
+  // Kinetic Digital appeared.
+  const { data: allActiveClients = [] } = useQuery({
+    queryKey: ["clients-active"],
+    queryFn: () => clientsApi.listAll("active"),
+    staleTime: 60_000,
+  })
+
+  // Active projects for the selected client (or all if none selected)
+  const filterClientNum = filterClient ? parseInt(filterClient, 10) : undefined
+  const { data: allActiveProjects = [] } = useQuery({
+    queryKey: ["projects-active", filterClientNum],
+    queryFn: () => projectsApi.listAll({ client_id: filterClientNum, status: "active" }),
+    enabled: !!filterClientNum,
+    staleTime: 30_000,
+  })
+
   // eslint-disable-next-line react-hooks/set-state-in-effect -- Timer tick requires setInterval in effect
   useEffect(() => {
     if (!activeTimer?.started_at) { setElapsed(""); return }
@@ -201,8 +219,13 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
     return () => clearInterval(iv)
   }, [activeTimer?.started_at])
 
-  const clients = Array.from(new Map(tasks.filter((t) => t.client_id).map((t) => [t.client_id, t.client_name])).entries())
-  const projects = Array.from(new Map(tasks.filter((t) => t.project_id && (!filterClient || String(t.client_id) === filterClient)).map((t) => [t.project_id, t.project_name])).entries())
+  // Cliente: SIEMPRE todos los activos (no derivado de tareas del usuario).
+  const clients: [number, string][] = allActiveClients.map((c) => [c.id, c.name])
+  // Proyecto: si hay cliente seleccionado, todos sus proyectos activos; si no,
+  // los derivados de tareas (legacy fallback para no romper el flujo sin cliente).
+  const projects: [number, string][] = filterClient
+    ? allActiveProjects.map((p) => [p.id, p.name])
+    : Array.from(new Map(tasks.filter((t) => t.project_id).map((t) => [t.project_id, t.project_name])).entries()) as [number, string][]
   const filteredTasks = tasks.filter((t) => {
     if (t.status === "completed") return false
     if (filterClient && String(t.client_id) !== filterClient) return false

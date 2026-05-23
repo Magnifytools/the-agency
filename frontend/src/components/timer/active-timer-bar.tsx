@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { timerApi, tasksApi, clientsApi, timeEntriesApi } from "@/lib/api"
+import { timerApi, tasksApi, clientsApi, projectsApi, timeEntriesApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
@@ -39,6 +39,7 @@ export function ActiveTimerBar() {
   const [showQuickCreate, setShowQuickCreate] = useState(false)
   const [qcTitle, setQcTitle] = useState("")
   const [qcClientId, setQcClientId] = useState<string>("")
+  const [qcProjectId, setQcProjectId] = useState<string>("")
 
   const { data: timer } = useQuery({
     queryKey: ["active-timer"],
@@ -59,6 +60,33 @@ export function ActiveTimerBar() {
     queryFn: () => clientsApi.listAll("active"),
     staleTime: 60_000,
   })
+
+  // Fetch active projects for the selected client (drives the Proyecto select)
+  const qcClientIdNum = qcClientId ? parseInt(qcClientId, 10) : undefined
+  const { data: qcProjects = [] } = useQuery({
+    queryKey: ["projects-by-client-active", qcClientIdNum],
+    queryFn: () => projectsApi.listAll({ client_id: qcClientIdNum, status: "active" }),
+    enabled: !!qcClientIdNum && showQuickCreate,
+    staleTime: 30_000,
+  })
+
+  // Auto-preselect when client has exactly one active project; clear when it has none/multiple
+  const singleProjectId = useMemo(
+    () => (qcProjects.length === 1 ? String(qcProjects[0].id) : ""),
+    [qcProjects]
+  )
+  useEffect(() => {
+    if (!qcClientIdNum) {
+      setQcProjectId("")
+      return
+    }
+    if (qcProjects.length === 1) {
+      setQcProjectId(String(qcProjects[0].id))
+    } else if (qcProjects.length === 0) {
+      setQcProjectId("")
+    }
+    // If multiple, keep current selection (user picks)
+  }, [qcClientIdNum, qcProjects, singleProjectId])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- Timer tick requires setInterval in effect
   useEffect(() => {
@@ -152,14 +180,20 @@ export function ActiveTimerBar() {
 
   // Quick create task
   const createTaskMutation = useMutation({
-    mutationFn: (data: { title: string; client_id: number }) =>
-      tasksApi.create({ title: data.title, client_id: data.client_id, status: "in_progress" }),
+    mutationFn: (data: { title: string; client_id: number; project_id?: number }) =>
+      tasksApi.create({
+        title: data.title,
+        client_id: data.client_id,
+        project_id: data.project_id ?? null,
+        status: "in_progress",
+      }),
     onSuccess: (task: Task) => {
       queryClient.invalidateQueries({ queryKey: ["my-tasks-timer"] })
       setSelectedTaskId(String(task.id))
       setShowQuickCreate(false)
       setQcTitle("")
       setQcClientId("")
+      setQcProjectId("")
       toast.success("Tarea creada")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al crear tarea")),
@@ -245,6 +279,40 @@ export function ActiveTimerBar() {
                 ))}
               </Select>
             </div>
+            {qcClientId && (
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">
+                  Proyecto
+                  {qcProjects.length === 0 && (
+                    <span className="ml-1 text-xs text-muted-foreground/70">
+                      (este cliente no tiene proyectos activos)
+                    </span>
+                  )}
+                  {qcProjects.length > 1 && (
+                    <span className="ml-1 text-xs text-amber-500">*</span>
+                  )}
+                </label>
+                <Select
+                  value={qcProjectId}
+                  onChange={(e) => setQcProjectId(e.target.value)}
+                  disabled={qcProjects.length === 0}
+                >
+                  <option value="">
+                    {qcProjects.length === 0 ? "—" : "Selecciona proyecto"}
+                  </option>
+                  {qcProjects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </Select>
+                {qcProjects.length > 1 && !qcProjectId && (
+                  <p className="text-xs text-amber-500 mt-1">
+                    Elige un proyecto para que el tiempo cuente en sus métricas.
+                  </p>
+                )}
+              </div>
+            )}
           </DialogContent>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setShowQuickCreate(false)}>
@@ -256,7 +324,15 @@ export function ActiveTimerBar() {
                   toast.error("Título y cliente son obligatorios")
                   return
                 }
-                createTaskMutation.mutate({ title: qcTitle.trim(), client_id: parseInt(qcClientId, 10) })
+                if (qcProjects.length > 1 && !qcProjectId) {
+                  toast.error("Elige un proyecto (el cliente tiene varios activos)")
+                  return
+                }
+                createTaskMutation.mutate({
+                  title: qcTitle.trim(),
+                  client_id: parseInt(qcClientId, 10),
+                  project_id: qcProjectId ? parseInt(qcProjectId, 10) : undefined,
+                })
               }}
               disabled={createTaskMutation.isPending}
             >

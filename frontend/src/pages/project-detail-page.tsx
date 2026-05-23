@@ -297,11 +297,19 @@ export default function ProjectDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Hours Consumption */}
+      {/* Hours Consumption — tiempo tracked desde timesheet de tareas vinculadas */}
       <Card>
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Horas consumidas</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-medium">Tiempo tracked</span>
+              <span
+                className="text-muted-foreground/60 cursor-help text-xs"
+                title="Suma del tiempo registrado en el timesheet (cronómetro real) para tareas vinculadas a este proyecto. No incluye tareas del cliente que estén sin proyecto asignado."
+              >
+                ⓘ
+              </span>
+            </div>
             <span className="text-sm text-muted-foreground">
               {project.hours_used ?? 0}h
               {project.budget_hours != null && project.budget_hours > 0 ? ` / ${project.budget_hours}h` : " · sin presupuesto"}
@@ -326,15 +334,33 @@ export default function ProjectDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Burndown Chart */}
-      {burndown && burndown.total_tasks === 0 && (
+      {/* Aviso en recurrentes: el burndown no aplica. */}
+      {project.is_recurring && (
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm font-medium mb-1">Proyecto recurrente</p>
+            <p className="text-xs text-muted-foreground">
+              El burndown no aplica en retainers (las tareas se reinician cada ciclo).
+              Para ver la carga por mes, abre el {" "}
+              <Link to="/dashboard" className="text-brand underline-offset-2 hover:underline">
+                dashboard
+              </Link>{" "}
+              y filtra por mes — la tabla "Rentabilidad por cliente" muestra horas reales del mes seleccionado.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Burndown Chart — solo en proyectos no-recurrentes. En recurrentes el
+          concepto no aplica porque las tareas se reinician cada ciclo. */}
+      {!project.is_recurring && burndown && burndown.total_tasks === 0 && (
         <Card>
           <CardContent className="p-4 text-center text-sm text-muted-foreground">
             Añade tareas al proyecto para ver el burndown.
           </CardContent>
         </Card>
       )}
-      {burndown && burndown.total_tasks > 0 && burndown.points.length > 1 && (
+      {!project.is_recurring && burndown && burndown.total_tasks > 0 && burndown.points.length > 1 && (
         <Card>
           <CardContent className="p-4">
             <p className="text-sm font-medium mb-3">Burndown de tareas</p>

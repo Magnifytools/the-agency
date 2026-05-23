@@ -31,6 +31,15 @@ class TestTasksList:
         )
         assert resp.status_code == 200
 
+    async def test_list_tasks_no_project_filter(self, admin_client):
+        """The no_project=true filter must return 200 (filters tasks without project_id)."""
+        resp = await admin_client.get("/api/tasks", params={"no_project": "true"})
+        assert resp.status_code == 200
+        data = resp.json()
+        # Every task returned must have project_id == None
+        for item in data.get("items", []):
+            assert item.get("project_id") is None
+
 
 @pytest.mark.asyncio
 class TestTaskCreate:
