@@ -107,6 +107,11 @@ async def _ensure_columns():
         "CREATE INDEX IF NOT EXISTS ix_time_entries_task_date ON time_entries (task_id, date DESC)",
         "CREATE INDEX IF NOT EXISTS ix_comm_logs_client_occurred ON communication_logs (client_id, occurred_at DESC)",
         "CREATE INDEX IF NOT EXISTS ix_projects_client_status ON projects (client_id, status)",
+        # Drop tables retired with /news, /resources and /assistant cuts.
+        # IF EXISTS keeps the boot idempotent once they're gone.
+        "DROP TABLE IF EXISTS industry_news",
+        "DROP TABLE IF EXISTS news_sources",
+        "DROP TABLE IF EXISTS team_resources",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS context TEXT",
         """CREATE TABLE IF NOT EXISTS client_documents (
     id SERIAL PRIMARY KEY,

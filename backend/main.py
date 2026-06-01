@@ -24,7 +24,6 @@ from backend.api.routes import (
     evidence, search, agency_vault, core_updates, balance,
     inbox,
     extension,
-    assistant,
     my_week,
     automations,
     google_calendar,
@@ -373,7 +372,6 @@ app.include_router(core_updates.router)
 app.include_router(balance.router)
 app.include_router(inbox.router)
 app.include_router(extension.router)
-app.include_router(assistant.router)
 app.include_router(my_week.router)
 app.include_router(automations.router)
 app.include_router(google_calendar.router)

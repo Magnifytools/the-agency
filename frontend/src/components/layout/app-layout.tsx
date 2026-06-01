@@ -7,7 +7,6 @@ import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, FolderKanb
 import { cn } from "@/lib/utils"
 import { BottomDrawer } from "@/components/ui/bottom-drawer"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
-import { DataAssistant } from "@/components/data-assistant"
 import { NotificationBell } from "@/components/layout/notification-bell"
 import { SearchPalette } from "@/components/layout/search-palette"
 import { QuickCaptureDialog } from "@/components/inbox/quick-capture-dialog"
@@ -372,7 +371,6 @@ export function AppLayout() {
       <SearchPalette open={searchOpen} onOpenChange={setSearchOpen} />
       <QuickCaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
       <ShortcutsHelpModal open={isHelpOpen} onOpenChange={setIsHelpOpen} shortcuts={shortcuts} />
-      <DataAssistant />
       {user?.onboarding_completed === false && <OnboardingModal />}
     </div>
   )
