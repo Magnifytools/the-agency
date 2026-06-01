@@ -903,15 +903,30 @@ class InvoiceItem(TimestampMixin, Base):
 # ═══════════════════════════════════════════════════════════════
 
 class AuditLog(TimestampMixin, Base):
+    """Append-only log of authenticated API requests + entity-level audit events.
+
+    The original schema modelled entity-level audit (action/entity_type/entity_id).
+    That subsystem was never persisted (log_audit() writes to stderr only) so the
+    table was empty. Reused here as a request analytics sink: a middleware writes
+    one row per authenticated API call with route_template + method + status +
+    duration. The legacy entity columns are kept nullable for backward compat in
+    case future code wants to log entity events alongside requests.
+    """
     __tablename__ = "audit_logs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    action = Column(String(50), nullable=False)
-    entity_type = Column(String(50), nullable=False)
-    entity_id = Column(Integer, nullable=False)
+    # Legacy entity-audit fields (nullable for request-only rows)
+    action = Column(String(50), nullable=True)
+    entity_type = Column(String(50), nullable=True)
+    entity_id = Column(Integer, nullable=True)
     details = Column(Text, nullable=True)
+    # Request analytics fields
+    method = Column(String(10), nullable=True)
+    route_template = Column(String(255), nullable=True, index=True)
+    status_code = Column(Integer, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
 
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
 
     user = relationship("User", lazy="selectin")
 

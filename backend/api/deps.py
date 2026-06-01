@@ -46,6 +46,9 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is deactivated")
+    # Surface the resolved user id to middlewares (UsageTrackerMiddleware reads
+    # this to attribute the request to a user without rerunning JWT decode).
+    request.state.user_id = user.id
     return user
 
 

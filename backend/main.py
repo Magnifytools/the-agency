@@ -29,6 +29,7 @@ from backend.api.routes import (
     google_calendar,
     bank_import,
     cfo,
+    usage_stats,
 )
 
 # ── Re-export migration/seed functions so scripts/init_db.py keeps working ──
@@ -273,6 +274,9 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
+from backend.api.middleware.usage_tracker import UsageTrackerMiddleware
+app.add_middleware(UsageTrackerMiddleware)
+
 
 class CsrfProtectionMiddleware(BaseHTTPMiddleware):
     """Protect cookie-authenticated mutating requests with double-submit CSRF."""
@@ -377,6 +381,7 @@ app.include_router(automations.router)
 app.include_router(google_calendar.router)
 app.include_router(bank_import.router)
 app.include_router(cfo.router)
+app.include_router(usage_stats.router)
 
 
 @app.get("/api/health")

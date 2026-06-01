@@ -112,6 +112,18 @@ async def _ensure_columns():
         "DROP TABLE IF EXISTS industry_news",
         "DROP TABLE IF EXISTS news_sources",
         "DROP TABLE IF EXISTS team_resources",
+        # AuditLog as request analytics sink: relax legacy NOT NULL columns
+        # and add request fields. user_id is nullable for unauthenticated calls.
+        "ALTER TABLE audit_logs ALTER COLUMN action DROP NOT NULL",
+        "ALTER TABLE audit_logs ALTER COLUMN entity_type DROP NOT NULL",
+        "ALTER TABLE audit_logs ALTER COLUMN entity_id DROP NOT NULL",
+        "ALTER TABLE audit_logs ALTER COLUMN user_id DROP NOT NULL",
+        "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS method VARCHAR(10)",
+        "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS route_template VARCHAR(255)",
+        "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS status_code INTEGER",
+        "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS duration_ms INTEGER",
+        "CREATE INDEX IF NOT EXISTS ix_audit_logs_route_created ON audit_logs (route_template, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_audit_logs_user_created ON audit_logs (user_id, created_at DESC)",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS context TEXT",
         """CREATE TABLE IF NOT EXISTS client_documents (
     id SERIAL PRIMARY KEY,
