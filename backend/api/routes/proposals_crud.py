@@ -29,6 +29,16 @@ router = APIRouter(prefix="/api/proposals", tags=["proposals"])
 logger = logging.getLogger(__name__)
 
 
+def check_proposal_access(prop: Proposal, user: User) -> None:
+    """Raise 404 if a non-admin user is touching a proposal they didn't create.
+
+    Returning 404 (instead of 403) prevents leaking the existence of proposals
+    that belong to other users. Admins bypass the check.
+    """
+    if user.role != UserRole.admin and prop.created_by != user.id:
+        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+
+
 def _to_response(prop: Proposal) -> dict[str, Any]:
     """Convert a Proposal ORM object to a response dict."""
     # Build pricing_options safely
@@ -84,9 +94,11 @@ async def list_proposals(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("proposals")),
+    current_user: User = Depends(require_module("proposals")),
 ):
     query = select(Proposal)
+    if current_user.role != UserRole.admin:
+        query = query.where(Proposal.created_by == current_user.id)
     if status_filter:
         query = query.where(Proposal.status == status_filter)
     if lead_id:
@@ -150,7 +162,7 @@ async def create_proposal(
 async def get_proposal(
     proposal_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("proposals")),
+    current_user: User = Depends(require_module("proposals")),
 ):
     result = await db.execute(
         select(Proposal)
@@ -164,6 +176,7 @@ async def get_proposal(
     prop = result.scalar_one_or_none()
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    check_proposal_access(prop, current_user)
     return _to_response(prop)
 
 
@@ -182,12 +195,13 @@ async def update_proposal(
     proposal_id: int,
     data: ProposalUpdate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("proposals", write=True)),
+    current_user: User = Depends(require_module("proposals", write=True)),
 ):
     result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
     prop = result.scalar_one_or_none()
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    check_proposal_access(prop, current_user)
 
     update_data = data.model_dump(exclude_unset=True)
 
@@ -217,12 +231,13 @@ async def update_proposal(
 async def delete_proposal(
     proposal_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("proposals", write=True)),
+    current_user: User = Depends(require_module("proposals", write=True)),
 ):
     result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
     prop = result.scalar_one_or_none()
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    check_proposal_access(prop, current_user)
     if prop.status != ProposalStatus.draft:
         raise HTTPException(status_code=400, detail="Solo se pueden borrar borradores")
     await db.delete(prop)
@@ -237,12 +252,13 @@ async def change_proposal_status(
     proposal_id: int,
     body: ProposalStatusUpdate,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("proposals", write=True)),
+    current_user: User = Depends(require_module("proposals", write=True)),
 ):
     result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
     prop = result.scalar_one_or_none()
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    check_proposal_access(prop, current_user)
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     prop.status = body.status
@@ -277,6 +293,7 @@ async def duplicate_proposal(
     original = result.scalar_one_or_none()
     if not original:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    check_proposal_access(original, current_user)
 
     new_prop = Proposal(
         title=f"{original.title} (copia)",
@@ -412,6 +429,7 @@ async def generate_proposal_content(
     prop = result.scalar_one_or_none()
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    check_proposal_access(prop, current_user)
 
     # Load service template for context
     template_context = ""

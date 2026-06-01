@@ -16,6 +16,7 @@ from jinja2 import Environment, BaseLoader
 from backend.db.database import get_db
 from backend.db.models import Proposal, User, ProposalStatus
 from backend.api.deps import require_module
+from backend.api.routes.proposals_crud import check_proposal_access
 from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/proposals", tags=["proposals"])
@@ -557,13 +558,14 @@ async def _build_proposal_html(proposal_id: int, db: AsyncSession) -> str:
 async def generate_proposal_pdf(
     proposal_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("proposals")),
+    current_user: User = Depends(require_module("proposals")),
 ):
     """Generate a binary PDF for the proposal (application/pdf)."""
     result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
     prop = result.scalar_one_or_none()
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    check_proposal_access(prop, current_user)
 
     loop = asyncio.get_event_loop()
     pdf_bytes = await loop.run_in_executor(None, _build_pdf, prop)
@@ -579,9 +581,14 @@ async def generate_proposal_pdf(
 async def get_proposal_pdf(
     proposal_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("proposals")),
+    current_user: User = Depends(require_module("proposals")),
 ):
     """Render proposal as print-ready HTML. Uses standard Bearer auth."""
+    result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
+    prop = result.scalar_one_or_none()
+    if not prop:
+        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    check_proposal_access(prop, current_user)
     html_content = await _build_proposal_html(proposal_id, db)
     return Response(content=html_content, media_type="text/html")
 
@@ -593,7 +600,7 @@ async def get_proposal_pdf(
 async def draft_proposal_email(
     proposal_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("proposals")),
+    current_user: User = Depends(require_module("proposals")),
 ):
     """Generate an AI-written email draft for sending a proposal."""
     from backend.services.email_drafter import draft_email
@@ -602,6 +609,7 @@ async def draft_proposal_email(
     prop = r.scalar_one_or_none()
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    check_proposal_access(prop, current_user)
 
     # Build context for the email drafter
     pricing = prop.pricing_options or []
@@ -657,6 +665,7 @@ async def send_proposal_email(
     prop = r.scalar_one_or_none()
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    check_proposal_access(prop, current_user)
 
     # Check SMTP configured
     if not settings.SMTP_HOST:

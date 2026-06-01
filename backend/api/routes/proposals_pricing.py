@@ -13,7 +13,7 @@ from backend.db.models import Proposal, User
 from backend.api.deps import require_module
 from backend.schemas.proposal import ProposalResponse, InvestmentModelInput
 from backend.api.utils.db_helpers import safe_refresh
-from backend.api.routes.proposals_crud import _to_response
+from backend.api.routes.proposals_crud import _to_response, check_proposal_access
 
 router = APIRouter(prefix="/api/proposals", tags=["proposals"])
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ async def save_investment_model(
     proposal_id: int,
     body: InvestmentModelInput,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("proposals")),
+    current_user: User = Depends(require_module("proposals")),
 ):
     """Save calculated investment model to proposal's generated_content."""
     result = await db.execute(
@@ -34,6 +34,7 @@ async def save_investment_model(
     prop = result.scalar_one_or_none()
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    check_proposal_access(prop, current_user)
 
     content = prop.generated_content or {}
     content["investment_model"] = body.model_dump()
