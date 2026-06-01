@@ -367,6 +367,7 @@ function ConvertToTaskDialog({
   onOpenChange: (open: boolean) => void
   onConverted: () => void
 }) {
+  const queryClient = useQueryClient()
   const ai = note.ai_suggestion as AISuggestion | null
   const [title, setTitle] = useState(ai?.suggested_title ?? note.raw_text.slice(0, 200))
   const [projectId, setProjectId] = useState<string>(
@@ -409,6 +410,7 @@ function ConvertToTaskDialog({
     onSuccess: (data) => {
       onOpenChange(false)
       onConverted()
+      queryClient.invalidateQueries({ queryKey: ["tasks"] })
       toast.success(`Tarea #${data.task_id} creada`, { icon: "✅" })
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al crear tarea")),
