@@ -124,9 +124,6 @@ import type {
   AgencyAsset,
   AgencyAssetCreate,
   AssetCategory,
-  IndustryNewsItem,
-  IndustryNewsCreate,
-  NewsExtraction,
   InboxNote,
   InboxNoteCreate,
   AutomationRule,
@@ -987,39 +984,6 @@ export const vaultApi = {
     api.get<{ password: string | null }>(`/vault/assets/${id}/password`).then((r) => r.data),
 }
 
-// --- Industry News ---
-export const newsApi = {
-  list: () =>
-    api.get<IndustryNewsItem[]>("/news").then((r) => r.data),
-  create: (data: IndustryNewsCreate) =>
-    api.post<IndustryNewsItem>("/news", data).then((r) => r.data),
-  update: (id: number, data: Partial<IndustryNewsCreate>) =>
-    api.put<IndustryNewsItem>(`/news/${id}`, data).then((r) => r.data),
-  delete: (id: number) =>
-    api.delete(`/news/${id}`).then((r) => r.data),
-  extract: (url: string) =>
-    api.post<NewsExtraction>("/news/extract", { url }).then((r) => r.data),
-}
-
-export interface NewsSource {
-  id: number
-  name: string
-  url: string
-  category: string | null
-  created_at: string | null
-}
-
-export const newsSourcesApi = {
-  list: () =>
-    api.get<NewsSource[]>("/news/sources").then((r) => r.data),
-  create: (data: Omit<NewsSource, "id" | "created_at">) =>
-    api.post<NewsSource>("/news/sources", data).then((r) => r.data),
-  update: (id: number, data: Partial<Omit<NewsSource, "id" | "created_at">>) =>
-    api.put<NewsSource>(`/news/sources/${id}`, data).then((r) => r.data),
-  delete: (id: number) =>
-    api.delete(`/news/sources/${id}`).then((r) => r.data),
-}
-
 // --- Engine Integration ---
 export interface EngineProject {
   id: number
@@ -1092,36 +1056,6 @@ export const inboxApi = {
   },
   deleteAttachment: (noteId: number, attachmentId: number) =>
     api.delete(`/inbox/${noteId}/attachments/${attachmentId}`).then((r) => r.data),
-}
-
-// ── Team Resources ────────────────────────────────────────
-export const teamResourcesApi = {
-  tags: () =>
-    api.get<Record<string, string[]>>("/resources/tags").then((r) => r.data),
-  categories: () =>
-    api.get<{ categories: string[]; resource_types: string[] }>("/resources/categories").then((r) => r.data),
-  list: (params?: { search?: string; category?: string; limit?: number; offset?: number }) =>
-    api.get<{ items: TeamResource[]; total: number }>("/resources", { params }).then((r) => r.data),
-  create: (data: { title: string; url?: string; description?: string; category?: string; resource_type?: string; tags?: string }) =>
-    api.post<TeamResource>("/resources", data).then((r) => r.data),
-  update: (id: number, data: Record<string, unknown>) =>
-    api.put<TeamResource>(`/resources/${id}`, data).then((r) => r.data),
-  delete: (id: number) =>
-    api.delete(`/resources/${id}`).then((r) => r.data),
-}
-
-export interface TeamResource {
-  id: number
-  title: string
-  url: string | null
-  description: string | null
-  category: string
-  resource_type: string
-  tags: string | null
-  shared_by: number
-  shared_by_name: string | null
-  is_pinned: boolean
-  created_at: string
 }
 
 // ── Google Calendar ───────────────────────────────────────

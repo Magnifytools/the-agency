@@ -389,33 +389,6 @@ export interface DiscordSendResponse {
   date?: string
 }
 
-// --- Industry News ---
-
-export interface IndustryNewsItem {
-  id: number
-  title: string
-  published_date: string
-  content: string | null
-  url: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface IndustryNewsCreate {
-  title: string
-  published_date: string
-  content?: string | null
-  url?: string | null
-}
-
-// --- News URL Extraction ---
-
-export interface NewsExtraction {
-  title: string | null
-  content: string | null
-  published_date: string | null
-}
-
 // --- Inbox Quick Capture ---
 
 export type InboxNoteStatus = "pending" | "classified" | "processed" | "dismissed"

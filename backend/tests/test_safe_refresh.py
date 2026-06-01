@@ -63,9 +63,9 @@ class TestReloadForResponse:
     @pytest.mark.asyncio
     async def test_reload_returns_object(self):
         """reload_for_response fetches a real model by ID."""
-        from backend.db.models import NewsSource
+        from backend.db.models import Client
 
-        mock_source = MagicMock(spec=NewsSource)
+        mock_source = MagicMock(spec=Client)
         mock_source.id = 42
 
         db = AsyncMock()
@@ -73,19 +73,19 @@ class TestReloadForResponse:
         mock_result.scalar_one_or_none.return_value = mock_source
         db.execute.return_value = mock_result
 
-        result = await reload_for_response(db, NewsSource, 42)
+        result = await reload_for_response(db, Client, 42)
         assert result == mock_source
         db.execute.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_reload_returns_none_when_not_found(self):
         """reload_for_response returns None if object not found."""
-        from backend.db.models import NewsSource
+        from backend.db.models import Client
 
         db = AsyncMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         db.execute.return_value = mock_result
 
-        result = await reload_for_response(db, NewsSource, 999)
+        result = await reload_for_response(db, Client, 999)
         assert result is None

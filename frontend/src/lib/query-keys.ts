@@ -22,10 +22,6 @@ export const vaultKeys = {
   assets: (category?: string) => ["vault-assets", category ?? "all"] as const,
 }
 
-export const newsKeys = {
-  all: () => ["industry-news"] as const,
-}
-
 export const inboxKeys = {
   all: () => ["inbox-notes"] as const,
   list: (status?: string) => ["inbox-notes", status ?? "all"] as const,

@@ -71,8 +71,8 @@ Model inventory (38 models, ~1,500 lines):
   --- Notifications & Inbox ---
   Notification, InboxNote, InboxAttachment
 
-  --- Agency Assets & News ---
-  AgencyAsset, IndustryNews, NewsSource
+  --- Agency Assets ---
+  AgencyAsset
 
   --- My Week ---
   UserDayStatus, CompanyHoliday
@@ -1458,45 +1458,6 @@ class AgencyAsset(TimestampMixin, Base):
     is_active = Column(Boolean)           # Activa: True/False/None
     subscription_type = Column(String(50))  # Gratuita, Mensual, Anual, etc.
     purpose = Column(String(200))         # Uso: Contacto general, Cuentas herramientas...
-
-
-# ═══════════════════════════════════════════════════════════════
-# TEAM RESOURCES: shared bookmarks, tools, articles
-# ═══════════════════════════════════════════════════════════════
-
-class TeamResource(TimestampMixin, Base):
-    __tablename__ = "team_resources"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    title = Column(String(300), nullable=False)
-    url = Column(String(500), nullable=True)
-    description = Column(Text, nullable=True)
-    category = Column(String(30), nullable=False, default="ia")  # temática
-    resource_type = Column(String(30), nullable=False, default="herramienta")  # formato
-    tags = Column(String(500), nullable=True)  # comma-separated
-    shared_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    is_pinned = Column(Boolean, nullable=False, default=False)
-
-    user = relationship("User", lazy="selectin")
-
-
-class IndustryNews(TimestampMixin, Base):
-    __tablename__ = "industry_news"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    title = Column(String(300), nullable=False)
-    content = Column(Text, nullable=True)
-    url = Column(String(500), nullable=True)
-    published_date = Column(Date, nullable=False)
-
-
-class NewsSource(TimestampMixin, Base):
-    __tablename__ = "news_sources"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(200), nullable=False)
-    url = Column(String(500), nullable=False)
-    category = Column(String(100), nullable=True)
 
 
 class BalanceSnapshot(TimestampMixin, Base):

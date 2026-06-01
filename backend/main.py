@@ -21,7 +21,7 @@ from backend.api.routes import (
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
     service_templates, dailys, contacts, activity, notifications, resources,
     billing_events, client_dashboard, engine_integration, investments,
-    evidence, search, agency_vault, industry_news, core_updates, balance,
+    evidence, search, agency_vault, core_updates, balance,
     inbox,
     extension,
     assistant,
@@ -29,7 +29,6 @@ from backend.api.routes import (
     automations,
     google_calendar,
     bank_import,
-    team_resources,
     cfo,
 )
 
@@ -101,9 +100,6 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS evening_reminder_time VARCHAR(5) DEFAULT '18:00'",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE",
                 "ALTER TABLE clients ADD COLUMN IF NOT EXISTS slack_template JSONB",
-                "CREATE TABLE IF NOT EXISTS team_resources (id SERIAL PRIMARY KEY, title VARCHAR(300) NOT NULL, url VARCHAR(500), description TEXT, category VARCHAR(30) NOT NULL DEFAULT 'tool', tags VARCHAR(500), shared_by INTEGER NOT NULL REFERENCES users(id), is_pinned BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
-                "CREATE INDEX IF NOT EXISTS ix_team_resources_category ON team_resources(category)",
-                "ALTER TABLE team_resources ADD COLUMN IF NOT EXISTS resource_type VARCHAR(30) DEFAULT 'herramienta'",
                 # Google Calendar integration
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_refresh_token VARCHAR(500)",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_calendar_id VARCHAR(200)",
@@ -373,7 +369,6 @@ app.include_router(investments.router)
 app.include_router(evidence.router)
 app.include_router(search.router)
 app.include_router(agency_vault.router)
-app.include_router(industry_news.router)
 app.include_router(core_updates.router)
 app.include_router(balance.router)
 app.include_router(inbox.router)
@@ -383,7 +378,6 @@ app.include_router(my_week.router)
 app.include_router(automations.router)
 app.include_router(google_calendar.router)
 app.include_router(bank_import.router)
-app.include_router(team_resources.router)
 app.include_router(cfo.router)
 
 

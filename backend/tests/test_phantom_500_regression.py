@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient, ASGITransport
 
 from backend.db.models import (
-    Task, TaskStatus, TaskPriority, TimeEntry, ProjectEvidence, EvidenceType, NewsSource,
+    Task, TaskStatus, TaskPriority, TimeEntry, ProjectEvidence, EvidenceType,
 )
 
 
@@ -213,51 +213,3 @@ async def test_create_evidence_returns_201_when_reload_fails(admin_client, admin
     assert response.status_code == 201, f"Expected 201 but got {response.status_code}: {response.text}"
 
 
-# ---------------------------------------------------------------------------
-# Test 4: Creating a news source with reload failure still returns 201
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_create_news_source_returns_201_when_reload_fails(admin_user):
-    """POST /api/news/sources should return 200/201 even if reload fails."""
-    from datetime import datetime
-    from backend.db.database import get_db
-    from backend.api.deps import get_current_user
-    from backend.main import app
-
-    mock_db = AsyncMock()
-    execute_result = MagicMock()
-    execute_result.scalar.return_value = 0
-    execute_result.scalar_one_or_none.return_value = None
-    execute_result.scalars.return_value.all.return_value = []
-    mock_db.execute.return_value = execute_result
-
-    # Make db.add set the id/created_at on the source object so response validation passes
-    def fake_add(obj):
-        obj.id = 3
-        obj.created_at = "2026-01-01T00:00:00"
-    mock_db.add = MagicMock(side_effect=fake_add)
-
-    app.dependency_overrides[get_current_user] = lambda: admin_user
-    app.dependency_overrides[get_db] = lambda: mock_db
-
-    try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            with patch(
-                "backend.api.utils.db_helpers.reload_for_response",
-                new_callable=AsyncMock,
-                side_effect=Exception("reload failed"),
-            ):
-                response = await client.post(
-                    "/api/news/sources",
-                    json={"name": "Test Source", "url": "https://source.example.com", "category": "tech"},
-                )
-
-        # Should succeed (200 or 201) — not 500
-        assert response.status_code in (200, 201), (
-            f"Expected 200/201 but got {response.status_code}: {response.text}"
-        )
-    finally:
-        app.dependency_overrides.clear()
