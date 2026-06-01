@@ -18,6 +18,17 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 _MEMBER_UPDATABLE = {"full_name", "preferences", "region", "locality", "short_name", "birthday", "job_title", "morning_reminder_time", "evening_reminder_time", "onboarding_completed"}
 _ADMIN_UPDATABLE = _MEMBER_UPDATABLE | {"role", "hourly_rate", "cost_per_hour", "available_hours_month", "is_active", "email", "weekly_hours"}
 
+# Modules accepted by sync_user_permissions. Derived from the modules actually
+# guarded by require_module(...) across api/routes/. Keep in sync when a new
+# module is introduced — silent failure here means stored permissions never
+# take effect because no route checks them.
+_VALID_MODULES = frozenset({
+    "billing", "clients", "communications", "dashboard", "digests",
+    "finance_advisor", "finance_expenses", "finance_forecasts", "finance_import",
+    "finance_income", "finance_taxes",
+    "growth", "leads", "pm", "projects", "proposals", "reports", "tasks", "timesheet",
+})
+
 @router.get("", response_model=PaginatedResponse[UserListResponse])
 async def list_users(
     page: int = Query(1, ge=1),
@@ -145,6 +156,12 @@ async def sync_user_permissions(
     current_user: User = Depends(require_admin),
 ):
     """Admin-only: set a user's module permissions to exactly the given list."""
+    invalid = set(modules) - _VALID_MODULES
+    if invalid:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Módulos no reconocidos: {sorted(invalid)}. Permitidos: {sorted(_VALID_MODULES)}",
+        )
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
