@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
@@ -39,7 +39,7 @@ async def top_routes(
             AuditLog.method,
             func.count().label("hits"),
             func.avg(AuditLog.duration_ms).label("avg_ms"),
-            func.sum(func.case((AuditLog.status_code >= 400, 1), else_=0)).label("errors"),
+            func.sum(case((AuditLog.status_code >= 400, 1), else_=0)).label("errors"),
         )
         .where(
             AuditLog.created_at >= since,
