@@ -495,6 +495,58 @@ async def _meeting_alert_loop():
             logging.error("Meeting alert loop error: %s", e)
 
 
+# ── Retention cleanup ───────────────────────────────────────
+
+async def _retention_cleanup_loop():
+    """Prune append-only logging tables to keep the DB small.
+
+    Runs once shortly after startup and then every 24h. Logs and
+    audit-style rows older than 90 days are deleted; notifications
+    that have already been read get a 30-day window.
+    """
+    from datetime import datetime, timedelta
+    from sqlalchemy import delete
+    from backend.db.database import async_session
+    from backend.db.models import AuditLog, SyncLog, HoldedSyncLog, AutomationLog, Notification
+
+    # Small initial delay so the rest of the boot finishes first.
+    await asyncio.sleep(60)
+
+    while True:
+        try:
+            now = datetime.now(MADRID_TZ).replace(tzinfo=None)
+            cutoff_90d = now - timedelta(days=90)
+            cutoff_30d = now - timedelta(days=30)
+
+            async with async_session() as db:
+                total = 0
+                # Tables with created_at via TimestampMixin
+                for model in (AuditLog, SyncLog, AutomationLog):
+                    r = await db.execute(
+                        delete(model).where(model.created_at < cutoff_90d)
+                    )
+                    total += r.rowcount or 0
+                # HoldedSyncLog doesn't use TimestampMixin; key off started_at
+                r = await db.execute(
+                    delete(HoldedSyncLog).where(HoldedSyncLog.started_at < cutoff_90d)
+                )
+                total += r.rowcount or 0
+                # Notifications already read: shorter 30-day window
+                r = await db.execute(
+                    delete(Notification).where(
+                        Notification.is_read.is_(True),
+                        Notification.created_at < cutoff_30d,
+                    )
+                )
+                total += r.rowcount or 0
+                await db.commit()
+                logging.info("Retention sweep: deleted %d rows (logs >90d, read notifications >30d)", total)
+        except Exception as e:
+            logging.error("Retention cleanup loop error: %s", e)
+
+        await asyncio.sleep(24 * 3600)  # daily
+
+
 # ── Public API ───────────────────────────────────────────────
 
 def start_background_tasks() -> list[asyncio.Task]:
@@ -543,5 +595,10 @@ def start_background_tasks() -> list[asyncio.Task]:
         t.add_done_callback(_log_task_error)
         tasks.append(t)
         logging.info("Google Calendar sync + meeting alerts enabled")
+
+    t = asyncio.create_task(_retention_cleanup_loop(), name="retention-cleanup")
+    t.add_done_callback(_log_task_error)
+    tasks.append(t)
+    logging.info("Retention cleanup loop started (logs >90d, read notifications >30d)")
 
     return tasks
