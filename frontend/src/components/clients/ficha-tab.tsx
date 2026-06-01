@@ -46,13 +46,19 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
   const [deleteDocId, setDeleteDocId] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const prevContextRef = useRef(client.context)
 
-  // Sync local state when prop changes externally (e.g. query refetch)
-  if (client.context !== prevContextRef.current) {
-    prevContextRef.current = client.context
+  // Reset local state only when navigating between clients, never on a same-id
+  // refetch — otherwise an inflight query response can blow away the user's
+  // pending edits before the 1500ms debounce flushes.
+  useEffect(() => {
     setContextValue(client.context ?? "")
-  }
+    setSaveStatus("idle")
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client.id])
 
   const updateMut = useMutation({
     mutationFn: (ctx: string) => clientsApi.update(client.id, { context: ctx }),
