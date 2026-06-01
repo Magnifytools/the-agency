@@ -255,6 +255,8 @@ export default function DashboardPage() {
       queryClient.invalidateQueries({ queryKey: ["my-tasks-in-progress", user?.id] })
       queryClient.invalidateQueries({ queryKey: ["my-tasks-pending", user?.id] })
       queryClient.invalidateQueries({ queryKey: ["my-tasks-overdue", user?.id] })
+      queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      queryClient.invalidateQueries({ queryKey: ["project-tasks"] })
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al completar la tarea")),
   })
