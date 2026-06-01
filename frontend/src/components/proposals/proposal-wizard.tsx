@@ -341,6 +341,7 @@ export function ProposalWizard({
     }
 
     const handleSave = async () => {
+        if (createMutation.isPending || updateMutation.isPending) return
         if (!form.title || !form.company_name) {
             toast.error("El título y la empresa son obligatorios")
             return
