@@ -4,7 +4,7 @@ from typing import Optional
 
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, or_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -54,12 +54,19 @@ async def list_insights(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("pm")),
 ):
-    """List active insights, scoped to current user (admin sees all)."""
+    """List active insights, scoped to current user (admin sees all).
+
+    Filters out insights whose expires_at has passed — services/insights.py
+    sets a relevant TTL on each insight (1-7 days depending on type) and
+    expired ones lose their value as suggestions. The row is left in place;
+    physical cleanup happens on the next /generate-insights call.
+    """
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     query = select(PMInsight).options(
         selectinload(PMInsight.client),
         selectinload(PMInsight.project),
         selectinload(PMInsight.task),
-    )
+    ).where(or_(PMInsight.expires_at.is_(None), PMInsight.expires_at > now))
 
     # F-04: isolate by user_id for non-admin
     if current_user.role != UserRole.admin:
@@ -95,15 +102,21 @@ async def trigger_generate_insights(
     """
     ai_limiter.check(current_user.id, max_requests=5, window_seconds=60)
 
-    # F-04: only clear insights belonging to current user
-    old_insights = await db.execute(
-        select(PMInsight).where(
-            PMInsight.status == InsightStatus.active,
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    # F-04: only clear insights belonging to current user.
+    # Sweep both active (about to be regenerated) and any expired rows that
+    # accumulated since the last call — this is the only place expires_at
+    # triggers physical deletion.
+    await db.execute(
+        delete(PMInsight).where(
             PMInsight.user_id == current_user.id,
+            or_(
+                PMInsight.status == InsightStatus.active,
+                PMInsight.expires_at < now,
+            ),
         )
     )
-    for old in old_insights.scalars().all():
-        await db.delete(old)
     await db.commit()
 
     # Generate new insights
