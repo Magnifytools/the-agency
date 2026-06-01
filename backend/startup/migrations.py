@@ -5,7 +5,65 @@ on every boot without data loss.
 
 Extracted from main.py to keep the entry point lean.
 """
+import enum as _enum
 import logging
+
+
+async def _ensure_pg_enums():
+    """Create every PG enum type used by the ORM models if missing.
+
+    SQLAlchemy's ``Enum(PyEnumClass)`` casts inserts to ``::<typename>``;
+    when the column was originally provisioned as VARCHAR and the model
+    was later switched to ``Enum``, the PG type never gets created and
+    every INSERT fails with UndefinedObjectError. Iterating over every
+    ``enum.Enum`` subclass in ``backend.db.models`` and emitting
+    ``CREATE TYPE IF NOT EXISTS`` covers existing and future enums
+    without manual bookkeeping.
+
+    Idempotent: ``DO $$ … IF NOT EXISTS (SELECT 1 FROM pg_type …) $$``
+    so it is safe on every boot, and unused enum types (e.g. for
+    ``native_enum=False`` columns) are harmless.
+    """
+    from sqlalchemy import text
+    from backend.db.database import engine
+    from backend.db import models as _models
+
+    enum_classes = []
+    for obj in vars(_models).values():
+        if (
+            isinstance(obj, type)
+            and issubclass(obj, _enum.Enum)
+            and obj is not _enum.Enum
+        ):
+            enum_classes.append(obj)
+
+    logging.info("Running _ensure_pg_enums for %d enum classes...", len(enum_classes))
+    async with engine.begin() as conn:
+        for ec in enum_classes:
+            # SQLAlchemy defaults to lowercased class name as the PG type
+            # name; PG itself lowercases unquoted identifiers anyway.
+            type_name = ec.__name__.lower()
+            # ``Enum(PyEnumClass)`` stores ``member.name`` in PG by default.
+            # All str+Enum classes in models keep ``name == value``, so this
+            # matches both representations.
+            members = ",".join(f"'{m.name}'" for m in ec)
+            sql = (
+                "DO $$ BEGIN "
+                f"IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = '{type_name}') THEN "
+                f"CREATE TYPE {type_name} AS ENUM ({members}); "
+                "END IF; "
+                "END $$"
+            )
+            try:
+                await conn.execute(text("SAVEPOINT enum_sp"))
+                await conn.execute(text(sql))
+                await conn.execute(text("RELEASE SAVEPOINT enum_sp"))
+            except Exception as exc:
+                await conn.execute(text("ROLLBACK TO SAVEPOINT enum_sp"))
+                logging.warning(
+                    "CREATE TYPE %s failed (skipping): %s", type_name, exc
+                )
+    logging.info("_ensure_pg_enums complete.")
 
 
 async def _ensure_columns():
@@ -935,6 +993,7 @@ async def _backfill_module_permissions():
 
 async def run_migrations():
     """Execute all DDL migrations in order. Called from lifespan and init_db."""
+    await _ensure_pg_enums()
     await _ensure_columns()
     await _ensure_numeric_types()
     await _ensure_columns_v2()
