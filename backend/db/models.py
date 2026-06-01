@@ -451,6 +451,8 @@ class Project(TimestampMixin, Base):
     status = Column(Enum(ProjectStatus), nullable=False, default=ProjectStatus.active)
     progress_percent = Column(Integer, nullable=False, default=0)
     budget_hours = Column(Float, nullable=True)
+    weekly_hours_budget = Column(Float, nullable=True)  # guía visual de carga semanal; no dispara alertas por sí solo
+    monthly_hours_budget = Column(Float, nullable=True)  # techo acumulado del mes; warning 80%, alerta 100%
     budget_amount = Column(Numeric(12, 2), nullable=True)
     gsc_url = Column(String(255), nullable=True)
     ga4_property_id = Column(String(50), nullable=True)

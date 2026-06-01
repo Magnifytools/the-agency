@@ -21,6 +21,8 @@ DAILY_MISSING = "daily_missing"
 TIMESHEET_INCOMPLETE = "timesheet_incomplete"
 CAPACITY_OVERLOAD = "capacity_overload"
 CLIENT_NO_HOURS = "client_no_hours"
+PROJECT_MONTHLY_HOURS_WARNING = "project_monthly_hours_warning"
+PROJECT_MONTHLY_HOURS_EXCEEDED = "project_monthly_hours_exceeded"
 
 
 async def create_notification(

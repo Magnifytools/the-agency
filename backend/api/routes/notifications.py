@@ -11,13 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.database import get_db
 from backend.db.models import (
     Notification, Task, TaskStatus, Lead, LeadStatus, Client, ClientStatus,
-    UserRole, User, DailyUpdate, TimeEntry,
+    UserRole, User, DailyUpdate, TimeEntry, Project, ProjectStatus,
 )
 from backend.api.deps import get_current_user
 from backend.schemas.notification import NotificationResponse
 from backend.services.notification_service import (
     create_notification, TASK_OVERDUE, LEAD_FOLLOWUP, BILLING_REMINDER,
     DAILY_MISSING, TIMESHEET_INCOMPLETE, CAPACITY_OVERLOAD, CLIENT_NO_HOURS,
+    PROJECT_MONTHLY_HOURS_WARNING, PROJECT_MONTHLY_HOURS_EXCEEDED,
 )
 
 logger = logging.getLogger(__name__)
@@ -393,6 +394,84 @@ async def generate_notification_checks(
                     created += 1
     except Exception as e:
         logger.error("Error checking capacity overload: %s", e)
+
+    # 8. Projects exceeding monthly_hours_budget — visible to admins and users with projects module access.
+    # The weekly_hours_budget field is purely visual guidance and does NOT trigger notifications,
+    # so puntual weeks above the weekly target don't fire alerts as long as the month stays on track.
+    def _has_projects_access(u) -> bool:
+        if u.role == UserRole.admin:
+            return True
+        try:
+            return any(p.module == "projects" and p.can_read for p in (u.permissions or []))
+        except Exception:
+            return False
+
+    if _has_projects_access(user):
+        try:
+            month_start = today.replace(day=1)
+            projects_result = await db.execute(
+                select(Project).where(
+                    Project.status == ProjectStatus.active,
+                    Project.monthly_hours_budget.isnot(None),
+                    Project.monthly_hours_budget > 0,
+                )
+            )
+            projects_with_budget = projects_result.scalars().all()
+
+            if projects_with_budget:
+                project_ids = [p.id for p in projects_with_budget]
+                hours_result = await db.execute(
+                    select(
+                        Task.project_id,
+                        func.coalesce(func.sum(TimeEntry.minutes), 0).label("total"),
+                    )
+                    .join(Task, TimeEntry.task_id == Task.id)
+                    .where(
+                        Task.project_id.in_(project_ids),
+                        func.date(TimeEntry.date) >= month_start,
+                    )
+                    .group_by(Task.project_id)
+                )
+                minutes_by_project = {row.project_id: row.total or 0 for row in hours_result.all()}
+
+                for project in projects_with_budget:
+                    budget_minutes = float(project.monthly_hours_budget) * 60
+                    used_minutes = minutes_by_project.get(project.id, 0)
+                    if budget_minutes <= 0:
+                        continue
+                    pct = used_minutes / budget_minutes
+                    used_hours_str = f"{used_minutes / 60:.1f}h".replace(".0h", "h")
+                    budget_hours_str = f"{project.monthly_hours_budget:g}h"
+
+                    if pct >= 1.0:
+                        if not _has_existing(PROJECT_MONTHLY_HOURS_EXCEEDED, "project", project.id):
+                            await create_notification(
+                                db,
+                                user_id=user.id,
+                                type=PROJECT_MONTHLY_HOURS_EXCEEDED,
+                                title=f"Proyecto pasado de horas este mes: {project.name}",
+                                message=f"{used_hours_str} este mes, supera el techo mensual de {budget_hours_str} ({int(pct * 100)}%)",
+                                link_url=f"/projects/{project.id}",
+                                entity_type="project",
+                                entity_id=project.id,
+                            )
+                            created += 1
+                    elif pct >= 0.8:
+                        if not _has_existing(PROJECT_MONTHLY_HOURS_WARNING, "project", project.id) \
+                                and not _has_existing(PROJECT_MONTHLY_HOURS_EXCEEDED, "project", project.id):
+                            await create_notification(
+                                db,
+                                user_id=user.id,
+                                type=PROJECT_MONTHLY_HOURS_WARNING,
+                                title=f"Aviso de horas: {project.name}",
+                                message=f"{used_hours_str} este mes de {budget_hours_str} previstas ({int(pct * 100)}%)",
+                                link_url=f"/projects/{project.id}",
+                                entity_type="project",
+                                entity_id=project.id,
+                            )
+                            created += 1
+        except Exception as e:
+            logger.error("Error checking project monthly hours budget: %s", e)
 
     if created > 0:
         await db.commit()

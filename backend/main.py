@@ -36,6 +36,7 @@ from backend.api.routes import (
 # ── Re-export migration/seed functions so scripts/init_db.py keeps working ──
 from backend.startup.migrations import (  # noqa: F401
     _schema_needs_startup_ddl,
+    _ensure_pg_enums,
     _ensure_columns,
     _ensure_numeric_types,
     _ensure_columns_v2,
@@ -62,6 +63,14 @@ from backend.startup.background_tasks import (  # noqa: F401
 
 
 async def lifespan(app: FastAPI):
+    # Create PG enum types before any DDL/INSERT that might depend on them.
+    # SQLAlchemy ``Enum(PyEnumClass)`` casts inserts to ``::<typename>``, so a
+    # missing enum type breaks every INSERT (e.g. vattreatment on clients).
+    try:
+        await _ensure_pg_enums()
+    except Exception as e:
+        logging.warning("_ensure_pg_enums failed (may be expected): %s", e)
+
     # Run idempotent DDL for new columns on startup
     from sqlalchemy import text
     from backend.db.database import engine
@@ -76,6 +85,8 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS billing_amount NUMERIC(12,2)",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS next_billing_date DATE",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS last_billed_date DATE",
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS weekly_hours_budget FLOAT",
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS monthly_hours_budget FLOAT",
                 # Evidence file columns (were missing due to sentinel skip)
                 "CREATE TABLE IF NOT EXISTS project_evidence (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id), phase_id INTEGER REFERENCES project_phases(id), title VARCHAR(200) NOT NULL, url TEXT, evidence_type VARCHAR(20) DEFAULT 'other', description TEXT, created_by INTEGER REFERENCES users(id), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
                 "ALTER TABLE project_evidence ADD COLUMN IF NOT EXISTS file_name VARCHAR(255)",

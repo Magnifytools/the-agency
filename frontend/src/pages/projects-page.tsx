@@ -380,6 +380,8 @@ function NewProjectDialog({
     unit_label: "",
     scope: "",
     budget_amount: "",
+    weekly_hours_budget: "",
+    monthly_hours_budget: "",
   }
   const [formData, setFormData] = useState(emptyForm)
 
@@ -398,6 +400,8 @@ function NewProjectDialog({
         unit_label: formData.unit_label || undefined,
         scope: formData.scope || undefined,
         budget_amount: formData.budget_amount ? parseFloat(formData.budget_amount) : undefined,
+        weekly_hours_budget: formData.weekly_hours_budget ? parseFloat(formData.weekly_hours_budget) : undefined,
+        monthly_hours_budget: formData.monthly_hours_budget ? parseFloat(formData.monthly_hours_budget) : undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] })
@@ -472,6 +476,40 @@ function NewProjectDialog({
           />
           <Label htmlFor="is_recurring_new">Servicio recurrente</Label>
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="monthly_hours_budget_new">
+              {formData.is_recurring
+                ? "Horas/mes (techo de alerta) *"
+                : "Horas/mes (techo de alerta, opcional)"}
+            </Label>
+            <Input
+              id="monthly_hours_budget_new"
+              type="number"
+              step="0.5"
+              min="0"
+              value={formData.monthly_hours_budget}
+              onChange={(e) => setFormData({ ...formData, monthly_hours_budget: e.target.value })}
+              placeholder="Ej: 24"
+              required={formData.is_recurring}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="weekly_hours_budget_new">Horas/semana (guía visual)</Label>
+            <Input
+              id="weekly_hours_budget_new"
+              type="number"
+              step="0.5"
+              min="0"
+              value={formData.weekly_hours_budget}
+              onChange={(e) => setFormData({ ...formData, weekly_hours_budget: e.target.value })}
+              placeholder="Ej: 6"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground -mt-2">
+          La alerta usa el techo mensual (aviso al 80%, alerta al pasarse). El semanal es solo referencia visual; se permite compensar entre semanas del mismo mes.
+        </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Modelo de precio</Label>

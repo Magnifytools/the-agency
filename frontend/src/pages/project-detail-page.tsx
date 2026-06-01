@@ -729,6 +729,8 @@ function EditProjectDialog({
     unit_price: project.unit_price?.toString() || "",
     unit_label: project.unit_label || "",
     budget_hours: project.budget_hours?.toString() || "",
+    weekly_hours_budget: project.weekly_hours_budget?.toString() || "",
+    monthly_hours_budget: project.monthly_hours_budget?.toString() || "",
     budget_amount: project.budget_amount?.toString() || "",
     monthly_fee: project.monthly_fee?.toString() || "",
     billing_day: project.billing_day?.toString() || "",
@@ -750,6 +752,8 @@ function EditProjectDialog({
         unit_price: formData.unit_price ? parseFloat(formData.unit_price) : null,
         unit_label: formData.unit_label || null,
         budget_hours: formData.budget_hours ? parseFloat(formData.budget_hours) : undefined,
+        weekly_hours_budget: formData.weekly_hours_budget ? parseFloat(formData.weekly_hours_budget) : null,
+        monthly_hours_budget: formData.monthly_hours_budget ? parseFloat(formData.monthly_hours_budget) : null,
         budget_amount: formData.budget_amount ? parseFloat(formData.budget_amount) : undefined,
         monthly_fee: formData.monthly_fee ? parseFloat(formData.monthly_fee) : undefined,
         billing_day: formData.billing_day ? parseInt(formData.billing_day) : undefined,
@@ -835,6 +839,35 @@ function EditProjectDialog({
             )}
           </div>
         </div>
+        {/* --- Techos de horas (mes dispara alerta, semana = guía visual) --- */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Horas/mes (techo de alerta)</Label>
+            <Input
+              type="number"
+              step="0.5"
+              min="0"
+              value={formData.monthly_hours_budget}
+              onChange={(e) => setFormData({ ...formData, monthly_hours_budget: e.target.value })}
+              placeholder="Ej: 24"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Horas/semana (guía visual)</Label>
+            <Input
+              type="number"
+              step="0.5"
+              min="0"
+              value={formData.weekly_hours_budget}
+              onChange={(e) => setFormData({ ...formData, weekly_hours_budget: e.target.value })}
+              placeholder="Ej: 6"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground -mt-2">
+          La alerta usa el techo mensual (aviso al 80%, alerta al pasarse). El semanal es solo referencia visual; se permite compensar entre semanas.
+        </p>
+
         {/* --- Pricing model --- */}
         <div className="space-y-2">
           <Label>Modelo de precio</Label>

@@ -25,6 +25,8 @@ export interface Project {
   status: ProjectStatus
   progress_percent: number
   budget_hours: number | null
+  weekly_hours_budget: number | null
+  monthly_hours_budget: number | null
   budget_amount: number | null
   gsc_url: string | null
   ga4_property_id: string | null
@@ -73,6 +75,8 @@ export interface ProjectCreate {
   start_date?: string | null
   target_end_date?: string | null
   budget_hours?: number | null
+  weekly_hours_budget?: number | null
+  monthly_hours_budget?: number | null
   budget_amount?: number | null
   gsc_url?: string | null
   ga4_property_id?: string | null

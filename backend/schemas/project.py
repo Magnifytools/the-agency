@@ -50,6 +50,8 @@ class ProjectCreate(BaseModel):
     start_date: Optional[datetime] = None
     target_end_date: Optional[datetime] = None
     budget_hours: Optional[float] = None
+    weekly_hours_budget: Optional[float] = None
+    monthly_hours_budget: Optional[float] = None
     budget_amount: Optional[float] = None
     gsc_url: Optional[str] = None
     ga4_property_id: Optional[str] = None
@@ -72,6 +74,8 @@ class ProjectUpdate(BaseModel):
     status: Optional[str] = None
     progress_percent: Optional[int] = None
     budget_hours: Optional[float] = None
+    weekly_hours_budget: Optional[float] = None
+    monthly_hours_budget: Optional[float] = None
     budget_amount: Optional[float] = None
     gsc_url: Optional[str] = None
     ga4_property_id: Optional[str] = None
@@ -97,6 +101,8 @@ class ProjectResponse(BaseModel):
     status: str
     progress_percent: int
     budget_hours: Optional[float]
+    weekly_hours_budget: Optional[float] = None
+    monthly_hours_budget: Optional[float] = None
     budget_amount: Optional[float]
     gsc_url: Optional[str] = None
     ga4_property_id: Optional[str] = None
