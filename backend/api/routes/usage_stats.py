@@ -9,8 +9,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, case
+from fastapi import APIRouter, Depends, Query, Request
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
@@ -33,13 +33,15 @@ async def top_routes(
 ):
     """Most-hit routes in the given window, plus 4xx/5xx error counts."""
     since = _window(days)
-    result = await db.execute(
+    # Two passes: total hits + avg duration first, then error count per route.
+    # Splitting avoids a CASE-inside-SUM construct that misbehaves on empty
+    # result sets in PostgreSQL through SQLAlchemy.
+    hits_result = await db.execute(
         select(
             AuditLog.route_template,
             AuditLog.method,
             func.count().label("hits"),
             func.avg(AuditLog.duration_ms).label("avg_ms"),
-            func.sum(case((AuditLog.status_code >= 400, 1), else_=0)).label("errors"),
         )
         .where(
             AuditLog.created_at >= since,
@@ -49,15 +51,32 @@ async def top_routes(
         .order_by(func.count().desc())
         .limit(limit)
     )
+    hits_rows = hits_result.all()
+    if not hits_rows:
+        return []
+    err_result = await db.execute(
+        select(
+            AuditLog.route_template,
+            AuditLog.method,
+            func.count().label("errors"),
+        )
+        .where(
+            AuditLog.created_at >= since,
+            AuditLog.route_template.isnot(None),
+            AuditLog.status_code >= 400,
+        )
+        .group_by(AuditLog.route_template, AuditLog.method)
+    )
+    err_by_key = {(r.route_template, r.method): int(r.errors) for r in err_result.all()}
     return [
         {
             "route": row.route_template,
             "method": row.method,
             "hits": int(row.hits),
             "avg_ms": int(row.avg_ms) if row.avg_ms is not None else None,
-            "errors": int(row.errors or 0),
+            "errors": err_by_key.get((row.route_template, row.method), 0),
         }
-        for row in result.all()
+        for row in hits_rows
     ]
 
 
@@ -111,6 +130,7 @@ async def daily(
 
 @router.get("/unused-routes")
 async def unused_routes(
+    request: Request,
     days: int = Query(30, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_admin),
@@ -120,10 +140,8 @@ async def unused_routes(
     Compares the live route registry against the routes seen in audit_logs.
     Useful to spot endpoints worth cutting.
     """
-    from backend.main import app
-
     registered: set[tuple[str, str]] = set()
-    for r in app.router.routes:
+    for r in request.app.router.routes:
         path = getattr(r, "path", None)
         methods = getattr(r, "methods", None) or set()
         if not path or not path.startswith("/api"):
