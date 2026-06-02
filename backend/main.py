@@ -112,6 +112,25 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS available_hours_month NUMERIC(5,1) NOT NULL DEFAULT 147",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS fee_is_base BOOLEAN NOT NULL DEFAULT TRUE",
                 "ALTER TABLE clients ADD COLUMN IF NOT EXISTS vat_treatment VARCHAR(30) NOT NULL DEFAULT 'domestic_21'",
+                # AuditLog as request analytics sink — original schema was
+                # entity-audit (action/entity_type/entity_id NOT NULL) but the
+                # table was never written to. Relax NOT NULL + add request
+                # fields. SAVEPOINTed in this block so an earlier failure
+                # can't poison these.
+                "ALTER TABLE audit_logs ALTER COLUMN action DROP NOT NULL",
+                "ALTER TABLE audit_logs ALTER COLUMN entity_type DROP NOT NULL",
+                "ALTER TABLE audit_logs ALTER COLUMN entity_id DROP NOT NULL",
+                "ALTER TABLE audit_logs ALTER COLUMN user_id DROP NOT NULL",
+                "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS method VARCHAR(10)",
+                "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS route_template VARCHAR(255)",
+                "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS status_code INTEGER",
+                "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS duration_ms INTEGER",
+                "CREATE INDEX IF NOT EXISTS ix_audit_logs_route_created ON audit_logs (route_template, created_at DESC)",
+                "CREATE INDEX IF NOT EXISTS ix_audit_logs_user_created ON audit_logs (user_id, created_at DESC)",
+                # Drop tables retired with /news, /resources and /assistant cuts
+                "DROP TABLE IF EXISTS industry_news",
+                "DROP TABLE IF EXISTS news_sources",
+                "DROP TABLE IF EXISTS team_resources",
                 # Seed valores CFO (solo primera ejecución, idempotente)
                 "UPDATE users SET cost_per_hour = 20.10, available_hours_month = 147 WHERE (full_name ILIKE '%nacho%' OR full_name ILIKE '%ignacio%' OR email ILIKE 'nacho@%') AND cost_per_hour = 0",
                 "UPDATE users SET cost_per_hour = 23.52, available_hours_month = 147 WHERE (full_name ILIKE '%david%' OR email ILIKE 'david@%') AND cost_per_hour = 0",
