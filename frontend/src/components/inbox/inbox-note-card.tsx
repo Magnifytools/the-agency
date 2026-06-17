@@ -4,6 +4,7 @@ import { inboxApi, projectsApi, clientsApi, usersApi } from "@/lib/api"
 import { inboxKeys } from "@/lib/query-keys"
 import type { InboxNote, AISuggestion } from "@/lib/types"
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from "@/components/ui/dialog"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
@@ -41,6 +42,7 @@ function formatFileSize(bytes: number): string {
 
 export function InboxNoteCard({ note }: Props) {
   const [convertOpen, setConvertOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
   const ai = note.ai_suggestion as AISuggestion | null
@@ -192,11 +194,8 @@ export function InboxNoteCard({ note }: Props) {
             <button
               className="shrink-0 mt-1 p-1 rounded text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
               title="Eliminar nota"
-              onClick={() => {
-                if (confirm("¿Eliminar esta nota del inbox?")) {
-                  deleteMutation.mutate()
-                }
-              }}
+              aria-label="Eliminar nota"
+              onClick={() => setDeleteOpen(true)}
               disabled={deleteMutation.isPending}
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -349,6 +348,15 @@ export function InboxNoteCard({ note }: Props) {
           onConverted={invalidateAll}
         />
       )}
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Eliminar nota"
+        description="¿Eliminar esta nota del inbox? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        onConfirm={() => deleteMutation.mutate()}
+      />
     </>
   )
 }

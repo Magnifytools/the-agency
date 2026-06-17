@@ -185,6 +185,7 @@ function RoiPreviewStep({ form, onResult }: { form: WizardForm; onResult?: (r: I
                 <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">ROI por tier de pricing</p>
                     <div className="border border-border rounded-lg overflow-hidden">
+                        <div className="overflow-x-auto">
                         <table className="w-full text-sm" aria-label="Comparativa ROI por tier">
                             <thead>
                                 <tr className="bg-secondary/50 text-xs">
@@ -209,6 +210,7 @@ function RoiPreviewStep({ form, onResult }: { form: WizardForm; onResult?: (r: I
                                 ))}
                             </tbody>
                         </table>
+                        </div>
                     </div>
                 </div>
             )}

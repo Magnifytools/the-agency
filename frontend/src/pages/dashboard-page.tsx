@@ -340,15 +340,19 @@ export default function DashboardPage() {
 
   const handlePreview = async () => { await fetchPreview(); setPreviewOpen(true) }
   const handleExportClose = async () => {
-    const blob = await dashboardApi.exportMonthlyClose({ year, month })
-    const url = window.URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `cierre-mensual-${year}-${String(month).padStart(2, "0")}.csv`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    window.URL.revokeObjectURL(url)
+    try {
+      const blob = await dashboardApi.exportMonthlyClose({ year, month })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `cierre-mensual-${year}-${String(month).padStart(2, "0")}.csv`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Error al exportar el cierre"))
+    }
   }
 
   return (

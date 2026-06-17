@@ -12,8 +12,10 @@ interface DialogProps {
 
 function Dialog({ open, onOpenChange, children }: DialogProps) {
   const titleId = React.useMemo(() => `dialog-title-${++dialogIdCounter}`, [])
+  const panelRef = React.useRef<HTMLDivElement>(null)
+  const previouslyFocused = React.useRef<HTMLElement | null>(null)
 
-  // Escape key handler
+  // Escape key + focus trap (Tab/Shift+Tab cycling within the panel)
   React.useEffect(() => {
     if (!open) return
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -21,11 +23,58 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
         e.preventDefault()
         e.stopPropagation()
         onOpenChange(false)
+        return
+      }
+      if (e.key === "Tab" && panelRef.current) {
+        const focusable = panelRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+        if (focusable.length === 0) {
+          e.preventDefault()
+          return
+        }
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+        const active = document.activeElement as HTMLElement | null
+        if (e.shiftKey) {
+          if (active === first || !panelRef.current.contains(active)) {
+            e.preventDefault()
+            last.focus()
+          }
+        } else {
+          if (active === last || !panelRef.current.contains(active)) {
+            e.preventDefault()
+            first.focus()
+          }
+        }
       }
     }
     document.addEventListener("keydown", handleKeyDown)
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [open, onOpenChange])
+
+  // Body scroll lock + focus management (focus first on open, restore on close)
+  React.useEffect(() => {
+    if (!open) return
+    previouslyFocused.current = document.activeElement as HTMLElement | null
+    document.body.style.overflow = "hidden"
+    // Focus first focusable element inside the panel on open
+    const focusFirst = () => {
+      const panel = panelRef.current
+      if (!panel) return
+      const focusable = panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+      if (focusable.length > 0) focusable[0].focus()
+      else panel.focus()
+    }
+    const raf = requestAnimationFrame(focusFirst)
+    return () => {
+      cancelAnimationFrame(raf)
+      document.body.style.overflow = ""
+      previouslyFocused.current?.focus?.()
+    }
+  }, [open])
 
   if (!open) return null
   return (
@@ -36,6 +85,8 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
           onClick={() => onOpenChange(false)}
         />
         <div
+          ref={panelRef}
+          tabIndex={-1}
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}

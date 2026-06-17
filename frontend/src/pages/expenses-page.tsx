@@ -64,6 +64,7 @@ export default function ExpensesPage() {
   const deleteMut = useMutation({
     mutationFn: (id: number) => financeExpensesApi.delete(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-expenses"] }); setDeleteId(null); toast.success("Gasto eliminado") },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar")),
   })
 
   const generateRecurringMut = useMutation({
@@ -214,7 +215,7 @@ export default function ExpensesPage() {
           <div><Label>Notas</Label><Input name="notes" defaultValue={editing?.notes || ""} /></div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); setEditing(null) }}>Cancelar</Button>
-            <Button type="submit">{editing ? "Guardar" : "Crear"}</Button>
+            <Button type="submit" isLoading={createMut.isPending || updateMut.isPending}>{editing ? "Guardar" : "Crear"}</Button>
           </div>
         </form>
       </Dialog>

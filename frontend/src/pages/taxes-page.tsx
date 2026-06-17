@@ -65,16 +65,19 @@ export default function TaxesPage() {
   const createMut = useMutation({
     mutationFn: (data: TaxCreate) => financeTaxesApi.create(data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-taxes"] }); setDialogOpen(false); setEditing(null); toast.success("Impuesto creado") },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al crear")),
   })
 
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<TaxCreate> }) => financeTaxesApi.update(id, data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-taxes"] }); setDialogOpen(false); setEditing(null); toast.success("Impuesto actualizado") },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar")),
   })
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => financeTaxesApi.delete(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-taxes"] }); setDeleteId(null); toast.success("Impuesto eliminado") },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar")),
   })
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -218,7 +221,7 @@ export default function TaxesPage() {
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); setEditing(null) }}>Cancelar</Button>
-            <Button type="submit">{editing ? "Guardar" : "Crear"}</Button>
+            <Button type="submit" isLoading={createMut.isPending || updateMut.isPending}>{editing ? "Guardar" : "Crear"}</Button>
           </div>
         </form>
       </Dialog>

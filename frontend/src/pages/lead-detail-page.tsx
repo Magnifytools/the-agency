@@ -97,6 +97,7 @@ export default function LeadDetailPage() {
       qc.invalidateQueries({ queryKey: ["leads"] })
       qc.invalidateQueries({ queryKey: ["pipeline-summary"] })
     },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar")),
   })
 
   const addActivityMutation = useMutation({

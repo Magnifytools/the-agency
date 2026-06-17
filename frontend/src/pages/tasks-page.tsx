@@ -60,6 +60,7 @@ export default function TasksPage() {
   const [editing, setEditing] = useState<Task | null>(null)
   const [timeLogTask, setTimeLogTask] = useState<Task | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [view, setView] = useState<"my_day" | "sprint" | "all" | "calendar" | "weekly" | "recurring">("my_day")
   const [calMonth, setCalMonth] = useState(() => {
     const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }
@@ -1572,16 +1573,21 @@ export default function TasksPage() {
         <Button
           size="sm"
           variant="destructive"
-          onClick={() => {
-            if (confirm(`Eliminar ${selectedTaskCount} tareas?`)) {
-              bulkDeleteMutation.mutate([...selectedTaskIds])
-            }
-          }}
+          onClick={() => setBulkDeleteOpen(true)}
           disabled={bulkDeleteMutation.isPending}
         >
           Eliminar
         </Button>
       </BulkActionBar>
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        title="Eliminar tareas"
+        description={`Esta acción no se puede deshacer. Se eliminarán ${selectedTaskCount} tareas permanentemente.`}
+        confirmLabel="Eliminar"
+        onConfirm={() => bulkDeleteMutation.mutate([...selectedTaskIds])}
+      />
     </div>
   )
 }

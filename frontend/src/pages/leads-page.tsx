@@ -300,6 +300,7 @@ export default function LeadsPage() {
                         <button
                           className="text-muted-foreground hover:text-destructive p-1 rounded"
                           onClick={() => setDeleteLeadId(lead.id)}
+                          aria-label={`Eliminar lead ${lead.company_name || lead.contact_name || ""}`}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>

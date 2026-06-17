@@ -342,6 +342,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                                         <div>
                                             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Métricas de éxito</p>
                                             <div className="border border-border rounded-lg overflow-hidden">
+                                                <div className="overflow-x-auto">
                                                 <table className="w-full text-sm" aria-label="Métricas de éxito">
                                                     <thead>
                                                         <tr className="bg-secondary/50">
@@ -362,6 +363,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                                                         ))}
                                                     </tbody>
                                                 </table>
+                                                </div>
                                             </div>
                                         </div>
                                     )}
@@ -652,6 +654,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                             <details className="text-sm">
                                 <summary className="cursor-pointer font-medium mb-2">Proyección mensual (moderado)</summary>
                                 <div className="border border-border rounded-lg overflow-hidden">
+                                    <div className="overflow-x-auto">
                                     <table className="w-full text-xs" aria-label="Proyección mensual">
                                         <thead>
                                             <tr className="bg-secondary/50">
@@ -674,6 +677,7 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                                             ))}
                                         </tbody>
                                     </table>
+                                    </div>
                                 </div>
                             </details>
 

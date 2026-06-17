@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { toast } from "sonner"
@@ -43,6 +44,7 @@ export default function DigestsPage() {
   const [discordPreviewDigest, setDiscordPreviewDigest] = useState<Digest | null>(null)
   const [discordPreviewContent, setDiscordPreviewContent] = useState("")
   const [discordIsEditing, setDiscordIsEditing] = useState(false)
+  const [digestToDelete, setDigestToDelete] = useState<Digest | null>(null)
 
   const { data: digests = [], isLoading } = useQuery({
     queryKey: ["digests", filterStatus, filterClient, filterPeriodFrom, filterPeriodTo],
@@ -137,8 +139,7 @@ export default function DigestsPage() {
   })
 
   const handleDelete = (digest: Digest) => {
-    if (!confirm(`¿Eliminar el digest de ${digest.client_name || "este cliente"}?`)) return
-    deleteMutation.mutate(digest.id)
+    setDigestToDelete(digest)
   }
 
   const handleGenerate = () => {
@@ -544,6 +545,17 @@ export default function DigestsPage() {
           </div>
         </div>
       </Dialog>
+
+      <ConfirmDialog
+        open={digestToDelete !== null}
+        onOpenChange={(open) => !open && setDigestToDelete(null)}
+        title="Eliminar digest"
+        description={`¿Eliminar el digest de ${digestToDelete?.client_name || "este cliente"}? Esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar"
+        onConfirm={() => {
+          if (digestToDelete) deleteMutation.mutate(digestToDelete.id)
+        }}
+      />
 
     </div>
   )

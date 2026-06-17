@@ -74,6 +74,7 @@ export default function IncomePage() {
   const deleteMut = useMutation({
     mutationFn: (id: number) => financeIncomeApi.delete(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-income"] }); setDeleteId(null); toast.success("Ingreso eliminado") },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar")),
   })
 
   const total = items.reduce((s, i) => s + i.amount, 0)
@@ -207,7 +208,7 @@ export default function IncomePage() {
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); setEditing(null) }}>Cancelar</Button>
-            <Button type="submit">{editing ? "Guardar" : "Crear"}</Button>
+            <Button type="submit" isLoading={createMut.isPending || updateMut.isPending}>{editing ? "Guardar" : "Crear"}</Button>
           </div>
         </form>
       </Dialog>

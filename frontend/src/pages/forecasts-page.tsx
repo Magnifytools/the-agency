@@ -52,16 +52,19 @@ export default function ForecastsPage() {
   const createMut = useMutation({
     mutationFn: (data: ForecastCreate) => financeForecastsApi.create(data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-forecasts"] }); setDialogOpen(false); setEditing(null); toast.success("Previsión creada") },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al crear")),
   })
 
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<ForecastCreate> }) => financeForecastsApi.update(id, data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-forecasts"] }); setDialogOpen(false); setEditing(null); toast.success("Previsión actualizada") },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar")),
   })
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => financeForecastsApi.delete(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-forecasts"] }); setDeleteId(null); toast.success("Previsión eliminada") },
+    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar")),
   })
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -207,7 +210,7 @@ export default function ForecastsPage() {
           <div><Label>Notas</Label><Input name="notes" defaultValue={editing?.notes || ""} /></div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); setEditing(null) }}>Cancelar</Button>
-            <Button type="submit">{editing ? "Guardar" : "Crear"}</Button>
+            <Button type="submit" isLoading={createMut.isPending || updateMut.isPending}>{editing ? "Guardar" : "Crear"}</Button>
           </div>
         </form>
       </Dialog>

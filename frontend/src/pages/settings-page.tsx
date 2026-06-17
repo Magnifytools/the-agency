@@ -5,6 +5,7 @@ import { useAuth } from "@/context/auth-context"
 import { usersApi, categoriesApi, myWeekApi, calendarApi } from "@/lib/api"
 import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS } from "@/hooks/use-keyboard-shortcuts"
 import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar, FileText, Bell } from "lucide-react"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 const SPAIN_REGIONS: { code: string; name: string }[] = [
   { code: "AND", name: "Andalucía" },
@@ -45,6 +46,9 @@ export default function SettingsPage() {
   const queryClient = useQueryClient()
   const { user, refreshUser, isAdmin, hasPermission } = useAuth()
   const canManageCategories = isAdmin || hasPermission("tasks", true)
+  const [confirmDelete, setConfirmDelete] = useState<
+    { kind: "category" | "holiday"; id: number; name: string } | null
+  >(null)
   const [bindings, setBindings] = useState<Record<string, string>>({
     ...DEFAULT_SHORTCUTS,
     ...(user?.preferences?.shortcuts ?? {}),
@@ -442,11 +446,13 @@ export default function SettingsPage() {
                         <button
                           onClick={() => { setEditingCatId(cat.id); setEditCatName(cat.name); setEditCatMinutes(cat.default_minutes) }}
                           className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                          aria-label={`Editar categoría ${cat.name}`}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          onClick={() => { if (confirm(`¿Eliminar "${cat.name}"?`)) deleteCatMut.mutate(cat.id) }}
+                          onClick={() => setConfirmDelete({ kind: "category", id: cat.id, name: cat.name })}
+                          aria-label={`Eliminar categoría ${cat.name}`}
                           className="p-1.5 text-muted-foreground hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -694,7 +700,8 @@ export default function SettingsPage() {
                   )}
                 </div>
                 <button
-                  onClick={() => { if (confirm(`¿Eliminar "${h.name}"?`)) deleteHolidayMut.mutate(h.id) }}
+                  onClick={() => setConfirmDelete({ kind: "holiday", id: h.id, name: h.name })}
+                  aria-label={`Eliminar festivo ${h.name}`}
                   className="p-1.5 text-muted-foreground hover:text-red-600 hover:bg-red-50 rounded-md transition-colors flex-shrink-0"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -766,6 +773,19 @@ export default function SettingsPage() {
         </div>
       )}
     </div>
+
+    <ConfirmDialog
+      open={confirmDelete !== null}
+      onOpenChange={(open) => !open && setConfirmDelete(null)}
+      title={confirmDelete?.kind === "holiday" ? "Eliminar festivo" : "Eliminar categoría"}
+      description={`¿Eliminar "${confirmDelete?.name ?? ""}"? Esta acción no se puede deshacer.`}
+      confirmLabel="Eliminar"
+      onConfirm={() => {
+        if (!confirmDelete) return
+        if (confirmDelete.kind === "category") deleteCatMut.mutate(confirmDelete.id)
+        else deleteHolidayMut.mutate(confirmDelete.id)
+      }}
+    />
     </div>
   )
 }

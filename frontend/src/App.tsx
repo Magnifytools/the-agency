@@ -65,6 +65,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
+      refetchOnWindowFocus: false,
       retry: (failureCount, error) => {
         // No reintentar en errores de permisos o not found
         const status = (error as { response?: { status?: number } })?.response?.status

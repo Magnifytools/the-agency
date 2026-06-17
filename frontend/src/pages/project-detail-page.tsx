@@ -204,6 +204,7 @@ export default function ProjectDetailPage() {
           <Select
             value={project.status}
             onChange={(e) => updateStatusMutation.mutate(e.target.value)}
+            disabled={updateStatusMutation.isPending}
             className="w-40"
           >
             <option value="planning">Planificación</option>
@@ -555,6 +556,7 @@ export default function ProjectDetailPage() {
                       onChange={(e) =>
                         updatePhaseMutation.mutate({ phaseId: phase.id, status: e.target.value })
                       }
+                      disabled={updatePhaseMutation.isPending}
                       className="w-32 h-8 text-xs"
                     >
                       <option value="pending">Pendiente</option>
