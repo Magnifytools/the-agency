@@ -506,7 +506,7 @@ def _build_pdf(prop: "Proposal") -> bytes:  # type: ignore[name-defined]
 
 async def _build_proposal_html(proposal_id: int, db: AsyncSession) -> str:
     """Render the proposal Jinja2 template and return the HTML string."""
-    result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
+    result = await db.execute(select(Proposal).options(selectinload(Proposal.client)).where(Proposal.id == proposal_id))
     prop = result.scalar_one_or_none()
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
@@ -561,7 +561,7 @@ async def generate_proposal_pdf(
     current_user: User = Depends(require_module("proposals")),
 ):
     """Generate a binary PDF for the proposal (application/pdf)."""
-    result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
+    result = await db.execute(select(Proposal).options(selectinload(Proposal.client)).where(Proposal.id == proposal_id))
     prop = result.scalar_one_or_none()
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
@@ -584,7 +584,7 @@ async def get_proposal_pdf(
     current_user: User = Depends(require_module("proposals")),
 ):
     """Render proposal as print-ready HTML. Uses standard Bearer auth."""
-    result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
+    result = await db.execute(select(Proposal).options(selectinload(Proposal.client)).where(Proposal.id == proposal_id))
     prop = result.scalar_one_or_none()
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
@@ -605,7 +605,7 @@ async def draft_proposal_email(
     """Generate an AI-written email draft for sending a proposal."""
     from backend.services.email_drafter import draft_email
 
-    r = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
+    r = await db.execute(select(Proposal).options(selectinload(Proposal.client)).where(Proposal.id == proposal_id))
     prop = r.scalar_one_or_none()
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
@@ -661,7 +661,7 @@ async def send_proposal_email(
     from backend.services.email_service import send_email
     from backend.config import settings
 
-    r = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
+    r = await db.execute(select(Proposal).options(selectinload(Proposal.client)).where(Proposal.id == proposal_id))
     prop = r.scalar_one_or_none()
     if not prop:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")

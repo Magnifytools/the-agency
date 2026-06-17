@@ -10,6 +10,7 @@ from jinja2 import Environment, BaseLoader
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
 from backend.db.models import GeneratedReport, User, UserRole
@@ -78,7 +79,9 @@ async def list_reports(
     current_user: User = Depends(require_module("reports")),
 ):
     """List recently generated reports, optionally filtered by client."""
-    query = select(GeneratedReport)
+    query = select(GeneratedReport).options(
+        selectinload(GeneratedReport.client), selectinload(GeneratedReport.project)
+    )
     # F-07: members only see their own reports
     if current_user.role != UserRole.admin:
         query = query.where(GeneratedReport.user_id == current_user.id)
@@ -97,7 +100,7 @@ async def get_report(
 ):
     """Get a specific report by ID."""
     result = await db.execute(
-        select(GeneratedReport).where(GeneratedReport.id == report_id)
+        select(GeneratedReport).options(selectinload(GeneratedReport.client), selectinload(GeneratedReport.project)).where(GeneratedReport.id == report_id)
     )
     report = result.scalar_one_or_none()
 
@@ -120,7 +123,7 @@ async def generate_narrative(
     ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
 
     result = await db.execute(
-        select(GeneratedReport).where(GeneratedReport.id == report_id)
+        select(GeneratedReport).options(selectinload(GeneratedReport.client), selectinload(GeneratedReport.project)).where(GeneratedReport.id == report_id)
     )
     report = result.scalar_one_or_none()
 
@@ -159,7 +162,7 @@ async def delete_report(
 ):
     """Delete a report."""
     result = await db.execute(
-        select(GeneratedReport).where(GeneratedReport.id == report_id)
+        select(GeneratedReport).options(selectinload(GeneratedReport.client), selectinload(GeneratedReport.project)).where(GeneratedReport.id == report_id)
     )
     report = result.scalar_one_or_none()
 
@@ -311,7 +314,7 @@ async def get_report_pdf(
 ):
     """Render structured report as printable HTML (browser Ctrl+P for PDF)."""
     result = await db.execute(
-        select(GeneratedReport).where(GeneratedReport.id == report_id)
+        select(GeneratedReport).options(selectinload(GeneratedReport.client), selectinload(GeneratedReport.project)).where(GeneratedReport.id == report_id)
     )
     report = result.scalar_one_or_none()
     if not report:
@@ -332,7 +335,7 @@ async def get_report_narrative_pdf(
 ):
     """Render narrative (SCQA) report as printable HTML."""
     result = await db.execute(
-        select(GeneratedReport).where(GeneratedReport.id == report_id)
+        select(GeneratedReport).options(selectinload(GeneratedReport.client), selectinload(GeneratedReport.project)).where(GeneratedReport.id == report_id)
     )
     report = result.scalar_one_or_none()
     if not report:
@@ -356,7 +359,7 @@ async def download_report_pdf(
 ):
     """Download report as server-generated PDF (fpdf2)."""
     result = await db.execute(
-        select(GeneratedReport).where(GeneratedReport.id == report_id)
+        select(GeneratedReport).options(selectinload(GeneratedReport.client), selectinload(GeneratedReport.project)).where(GeneratedReport.id == report_id)
     )
     report = result.scalar_one_or_none()
     if not report:
@@ -605,7 +608,7 @@ async def get_monthly_report_pdf(
 ):
     """Render monthly report as printable HTML."""
     result = await db.execute(
-        select(GeneratedReport).where(GeneratedReport.id == report_id)
+        select(GeneratedReport).options(selectinload(GeneratedReport.client), selectinload(GeneratedReport.project)).where(GeneratedReport.id == report_id)
     )
     report = result.scalar_one_or_none()
     if not report:

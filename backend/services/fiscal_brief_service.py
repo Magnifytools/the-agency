@@ -1,6 +1,7 @@
 """Fiscal brief service — collects financial data and generates AI-powered quarterly reports."""
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -337,7 +338,7 @@ async def generate_fiscal_brief(
     brief = AdvisorAiBrief(
         period_start=_quarter_dates(year, quarter)[0],
         period_end=_quarter_dates(year, quarter)[1],
-        content=str(content) if isinstance(content, dict) else content,
+        content=json.dumps(content, ensure_ascii=False) if isinstance(content, dict) else content,
         model="claude-sonnet-4-6",
         provider="anthropic",
     )

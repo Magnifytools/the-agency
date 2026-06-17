@@ -485,16 +485,23 @@ async def bulk_update_tasks(
     result = await db.execute(select(Task).where(Task.id.in_(body.ids)))
     tasks = result.scalars().all()
     updated = 0
+    failed = 0
     for task in tasks:
-        for field, value in updates.items():
-            if field == "status" and value:
-                value = TaskStatus(value)
-            if field == "priority" and value:
-                value = TaskPriority(value)
-            setattr(task, field, value)
-        updated += 1
+        try:
+            async with db.begin_nested():
+                for field, value in updates.items():
+                    if field == "status" and value:
+                        value = TaskStatus(value)
+                    if field == "priority" and value:
+                        value = TaskPriority(value)
+                    setattr(task, field, value)
+                await db.flush()
+            updated += 1
+        except Exception as e:
+            failed += 1
+            logger.warning("bulk_update_tasks: skipped task %s: %s", task.id, e)
     await db.commit()
-    return {"updated": updated, "requested": len(body.ids)}
+    return {"updated": updated, "failed": failed, "requested": len(body.ids)}
 
 
 @router.post("/bulk/delete")

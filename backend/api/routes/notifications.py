@@ -48,7 +48,7 @@ async def list_notifications(
         return [NotificationResponse.model_validate(n) for n in result.scalars().all()]
     except Exception as e:
         logger.error("Error listing notifications for user %d: %s", user.id, e)
-        return []
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +72,7 @@ async def unread_count(
         return {"count": count}
     except Exception as e:
         logger.error("Error counting unread notifications for user %d: %s", user.id, e)
-        return {"count": 0}
+        raise
 
 
 # ---------------------------------------------------------------------------
