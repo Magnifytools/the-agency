@@ -24,7 +24,11 @@ def get_anthropic_client() -> anthropic.AsyncAnthropic:
             raise ValueError(
                 "ANTHROPIC_API_KEY no configurada. Agrega la clave en el archivo .env"
             )
-        _client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        _client = anthropic.AsyncAnthropic(
+            api_key=settings.ANTHROPIC_API_KEY,
+            timeout=60.0,
+            max_retries=2,
+        )
     return _client
 
 

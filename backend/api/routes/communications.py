@@ -194,12 +194,15 @@ async def list_pending_followups(
 async def get_communication(
     comm_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("communications")),
+    current_user: User = Depends(require_module("communications")),
 ):
     result = await db.execute(select(CommunicationLog).where(CommunicationLog.id == comm_id))
     comm = result.scalar_one_or_none()
     if not comm:
         raise HTTPException(status_code=404, detail="Communication not found")
+    # Members can only read their own communications; admins see all
+    if current_user.role != UserRole.admin and comm.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta comunicación")
     return _to_response(comm)
 
 

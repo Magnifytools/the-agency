@@ -24,7 +24,7 @@ async def save_investment_model(
     proposal_id: int,
     body: InvestmentModelInput,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_module("proposals")),
+    current_user: User = Depends(require_module("proposals", write=True)),
 ):
     """Save calculated investment model to proposal's generated_content."""
     result = await db.execute(
