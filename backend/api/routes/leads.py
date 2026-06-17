@@ -93,7 +93,7 @@ def _activity_to_response(act: LeadActivity) -> LeadActivityResponse:
 @router.get("/pipeline-summary", response_model=PipelineSummary)
 async def pipeline_summary(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_module("leads")),
+    current_user: User = Depends(require_module("growth")),
 ):
     query = select(
         Lead.status,
@@ -143,7 +143,7 @@ async def pipeline_summary(
 @router.get("/reminders", response_model=list[LeadReminderResponse])
 async def lead_reminders(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_module("leads")),
+    current_user: User = Depends(require_module("growth")),
 ):
     today = date.today()
     threshold = today + timedelta(days=3)
@@ -184,7 +184,7 @@ async def list_leads(
     assigned_to: Optional[int] = Query(None),
     service_interest: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_module("leads")),
+    current_user: User = Depends(require_module("growth")),
 ):
     query = select(Lead).options(selectinload(Lead.assigned_user))
     # IDOR: workers only see their assigned leads
@@ -210,7 +210,7 @@ async def list_leads(
 async def create_lead(
     data: LeadCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_module("leads", write=True)),
+    current_user: User = Depends(require_module("growth", write=True)),
 ):
     lead = Lead(
         company_name=data.company_name,
@@ -247,7 +247,7 @@ async def create_lead(
 async def get_lead(
     lead_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_module("leads")),
+    current_user: User = Depends(require_module("growth")),
 ):
     result = await db.execute(
         select(Lead)
@@ -284,7 +284,7 @@ async def update_lead(
     lead_id: int,
     data: LeadUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_module("leads", write=True)),
+    current_user: User = Depends(require_module("growth", write=True)),
 ):
     result = await db.execute(select(Lead).where(Lead.id == lead_id))
     lead = result.scalar_one_or_none()
@@ -325,7 +325,7 @@ async def update_lead(
 async def delete_lead(
     lead_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_module("leads", write=True)),
+    current_user: User = Depends(require_module("growth", write=True)),
 ):
     result = await db.execute(select(Lead).where(Lead.id == lead_id))
     lead = result.scalar_one_or_none()
@@ -353,7 +353,7 @@ async def add_activity(
     lead_id: int,
     data: LeadActivityCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_module("leads", write=True)),
+    current_user: User = Depends(require_module("growth", write=True)),
 ):
     result = await db.execute(select(Lead).where(Lead.id == lead_id))
     lead = result.scalar_one_or_none()
@@ -394,7 +394,7 @@ async def add_activity(
 async def convert_to_client(
     lead_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_module("leads", write=True)),
+    current_user: User = Depends(require_module("growth", write=True)),
 ):
     result = await db.execute(select(Lead).where(Lead.id == lead_id))
     lead = result.scalar_one_or_none()

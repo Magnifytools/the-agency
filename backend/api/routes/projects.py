@@ -204,8 +204,10 @@ async def list_projects(
 @router.post("/extract-from-pdf", response_model=ProjectExtract)
 async def extract_project_from_pdf(
     file: UploadFile = File(...),
-    _: object = Depends(require_module("projects", write=True)),
+    current_user: User = Depends(require_module("projects", write=True)),
 ):
+    from backend.core.rate_limiter import ai_limiter
+    ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Solo se aceptan archivos PDF")
     content = await file.read()
@@ -233,8 +235,10 @@ async def extract_project_from_pdf(
 @router.post("/extract-from-text", response_model=ProjectExtract)
 async def extract_project_from_text(
     file: UploadFile = File(...),
-    _: object = Depends(require_module("projects", write=True)),
+    current_user: User = Depends(require_module("projects", write=True)),
 ):
+    from backend.core.rate_limiter import ai_limiter
+    ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
     if not file.filename:
         raise HTTPException(400, "Archivo sin nombre")
     ext = file.filename.lower().rsplit(".", 1)[-1] if "." in file.filename else ""

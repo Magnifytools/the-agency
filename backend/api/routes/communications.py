@@ -45,15 +45,15 @@ def _to_response(comm: CommunicationLog) -> CommunicationResponse:
 async def list_client_communications(
     client_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_module("communications")),
+    current_user: User = Depends(require_module("communications")),
 ):
     """List all communications for a client, ordered by most recent first."""
-    result = await db.execute(
-        select(CommunicationLog)
-        .where(CommunicationLog.client_id == client_id)
-        .order_by(CommunicationLog.occurred_at.desc())
-        .limit(500)
-    )
+    query = select(CommunicationLog).where(CommunicationLog.client_id == client_id)
+    # Members see only their own communications; admins see all
+    if current_user.role != UserRole.admin:
+        query = query.where(CommunicationLog.user_id == current_user.id)
+    query = query.order_by(CommunicationLog.occurred_at.desc()).limit(500)
+    result = await db.execute(query)
     return [_to_response(c) for c in result.scalars().all()]
 
 
@@ -126,7 +126,10 @@ async def draft_email_endpoint(
     reply_to = None
     if body.reply_to_id:
         result = await db.execute(
-            select(CommunicationLog).where(CommunicationLog.id == body.reply_to_id)
+            select(CommunicationLog).where(
+                CommunicationLog.id == body.reply_to_id,
+                CommunicationLog.client_id == body.client_id,
+            )
         )
         reply_comm = result.scalar_one_or_none()
         if reply_comm:

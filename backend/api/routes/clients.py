@@ -514,9 +514,11 @@ async def get_recent_time_entries(
 async def get_ai_advice(
     client_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("clients", write=True)),
+    current_user: User = Depends(require_module("clients", write=True)),
 ):
     """Get AI-generated recommendations for a client."""
+    from backend.core.rate_limiter import ai_limiter
+    ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
     from backend.services.client_advisor import get_client_advice
     try:
         recommendations = await get_client_advice(db, client_id)
@@ -713,9 +715,11 @@ async def generate_intelligence(
     client_id: int,
     body: IntelligenceRequest,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ):
     """Generate AI onboarding intelligence package for a client."""
+    from backend.core.rate_limiter import ai_limiter
+    ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
     result = await db.execute(select(Client).where(Client.id == client_id))
     client = result.scalar_one_or_none()
     if not client:
