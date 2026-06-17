@@ -6,6 +6,12 @@ from datetime import datetime, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
 
+import base64
+import hashlib
+import hmac
+import time
+
+import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
@@ -62,8 +68,29 @@ async def calendar_auth_url(
     """Get the Google OAuth2 authorization URL."""
     if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
         raise HTTPException(status_code=500, detail="Google Calendar no configurado en el servidor")
-    url = get_auth_url(state=str(current_user.id))
+    url = get_auth_url(state=_sign_oauth_state(current_user.id))
     return {"url": url}
+
+
+def _sign_oauth_state(user_id: int) -> str:
+    """HMAC-signed, timestamped OAuth state (prevents account-link CSRF)."""
+    msg = f"{user_id}:{int(time.time())}"
+    sig = hmac.new(settings.SECRET_KEY.encode(), msg.encode(), hashlib.sha256).hexdigest()[:32]
+    return base64.urlsafe_b64encode(f"{msg}:{sig}".encode()).decode()
+
+
+def _verify_oauth_state(state: str, max_age: int = 600) -> int:
+    """Return the signed user_id, or raise ValueError if invalid/expired."""
+    raw = base64.urlsafe_b64decode(state.encode()).decode()
+    user_id_s, ts_s, sig = raw.split(":")
+    expected = hmac.new(
+        settings.SECRET_KEY.encode(), f"{user_id_s}:{ts_s}".encode(), hashlib.sha256
+    ).hexdigest()[:32]
+    if not hmac.compare_digest(sig, expected):
+        raise ValueError("bad signature")
+    if time.time() - int(ts_s) > max_age:
+        raise ValueError("expired")
+    return int(user_id_s)
 
 
 @router.get("/callback")
@@ -76,8 +103,14 @@ async def calendar_callback(
     if not code:
         raise HTTPException(status_code=400, detail="Authorization code missing")
 
+    # Verify signed state BEFORE doing any work (prevents OAuth account-link CSRF)
     try:
-        tokens = exchange_code(code)
+        user_id = _verify_oauth_state(state)
+    except (ValueError, TypeError, Exception):
+        return RedirectResponse(url="/settings?calendar=error&reason=invalid_state")
+
+    try:
+        tokens = await anyio.to_thread.run_sync(exchange_code, code)
     except Exception as e:
         logger.error("Google OAuth2 exchange failed: %s", e)
         return RedirectResponse(url="/settings?calendar=error")
@@ -85,11 +118,6 @@ async def calendar_callback(
     refresh_token = tokens.get("refresh_token")
     if not refresh_token:
         return RedirectResponse(url="/settings?calendar=error&reason=no_refresh_token")
-
-    # Find user from state (user_id)
-    user_id = int(state) if state.isdigit() else None
-    if not user_id:
-        return RedirectResponse(url="/settings?calendar=error&reason=invalid_state")
 
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -248,11 +276,13 @@ async def sync_user_events(db: AsyncSession, user: User) -> int:
     time_min = now.replace(hour=0, minute=0, second=0, microsecond=0)
     time_max = time_min + timedelta(days=7)
 
-    events = fetch_events(
-        user.google_refresh_token,
-        calendar_id=user.google_calendar_id or "primary",
-        time_min=time_min,
-        time_max=time_max,
+    events = await anyio.to_thread.run_sync(
+        lambda: fetch_events(
+            user.google_refresh_token,
+            calendar_id=user.google_calendar_id or "primary",
+            time_min=time_min,
+            time_max=time_max,
+        )
     )
 
     synced = 0

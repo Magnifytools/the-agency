@@ -998,6 +998,47 @@ async def _backfill_module_permissions():
             logging.info("Backfilled %d module permissions for existing users.", added)
 
 
+async def _ensure_indexes_v11():
+    """Phase 11: enforce one active timer per user + add hot-path indexes.
+
+    De-duplicates any pre-existing active timers (rows with minutes IS NULL),
+    keeping the most recent per user, THEN creates the partial unique index so
+    the read-then-act race in time_entries can no longer create two active
+    timers. Also adds missing indexes for common filters.
+    """
+    from sqlalchemy import text
+    from backend.db.database import engine
+
+    dedupe_sql = """
+        UPDATE time_entries SET minutes = 0
+        WHERE minutes IS NULL
+          AND id NOT IN (
+            SELECT MAX(id) FROM time_entries
+            WHERE minutes IS NULL GROUP BY user_id
+          )
+    """
+    ddl_statements = [
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_time_entries_active_timer ON time_entries (user_id) WHERE minutes IS NULL",
+        "CREATE INDEX IF NOT EXISTS ix_time_entries_date ON time_entries (date)",
+        "CREATE INDEX IF NOT EXISTS ix_tasks_status ON tasks (status)",
+        "CREATE INDEX IF NOT EXISTS ix_tasks_due_date ON tasks (due_date)",
+        "CREATE INDEX IF NOT EXISTS ix_tasks_scheduled_date ON tasks (scheduled_date)",
+    ]
+
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text(dedupe_sql))
+        except Exception as exc:
+            logging.warning("v11 active-timer dedupe failed (may be expected): %s", exc)
+        for sql in ddl_statements:
+            try:
+                await conn.execute(text(sql))
+            except Exception as exc:
+                logging.warning("DDL v11 statement failed (may be expected): %s", exc)
+
+    logging.info("_ensure_indexes_v11 DDL complete.")
+
+
 async def run_migrations():
     """Execute all DDL migrations in order. Called from lifespan and init_db."""
     await _ensure_pg_enums()
@@ -1012,6 +1053,7 @@ async def run_migrations():
     await _ensure_columns_v8()
     await _ensure_columns_v9()
     await _ensure_columns_v10()
+    await _ensure_indexes_v11()
     await _seed_national_holidays()
     await _cleanup_qa_test_data()
     await _ensure_categories()

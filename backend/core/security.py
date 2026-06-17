@@ -15,8 +15,15 @@ from backend.config import settings
 
 
 def _vault_fernet() -> Fernet:
-    """Derive a Fernet key from SECRET_KEY using SHA-256."""
-    key_bytes = hashlib.sha256(settings.SECRET_KEY.encode()).digest()
+    """Derive a Fernet key for vault secrets.
+
+    Uses the dedicated VAULT_KEY when configured, otherwise falls back to
+    SECRET_KEY (back-compat: existing ciphertext keeps decrypting when VAULT_KEY
+    is unset). Set VAULT_KEY so the JWT signing key can be rotated independently
+    of the vault encryption key.
+    """
+    source = settings.VAULT_KEY or settings.SECRET_KEY
+    key_bytes = hashlib.sha256(source.encode()).digest()
     return Fernet(base64.urlsafe_b64encode(key_bytes))
 
 
