@@ -27,6 +27,7 @@ class TestCalendarAuthUrl:
             mock_settings.GOOGLE_CLIENT_ID = "test-client-id"
             mock_settings.GOOGLE_CLIENT_SECRET = "test-secret"
             mock_settings.GOOGLE_REDIRECT_URI = "http://localhost/callback"
+            mock_settings.SECRET_KEY = "test-secret-key-for-hmac-state-signing"
             resp = await admin_client.get("/api/calendar/auth-url")
             assert resp.status_code == 200
             data = resp.json()
