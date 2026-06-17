@@ -609,8 +609,6 @@ export const proposalsApi = {
   pdfUrl: (id: number) => `/api/proposals/${id}/pdf`,
   draftEmail: (id: number) =>
     api.post<{ subject: string; body: string; tone: string; suggested_followup: string | null }>(`/proposals/${id}/draft-email`).then((r) => r.data),
-  sendEmail: (id: number, data: { to_email: string; message?: string }) =>
-    api.post(`/proposals/${id}/send-email`, data).then((r) => r.data),
   saveInvestment: (id: number, data: Record<string, unknown>) =>
     api.post<Proposal>(`/proposals/${id}/save-investment`, data).then((r) => r.data),
 }
@@ -779,8 +777,6 @@ export const digestsApi = {
     api.patch<Digest>(`/digests/${id}/status`, { status }).then((r) => r.data),
   render: (id: number, format: "slack" | "email" | "email_plain" | "discord") =>
     api.get<DigestRenderResponse>(`/digests/${id}/render`, { params: { format } }).then((r) => r.data),
-  sendEmail: (id: number, to: string, test: boolean = false) =>
-    api.post<{ success: boolean; message: string }>(`/digests/${id}/send-email`, { to, test }).then((r) => r.data),
   delete: (id: number) => api.delete(`/digests/${id}`).then((r) => r.data),
 }
 

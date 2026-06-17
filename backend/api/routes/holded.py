@@ -95,16 +95,10 @@ async def sync_contacts(
         return SyncResult(sync_type="contacts", status="success", records_synced=synced)
 
     except HoldedError as e:
-        log.status = "error"
-        log.error_message = str(e)
-        log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        await session.commit()
+        await _persist_failure_log(session, "contacts", str(e))
         raise HTTPException(status_code=502, detail=f"Error de Holded: {e.detail}")
     except Exception:
-        log.status = "error"
-        log.error_message = "Unexpected contacts sync error"
-        log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        await session.commit()
+        await _persist_failure_log(session, "contacts", "Unexpected contacts sync error")
         logger.exception("Unexpected error syncing Holded contacts")
         raise HTTPException(status_code=500, detail="Error interno sincronizando contactos")
 
@@ -204,16 +198,10 @@ async def sync_invoices(
         return SyncResult(sync_type="invoices", status="success", records_synced=synced, detail=f"{matched} facturas marcadas como cobradas" if matched else None)
 
     except HoldedError as e:
-        log.status = "error"
-        log.error_message = str(e)
-        log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        await session.commit()
+        await _persist_failure_log(session, "invoices", str(e))
         raise HTTPException(status_code=502, detail=f"Error de Holded: {e.detail}")
     except Exception:
-        log.status = "error"
-        log.error_message = "Unexpected invoices sync error"
-        log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        await session.commit()
+        await _persist_failure_log(session, "invoices", "Unexpected invoices sync error")
         logger.exception("Unexpected error syncing Holded invoices")
         raise HTTPException(status_code=500, detail="Error interno sincronizando facturas")
 
@@ -284,16 +272,10 @@ async def sync_expenses(
         return SyncResult(sync_type="expenses", status="success", records_synced=synced)
 
     except HoldedError as e:
-        log.status = "error"
-        log.error_message = str(e)
-        log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        await session.commit()
+        await _persist_failure_log(session, "expenses", str(e))
         raise HTTPException(status_code=502, detail=f"Error de Holded: {e.detail}")
     except Exception:
-        log.status = "error"
-        log.error_message = "Unexpected expenses sync error"
-        log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        await session.commit()
+        await _persist_failure_log(session, "expenses", "Unexpected expenses sync error")
         logger.exception("Unexpected error syncing Holded expenses")
         raise HTTPException(status_code=500, detail="Error interno sincronizando gastos")
 
@@ -306,18 +288,19 @@ async def sync_all(
     """Full sync: contacts → invoices → expenses."""
     results = []
     for sync_fn in [sync_contacts, sync_invoices, sync_expenses]:
+        sync_type = sync_fn.__name__.replace("sync_", "")
         try:
             r = await sync_fn(session=session, user=user)
             results.append(r)
         except HTTPException as e:
+            # The stage already persisted its own failure log on a clean tx.
             results.append(SyncResult(
-                sync_type=sync_fn.__name__.replace("sync_", ""),
+                sync_type=sync_type,
                 status="error",
                 records_synced=0,
                 error_message=e.detail,
             ))
         except Exception:
-            sync_type = sync_fn.__name__.replace("sync_", "")
             logger.exception("Unexpected error in Holded sync_all stage: %s", sync_type)
             results.append(SyncResult(
                 sync_type=sync_type,
@@ -325,6 +308,10 @@ async def sync_all(
                 records_synced=0,
                 error_message="Error interno de sincronizacion",
             ))
+        finally:
+            # Isolate stages: return the shared session to a clean state so a
+            # failed/aborted tx in one stage cannot cascade into the next.
+            await session.rollback()
     return results
 
 
@@ -592,6 +579,29 @@ async def client_invoices(
 
 
 # ── Helpers ────────────────────────────────────────────────
+
+
+async def _persist_failure_log(session: AsyncSession, sync_type: str, error_message: str) -> None:
+    """Persist a sync failure log on a clean transaction.
+
+    The original failure may have poisoned the transaction (PG aborts the whole
+    tx after any failed statement), so committing the error log on that session
+    would itself raise and mask the real error. Rollback first to discard the
+    aborted tx (and the in-progress log INSERT), then write a fresh error log.
+    """
+    try:
+        await session.rollback()
+        session.add(HoldedSyncLog(
+            sync_type=sync_type,
+            status="error",
+            error_message=error_message,
+            completed_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        ))
+        await session.commit()
+    except Exception:
+        # Never let bookkeeping failures mask the original error.
+        logger.exception("Failed to persist Holded %s sync failure log", sync_type)
+        await session.rollback()
 
 
 async def _match_paid_invoices(session: AsyncSession) -> int:

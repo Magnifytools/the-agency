@@ -1,20 +1,18 @@
-"""Proposals PDF generation, HTML rendering, and email sending."""
+"""Proposals PDF generation, HTML rendering, and AI email-draft generation."""
 from __future__ import annotations
 import asyncio
 import logging
-from typing import Optional
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from jinja2 import Environment, BaseLoader
 
 from backend.db.database import get_db
-from backend.db.models import Proposal, User, ProposalStatus
+from backend.db.models import Proposal, User
 from backend.api.deps import require_module
 from backend.api.routes.proposals_crud import check_proposal_access
 from backend.api.utils.db_helpers import safe_refresh
@@ -645,74 +643,6 @@ async def draft_proposal_email(
         raise HTTPException(status_code=502, detail="Error generando el borrador con IA")
 
 
-class ProposalEmailRequest(BaseModel):
-    to_email: str
-    message: Optional[str] = None
-
-
-@router.post("/{proposal_id}/send-email")
-async def send_proposal_email(
-    proposal_id: int,
-    body: ProposalEmailRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_module("proposals", write=True)),
-):
-    """Send a proposal by email."""
-    from backend.services.email_service import send_email
-    from backend.config import settings
-
-    r = await db.execute(select(Proposal).options(selectinload(Proposal.client)).where(Proposal.id == proposal_id))
-    prop = r.scalar_one_or_none()
-    if not prop:
-        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
-    check_proposal_access(prop, current_user)
-
-    # Check SMTP configured
-    if not settings.SMTP_HOST:
-        raise HTTPException(
-            status_code=400,
-            detail="SMTP no configurado. Anade SMTP_HOST, SMTP_USER, SMTP_PASSWORD y SMTP_FROM a las variables de entorno."
-        )
-
-    company = prop.company_name or (prop.client.name if prop.client else "tu empresa")
-    subject = f"Propuesta de servicios -- {company}"
-
-    custom_msg = f"<p>{body.message}</p>" if body.message else ""
-    html = f"""
-    <html><body style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
-    <h2 style="color: #1a1a1a;">Propuesta de servicios para {company}</h2>
-    {custom_msg}
-    <p>Adjunto encontraras nuestra propuesta detallada.</p>
-    <p>Quedo a tu disposicion para cualquier consulta.</p>
-    <br>
-    <p style="color: #666;">-- {current_user.full_name}<br>Magnify Agency</p>
-    </body></html>
-    """
-    text = f"Propuesta de servicios para {company}\n\n{body.message or ''}\n\nAdjunto encontraras nuestra propuesta.\n\n-- {current_user.full_name}"
-
-    # Try to generate PDF attachment
-    pdf_bytes = None
-    try:
-        loop = asyncio.get_event_loop()
-        pdf_bytes = await loop.run_in_executor(None, _build_pdf, prop)
-    except Exception:
-        pdf_bytes = None
-
-    ok = await send_email(
-        to=body.to_email,
-        subject=subject,
-        body_html=html,
-        body_text=text,
-        attachment_bytes=pdf_bytes,
-        attachment_name=f"propuesta-{company.lower().replace(' ', '-')}.pdf",
-    )
-
-    if not ok:
-        raise HTTPException(status_code=500, detail="Error al enviar el email. Verifica la configuracion SMTP.")
-
-    # Mark as sent
-    prop.sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    prop.status = ProposalStatus.sent
-    await db.commit()
-
-    return {"ok": True, "to": body.to_email}
+# Live email sending removed by product policy: proposals are delivered as a
+# downloadable PDF + an AI-generated email draft for manual copy-paste.
+# See /{proposal_id}/draft-email above and the PDF download endpoint.

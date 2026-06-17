@@ -315,7 +315,7 @@ export default function ProposalsPage() {
                                                     <Button variant="ghost" size="sm" aria-label="Descargar PDF" onClick={(e) => openPdf(p.id, e)} title="PDF">
                                                         <Download className="w-4 h-4 text-brand" />
                                                     </Button>
-                                                    <Button variant="ghost" size="icon" aria-label="Enviar por email" onClick={(e) => { e.stopPropagation(); openEmailModal(p.id) }} title="Enviar por email">
+                                                    <Button variant="ghost" size="icon" aria-label="Borrador de email" onClick={(e) => { e.stopPropagation(); openEmailModal(p.id) }} title="Borrador de email">
                                                         <Mail className="h-4 w-4" />
                                                     </Button>
                                                     {p.status === "draft" && (

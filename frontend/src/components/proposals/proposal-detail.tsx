@@ -211,8 +211,8 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                     <Button size="sm" variant="outline" onClick={() => openPdf(p.id)}>
                         <Download className="w-4 h-4 mr-1" /> PDF
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => openEmailModal(p.id)} title="Enviar por email">
-                        <Mail className="w-4 h-4 mr-1" /> Enviar email
+                    <Button size="sm" variant="outline" onClick={() => openEmailModal(p.id)} title="Borrador de email">
+                        <Mail className="w-4 h-4 mr-1" /> Borrador email
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => setRoiDialogOpen(true)}>
                         <Calculator className="w-4 h-4 mr-1" /> Calculadora ROI

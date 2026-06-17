@@ -107,6 +107,7 @@ class ClientResponse(BaseModel):
     vat_number: Optional[str] = None
     context: Optional[str] = None
     slack_template: Optional[dict] = None
+    onboarding_intelligence: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
 

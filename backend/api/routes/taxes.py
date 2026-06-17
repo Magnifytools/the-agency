@@ -72,17 +72,19 @@ async def tax_summary(
     taxes = r.scalars().all()
     total_pending = sum((t.tax_amount or 0) for t in taxes if t.status == "pendiente")
     total_paid = sum((t.tax_amount or 0) for t in taxes if t.status == "pagado")
+    total_aplazado = sum((t.tax_amount or 0) for t in taxes if t.status == "aplazado")
     by_model: dict = {}
     for t in taxes:
         if t.model not in by_model:
-            by_model[t.model] = {"total": 0, "pendiente": 0, "pagado": 0}
+            by_model[t.model] = {"total": 0, "pendiente": 0, "pagado": 0, "aplazado": 0}
         by_model[t.model]["total"] += (t.tax_amount or 0)
         by_model[t.model][t.status] = by_model[t.model].get(t.status, 0) + (t.tax_amount or 0)
     return {
         "year": year,
         "total_pending": round(total_pending, 2),
         "total_paid": round(total_paid, 2),
-        "total": round(total_pending + total_paid, 2),
+        "total_aplazado": round(total_aplazado, 2),
+        "total": round(total_pending + total_paid + total_aplazado, 2),
         "by_model": by_model,
         "count": len(taxes),
     }
