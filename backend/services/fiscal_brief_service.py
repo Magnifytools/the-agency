@@ -325,7 +325,7 @@ async def generate_fiscal_brief(
 
     client = get_anthropic_client()
     message = await client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=3000,
         system=BRIEF_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],
@@ -338,7 +338,7 @@ async def generate_fiscal_brief(
         period_start=_quarter_dates(year, quarter)[0],
         period_end=_quarter_dates(year, quarter)[1],
         content=str(content) if isinstance(content, dict) else content,
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         provider="anthropic",
     )
     db.add(brief)

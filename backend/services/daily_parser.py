@@ -65,7 +65,7 @@ async def parse_daily_update(raw_text: str) -> dict:
     logger.info("Parsing daily update (%d chars)", len(raw_text))
 
     message = await client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=4096,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": raw_text}],

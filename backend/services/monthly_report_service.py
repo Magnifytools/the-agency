@@ -147,7 +147,7 @@ Escribe en espanol profesional. Se conciso pero informativo. Usa los datos reale
     # 6. Call Claude API
     ai_client = get_anthropic_client()
     message = await ai_client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=2000,
         system="Eres un consultor SEO senior generando informes mensuales profesionales para clientes de agencia. Responde unicamente en JSON valido.",
         messages=[{"role": "user", "content": prompt}],

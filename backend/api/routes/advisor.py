@@ -386,7 +386,7 @@ Responde con JSON: {{"insights": [{{"title": "...", "description": "...", "sever
 
     client = get_anthropic_client()
     message = await client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=1500,
         system="Eres el asesor financiero interno de Magnify (agencia de marketing digital en España). Genera insights útiles y accionables. Español, directo, con cifras.",
         messages=[{"role": "user", "content": prompt}],

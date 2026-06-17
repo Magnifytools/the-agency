@@ -111,7 +111,7 @@ async def generate_report_narrative(
     logger.info("Generating AI narrative for report: %s (audience=%s)", report_title, audience)
 
     message = await client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=4096,
         system=_build_system_prompt(audience),
         messages=[{"role": "user", "content": user_prompt}],
