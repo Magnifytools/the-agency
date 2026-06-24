@@ -844,8 +844,10 @@ function EditProjectDialog({
                 <Input
                   type="date"
                   value={formData.target_end_date}
+                  min={formData.start_date || undefined}
                   onChange={(e) => setFormData({ ...formData, target_end_date: e.target.value })}
                   className="flex-1"
+                  required={!formData.is_ongoing}
                 />
                 <button
                   type="button"

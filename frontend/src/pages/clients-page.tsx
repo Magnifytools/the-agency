@@ -149,7 +149,8 @@ export default function ClientsPage() {
           scope: prefill.project.scope ?? null,
           monthly_fee: prefill.project.monthly_fee ?? null,
           budget_amount: prefill.project.budget_amount ?? null,
-          start_date: prefill.project.start_date ?? null,
+          // Si la IA no extrae fecha de inicio, usamos hoy para alimentar el aviso de cierre / pace risk
+          start_date: prefill.project.start_date ?? new Date().toISOString().slice(0, 10),
           target_end_date: prefill.project.target_end_date ?? null,
           client_id: client.id,
         })
