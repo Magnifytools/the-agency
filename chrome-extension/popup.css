@@ -440,6 +440,60 @@ textarea::placeholder {
   gap: 8px;
 }
 
+/* ── Presupuesto de horas del proyecto ─────────────────── */
+.timer-budget {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  background: #18181b;
+}
+.timer-budget.budget-alert {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
+}
+.timer-budget.budget-over {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+.budget-project {
+  font-size: 11px;
+  color: #a1a1aa;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.budget-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+}
+.budget-label { color: #71717a; }
+.budget-value {
+  font-variant-numeric: tabular-nums;
+  color: #e4e4e7;
+  font-weight: 600;
+}
+.budget-value.is-warning { color: #f59e0b; }
+.budget-value.is-over { color: #ef4444; }
+.budget-bar {
+  height: 5px;
+  background: #27272a;
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 5px 0 8px;
+}
+.budget-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: #FFD600;
+  transition: width 0.3s ease;
+}
+.budget-bar-fill.is-warning { background: #f59e0b; }
+.budget-bar-fill.is-over { background: #ef4444; }
+.budget-month { margin-top: 2px; }
+
 .pause-btn, .resume-btn {
   flex: 1;
   padding: 10px;

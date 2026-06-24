@@ -31,6 +31,12 @@ from backend.schemas.time_entry import (
 )
 from backend.api.deps import get_current_user, require_admin, require_module
 from backend.services.csv_utils import build_csv_response
+from backend.services.time_budget import (
+    build_budget_status,
+    build_closing_status,
+    effective_budgets,
+    is_recurring_project,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +44,18 @@ router = APIRouter(tags=["time-entries"])
 
 _TIME_ENTRY_RESPONSE_OPTIONS = (
     selectinload(TimeEntry.task).selectinload(Task.client),
+    selectinload(TimeEntry.task).selectinload(Task.project),
 )
+
+
+def _timer_project(entry: TimeEntry) -> tuple[int | None, str | None]:
+    """Safely extract (project_id, project_name) from a loaded time entry."""
+    try:
+        if entry.task and entry.task.project:
+            return entry.task.project.id, entry.task.project.name
+    except Exception:
+        pass
+    return None, None
 
 
 async def _sync_task_actual_minutes(db: AsyncSession, task_id: int) -> None:
@@ -739,6 +756,7 @@ async def start_timer(
     # If reload failed, task_title stays as body.notes (safe fallback)
 
     obj = loaded or entry
+    project_id, project_name = _timer_project(obj)
     sa = obj.started_at
     if sa and sa.tzinfo is None:
         sa = sa.replace(tzinfo=timezone.utc)
@@ -747,6 +765,8 @@ async def start_timer(
         task_id=obj.task_id,
         task_title=task_title,
         client_name=client_name,
+        project_id=project_id,
+        project_name=project_name,
         started_at=sa,
     )
 
@@ -808,7 +828,7 @@ async def pause_timer(
     """Pause the active timer without stopping it. Accumulated time is preserved."""
     result = await db.execute(
         select(TimeEntry)
-        .options(selectinload(TimeEntry.task).selectinload(Task.client))
+        .options(*_TIME_ENTRY_RESPONSE_OPTIONS)
         .where(
             and_(TimeEntry.user_id == current_user.id, TimeEntry.minutes.is_(None))
         )
@@ -832,10 +852,12 @@ async def pause_timer(
         task_title = entry.task.title
         if entry.task.client:
             client_name = entry.task.client.name
+    project_id, project_name = _timer_project(entry)
     sa_tz = entry.started_at.replace(tzinfo=timezone.utc) if entry.started_at and entry.started_at.tzinfo is None else entry.started_at
     return ActiveTimerResponse(
         id=entry.id, task_id=entry.task_id, task_title=task_title,
-        client_name=client_name, started_at=sa_tz,
+        client_name=client_name, project_id=project_id, project_name=project_name,
+        started_at=sa_tz,
         is_paused=True, accumulated_seconds=entry.accumulated_seconds,
     )
 
@@ -848,7 +870,7 @@ async def resume_timer(
     """Resume a paused timer."""
     result = await db.execute(
         select(TimeEntry)
-        .options(selectinload(TimeEntry.task).selectinload(Task.client))
+        .options(*_TIME_ENTRY_RESPONSE_OPTIONS)
         .where(
             and_(TimeEntry.user_id == current_user.id, TimeEntry.minutes.is_(None))
         )
@@ -870,10 +892,12 @@ async def resume_timer(
         task_title = entry.task.title
         if entry.task.client:
             client_name = entry.task.client.name
+    project_id, project_name = _timer_project(entry)
     sa_tz = now.replace(tzinfo=timezone.utc)
     return ActiveTimerResponse(
         id=entry.id, task_id=entry.task_id, task_title=task_title,
-        client_name=client_name, started_at=sa_tz,
+        client_name=client_name, project_id=project_id, project_name=project_name,
+        started_at=sa_tz,
         is_paused=False, accumulated_seconds=entry.accumulated_seconds or 0,
     )
 
@@ -885,7 +909,7 @@ async def get_active_timer(
 ):
     result = await db.execute(
         select(TimeEntry)
-        .options(selectinload(TimeEntry.task).selectinload(Task.client))
+        .options(*_TIME_ENTRY_RESPONSE_OPTIONS)
         .where(
             and_(TimeEntry.user_id == current_user.id, TimeEntry.minutes.is_(None))
         )
@@ -900,12 +924,82 @@ async def get_active_timer(
         task_title = entry.task.title
         if entry.task.client:
             client_name = entry.task.client.name
+    project_id, project_name = _timer_project(entry)
     return ActiveTimerResponse(
         id=entry.id,
         task_id=entry.task_id,
         task_title=task_title,
         client_name=client_name,
+        project_id=project_id,
+        project_name=project_name,
         started_at=sa,
         is_paused=bool(entry.paused_at),
         accumulated_seconds=entry.accumulated_seconds or 0,
     )
+
+
+@router.get("/api/timer/project-budget/{project_id}")
+async def get_project_time_budget(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("timesheet")),
+):
+    """Per-project time-budget status for the current week and month.
+
+    Aggregates project-level minutes (all users, completed entries — mirrors the
+    notification check in `notifications.py`). Used by the Chrome extension to
+    show "lo que te resta en semana" + alerta while tracking, and reusable by the
+    project detail page. Gated on `timesheet` so team members (no `projects`
+    module) can still see it from the extension.
+    """
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
+    week_start = datetime.combine(today - timedelta(days=today.weekday()), datetime.min.time())
+    month_start = datetime.combine(today.replace(day=1), datetime.min.time())
+
+    async def _sum_minutes(since: datetime) -> float:
+        q = await db.execute(
+            select(func.coalesce(func.sum(TimeEntry.minutes), 0))
+            .join(Task, TimeEntry.task_id == Task.id)
+            .where(
+                Task.project_id == project_id,
+                TimeEntry.minutes.isnot(None),
+                TimeEntry.date >= since,
+            )
+        )
+        return float(q.scalar() or 0)
+
+    if is_recurring_project(project):
+        # Retainer / mensual → techos semanal + mensual
+        week_minutes = await _sum_minutes(week_start)
+        month_minutes = await _sum_minutes(month_start)
+        weekly_budget, monthly_budget = effective_budgets(project)
+        status_block = build_budget_status(
+            weekly_budget,
+            monthly_budget,
+            week_minutes,
+            month_minutes,
+        )
+        return {
+            "project_id": project.id,
+            "project_name": project.name,
+            "kind": "recurring",
+            "closing": None,
+            **status_block,
+        }
+
+    # Puntual / cerrado → aviso de cierre (fecha final) + horas vs tiempo restante
+    total_minutes = await _sum_minutes(datetime.min)
+    closing = build_closing_status(project, total_minutes, today)
+    return {
+        "project_id": project.id,
+        "project_name": project.name,
+        "kind": "fixed",
+        "week": None,
+        "month": None,
+        "closing": closing,
+    }

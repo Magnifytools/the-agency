@@ -5,7 +5,7 @@ import logging
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, func, update, and_
+from sqlalchemy import select, func, update, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
@@ -19,6 +19,10 @@ from backend.services.notification_service import (
     create_notification, TASK_OVERDUE, LEAD_FOLLOWUP, BILLING_REMINDER,
     DAILY_MISSING, TIMESHEET_INCOMPLETE, CAPACITY_OVERLOAD, CLIENT_NO_HOURS,
     PROJECT_MONTHLY_HOURS_WARNING, PROJECT_MONTHLY_HOURS_EXCEEDED,
+    PROJECT_CLOSING_SOON, PROJECT_CLOSING_OVERDUE,
+)
+from backend.services.time_budget import (
+    effective_budgets, build_closing_status, CLOSING_SOON_DAYS,
 )
 
 logger = logging.getLogger(__name__)
@@ -409,11 +413,26 @@ async def generate_notification_checks(
     if _has_projects_access(user):
         try:
             month_start = today.replace(day=1)
+            # Include projects with an explicit monthly ceiling OR recurring/monthly
+            # retainers whose `budget_hours` ("Presupuesto horas/mes") acts as it.
+            # The effective ceiling is resolved per-project via effective_budgets().
             projects_result = await db.execute(
                 select(Project).where(
                     Project.status == ProjectStatus.active,
-                    Project.monthly_hours_budget.isnot(None),
-                    Project.monthly_hours_budget > 0,
+                    or_(
+                        and_(
+                            Project.monthly_hours_budget.isnot(None),
+                            Project.monthly_hours_budget > 0,
+                        ),
+                        and_(
+                            Project.budget_hours.isnot(None),
+                            Project.budget_hours > 0,
+                            or_(
+                                Project.is_recurring.is_(True),
+                                Project.pricing_model == "monthly",
+                            ),
+                        ),
+                    ),
                 )
             )
             projects_with_budget = projects_result.scalars().all()
@@ -435,13 +454,14 @@ async def generate_notification_checks(
                 minutes_by_project = {row.project_id: row.total or 0 for row in hours_result.all()}
 
                 for project in projects_with_budget:
-                    budget_minutes = float(project.monthly_hours_budget) * 60
-                    used_minutes = minutes_by_project.get(project.id, 0)
-                    if budget_minutes <= 0:
+                    _, monthly_budget = effective_budgets(project)
+                    if not monthly_budget or monthly_budget <= 0:
                         continue
+                    budget_minutes = float(monthly_budget) * 60
+                    used_minutes = minutes_by_project.get(project.id, 0)
                     pct = used_minutes / budget_minutes
                     used_hours_str = f"{used_minutes / 60:.1f}h".replace(".0h", "h")
-                    budget_hours_str = f"{project.monthly_hours_budget:g}h"
+                    budget_hours_str = f"{monthly_budget:g}h"
 
                     if pct >= 1.0:
                         if not _has_existing(PROJECT_MONTHLY_HOURS_EXCEEDED, "project", project.id):
@@ -472,6 +492,79 @@ async def generate_notification_checks(
                             created += 1
         except Exception as e:
             logger.error("Error checking project monthly hours budget: %s", e)
+
+    # 9. Puntual (non-recurring) projects approaching their closing date — aviso de
+    # cierre (≤7 días / vencido) combinado con horas vs tiempo restante.
+    if _has_projects_access(user):
+        try:
+            closing_result = await db.execute(
+                select(Project).where(
+                    Project.status == ProjectStatus.active,
+                    Project.target_end_date.isnot(None),
+                    Project.is_recurring.is_(False),
+                    or_(Project.pricing_model.is_(None), Project.pricing_model != "monthly"),
+                )
+            )
+            closing_projects = closing_result.scalars().all()
+
+            if closing_projects:
+                cp_ids = [p.id for p in closing_projects]
+                cp_hours = await db.execute(
+                    select(
+                        Task.project_id,
+                        func.coalesce(func.sum(TimeEntry.minutes), 0).label("total"),
+                    )
+                    .join(Task, TimeEntry.task_id == Task.id)
+                    .where(Task.project_id.in_(cp_ids), TimeEntry.minutes.isnot(None))
+                    .group_by(Task.project_id)
+                )
+                cp_minutes = {row.project_id: row.total or 0 for row in cp_hours.all()}
+
+                for project in closing_projects:
+                    closing = build_closing_status(project, cp_minutes.get(project.id, 0), today)
+                    if not closing or closing["status"] == "ok":
+                        continue
+
+                    hours_bit = ""
+                    if closing["budget_hours"]:
+                        hours_bit = (
+                            f" · {closing['used_hours']:g}h de {closing['budget_hours']:g}h"
+                            f" ({int((closing['hours_pct'] or 0) * 100)}%)"
+                        )
+
+                    if closing["overdue"]:
+                        if not _has_existing(PROJECT_CLOSING_OVERDUE, "project", project.id):
+                            await create_notification(
+                                db,
+                                user_id=user.id,
+                                type=PROJECT_CLOSING_OVERDUE,
+                                title=f"Cierre vencido: {project.name}",
+                                message=f"Debía cerrar hace {abs(closing['days_left'])}d{hours_bit}",
+                                link_url=f"/projects/{project.id}",
+                                entity_type="project",
+                                entity_id=project.id,
+                            )
+                            created += 1
+                    else:
+                        if not _has_existing(PROJECT_CLOSING_SOON, "project", project.id) \
+                                and not _has_existing(PROJECT_CLOSING_OVERDUE, "project", project.id):
+                            if closing["pace_risk"] and closing["days_left"] > CLOSING_SOON_DAYS:
+                                msg = f"Ritmo de horas alto para cerrar a tiempo{hours_bit}"
+                            else:
+                                msg = f"Cierra en {closing['days_left']}d{hours_bit}"
+                            await create_notification(
+                                db,
+                                user_id=user.id,
+                                type=PROJECT_CLOSING_SOON,
+                                title=f"Cierre próximo: {project.name}",
+                                message=msg,
+                                link_url=f"/projects/{project.id}",
+                                entity_type="project",
+                                entity_id=project.id,
+                            )
+                            created += 1
+        except Exception as e:
+            logger.error("Error checking project closing dates: %s", e)
 
     if created > 0:
         await db.commit()

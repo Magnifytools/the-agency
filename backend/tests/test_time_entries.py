@@ -56,6 +56,15 @@ class TestActiveTimer:
 
 
 @pytest.mark.asyncio
+class TestProjectTimeBudget:
+    """GET /api/timer/project-budget/{project_id}"""
+
+    async def test_nonexistent_project_returns_404(self, admin_client):
+        resp = await admin_client.get("/api/timer/project-budget/9999")
+        assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 class TestTimeEntriesList:
     """GET /api/time-entries"""
 

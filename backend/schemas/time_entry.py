@@ -50,6 +50,8 @@ class ActiveTimerResponse(BaseModel):
     task_id: Optional[int] = None
     task_title: Optional[str] = None
     client_name: Optional[str] = None
+    project_id: Optional[int] = None
+    project_name: Optional[str] = None
     started_at: datetime
     is_paused: bool = False
     accumulated_seconds: int = 0

@@ -96,6 +96,18 @@ const manualSaveBtn = document.getElementById("manual-save-btn");
 const timerError = document.getElementById("timer-error");
 const timerSuccess = document.getElementById("timer-success");
 
+// Project hours budget panel
+const timerBudget = document.getElementById("timer-budget");
+const budgetProject = document.getElementById("budget-project");
+const budgetWeekRow = document.getElementById("budget-week-row");
+const budgetWeekLabel = document.getElementById("budget-week-label");
+const budgetWeek = document.getElementById("budget-week");
+const budgetWeekBarWrap = document.getElementById("budget-week-bar-wrap");
+const budgetWeekBar = document.getElementById("budget-week-bar");
+const budgetMonthRow = document.getElementById("budget-month-row");
+const budgetMonthLabel = document.getElementById("budget-month-label");
+const budgetMonth = document.getElementById("budget-month");
+
 // Quick create (timer)
 const qcTimerLink = document.getElementById("quick-create-timer-link");
 const qcTimerForm = document.getElementById("quick-create-timer-form");
@@ -660,15 +672,155 @@ function showActiveTimer(data) {
   // Show header timer indicator
   headerTimer.classList.remove("hidden");
 
+  // Project hours budget (weekly remaining + alert)
+  loadProjectBudget(data.project_id, data.project_name);
+
   // Start interval
   if (timerInterval) clearInterval(timerInterval);
   updateTimerDisplay();
   timerInterval = setInterval(updateTimerDisplay, 1000);
 }
 
+// ── Project hours budget ──────────────────────────────────
+function fmtHours(h) {
+  if (h == null) return "—";
+  const r = Math.round(h * 10) / 10;
+  return (Number.isInteger(r) ? r : r.toFixed(1)) + "h";
+}
+
+async function loadProjectBudget(projectId, projectName) {
+  // No project on the active task → hide panel
+  if (!projectId) {
+    timerBudget.classList.add("hidden");
+    return;
+  }
+  try {
+    const res = await fetch(`${API_URL}/api/timer/project-budget/${projectId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (handle401(res)) return;
+    if (!res.ok) {
+      timerBudget.classList.add("hidden");
+      return;
+    }
+    const data = await res.json();
+    renderProjectBudget(data, projectName);
+  } catch {
+    timerBudget.classList.add("hidden");
+  }
+}
+
+function renderProjectBudget(data, projectName) {
+  budgetProject.textContent = data.project_name || projectName || "Proyecto";
+  if (data.kind === "fixed") {
+    renderClosingBudget(data.closing);
+  } else {
+    renderRecurringBudget(data.week || {}, data.month || {});
+  }
+}
+
+function renderRecurringBudget(week, month) {
+  // Nothing budgeted on either window → nothing useful to show
+  if (week.budget_hours == null && month.budget_hours == null) {
+    timerBudget.classList.add("hidden");
+    return;
+  }
+
+  // Weekly (informativo + guía visual)
+  if (week.budget_hours != null) {
+    const remaining = week.remaining_hours;
+    const remTxt = remaining >= 0
+      ? `quedan ${fmtHours(remaining)}`
+      : `pasado ${fmtHours(Math.abs(remaining))}`;
+    budgetWeekLabel.textContent = "Esta semana";
+    budgetWeek.textContent = `${fmtHours(week.used_hours)} / ${fmtHours(week.budget_hours)} · ${remTxt}`;
+    budgetWeek.className = "budget-value" + statusClass(week.status);
+    budgetWeekBarWrap.classList.remove("hidden");
+    budgetWeekBar.style.width = `${Math.min(100, (week.pct || 0) * 100)}%`;
+    budgetWeekBar.className = "budget-bar-fill" + statusClass(week.status);
+    budgetWeekRow.classList.remove("hidden");
+  } else {
+    budgetWeekRow.classList.add("hidden");
+    budgetWeekBarWrap.classList.add("hidden");
+  }
+
+  // Monthly (techo que dispara la alerta)
+  if (month.budget_hours != null) {
+    budgetMonthLabel.textContent = "Este mes";
+    budgetMonth.textContent = `${fmtHours(month.used_hours)} / ${fmtHours(month.budget_hours)} (${Math.round((month.pct || 0) * 100)}%)`;
+    budgetMonth.className = "budget-value" + statusClass(month.status);
+    budgetMonthRow.classList.remove("hidden");
+  } else {
+    budgetMonthRow.classList.add("hidden");
+  }
+
+  applyPanelStatus(worstStatus(week.status, month.status));
+}
+
+function renderClosingBudget(closing) {
+  if (!closing) {
+    timerBudget.classList.add("hidden");
+    return;
+  }
+
+  // Row 1 → cierre (días restantes / vencido)
+  let when;
+  if (closing.overdue) when = `vencido hace ${Math.abs(closing.days_left)}d`;
+  else if (closing.days_left === 0) when = "cierra hoy";
+  else when = `cierra en ${closing.days_left}d`;
+  budgetWeekLabel.textContent = "Cierre";
+  budgetWeek.textContent = when;
+  budgetWeek.className = "budget-value" + statusClass(closing.status);
+
+  // Bar reflects hours consumption against the total budget (if any)
+  if (closing.budget_hours != null) {
+    budgetWeekBarWrap.classList.remove("hidden");
+    budgetWeekBar.style.width = `${Math.min(100, (closing.hours_pct || 0) * 100)}%`;
+    budgetWeekBar.className = "budget-bar-fill" + statusClass(closing.status);
+  } else {
+    budgetWeekBarWrap.classList.add("hidden");
+  }
+  budgetWeekRow.classList.remove("hidden");
+
+  // Row 2 → horas vs presupuesto total
+  if (closing.budget_hours != null) {
+    const remaining = closing.remaining_hours;
+    const remTxt = remaining >= 0
+      ? `quedan ${fmtHours(remaining)}`
+      : `pasado ${fmtHours(Math.abs(remaining))}`;
+    budgetMonthLabel.textContent = "Horas";
+    budgetMonth.textContent = `${fmtHours(closing.used_hours)} / ${fmtHours(closing.budget_hours)} · ${remTxt}`;
+    budgetMonth.className = "budget-value" + statusClass(closing.status);
+    budgetMonthRow.classList.remove("hidden");
+  } else {
+    budgetMonthRow.classList.add("hidden");
+  }
+
+  applyPanelStatus(closing.status);
+}
+
+function applyPanelStatus(status) {
+  timerBudget.classList.remove("hidden", "budget-alert", "budget-over");
+  if (status === "over") timerBudget.classList.add("budget-over");
+  else if (status === "warning") timerBudget.classList.add("budget-alert");
+}
+
+function statusClass(status) {
+  if (status === "over") return " is-over";
+  if (status === "warning") return " is-warning";
+  return "";
+}
+
+function worstStatus(...statuses) {
+  if (statuses.includes("over")) return "over";
+  if (statuses.includes("warning")) return "warning";
+  return "ok";
+}
+
 function showIdleTimer() {
   timerActive.classList.add("hidden");
   timerIdle.classList.remove("hidden");
+  if (timerBudget) timerBudget.classList.add("hidden");
 
   activeTimerStart = null;
   headerTimer.classList.add("hidden");

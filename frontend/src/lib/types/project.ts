@@ -46,8 +46,26 @@ export interface Project {
   task_count: number
   completed_task_count: number
   hours_used: number | null
+  hours_used_week: number | null
+  hours_used_month: number | null
+  effective_weekly_hours_budget: number | null
+  effective_monthly_hours_budget: number | null
+  closing_status: ProjectClosingStatus | null
   created_at: string
   updated_at: string
+}
+
+export interface ProjectClosingStatus {
+  target_end_date: string
+  days_left: number
+  overdue: boolean
+  budget_hours: number | null
+  used_hours: number
+  remaining_hours: number | null
+  hours_pct: number | null
+  time_pct: number | null
+  pace_risk: boolean
+  status: "ok" | "warning" | "over"
 }
 
 export interface ProjectListItem {

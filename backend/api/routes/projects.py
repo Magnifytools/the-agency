@@ -29,6 +29,7 @@ from backend.schemas.project import (
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module, require_admin
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
+from backend.services.time_budget import effective_budgets, build_closing_status, is_recurring_project
 from backend.api.utils.db_helpers import safe_refresh
 from backend.api.middleware.audit_log import log_audit
 
@@ -89,8 +90,15 @@ def calculate_progress(tasks: list) -> int:
     return int((completed / len(tasks)) * 100)
 
 
-def _build_project_response(project: Project, hours_used: Optional[float] = None) -> ProjectResponse:
+def _build_project_response(
+    project: Project,
+    hours_used: Optional[float] = None,
+    hours_used_week: Optional[float] = None,
+    hours_used_month: Optional[float] = None,
+    closing_status: Optional[dict] = None,
+) -> ProjectResponse:
     """Build a ProjectResponse from a Project model with eagerly loaded relationships."""
+    eff_weekly, eff_monthly = effective_budgets(project)
     task_count = len(project.tasks) if project.tasks else 0
     completed_count = (
         sum(1 for t in project.tasks if t.status == TaskStatus.completed)
@@ -143,6 +151,11 @@ def _build_project_response(project: Project, hours_used: Optional[float] = None
         task_count=task_count,
         completed_task_count=completed_count,
         hours_used=hours_used,
+        hours_used_week=hours_used_week,
+        hours_used_month=hours_used_month,
+        effective_weekly_hours_budget=eff_weekly,
+        effective_monthly_hours_budget=eff_monthly,
+        closing_status=closing_status,
         created_at=project.created_at,
         updated_at=project.updated_at,
     )
@@ -570,15 +583,39 @@ async def get_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Compute hours used via TimeEntry → Task → Project
-    h_result = await db.execute(
-        select(func.coalesce(func.sum(TimeEntry.minutes), 0))
-        .join(Task, TimeEntry.task_id == Task.id)
-        .where(Task.project_id == project_id, TimeEntry.minutes.isnot(None))
-    )
-    hours_used = round(float(h_result.scalar() or 0) / 60, 2)
+    # Compute hours used via TimeEntry → Task → Project (all-time + current week/month)
+    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
+    week_start = datetime.combine(today - timedelta(days=today.weekday()), datetime.min.time())
+    month_start = datetime.combine(today.replace(day=1), datetime.min.time())
 
-    return _build_project_response(project, hours_used=hours_used)
+    async def _project_minutes(since: Optional[datetime] = None) -> float:
+        q = (
+            select(func.coalesce(func.sum(TimeEntry.minutes), 0))
+            .join(Task, TimeEntry.task_id == Task.id)
+            .where(Task.project_id == project_id, TimeEntry.minutes.isnot(None))
+        )
+        if since is not None:
+            q = q.where(TimeEntry.date >= since)
+        r = await db.execute(q)
+        return float(r.scalar() or 0)
+
+    total_minutes = await _project_minutes()
+    hours_used = round(total_minutes / 60, 2)
+    hours_used_week = round(await _project_minutes(week_start) / 60, 2)
+    hours_used_month = round(await _project_minutes(month_start) / 60, 2)
+
+    # Closing status for puntual (non-recurring) projects with an end date
+    closing_status = None
+    if not is_recurring_project(project):
+        closing_status = build_closing_status(project, total_minutes, today)
+
+    return _build_project_response(
+        project,
+        hours_used=hours_used,
+        hours_used_week=hours_used_week,
+        hours_used_month=hours_used_month,
+        closing_status=closing_status,
+    )
 
 
 @router.get("/{project_id}/burndown")
