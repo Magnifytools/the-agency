@@ -273,13 +273,19 @@ loginForm.addEventListener("submit", async (e) => {
 });
 
 async function verifyToken() {
+  // Only an explicit 401 means the token is actually invalid. A network blip,
+  // timeout, or 5xx (e.g. backend redeploy / cold start) must NOT wipe the
+  // session — otherwise a momentary server hiccup logs the user out and forces
+  // them to re-enter the password even though their token is still valid.
   try {
     const res = await fetch(`${API_URL}/api/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    return res.ok;
+    if (res.status === 401) return false;
+    return true;
   } catch {
-    return false;
+    // Network error / server unreachable → keep the session, don't force login.
+    return true;
   }
 }
 
