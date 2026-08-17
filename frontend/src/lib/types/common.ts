@@ -73,6 +73,14 @@ export interface DashboardOverview {
   margin_percent: number
 }
 
+/** Estado de rentabilidad. `no_data` = sin tarifa configurada, no se puede
+ *  calcular margen. Es distinto de "margen apretado" (`at_risk`). */
+export type ProfitabilityStatus =
+  | "profitable"
+  | "at_risk"
+  | "unprofitable"
+  | "no_data"
+
 export interface ClientProfitability {
   client_id: number
   client_name: string
@@ -83,7 +91,7 @@ export interface ClientProfitability {
   estimated_minutes: number
   actual_minutes: number
   variance_minutes: number
-  status: "profitable" | "at_risk" | "unprofitable"
+  status: ProfitabilityStatus
 }
 
 export interface ProfitabilityResponse {

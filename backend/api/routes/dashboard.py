@@ -35,6 +35,7 @@ from backend.schemas.dashboard import (
 from backend.api.deps import get_current_user, require_module, require_admin
 from backend.core.security import encrypt_vault_secret
 from backend.services.csv_utils import build_csv_response
+from backend.services.profitability import classify_profitability, format_billing_detail
 from backend.api.utils.db_helpers import safe_refresh
 from backend.services.report_period import (
     MAX_REPORT_YEAR,
@@ -220,12 +221,12 @@ async def get_profitability(
         margin = round(budget - cost, 2)
         margin_pct = round((margin / budget * 100) if budget > 0 else 0, 1)
 
-        if margin_pct >= 20:
-            s = "profitable"
-        elif margin_pct >= 0:
-            s = "at_risk"
-        else:
-            s = "unprofitable"
+        s = classify_profitability(
+            budget=budget,
+            margin=margin,
+            margin_pct=margin_pct,
+            profitable_at_pct=20,
+        )
 
         result.append(ClientProfitability(
             client_id=client.id,
@@ -922,7 +923,10 @@ async def alerts_summary(
             "severity": "critical" if overdue_billing else "warning",
             "count": len(billing_projects),
             "title": f"{len(billing_projects)} facturas pendientes ({total_pending:.0f}€)",
-            "detail": [f"{p.name}: {p.billing_amount}€" for p in billing_projects[:5]],
+            "detail": [
+                format_billing_detail(p.name, p.billing_amount)
+                for p in billing_projects[:5]
+            ],
             "link": "/projects",
         })
 

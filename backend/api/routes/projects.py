@@ -5,9 +5,9 @@ from typing import Optional
 import base64
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, noload
 
 from backend.db.database import get_db
 from backend.db.models import Project, ProjectPhase, ProjectTemplateDB, Task, TaskStatus, PhaseStatus, ProjectStatus, TimeEntry, Income
@@ -74,12 +74,54 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
 def _project_load_options():
-    """Eager loading options for Project queries that need tasks/phases/client."""
+    """Eager loading options for Project queries that need tasks/phases/client.
+
+    Solo para fetches de UN proyecto (detalle, respuesta tras crear/editar),
+    donde la respuesta incluye de verdad fases y tareas. Para listados usa
+    ``_list_counts()``: cargar las tareas solo para contarlas hacía que listar
+    11 proyectos materializara las 725 tareas de la tabla con su join de
+    usuarios (449 ms de servidor medidos en producción).
+    """
     return [
         selectinload(Project.client),
         selectinload(Project.phases),
         selectinload(Project.tasks).selectinload(Task.assigned_user),
     ]
+
+
+async def _list_counts(db: AsyncSession, project_ids: list[int]):
+    """Contadores de tareas y fases por proyecto, agregados en la base de datos.
+
+    Devuelve ``(task_counts, phase_counts)`` donde ``task_counts[pid]`` es
+    ``(total, completadas)``. Dos queries agregadas en vez de traerse las filas.
+    """
+    if not project_ids:
+        return {}, {}
+
+    # case() de sqlalchemy, no func.case(): func.case genera SQL inválido.
+    task_rows = await db.execute(
+        select(
+            Task.project_id,
+            func.count().label("total"),
+            func.coalesce(
+                func.sum(case((Task.status == TaskStatus.completed, 1), else_=0)), 0
+            ).label("completed"),
+        )
+        .where(Task.project_id.in_(project_ids))
+        .group_by(Task.project_id)
+    )
+    task_counts = {
+        row.project_id: (int(row.total), int(row.completed)) for row in task_rows.all()
+    }
+
+    phase_rows = await db.execute(
+        select(ProjectPhase.project_id, func.count().label("total"))
+        .where(ProjectPhase.project_id.in_(project_ids))
+        .group_by(ProjectPhase.project_id)
+    )
+    phase_counts = {row.project_id: int(row.total) for row in phase_rows.all()}
+
+    return task_counts, phase_counts
 
 
 def calculate_progress(tasks: list) -> int:
@@ -182,7 +224,16 @@ async def list_projects(
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
 
     query = (
-        base.options(*_project_load_options())
+        # noload(), no "quitar el selectinload": `Project.tasks` y
+        # `Project.phases` están declaradas `lazy="selectin"` en el modelo, así
+        # que se cargan aunque no se pidan en .options(). Hay que desactivarlas
+        # explícitamente. El listado solo devuelve contadores, y esos se
+        # agregan en la DB (ver _list_counts).
+        base.options(
+            selectinload(Project.client),
+            noload(Project.tasks),
+            noload(Project.phases),
+        )
         .order_by(Project.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
@@ -190,10 +241,11 @@ async def list_projects(
     result = await db.execute(query)
     projects = result.scalars().unique().all()
 
+    task_counts, phase_counts = await _list_counts(db, [p.id for p in projects])
+
     items = []
     for p in projects:
-        task_count = len(p.tasks) if p.tasks else 0
-        completed_count = sum(1 for t in p.tasks if t.status == TaskStatus.completed) if p.tasks else 0
+        task_count, completed_count = task_counts.get(p.id, (0, 0))
         items.append(
             ProjectListResponse(
                 id=p.id,
@@ -204,9 +256,11 @@ async def list_projects(
                 target_end_date=p.target_end_date,
                 status=p.status.value,
                 progress_percent=p.progress_percent,
+                pricing_model=p.pricing_model,
+                monthly_fee=float(p.monthly_fee) if p.monthly_fee is not None else None,
                 client_id=p.client_id,
                 client_name=p.client.name if p.client else None,
-                phase_count=len(p.phases) if p.phases else 0,
+                phase_count=phase_counts.get(p.id, 0),
                 task_count=task_count,
                 completed_task_count=completed_count,
             )

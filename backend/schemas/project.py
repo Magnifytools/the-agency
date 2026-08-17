@@ -145,6 +145,11 @@ class ProjectListResponse(BaseModel):
     progress_percent: int
     gsc_url: Optional[str] = None
     ga4_property_id: Optional[str] = None
+    # La tarifa es la fuente de verdad del pricing, pero el listado no la
+    # devolvía: el tipo de TS sí la declaraba, así que en tiempo de ejecución
+    # llegaba undefined y no había forma de ver el fee sin abrir cada proyecto.
+    pricing_model: Optional[str] = None
+    monthly_fee: Optional[float] = None
     client_id: int
     client_name: Optional[str] = None
     phase_count: int = 0

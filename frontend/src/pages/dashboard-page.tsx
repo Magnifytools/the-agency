@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { dashboardApi, discordApi, tasksApi, timeEntriesApi, timerApi, usersApi, dailysApi, digestsApi, clientsApi, leadsApi, proposalsApi, engineApi, holdedApi } from "@/lib/api"
 import { holdedKeys } from "@/lib/query-keys"
+import { profitabilityStatus } from "@/lib/profitability"
 import type { PricingOption } from "@/lib/types"
 import { useAuth } from "@/context/auth-context"
 import { MetricCard } from "@/components/dashboard/metric-card"
@@ -39,12 +40,7 @@ const MONTHS = [
 ]
 
 function profitBadge(status: string) {
-  const map: Record<string, { label: string; variant: "success" | "warning" | "destructive" | "secondary" }> = {
-    profitable: { label: "Rentable", variant: "success" },
-    at_risk: { label: "En riesgo", variant: "warning" },
-    unprofitable: { label: "No rentable", variant: "destructive" },
-  }
-  const { label, variant } = map[status] || { label: status, variant: "secondary" }
+  const { label, variant } = profitabilityStatus(status)
   return <Badge variant={variant}>{label}</Badge>
 }
 
@@ -705,7 +701,7 @@ export default function DashboardPage() {
           {overview ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 2xl:gap-4">
               <MetricCard icon={Users} label="Clientes activos" value={overview.active_clients} tooltip="Clientes con estado 'activo'." />
-              <MetricCard icon={CheckSquare} label="Tareas pendientes" value={overview.pending_tasks + overview.in_progress_tasks} subtitle={`${overview.in_progress_tasks} en curso`} tooltip="Tareas 'pendiente' + 'en curso' del mes." />
+              <MetricCard icon={CheckSquare} label="Tareas del mes" value={overview.pending_tasks + overview.in_progress_tasks} subtitle={`${overview.in_progress_tasks} en curso`} tooltip="Tareas 'pendiente' + 'en curso' planificadas o con fecha límite en el mes seleccionado. Las tareas sin fecha NO se cuentan aquí — el total real está en la página de Tareas." />
               <MetricCard icon={Clock} label="Horas mes" value={`${overview.hours_this_month}h`} tooltip="Total horas registradas del equipo." />
               <MetricCard icon={DollarSign} label="Presupuesto total" value={formatCurrency(overview.total_budget)} subtitle={`Coste: ${formatCurrency(overview.total_cost)}`} tooltip="Suma de presupuestos mensuales de clientes activos." />
               {utilization && (

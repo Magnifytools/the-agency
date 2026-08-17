@@ -1,4 +1,4 @@
-import type { ContractType, ClientStatus } from "./common"
+import type { ContractType, ClientStatus, ProfitabilityStatus } from "./common"
 import type { EngineSummaryData, EngineAlert } from "./integration"
 import type { Task } from "./task"
 
@@ -218,7 +218,7 @@ export interface ClientDashboard {
   monthly_budget: number
   margin: number
   margin_pct: number
-  profitability_status: "profitable" | "at_risk" | "unprofitable"
+  profitability_status: ProfitabilityStatus
   tasks_by_status: Record<string, number>
   tasks_overdue: number
   tasks_due_this_week: number

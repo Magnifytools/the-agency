@@ -141,10 +141,10 @@ admin_users, admin_settings
 
 ## Testing
 ```bash
-# Backend (pytest, 177+ tests)
+# Backend (pytest, 425 tests — incluye tests/integration contra Postgres real)
 cd backend && source venv/bin/activate && python -m pytest tests/ -v
 
-# Frontend (vitest, 39+ tests)
+# Frontend (vitest, 45 tests)
 cd frontend && npm run test
 ```
 
@@ -163,6 +163,14 @@ cd frontend && npm run test
 - Font mono: JetBrains Mono para datos numéricos (clase `.mono`)
 
 ## Errores conocidos
+- **`lazy="selectin"` está en CASI TODAS las relaciones de `models.py`.** Quitar un
+  `selectinload()` de `.options()` NO evita la carga: el modelo la fuerza igual. Para
+  que un listado no arrastre colecciones hay que desactivarlas con `noload(...)`
+  explícito en la query. Verificarlo contra Postgres real (`tests/integration/`), no
+  con la suite unitaria: ahí `get_db` está mockeado y el SQL no se ejecuta.
+- Los estados de rentabilidad se deciden en `services/profitability.py`, un único
+  sitio. Si añades un valor al enum, añádelo también a `frontend/src/lib/profitability.ts`
+  (el test `profitability.test.ts` falla si te lo saltas).
 - bcrypt pinned a 4.1.3 (incompatibilidad passlib)
 - `Base.metadata.create_all` no agrega columnas a tablas existentes. Para nuevas columnas en tablas existentes, agregar `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` en `backend/main.py` lifespan.
 

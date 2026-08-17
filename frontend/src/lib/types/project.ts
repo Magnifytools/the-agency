@@ -81,6 +81,8 @@ export interface ProjectListItem {
   gsc_url: string | null
   ga4_property_id: string | null
   is_recurring: boolean
+  pricing_model: string | null
+  monthly_fee: number | null
   phase_count: number
   task_count: number
   completed_task_count: number
