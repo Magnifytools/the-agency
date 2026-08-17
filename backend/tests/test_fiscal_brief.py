@@ -72,3 +72,33 @@ class TestGenerateInsightsEndpoint:
         resp = await admin_client.post("/api/finance/advisor/generate-insights")
         # Will fail at Claude API, but route exists
         assert resp.status_code not in (404, 422, 405)
+
+
+class TestJsonNoEsLocal:
+    """Regresión: `UnboundLocalError` en generate_fiscal_brief (auditoría ago 2026).
+
+    La función tenía un `import json` a media ejecución, redundante con el del
+    módulo. Al ser una importación local, Python marcaba `json` como local de
+    TODA la función, así que la línea anterior —``json.dumps(content, ...)`` en
+    la rama ``isinstance(content, dict)``— reventaba con UnboundLocalError.
+
+    Y `parse_claude_json` devuelve justamente un dict, así que la generación de
+    briefs fiscales fallaba siempre. Lo destapó `ruff F823`, que llevaba
+    tiempo rojo en CI sobre la propia rama main.
+    """
+
+    def test_json_no_esta_en_las_variables_locales(self):
+        """Si alguien reintroduce el import local, `json` vuelve a ser local."""
+        from backend.services import fiscal_brief_service
+
+        code = fiscal_brief_service.generate_fiscal_brief.__code__
+        assert "json" not in code.co_varnames, (
+            "`json` es variable local de generate_fiscal_brief: hay un "
+            "`import json` dentro de la función que rompe los usos anteriores"
+        )
+
+    def test_json_se_resuelve_como_global_del_modulo(self):
+        import json as json_module
+        from backend.services import fiscal_brief_service
+
+        assert fiscal_brief_service.json is json_module

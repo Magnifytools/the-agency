@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, noload
 
 from backend.db.database import get_db
-from backend.db.models import Project, ProjectPhase, ProjectTemplateDB, Task, TaskStatus, PhaseStatus, ProjectStatus, TimeEntry, Income
+from backend.db.models import Project, ProjectPhase, ProjectTemplateDB, Task, TaskStatus, PhaseStatus, ProjectStatus, TimeEntry, Income, User
 from backend.schemas.project import (
     ProjectCreate,
     ProjectExtract,
