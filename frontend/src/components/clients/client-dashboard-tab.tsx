@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { TrendingUp, TrendingDown, Clock, DollarSign, AlertTriangle, CheckCircle2, BarChart3 } from "lucide-react"
 import { clientDashboardApi } from "@/lib/api"
 import { clientKeys } from "@/lib/query-keys"
+import { profitabilityStatus } from "@/lib/profitability"
 import type { Client } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -29,11 +30,7 @@ export function ClientDashboardTab({ client }: Props) {
   if (isLoading) return <p className="text-muted-foreground text-sm">Cargando panel...</p>
   if (!dash) return <p className="text-muted-foreground text-sm">Sin datos</p>
 
-  const profBadge = dash.profitability_status === "profitable"
-    ? { label: "Rentable", variant: "success" as const }
-    : dash.profitability_status === "at_risk"
-      ? { label: "En riesgo", variant: "warning" as const }
-      : { label: "No rentable", variant: "destructive" as const }
+  const profBadge = profitabilityStatus(dash.profitability_status)
 
   const TrendIcon = dash.hours_trend_pct >= 0 ? TrendingUp : TrendingDown
 
@@ -77,7 +74,7 @@ export function ClientDashboardTab({ client }: Props) {
           </CardContent>
         </Card>
 
-        <Card className={dash.profitability_status === "unprofitable" && dash.hours_this_month > 0 ? "border-red-300 bg-red-50/10" : ""}>
+        <Card className={profBadge.isLosingMoney && dash.hours_this_month > 0 ? "border-red-300 bg-red-50/10" : ""}>
           <CardContent className="p-4">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
               <BarChart3 className="h-3 w-3" /> Margen

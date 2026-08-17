@@ -450,20 +450,28 @@ function NewProjectDialog({
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>Fecha inicio</Label>
+            <Label>Fecha inicio *</Label>
             <Input
               type="date"
               value={formData.start_date}
               onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+              required
             />
           </div>
           <div className="space-y-2">
-            <Label>Fecha fin objetivo</Label>
+            <Label>{formData.is_recurring ? "Fecha fin objetivo" : "Fecha fin objetivo *"}</Label>
             <Input
               type="date"
               value={formData.target_end_date}
+              min={formData.start_date || undefined}
               onChange={(e) => setFormData({ ...formData, target_end_date: e.target.value })}
+              required={!formData.is_recurring}
             />
+            <p className="text-xs text-muted-foreground">
+              {formData.is_recurring
+                ? "Opcional en recurrentes (sin fecha de cierre)."
+                : "Necesaria para el aviso de cierre del proyecto."}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">

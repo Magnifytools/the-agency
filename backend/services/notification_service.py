@@ -23,6 +23,9 @@ CAPACITY_OVERLOAD = "capacity_overload"
 CLIENT_NO_HOURS = "client_no_hours"
 PROJECT_MONTHLY_HOURS_WARNING = "project_monthly_hours_warning"
 PROJECT_MONTHLY_HOURS_EXCEEDED = "project_monthly_hours_exceeded"
+# Puntual (non-recurring) projects: closing-date driven alerts
+PROJECT_CLOSING_SOON = "project_closing_soon"
+PROJECT_CLOSING_OVERDUE = "project_closing_overdue"
 
 
 async def create_notification(

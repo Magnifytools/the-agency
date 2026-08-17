@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, noload
 
 from backend.core.security import decode_access_token
 from backend.core.token_blacklist import token_blacklist
@@ -38,8 +38,15 @@ async def get_current_user(
     user_id = payload.get("sub")
     if user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    # noload(User.tasks): la relación está declarada `lazy="selectin"` en el
+    # modelo, así que se cargaba SIEMPRE — una query trayendo todas las tareas
+    # asignadas al usuario, en cada petición autenticada de la aplicación.
+    # Nadie lee `current_user.tasks` (ni las rutas ni los schemas), así que era
+    # trabajo puro: ~700 filas por request, 75.000 requests por trimestre.
     result = await db.execute(
-        select(User).where(User.id == int(user_id)).options(selectinload(User.permissions))
+        select(User)
+        .where(User.id == int(user_id))
+        .options(selectinload(User.permissions), noload(User.tasks))
     )
     user = result.scalar_one_or_none()
     if user is None:

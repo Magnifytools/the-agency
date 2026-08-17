@@ -17,10 +17,11 @@ import {
   Search,
   User,
   Copy,
+  AlertTriangle,
 } from "lucide-react"
 import { toast } from "sonner"
 import { projectsApi, tasksApi, usersApi } from "@/lib/api"
-import type { Project, ProjectPhase, ProjectStatus, PhaseStatus, Task, TaskStatus } from "@/lib/types"
+import type { Project, ProjectPhase, ProjectStatus, PhaseStatus, Task, TaskStatus, ProjectClosingStatus } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -334,6 +335,22 @@ export default function ProjectDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Alerta de presupuesto de horas — semanal (guía) + mensual (techo que dispara la notificación).
+          Usa los techos EFECTIVOS: en retainers mensuales cae a budget_hours ("Presupuesto horas/mes"). */}
+      {((project.effective_weekly_hours_budget ?? 0) > 0 || (project.effective_monthly_hours_budget ?? 0) > 0) && (
+        <HoursBudgetCard
+          weeklyBudget={project.effective_weekly_hours_budget}
+          monthlyBudget={project.effective_monthly_hours_budget}
+          usedWeek={project.hours_used_week ?? 0}
+          usedMonth={project.hours_used_month ?? 0}
+        />
+      )}
+
+      {/* Aviso de cierre para proyectos puntuales (fecha final + horas vs tiempo restante) */}
+      {project.closing_status && (
+        <ProjectClosingCard closing={project.closing_status} />
+      )}
 
       {/* Aviso en recurrentes: el burndown no aplica. */}
       {project.is_recurring && (
@@ -827,8 +844,10 @@ function EditProjectDialog({
                 <Input
                   type="date"
                   value={formData.target_end_date}
+                  min={formData.start_date || undefined}
                   onChange={(e) => setFormData({ ...formData, target_end_date: e.target.value })}
                   className="flex-1"
+                  required={!formData.is_ongoing}
                 />
                 <button
                   type="button"
@@ -1337,5 +1356,165 @@ function SaveTemplateDialog({
         </div>
       </form>
     </Dialog>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Alerta de presupuesto de horas (semanal informativo + mensual = techo de alerta)
+// ---------------------------------------------------------------------------
+
+type BudgetStatus = "ok" | "warning" | "over"
+
+function budgetStatus(used: number, budget: number | null | undefined): BudgetStatus | null {
+  if (!budget || budget <= 0) return null
+  const pct = used / budget
+  if (pct >= 1) return "over"
+  if (pct >= 0.8) return "warning"
+  return "ok"
+}
+
+const STATUS_STYLES: Record<BudgetStatus, { bar: string; text: string }> = {
+  ok: { bar: "bg-brand", text: "text-muted-foreground" },
+  warning: { bar: "bg-amber-500", text: "text-amber-600" },
+  over: { bar: "bg-red-500", text: "text-red-600" },
+}
+
+function BudgetRow({
+  label,
+  used,
+  budget,
+  note,
+}: {
+  label: string
+  used: number
+  budget: number | null | undefined
+  note: string
+}) {
+  if (!budget || budget <= 0) return null
+  const status = budgetStatus(used, budget) ?? "ok"
+  const style = STATUS_STYLES[status]
+  const remaining = budget - used
+  const pct = Math.min(100, (used / budget) * 100)
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-sm">
+        <span className="flex items-center gap-1.5 font-medium">
+          {status !== "ok" && <AlertTriangle className="w-3.5 h-3.5" />}
+          {label}
+        </span>
+        <span className={`mono ${style.text}`}>
+          {used.toFixed(1)}h / {budget}h
+          {" · "}
+          {remaining >= 0 ? `quedan ${remaining.toFixed(1)}h` : `pasado ${Math.abs(remaining).toFixed(1)}h`}
+        </span>
+      </div>
+      <div className="h-2 bg-secondary rounded-full overflow-hidden">
+        <div className={`h-full transition-all ${style.bar}`} style={{ width: `${pct}%` }} />
+      </div>
+      <p className="text-xs text-muted-foreground">{note}</p>
+    </div>
+  )
+}
+
+function HoursBudgetCard({
+  weeklyBudget,
+  monthlyBudget,
+  usedWeek,
+  usedMonth,
+}: {
+  weeklyBudget: number | null
+  monthlyBudget: number | null
+  usedWeek: number
+  usedMonth: number
+}) {
+  const monthStatus = budgetStatus(usedMonth, monthlyBudget)
+  const alert = monthStatus === "warning" || monthStatus === "over"
+  return (
+    <Card className={alert ? "border-amber-400/60" : undefined}>
+      <CardContent className="p-4 space-y-4">
+        <div className="flex items-center gap-1.5">
+          <Clock className="w-4 h-4" />
+          <span className="text-sm font-medium">Presupuesto de horas</span>
+        </div>
+        <BudgetRow
+          label="Esta semana"
+          used={usedWeek}
+          budget={weeklyBudget}
+          note="Guía visual de carga semanal. Se puede compensar entre semanas."
+        />
+        <BudgetRow
+          label="Este mes"
+          used={usedMonth}
+          budget={monthlyBudget}
+          note="Techo mensual: aviso al 80%, alerta al pasarse (dispara la notificación)."
+        />
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Aviso de cierre para proyectos puntuales (fecha final + horas vs tiempo restante)
+// ---------------------------------------------------------------------------
+
+function ProjectClosingCard({ closing }: { closing: ProjectClosingStatus }) {
+  const style = STATUS_STYLES[closing.status]
+  const endDate = new Date(closing.target_end_date).toLocaleDateString("es-ES", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  })
+
+  let when: string
+  if (closing.overdue) {
+    when = `Vencido hace ${Math.abs(closing.days_left)}d`
+  } else if (closing.days_left === 0) {
+    when = "Cierra hoy"
+  } else {
+    when = `Cierra en ${closing.days_left}d`
+  }
+
+  const hasHours = closing.budget_hours != null && closing.budget_hours > 0
+  const pct = hasHours ? Math.min(100, (closing.hours_pct ?? 0) * 100) : 0
+
+  return (
+    <Card className={closing.status !== "ok" ? "border-amber-400/60" : undefined}>
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="flex items-center gap-1.5 text-sm font-medium">
+            <Calendar className="w-4 h-4" />
+            Cierre del proyecto
+          </span>
+          <span className={`text-sm font-medium ${style.text}`}>
+            {closing.status !== "ok" && <AlertTriangle className="inline w-3.5 h-3.5 mr-1" />}
+            {when}
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground">Fecha final: {endDate}</p>
+
+        {hasHours && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Horas vs presupuesto</span>
+              <span className={`mono ${style.text}`}>
+                {closing.used_hours.toFixed(1)}h / {closing.budget_hours}h
+                {closing.remaining_hours != null &&
+                  ` · ${closing.remaining_hours >= 0
+                    ? `quedan ${closing.remaining_hours.toFixed(1)}h`
+                    : `pasado ${Math.abs(closing.remaining_hours).toFixed(1)}h`}`}
+              </span>
+            </div>
+            <div className="h-2 bg-secondary rounded-full overflow-hidden">
+              <div className={`h-full transition-all ${style.bar}`} style={{ width: `${pct}%` }} />
+            </div>
+            {closing.pace_risk && (
+              <p className="text-xs text-amber-600">
+                Ritmo de horas por delante del plazo: riesgo de agotar el presupuesto antes de cerrar.
+              </p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

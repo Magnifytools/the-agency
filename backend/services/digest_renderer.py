@@ -190,8 +190,10 @@ def _render_slack_custom(
 
         lines.append("")
 
-    # Closing — incluir siempre si existe, salvo que el template lo desactive explícitamente
-    if template.get("show_closing", True) and content.closing:
+    # Closing — incluir siempre que exista, igual que el resto de canales
+    # (Slack-default, Discord, email). El cierre es el mensaje de despedida
+    # de cara al cliente y nunca debe perderse por configuración de plantilla.
+    if content.closing:
         lines.append("---")
         lines.append(content.closing)
 

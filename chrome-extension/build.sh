@@ -40,11 +40,20 @@ fi
 # Remove key.pem from inside extension dir if it snuck in (Chrome rejects if present)
 rm -f "$EXT_DIR/dist/key.pem"
 
-# Pack the extension (Chrome puts the .crx next to the folder)
-"$CHROME" --pack-extension="$EXT_DIR" --pack-extension-key="$KEY" 2>&1 || true
+# Stage a clean copy so build artifacts (dist/, .DS_Store, this script...) don't
+# get packed inside the .crx — otherwise old zips/crx balloon the payload.
+STAGE="$(mktemp -d)/the-agency"
+trap 'rm -rf "$(dirname "$STAGE")"' EXIT
+mkdir -p "$STAGE"
+cp -R "$EXT_DIR/manifest.json" "$EXT_DIR/popup.html" "$EXT_DIR/popup.css" \
+      "$EXT_DIR/popup.js" "$EXT_DIR/background.js" "$EXT_DIR/icons" "$STAGE/"
+find "$STAGE" -name ".DS_Store" -delete
 
-# Chrome creates the .crx one level up
-BUILT_CRX="$(dirname "$EXT_DIR")/chrome-extension.crx"
+# Pack the staged copy (Chrome puts the .crx next to the folder)
+"$CHROME" --pack-extension="$STAGE" --pack-extension-key="$KEY" 2>&1 || true
+
+# Chrome creates the .crx one level up from the packed folder
+BUILT_CRX="$(dirname "$STAGE")/the-agency.crx"
 if [ ! -f "$BUILT_CRX" ]; then
   echo "ERROR: Chrome didn't produce a .crx at $BUILT_CRX"
   exit 1

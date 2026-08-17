@@ -121,6 +121,13 @@ class ProjectResponse(BaseModel):
     task_count: int = 0
     completed_task_count: int = 0
     hours_used: Optional[float] = None
+    hours_used_week: Optional[float] = None
+    hours_used_month: Optional[float] = None
+    # Techos efectivos: caen a budget_hours en retainers mensuales si no hay techo explícito
+    effective_weekly_hours_budget: Optional[float] = None
+    effective_monthly_hours_budget: Optional[float] = None
+    # Estado de cierre para proyectos puntuales (fecha final + horas vs tiempo). None en recurrentes.
+    closing_status: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
 
@@ -138,6 +145,11 @@ class ProjectListResponse(BaseModel):
     progress_percent: int
     gsc_url: Optional[str] = None
     ga4_property_id: Optional[str] = None
+    # La tarifa es la fuente de verdad del pricing, pero el listado no la
+    # devolvía: el tipo de TS sí la declaraba, así que en tiempo de ejecución
+    # llegaba undefined y no había forma de ver el fee sin abrir cada proyecto.
+    pricing_model: Optional[str] = None
+    monthly_fee: Optional[float] = None
     client_id: int
     client_name: Optional[str] = None
     phase_count: int = 0

@@ -11,7 +11,8 @@ from backend.db.database import get_db
 from backend.db.models import (
     User, Client, Project, ProjectStatus, Task, TaskStatus, TimeEntry, TaskCategory, Income,
 )
-from backend.schemas.dashboard import ClientDashboardResponse, ProfitabilityStatus
+from backend.schemas.dashboard import ClientDashboardResponse
+from backend.services.profitability import classify_profitability
 from backend.api.deps import get_current_user, require_module
 
 router = APIRouter(prefix="/api/clients/{client_id}/dashboard", tags=["client-dashboard"])
@@ -204,11 +205,13 @@ async def client_dashboard(
     if hours_last_month > 0:
         hours_trend_pct = round(((hours_this_month - hours_last_month) / hours_last_month) * 100, 1)
 
-    profitability_status = ProfitabilityStatus.profitable
-    if margin_pct < 10:
-        profitability_status = ProfitabilityStatus.unprofitable
-    elif margin_pct < 30:
-        profitability_status = ProfitabilityStatus.at_risk
+    profitability_status = classify_profitability(
+        budget=monthly_fee,
+        margin=margin,
+        margin_pct=margin_pct,
+        profitable_at_pct=30,
+        unprofitable_below_pct=10,
+    )
 
     return {
         "hours_this_month": round(hours_this_month, 1),

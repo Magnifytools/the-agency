@@ -134,6 +134,19 @@
           <button id="timer-resume-btn" class="resume-btn hidden">▶ Reanudar</button>
           <button id="timer-stop-btn" class="stop-btn">Detener</button>
         </div>
+        <!-- Presupuesto de horas del proyecto (semanal + alerta) -->
+        <div id="timer-budget" class="timer-budget hidden">
+          <div class="budget-project" id="budget-project"></div>
+          <div class="budget-row" id="budget-week-row">
+            <span class="budget-label" id="budget-week-label">Esta semana</span>
+            <span class="budget-value" id="budget-week"></span>
+          </div>
+          <div class="budget-bar" id="budget-week-bar-wrap"><div class="budget-bar-fill" id="budget-week-bar"></div></div>
+          <div class="budget-row budget-month" id="budget-month-row">
+            <span class="budget-label" id="budget-month-label">Este mes</span>
+            <span class="budget-value" id="budget-month"></span>
+          </div>
+        </div>
       </div>
 
       <!-- No timer state -->

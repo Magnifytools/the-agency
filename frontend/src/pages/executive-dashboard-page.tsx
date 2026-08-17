@@ -9,6 +9,7 @@ import {
   leadsApi,
   balanceApi,
 } from "@/lib/api"
+import { profitabilityStatus } from "@/lib/profitability"
 import { MetricCard } from "@/components/dashboard/metric-card"
 import { RevenueTrendChart } from "@/components/dashboard/revenue-trend-chart"
 import { HealthGrid } from "@/components/dashboard/health-grid"
@@ -344,13 +345,7 @@ export default function ExecutiveDashboardPage() {
                     {profitChartData.map((entry, index) => (
                       <Cell
                         key={index}
-                        fill={
-                          entry.status === "profitable"
-                            ? "#22c55e"
-                            : entry.status === "at_risk"
-                            ? "#eab308"
-                            : "#ef4444"
-                        }
+                        fill={profitabilityStatus(entry.status).chartColor}
                       />
                     ))}
                   </Bar>

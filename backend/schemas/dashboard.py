@@ -9,6 +9,10 @@ class ProfitabilityStatus(str, Enum):
     profitable = "profitable"
     at_risk = "at_risk"
     unprofitable = "unprofitable"
+    # Sin tarifa configurada: no se puede calcular margen. Es un estado distinto
+    # de "margen justo" — mezclarlos hacía que un cliente sin configurar y un
+    # cliente en apuros se vieran igual.
+    no_data = "no_data"
 
 
 class DashboardOverview(BaseModel):

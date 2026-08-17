@@ -344,8 +344,12 @@ async def generate_fiscal_brief(
     )
     db.add(brief)
 
-    # Store raw data as payload
-    import json
+    # Store raw data as payload.
+    # (Aquí había un `import json` redundante — el módulo ya lo importa arriba.
+    # Al ser una importación LOCAL convertía `json` en local de toda la función,
+    # así que la línea de más arriba que hace `json.dumps(content, ...)` lanzaba
+    # UnboundLocalError siempre que el contenido fuera un dict, que es lo que
+    # devuelve parse_claude_json.)
     payload = AdvisorAiBriefPayload(
         brief=brief,
         payload=json.dumps(data, default=str, ensure_ascii=False),
