@@ -1,8 +1,8 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-03-11T10:00:00.000000",
-  "estado_general": "sprint_6_en_progreso",
-  "progreso_estimado": 80,
+  "ultima_actualizacion": "2026-08-17T04:10:00.000000",
+  "estado_general": "produccion_estable",
+  "progreso_estimado": 95,
   "tareas": [
     {
       "id": "T001",
@@ -84,37 +84,44 @@
     {
       "id": "T012",
       "descripcion": "Sprint 6: PM Intelligence - Endpoint generacion insights",
-      "estado": "pendiente",
+      "estado": "completado",
       "prioridad": "alta",
       "notas": "POST /api/pm/generate-insights con Claude API"
     },
     {
       "id": "T013",
       "descripcion": "Sprint 6: PM Intelligence - Panel de insights en dashboard",
-      "estado": "pendiente",
+      "estado": "completado",
       "prioridad": "alta",
       "notas": "Lista priorizada con [Actuar | Descartar]"
     },
     {
       "id": "T014",
       "descripcion": "Sprint 6: PM Intelligence - Daily Briefing",
-      "estado": "pendiente",
+      "estado": "completado",
       "prioridad": "alta",
       "notas": "GET /api/pm/daily-briefing resumen de que hacer hoy"
     },
     {
       "id": "T015",
       "descripcion": "Sprint 6: PM Intelligence - Logica de alertas",
-      "estado": "pendiente",
+      "estado": "completado",
       "prioridad": "alta",
       "notas": "Deteccion automatica: tareas vencidas, clientes estancados, followups pendientes"
     },
     {
       "id": "T016",
       "descripcion": "Sprint 6: PM Intelligence - Configuracion umbrales",
-      "estado": "pendiente",
+      "estado": "completado",
       "prioridad": "alta",
       "notas": "Dias sin actividad, antes de deadline, sin contacto (AlertSettings)"
+    },
+    {
+      "id": "T017",
+      "descripcion": "Auditoria de codigo + produccion (ago 2026) y fixes derivados",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "Auditoria sobre datos reales de audit_logs (ventana 2 jun - 17 ago, 75.042 peticiones). Desplegado 17 ago: estado no_data en rentabilidad, fix None€ en alertas, N+1 del listado de proyectos (449ms -> 19ms), User.tasks fuera de get_current_user, KPI del dashboard etiquetado, monthly_fee en el listado, npm audit 12 vulns -> 0, y desbloqueo de CI (UnboundLocalError en fiscal_brief + tests de integracion que daban ERROR sin Postgres). Informe completo en tasks/archive/2026-08-17-audit-fixes/."
     }
   ],
   "bugs": [
@@ -145,19 +152,47 @@
       "severidad": "media",
       "estado": "resuelto",
       "notas": "Conversion de inbox corregida"
+    },
+    {
+      "id": "B005",
+      "descripcion": "Cliente sin tarifa configurada aparecia como 'En riesgo' (dashboard) y 'No rentable' (ficha)",
+      "severidad": "alta",
+      "estado": "resuelto",
+      "notas": "margin_pct forzado a 0 se juzgaba como margen medido. Nuevo estado no_data en services/profitability.py"
+    },
+    {
+      "id": "B006",
+      "descripcion": "'None€' literal en el detalle de alertas de facturacion del dashboard",
+      "severidad": "media",
+      "estado": "resuelto",
+      "notas": "billing_amount nullable sin guarda en el f-string"
+    },
+    {
+      "id": "B007",
+      "descripcion": "UnboundLocalError en generate_fiscal_brief: 'import json' local rompia un json.dumps anterior",
+      "severidad": "alta",
+      "estado": "resuelto",
+      "notas": "La generacion de briefs fiscales fallaba siempre. Lo destapo ruff F823, rojo en CI desde jun"
+    },
+    {
+      "id": "B008",
+      "descripcion": "CI rojo en main durante 2 meses: los tests de integracion daban ERROR sin Postgres en vez de skip",
+      "severidad": "alta",
+      "estado": "resuelto",
+      "notas": "pytestmark en un conftest no se propaga a los modulos de test. Sustituido por pytest_collection_modifyitems. Bloqueo el PR #1 durante 8 semanas"
     }
   ],
   "notas_tecnicas": [
     "Stack: React 19 + FastAPI + PostgreSQL + Railway",
-    "Python 3.9: requiere from __future__ import annotations + eval-type-backport para X | None",
+    "Tests: 427 backend (incluye tests/integration contra Postgres real) + 45 frontend",
+    "CUIDADO: lazy='selectin' esta en ~80 relaciones de models.py. Quitar un selectinload() de .options() NO evita la carga; hace falta noload() explicito",
+    "La suite unitaria mockea get_db: cualquier cambio de SQL debe verificarse en tests/integration/",
+    "Los estados de rentabilidad viven en services/profitability.py (backend) y lib/profitability.ts (frontend), un unico mapa cada uno",
+    "Alembic sigue sin migraciones: DDL en el lifespan de main.py (44 sentencias) + startup/migrations.py",
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
-    "Alembic pendiente: actualmente DDL en lifespan, migraciones formales en tech debt",
-    "60+ commits en el proyecto",
-    "22 tests backend + 30 tests frontend",
-    "Integraciones: Holded, Discord, Engine (metricas SEO), Claude AI",
-    "Chrome extension disponible para captura de datos"
+    "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "Sprint 6: PM Intelligence (insights IA, daily briefing, alertas). Sprint 7: Propuestas avanzadas con wizard SCQA y modelos de inversion SEO.",
+  "proximos_pasos": "Backlog salido de la auditoria de ago 2026, por orden de impacto: (1) decidir el recorte de modulos muertos — 279 de 349 endpoints sin una sola llamada en 77 dias, ~16.000 lineas entre finanzas custom, reports, automations, vault, cfo, billing, my-week; (2) lazy='selectin' global — explica los 240ms que aun tiene /api/tasks, refactor con riesgo, tarea propia; (3) notificaciones: 284 sin leer, nadie las abre; (4) caducidad de alertas: hay tareas vencidas hace 144 dias fijas en el panel; (5) estimaciones: estimated_minutes esta en 1 de 725 tareas, las columnas Estimado/Delta son decorativas; (6) unificar umbrales de rentabilidad (dashboard 20% vs ficha 30%/10%).",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
@@ -168,5 +203,5 @@
     "url": "https://agency.magnifytools.com",
     "estado": "produccion"
   },
-  "pendiente_david": ""
+  "pendiente_david": "Decision de producto, no tecnica: que se hace con los modulos muertos. El CLAUDE.md dice 'no tocar finanzas, se sustituye por Holded', pero Holded tambien esta en 26 hits en 77 dias: la sustitucion tampoco ocurrio."
 }

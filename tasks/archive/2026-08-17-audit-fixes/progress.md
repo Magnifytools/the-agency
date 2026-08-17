@@ -1,7 +1,15 @@
 # Progreso — fixes de la auditoría
 
-Estado: **todo commiteado y pusheado, CI en verde, pendiente SOLO el merge del PR #1**
-(el merge lo bloqueó el clasificador de permisos; lo tiene que pulsar David).
+Estado: **DESPLEGADO Y VERIFICADO EN PRODUCCIÓN** (17 ago 2026, 04:01 UTC).
+PR #1 mergeado por David; Railway desplegó en ~75 s.
+
+## Verificado contra producción tras el deploy
+- `GET /api/projects` → 449 ms → **19 ms** de tiempo de servidor (medido aislando
+  solo las llamadas post-deploy contra `audit_logs`, no la media del día).
+- Taxfix y Mosquita: `at_risk` → `no_data`. Sage/Kinetic/Fit Generation siguen
+  `profitable` (sin regresión).
+- Alertas: `"Taxfix ES+UK ...: None€"` → `"...: sin importe configurado"`.
+- El listado de proyectos ya devuelve `monthly_fee` y `pricing_model`.
 
 PR: https://github.com/Magnifytools/the-agency/pull/1 — 6 commits, 4 checks en verde.
 Al mergear, Railway despliega. Producción corre `origin/main` = 4c0bb89 (17 jun).
