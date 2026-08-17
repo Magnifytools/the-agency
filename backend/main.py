@@ -112,6 +112,15 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS available_hours_month NUMERIC(5,1) NOT NULL DEFAULT 147",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS fee_is_base BOOLEAN NOT NULL DEFAULT TRUE",
                 "ALTER TABLE clients ADD COLUMN IF NOT EXISTS vat_treatment VARCHAR(30) NOT NULL DEFAULT 'domestic_21'",
+                # Timer pausa/reanudación. Estaban en el modelo pero NO aquí, y
+                # create_all no añade columnas a tablas que ya existen: cualquier
+                # base cuyo time_entries sea anterior a la función devuelve 500 en
+                # GET /api/timer/active — el endpoint más consultado de la
+                # aplicación y el núcleo del producto. Producción funciona porque
+                # se añadieron a mano; una restauración de backup o un entorno
+                # nuevo se quedaba sin cronómetro.
+                "ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS paused_at TIMESTAMP",
+                "ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS accumulated_seconds INTEGER NOT NULL DEFAULT 0",
                 # AuditLog as request analytics sink — original schema was
                 # entity-audit (action/entity_type/entity_id NOT NULL) but the
                 # table was never written to. Relax NOT NULL + add request
@@ -350,57 +359,74 @@ app.add_exception_handler(DataError, unhandled_exception_handler)
 app.add_exception_handler(IntegrityError, unhandled_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
 
-app.include_router(auth.router)
-app.include_router(clients.router)
-app.include_router(tasks.router)
-app.include_router(task_categories.router)
-app.include_router(time_entries.router)
-app.include_router(users.router)
-app.include_router(dashboard.router)
-app.include_router(discord.router)
-app.include_router(billing.router)
-app.include_router(projects.router)
-app.include_router(communications.router)
-app.include_router(pm.router)
-app.include_router(reports.router)
-app.include_router(proposals.router)
-app.include_router(service_templates.router)
-app.include_router(growth.router)
-app.include_router(invitations.router)
-app.include_router(digests.router)
-app.include_router(leads.router)
-app.include_router(holded.router)
-# Financial routes
-app.include_router(income.router)
-app.include_router(expenses.router)
-app.include_router(expense_categories.router)
-app.include_router(taxes.router)
-app.include_router(forecasts.router)
-app.include_router(advisor.router)
-app.include_router(sync.router)
-app.include_router(export.router)
-app.include_router(dailys.router)
-app.include_router(contacts.router)
-app.include_router(activity.router)
-app.include_router(notifications.router)
-app.include_router(resources.router)
-app.include_router(billing_events.router)
-app.include_router(client_dashboard.router)
-app.include_router(engine_integration.router)
-app.include_router(investments.router)
-app.include_router(evidence.router)
-app.include_router(search.router)
-app.include_router(agency_vault.router)
-app.include_router(core_updates.router)
-app.include_router(balance.router)
-app.include_router(inbox.router)
-app.include_router(extension.router)
-app.include_router(my_week.router)
-app.include_router(automations.router)
-app.include_router(google_calendar.router)
-app.include_router(bank_import.router)
-app.include_router(cfo.router)
-app.include_router(usage_stats.router)
+# ── Registro de routers ───────────────────────────────────────────────────────
+# Los módulos ocultos (backend/core/modules.py) NO se registran: sus rutas no
+# existen en la aplicación. El código sigue en el repositorio, listo para volver.
+# Reactivar: quitar la clave de HIDDEN_MODULES, o AGENCY_HIDDEN_MODULES en Railway.
+from backend.core.modules import hidden_modules  # noqa: E402
+
+_HIDDEN = hidden_modules()
+
+# Núcleo: siempre registrado.
+_CORE_ROUTERS = [
+    auth, clients, tasks, task_categories, time_entries, users, dashboard,
+    projects, pm, digests, sync, dailys, contacts, activity, notifications,
+    client_dashboard, engine_integration, inbox, extension, google_calendar,
+    usage_stats,
+    # search: 0 llamadas, pero es la paleta ⌘K del shell, no una pantalla.
+    search,
+    # discord: su PANTALLA está oculta (13 visitas), pero la API se queda. El
+    # dashboard lee /api/discord/settings para saber si ofrecer "Enviar a
+    # Discord" en el Resumen Diario, y ese envío sí se usa (43 veces en 77
+    # días, vía /api/dailys/{id}/send-discord). Apagar el router dejaría la
+    # app creyendo que Discord no está configurado — el mismo error que en
+    # Vigil: deducir el estado de una integración en vez de leerlo.
+    discord,
+    # my_week: su PANTALLA está oculta (12 visitas), pero el router también
+    # sirve /api/my-week/holidays, que es la gestión de festivos de la página
+    # de Ajustes — y Ajustes se conserva. Quitar el router dejaría un trozo de
+    # una pantalla viva llamando al vacío. Si algún día se borra el módulo de
+    # verdad, los festivos hay que sacarlos de aquí primero.
+    my_week,
+]
+
+# Opcionales: se registran solo si su módulo no está oculto. Un módulo puede
+# tener varios routers (finance son ocho, proposals cuatro).
+_OPTIONAL_ROUTERS = {
+    "finance": [income, expenses, expense_categories, taxes, forecasts,
+                advisor, bank_import, balance],
+    "holded": [holded],
+    "cfo": [cfo],
+    "reports": [reports],
+    "proposals": [proposals, service_templates, investments],
+    "leads": [leads],
+    "growth": [growth],
+    "automations": [automations],
+    "vault": [agency_vault],
+    # ("my_week" no está aquí: ver _CORE_ROUTERS — el router sirve los festivos
+    #  de Ajustes, que es una pantalla que se conserva.)
+    "billing": [billing, billing_events],
+    "communications": [communications],
+    "resources": [resources],
+    "evidence": [evidence],
+    "core_updates": [core_updates],
+    "invitations": [invitations],
+    "export": [export],
+}
+
+for _router_module in _CORE_ROUTERS:
+    app.include_router(_router_module.router)
+
+for _key, _mods in _OPTIONAL_ROUTERS.items():
+    if _key in _HIDDEN:
+        continue
+    for _router_module in _mods:
+        app.include_router(_router_module.router)
+
+if _HIDDEN:
+    logging.info(
+        "Módulos ocultos (%d): %s", len(_HIDDEN), ", ".join(sorted(_HIDDEN))
+    )
 
 
 @app.get("/api/health")
