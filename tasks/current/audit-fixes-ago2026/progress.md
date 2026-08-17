@@ -1,6 +1,19 @@
 # Progreso — fixes de la auditoría
 
-Estado: **completado, sin desplegar**. Los cuatro fixes acordados están hechos y verificados en local.
+Estado: **todo commiteado y pusheado, CI en verde, pendiente SOLO el merge del PR #1**
+(el merge lo bloqueó el clasificador de permisos; lo tiene que pulsar David).
+
+PR: https://github.com/Magnifytools/the-agency/pull/1 — 6 commits, 4 checks en verde.
+Al mergear, Railway despliega. Producción corre `origin/main` = 4c0bb89 (17 jun).
+
+## Hallazgo gordo del proceso de deploy
+El PR #1 llevaba **8 semanas abierto sin poder mergearse** porque CI estaba rojo
+**en la propia rama main**, por dos motivos independientes y pre-existentes:
+  1. `ruff` marcaba 3 errores en `main` (uno de ellos un UnboundLocalError real
+     que rompía la generación de briefs fiscales SIEMPRE).
+  2. Los 23 tests de integración daban ERROR en vez de SKIP cuando no había
+     Postgres, que es justo el caso de CI.
+Ambos corregidos. Con eso, el PR pasa los 4 checks por primera vez.
 
 ## A. `None€` en las alertas — HECHO
 - Extraído a `backend/services/profitability.py::format_billing_detail`.
@@ -43,11 +56,33 @@ Estado: **completado, sin desplegar**. Los cuatro fixes acordados están hechos 
   - Sage (80,7%): `profitable` → `profitable` (sin regresión)
   - Detalle: `"Taxfix ES+UK: None€"` → `"Taxfix ES+UK: sin importe configurado"`
 
+## E. N+1 del listado de proyectos — HECHO (y más profundo de lo previsto)
+- Contadores agregados con GROUP BY en vez de `len(p.tasks)` sobre un eager load.
+- **Quitar el `selectinload()` no bastaba**: `lazy="selectin"` está declarado en el
+  MODELO (en casi todas las relaciones de `models.py`), así que la carga ocurre
+  igual. Hace falta `noload()` explícito. Lo destapó un test que cuenta queries;
+  la suite unitaria no podía verlo porque mockea `get_db`.
+- El mismo defecto estaba en `get_current_user`: `User.tasks` se cargaba en CADA
+  petición autenticada de la app (75.000 al trimestre). Nadie lo lee — verificado
+  en rutas y schemas. Desactivado.
+- Medido con el test de integración: de 4 queries sobre `tasks` a 1, y esa con
+  COUNT en vez de traerse las filas.
+- El listado expone ya `monthly_fee` y `pricing_model`.
+
 ## Lo que NO se ha hecho
-- **Desplegar.** Todo esto está en local, producción sigue con los bugs.
+- **Mergear el PR** (bloqueado por permisos) y por tanto **desplegar**.
+  Producción sigue con todos los bugs.
+- **Medir la mejora real de latencia**: los 449 ms son de `audit_logs` en
+  producción. Hasta que no se despliegue no hay número nuevo que enseñar.
 - El recorte de módulos muertos (~16.000 líneas) — fuera del alcance acordado.
-- El N+1 de `GET /api/projects` (449 ms) — pendiente, era P1 en el informe.
 - Notificaciones (284 sin leer), caducidad de alertas, estimaciones decorativas.
+
+## Deuda que he visto de paso y NO he tocado
+- `lazy="selectin"` está en ~80 relaciones de `models.py`. Lo he desactivado en
+  los dos sitios más calientes, pero el patrón afecta a toda la app y explica
+  los 300-450 ms de casi todos los endpoints. Es un refactor grande y con riesgo:
+  merece su propia tarea, no colarlo aquí.
+- Los umbrales de rentabilidad no coinciden entre pantallas (20% vs 30%/10%).
 
 ## Inconsistencia detectada de paso (no corregida)
 Los umbrales de rentabilidad no coinciden entre pantallas: el dashboard llama
