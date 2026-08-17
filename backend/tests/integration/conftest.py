@@ -30,6 +30,7 @@ tests never see each other's writes and the DB is left clean.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 import importlib
 import os
 import sys
@@ -98,12 +99,43 @@ def _db_reachable(url: str) -> tuple[bool, str]:
 
 _DB_OK, _DB_REASON = _db_reachable(TEST_DATABASE_URL)
 
-# Skip the ENTIRE integration package cleanly if the DB isn't reachable, and
-# mark everything here as ``integration`` so ``-m integration`` selects them.
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.skipif(not _DB_OK, reason=_DB_REASON or "no test database"),
-]
+# NOTA: ``pytestmark`` en un conftest NO se propaga a los módulos de test — solo
+# aplica al propio módulo donde se declara. Estaba aquí con esa intención y no
+# hacía nada: sin base de datos, cada test de este paquete daba ERROR en la
+# fase de fixtures en vez de SKIP, y el job `backend-test` de CI llevaba rojo
+# desde que aterrizó el harness (17 jun 2026), bloqueando cualquier merge.
+#
+# La forma que sí funciona es el hook de colección, que marca los items ya
+# construidos de este paquete.
+pytestmark = [pytest.mark.integration]
+
+
+def pytest_collection_modifyitems(config, items):
+    """Marca los tests de este paquete y los salta si no hay DB alcanzable.
+
+    - ``integration``: para poder seleccionarlos con ``-m integration``. El
+      marcador tampoco lo heredaban de ``pytestmark``, así que ``-m integration``
+      los deseleccionaba TODOS y la orden documentada en el docstring de arriba
+      no ejecutaba nada.
+    - ``skip``: cuando no hay Postgres, para que CI quede verde y limpio en vez
+      de reportar 23 errores de conexión.
+    """
+    here = str(Path(__file__).parent.resolve())
+    skip_marker = (
+        pytest.mark.skip(reason=_DB_REASON or "no test database")
+        if not _DB_OK
+        else None
+    )
+    for item in items:
+        try:
+            in_package = str(Path(str(item.fspath)).resolve()).startswith(here)
+        except Exception:  # noqa: BLE001 - un fspath raro no debe romper la colección
+            continue
+        if not in_package:
+            continue
+        item.add_marker(pytest.mark.integration)
+        if skip_marker is not None:
+            item.add_marker(skip_marker)
 
 
 # Module-global cache: build the schema exactly once per process even though
