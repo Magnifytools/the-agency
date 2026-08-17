@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { dashboardApi, discordApi, tasksApi, timeEntriesApi, timerApi, usersApi, dailysApi, digestsApi, clientsApi, leadsApi, proposalsApi, engineApi, holdedApi } from "@/lib/api"
 import { holdedKeys } from "@/lib/query-keys"
 import { profitabilityStatus } from "@/lib/profitability"
+import { isEnabled } from "@/lib/hidden-modules"
 import type { PricingOption } from "@/lib/types"
 import { useAuth } from "@/context/auth-context"
 import { MetricCard } from "@/components/dashboard/metric-card"
@@ -107,15 +108,17 @@ export default function DashboardPage() {
     queryFn: () => engineApi.getConfig(),
     staleTime: 10 * 60_000,
   })
+  // `enabled` corta la petición de raíz cuando el módulo está oculto: su router
+  // no está registrado, así que la llamada sería un 404 en cada carga del panel.
   const { data: leadReminders } = useQuery({
     queryKey: ["lead-reminders"],
     queryFn: () => leadsApi.reminders(),
-    enabled: !!user,
+    enabled: !!user && isEnabled("leads"),
   })
   const { data: allProposals } = useQuery({
     queryKey: ["proposals-pipeline"],
     queryFn: () => proposalsApi.list(),
-    enabled: !!user,
+    enabled: !!user && isEnabled("proposals"),
   })
 
   // ─── Holded queries (admin only) ───────────────────────────
@@ -124,7 +127,7 @@ export default function DashboardPage() {
     queryFn: holdedApi.config,
     staleTime: 5 * 60_000,
     retry: false,
-    enabled: isAdmin,
+    enabled: isAdmin && isEnabled("holded"),
   })
   const holdedEnabled = isAdmin && (holdedConfig?.api_key_configured ?? false)
   const lastHoldedSync = holdedConfig?.last_sync_invoices?.completed_at ?? null

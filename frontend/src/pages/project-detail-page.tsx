@@ -22,6 +22,7 @@ import {
 import { toast } from "sonner"
 import { projectsApi, tasksApi, usersApi } from "@/lib/api"
 import type { Project, ProjectPhase, ProjectStatus, PhaseStatus, Task, TaskStatus, ProjectClosingStatus } from "@/lib/types"
+import { isEnabled } from "@/lib/hidden-modules"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -412,41 +413,49 @@ export default function ProjectDetailPage() {
         >
           Fases y Tareas
         </Button>
-        <Button
-          variant={activeTab === "ideas" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => setActiveTab("ideas")}
-        >
-          Buffer
-        </Button>
-        <Button
-          variant={activeTab === "evidence" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => setActiveTab("evidence")}
-        >
-          Documentos
-        </Button>
-        <Button
-          variant={activeTab === "billing" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => setActiveTab("billing")}
-        >
-          Facturación
-        </Button>
+        {/* Buffer, Documentos y Facturación pertenecen a módulos ocultos: sus
+            endpoints ya no están registrados, así que la pestaña tampoco. */}
+        {isEnabled("growth") && (
+          <Button
+            variant={activeTab === "ideas" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("ideas")}
+          >
+            Buffer
+          </Button>
+        )}
+        {isEnabled("evidence") && (
+          <Button
+            variant={activeTab === "evidence" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("evidence")}
+          >
+            Documentos
+          </Button>
+        )}
+        {isEnabled("billing") && (
+          <Button
+            variant={activeTab === "billing" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("billing")}
+          >
+            Facturación
+          </Button>
+        )}
       </div>
 
       {/* Ideas Tab */}
-      {activeTab === "ideas" && project && (
+      {activeTab === "ideas" && project && isEnabled("growth") && (
         <ProjectIdeasTab projectId={project.id} />
       )}
 
       {/* Evidence Tab */}
-      {activeTab === "evidence" && project && (
+      {activeTab === "evidence" && project && isEnabled("evidence") && (
         <EvidenceList projectId={project.id} phases={project.phases} />
       )}
 
       {/* Billing Tab */}
-      {activeTab === "billing" && project && (
+      {activeTab === "billing" && project && isEnabled("billing") && (
         <ProjectBillingTab projectId={project.id} project={project} />
       )}
 

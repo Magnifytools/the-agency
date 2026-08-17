@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { clientsApi, projectsApi, holdedApi, clientHealthApi, engineApi } from "@/lib/api"
 import type { TaskStatus, Client } from "@/lib/types"
+import { isEnabled } from "@/lib/hidden-modules"
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import { Pencil, Check, X, ExternalLink } from "lucide-react"
@@ -225,8 +226,25 @@ export default function ClientDetailPage() {
 
   const validTabs = ["ficha", "actividad", "tareas", "proyectos", "comunicaciones", "contactos", "panel", "tiempo", "facturacion", "recursos", "seo", "informes", "ajustes", "facturas"] as const
   type Tab = (typeof validTabs)[number]
+
+  // Pestaña -> módulo que la sirve. Si el módulo está oculto, sus endpoints no
+  // están registrados, así que la pestaña no puede renderizarse ni aunque
+  // llegue en la URL (un enlace guardado con ?tab=comunicaciones, por ejemplo).
+  const TAB_MODULE: Partial<Record<Tab, string>> = {
+    comunicaciones: "communications",
+    facturacion: "billing",
+    facturas: "holded",
+    informes: "reports",
+    recursos: "resources",
+  }
+  const isTabVisible = (tab: Tab) => {
+    const mod = TAB_MODULE[tab]
+    return !mod || isEnabled(mod)
+  }
+
   const tabParam = searchParams.get("tab") as Tab
-  const activeTab = validTabs.includes(tabParam) ? tabParam : "ficha"
+  const activeTab =
+    validTabs.includes(tabParam) && isTabVisible(tabParam) ? tabParam : "ficha"
   const setActiveTab = (tab: Tab) => setSearchParams({ tab }, { replace: true })
 
   const { data: summary, isLoading } = useQuery({
@@ -246,9 +264,11 @@ export default function ClientDetailPage() {
     queryFn: holdedApi.config,
     staleTime: 5 * 60_000,
     retry: false,
-    enabled: isAdmin,
+    // Con holded oculto su router no existe: sin este corte la ficha de cada
+    // cliente dispararía un 404 en cada carga.
+    enabled: isAdmin && isEnabled("holded"),
   })
-  const holdedEnabled = isAdmin && (holdedConfig?.api_key_configured ?? false)
+  const holdedEnabled = isAdmin && isEnabled("holded") && (holdedConfig?.api_key_configured ?? false)
 
   const { data: clientInvoices = [] } = useQuery({
     queryKey: holdedKeys.clientInvoices(clientId),
@@ -395,37 +415,47 @@ export default function ClientDetailPage() {
       {(() => {
         type TabKey = Tab
         type GroupDef = { key: string; label: string; tabs: TabKey[] }
-        const groups: GroupDef[] = [
-          { key: "ficha", label: "Ficha", tabs: ["ficha"] },
-          { key: "actividad", label: "Actividad", tabs: ["actividad"] },
-          { key: "tareas", label: "Tareas", tabs: ["tareas"] },
-          { key: "proyectos", label: "Proyectos", tabs: ["proyectos"] },
-          { key: "panel", label: "Panel", tabs: ["panel"] },
-          {
-            key: "relacion",
-            label: "Relación",
-            tabs: ["comunicaciones", "contactos"],
-          },
-          {
-            key: "outputs",
-            label: "Outputs",
-            tabs: [
-              ...(client.engine_project_id ? (["seo"] as TabKey[]) : []),
-              "informes",
-            ],
-          },
-          {
-            key: "tiempo-dinero",
-            label: "Tiempo y dinero",
-            tabs: [
-              "tiempo",
-              "facturacion",
-              ...(holdedEnabled ? (["facturas"] as TabKey[]) : []),
-            ],
-          },
-          { key: "recursos", label: "Recursos", tabs: ["recursos"] },
-          { key: "ajustes", label: "Ajustes", tabs: ["ajustes"] },
-        ]
+        // Las pestañas de módulos ocultos se caen aquí: sus endpoints ya no
+        // están registrados en el backend, así que renderizarlas daría 404.
+        // Un grupo que se queda sin pestañas desaparece entero.
+        const groups: GroupDef[] = (
+          [
+            { key: "ficha", label: "Ficha", tabs: ["ficha"] },
+            { key: "actividad", label: "Actividad", tabs: ["actividad"] },
+            { key: "tareas", label: "Tareas", tabs: ["tareas"] },
+            { key: "proyectos", label: "Proyectos", tabs: ["proyectos"] },
+            { key: "panel", label: "Panel", tabs: ["panel"] },
+            {
+              key: "relacion",
+              label: "Relación",
+              tabs: [
+                ...(isEnabled("communications") ? (["comunicaciones"] as TabKey[]) : []),
+                "contactos",
+              ],
+            },
+            {
+              key: "outputs",
+              label: "Outputs",
+              tabs: [
+                ...(client.engine_project_id ? (["seo"] as TabKey[]) : []),
+                ...(isEnabled("reports") ? (["informes"] as TabKey[]) : []),
+              ],
+            },
+            {
+              key: "tiempo-dinero",
+              label: "Tiempo y dinero",
+              tabs: [
+                "tiempo",
+                ...(isEnabled("billing") ? (["facturacion"] as TabKey[]) : []),
+                ...(holdedEnabled && isEnabled("holded") ? (["facturas"] as TabKey[]) : []),
+              ],
+            },
+            ...(isEnabled("resources")
+              ? [{ key: "recursos", label: "Recursos", tabs: ["recursos"] as TabKey[] }]
+              : []),
+            { key: "ajustes", label: "Ajustes", tabs: ["ajustes"] },
+          ] as GroupDef[]
+        ).filter((g) => g.tabs.length > 0)
         const activeGroup =
           groups.find((g) => g.tabs.includes(activeTab as TabKey)) ?? groups[0]
         const goToGroup = (g: GroupDef) => setActiveTab(g.tabs[0])

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/context/auth-context"
 import { inboxApi } from "@/lib/api"
 import { inboxKeys } from "@/lib/query-keys"
+import { isHidden } from "@/lib/hidden-modules"
 import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, FolderKanban, FileText, ScrollText, Wallet, Newspaper, Target, MessageCircle, ClipboardList, Gauge, Search, Archive, Inbox, Settings, LayoutGrid, CalendarDays, Zap, Lightbulb } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { BottomDrawer } from "@/components/ui/bottom-drawer"
@@ -41,49 +42,58 @@ export function AppLayout() {
     // Si falla, simplemente no hay badge — no bloquear la shell
   })
 
+  // `hidden` filtra los módulos apagados en lib/hidden-modules.ts. Se aplica
+  // ANTES que los permisos: un módulo oculto no existe para nadie, ni para admin.
+  const visible = <T extends { hidden?: string; module?: string }>(items: T[]) =>
+    items.filter(
+      (item) =>
+        !(item.hidden && isHidden(item.hidden)) &&
+        (!item.module || hasPermission(item.module)),
+    )
+
   const workspaceNav = useMemo(() => {
-    const items = [
+    return visible([
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
-      { to: "/my-week", label: "Mi Semana", icon: CalendarDays },
+      { to: "/my-week", label: "Mi Semana", icon: CalendarDays, hidden: "my_week" },
       { to: "/clients", label: "Clientes", icon: Users, module: "clients" },
       { to: "/projects", label: "Proyectos", icon: FolderKanban, module: "projects" },
-      { to: "/leads", label: "Pipeline", icon: Target, module: "growth" },
-      { to: "/growth", label: "Buffer", icon: Lightbulb, module: "growth" },
+      { to: "/leads", label: "Pipeline", icon: Target, module: "growth", hidden: "leads" },
+      { to: "/growth", label: "Buffer", icon: Lightbulb, module: "growth", hidden: "growth" },
       { to: "/tasks", label: "Tareas", icon: CheckSquare, module: "tasks" },
       { to: "/inbox", label: "Inbox", icon: Inbox, module: "tasks" },
-    ]
-    return items.filter((item) => !item.module || hasPermission(item.module))
+    ])
   }, [hasPermission, isAdmin])
 
   const opsNav = useMemo(() => {
-    const items = [
+    return visible([
       { to: "/timesheet", label: "Timesheet", icon: Clock, module: "timesheet" },
       { to: "/dailys", label: "Dailys", icon: ClipboardList },
       { to: "/digests", label: "Digests", icon: Newspaper, module: "digests" },
-      { to: "/reports", label: "Informes", icon: FileText, module: "reports" },
-      { to: "/proposals", label: "Presupuestos", icon: ScrollText, module: "proposals" },
-    ]
-    return items.filter((item) => !item.module || hasPermission(item.module))
+      { to: "/reports", label: "Informes", icon: FileText, module: "reports", hidden: "reports" },
+      { to: "/proposals", label: "Presupuestos", icon: ScrollText, module: "proposals", hidden: "proposals" },
+    ])
   }, [hasPermission])
 
   // Keep mainNav as combined for backward compat (mobile nav, etc.)
   const mainNav = useMemo(() => [...workspaceNav, ...opsNav], [workspaceNav, opsNav])
 
   const agencyNav = useMemo(() => {
-    const items: { to: string; label: string; icon: typeof Archive; adminOnly?: boolean }[] = [
-      { to: "/vault", label: "Vault", icon: Archive, adminOnly: true },
+    const items: { to: string; label: string; icon: typeof Archive; adminOnly?: boolean; hidden?: string }[] = [
+      { to: "/vault", label: "Vault", icon: Archive, adminOnly: true, hidden: "vault" },
     ]
-    return items.filter((item) => !item.adminOnly || isAdmin)
+    return items.filter(
+      (item) => !(item.hidden && isHidden(item.hidden)) && (!item.adminOnly || isAdmin),
+    )
   }, [isAdmin])
 
   const adminNav = useMemo(() => {
     if (!isAdmin) return []
-    return [
-      { to: "/capacity", label: "Capacidad", icon: Gauge },
+    return visible([
+      { to: "/capacity", label: "Capacidad", icon: Gauge, hidden: "capacity" },
       { to: "/users", label: "Equipo", icon: UserCog },
-      { to: "/discord", label: "Integraciones", icon: MessageCircle },
-      { to: "/automations", label: "Automatizaciones", icon: Zap },
-    ]
+      { to: "/discord", label: "Integraciones", icon: MessageCircle, hidden: "discord" },
+      { to: "/automations", label: "Automatizaciones", icon: Zap, hidden: "automations" },
+    ])
   }, [isAdmin])
 
   const mobileNav = useMemo(() => {
@@ -209,7 +219,7 @@ export function AppLayout() {
             )}
 
             {/* Finance Nav — single entry */}
-            {isAdmin && (
+            {isAdmin && !isHidden("finance") && (
               <div className="mt-6 flex flex-col gap-1.5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">Finanzas</p>
                 <Link
@@ -352,7 +362,7 @@ export function AppLayout() {
       {/* More drawer */}
       <BottomDrawer open={moreDrawerOpen} onOpenChange={setMoreDrawerOpen}>
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
-          {[...mainNav, ...agencyNav, ...(isAdmin ? [{ to: "/finance", label: "Finanzas", icon: Wallet }] : []), ...adminNav, { to: "/settings", label: "Ajustes", icon: Settings }]
+          {[...mainNav, ...agencyNav, ...(isAdmin && !isHidden("finance") ? [{ to: "/finance", label: "Finanzas", icon: Wallet }] : []), ...adminNav, { to: "/settings", label: "Ajustes", icon: Settings }]
             .filter((item) => !mobileNav.some((m) => m.to === item.to))
             .map((item) => (
               <Link

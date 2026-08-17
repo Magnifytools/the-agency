@@ -1,5 +1,19 @@
+import os
 import sys
 from unittest.mock import MagicMock, AsyncMock
+
+# ── Todos los módulos activos durante los tests ─────────────────────
+# En producción hay 20 módulos ocultos (backend/core/modules.py): su router no
+# se registra. Pero el código sigue en el repositorio y la idea es poder
+# reactivarlos, así que la suite corre con TODO activado: si algo se pudre
+# mientras está oculto, queremos enterarnos ahora y no el día que se reactive.
+#
+# La configuración real de producción se verifica aparte, en
+# tests/test_hidden_modules.py, levantando la app en un subproceso limpio.
+#
+# Tiene que ir ANTES de importar backend.main: el registro de routers se
+# resuelve en tiempo de importación.
+os.environ.setdefault("AGENCY_HIDDEN_MODULES", "")
 
 # ── Mock asyncpg before anything imports database.py ────────────────
 # The system Python may not have asyncpg installed (it runs inside Docker).

@@ -6,6 +6,7 @@ import { AuthProvider } from "@/context/auth-context"
 import { ProtectedRoute } from "@/components/layout/protected-route"
 import { PermissionRoute } from "@/components/layout/permission-route"
 import { AppLayout } from "@/components/layout/app-layout"
+import { HiddenModuleGate } from "@/components/layout/hidden-module-gate"
 import { ErrorBoundary } from "@/components/ui/error-boundary"
 
 // Eagerly loaded (always needed)
@@ -88,7 +89,9 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <ErrorBoundary section="Layout">
-                    <AppLayout />
+                    <HiddenModuleGate>
+                      <AppLayout />
+                    </HiddenModuleGate>
                   </ErrorBoundary>
                 </ProtectedRoute>
               }
