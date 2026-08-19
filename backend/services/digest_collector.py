@@ -14,6 +14,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import (
+    IN_PROGRESS_TASK_STATUSES,
     Task, TaskStatus, TimeEntry, CommunicationLog, Client, Project,
 )
 
@@ -65,7 +66,7 @@ async def collect_digest_data(
     in_progress_result = await db.execute(
         select(Task).where(
             Task.client_id == client_id,
-            Task.status == TaskStatus.in_progress,
+            Task.status.in_(IN_PROGRESS_TASK_STATUSES),
         ).order_by(Task.due_date.asc().nullslast())
     )
     in_progress_tasks = [

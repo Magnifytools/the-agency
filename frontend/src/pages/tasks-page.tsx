@@ -71,7 +71,7 @@ export default function TasksPage() {
   // Filters
   const [filterClient, setFilterClient] = useState<string>("")
   const [filterCategory, setFilterCategory] = useState<string>("")
-  const [filterStatus, setFilterStatus] = useState<string>("backlog,pending,in_progress,waiting,in_review")
+  const [filterStatus, setFilterStatus] = useState<string>("backlog,pending,in_progress,advanced,waiting,in_review")
   const [filterPriority, setFilterPriority] = useState<string>("")
   const [filterAssigned, setFilterAssigned] = useState<string>(() =>
     user && user.role !== "admin" ? String(user.id) : ""
@@ -474,12 +474,13 @@ export default function TasksPage() {
         </Select>
         <Select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); reset() }} className="w-48">
           <option value="">Todos (incl. completadas)</option>
-          <option value="backlog,pending,in_progress,waiting,in_review">Activas</option>
+          <option value="backlog,pending,in_progress,advanced,waiting,in_review">Activas</option>
           <option value="backlog">Backlog</option>
           <option value="pending">Pendiente</option>
           <option value="in_progress">En curso</option>
           <option value="waiting">En espera</option>
           <option value="in_review">En revisión</option>
+          <option value="advanced">Avanzada (sigo mañana)</option>
           <option value="completed">Completada</option>
         </Select>
         <Select value={filterPriority} onChange={(e) => { setFilterPriority(e.target.value); reset() }} className="w-48">
@@ -720,6 +721,7 @@ export default function TasksPage() {
                       "bg-blue-500": t.status === "in_progress",
                       "bg-orange-500": t.status === "waiting",
                       "bg-purple-500": t.status === "in_review",
+                      "bg-teal-500": t.status === "advanced",
                       "bg-green-500": t.status === "completed",
                     })} />
                     <Select
@@ -732,6 +734,7 @@ export default function TasksPage() {
                       <option value="in_progress">En curso</option>
                       <option value="waiting">En espera</option>
                       <option value="in_review">En revisión</option>
+                      <option value="advanced">Avanzada (sigo mañana)</option>
                       <option value="completed">Completada</option>
                     </Select>
                     </div>
@@ -975,6 +978,7 @@ export default function TasksPage() {
                     <option value="in_progress">En curso</option>
                     <option value="waiting">En espera</option>
                     <option value="in_review">En revisión</option>
+                    <option value="advanced">Avanzada (sigo mañana)</option>
                     <option value="completed">Completada</option>
                   </Select>
                 </div>
@@ -1544,6 +1548,7 @@ export default function TasksPage() {
           <option value="in_progress">En curso</option>
           <option value="waiting">En espera</option>
           <option value="in_review">En revisión</option>
+          <option value="advanced">Avanzada (sigo mañana)</option>
           <option value="completed">Completada</option>
         </Select>
         <Select

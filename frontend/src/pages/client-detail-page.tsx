@@ -60,6 +60,7 @@ const taskStatusBadge = (status: TaskStatus) => {
     in_progress: { label: "En curso", variant: "warning" },
     waiting: { label: "En espera", variant: "secondary" },
     in_review: { label: "En revisión", variant: "warning" },
+    advanced: { label: "Avanzada", variant: "warning" },
     completed: { label: "Completada", variant: "success" },
   }
   const { label, variant } = map[status]

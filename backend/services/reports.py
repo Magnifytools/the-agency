@@ -12,6 +12,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import (
+    IN_PROGRESS_TASK_STATUSES,
     Client, Task, Project, CommunicationLog, TimeEntry, GeneratedReport,
     TaskStatus, ClientStatus, ProjectStatus, ReportType, ReportAudience,
 )
@@ -49,7 +50,7 @@ async def generate_client_status_report(
 
     completed_tasks = [t for t in tasks if t.status == TaskStatus.completed]
     pending_tasks = [t for t in tasks if t.status == TaskStatus.pending]
-    in_progress_tasks = [t for t in tasks if t.status == TaskStatus.in_progress]
+    in_progress_tasks = [t for t in tasks if t.status in IN_PROGRESS_TASK_STATUSES]
 
     # Fetch time entries
     time_result = await db.execute(
@@ -284,7 +285,7 @@ async def generate_project_status_report(
 
     completed_tasks = [t for t in tasks if t.status == TaskStatus.completed]
     pending_tasks = [t for t in tasks if t.status == TaskStatus.pending]
-    in_progress_tasks = [t for t in tasks if t.status == TaskStatus.in_progress]
+    in_progress_tasks = [t for t in tasks if t.status in IN_PROGRESS_TASK_STATUSES]
 
     # Fetch time
     time_result = await db.execute(

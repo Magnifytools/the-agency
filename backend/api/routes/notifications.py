@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import (
+    IN_PROGRESS_TASK_STATUSES,
     Notification, Task, TaskStatus, Lead, LeadStatus, Client, ClientStatus,
     UserRole, User, DailyUpdate, TimeEntry, Project, ProjectStatus,
 )
@@ -363,7 +364,7 @@ async def generate_notification_checks(
                 func.sum(Task.estimated_minutes).label("total_est"),
             ).where(
                 Task.assigned_to.isnot(None),
-                Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
+                Task.status.in_([TaskStatus.pending, *IN_PROGRESS_TASK_STATUSES]),
                 Task.estimated_minutes.isnot(None),
             ).group_by(Task.assigned_to)
         )

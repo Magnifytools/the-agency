@@ -128,7 +128,18 @@ class TaskStatus(str, enum.Enum):
     in_progress = "in_progress"
     waiting = "waiting"
     in_review = "in_review"
+    advanced = "advanced"      # avanzada hoy: vuelve a in_progress de madrugada
     completed = "completed"
+
+
+#: "En curso" a efectos de informes: ``advanced`` es una tarea en curso que
+#: hoy se ha dado por cerrada en el daily, no un estado terminal.
+IN_PROGRESS_TASK_STATUSES = [TaskStatus.in_progress, TaskStatus.advanced]
+
+#: Estados en los que la tarea sigue viva (todo menos completada).
+#: Fuente única: cualquier listado explícito de estados debería salir de aquí,
+#: para que añadir un estado nuevo no deje contadores e informes desfasados.
+ACTIVE_TASK_STATUSES = [s for s in TaskStatus if s is not TaskStatus.completed]
 
 
 class TaskPriority(str, enum.Enum):
@@ -630,6 +641,10 @@ class Task(TimestampMixin, Base):
     depends_on = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     scheduled_date = Column(Date, nullable=True)
+    # Fecha en que se marcó como "Avanzada". La barrida nocturna devuelve a
+    # in_progress toda tarea advanced con advanced_at anterior a hoy, de modo
+    # que un servidor caído a medianoche se recupera solo al arrancar.
+    advanced_at = Column(Date, nullable=True)
     waiting_for = Column(String(255), nullable=True)
     follow_up_date = Column(Date, nullable=True)
     link_url = Column(Text, nullable=True)

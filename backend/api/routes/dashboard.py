@@ -9,6 +9,8 @@ from sqlalchemy.orm import selectinload
 from backend.config import settings
 from backend.db.database import get_db
 from backend.db.models import (
+    ACTIVE_TASK_STATUSES,
+    IN_PROGRESS_TASK_STATUSES,
     Client,
     ClientStatus,
     DailyUpdate,
@@ -88,7 +90,7 @@ async def get_overview(
     pending_tasks = r.scalar()
 
     r = await db.execute(
-        select(func.count()).select_from(Task).where(Task.status == TaskStatus.in_progress, task_date_filter)
+        select(func.count()).select_from(Task).where(Task.status.in_(IN_PROGRESS_TASK_STATUSES), task_date_filter)
     )
     in_progress_tasks = r.scalar()
 
@@ -498,7 +500,7 @@ async def get_capacity(
             func.coalesce(func.sum(Task.estimated_minutes), 0),
             func.count(),
         )
-        .where(Task.status.in_([TaskStatus.backlog, TaskStatus.pending, TaskStatus.in_progress, TaskStatus.waiting, TaskStatus.in_review]))
+        .where(Task.status.in_(ACTIVE_TASK_STATUSES))
         .group_by(Task.assigned_to)
     )
     stats_map = {row[0]: (row[1] or 0, row[2] or 0) for row in task_stats_result.all()}
@@ -546,7 +548,7 @@ async def get_capacity_detail(
         return []
 
     # Fetch all active tasks for these users
-    active_statuses = [TaskStatus.backlog, TaskStatus.pending, TaskStatus.in_progress, TaskStatus.waiting, TaskStatus.in_review]
+    active_statuses = ACTIVE_TASK_STATUSES
     tasks_result = await db.execute(
         select(Task, Client.name.label("client_name"), Project.name.label("project_name"))
         .outerjoin(Client, Task.client_id == Client.id)
@@ -885,7 +887,7 @@ async def alerts_summary(
             func.sum(Task.estimated_minutes).label("total"),
         ).where(
             Task.assigned_to.isnot(None),
-            Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
+            Task.status.in_([TaskStatus.pending, *IN_PROGRESS_TASK_STATUSES]),
             Task.estimated_minutes.isnot(None),
         ).group_by(Task.assigned_to)
     )

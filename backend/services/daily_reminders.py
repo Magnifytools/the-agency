@@ -8,6 +8,7 @@ from sqlalchemy import select, and_, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import (
+    IN_PROGRESS_TASK_STATUSES,
     Task, TaskStatus, TaskPriority, TimeEntry, DailyUpdate,
     CompanyHoliday, User, Event, EventType,
 )
@@ -64,7 +65,7 @@ async def generate_morning_plan(db: AsyncSession, user: User) -> str:
         select(Task)
         .where(
             Task.assigned_to == user.id,
-            Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
+            Task.status.in_([TaskStatus.pending, *IN_PROGRESS_TASK_STATUSES]),
             Task.is_recurring.is_(False),
         )
         .order_by(priority_sort, Task.due_date.asc().nulls_last())
@@ -163,7 +164,7 @@ async def generate_evening_recap(db: AsyncSession, user: User, day: date) -> str
     pending_result = await db.execute(
         select(Task).where(
             Task.assigned_to == user.id,
-            Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
+            Task.status.in_([TaskStatus.pending, *IN_PROGRESS_TASK_STATUSES]),
             Task.is_recurring.is_(False),
         )
     )

@@ -166,9 +166,46 @@ async def _check_overdue_tasks():
         logging.info("Checked %d overdue tasks, triggered %d automations.", len(overdue_tasks), count)
 
 
+async def _reset_advanced_tasks():
+    """Devolver a "En curso" las tareas marcadas como "Avanzada" días anteriores.
+
+    "Avanzada" significa "hoy he avanzado en esto, mañana sigo": cierra la tarea
+    en el informe diario de hoy pero no la da por terminada. La barrida se hace
+    por ``advanced_at < today`` en vez de "todo lo que esté advanced", de modo
+    que si el proceso estuvo caído a medianoche la siguiente ejecución (incluido
+    el arranque) recupera el retraso sin dejar tareas congeladas en Avanzada.
+    """
+    from datetime import date as date_type
+    from sqlalchemy import update
+    from backend.db.database import async_session
+    from backend.db.models import Task, TaskStatus
+
+    today = date_type.today()
+
+    async with async_session() as session:
+        result = await session.execute(
+            update(Task)
+            .where(
+                Task.status == TaskStatus.advanced,
+                (Task.advanced_at == None) | (Task.advanced_at < today),  # noqa: E711
+            )
+            .values(status=TaskStatus.in_progress, advanced_at=None)
+        )
+        if result.rowcount:
+            await session.commit()
+            logging.info("Reset %d 'Avanzada' task(s) back to 'En curso'.", result.rowcount)
+
+
 async def _recurring_midnight_loop():
     """Background loop that generates recurring task instances and checks overdue tasks at midnight."""
     from datetime import datetime, timedelta
+
+    # Catch-up al arrancar: si el proceso estuvo caído a medianoche, las tareas
+    # "Avanzada" de ayer siguen bloqueadas hasta la próxima medianoche.
+    try:
+        await _reset_advanced_tasks()
+    except Exception as exc:
+        logging.error("Advanced task reset (startup catch-up) failed: %s", exc)
 
     while True:
         now = datetime.now()
@@ -176,6 +213,10 @@ async def _recurring_midnight_loop():
         wait_seconds = (tomorrow - now).total_seconds()
         logging.info("Recurring task loop: next run in %.0f seconds", wait_seconds)
         await asyncio.sleep(wait_seconds)
+        try:
+            await _reset_advanced_tasks()
+        except Exception as exc:
+            logging.error("Advanced task reset failed: %s", exc)
         try:
             await _generate_recurring_instances()
         except Exception as exc:

@@ -7,6 +7,7 @@ const STATUS_COLORS: Record<string, string> = {
   in_progress: "#3B82F6",
   waiting: "#F97316",
   in_review: "#A855F7",
+  advanced: "#14B8A6",
   completed: "#22C55E",
   cancelled: "#EF4444",
 }

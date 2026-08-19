@@ -12,6 +12,7 @@ const STATUS_CONFIG: Record<TaskStatus, { label: string; cls: string }> = {
   in_progress: { label: "En curso",    cls: "bg-blue-500 text-white border-blue-600" },
   waiting:     { label: "En espera",   cls: "bg-orange-500 text-white border-orange-600" },
   in_review:   { label: "En revisión", cls: "bg-purple-500 text-white border-purple-600" },
+  advanced:    { label: "Avanzada",    cls: "bg-teal-500 text-white border-teal-600" },
   completed:   { label: "Completada",  cls: "bg-green-500 text-white border-green-600" },
 }
 
@@ -119,6 +120,7 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
             <option value="in_progress">En curso</option>
             <option value="waiting">En espera</option>
             <option value="in_review">En revisión</option>
+            <option value="advanced">Avanzada (sigo mañana)</option>
             <option value="completed">Completada</option>
           </select>
 

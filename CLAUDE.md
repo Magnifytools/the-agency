@@ -163,6 +163,19 @@ cd frontend && npm run test
 - Font mono: JetBrains Mono para datos numéricos (clase `.mono`)
 
 ## Errores conocidos
+- **Añadir un valor a un `enum.Enum` no basta.** El tipo enum de Postgres ya
+  existe en producción y `_ensure_pg_enums` solo crea tipos *ausentes*, así que
+  el valor nuevo no llega y el primer INSERT revienta (le pasó a `vattreatment`,
+  parcheado a mano). Ahora `_ensure_enum_values()` emite `ALTER TYPE ... ADD
+  VALUE IF NOT EXISTS` para todos los enums del ORM; se llama desde el lifespan
+  de `main.py`, **no** desde `run_migrations()` (que solo usa `init_db`).
+  El test `tests/integration/test_advanced_status_integration.py` guarda el
+  invariante contra Postgres real.
+- **Al añadir un estado a `TaskStatus`**, revisar los listados explícitos de
+  estados: usa `ACTIVE_TASK_STATUSES` / `IN_PROGRESS_TASK_STATUSES` de
+  `models.py` en vez de escribir la lista a mano. Los sitios que filtran por
+  `!= completed` no necesitan cambios; los que enumeran, sí, o el estado nuevo
+  desaparece de dashboards, capacidad, digests e informes sin avisar.
 - **`lazy="selectin"` está en CASI TODAS las relaciones de `models.py`.** Quitar un
   `selectinload()` de `.options()` NO evita la carga: el modelo la fuerza igual. Para
   que un listado no arrastre colecciones hay que desactivarlas con `noload(...)`

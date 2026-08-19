@@ -51,7 +51,7 @@ export function ActiveTimerBar() {
   // Fetch user's tasks for selector
   const { data: tasks = [] } = useQuery({
     queryKey: ["my-tasks-timer"],
-    queryFn: () => tasksApi.listAll({ assigned_to: "me", status: "pending,in_progress,waiting,in_review", scheduled_date: new Date().toISOString().split("T")[0] }),
+    queryFn: () => tasksApi.listAll({ assigned_to: "me", status: "pending,in_progress,advanced,waiting,in_review", scheduled_date: new Date().toISOString().split("T")[0] }),
   })
 
   // Fetch clients for quick create

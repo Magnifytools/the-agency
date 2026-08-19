@@ -12,6 +12,7 @@ const STATUS_COLORS: Record<string, string> = {
   in_progress: "bg-blue-500 text-white",
   waiting: "bg-orange-500 text-white",
   in_review: "bg-purple-500 text-white",
+  advanced: "bg-teal-500 text-white",
   completed: "bg-green-500 text-white line-through opacity-60",
 }
 

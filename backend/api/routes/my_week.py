@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
 from backend.db.models import (
+    IN_PROGRESS_TASK_STATUSES,
     Task, TaskStatus, TaskComment, Event, EventType,
     User, UserDayStatus, DayStatusType, CompanyHoliday,
 )
@@ -78,7 +79,7 @@ async def get_my_week(
     week_end = week_start + timedelta(days=6)
 
     # 1. Fetch active tasks assigned to user
-    active_statuses = [TaskStatus.pending, TaskStatus.in_progress, TaskStatus.waiting]
+    active_statuses = [TaskStatus.pending, *IN_PROGRESS_TASK_STATUSES, TaskStatus.waiting]
     task_q = (
         select(Task)
         .where(
