@@ -68,7 +68,14 @@ cronómetro. Añadidas al DDL.
 
 ## Pendiente
 
-- **Desplegar.** Nada de esto está en producción.
+- ~~**Desplegar.**~~ Hecho. Verificado el 19 ago 2026 contra
+  `agency.magnifytools.com`: `/api/leads`, `/api/growth/ideas` y `/api/reports`
+  devuelven 404 y `/api/tasks` responde 401. Está en producción.
+- **Ocultar no ahorraba arranque** (encontrado el 19 ago 2026, PR #7):
+  `main.py` importa todos los routers y luego decide cuáles registra, así que
+  `core_updates` seguía arrastrando sklearn + numpy en cada boot — 244 → 146 MB
+  de RSS y 1,19 s. Arreglado con import perezoso. Merece la pena revisar si
+  algún otro módulo oculto pesa al arrancar.
 - Decidir, dentro de unas semanas, qué se borra de verdad. La lista de
   candidatos es `HIDDEN_MODULES`.
 - Si algún día se borra `my_week`, sacar antes los festivos a otro router.
