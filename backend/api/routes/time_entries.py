@@ -720,7 +720,7 @@ async def start_timer(
         if task is None:
             raise HTTPException(status_code=404, detail="Task not found")
         # Auto-set task to in_progress when starting timer
-        if task.status in (TaskStatus.pending, TaskStatus.backlog):
+        if task.status in (TaskStatus.pending, TaskStatus.backlog, TaskStatus.advanced):
             task.status = TaskStatus.in_progress
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)

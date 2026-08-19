@@ -17,6 +17,7 @@ const STATUS_LABELS: Record<string, string> = {
   in_progress: "En curso",
   waiting: "En espera",
   in_review: "En revisión",
+  advanced: "Avanzadas",
   completed: "Completadas",
 }
 

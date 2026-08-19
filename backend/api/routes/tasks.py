@@ -97,6 +97,17 @@ async def _load_task_for_response(db: AsyncSession, task_id: int) -> Task | None
     return result.scalar_one_or_none()
 
 
+def _stamp_advanced(task: Task) -> None:
+    """Mantener ``advanced_at`` en sintonía con el estado "Avanzada".
+
+    Sólo tiene sentido mientras la tarea está en ``advanced``: la barrida
+    nocturna la devuelve a ``in_progress`` comparando esta fecha con hoy.
+    """
+    from datetime import date as _date
+
+    task.advanced_at = _date.today() if task.status == TaskStatus.advanced else None
+
+
 @router.get("", response_model=PaginatedResponse[TaskResponse])
 async def list_tasks(
     client_id: Optional[int] = Query(None),
@@ -247,6 +258,7 @@ async def create_task(
         from datetime import date as _date
         data["scheduled_date"] = _date.today()
     task = Task(**data, created_by=current_user.id)
+    _stamp_advanced(task)
     db.add(task)
     try:
         await db.commit()
@@ -337,6 +349,9 @@ async def update_task(
     for field, value in update_data.items():
         if field in _UPDATABLE_TASK_FIELDS:
             setattr(task, field, value)
+
+    if "status" in update_data:
+        _stamp_advanced(task)
 
     # If actual_minutes changed manually, sync a "manual" TimeEntry so it
     # counts toward daily hours even without a timer.
@@ -495,6 +510,8 @@ async def bulk_update_tasks(
                     if field == "priority" and value:
                         value = TaskPriority(value)
                     setattr(task, field, value)
+                if "status" in updates:
+                    _stamp_advanced(task)
                 await db.flush()
             updated += 1
         except Exception as e:

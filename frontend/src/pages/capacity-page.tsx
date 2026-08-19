@@ -33,6 +33,7 @@ const statusLabels: Record<string, string> = {
   in_progress: "En curso",
   waiting: "Esperando",
   in_review: "Revision",
+  advanced: "Avanzada",
 }
 
 function TaskRow({ task }: { task: CapacityTask }) {

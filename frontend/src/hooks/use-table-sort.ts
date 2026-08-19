@@ -7,7 +7,7 @@ export interface SortConfig {
 
 const SORT_WEIGHTS: Record<string, Record<string, number>> = {
   priority: { urgent: 4, high: 3, medium: 2, low: 1 },
-  status: { backlog: 0, pending: 1, in_progress: 2, waiting: 3, in_review: 4, completed: 5 },
+  status: { backlog: 0, pending: 1, in_progress: 2, advanced: 3, waiting: 4, in_review: 5, completed: 6 },
 }
 
 export function useTableSort<T>(items: T[], defaultSort?: SortConfig) {

@@ -66,6 +66,53 @@ async def _ensure_pg_enums():
     logging.info("_ensure_pg_enums complete.")
 
 
+async def _ensure_enum_values():
+    """Add missing values to PG enum types that already exist.
+
+    ``_ensure_pg_enums`` only covers types that are missing entirely. When a
+    member is added to an existing ``enum.Enum`` in models.py, the PG type
+    keeps its old value list and every INSERT/UPDATE using the new member
+    fails with InvalidTextRepresentation. That is what happened with
+    ``vattreatment`` (patched by hand in production) and what would happen
+    again with ``taskstatus.advanced``.
+
+    ``ALTER TYPE ... ADD VALUE IF NOT EXISTS`` is idempotent. New values are
+    appended at the end of the type's ordering; nothing in the codebase sorts
+    by an enum column, so position is irrelevant.
+
+    Each statement runs on its own connection: ``ADD VALUE`` cannot be used
+    in the same transaction that created the type, and a failure on one type
+    must not roll back the others.
+    """
+    from sqlalchemy import text
+    from backend.db.database import engine
+    from backend.db import models as _models
+
+    enum_classes = [
+        obj
+        for obj in vars(_models).values()
+        if isinstance(obj, type) and issubclass(obj, _enum.Enum) and obj is not _enum.Enum
+    ]
+
+    added = 0
+    for ec in enum_classes:
+        type_name = ec.__name__.lower()
+        for member in ec:
+            sql = (
+                f"ALTER TYPE {type_name} ADD VALUE IF NOT EXISTS '{member.name}'"
+            )
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(sql))
+                added += 1
+            except Exception as exc:
+                # Type does not exist (native_enum=False columns) or lacks
+                # permissions — harmless, _ensure_pg_enums already logged it.
+                logging.debug("ADD VALUE %s.%s skipped: %s", type_name, member.name, exc)
+
+    logging.info("_ensure_enum_values complete (%d values ensured).", added)
+
+
 async def _ensure_columns():
     """Add columns that were added to models after initial create_all.
 
@@ -1040,8 +1087,14 @@ async def _ensure_indexes_v11():
 
 
 async def run_migrations():
-    """Execute all DDL migrations in order. Called from lifespan and init_db."""
+    """Execute all DDL migrations in order.
+
+    OJO: sólo la llama ``init_db``. El lifespan de ``main.py`` NO pasa por aquí,
+    tiene su propia lista de DDL inline — una migración añadida sólo a esta
+    función no se ejecuta en producción.
+    """
     await _ensure_pg_enums()
+    await _ensure_enum_values()
     await _ensure_columns()
     await _ensure_numeric_types()
     await _ensure_columns_v2()

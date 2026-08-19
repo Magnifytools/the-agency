@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import settings
 from backend.db.models import (
+    IN_PROGRESS_TASK_STATUSES,
     User, TimeEntry, Task, Client, Project, TaskStatus,
 )
 from backend.startup.background_tasks import _is_qa_user
@@ -61,7 +62,7 @@ async def generate_weekly_report(db: AsyncSession) -> str:
 
     in_progress_result = await db.execute(
         select(Task).options(selectinload(Task.client), selectinload(Task.assigned_user))
-        .where(Task.status == TaskStatus.in_progress).order_by(Task.client_id, Task.title)
+        .where(Task.status.in_(IN_PROGRESS_TASK_STATUSES)).order_by(Task.client_id, Task.title)
     )
     in_progress_tasks = in_progress_result.scalars().all()
 

@@ -180,7 +180,9 @@ async def prefill_daily(
     )
     completed = completed_result.scalars().all()
 
-    # Tasks with time entries today by this user
+    # Tasks worked on today but not finished. Dos fuentes:
+    #  - tiempo fichado hoy (requiere haber usado el timer)
+    #  - estado "Avanzada" marcado hoy (gesto explícito de "hoy seguí con esto")
     te_result = await db.execute(
         select(Task)
         .options(selectinload(Task.client))
@@ -192,7 +194,19 @@ async def prefill_daily(
         )
         .distinct()
     )
-    worked_on = te_result.scalars().all()
+    worked_on = list(te_result.scalars().all())
+
+    advanced_result = await db.execute(
+        select(Task)
+        .options(selectinload(Task.client))
+        .where(
+            Task.assigned_to == current_user.id,
+            Task.status == TaskStatus.advanced,
+            Task.advanced_at == today,
+        )
+    )
+    seen_ids = {t.id for t in worked_on}
+    worked_on += [t for t in advanced_result.scalars().all() if t.id not in seen_ids]
 
     # Build prefill text grouped by client
     lines: list[str] = []

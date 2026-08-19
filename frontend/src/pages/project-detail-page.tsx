@@ -516,6 +516,7 @@ export default function ProjectDetailPage() {
               <option value="in_progress">En curso</option>
               <option value="waiting">En espera</option>
               <option value="in_review">En revisión</option>
+              <option value="advanced">Avanzada (sigo mañana)</option>
               <option value="completed">Completada</option>
             </Select>
             {hasActiveFilters && (
@@ -1193,6 +1194,7 @@ const TASK_STATUS_LABELS: Record<string, string> = {
   in_progress: "En curso",
   waiting: "En espera",
   in_review: "En revisión",
+  advanced: "Avanzada",
   completed: "Completada",
 }
 

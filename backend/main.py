@@ -36,6 +36,7 @@ from backend.api.routes import (
 from backend.startup.migrations import (  # noqa: F401
     _schema_needs_startup_ddl,
     _ensure_pg_enums,
+    _ensure_enum_values,
     _ensure_columns,
     _ensure_numeric_types,
     _ensure_columns_v2,
@@ -70,6 +71,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logging.warning("_ensure_pg_enums failed (may be expected): %s", e)
 
+    # ...y añadir los valores que falten a los tipos que YA existen. Sin esto,
+    # un miembro nuevo de un enum ya desplegado (vattreatment en su día,
+    # taskstatus.advanced ahora) revienta el primer INSERT en producción.
+    try:
+        await _ensure_enum_values()
+    except Exception as e:
+        logging.warning("_ensure_enum_values failed (may be expected): %s", e)
+
     # Run idempotent DDL for new columns on startup
     from sqlalchemy import text
     from backend.db.database import engine
@@ -79,6 +88,7 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(12,2)",
                 "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS invoiced_at TIMESTAMPTZ",
                 "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS link_url TEXT",
+                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS advanced_at DATE",
                 "ALTER TABLE clients ADD COLUMN IF NOT EXISTS onboarding_intelligence JSONB",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS billing_day INTEGER",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS billing_amount NUMERIC(12,2)",
