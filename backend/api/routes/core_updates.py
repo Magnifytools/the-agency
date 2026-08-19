@@ -8,7 +8,6 @@ from pydantic import BaseModel
 
 from backend.api.deps import get_current_user
 from backend.db.models import User
-from backend.services.core_update_service import run_core_update_analysis
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +29,14 @@ async def analyze_core_update(
     body: CoreUpdateAnalyzeRequest,
     current_user: User = Depends(get_current_user),
 ):
+    # Import perezoso a propósito. `main.py` importa este módulo aunque
+    # "core_updates" esté oculto (solo se salta el `include_router`), y
+    # `core_update_service` arrastra sklearn + numpy en su cabecera: decenas de
+    # MB de RSS y ~1 s de arranque cargados en cada boot de producción para un
+    # módulo con 0 llamadas en 77 días. Aquí solo se paga si alguien lo usa,
+    # y reactivar el módulo por variable de entorno sigue funcionando.
+    from backend.services.core_update_service import run_core_update_analysis
+
     try:
         result = await run_core_update_analysis(
             project_id=project_id,
