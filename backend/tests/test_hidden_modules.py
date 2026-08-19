@@ -189,3 +189,35 @@ def test_search_y_pm_no_estan_ocultos():
     """
     assert "search" not in HIDDEN_MODULES
     assert "pm" not in HIDDEN_MODULES
+
+
+def test_arrancar_la_app_no_carga_sklearn_ni_numpy():
+    """Un módulo oculto no debe costar memoria ni tiempo de arranque.
+
+    `main.py` importa TODOS los routers y luego decide cuáles registra, así que
+    ocultar `core_updates` no evitaba que `core_update_service` arrastrase
+    sklearn + numpy en su cabecera: ~98 MB de RSS y 1,2 s de arranque en cada
+    boot de producción, para un módulo con 0 llamadas en 77 días. El import es
+    perezoso desde entonces.
+
+    Va en un subproceso limpio porque la propia suite de tests importa medio
+    mundo y `sys.modules` de este proceso no dice nada.
+    """
+    import subprocess
+
+    code = (
+        "import sys; import backend.main; "
+        "print(any(m.startswith('sklearn') for m in sys.modules) or 'numpy' in sys.modules)"
+    )
+    salida = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=str(Path(__file__).resolve().parents[2]),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert salida.returncode == 0, salida.stderr[-2000:]
+    assert salida.stdout.strip().splitlines()[-1] == "False", (
+        "Alguien ha vuelto a importar sklearn/numpy en la cabecera de un módulo "
+        "que se carga al arrancar. Muévelo dentro de la función que lo usa."
+    )
