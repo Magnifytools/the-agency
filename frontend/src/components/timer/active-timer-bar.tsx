@@ -46,7 +46,17 @@ export function ActiveTimerBar() {
     queryFn: () => timerApi.active(),
     refetchInterval: 10_000,
     refetchIntervalInBackground: false,
+    // El QueryClient global trae refetchOnWindowFocus:false. Combinado con el
+    // no-refetch en segundo plano, una pestaña olvidada seguía enseñando un
+    // timer que el servidor ya había parado (p. ej. porque se arrancó otro
+    // desde la extensión): al volver y darle a Parar, 404. Para este dato en
+    // concreto la frescura al recuperar el foco no es opcional.
+    refetchOnWindowFocus: true,
   })
+
+  // Cualquier fallo de una acción de timer significa que la barra ya no
+  // refleja el estado real del servidor: refrescarla antes de avisar.
+  const resyncTimer = () => queryClient.invalidateQueries({ queryKey: ["active-timer"] })
 
   // Fetch user's tasks for selector
   const { data: tasks = [] } = useQuery({
@@ -144,7 +154,18 @@ export function ActiveTimerBar() {
         toast.success("Timer detenido")
       }
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al detener timer")),
+    onError: (err) => {
+      resyncTimer()
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 404) {
+        // Intención cumplida: no hay nada corriendo. No es un fallo del usuario.
+        toast.info("Ese timer ya estaba parado", {
+          description: "La barra estaba desactualizada; ya se ha refrescado.",
+        })
+        return
+      }
+      toast.error(getErrorMessage(err, "Error al detener timer"))
+    },
   })
 
   const pauseMutation = useMutation({
@@ -153,7 +174,10 @@ export function ActiveTimerBar() {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       toast.success("Timer en pausa ⏸")
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al pausar")),
+    onError: (err) => {
+      resyncTimer()
+      toast.error(getErrorMessage(err, "Error al pausar"))
+    },
   })
 
   const resumeMutation = useMutation({
@@ -162,7 +186,10 @@ export function ActiveTimerBar() {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       toast.success("Timer reanudado ▶")
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al reanudar")),
+    onError: (err) => {
+      resyncTimer()
+      toast.error(getErrorMessage(err, "Error al reanudar"))
+    },
   })
 
   // Assign task to stopped entry
