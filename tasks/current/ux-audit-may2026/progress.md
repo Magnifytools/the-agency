@@ -44,8 +44,13 @@
 
 ## Pendiente para el usuario
 
-1. **Backfill** (uno-shot, prod): conectar al backend de prod, ejecutar dry-run, luego --apply.
-2. **Despliegue Railway**: deploy del backend + frontend (todos los cambios son backwards-compatibles, no requieren migración DB).
+1. **Backfill** (uno-shot, prod): SIGUE PENDIENTE a 19 ago 2026. El script se
+   ha probado en dry-run contra la copia local y funciona (es idempotente y solo
+   vincula cuando el cliente tiene exactamente 1 proyecto activo). Falta lanzarlo
+   contra producción:
+   `DATABASE_URL='<la de Railway>' python -m backend.scripts.backfill_task_projects`
+   (sin flags = dry-run; `--apply` para confirmar).
+2. ~~**Despliegue Railway**~~: hecho (el código está en producción, verificado el 19 ago 2026).
 3. **Verificación E2E en agency.magnifytools.com** después del deploy:
    - Crear tarea rápida → comprobar que aparece el campo Proyecto y se preselecciona Fit Generation
    - /timesheet → dropdown Cliente ahora muestra los 5 activos
