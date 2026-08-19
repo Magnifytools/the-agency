@@ -86,29 +86,38 @@ async def submit_daily(
             detail=f"Ya existe un daily para el {update_date.isoformat()}. Edita o elimina el existente.",
         )
 
-    # Parse with AI
-    try:
-        parsed = await parse_daily_update(body.raw_text)
-    except ValueError:
-        raise HTTPException(status_code=502, detail="No se pudo interpretar el daily")
-    except Exception:
-        logger.exception("Unexpected error parsing daily for user_id=%s", current_user.id)
-        raise HTTPException(status_code=502, detail="Error al parsear el daily")
-
+    # Guardar PRIMERO, parsear después. El orden inverso perdía el texto del
+    # daily entero cada vez que fallaba la llamada a Claude, y dejaba al usuario
+    # con un 502 y nada guardado. Además el INSERT tarda milisegundos: así la
+    # fila está a salvo aunque el cliente corte la conexión (axios aborta a los
+    # 30 s y el SDK de Anthropic puede tardar bastante más).
     daily = DailyUpdate(
         user_id=current_user.id,
         date=update_date,
         raw_text=body.raw_text,
-        parsed_data=parsed,
+        parsed_data=None,
         status=DailyUpdateStatus.draft,
     )
     db.add(daily)
     await db.commit()
     await safe_refresh(db, daily, log_context="dailys")
 
-    # Auto-generate time entries from parsed data
+    # El parseo es un enriquecimiento, no un requisito: si falla, el daily queda
+    # guardado sin estructurar y el usuario puede reintentarlo con POST
+    # /dailys/{id}/reparse. Nunca es motivo para devolver un error.
+    parsed = None
+    try:
+        parsed = await parse_daily_update(body.raw_text)
+    except Exception:
+        logger.exception("Error parseando daily_id=%s (queda guardado sin parsear)", daily.id)
+
     time_entries_created = 0
     if parsed:
+        daily.parsed_data = parsed
+        await db.commit()
+        await safe_refresh(db, daily, log_context="dailys")
+
+        # Auto-generate time entries from parsed data
         try:
             from backend.services.daily_timesheet import create_time_entries_from_daily
             time_entries_created = await create_time_entries_from_daily(

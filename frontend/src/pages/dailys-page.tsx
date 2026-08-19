@@ -47,11 +47,18 @@ export default function DailysPage() {
       queryClient.invalidateQueries({ queryKey: ["time-entries"] })
       setRawText("")
       const teCount = daily.time_entries_created || 0
-      toast.success(
-        teCount > 0
-          ? `Daily procesado. ${teCount} registro${teCount > 1 ? "s" : ""} de tiempo creado${teCount > 1 ? "s" : ""}`
-          : "Daily procesado con IA correctamente"
-      )
+      if (!daily.parsed_data) {
+        // El daily está guardado; solo falló el enriquecimiento con IA.
+        toast.warning("Daily guardado, pero la IA no pudo estructurarlo", {
+          description: "Usa el botón de re-parsear en la tarjeta para reintentarlo.",
+        })
+      } else {
+        toast.success(
+          teCount > 0
+            ? `Daily procesado. ${teCount} registro${teCount > 1 ? "s" : ""} de tiempo creado${teCount > 1 ? "s" : ""}`
+            : "Daily procesado con IA correctamente"
+        )
+      }
       // Draft mode: user sends manually via the Discord button on the card
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al procesar daily")),

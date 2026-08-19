@@ -60,7 +60,11 @@ async def parse_daily_update(raw_text: str) -> dict:
     Returns the parsed dict with projects, general tasks, and tomorrow plans.
     Raises ValueError if API key is missing or response is invalid.
     """
-    client = get_anthropic_client()
+    # El cliente compartido va con timeout=60 y max_retries=2: hasta 180 s en el
+    # peor caso, seis veces el timeout de 30 s de axios. El navegador abortaba y
+    # el usuario reintentaba sobre un daily que el servidor sí acababa
+    # guardando, de ahí los 409. Aquí acotamos el gasto a ~25 s.
+    client = get_anthropic_client().with_options(timeout=12.0, max_retries=1)
 
     logger.info("Parsing daily update (%d chars)", len(raw_text))
 
