@@ -60,11 +60,25 @@ async def parse_daily_update(raw_text: str) -> dict:
     Returns the parsed dict with projects, general tasks, and tomorrow plans.
     Raises ValueError if API key is missing or response is invalid.
     """
-    # El cliente compartido va con timeout=60 y max_retries=2: hasta 180 s en el
-    # peor caso, seis veces el timeout de 30 s de axios. El navegador abortaba y
-    # el usuario reintentaba sobre un daily que el servidor sí acababa
-    # guardando, de ahí los 409. Aquí acotamos el gasto a ~25 s.
-    client = get_anthropic_client().with_options(timeout=12.0, max_retries=1)
+    # Presupuesto de la llamada. El cliente compartido (timeout=60, max_retries=2)
+    # llega a 180 s y desborda cualquier timeout de navegador, así que aquí se
+    # acota — pero acotarlo a 12 s fue pasarse de frenada: un daily real de final
+    # de día tarda MÁS de eso en generarse, no en responder.
+    #
+    #   3 proyectos / 1,4k chars ->  7,3 s (  575 tokens de salida)
+    #   5 proyectos / 2,3k chars ->  9,3 s (  878 tokens)
+    #   8 proyectos / 3,6k chars -> 12,6 s (1.276 tokens)  <- ya no cabía en 12 s
+    #  12 proyectos / 5,3k chars -> 20,1 s (2.076 tokens)
+    #
+    # Con 12 s, el recap del día entero se cortaba a media generación y el
+    # reintento sólo repetía el corte: 25 s de espera para acabar sin parsear, el
+    # daily guardado como "Sin parsear" y el botón de Discord devolviendo "El
+    # daily no tiene datos parseados". El límite tiene que ir sobre el tiempo que
+    # tarda de verdad (~20 s el peor caso medido), no por debajo.
+    #
+    # 40 s x 2 intentos = 80 s como mucho, dentro de los 90 s que `dailysApi` da
+    # a estas llamadas (el mismo presupuesto que el resto de endpoints de IA).
+    client = get_anthropic_client().with_options(timeout=40.0, max_retries=1)
 
     logger.info("Parsing daily update (%d chars)", len(raw_text))
 
@@ -156,6 +170,32 @@ def format_daily_for_discord(parsed_data: dict, user_name: str, date_str: str) -
 
 # Magnify brand color (indigo-500)
 _EMBED_COLOR = 0x6366F1
+
+
+# Discord: 4096 caracteres en `description`, 2000 en `content`.
+_LIMITE_DESCRIPCION = 4096
+_RECORTE = "\n\n… (recortado)"
+
+
+def format_raw_daily_embed(raw_text: str, user_name: str, date_str: str) -> dict:
+    """Embed de reserva con el daily sin estructurar, tal cual lo escribió su autor.
+
+    Cuando el parseo con IA falla, `parsed_data` queda a NULL. Eso bloqueaba el
+    envío entero con un 400 y el informe del día no salía: el equipo se quedaba
+    sin la parte que importa —lo que se hizo— por un fallo de la parte que sólo
+    lo ordena. Publicar el texto en crudo dice lo mismo, sólo que sin agrupar por
+    cliente.
+    """
+    texto = raw_text.strip()
+    if len(texto) > _LIMITE_DESCRIPCION:
+        texto = texto[: _LIMITE_DESCRIPCION - len(_RECORTE)] + _RECORTE
+
+    return {
+        "title": f"{user_name} — {date_str}",
+        "color": _EMBED_COLOR,
+        "description": texto,
+        "footer": {"text": "Sin estructurar — la IA no pudo procesar este daily"},
+    }
 
 
 def format_daily_embed(parsed_data: dict, user_name: str, date_str: str) -> dict:

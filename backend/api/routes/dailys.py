@@ -22,7 +22,12 @@ from backend.schemas.daily import (
     DailyDiscordResponse,
     ParsedDailyData,
 )
-from backend.services.daily_parser import parse_daily_update, format_daily_for_discord, format_daily_embed
+from backend.services.daily_parser import (
+    parse_daily_update,
+    format_daily_for_discord,
+    format_daily_embed,
+    format_raw_daily_embed,
+)
 from backend.api.utils.db_helpers import safe_refresh
 from backend.core.security import decrypt_vault_secret
 from backend.api.middleware.audit_log import log_audit
@@ -427,8 +432,11 @@ async def send_daily_to_discord(
     if daily.user_id != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Solo puedes enviar tus propios dailys a Discord")
 
-    if not daily.parsed_data:
-        raise HTTPException(status_code=400, detail="El daily no tiene datos parseados")
+    # Un fallo de la IA no puede impedir que el informe del día salga. Si el daily
+    # se guardó sin estructurar, se publica el texto en crudo: antes esto era un
+    # 400 ("El daily no tiene datos parseados") y el autor se quedaba sin poder
+    # enviar nada hasta conseguir que el parseo funcionara.
+    sin_estructurar = not daily.parsed_data
 
     # Get Discord settings
     ds_result = await db.execute(select(DiscordSettings).limit(1))
@@ -465,7 +473,11 @@ async def send_daily_to_discord(
     except Exception:
         user_name = current_user.full_name  # Fallback: we already have the user from auth
     date_str = daily.date.isoformat()
-    embed = format_daily_embed(daily.parsed_data, user_name, date_str)
+    if sin_estructurar:
+        logger.warning("Enviando daily_id=%s a Discord sin estructurar", daily_id)
+        embed = format_raw_daily_embed(daily.raw_text, user_name, date_str)
+    else:
+        embed = format_daily_embed(daily.parsed_data, user_name, date_str)
 
     success = False
     try:
@@ -495,9 +507,14 @@ async def send_daily_to_discord(
                 if channel_id:
                     header = embed["title"]
                     # Send embed as the main message, then plain-text body in thread
-                    body = format_daily_for_discord(daily.parsed_data, user_name, date_str)
-                    body_lines = body.split("\n")
-                    thread_body = "\n".join(body_lines[1:]).strip() or body
+                    if sin_estructurar:
+                        # El texto en crudo no lleva cabecera que quitar: cada
+                        # línea es contenido del autor.
+                        thread_body = daily.raw_text.strip()[:2000]
+                    else:
+                        body = format_daily_for_discord(daily.parsed_data, user_name, date_str)
+                        body_lines = body.split("\n")
+                        thread_body = "\n".join(body_lines[1:]).strip() or body
                     success = await _send_daily_as_thread(
                         webhook_url, bot_token, channel_id, header, thread_body, http
                     )
@@ -528,6 +545,11 @@ async def send_daily_to_discord(
             except Exception:
                 pass
         log_audit(current_user.id, "send_discord", "daily", daily_id)
+        if sin_estructurar:
+            return DailyDiscordResponse(
+                success=True,
+                message="Enviado a Discord sin estructurar: la IA no pudo procesar el daily",
+            )
         return DailyDiscordResponse(success=True, message="Daily enviado a Discord")
     else:
         return DailyDiscordResponse(success=False, message="Error al enviar a Discord")
