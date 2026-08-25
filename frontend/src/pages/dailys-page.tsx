@@ -80,7 +80,9 @@ export default function DailysPage() {
       queryClient.invalidateQueries({ queryKey: ["dailys"] })
       setSendingId(null)
       if (data.success) {
-        toast.success("Enviado a Discord")
+        // El backend distingue el envío normal del envío en crudo (cuando la IA
+        // no pudo estructurar el daily); mostramos lo que diga, no un genérico.
+        toast.success(data.message || "Enviado a Discord")
       } else {
         toast.error(data.message)
       }

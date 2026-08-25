@@ -141,3 +141,119 @@ async def test_un_daily_sin_parsear_se_puede_reparsear_despues(admin_client, mon
 
     assert reparseado.status_code == 200, reparseado.text
     assert reparseado.json()["parsed_data"]["general"][0]["description"] == "Auditoría"
+
+
+class _RespuestaFalsa:
+    def __init__(self, status_code=204, payload=None):
+        self.status_code = status_code
+        self._payload = payload or {}
+        self.text = ""
+
+    def json(self):
+        return self._payload
+
+
+class _DiscordFalso:
+    """Sustituye a `httpx.AsyncClient` para que ningún test toque Discord de verdad."""
+
+    posts: list[dict] = []
+
+    def __init__(self, *_args, **_kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_exc):
+        return False
+
+    async def get(self, *_args, **_kwargs):
+        # Sin channel_id no hay modo hilo: se envía el embed y punto.
+        return _RespuestaFalsa(status_code=404)
+
+    async def post(self, url, json=None, **_kwargs):
+        type(self).posts.append({"url": url, "json": json or {}})
+        return _RespuestaFalsa(status_code=204)
+
+
+@pytest.fixture
+def discord_falso(monkeypatch):
+    import httpx
+
+    _DiscordFalso.posts = []
+    monkeypatch.setattr(httpx, "AsyncClient", _DiscordFalso)
+    # Webhook de mentira: aunque el .env local tenga uno real, no se usa.
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "DISCORD_WEBHOOK_URL", "https://discord.invalid/webhook/test")
+    return _DiscordFalso
+
+
+@pytest.mark.asyncio
+async def test_un_daily_sin_parsear_se_envia_en_crudo_en_vez_de_dar_400(
+    admin_client, discord_falso, monkeypatch
+):
+    """25 ago 2026: Nacho no pudo enviar su informe del día.
+
+    El daily estaba guardado y era perfectamente legible, pero como el parseo
+    había fallado el endpoint contestaba 400 "El daily no tiene datos parseados".
+    Un fallo de la parte que ORDENA el daily no puede impedir publicar la parte
+    que IMPORTA, que es lo que se hizo.
+    """
+    from backend.api.routes import dailys as dailys_route
+
+    async def _revienta(_raw_text):
+        raise RuntimeError("Anthropic caída")
+
+    monkeypatch.setattr(dailys_route, "parse_daily_update", _revienta)
+
+    texto = "Acme:\n- Auditoría técnica\n- Llamada de seguimiento con el cliente"
+    creado = await admin_client.post("/api/dailys", json={"raw_text": texto})
+    assert creado.status_code == 201
+    assert creado.json()["parsed_data"] is None
+    daily_id = creado.json()["id"]
+
+    enviado = await admin_client.post(f"/api/dailys/{daily_id}/send-discord")
+
+    assert enviado.status_code == 200, enviado.text
+    assert enviado.json()["success"] is True
+    # El mensaje avisa: no se envió estructurado, y el autor debe poder notarlo.
+    assert "sin estructurar" in enviado.json()["message"].lower()
+
+    # Y lo que llegó a Discord es el texto del autor, entero.
+    assert len(discord_falso.posts) == 1
+    embed = discord_falso.posts[0]["json"]["embeds"][0]
+    assert embed["description"] == texto
+    assert "Sin estructurar" in embed["footer"]["text"]
+
+
+@pytest.mark.asyncio
+async def test_el_daily_parseado_se_sigue_enviando_estructurado(
+    admin_client, discord_falso, monkeypatch
+):
+    """El camino normal no cambia: si hay parseo, manda el embed por cliente."""
+    from backend.api.routes import dailys as dailys_route
+
+    async def _ok(_raw_text):
+        return {
+            "projects": [{"name": "Acme", "client": "Acme", "tasks": [
+                {"description": "Auditoría técnica", "details": ""}
+            ]}],
+            "general": [],
+            "tomorrow": ["Terminar el informe"],
+        }
+
+    monkeypatch.setattr(dailys_route, "parse_daily_update", _ok)
+
+    creado = await admin_client.post("/api/dailys", json={"raw_text": "Acme: auditoría"})
+    daily_id = creado.json()["id"]
+
+    enviado = await admin_client.post(f"/api/dailys/{daily_id}/send-discord")
+
+    assert enviado.status_code == 200, enviado.text
+    assert enviado.json()["message"] == "Daily enviado a Discord"
+
+    embed = discord_falso.posts[0]["json"]["embeds"][0]
+    assert "description" not in embed
+    nombres = [f["name"] for f in embed["fields"]]
+    assert nombres == ["Acme", "📅 Mañana"]

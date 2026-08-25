@@ -184,6 +184,20 @@ cd frontend && npm run test
 - Los estados de rentabilidad se deciden en `services/profitability.py`, un único
   sitio. Si añades un valor al enum, añádelo también a `frontend/src/lib/profitability.ts`
   (el test `profitability.test.ts` falla si te lo saltas).
+- **Los timeouts de las llamadas a Claude se dimensionan por tokens de SALIDA.**
+  El parseo de un daily de 12 proyectos tarda ~20 s (2.000 tokens generados); uno
+  de 3 proyectos, 7 s. Un `with_options(timeout=...)` por debajo de eso corta la
+  generación a media respuesta y el reintento sólo repite el corte. Presupuesto
+  actual: `timeout=40, max_retries=1` (80 s) dentro de los 90 s que `dailysApi`
+  da a `submit`/`reparse`/`edit`. Lo guarda `TestDailyParserBudget` en
+  `tests/test_dailys.py`. Los demás endpoints de IA ya usaban 90 s en
+  `frontend/src/lib/api.ts`; los de dailys iban con los 30 s por defecto.
+- **Un fallo de IA que se guarda como estado tiene consumidores.** `POST /api/dailys`
+  guarda la fila antes de parsear (bien: no se pierde el texto), pero deja
+  `parsed_data = NULL` si Claude falla. `POST /dailys/{id}/send-discord` rechazaba
+  ese daily con un 400 y el informe del día no salía; ahora publica el texto en
+  crudo con `format_raw_daily_embed()` y avisa en el mensaje de vuelta. Al tocar
+  el parseo, mirar siempre quién lee después ese campo.
 - bcrypt pinned a 4.1.3 (incompatibilidad passlib)
 - `Base.metadata.create_all` no agrega columnas a tablas existentes. Para nuevas columnas en tablas existentes, agregar `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` en `backend/main.py` lifespan.
 
