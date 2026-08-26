@@ -58,6 +58,8 @@ import type {
   ServiceTemplate,
   GrowthIdea,
   GrowthIdeaCreate,
+  ChangeEntry,
+  UndoResult,
   GrowthIdeaUpdate,
   Invitation,
   InvitationCreateResult,
@@ -931,6 +933,14 @@ export const notificationsApi = {
     api.put("/notifications/read-all").then((r) => r.data),
   generateChecks: () =>
     api.post<{ created: number }>("/notifications/generate-checks").then((r) => r.data),
+}
+
+// --- Undo (journal de cambios) ---
+export const changesApi = {
+  recent: (limit = 5) =>
+    api.get<ChangeEntry[]>("/changes/recent", { params: { limit } }).then((r) => r.data),
+  undo: (id: number) =>
+    api.post<UndoResult>(`/changes/${id}/undo`).then((r) => r.data),
 }
 
 // --- Project Evidence ---

@@ -20,6 +20,7 @@ from backend.api.routes import (
     reports, proposals, growth, invitations, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
     service_templates, dailys, contacts, activity, notifications, resources,
+    changes,
     billing_events, client_dashboard, engine_integration, investments,
     evidence, search, agency_vault, core_updates, balance,
     inbox,
@@ -146,6 +147,24 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS duration_ms INTEGER",
                 "CREATE INDEX IF NOT EXISTS ix_audit_logs_route_created ON audit_logs (route_template, created_at DESC)",
                 "CREATE INDEX IF NOT EXISTS ix_audit_logs_user_created ON audit_logs (user_id, created_at DESC)",
+                # Undo: journal de cambios (backend/services/change_journal.py).
+                # La tabla se crea AQUÍ, a mano: el lifespan no pasa por
+                # create_all — sólo lo hace init_db — así que una tabla nueva del
+                # ORM no aparece sola en producción.
+                "CREATE TABLE IF NOT EXISTS change_logs ("
+                "id SERIAL PRIMARY KEY, "
+                "user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, "
+                "entity_type VARCHAR(50) NOT NULL, "
+                "entity_id INTEGER, "
+                "action VARCHAR(10) NOT NULL, "
+                "label VARCHAR(255) NOT NULL, "
+                "operations JSONB NOT NULL, "
+                "undone_at TIMESTAMP, "
+                "undone_by INTEGER REFERENCES users(id) ON DELETE SET NULL, "
+                "created_at TIMESTAMP NOT NULL DEFAULT NOW(), "
+                "updated_at TIMESTAMP NOT NULL DEFAULT NOW())",
+                # El acceso real es siempre el mismo: los últimos N de un usuario.
+                "CREATE INDEX IF NOT EXISTS ix_change_logs_user_created ON change_logs (user_id, created_at DESC)",
                 # Drop tables retired with /news, /resources and /assistant cuts
                 "DROP TABLE IF EXISTS industry_news",
                 "DROP TABLE IF EXISTS news_sources",
@@ -383,6 +402,9 @@ _CORE_ROUTERS = [
     projects, pm, digests, sync, dailys, contacts, activity, notifications,
     client_dashboard, engine_integration, inbox, extension, google_calendar,
     usage_stats,
+    # changes: el Undo del shell. No es una pantalla, es la red de seguridad
+    # de todas las demás — se registra siempre.
+    changes,
     # search: 0 llamadas, pero es la paleta ⌘K del shell, no una pantalla.
     search,
     # discord: su PANTALLA está oculta (13 visitas), pero la API se queda. El

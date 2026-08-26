@@ -18,3 +18,10 @@ async def get_db():
             yield session
         finally:
             await session.close()
+
+
+# Los listeners del journal de cambios (Undo) se registran al importar el módulo.
+# Va aquí y no en main.py para que cualquier código que abra una sesión los tenga
+# puestos, incluidos scripts y tareas de fondo. Import al final para no chocar con
+# la importación diferida que hace el propio journal de este módulo.
+from backend.services import change_journal  # noqa: E402,F401

@@ -13,6 +13,7 @@ export const DEFAULT_SHORTCUTS: Record<string, string> = {
   goto_leads: "G+L",
   new_entry: "N",
   show_shortcuts: "?",
+  undo: "Ctrl+Z",
 }
 
 export const SHORTCUT_LABELS: Record<string, string> = {
@@ -27,6 +28,7 @@ export const SHORTCUT_LABELS: Record<string, string> = {
   goto_leads: "Ir a Pipeline",
   new_entry: "Nueva entrada",
   show_shortcuts: "Mostrar atajos",
+  undo: "Deshacer último cambio",
 }
 
 // Routes for chord navigation actions
@@ -93,9 +95,10 @@ export interface UseKeyboardShortcutsOptions {
   userOverrides?: Record<string, string>
   onSearch?: () => void
   onCapture?: () => void
+  onUndo?: () => void
 }
 
-export function useKeyboardShortcuts({ userOverrides = {}, onSearch, onCapture }: UseKeyboardShortcutsOptions) {
+export function useKeyboardShortcuts({ userOverrides = {}, onSearch, onCapture, onUndo }: UseKeyboardShortcutsOptions) {
   const navigate = useNavigate()
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const chordPendingRef = useRef(false)
@@ -161,6 +164,13 @@ export function useKeyboardShortcuts({ userOverrides = {}, onSearch, onCapture }
         setIsHelpOpen((o) => !o)
         return
       }
+      // Cmd/Ctrl+Z. El guard isInputFocused() de arriba deja intacto el deshacer
+      // nativo mientras se escribe: esto sólo actúa sobre el documento.
+      if (matchesShortcut(e, shortcuts.undo)) {
+        e.preventDefault()
+        onUndo?.()
+        return
+      }
     }
 
     document.addEventListener("keydown", handler)
@@ -168,7 +178,7 @@ export function useKeyboardShortcuts({ userOverrides = {}, onSearch, onCapture }
       document.removeEventListener("keydown", handler)
       clearChord()
     }
-  }, [shortcuts, navigate, onSearch, onCapture, clearChord])
+  }, [shortcuts, navigate, onSearch, onCapture, onUndo, clearChord])
 
   return { shortcuts, isHelpOpen, setIsHelpOpen }
 }

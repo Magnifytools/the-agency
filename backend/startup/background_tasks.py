@@ -548,7 +548,7 @@ async def _retention_cleanup_loop():
     from datetime import datetime, timedelta
     from sqlalchemy import delete
     from backend.db.database import async_session
-    from backend.db.models import AuditLog, SyncLog, HoldedSyncLog, AutomationLog, Notification
+    from backend.db.models import AuditLog, ChangeLog, SyncLog, HoldedSyncLog, AutomationLog, Notification
 
     # Small initial delay so the rest of the boot finishes first.
     await asyncio.sleep(60)
@@ -562,7 +562,7 @@ async def _retention_cleanup_loop():
             async with async_session() as db:
                 total = 0
                 # Tables with created_at via TimestampMixin
-                for model in (AuditLog, SyncLog, AutomationLog):
+                for model in (AuditLog, ChangeLog, SyncLog, AutomationLog):
                     r = await db.execute(
                         delete(model).where(model.created_at < cutoff_90d)
                     )
