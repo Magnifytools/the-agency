@@ -68,6 +68,9 @@ Model inventory (38 models, ~1,500 lines):
   --- Reports & Digests ---
   GeneratedReport, WeeklyDigest, DailyUpdate
 
+  --- Undo ---
+  ChangeLog
+
   --- Notifications & Inbox ---
   Notification, InboxNote, InboxAttachment
 
@@ -944,6 +947,38 @@ class AuditLog(TimestampMixin, Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
 
     user = relationship("User", lazy="selectin")
+
+
+class ChangeLog(TimestampMixin, Base):
+    """Journal de cambios deshacibles — una fila por ACCIÓN de usuario.
+
+    No confundir con :class:`AuditLog`, que hoy es un sink de analítica de
+    requests (ruta + método + duración) y no guarda el contenido del cambio.
+
+    Una fila = una transacción confirmada por un usuario autenticado. El campo
+    ``operations`` lleva la lista de filas tocadas en esa transacción, cada una
+    con su snapshot antes/después:
+
+        [{"entity_type": "project", "entity_id": 12, "action": "delete",
+          "before": {...}, "after": null}, ...]
+
+    Se agrupa así a propósito: borrar un proyecto desvincula sus tareas en la
+    misma transacción, y el usuario espera deshacer *eso* de una vez, no ir
+    tarea por tarea. Lo escribe backend/services/change_journal.py vía eventos
+    ORM; lo consume backend/api/routes/changes.py.
+    """
+    __tablename__ = "change_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Entidad "protagonista" de la acción, la que da título a la entrada.
+    entity_type = Column(String(50), nullable=False)
+    entity_id = Column(Integer, nullable=True)
+    action = Column(String(10), nullable=False)  # create | update | delete
+    label = Column(String(255), nullable=False)
+    operations = Column(JSONB, nullable=False)
+    undone_at = Column(DateTime, nullable=True)
+    undone_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
 class MonthlyClose(TimestampMixin, Base):

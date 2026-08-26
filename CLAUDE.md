@@ -127,6 +127,33 @@ admin_users, admin_settings
 - **Nomenclatura**: UI dice "Buffer de Ideas" / "Buffer", código interno sigue usando `growth` (evita migración DB)
 - **No confundir** con Pipeline/Leads (`/leads`) que es el CRM comercial
 
+## Undo (deshacer los últimos cambios)
+
+- **Qué es**: los 5 últimos cambios de CADA usuario, deshacibles desde el panel
+  ↶ de la barra lateral o con ⌘Z / Ctrl+Z.
+- **Una entrada = una acción**, no una fila. Borrar un proyecto que además
+  desvincula 8 tareas es UN "Deshacer", no nueve.
+- **Captura**: `backend/services/change_journal.py`, con eventos de sesión de
+  SQLAlchemy (`before_flush` / `after_flush` / `after_commit`). Ninguna ruta
+  llama a nada, así que un endpoint nuevo queda cubierto solo.
+- **Alcance**: Task, Project, Client, Lead, GrowthIdea + sus hijos propios
+  (ProjectPhase, TaskChecklist, LeadActivity), que viajan en la misma entrada
+  porque se borran en cascada con el padre. Finanzas queda FUERA (ver "No tocar").
+- **Sólo se registra si hay actor** (`set_actor()` desde `get_current_user`).
+  Barridos nocturnos, seeds y scripts no ensucian el historial de nadie.
+- **API**: `GET /api/changes/recent`, `POST /api/changes/{id}/undo`
+  (`backend/api/routes/changes.py`). Cada uno deshace lo suyo y se revalida el
+  permiso de escritura del módulo en el momento del undo.
+- **Conflictos**: si otra persona tocó después una columna, esa columna NO se
+  restaura y se avisa en el toast. Deshacer nunca pisa el trabajo de otro.
+- **Frontend**: `hooks/use-undo.ts` (compartido por panel y atajo),
+  `components/layout/undo-panel.tsx`. Tras deshacer se invalida toda la caché de
+  TanStack Query a propósito: un cambio puede haber tocado varias entidades.
+- **Qué NO cubre**: los `UPDATE`/`DELETE` masivos hechos con `sqlalchemy.update()`
+  / `delete()` no pasan por la capa ORM y no disparan los eventos. El purgado
+  duro de clientes (`DELETE /api/clients/{id}/hard`) es de ese tipo y es
+  irreversible por diseño.
+
 ## No tocar
 - Módulos financieros custom: tax_service, forecast_service, income, expenses, taxes, forecasts
 - Se reemplazarán por integración Holded en fase posterior
@@ -198,9 +225,14 @@ cd frontend && npm run test
   ese daily con un 400 y el informe del día no salía; ahora publica el texto en
   crudo con `format_raw_daily_embed()` y avisa en el mensaje de vuelta. Al tocar
   el parseo, mirar siempre quién lee después ese campo.
+- **El lifespan de `main.py` NO ejecuta `create_all`** — sólo lo hace `init_db`,
+  que en producción no corre. Una tabla NUEVA del ORM no aparece sola: hay que
+  añadir su `CREATE TABLE IF NOT EXISTS` a la lista de DDL inline del lifespan,
+  como `project_evidence` y `change_logs`. Y el índice va DESPUÉS del CREATE, o
+  el arranque loguea `UndefinedTableError` y sigue sin índice.
 - bcrypt pinned a 4.1.3 (incompatibilidad passlib)
 - `Base.metadata.create_all` no agrega columnas a tablas existentes. Para nuevas columnas en tablas existentes, agregar `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` en `backend/main.py` lifespan.
 
 ---
 
-*Actualizado: 30 Mar 2026*
+*Actualizado: 27 Ago 2026*

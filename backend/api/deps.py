@@ -11,6 +11,7 @@ from backend.core.token_blacklist import token_blacklist
 from backend.config import settings
 from backend.db.database import get_db
 from backend.db.models import User, UserRole, Client, UserPermission
+from backend.services.change_journal import set_actor
 
 security = HTTPBearer(auto_error=False)
 
@@ -56,6 +57,9 @@ async def get_current_user(
     # Surface the resolved user id to middlewares (UsageTrackerMiddleware reads
     # this to attribute the request to a user without rerunning JWT decode).
     request.state.user_id = user.id
+    # Autor de los cambios de esta petición: sin esto el journal de Undo no
+    # registra nada (ver backend/services/change_journal.py).
+    set_actor(user.id)
     return user
 
 

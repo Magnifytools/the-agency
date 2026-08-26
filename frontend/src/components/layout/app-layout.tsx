@@ -9,11 +9,13 @@ import { cn } from "@/lib/utils"
 import { BottomDrawer } from "@/components/ui/bottom-drawer"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
 import { NotificationBell } from "@/components/layout/notification-bell"
+import { UndoPanel } from "@/components/layout/undo-panel"
 import { SearchPalette } from "@/components/layout/search-palette"
 import { QuickCaptureDialog } from "@/components/inbox/quick-capture-dialog"
 import { ShortcutsHelpModal } from "@/components/shortcuts/shortcuts-help-modal"
 import { OnboardingModal } from "@/components/layout/onboarding-modal"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
+import { useUndo } from "@/hooks/use-undo"
 import { useMemo, useState, useCallback } from "react"
 
 export function AppLayout() {
@@ -26,10 +28,12 @@ export function AppLayout() {
   const handleSearch = useCallback(() => setSearchOpen((o) => !o), [])
   const handleCapture = useCallback(() => setCaptureOpen((o) => !o), [])
   const userShortcuts = useMemo(() => user?.preferences?.shortcuts ?? {}, [user?.preferences?.shortcuts])
+  const { undoLast } = useUndo()
   const { shortcuts, isHelpOpen, setIsHelpOpen } = useKeyboardShortcuts({
     userOverrides: userShortcuts,
     onSearch: handleSearch,
     onCapture: handleCapture,
+    onUndo: undoLast,
   })
 
   const { data: inboxCount } = useQuery({
@@ -310,6 +314,7 @@ export function AppLayout() {
                 <p className="text-muted-foreground text-[11px] mt-0.5 truncate">{user?.email}</p>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
+                <UndoPanel />
                 <NotificationBell />
                 <button
                   onClick={() => void logout()}
