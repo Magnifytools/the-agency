@@ -8,6 +8,9 @@ Uso básico:
     python scripts/agency.py tasks close 1234
 
 Guarda el token en ~/.agency_cli.json.
+
+Para uso no interactivo (cron, CI) las credenciales salen del entorno, nunca del
+repo: AGENCY_TOKEN, o AGENCY_EMAIL + AGENCY_PASSWORD.
 """
 from __future__ import annotations
 
@@ -68,10 +71,32 @@ def cmd_login(args):
 
 
 def _token() -> str:
+    """Token de sesión, con prioridad al entorno.
+
+    El entorno va primero para que esto se pueda usar sin terminal interactiva
+    (cron, CI) sin tener que escribir credenciales en ningún fichero del repo.
+    """
+    env_token = os.environ.get("AGENCY_TOKEN")
+    if env_token:
+        return env_token
+
+    email, password = os.environ.get("AGENCY_EMAIL"), os.environ.get("AGENCY_PASSWORD")
+    if email and password:
+        resp = _request("POST", "/auth/login", body={"email": email, "password": password})
+        token = resp.get("access_token")
+        if not token:
+            print("Login por entorno falló", file=sys.stderr)
+            sys.exit(1)
+        return token
+
     state = _load_state()
     t = state.get("token")
     if not t:
-        print("No hay sesión. Ejecuta: agency login", file=sys.stderr)
+        print(
+            "No hay sesión. Ejecuta `agency login`, o define AGENCY_TOKEN "
+            "(o AGENCY_EMAIL + AGENCY_PASSWORD).",
+            file=sys.stderr,
+        )
         sys.exit(1)
     return t
 
