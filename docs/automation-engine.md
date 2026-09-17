@@ -20,4 +20,4 @@ The baseline backend suite passed 595 tests with two credential-dependent skips.
 
 This is not a general command bus or a delivery outbox. External HTTP cannot be rolled back with SQL; durable retries, event deduplication, permission/delegation policy for rule creators, shared services for all project/insight operations and a unified frontend/backend capability manifest remain separate work. The existing overdue job may still scan tasks while the engine is disabled. Historical task dates are not backfilled.
 
-Savepoint-aware undo journaling is delivered separately: the existing journal listeners need to distinguish nested savepoint completion from the outer transaction before automation actions can be considered fully covered by Undo. Keep the module disabled until that change is integrated and verified.
+Savepoint-aware Undo is described in [Undo transactions](undo-transactions.md). Nested actions are recorded only after the outer commit, while rolled-back action mutations are discarded. Automations remain disabled by the existing capability; this correction does not authorize enabling them.

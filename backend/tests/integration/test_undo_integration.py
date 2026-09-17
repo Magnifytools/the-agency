@@ -431,3 +431,181 @@ async def test_lo_deshecho_desaparece_del_listado(admin_client, base_client, jou
     assert len((await admin_client.get("/api/changes/recent")).json()) == 1
     await admin_client.post(f"/api/changes/{entry.id}/undo")
     assert (await admin_client.get("/api/changes/recent")).json() == []
+
+
+# Savepoints are provisional: only the outer session commit is journalable.
+async def test_savepoint_commit_then_outer_rollback_emits_nothing(db_session, journal):
+    cj.set_actor(1)
+    async with db_session.begin_nested():
+        db_session.add(Task(title="Rolled back outside", status=TaskStatus.pending))
+        await db_session.flush()
+    assert journal.raw == []
+    await db_session.rollback()
+    assert journal.raw == []
+
+
+async def test_savepoint_rollback_preserves_outer_operations(db_session, journal):
+    cj.set_actor(1)
+    outer = Task(title="Kept", status=TaskStatus.pending)
+    db_session.add(outer)
+    await db_session.flush()
+    nested = await db_session.begin_nested()
+    db_session.add(Task(title="Discarded", status=TaskStatus.pending))
+    await db_session.flush()
+    await nested.rollback()
+    assert journal.raw == []
+    await db_session.commit()
+    assert len(journal.raw) == 1
+    assert [op["after"]["title"] for op in journal.raw[0]["operations"]] == ["Kept"]
+
+
+async def test_deep_savepoint_rollback_discards_committed_descendants(db_session, journal):
+    cj.set_actor(1)
+    db_session.add(Task(title="Outer", status=TaskStatus.pending))
+    await db_session.flush()
+    nested = await db_session.begin_nested()
+    db_session.add(Task(title="Child", status=TaskStatus.pending))
+    await db_session.flush()
+    async with db_session.begin_nested():
+        db_session.add(Task(title="Grandchild", status=TaskStatus.pending))
+        await db_session.flush()
+    await nested.rollback()
+    await db_session.commit()
+    assert len(journal.raw) == 1
+    assert [op["after"]["title"] for op in journal.raw[0]["operations"]] == ["Outer"]
+
+
+async def test_successful_savepoints_collapse_into_one_outer_entry(db_session, journal):
+    cj.set_actor(1)
+    task = Task(title="A", status=TaskStatus.pending)
+    db_session.add(task)
+    await db_session.flush()
+    for title in ["B", "C"]:
+        async with db_session.begin_nested():
+            task.title = title
+            await db_session.flush()
+        assert journal.raw == []
+    await db_session.commit()
+    assert len(journal.raw) == 1
+    assert len(journal.raw[0]["operations"]) == 1
+    assert journal.raw[0]["operations"][0]["after"]["title"] == "C"
+
+
+async def test_failed_flush_savepoint_preserves_outer_journal(db_session, journal):
+    from sqlalchemy.exc import IntegrityError
+    cj.set_actor(1)
+    db_session.add(Task(title="Valid", status=TaskStatus.pending))
+    await db_session.flush()
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            db_session.add(Task(title="Invalid", client_id=987654321, status=TaskStatus.pending))
+            await db_session.flush()
+    await db_session.commit()
+    assert len(journal.raw) == 1
+    assert [op["after"]["title"] for op in journal.raw[0]["operations"]] == ["Valid"]
+
+
+async def test_bulk_status_update_is_one_undo_action(admin_client, db_session, base_client, journal):
+    first = await _make_task(db_session, base_client, title="First")
+    second = await _make_task(db_session, base_client, title="Second")
+    await db_session.commit()
+    response = await admin_client.patch("/api/tasks/bulk/update", json={
+        "ids": [first.id, second.id], "updates": {"status": "completed"},
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["updated"] == 2
+    entry = await journal.only()
+    assert {op["entity_id"] for op in entry.operations} == {first.id, second.id}
+    undone = await admin_client.post(f"/api/changes/{entry.id}/undo")
+    assert undone.status_code == 200, undone.text
+    await db_session.refresh(first)
+    await db_session.refresh(second)
+    assert first.status == second.status == TaskStatus.pending
+    assert first.completed_at is second.completed_at is None
+
+
+async def test_nested_rollback_restores_manual_time_capture_flag(db_session, journal):
+    cj.set_actor(1)
+    nested = await db_session.begin_nested()
+    cj.capture_manual_time(db_session.sync_session)
+    await nested.rollback()
+    assert not db_session.info.get(cj._MANUAL_TIME_KEY)
+    cj.capture_manual_time(db_session.sync_session)
+    nested = await db_session.begin_nested()
+    await nested.rollback()
+    assert db_session.info.get(cj._MANUAL_TIME_KEY) is True
+    await db_session.rollback()
+    assert not db_session.info.get(cj._MANUAL_TIME_KEY)
+
+
+async def test_journal_matches_committed_database_across_independent_sessions(engine, journal):
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy import delete
+    task_id = None
+    try:
+        async with AsyncSession(engine, expire_on_commit=False) as writer:
+            task = Task(title="Original", status=TaskStatus.pending)
+            writer.add(task)
+            await writer.commit()
+            task_id = task.id
+            cj.set_actor(1)
+            async with writer.begin_nested():
+                task.title = "Provisional"
+                await writer.flush()
+            assert journal.raw == []
+            await writer.rollback()
+            async with AsyncSession(engine) as reader:
+                assert await reader.scalar(select(Task.title).where(Task.id == task_id)) == "Original"
+            await writer.refresh(task)
+            async with writer.begin_nested():
+                task.title = "Committed"
+                await writer.flush()
+            await writer.commit()
+            assert len(journal.raw) == 1
+            async with AsyncSession(engine) as reader:
+                assert await reader.scalar(select(Task.title).where(Task.id == task_id)) == "Committed"
+    finally:
+        cj.set_actor(None)
+        if task_id is not None:
+            async with AsyncSession(engine) as cleanup:
+                await cleanup.execute(delete(Task).where(Task.id == task_id))
+                await cleanup.commit()
+
+
+async def test_closing_session_discards_pending_journal_before_reuse(engine, journal):
+    from sqlalchemy.ext.asyncio import AsyncSession
+    writer = AsyncSession(engine)
+    try:
+        cj.set_actor(1)
+        writer.add(Task(title="Abandoned", status=TaskStatus.pending))
+        await writer.flush()
+        await writer.close()
+        assert not writer.info.get(cj._INFO_KEY)
+        assert not writer.info.get(cj._SAVEPOINTS_KEY)
+        await writer.commit()
+        assert journal.raw == []
+    finally:
+        await writer.close()
+
+
+async def test_automation_batch_journals_only_successful_actions_once(admin_client, db_session, journal):
+    from backend.api.routes.automations import execute_automations
+    from backend.db.models import AutomationRule, AutomationLog
+    rules = [
+        AutomationRule(name="Good A", trigger="task_completed", action_type="create_task", action_config={"title": "A"}, is_active=True),
+        AutomationRule(name="Invalid", trigger="task_completed", action_type="create_insight", action_config={"task_id": 987654321}, is_active=True),
+        AutomationRule(name="Good B", trigger="task_completed", action_type="create_task", action_config={"title": "B"}, is_active=True),
+    ]
+    db_session.add_all(rules)
+    await db_session.commit()
+    cj.set_actor(admin_client.test_user.id)
+    await execute_automations("task_completed", {}, db_session)
+    entry = await journal.only()
+    assert len(entry.operations) == 2
+    assert {op["after"]["title"] for op in entry.operations} == {"A", "B"}
+    failed = (await db_session.execute(select(AutomationLog).where(AutomationLog.rule_id == rules[1].id))).scalar_one()
+    assert failed.success is False
+    response = await admin_client.post(f"/api/changes/{entry.id}/undo")
+    assert response.status_code == 200, response.text
+    for op in entry.operations:
+        assert await db_session.get(Task, op["entity_id"]) is None

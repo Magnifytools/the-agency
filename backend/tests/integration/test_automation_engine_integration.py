@@ -40,8 +40,9 @@ async def test_missing_condition_skips_rule_without_execution_record(db_session)
 
 
 async def test_failed_sql_rule_rolls_back_and_next_rule_succeeds(db_session):
-    # Invalid client FK forces a real PostgreSQL error inside the first savepoint.
-    bad = await rule(db_session, "create_task", {"client_id": 987654321})
+    # Invalid insight target forces a real PostgreSQL FK error, independent
+    # of the shared task validator gaining additional client checks.
+    bad = await rule(db_session, "create_insight", {"task_id": 987654321})
     good = await rule(db_session, "create_task", {"title": "Good child"})
     await automations.execute_automations("task_completed", {}, db_session)
     records = {item.rule_id: item for item in await logs(db_session)}
