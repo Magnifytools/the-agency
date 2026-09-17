@@ -328,3 +328,36 @@ async def test_financial_rows_never_enter_operational_ai_prompt(db_session, monk
     )
     assert financial in generated
     assert seen == [[]]
+
+
+@pytest.mark.asyncio
+async def test_member_cannot_share_team_briefing(make_member_client):
+    member = await make_member_client([("pm", True, True)])
+    try:
+        response = await member.post("/api/pm/briefing/discord", params={"scope": "team"})
+        assert response.status_code == 403
+    finally:
+        await member.aclose()
+
+
+@pytest.mark.asyncio
+async def test_share_uses_requested_authorized_scope(admin_client, monkeypatch):
+    import httpx
+    from backend.api.routes import pm as route
+    from backend.config import settings
+    scopes = []
+    async def briefing(_db, user_id, team=False):
+        scopes.append((user_id, team))
+        return {"greeting": "Prueba", "date": "2026-09-17", "priorities": [], "alerts": [], "followups": []}
+    original_client = httpx.AsyncClient
+    requests = []
+    def send(request):
+        requests.append(request)
+        return httpx.Response(204)
+    monkeypatch.setattr(route, "get_daily_briefing", briefing)
+    monkeypatch.setattr(settings, "DISCORD_WEBHOOK_URL", "https://delivery.invalid/test")
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original_client(transport=httpx.MockTransport(send), **kwargs))
+    response = await admin_client.post("/api/pm/briefing/discord", params={"scope": "team"})
+    assert response.status_code == 200, response.text
+    assert scopes == [(admin_client.test_user.id, True)]
+    assert len(requests) == 1  # Transport stub: no real delivery.

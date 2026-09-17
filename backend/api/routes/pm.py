@@ -251,6 +251,7 @@ async def get_briefing(
 
 @router.post("/briefing/discord")
 async def share_briefing_to_discord(
+    scope: Literal["mine", "team"] = "mine",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("pm", write=True)),
 ):
@@ -258,6 +259,9 @@ async def share_briefing_to_discord(
     from backend.config import settings
     from backend.db.models import DiscordSettings
     import httpx
+
+    if scope == "team" and current_user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="La vista de equipo requiere rol administrador")
 
     # Resolve webhook URL: DB settings first, then env var fallback
     ds_result = await db.execute(select(DiscordSettings).limit(1))
@@ -277,7 +281,7 @@ async def share_briefing_to_discord(
             detail="No hay webhook de Discord configurado. Ve a Ajustes > Discord para configurarlo.",
         )
 
-    briefing = await get_daily_briefing(db, user_id=current_user.id)
+    briefing = await get_daily_briefing(db, user_id=current_user.id, team=scope == "team")
 
     # Format the message for Discord
     lines = [f"# {briefing['greeting']}"]

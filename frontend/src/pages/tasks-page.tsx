@@ -115,6 +115,13 @@ export default function TasksPage() {
     else next.set("qaFilter", value)
     return next
   })
+  const agendaScope = user?.role === "admin" && searchParams.get("scope") === "team" ? "team" : "mine"
+  const setAgendaScope = (scope: string) => setSearchParams((previous) => {
+    const next = new URLSearchParams(previous)
+    if (scope === "team") next.set("scope", "team")
+    else next.delete("scope")
+    return next
+  })
   const [bulkStatus, setBulkStatus] = useState("")
 
   // Checklist state
@@ -175,8 +182,8 @@ export default function TasksPage() {
   })
 
   const useAgendaQuery = (section: "planned" | "carryover" | "unplanned" | "completed") => useInfiniteQuery({
-    queryKey: ["tasks-agenda", section, localDateString(), user?.id, new Date().getTimezoneOffset()],
-    queryFn: ({ pageParam }) => tasksApi.agenda({ date: localDateString(), section, assigned_to: user?.role === "admin" ? undefined : "me", timezone_offset_minutes: new Date().getTimezoneOffset(), page: pageParam, page_size: pageSize }),
+    queryKey: ["tasks-agenda", section, localDateString(), user?.id, new Date().getTimezoneOffset(), agendaScope],
+    queryFn: ({ pageParam }) => tasksApi.agenda({ date: localDateString(), section, assigned_to: agendaScope === "team" ? undefined : "me", timezone_offset_minutes: new Date().getTimezoneOffset(), page: pageParam, page_size: pageSize }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => lastPage.page * lastPage.page_size < lastPage.total ? lastPage.page + 1 : undefined,
     enabled: view === "my_day",
@@ -522,6 +529,7 @@ export default function TasksPage() {
         </Button>
       </div>
 
+      {view === "my_day" && (user?.role === "admin" ? <Select aria-label="Ámbito de Hoy" className="w-full sm:w-48" value={agendaScope} onChange={(event) => setAgendaScope(event.target.value)}><option value="mine">Mi trabajo</option><option value="team">Todo el equipo</option></Select> : <p className="text-sm text-muted-foreground">Mi trabajo</p>)}
       {view !== "my_day" && <>
       {/* Search + Filters */}
       <div className="flex flex-wrap gap-3">

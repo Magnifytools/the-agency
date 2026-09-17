@@ -595,14 +595,14 @@ export const pmApi = {
     api.put<Insight>(`/pm/insights/${id}/act`).then((r) => r.data),
   insightCount: () =>
     api.get<InsightCount>("/pm/insights/count").then((r) => r.data),
-  dailyBriefing: () =>
-    api.get<DailyBriefing>("/pm/daily-briefing").then((r) => r.data),
+  dailyBriefing: (scope: "mine" | "team" = "mine") =>
+    api.get<DailyBriefing>("/pm/daily-briefing", { params: { scope } }).then((r) => r.data),
   alertSettings: () =>
     api.get<AlertSettings>("/pm/settings/alerts").then((r) => r.data),
   updateAlertSettings: (data: AlertSettingsUpdate) =>
     api.put<AlertSettings>("/pm/settings/alerts", data).then((r) => r.data),
-  shareBriefingToDiscord: () =>
-    api.post<{ status: string, message: string }>("/pm/briefing/discord").then((r) => r.data),
+  shareBriefingToDiscord: (scope: "mine" | "team" = "mine") =>
+    api.post<{ status: string, message: string }>("/pm/briefing/discord", null, { params: { scope } }).then((r) => r.data),
 }
 
 // Reports

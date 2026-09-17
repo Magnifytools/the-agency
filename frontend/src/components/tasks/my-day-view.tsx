@@ -5,15 +5,6 @@ import { Button } from "@/components/ui/button"
 import { Pencil, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-const STATUS_CONFIG: Record<TaskStatus, { label: string; cls: string }> = {
-  backlog:     { label: "Backlog",     cls: "bg-gray-500 text-white border-gray-600" },
-  pending:     { label: "Pendiente",   cls: "bg-yellow-500 text-white border-yellow-600" },
-  in_progress: { label: "En curso",    cls: "bg-blue-500 text-white border-blue-600" },
-  waiting:     { label: "En espera",   cls: "bg-orange-500 text-white border-orange-600" },
-  in_review:   { label: "En revisión", cls: "bg-purple-500 text-white border-purple-600" },
-  advanced:    { label: "Avanzada",    cls: "bg-teal-500 text-white border-teal-600" },
-  completed:   { label: "Completada",  cls: "bg-green-500 text-white border-green-600" },
-}
 
 interface Props {
   planned: PaginatedResponse<Task>
@@ -83,8 +74,8 @@ export function MyDayView({ planned, carryover, unplanned, completed, isLoadingM
         key={task.id}
         className={cn(
           "group hover:shadow-sm transition-all cursor-pointer",
-          isOverdue && "border-red-200 bg-red-50/30",
-          isInProgress && !isOverdue && "border-amber-200 bg-amber-50/30"
+          isOverdue && "border-l-2 border-l-destructive",
+          isInProgress && !isOverdue && "border-l-2 border-l-brand"
         )}
         onClick={() => onOpenEdit(task)}
       >
@@ -96,10 +87,10 @@ export function MyDayView({ planned, carryover, unplanned, completed, isLoadingM
               onStatusChange(task.id, e.target.value as TaskStatus)
             }}
             onClick={(e) => e.stopPropagation()}
-            title="Cambiar estado"
+            aria-label={`Estado de ${task.title}`}
             className={cn(
               "col-span-2 row-start-2 w-fit sm:w-auto shrink-0 text-xs sm:text-[10px] rounded-md border px-2 py-1 min-h-9 sm:min-h-7 cursor-pointer font-semibold transition-colors shadow-sm",
-              STATUS_CONFIG[task.status]?.cls ?? STATUS_CONFIG.pending.cls
+              "bg-background text-foreground border-input"
             )}
           >
             <option value="backlog">Backlog</option>
@@ -121,7 +112,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, isLoadingM
             </div>
             <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground flex-wrap">
               {task.client_name && <span>{task.client_name}</span>}
-              {task.project_name && <span className="text-muted-foreground/70">· {task.project_name}</span>}
+              {task.project_name && <span className="text-muted-foreground">· {task.project_name}</span>}
               {task.estimated_minutes && (
                 <span className="flex items-center gap-0.5">
                   <Clock className="h-2.5 w-2.5" />{formatMinutes(task.estimated_minutes)}
@@ -143,7 +134,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, isLoadingM
                   {new Date(task.due_date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
                 </span>
               ) : (
-                <span className="flex items-center gap-0.5 text-muted-foreground/60">
+                <span className="flex items-center gap-0.5 text-muted-foreground">
                   <CalendarX className="h-2.5 w-2.5" />
                   Sin fecha planificada
                 </span>
@@ -174,8 +165,8 @@ export function MyDayView({ planned, carryover, unplanned, completed, isLoadingM
         </p>
         {plannedTodayTasks.length === 0 ? (
           <Card>
-            <CardContent className="py-12 text-center text-muted-foreground">
-              <CheckCircle2 className="h-10 w-10 mx-auto mb-3 text-green-400" />
+            <CardContent className="py-4 flex items-center gap-3 text-muted-foreground">
+              <CheckCircle2 className="h-5 w-5 shrink-0" />
               <p className="font-medium">Sin tareas planificadas para hoy</p>
             </CardContent>
           </Card>
