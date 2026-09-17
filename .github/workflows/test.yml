@@ -106,3 +106,10 @@ jobs:
           .venv-audit/bin/python -m pip install -r backend/requirements.txt pip-audit==2.10.1
           .venv-audit/bin/python -m pip check
           .venv-audit/bin/python -m pip_audit
+
+  container-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image without publishing
+        run: docker build --tag agency-ci .

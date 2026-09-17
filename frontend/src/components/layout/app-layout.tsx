@@ -3,8 +3,8 @@ import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/context/auth-context"
 import { inboxApi } from "@/lib/api"
 import { inboxKeys } from "@/lib/query-keys"
-import { isHidden } from "@/lib/hidden-modules"
-import { LayoutDashboard, Users, CheckSquare, UserCog, LogOut, Clock, FolderKanban, FileText, ScrollText, Wallet, Newspaper, Target, MessageCircle, ClipboardList, Gauge, Search, Archive, Inbox, Settings, LayoutGrid, CalendarDays, Zap, Lightbulb } from "lucide-react"
+import { Search, Inbox, LogOut, LayoutGrid } from "lucide-react"
+import { navigationFor, activeArea, activeAreaLink } from "./navigation"
 import { cn } from "@/lib/utils"
 import { BottomDrawer } from "@/components/ui/bottom-drawer"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
@@ -46,101 +46,10 @@ export function AppLayout() {
     // Si falla, simplemente no hay badge — no bloquear la shell
   })
 
-  // `hidden` filtra los módulos apagados en lib/hidden-modules.ts. Se aplica
-  // ANTES que los permisos: un módulo oculto no existe para nadie, ni para admin.
-  const visible = <T extends { hidden?: string; module?: string }>(items: T[]) =>
-    items.filter(
-      (item) =>
-        !(item.hidden && isHidden(item.hidden)) &&
-        (!item.module || hasPermission(item.module)),
-    )
-
-  const workspaceNav = useMemo(() => {
-    return visible([
-      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
-      { to: "/my-week", label: "Mi Semana", icon: CalendarDays, hidden: "my_week" },
-      { to: "/clients", label: "Clientes", icon: Users, module: "clients" },
-      { to: "/projects", label: "Proyectos", icon: FolderKanban, module: "projects" },
-      { to: "/leads", label: "Pipeline", icon: Target, module: "growth", hidden: "leads" },
-      { to: "/growth", label: "Buffer", icon: Lightbulb, module: "growth", hidden: "growth" },
-      { to: "/tasks", label: "Tareas", icon: CheckSquare, module: "tasks" },
-      { to: "/inbox", label: "Inbox", icon: Inbox, module: "tasks" },
-    ])
-  }, [hasPermission, isAdmin])
-
-  const opsNav = useMemo(() => {
-    return visible([
-      { to: "/timesheet", label: "Timesheet", icon: Clock, module: "timesheet" },
-      { to: "/dailys", label: "Dailys", icon: ClipboardList },
-      { to: "/digests", label: "Digests", icon: Newspaper, module: "digests" },
-      { to: "/reports", label: "Informes", icon: FileText, module: "reports", hidden: "reports" },
-      { to: "/proposals", label: "Presupuestos", icon: ScrollText, module: "proposals", hidden: "proposals" },
-    ])
-  }, [hasPermission])
-
-  // Keep mainNav as combined for backward compat (mobile nav, etc.)
-  const mainNav = useMemo(() => [...workspaceNav, ...opsNav], [workspaceNav, opsNav])
-
-  const agencyNav = useMemo(() => {
-    const items: { to: string; label: string; icon: typeof Archive; adminOnly?: boolean; hidden?: string }[] = [
-      { to: "/vault", label: "Vault", icon: Archive, adminOnly: true, hidden: "vault" },
-    ]
-    return items.filter(
-      (item) => !(item.hidden && isHidden(item.hidden)) && (!item.adminOnly || isAdmin),
-    )
-  }, [isAdmin])
-
-  const adminNav = useMemo(() => {
-    if (!isAdmin) return []
-    return visible([
-      { to: "/capacity", label: "Capacidad", icon: Gauge, hidden: "capacity" },
-      { to: "/users", label: "Equipo", icon: UserCog },
-      { to: "/discord", label: "Integraciones", icon: MessageCircle, hidden: "discord" },
-      { to: "/automations", label: "Automatizaciones", icon: Zap, hidden: "automations" },
-    ])
-  }, [isAdmin])
-
-  const mobileNav = useMemo(() => {
-    const findMain = (path: string) => mainNav.find((item) => item.to === path)
-
-    return [
-      findMain("/dashboard"),
-      findMain("/tasks"),
-      findMain("/inbox"),
-      { to: "/dailys", label: "Dailys", icon: ClipboardList },
-    ].filter((item): item is { to: string; label: string; icon: typeof Wallet } => Boolean(item))
-  }, [mainNav])
-
-  const isActive = (path: string) => {
-    if (path === "/finance-holded") {
-      return location.pathname === "/finance-holded"
-    }
-    if (path === "/finance") {
-      return location.pathname === "/finance"
-    }
-    if (path === "/clients") {
-      return location.pathname === "/clients" || location.pathname.startsWith("/clients/")
-    }
-    if (path === "/leads") {
-      return location.pathname === "/leads" || location.pathname.startsWith("/leads/")
-    }
-    if (path === "/growth") {
-      return location.pathname === "/growth"
-    }
-    if (path === "/projects") {
-      return location.pathname === "/projects" || location.pathname.startsWith("/projects/")
-    }
-    if (path === "/proposals") {
-      return location.pathname === "/proposals" || location.pathname.startsWith("/proposals/")
-    }
-    if (path === "/dailys") {
-      return location.pathname === "/dailys" || location.pathname.startsWith("/dailys/")
-    }
-    if (path === "/digests") {
-      return location.pathname === "/digests" || location.pathname.startsWith("/digests/")
-    }
-    return location.pathname === path
-  }
+  const navigation = useMemo(() => navigationFor(hasPermission, isAdmin), [hasPermission, isAdmin])
+  const currentArea = activeArea(location.pathname, location.search)
+  const currentLinks = navigation.find((area) => area.id === currentArea)?.links ?? []
+  const isActive = (to: string) => activeAreaLink(to, location.pathname, location.search)
 
   return (
     <div className="flex h-screen flex-col bg-background overflow-hidden relative">
@@ -151,6 +60,11 @@ export function AppLayout() {
         Ir al contenido
       </a>
       <ActiveTimerBar />
+      <div className="md:hidden flex items-center justify-between border-b border-border px-4 py-1.5 bg-card">
+        <button onClick={() => setSearchOpen(true)} className="flex items-center gap-2 min-h-11 text-sm"><Search className="h-4 w-4" />Buscar</button>
+        <button onClick={() => setCaptureOpen(true)} className="flex items-center gap-2 min-h-11 text-sm font-semibold"><Inbox className="h-4 w-4" />Añadir</button>
+        <button onClick={() => setMoreDrawerOpen(true)} className="flex items-center gap-2 min-h-11 text-sm" aria-label="Abrir menú de cuenta"><LayoutGrid className="h-4 w-4" />Cuenta</button>
+      </div>
 
       <div className="flex flex-1 overflow-hidden pb-[60px] md:pb-0">
         {/* Sidebar (Desktop) */}
@@ -174,136 +88,17 @@ export function AppLayout() {
             </kbd>
           </button>
 
-          {/* Main Nav */}
-          <nav className="flex flex-col gap-1.5 flex-1 overflow-y-auto min-h-0" role="navigation" aria-label="Menu principal">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">Workspace</p>
-            {workspaceNav.map((item) => (
-              <Link
-                key={item.to}
-                to={item.to}
-                aria-current={isActive(item.to) ? "page" : undefined}
-                className={cn(
-                  "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
-                  isActive(item.to)
-                    ? "bg-brand/10 text-brand"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
-              >
-                <item.icon className={cn("h-[18px] w-[18px] transition-colors", isActive(item.to) ? "text-brand" : "text-muted-foreground group-hover:text-foreground")} />
-                {item.label}
-                {item.to === "/inbox" && (inboxCount?.count ?? 0) > 0 && (
-                  <span className="ml-auto text-[10px] font-semibold bg-brand/15 text-brand px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                    {inboxCount!.count}
-                  </span>
-                )}
+          <button onClick={() => setCaptureOpen(true)} className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-brand text-black text-sm font-semibold">
+            <Inbox className="h-[18px] w-[18px]" /> Añadir
+          </button>
+          <nav className="flex flex-col gap-2 flex-1 overflow-y-auto min-h-0" aria-label="Menú principal">
+            {navigation.map((area) => (
+              <Link key={area.id} to={area.links[0].to} aria-current={currentArea === area.id ? "page" : undefined}
+                className={cn("flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-medium transition-colors", currentArea === area.id ? "bg-brand/10 text-brand" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
+                <area.icon className="h-[18px] w-[18px]" />{area.label}
+                {area.id === "work" && (inboxCount?.count ?? 0) > 0 && <span className="ml-auto text-xs" aria-label={`${inboxCount!.count} capturas por aclarar`}>{inboxCount!.count}</span>}
               </Link>
             ))}
-
-            {/* Operations Nav */}
-            {opsNav.length > 0 && (
-              <div className="mt-6 flex flex-col gap-1.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">Operaciones</p>
-                {opsNav.map((item) => (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    aria-current={isActive(item.to) ? "page" : undefined}
-                    className={cn(
-                      "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
-                      isActive(item.to)
-                        ? "bg-brand/10 text-brand"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    <item.icon className={cn("h-[18px] w-[18px] transition-colors", isActive(item.to) ? "text-brand" : "text-muted-foreground group-hover:text-foreground")} />
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
-            )}
-
-            {/* Finance Nav — single entry */}
-            {isAdmin && !isHidden("finance") && (
-              <div className="mt-6 flex flex-col gap-1.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">Finanzas</p>
-                <Link
-                  to="/finance"
-                  aria-current={isActive("/finance") || isActive("/executive") || isActive("/billing") || isActive("/finance-holded") ? "page" : undefined}
-                  className={cn(
-                    "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
-                    isActive("/finance") || isActive("/executive") || isActive("/billing") || isActive("/finance-holded")
-                      ? "bg-brand/10 text-brand"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  )}
-                >
-                  <Wallet className={cn("h-[18px] w-[18px]", isActive("/finance") || isActive("/executive") || isActive("/billing") || isActive("/finance-holded") ? "text-brand" : "text-muted-foreground group-hover:text-foreground transition-colors")} />
-                  Finanzas
-                </Link>
-              </div>
-            )}
-
-            {/* Agency Nav */}
-            {agencyNav.length > 0 && (
-              <div className="mt-8 flex flex-col gap-1.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">La Agencia</p>
-                {agencyNav.map((item) => (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    aria-current={isActive(item.to) ? "page" : undefined}
-                    className={cn(
-                      "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
-                      isActive(item.to)
-                        ? "bg-brand/10 text-brand"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    <item.icon className={cn("h-[18px] w-[18px] transition-colors", isActive(item.to) ? "text-brand" : "text-muted-foreground group-hover:text-foreground")} />
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
-            )}
-
-            {/* Admin Nav */}
-            {adminNav.length > 0 && (
-              <div className="mt-8 flex flex-col gap-1.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-3.5 mb-2">Admin</p>
-                {adminNav.map((item) => (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    aria-current={isActive(item.to) ? "page" : undefined}
-                    className={cn(
-                      "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
-                      isActive(item.to)
-                        ? "bg-brand/10 text-brand"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    <item.icon className={cn("h-[18px] w-[18px] transition-colors", isActive(item.to) ? "text-brand" : "text-muted-foreground group-hover:text-foreground")} />
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
-            )}
-
-            {/* Settings */}
-            <div className="mt-4">
-              <Link
-                to="/settings"
-                aria-current={isActive("/settings") ? "page" : undefined}
-                className={cn(
-                  "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium transition-all group",
-                  isActive("/settings")
-                    ? "bg-brand/10 text-brand"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
-              >
-                <Settings className={cn("h-[18px] w-[18px] transition-colors", isActive("/settings") ? "text-brand" : "text-muted-foreground group-hover:text-foreground")} />
-                Configuración
-              </Link>
-            </div>
           </nav>
 
           {/* User info at bottom */}
@@ -330,56 +125,31 @@ export function AppLayout() {
 
         {/* Main content */}
         <main id="main-content" role="main" className="flex-1 overflow-auto p-4 md:p-5 lg:p-6 2xl:p-8 bg-background/50 relative">
+          {currentLinks.length > 1 && <nav aria-label={`Secciones de ${navigation.find((area) => area.id === currentArea)?.label ?? "esta área"}`} className="flex gap-1 overflow-x-auto border-b border-border mb-5 pb-2">
+            {currentLinks.map((link) => <Link key={link.to} to={link.to} aria-current={isActive(link.to) ? "page" : undefined}
+              className={cn("whitespace-nowrap px-3 py-2 min-h-11 rounded-lg text-sm flex items-center", isActive(link.to) ? "bg-muted text-foreground font-semibold" : "text-muted-foreground hover:text-foreground")}>{link.label}</Link>)}
+          </nav>}
           <Outlet />
         </main>
       </div>
 
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-[60px] bg-card/95 backdrop-blur-md border-t border-border flex items-center justify-around px-2 z-50 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.3)]" aria-label="Navegacion movil">
-        {mobileNav.map((item) => (
-          <Link
-            key={item.to}
-            to={item.to}
-            aria-current={isActive(item.to) ? "page" : undefined}
-            className={cn(
-              "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
-              isActive(item.to) ? "text-brand" : "text-muted-foreground"
-            )}
-          >
-            <item.icon className={cn("h-5 w-5", isActive(item.to) && "fill-brand/10")} />
-            <span className="text-[10px] font-medium tracking-tight">
-              {item.label === "Dashboard" ? "Home" : item.label}
-            </span>
+        {navigation.map((area) => (
+          <Link key={area.id} to={area.links[0].to} aria-current={currentArea === area.id ? "page" : undefined}
+            className={cn("flex flex-col items-center justify-center w-full h-full gap-1", currentArea === area.id ? "text-brand" : "text-muted-foreground")}>
+            <area.icon className="h-5 w-5" />
+            <span className="text-[10px] font-medium">{area.label}</span>
           </Link>
         ))}
-        <button
-          onClick={() => setMoreDrawerOpen(true)}
-          className={cn(
-            "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
-            moreDrawerOpen ? "text-brand" : "text-muted-foreground"
-          )}
-        >
-          <LayoutGrid className="h-5 w-5" />
-          <span className="text-[10px] font-medium tracking-tight">Más</span>
-        </button>
       </nav>
 
-      {/* More drawer */}
       <BottomDrawer open={moreDrawerOpen} onOpenChange={setMoreDrawerOpen}>
-        <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
-          {[...mainNav, ...agencyNav, ...(isAdmin && !isHidden("finance") ? [{ to: "/finance", label: "Finanzas", icon: Wallet }] : []), ...adminNav, { to: "/settings", label: "Ajustes", icon: Settings }]
-            .filter((item) => !mobileNav.some((m) => m.to === item.to))
-            .map((item) => (
-              <Link
-                key={item.to}
-                to={item.to}
-                onClick={() => setMoreDrawerOpen(false)}
-                className="flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <item.icon className="h-6 w-6" />
-                <span className="text-[11px] font-medium text-center leading-tight">{item.label}</span>
-              </Link>
-            ))}
+        <p className="font-semibold mb-1">{user?.full_name}</p>
+        <p className="text-sm text-muted-foreground mb-4">{user?.email}</p>
+        <div className="flex items-center gap-4 min-h-11">
+          <UndoPanel /><NotificationBell />
+          <button onClick={() => { setMoreDrawerOpen(false); void logout() }} className="flex items-center gap-2 min-h-11 text-sm"><LogOut className="h-4 w-4" />Cerrar sesión</button>
         </div>
       </BottomDrawer>
 

@@ -77,7 +77,13 @@ export default function TasksPage() {
   const [timeLogTask, setTimeLogTask] = useState<Task | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
-  const [view, setView] = useState<"my_day" | "sprint" | "all" | "calendar" | "weekly" | "recurring">(() => initialTasksView(searchParams))
+  const view = initialTasksView(searchParams)
+  const setView = (nextView: typeof view) => setSearchParams((previous) => {
+    const next = new URLSearchParams(previous)
+    next.set("view", nextView)
+    next.delete("qaFilter")
+    return next
+  })
   const [weekOffset, setWeekOffset] = useState(0)
   const [calMonth, setCalMonth] = useState(() => {
     const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }
@@ -488,7 +494,7 @@ export default function TasksPage() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold uppercase tracking-wide">Tareas</h2>
+          <h1 className="text-2xl font-bold">{view === "my_day" ? "Hoy" : "Tareas"}</h1>
           {view === "my_day" ? (
             <p className="text-sm text-muted-foreground mt-1">
               {agendaData(plannedAgenda).total} para hoy · {agendaData(carryoverAgenda).total} de arrastre · {agendaData(unplannedAgenda).total} sin planificar · {agendaData(completedAgenda).total} completadas hoy
@@ -632,16 +638,8 @@ export default function TasksPage() {
       </div>
       </>}
 
-      <div className="relative mb-6">
+      {view !== "my_day" && <div className="relative mb-6">
       <div className="flex gap-2 overflow-x-auto scrollbar-none flex-nowrap bg-muted/30 p-1 sm:w-fit rounded-lg border border-border">
-        <Button
-          variant={view === "my_day" ? "default" : "ghost"}
-          size="sm"
-          className="shrink-0 whitespace-nowrap"
-          onClick={() => setView("my_day")}
-        >
-          <Calendar className="w-4 h-4 mr-2" /> Mi Día
-        </Button>
         <Button
           variant={view === "sprint" ? "default" : "ghost"}
           size="sm"
@@ -684,7 +682,7 @@ export default function TasksPage() {
         </Button>
       </div>
       <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none sm:hidden" />
-      </div>
+      </div>}
 
       {/* Table & Planner */}
       {(isLoading || (view === "my_day" && agendaLoading)) ? (

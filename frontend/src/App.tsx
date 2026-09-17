@@ -1,3 +1,4 @@
+import { HomeRedirect } from "@/components/layout/home-redirect"
 import { lazy, Suspense } from "react"
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
@@ -96,6 +97,7 @@ export default function App() {
                 </ProtectedRoute>
               }
             >
+              <Route path="/" element={<HomeRedirect />} />
               <Route path="/dashboard" element={<ErrorBoundary section="Dashboard"><Suspense fallback={<PageLoader />}><DashboardPage /></Suspense></ErrorBoundary>} />
               <Route path="/executive" element={<PermissionRoute adminOnly><ErrorBoundary section="Executive"><Suspense fallback={<PageLoader />}><ExecutiveDashboardPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/pipeline" element={<Navigate to="/leads" replace />} />
@@ -138,7 +140,7 @@ export default function App() {
               {/* Settings */}
               <Route path="/settings" element={<ErrorBoundary section="Settings"><Suspense fallback={<PageLoader />}><SettingsPage /></Suspense></ErrorBoundary>} />
             </Route>
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AuthProvider>
       </BrowserRouter>

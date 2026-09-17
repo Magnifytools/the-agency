@@ -29,6 +29,8 @@ const TYPE_ICONS: Record<InsightType, typeof AlertTriangle> = {
   followup: MessageCircle,
   workload: TrendingUp,
   suggestion: Lightbulb,
+  operational_suggestion: Lightbulb,
+  financial: AlertTriangle,
   quality: Star,
 }
 

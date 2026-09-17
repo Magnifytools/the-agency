@@ -253,7 +253,7 @@ export interface EmailDraftResponse {
 }
 
 // PM Insights
-export type InsightType = "deadline" | "stalled" | "overdue" | "followup" | "workload" | "suggestion" | "quality"
+export type InsightType = "deadline" | "stalled" | "overdue" | "followup" | "workload" | "suggestion" | "operational_suggestion" | "financial" | "quality"
 export type InsightPriority = "high" | "medium" | "low"
 export type InsightStatus = "active" | "dismissed" | "acted"
 
