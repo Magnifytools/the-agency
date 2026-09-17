@@ -1,4 +1,5 @@
-const { test } = require('node:test');
+const { test: nodeTest } = require('node:test');
+const test = (name, fn) => nodeTest(name, { timeout: 10000 }, fn);
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -248,4 +249,176 @@ test('a removed selected project never silently becomes an unassigned capture', 
   await run('captureNote()');
   assert.equal(state.posted, null);
   assert.equal(get('capture-error').classList.contains('hidden'), false);
+});
+
+// Real popup login/logout events, with all server and Chrome APIs mocked.
+async function loginAs(h, token, email) {
+  const fetch = h.dom.window.fetch;
+  h.dom.window.fetch = async (url, options) => new URL(url).pathname === '/api/auth/login'
+    ? { ok: true, status: 200, json: async () => ({ access_token: token }) }
+    : fetch(url, options);
+  h.get('email').value = email;
+  h.get('password').value = 'synthetic-password';
+  h.get('login-form').dispatchEvent(new h.dom.window.Event('submit', { bubbles: true, cancelable: true }));
+  for (let n = 0; n < 20 && h.run('token') !== token; n++) await tick();
+  await tick();
+  assert.equal(h.run('token'), token);
+}
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((a, b) => { resolve = a; reject = b; });
+  return { promise, resolve, reject };
+}
+
+for (const outcome of [201, 401, 'network-error']) {
+  test(`late capture ${outcome} cannot change a newer session, draft or pending request`, async t => {
+    const h = await setup(t);
+    await loginAs(h, 'session-a', 'a@example.test');
+    const a = deferred(), b = deferred(), reachedA = deferred(), reachedB = deferred();
+    const fetch = h.dom.window.fetch;
+    h.dom.window.fetch = async (url, options = {}) => {
+      if (new URL(url).pathname === '/api/inbox' && options.method === 'POST') {
+        const old = options.headers.Authorization === 'Bearer session-a';
+        (old ? reachedA : reachedB).resolve();
+        await (old ? a : b).promise;
+        if (old && outcome === 'network-error') throw new Error('old network error');
+        const status = old ? outcome : 201;
+        return { ok: status === 201, status, json: async () => ({}) };
+      }
+      return fetch(url, options);
+    };
+    h.get('note-text').value = 'A pending';
+    const first = h.run('captureNote()');
+    await reachedA.promise;
+    h.get('settings-btn').click();
+    await loginAs(h, 'session-b', 'b@example.test');
+    h.get('note-text').value = 'B pending';
+    const second = h.run('captureNote()');
+    await reachedB.promise;
+    a.resolve(); await first;
+    assert.equal(h.run('token'), 'session-b');
+    assert.equal(h.get('note-text').value, 'B pending');
+    assert.equal(h.get('capture-btn').disabled, true);
+    assert.equal(h.get('capture-error').classList.contains('hidden'), true);
+    assert.equal(h.get('success-msg').classList.contains('hidden'), true);
+    assert.equal(h.get('main-view').classList.contains('hidden'), false);
+    b.resolve(); await second;
+    assert.equal(h.get('note-text').value, '');
+  });
+}
+
+test('late timer JSON from previous login cannot replace the new active timer', async t => {
+  const h = await setup(t);
+  await loginAs(h, 'session-a', 'a@example.test');
+  const body = deferred(), reached = deferred();
+  const fetch = h.dom.window.fetch;
+  h.dom.window.fetch = async (url, options = {}) => {
+    if (new URL(url).pathname === '/api/timer/active') {
+      const old = options.headers.Authorization === 'Bearer session-a';
+      return { ok: true, status: 200, json: async () => {
+        if (old) { reached.resolve(); await body.promise; }
+        return { started_at: '2026-09-17T10:00:00Z', task_title: old ? 'Old timer' : 'New timer' };
+      } };
+    }
+    return fetch(url, options);
+  };
+  const pending = h.run('loadActiveTimer()'); await reached.promise;
+  h.get('settings-btn').click();
+  await loginAs(h, 'session-b', 'b@example.test');
+  await h.run('loadActiveTimer()');
+  body.resolve(); await pending;
+  assert.equal(h.get('timer-task-name').textContent, 'New timer');
+  assert.equal(h.get('timer-active').classList.contains('hidden'), false);
+  assert.equal(h.run('token'), 'session-b');
+});
+
+test('late timer stop cannot hide a newer account timer or reset its pending button', async t => {
+  const h = await setup(t);
+  await loginAs(h, 'session-a', 'a@example.test');
+  const response = deferred(), reached = deferred();
+  const fetch = h.dom.window.fetch;
+  h.dom.window.fetch = async (url, options = {}) => {
+    if (new URL(url).pathname === '/api/timer/stop') { reached.resolve(); await response.promise; return { ok: true, status: 200 }; }
+    return fetch(url, options);
+  };
+  h.get('timer-stop-btn').click(); await reached.promise;
+  h.get('settings-btn').click(); await loginAs(h, 'session-b', 'b@example.test');
+  h.run('showActiveTimer({started_at:"2026-09-17T10:00:00Z", task_title:"New timer"})');
+  h.get('timer-stop-btn').disabled = true;
+  response.resolve(); await tick(); await tick();
+  assert.equal(h.get('timer-task-name').textContent, 'New timer');
+  assert.equal(h.get('timer-active').classList.contains('hidden'), false);
+  assert.equal(h.get('timer-stop-btn').disabled, true);
+});
+
+test('drafts stay with their authenticated email and restore safely after reconnecting', async t => {
+  const h = await setup(t);
+  await loginAs(h, 'session-a', 'a@example.test'); await h.run('loadProjectsAndClients()');
+  h.get('note-text').value = 'A draft'; h.get('assign-select').value = 'project:128';
+  h.get('settings-btn').click(); await loginAs(h, 'session-b', 'b@example.test');
+  assert.equal(h.get('note-text').value, '');
+  h.get('note-text').value = 'B draft';
+  h.get('settings-btn').click(); await loginAs(h, 'session-a2', 'a@example.test');
+  await h.run('loadProjectsAndClients()');
+  assert.equal(h.get('note-text').value, 'A draft');
+  assert.equal(h.get('assign-select').value, 'project:128');
+});
+
+test('repeated main view setup does not attach additional capture listeners', async t => {
+  const h = await setup(t);
+  let attached = 0;
+  const original = h.get('note-text').addEventListener;
+  h.get('note-text').addEventListener = function(...args) { attached++; return original.apply(this, args); };
+  h.run('showMainView(); showMainView(); showMainView()');
+  await tick();
+  assert.equal(attached, 0);
+});
+
+test('epoch rejects an old response even when the token string is reused', async t => {
+  const h = await setup(t);
+  await loginAs(h, 'same-token', 'a@example.test');
+  const response = deferred(), reached = deferred();
+  const fetch = h.dom.window.fetch;
+  h.dom.window.fetch = async (url, options = {}) => {
+    if (new URL(url).pathname === '/api/inbox' && options.method === 'POST') {
+      reached.resolve(); await response.promise; return { ok: true, status: 201 };
+    }
+    return fetch(url, options);
+  };
+  h.get('note-text').value = 'Sent before logout';
+  const pending = h.run('captureNote()'); await reached.promise;
+  h.get('settings-btn').click(); await loginAs(h, 'same-token', 'a@example.test');
+  h.get('note-text').value = 'New login draft';
+  response.resolve(); await pending;
+  assert.equal(h.get('note-text').value, 'New login draft');
+  assert.equal(h.get('success-msg').classList.contains('hidden'), true);
+});
+
+test('a pending storage removal is serialized before the newer login token write', async t => {
+  const h = await setup(t), remove = deferred(), removing = deferred();
+  let stored = '';
+  h.dom.window.chrome.storage.local.set = async values => { stored = values.am_token; };
+  h.dom.window.chrome.storage.local.remove = async () => { removing.resolve(); await remove.promise; stored = ''; };
+  await loginAs(h, 'session-a', 'a@example.test');
+  h.get('settings-btn').click(); await removing.promise;
+  await loginAs(h, 'session-b', 'b@example.test');
+  remove.resolve();
+  for (let n = 0; n < 20 && stored !== 'session-b'; n++) await tick();
+  assert.equal(stored, 'session-b');
+  assert.equal(h.run('token'), 'session-b');
+});
+
+test('reconnected task drafts cannot submit unavailable assignments before selectors finish loading', async t => {
+  const h = await setup(t);
+  await loginAs(h, 'session-a', 'a@example.test'); await h.run('loadProjectsAndClients()');
+  h.get('task-title').value = 'Task draft';
+  h.get('task-client-select').value = '128';
+  h.get('task-project-select').value = '128';
+  h.get('settings-btn').click();
+  h.state.failPath = '/api/projects'; h.state.failPage = 1;
+  await loginAs(h, 'session-a2', 'a@example.test');
+  await h.run('createTaskDirect()');
+  assert.equal(h.requests.some(r => r.url.pathname === '/api/tasks' && r.options.method === 'POST'), false);
+  assert.equal(h.get('task-create-btn').disabled, true);
+  assert.equal(h.get('task-title').value, 'Task draft');
 });
