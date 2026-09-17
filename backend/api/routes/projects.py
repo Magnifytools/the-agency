@@ -39,15 +39,17 @@ EXTRACT_PROMPT = """Extrae la información de esta propuesta comercial y respond
   "description": "resumen del alcance en 2-3 frases",
   "project_type": "uno de: seo_audit | content_strategy | linkbuilding | technical_seo | custom",
   "is_recurring": true si es retención/servicio mensual, false si es proyecto puntual,
-  "budget_amount": importe numérico sin símbolo o null,
+  "budget_amount": presupuesto total del proyecto, numérico sin símbolo, o null si no aparece explícito,
   "start_date": "YYYY-MM-DD" o null,
   "target_end_date": "YYYY-MM-DD" o null,
   "client_name": "nombre de la empresa cliente",
   "pricing_model": "uno de: monthly | per_piece | hourly | project (o null si no aplica)",
+  "monthly_fee": tarifa mensual recurrente, numérica sin símbolo, o null si no aparece explícita,
   "unit_price": precio por unidad numérico o null,
   "unit_label": "etiqueta de la unidad (pieza, artículo, hora, etc.) o null",
   "scope": "descripción detallada del alcance/scope del proyecto"
 }
+No calcules monthly_fee a partir de budget_amount ni budget_amount a partir de monthly_fee. No inventes importes.
 Sin texto adicional. Solo el JSON."""
 
 EXTRACT_TEXT_PROMPT = """Analiza este documento de contexto de proyecto y extrae la información relevante.
@@ -62,10 +64,12 @@ Responde SOLO con un JSON válido:
   "target_end_date": "YYYY-MM-DD" o null,
   "client_name": "nombre de la empresa cliente o null",
   "pricing_model": "uno de: monthly | per_piece | hourly | project (o null)",
+  "monthly_fee": tarifa mensual recurrente numérica sin símbolo o null si no está escrita,
   "unit_price": precio por unidad numérico o null,
   "unit_label": "etiqueta de la unidad (pieza, artículo, hora, etc.) o null",
   "scope": "descripción detallada del alcance/scope aprobado del proyecto"
 }
+Mantén budget_amount (presupuesto total) y monthly_fee (tarifa mensual) separados. No derives ni inventes uno desde el otro.
 Sin texto adicional. Solo el JSON."""
 
 logger = logging.getLogger(__name__)
@@ -400,7 +404,7 @@ async def get_project_templates(
             "phase_count": len(t.phases or []),
             "task_count": len(t.default_tasks or []),
             "pricing_model": t.pricing_model,
-            "monthly_fee": float(t.monthly_fee) if t.monthly_fee else None,
+            "monthly_fee": float(t.monthly_fee) if t.monthly_fee is not None else None,
             "is_recurring": t.is_recurring,
         }
         for t in templates
@@ -430,7 +434,7 @@ async def get_template_detail(
         "phases": tpl.phases or [],
         "default_tasks": tpl.default_tasks or [],
         "pricing_model": tpl.pricing_model,
-        "monthly_fee": float(tpl.monthly_fee) if tpl.monthly_fee else None,
+        "monthly_fee": float(tpl.monthly_fee) if tpl.monthly_fee is not None else None,
         "created_at": tpl.created_at.isoformat() if tpl.created_at else None,
     }
 

@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { projectsApi, clientsApi } from "@/lib/api"
 import type { ProjectListItem, ProjectStatus, ProjectDraft } from "@/lib/types"
 import { projectPeriodBounds } from "@/lib/project-filters"
+import { projectCreateFromDraft } from "@/lib/project-draft"
 import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -672,12 +673,12 @@ function TemplateDialog({
                 </span>
               )}
             </div>
-            {(selectedTemplate.pricing_model || selectedTemplate.monthly_fee) && (
+            {(selectedTemplate.pricing_model || selectedTemplate.monthly_fee != null) && (
               <div className="flex gap-3 text-muted-foreground">
                 {selectedTemplate.pricing_model && (
                   <span>Modelo: <span className="text-foreground font-medium">{selectedTemplate.pricing_model}</span></span>
                 )}
-                {selectedTemplate.monthly_fee && (
+                {selectedTemplate.monthly_fee != null && (
                   <span>Fee: <span className="text-foreground font-medium">{formatCurrency(selectedTemplate.monthly_fee)}</span></span>
                 )}
               </div>
@@ -737,20 +738,7 @@ function ImportFromPdfDialog({
 
   const createMutation = useMutation({
     mutationFn: () =>
-      projectsApi.create({
-        name: formData.name ?? "",
-        client_id: parseInt(clientId),
-        description: formData.description ?? undefined,
-        project_type: formData.project_type ?? undefined,
-        is_recurring: formData.is_recurring ?? false,
-        budget_amount: formData.budget_amount ?? undefined,
-        start_date: formData.start_date ?? undefined,
-        target_end_date: formData.target_end_date ?? undefined,
-        pricing_model: formData.pricing_model ?? undefined,
-        unit_price: formData.unit_price ?? undefined,
-        unit_label: formData.unit_label ?? undefined,
-        scope: formData.scope ?? undefined,
-      }),
+      projectsApi.create(projectCreateFromDraft(formData, parseInt(clientId))),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] })
       toast.success("Proyecto creado")
@@ -839,13 +827,22 @@ function ImportFromPdfDialog({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Presupuesto (€)</Label>
+              <Label>Presupuesto total (EUR)</Label>
               <Input
                 type="number"
                 value={formData.budget_amount ?? ""}
                 onChange={(e) => setFormData({ ...formData, budget_amount: e.target.value ? parseFloat(e.target.value) : undefined })}
               />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Tarifa mensual (EUR)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              value={formData.monthly_fee ?? ""}
+              onChange={(e) => setFormData({ ...formData, monthly_fee: e.target.value ? parseFloat(e.target.value) : undefined })}
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -974,20 +971,7 @@ function ImportFromTextDialog({
 
   const createMutation = useMutation({
     mutationFn: () =>
-      projectsApi.create({
-        name: formData.name ?? "",
-        client_id: parseInt(clientId),
-        description: formData.description ?? undefined,
-        project_type: formData.project_type ?? undefined,
-        is_recurring: formData.is_recurring ?? false,
-        budget_amount: formData.budget_amount ?? undefined,
-        start_date: formData.start_date ?? undefined,
-        target_end_date: formData.target_end_date ?? undefined,
-        pricing_model: formData.pricing_model ?? undefined,
-        unit_price: formData.unit_price ?? undefined,
-        unit_label: formData.unit_label ?? undefined,
-        scope: formData.scope ?? undefined,
-      }),
+      projectsApi.create(projectCreateFromDraft(formData, parseInt(clientId))),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] })
       toast.success("Proyecto creado")
@@ -1076,13 +1060,22 @@ function ImportFromTextDialog({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Presupuesto (EUR)</Label>
+              <Label>Presupuesto total (EUR)</Label>
               <Input
                 type="number"
                 value={formData.budget_amount ?? ""}
                 onChange={(e) => setFormData({ ...formData, budget_amount: e.target.value ? parseFloat(e.target.value) : undefined })}
               />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Tarifa mensual (EUR)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              value={formData.monthly_fee ?? ""}
+              onChange={(e) => setFormData({ ...formData, monthly_fee: e.target.value ? parseFloat(e.target.value) : undefined })}
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
