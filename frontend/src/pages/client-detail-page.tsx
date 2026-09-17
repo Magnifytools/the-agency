@@ -35,6 +35,7 @@ import { FichaTab } from "@/components/clients/ficha-tab"
 import { useAuth } from "@/context/auth-context"
 import { clientKeys, holdedKeys, projectKeys, timeKeys } from "@/lib/query-keys"
 import { formatCurrency } from "@/lib/format"
+import { TaskPanel } from "@/components/tasks/task-panel"
 
 function formatMinutes(m: number): string {
   const h = Math.floor(m / 60)
@@ -219,11 +220,13 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
 }
 
 export default function ClientDetailPage() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, hasPermission } = useAuth()
   const { id } = useParams<{ id: string }>()
   const clientId = Number(id)
   const [searchParams, setSearchParams] = useSearchParams()
   const [timeLogTaskId, setTimeLogTaskId] = useState<{ id: number; title: string } | null>(null)
+  const [taskPanelId, setTaskPanelId] = useState<number | null>(null)
+  const [creatingTask, setCreatingTask] = useState(false)
   const [whatIfOpen, setWhatIfOpen] = useState(false)
 
   const validTabs = ["ficha", "actividad", "tareas", "proyectos", "comunicaciones", "contactos", "panel", "tiempo", "facturacion", "recursos", "seo", "informes", "ajustes", "facturas"] as const
@@ -539,7 +542,7 @@ export default function ClientDetailPage() {
       {activeTab === "tareas" && (
         <Card>
           <CardHeader>
-            <CardTitle>Tareas</CardTitle>
+            <div className="flex items-center justify-between"><CardTitle>Tareas</CardTitle>{hasPermission("tasks", true) && <Button size="sm" onClick={() => setCreatingTask(true)}>Nueva tarea</Button>}</div>
           </CardHeader>
           <CardContent className="pt-4">
             <Table>
@@ -555,7 +558,7 @@ export default function ClientDetailPage() {
               <TableBody>
                 {tasks.map((t) => (
                   <TableRow key={t.id}>
-                    <TableCell className="font-medium">{t.title}</TableCell>
+                    <TableCell><button type="button" className="font-medium text-left hover:text-brand hover:underline" onClick={() => setTaskPanelId(t.id)}>{t.title}</button></TableCell>
                     <TableCell>{taskStatusBadge(t.status)}</TableCell>
                     <TableCell className="mono">{t.estimated_minutes ? formatMinutes(t.estimated_minutes) : "-"}</TableCell>
                     <TableCell className="mono">{t.actual_minutes ? formatMinutes(t.actual_minutes) : "-"}</TableCell>
@@ -796,6 +799,13 @@ export default function ClientDetailPage() {
           onOpenChange={(open) => !open && setTimeLogTaskId(null)}
         />
       )}
+      <TaskPanel
+        open={taskPanelId !== null || creatingTask}
+        taskId={taskPanelId}
+        defaults={creatingTask ? { clientId } : undefined}
+        onOpenChange={(open) => { if (!open) { setTaskPanelId(null); setCreatingTask(false) } }}
+        onOpenTime={(task) => { setTaskPanelId(null); setTimeLogTaskId({ id: task.id, title: task.title }) }}
+      />
 
       {/* What-If Modal */}
       <Dialog open={whatIfOpen} onOpenChange={setWhatIfOpen}>

@@ -4,7 +4,7 @@ import { useBusinessDate } from "@/hooks/use-business-date"
 import { useMemo, useState } from "react"
 import { useAuth } from "@/context/auth-context"
 import { ProjectTaskList } from "@/components/projects/project-task-list"
-import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom"
+import { useParams, Link, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 import {
@@ -18,9 +18,7 @@ import {
   List,
   GanttChartSquare,
   Columns,
-  ExternalLink,
   Search,
-  User,
   Copy,
   AlertTriangle,
 } from "lucide-react"
@@ -28,7 +26,6 @@ import { toast } from "sonner"
 import { projectsApi, tasksApi, usersApi } from "@/lib/api"
 import type { Project, ProjectStatus, PhaseStatus, Task, TaskStatus, ProjectClosingStatus } from "@/lib/types"
 import { isEnabled } from "@/lib/hidden-modules"
-import { formatCivilDate } from "@/lib/dates"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -36,7 +33,6 @@ import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import { getErrorMessage } from "@/lib/utils"
 import { GanttChart } from "@/components/gantt/gantt-chart"
 import { ProjectPhaseKanban } from "@/components/projects/project-phase-kanban"
@@ -46,6 +42,8 @@ import { ProjectIdeasTab } from "@/components/projects/project-ideas-tab"
 import { Breadcrumb } from "@/components/ui/breadcrumb"
 import { Skeleton, SkeletonCard } from "@/components/ui/skeleton"
 import { invalidateProjectChange, invalidateTaskChange, projectKeys, taskKeys } from "@/lib/query-keys"
+import { TaskPanel } from "@/components/tasks/task-panel"
+import { TimeLogDialog } from "@/components/timer/time-log-dialog"
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   planning: "Planificación",
@@ -80,9 +78,9 @@ export default function ProjectDetailPage() {
   const [activeTab, setActiveTab] = useState<"tasks" | "ideas" | "evidence" | "billing">("tasks")
   const [previewTaskId, setPreviewTaskId] = useState<number | null>(null)
   const [showMetrics, setShowMetrics] = useState(false)
+  const [timeLogTask, setTimeLogTask] = useState<{ id: number; title: string } | null>(null)
   const [filterStatus, setFilterStatus] = useState<TaskStatus | "all">("all")
   const [filterSearch, setFilterSearch] = useState("")
-  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
   const businessToday = useBusinessDate()
@@ -700,27 +698,23 @@ export default function ProjectDetailPage() {
 
       {/* Add Task Dialog */}
       {showAddTaskDialog !== null && project && (
-        <AddTaskDialog
+        <TaskPanel
           open={showAddTaskDialog !== null}
           onOpenChange={(open) => !open && setShowAddTaskDialog(null)}
-          projectId={projectId}
-          phaseId={showAddTaskDialog}
-          clientId={project.client_id}
+          defaults={{ projectId, phaseId: showAddTaskDialog || null, clientId: project.client_id }}
         />
       )}
 
       {/* Task Preview Dialog */}
       {previewTaskId && (
-        <TaskPreviewDialog
+        <TaskPanel
           taskId={previewTaskId}
           open={previewTaskId !== null}
           onOpenChange={(open) => !open && setPreviewTaskId(null)}
-          onEditFull={(taskId) => {
-            setPreviewTaskId(null)
-            navigate(`/tasks?edit=${taskId}`)
-          }}
+          onOpenTime={(task) => { setPreviewTaskId(null); setTimeLogTask({ id: task.id, title: task.title }) }}
         />
       )}
+      {timeLogTask && <TimeLogDialog taskId={timeLogTask.id} taskTitle={timeLogTask.title} open onOpenChange={(open) => !open && setTimeLogTask(null)} />}
     </div>
   )
 }
@@ -1045,254 +1039,6 @@ function EditProjectDialog({
           </Button>
         </div>
       </form>
-    </Dialog>
-  )
-}
-
-function AddTaskDialog({
-  open,
-  onOpenChange,
-  projectId,
-  phaseId,
-  clientId,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  projectId: number
-  phaseId: number
-  clientId: number
-}) {
-  const queryClient = useQueryClient()
-  const [title, setTitle] = useState("")
-  const [description, setDescription] = useState("")
-  const [assignedTo, setAssignedTo] = useState("")
-  const [priority, setPriority] = useState("")
-  const [dueDate, setDueDate] = useState("")
-  const [estimatedMinutes, setEstimatedMinutes] = useState("")
-
-  const { data: users = [] } = useQuery({
-    queryKey: ["users-all"],
-    queryFn: () => usersApi.listAll(),
-  })
-
-  const createMutation = useMutation({
-    mutationFn: () =>
-      tasksApi.create({
-        title,
-        description: description || undefined,
-        client_id: clientId,
-        project_id: projectId,
-        phase_id: phaseId || null,
-        assigned_to: assignedTo ? parseInt(assignedTo) : undefined,
-        priority: (priority as "urgent" | "high" | "medium" | "low") || undefined,
-        due_date: dueDate || undefined,
-        estimated_minutes: estimatedMinutes ? parseInt(estimatedMinutes) : undefined,
-      }),
-    onSuccess: () => {
-      invalidateTaskChange(queryClient, { projectId, clientId })
-      toast.success("Tarea añadida")
-      onOpenChange(false)
-      setTitle("")
-      setDescription("")
-      setAssignedTo("")
-      setPriority("")
-      setDueDate("")
-      setEstimatedMinutes("")
-    },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al crear tarea")),
-  })
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogHeader>
-        <DialogTitle>{phaseId ? "Añadir tarea a la fase" : "Añadir tarea al proyecto"}</DialogTitle>
-      </DialogHeader>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          createMutation.mutate()
-        }}
-        className="space-y-4 mt-4"
-      >
-        <div className="space-y-2">
-          <Label htmlFor="project-detail-page-field-20">Título *</Label>
-          <Input id="project-detail-page-field-20"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Nombre de la tarea"
-            required
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="project-detail-page-field-21">Asignado a</Label>
-            <Select id="project-detail-page-field-21" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
-              <option value="">Sin asignar</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>{u.full_name}</option>
-              ))}
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="project-detail-page-field-22">Prioridad</Label>
-            <Select id="project-detail-page-field-22" value={priority} onChange={(e) => setPriority(e.target.value)}>
-              <option value="">Media (por defecto)</option>
-              <option value="urgent">Urgente</option>
-              <option value="high">Alta</option>
-              <option value="medium">Media</option>
-              <option value="low">Baja</option>
-            </Select>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="project-detail-page-field-23">Fecha límite</Label>
-            <Input id="project-detail-page-field-23"
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="project-detail-page-field-24">Tiempo estimado (minutos)</Label>
-            <Input id="project-detail-page-field-24"
-              type="number"
-              value={estimatedMinutes}
-              onChange={(e) => setEstimatedMinutes(e.target.value)}
-              placeholder="60"
-            />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Label>Descripción</Label>
-          <Textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Descripción de la tarea (opcional)"
-            rows={3}
-          />
-        </div>
-        <div className="flex justify-end gap-2 pt-4">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button type="submit" disabled={createMutation.isPending}>
-            Añadir
-          </Button>
-        </div>
-      </form>
-    </Dialog>
-  )
-}
-
-
-// --- Task Preview Dialog (lightweight view from project) ---
-
-const TASK_STATUS_LABELS: Record<string, string> = {
-  backlog: "Backlog",
-  pending: "Pendiente",
-  in_progress: "En curso",
-  waiting: "En espera",
-  in_review: "En revisión",
-  advanced: "Avanzada",
-  completed: "Completada",
-}
-
-const TASK_PRIORITY_LABELS: Record<string, string> = {
-  urgent: "Urgente",
-  high: "Alta",
-  medium: "Media",
-  low: "Baja",
-}
-
-function TaskPreviewDialog({
-  taskId,
-  open,
-  onOpenChange,
-  onEditFull,
-}: {
-  taskId: number
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onEditFull: (taskId: number) => void
-}) {
-  const { data: task, isLoading, isError, error, refetch } = useQuery({
-    queryKey: taskKeys.detail(taskId),
-    queryFn: () => tasksApi.get(taskId),
-    enabled: open,
-  })
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogHeader>
-        <DialogTitle>Detalle de tarea</DialogTitle>
-      </DialogHeader>
-      {isError && <div role="alert" className="space-y-2 text-sm"><p>{getErrorMessage(error, "No se pudo cargar la tarea.")}{task && " Se muestran los últimos datos recibidos."}</p><Button variant="outline" onClick={() => refetch()}>Reintentar tarea</Button></div>}
-      {isLoading ? (
-        <div className="py-8 text-center text-sm text-muted-foreground">Cargando...</div>
-      ) : task ? (
-        <div className="space-y-4 mt-2">
-          <h3 className="text-base font-semibold">{task.title}</h3>
-          {task.description && (
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{task.description}</p>
-          )}
-          {task.link_url && (
-            <a
-              href={task.link_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-brand hover:underline"
-            >
-              <ExternalLink className="w-3 h-3" />
-              {task.link_url.replace(/^https?:\/\//, "").slice(0, 60)}
-              {task.link_url.replace(/^https?:\/\//, "").length > 60 ? "…" : ""}
-            </a>
-          )}
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <span className="text-xs text-muted-foreground block">Estado</span>
-              <Badge variant="outline">{TASK_STATUS_LABELS[task.status] ?? task.status}</Badge>
-            </div>
-            <div>
-              <span className="text-xs text-muted-foreground block">Prioridad</span>
-              <Badge variant="outline">{TASK_PRIORITY_LABELS[task.priority] ?? task.priority}</Badge>
-            </div>
-            {task.assigned_user_name && (
-              <div>
-                <span className="text-xs text-muted-foreground block">Responsable</span>
-                <span className="flex items-center gap-1"><User className="w-3 h-3" />{task.assigned_user_name}</span>
-              </div>
-            )}
-            {task.client_name && (
-              <div>
-                <span className="text-xs text-muted-foreground block">Cliente</span>
-                <span>{task.client_name}</span>
-              </div>
-            )}
-            {task.due_date && (
-              <div>
-                <span className="text-xs text-muted-foreground block">Fecha límite</span>
-                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{formatCivilDate(task.due_date)}</span>
-              </div>
-            )}
-            {task.estimated_minutes && (
-              <div>
-                <span className="text-xs text-muted-foreground block">Estimado</span>
-                <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{task.estimated_minutes}min</span>
-              </div>
-            )}
-          </div>
-          <div className="flex justify-end gap-2 pt-2 border-t border-border">
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>Cerrar</Button>
-            <Button onClick={() => onEditFull(taskId)} className="gap-1.5">
-              <ExternalLink className="w-3.5 h-3.5" />
-              Editar completa
-            </Button>
-          </div>
-        </div>
-      ) : (
-        !isError && <div className="py-8 text-center text-sm text-muted-foreground">No se encontró la tarea</div>
-      )}
     </Dialog>
   )
 }

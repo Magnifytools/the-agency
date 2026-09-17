@@ -1,22 +1,19 @@
 import { useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query"
-import { tasksApi, clientsApi, categoriesApi, usersApi, timeEntriesApi, projectsApi } from "@/lib/api"
-import type { Task, TaskCreate, TaskStatus, TaskPriority, TimeEntry } from "@/lib/types"
+import { tasksApi, clientsApi, categoriesApi, usersApi } from "@/lib/api"
+import type { Task, TaskCreate, TaskStatus, TaskPriority } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { usePagination } from "@/hooks/use-pagination"
 import { useAuth } from "@/context/auth-context"
 import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { InfoTooltip } from "@/components/ui/tooltip"
-import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare, Loader2, CalendarDays, ChevronDown, ChevronUp, MessageSquare, Paperclip, Download, Send, Repeat, Eye } from "lucide-react"
+import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare, CalendarDays, Repeat } from "lucide-react"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
@@ -30,12 +27,13 @@ import { MyDayView } from "@/components/tasks/my-day-view"
 import { KanbanBoard } from "@/components/tasks/kanban-board"
 import { TaskCalendarView } from "@/components/tasks/task-calendar-view"
 import { WeeklyPlannerView } from "@/components/tasks/weekly-planner-view"
+import { TaskPanel } from "@/components/tasks/task-panel"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
-import { initialTasksView, shouldPreserveCurrentProject, taskQueryKeyWithWeek, withExplicitActualMinutes } from "@/components/tasks/task-page-utils"
-import { invalidateTaskChange, optimisticallyUpdateExactQuery, projectKeys, restoreQuerySnapshot, taskKeys, timeKeys } from "@/lib/query-keys"
+import { initialTasksView, taskQueryKeyWithWeek } from "@/components/tasks/task-page-utils"
+import { invalidateTaskChange, optimisticallyUpdateExactQuery, restoreQuerySnapshot, taskKeys } from "@/lib/query-keys"
 import type { OperationalImpact } from "@/lib/query-keys"
-import { addCivilDays, formatCivilDate, timeEntryBusinessDate } from "@/lib/dates"
+import { addCivilDays, formatCivilDate } from "@/lib/dates"
 import { useBusinessDate } from "@/hooks/use-business-date"
 
 const priorityBadge = (priority: TaskPriority) => {
@@ -85,8 +83,6 @@ export default function TasksPage() {
     const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }
   })
 
-  const [depSearch, setDepSearch] = useState("")
-
   // Filters
   const [filterClient, setFilterClient] = useState<string>("")
   const [filterCategory, setFilterCategory] = useState<string>("")
@@ -120,24 +116,6 @@ export default function TasksPage() {
   })
   const [bulkStatus, setBulkStatus] = useState("")
 
-  // Checklist state
-  const [newChecklistText, setNewChecklistText] = useState("")
-  const [expandedChecklistId, setExpandedChecklistId] = useState<number | null>(null)
-  // Comments & attachments state
-  const [newCommentText, setNewCommentText] = useState("")
-  const [attachmentFileRef, setAttachmentFileRef] = useState<HTMLInputElement | null>(null)
-  // Dialog — collapsible sections
-  const [showDeadlineFields, setShowDeadlineFields] = useState(false)
-  const [showHierarchyFields, setShowHierarchyFields] = useState(false)
-  const [showAdditionalFields, setShowAdditionalFields] = useState(false)
-  // Recurring fields state
-  const [isRecurring, setIsRecurring] = useState(false)
-  const [recurrencePattern, setRecurrencePattern] = useState<string>("weekly")
-  const [recurrenceDay, setRecurrenceDay] = useState<number>(0)
-  const [showRecurringFields, setShowRecurringFields] = useState(false)
-  const [formClientId, setFormClientId] = useState<string>("")
-  const [formProjectId, setFormProjectId] = useState<string>("")
-  const [actualMinutesEdited, setActualMinutesEdited] = useState(false)
   const deepLinkTaskId = searchParams.get("edit") || searchParams.get("task") || searchParams.get("id")
 
   // Calendar date range: first and last day of the selected month
@@ -260,32 +238,11 @@ export default function TasksPage() {
     queryFn: () => usersApi.listAll(),
   })
 
-  const { data: projects = [] } = useQuery({
-    queryKey: projectKeys.list(["active"]),
-    queryFn: () => projectsApi.listAll({ status: "active" }),
-    staleTime: 60_000,
-  })
-  const formProjects = formClientId
-    ? projects.filter((project) => project.client_id === Number(formClientId))
-    : projects
-  const suggestedProject = formClientId && formProjects.length === 1 ? formProjects[0] : null
-
   // Recurring templates query (only fetched when tab is active)
   const { data: recurringTemplates = [] } = useQuery({
     queryKey: taskKeys.recurring(),
     queryFn: () => tasksApi.listAll({ is_recurring: true }),
     enabled: view === "recurring",
-  })
-
-  const createMutation = useMutation({
-    mutationFn: (data: TaskCreate) => tasksApi.create(data),
-    onSuccess: (task) => {
-      invalidateTaskViews({ projectId: task.project_id, clientId: task.client_id })
-      queryClient.invalidateQueries({ queryKey: taskKeys.recurring() })
-      closeDialog()
-      toast.success("Tarea creada")
-    },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al crear tarea")),
   })
 
   const updateMutation = useMutation({
@@ -336,116 +293,18 @@ export default function TasksPage() {
   })
 
 
-  // Checklist query — enabled only when editing an existing task
-  const { data: checklistItems = [], refetch: refetchChecklist } = useQuery({
-    queryKey: ["task-checklist", editing?.id],
-    queryFn: () => tasksApi.checklist.list(editing!.id),
-    enabled: !!editing?.id,
-  })
-
-  const addChecklistMut = useMutation({
-    mutationFn: (text: string) => tasksApi.checklist.create(editing!.id, text),
-    onSuccess: () => { refetchChecklist(); setNewChecklistText("") },
-  })
-  const toggleChecklistMut = useMutation({
-    mutationFn: ({ id, is_done }: { id: number; is_done: boolean }) =>
-      tasksApi.checklist.update(editing!.id, id, { is_done }),
-    onSuccess: () => { refetchChecklist(); invalidateTaskViews() },
-  })
-  const updateChecklistMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<{ text: string; description: string | null; is_done: boolean; assigned_to: number | null; due_date: string | null }> }) =>
-      tasksApi.checklist.update(editing!.id, id, data),
-    onSuccess: () => refetchChecklist(),
-  })
-  const deleteChecklistMut = useMutation({
-    mutationFn: (id: number) => tasksApi.checklist.delete(editing!.id, id),
-    onSuccess: () => refetchChecklist(),
-  })
-  // Comments queries/mutations
-  const { data: comments = [], refetch: refetchComments } = useQuery({
-    queryKey: ["task-comments", editing?.id],
-    queryFn: () => tasksApi.comments.list(editing!.id),
-    enabled: !!editing?.id,
-  })
-  const addCommentMut = useMutation({
-    mutationFn: (text: string) => tasksApi.comments.create(editing!.id, text),
-    onSuccess: () => { refetchComments(); setNewCommentText("") },
-  })
-  const deleteCommentMut = useMutation({
-    mutationFn: (id: number) => tasksApi.comments.delete(editing!.id, id),
-    onSuccess: () => refetchComments(),
-  })
-
-  // Time entries for task detail
-  const { data: taskTimeEntries = [] } = useQuery<TimeEntry[]>({
-    queryKey: timeKeys.task(editing?.id ?? 0),
-    queryFn: () => timeEntriesApi.list({ task_id: editing!.id }),
-    enabled: !!editing?.id,
-  })
-
-  // Attachments queries/mutations
-  const { data: attachments = [], refetch: refetchAttachments } = useQuery({
-    queryKey: ["task-attachments", editing?.id],
-    queryFn: () => tasksApi.attachments.list(editing!.id),
-    enabled: !!editing?.id,
-  })
-  const uploadAttachmentMut = useMutation({
-    mutationFn: (file: File) => tasksApi.attachments.upload(editing!.id, file),
-    onSuccess: () => refetchAttachments(),
-    onError: (err) => toast.error(getErrorMessage(err, "Error al subir archivo")),
-  })
-  const deleteAttachmentMut = useMutation({
-    mutationFn: (id: number) => tasksApi.attachments.delete(editing!.id, id),
-    onSuccess: () => refetchAttachments(),
-  })
-  const handleDownloadAttachment = async (attachmentId: number, filename: string) => {
-    try {
-      const blob = await tasksApi.attachments.download(editing!.id, attachmentId)
-      const url = URL.createObjectURL(blob as Blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = filename
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (err) {
-      toast.error(getErrorMessage(err, "Error al descargar"))
-    }
-  }
-
   const closeDialog = () => {
     setDialogOpen(false)
     setEditing(null)
-    setNewChecklistText("")
-    setNewCommentText("")
   }
 
   const openCreate = () => {
     setEditing(null)
-    setFormClientId("")
-    setFormProjectId("")
-    setActualMinutesEdited(false)
-    setShowDeadlineFields(false)
-    setShowHierarchyFields(false)
-    setShowAdditionalFields(false)
-    setIsRecurring(false)
-    setRecurrencePattern("weekly")
-    setRecurrenceDay(0)
-    setShowRecurringFields(false)
     setDialogOpen(true)
   }
 
   const openEdit = (task: Task) => {
     setEditing(task)
-    setFormClientId(task.client_id ? String(task.client_id) : "")
-    setFormProjectId(task.project_id ? String(task.project_id) : "")
-    setActualMinutesEdited(false)
-    setShowDeadlineFields(false)
-    setShowHierarchyFields(false)
-    setShowAdditionalFields(false)
-    setIsRecurring(task.is_recurring)
-    setRecurrencePattern(task.recurrence_pattern ?? "weekly")
-    setRecurrenceDay(task.recurrence_day ?? 0)
-    setShowRecurringFields(task.is_recurring)
     setDialogOpen(true)
   }
 
@@ -478,38 +337,6 @@ export default function TasksPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deepLinkTaskId])
-
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    const fd = new FormData(e.currentTarget)
-    const clientIdStr = fd.get("client_id") as string
-    const data: TaskCreate = {
-      title: fd.get("title") as string,
-      description: (fd.get("description") as string) || null,
-      status: (fd.get("status") as TaskStatus) || "pending",
-      priority: (fd.get("priority") as TaskPriority) || "medium",
-      estimated_minutes: fd.get("estimated_minutes") ? Number(fd.get("estimated_minutes")) : null,
-      due_date: (fd.get("due_date") as string) || null,
-      client_id: clientIdStr ? Number(clientIdStr) : null,
-      project_id: fd.get("project_id") ? Number(fd.get("project_id")) : null,
-      category_id: fd.get("category_id") ? Number(fd.get("category_id")) : null,
-      assigned_to: fd.get("assigned_to") ? Number(fd.get("assigned_to")) : null,
-      depends_on: fd.get("depends_on") ? Number(fd.get("depends_on")) : null,
-      scheduled_date: (fd.get("scheduled_date") as string) || null,
-      waiting_for: (fd.get("waiting_for") as string) || null,
-      follow_up_date: (fd.get("follow_up_date") as string) || null,
-      is_recurring: isRecurring,
-      recurrence_pattern: isRecurring ? recurrencePattern : null,
-      recurrence_day: isRecurring ? recurrenceDay : null,
-      recurrence_end_date: isRecurring ? ((fd.get("recurrence_end_date") as string) || null) : null,
-    }
-    const submittedData = withExplicitActualMinutes(data, fd.get("actual_minutes"), actualMinutesEdited)
-    if (editing) {
-      updateMutation.mutate({ id: editing.id, data: submittedData })
-    } else {
-      createMutation.mutate(submittedData)
-    }
-  }
 
   return (
     <div className="space-y-4">
@@ -993,619 +820,12 @@ export default function TasksPage() {
       )}
 
       {/* Create/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog() }}>
-        <DialogHeader>
-          <DialogTitle>{editing ? "Editar tarea" : "Nueva tarea"}</DialogTitle>
-          {editing?.created_by_name && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Creada por {editing.created_by_name} · {new Date(editing.created_at).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}
-            </p>
-          )}
-        </DialogHeader>
-        <form key={editing?.id ?? "new"} onSubmit={handleSubmit} className="space-y-4">
-          {/* Title */}
-          <div className="space-y-2">
-            <Label htmlFor="title">Título *</Label>
-            <Input id="title" name="title" defaultValue={editing?.title ?? ""} required />
-          </div>
-
-          {/* Description — prominent, tall */}
-          <div className="space-y-2">
-            <Label htmlFor="description">Descripción</Label>
-            <Textarea
-              id="description"
-              name="description"
-              defaultValue={editing?.description ?? ""}
-              rows={6}
-              className="resize-y min-h-[120px]"
-              placeholder="Contenido de la nota o descripción de la tarea..."
-            />
-          </div>
-
-          <div className="border border-border/60 rounded-lg p-3">
-            <p className="text-sm font-medium mb-3">Planificación y responsable</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="client_id" className="text-xs">Cliente</Label>
-                  <Select id="client_id" name="client_id" value={formClientId} onChange={(e) => { setFormClientId(e.target.value); setFormProjectId("") }}>
-                    <option value="">Seleccionar...</option>
-                    {clients.map((c) => (
-                      <option key={c.id} value={String(c.id)}>{c.name}</option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="project_id" className="text-xs">Proyecto</Label>
-                  <Select id="project_id" name="project_id" value={formProjectId} onChange={(e) => setFormProjectId(e.target.value)} disabled={!formClientId || formProjects.length === 0}>
-                    <option value="">{formClientId ? "Sin proyecto" : "Selecciona primero un cliente"}</option>
-                    {shouldPreserveCurrentProject(editing?.project_id, formProjectId, formProjects.map((project) => project.id)) && (
-                      <option value={formProjectId}>{editing?.project_name ?? "Proyecto actual"} (cerrado)</option>
-                    )}
-                    {formProjects.map((p) => (
-                      <option key={p.id} value={String(p.id)}>{p.name}</option>
-                    ))}
-                  </Select>
-                  {suggestedProject && !formProjectId && (
-                    <p className="text-xs text-muted-foreground">Proyecto activo sugerido: <button type="button" className="underline font-medium text-foreground" onClick={() => setFormProjectId(String(suggestedProject.id))}>{suggestedProject.name}</button>. Selecciónalo si corresponde.</p>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="scheduled_date" className="text-xs">Planificar para</Label>
-                  <Input
-                    id="scheduled_date"
-                    name="scheduled_date"
-                    type="date"
-                    defaultValue={editing?.scheduled_date ?? ""}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="category_id" className="text-xs">Categoría</Label>
-                  <Select id="category_id" name="category_id" defaultValue={editing?.category_id ?? ""}>
-                    <option value="">Sin categoría</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="assigned_to" className="text-xs">Asignado a</Label>
-                  <Select id="assigned_to" name="assigned_to" defaultValue={editing?.assigned_to ?? ""}>
-                    <option value="">Sin asignar</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.id}>{u.full_name}</option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="status" className="text-xs">Estado</Label>
-                  <Select id="status" name="status" defaultValue={editing?.status ?? "pending"}>
-                    <option value="backlog">Backlog</option>
-                    <option value="pending">Pendiente</option>
-                    <option value="in_progress">En curso</option>
-                    <option value="waiting">En espera</option>
-                    <option value="in_review">En revisión</option>
-                    <option value="advanced">Avanzada (sigo mañana)</option>
-                    <option value="completed">Completada</option>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="priority" className="text-xs">Prioridad</Label>
-                  <Select id="priority" name="priority" defaultValue={editing?.priority ?? "medium"}>
-                    <option value="urgent">Urgente</option>
-                    <option value="high">Alta</option>
-                    <option value="medium">Media</option>
-                    <option value="low">Baja</option>
-                  </Select>
-                </div>
-              </div>
-          </div>
-
-          {/* Plazos — collapsible */}
-          <div className="border border-border/60 rounded-lg overflow-hidden">
-            <button
-              type="button"
-              className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-              onClick={() => setShowDeadlineFields((v) => !v)}
-            >
-              <span>Plazos</span>
-              {showDeadlineFields
-                ? <ChevronUp className="h-4 w-4" />
-                : <ChevronDown className="h-4 w-4" />}
-            </button>
-            <div className={showDeadlineFields ? "p-3 pt-2 border-t border-border/60" : "hidden"}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="estimated_minutes" className="text-xs">Minutos estimados</Label>
-                  <Input
-                    id="estimated_minutes"
-                    name="estimated_minutes"
-                    type="number"
-                    defaultValue={editing?.estimated_minutes ?? ""}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="actual_minutes" className="text-xs">Minutos reales</Label>
-                  <Input
-                    id="actual_minutes"
-                    name="actual_minutes"
-                    type="number"
-                    defaultValue={editing?.actual_minutes ?? ""}
-                    onChange={() => setActualMinutesEdited(true)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="due_date" className="text-xs">Fecha límite</Label>
-                  <Input
-                    id="due_date"
-                    name="due_date"
-                    type="date"
-                    defaultValue={editing?.due_date ? editing.due_date.split("T")[0] : ""}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="follow_up_date" className="text-xs">Fecha de seguimiento</Label>
-                  <Input
-                    id="follow_up_date"
-                    name="follow_up_date"
-                    type="date"
-                    defaultValue={editing?.follow_up_date ?? ""}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="waiting_for" className="text-xs">En espera de</Label>
-                  <Input
-                    id="waiting_for"
-                    name="waiting_for"
-                    defaultValue={editing?.waiting_for ?? ""}
-                    placeholder="Ej: respuesta del cliente"
-                  />
-                </div>
-                {/* Recurring section */}
-                <div className="space-y-1.5 col-span-2">
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() => setShowRecurringFields((v) => !v)}
-                  >
-                    <Repeat className="w-3 h-3" />
-                    <span>Repetir</span>
-                    {showRecurringFields ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                  </button>
-                  {showRecurringFields && (
-                    <div className="space-y-2 mt-1 p-2 border border-border/60 rounded-md bg-muted/10">
-                      <label className="flex items-center gap-2 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={isRecurring}
-                          onChange={(e) => setIsRecurring(e.target.checked)}
-                          className="rounded"
-                        />
-                        Tarea recurrente
-                      </label>
-                      {isRecurring && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <div className="space-y-1">
-                            <Label className="text-xs">Patrón</Label>
-                            <Select
-                              value={recurrencePattern}
-                              onChange={(e) => setRecurrencePattern(e.target.value)}
-                            >
-                              <option value="daily">Diaria</option>
-                              <option value="weekly">Semanal</option>
-                              <option value="biweekly">Bisemanal</option>
-                              <option value="monthly">Mensual</option>
-                            </Select>
-                          </div>
-                          {(recurrencePattern === "weekly" || recurrencePattern === "biweekly") && (
-                            <div className="space-y-1">
-                              <Label className="text-xs">Día</Label>
-                              <Select
-                                value={String(recurrenceDay)}
-                                onChange={(e) => setRecurrenceDay(Number(e.target.value))}
-                              >
-                                <option value="0">Lunes</option>
-                                <option value="1">Martes</option>
-                                <option value="2">Miércoles</option>
-                                <option value="3">Jueves</option>
-                                <option value="4">Viernes</option>
-                              </Select>
-                            </div>
-                          )}
-                          {recurrencePattern === "monthly" && (
-                            <div className="space-y-1">
-                              <Label className="text-xs">Día del mes</Label>
-                              <Input
-                                type="number"
-                                min={1}
-                                max={28}
-                                value={recurrenceDay}
-                                onChange={(e) => setRecurrenceDay(Number(e.target.value))}
-                              />
-                            </div>
-                          )}
-                          <div className="space-y-1 col-span-2">
-                            <Label htmlFor="recurrence_end_date" className="text-xs">Fecha fin (opcional)</Label>
-                            <Input
-                              id="recurrence_end_date"
-                              name="recurrence_end_date"
-                              type="date"
-                              defaultValue={editing?.recurrence_end_date ?? ""}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-              </div>
-            </div>
-          </div>
-
-          {/* Jerarquía — collapsible */}
-          <div className="border border-border/60 rounded-lg overflow-hidden">
-            <button
-              type="button"
-              className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-              onClick={() => setShowHierarchyFields((v) => !v)}
-            >
-              <span>Jerarquía</span>
-              {showHierarchyFields
-                ? <ChevronUp className="h-4 w-4" />
-                : <ChevronDown className="h-4 w-4" />}
-            </button>
-            <div className={showHierarchyFields ? "p-3 pt-2 border-t border-border/60" : "hidden"}>
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="depends_on" className="text-xs">Depende de <span className="text-muted-foreground">(opcional)</span></Label>
-                  <Input
-                    placeholder="Buscar tarea..."
-                    value={depSearch}
-                    onChange={(e) => setDepSearch(e.target.value)}
-                    className="h-7 text-xs mb-1"
-                  />
-                  <Select id="depends_on" name="depends_on" defaultValue={editing?.depends_on ?? ""} className="max-h-40">
-                    <option value="">Sin dependencia</option>
-                    {allTasks
-                      .filter((t) => t.id !== editing?.id)
-                      .filter((t) => !depSearch || t.title.toLowerCase().includes(depSearch.toLowerCase()) || t.client_name?.toLowerCase().includes(depSearch.toLowerCase()))
-                      .map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.client_name ? `[${t.client_name}] ` : ""}{t.title.length > 50 ? t.title.slice(0, 50) + "…" : t.title}
-                        </option>
-                      ))}
-                  </Select>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center gap-2">
-            {editing && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5"
-                onClick={() => { setDeleteId(editing.id); closeDialog() }}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Eliminar
-              </Button>
-            )}
-            <div className="flex gap-2 ml-auto">
-              {editing && editing.status !== "completed" && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="gap-1.5 text-green-600 border-green-600/30 hover:bg-green-600/10 hover:text-green-500"
-                  onClick={() => {
-                    updateMutation.mutate({ id: editing.id, data: { status: "completed" } })
-                    closeDialog()
-                  }}
-                >
-                  <CheckSquare className="h-3.5 w-3.5" />
-                  Completar
-                </Button>
-              )}
-              <Button type="button" variant="outline" onClick={closeDialog}>
-                Cancelar
-              </Button>
-              <Button type="submit">{editing ? "Guardar" : "Crear"}</Button>
-            </div>
-          </div>
-        </form>
-
-        {/* Subtasks / Checklist — only shown when editing an existing task */}
-        {editing && (
-          <div className="mt-4 border border-border/60 rounded-lg overflow-hidden">
-            <button
-              type="button"
-              className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-              onClick={() => setShowHierarchyFields((v) => !v)}
-            >
-              <span>Subtasks ({checklistItems.filter(i => i.is_done).length}/{checklistItems.length})</span>
-              {showHierarchyFields
-                ? <ChevronUp className="h-4 w-4" />
-                : <ChevronDown className="h-4 w-4" />}
-            </button>
-            <div className={showHierarchyFields ? "p-3 pt-2 border-t border-border/60 space-y-3" : "hidden"}>
-            <div className="space-y-1.5">
-              {checklistItems.map((item) => {
-                const isOverdue = item.due_date && !item.is_done && item.due_date < todayStr
-                const isExpanded = expandedChecklistId === item.id
-                return (
-                <div key={item.id} className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={item.is_done}
-                      onChange={(e) => toggleChecklistMut.mutate({ id: item.id, is_done: e.target.checked })}
-                      className="rounded border-border"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setExpandedChecklistId(isExpanded ? null : item.id)}
-                      className={`text-sm flex-1 min-w-0 truncate text-left ${item.is_done ? "line-through text-muted-foreground" : ""}`}
-                      title="Click para ver/editar descripción"
-                    >
-                      {item.text}
-                      {item.description && <span className="ml-1 text-muted-foreground/50 text-xs">📝</span>}
-                    </button>
-                    <select
-                      value={item.assigned_to ?? ""}
-                      onChange={(e) => updateChecklistMut.mutate({
-                        id: item.id,
-                        data: { assigned_to: e.target.value ? Number(e.target.value) : null },
-                      })}
-                      className="text-xs h-6 w-24 border rounded bg-background px-1 shrink-0"
-                      title="Asignar a"
-                    >
-                      <option value="">—</option>
-                      {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-                    </select>
-                    <div className="flex items-center gap-0.5 shrink-0" title="Fecha de vencimiento de la subtarea">
-                      <span className="text-[10px] text-muted-foreground">Vence</span>
-                      <input
-                        type="date"
-                        value={item.due_date ?? ""}
-                        onChange={(e) => updateChecklistMut.mutate({
-                          id: item.id,
-                          data: { due_date: e.target.value || null },
-                        })}
-                        className={`text-xs h-6 w-28 border rounded bg-background px-1 ${isOverdue ? "text-red-500 border-red-300" : ""}`}
-                      />
-                    </div>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0"
-                      onClick={() => deleteChecklistMut.mutate(item.id)}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                  {isExpanded && (
-                    <textarea
-                      defaultValue={item.description ?? ""}
-                      placeholder="Añadir descripción..."
-                      className="ml-6 w-[calc(100%-1.5rem)] text-xs border rounded bg-muted/30 px-2 py-1.5 resize-none min-h-[48px]"
-                      onBlur={(e) => {
-                        const val = e.target.value.trim() || null
-                        if (val !== (item.description ?? null)) {
-                          updateChecklistMut.mutate({ id: item.id, data: { description: val } })
-                        }
-                      }}
-                    />
-                  )}
-                </div>
-                )
-              })}
-            </div>
-            <div className="flex gap-2">
-              <Input
-                value={newChecklistText}
-                onChange={(e) => setNewChecklistText(e.target.value)}
-                placeholder="Añadir subtask..."
-                className="text-sm h-8"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && newChecklistText.trim()) {
-                    e.preventDefault()
-                    addChecklistMut.mutate(newChecklistText.trim())
-                  }
-                }}
-              />
-              <Button size="sm" variant="outline" className="h-8"
-                onClick={() => newChecklistText.trim() && addChecklistMut.mutate(newChecklistText.trim())}
-                disabled={!newChecklistText.trim()}>
-                <Plus className="h-3 w-3" />
-              </Button>
-            </div>
-            </div>
-          </div>
-        )}
-
-        {/* Time entries — always visible when editing */}
-        {editing && taskTimeEntries.length > 0 && (
-          <div className="mt-4 border border-border/60 rounded-lg p-3 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold flex items-center gap-1.5">
-                <Clock className="h-3.5 w-3.5" /> Tiempo registrado ({taskTimeEntries.length})
-              </p>
-              <span className="text-sm font-mono font-semibold text-brand">
-                {(() => {
-                  const total = taskTimeEntries.reduce((sum, e) => sum + (e.minutes || 0), 0)
-                  const h = Math.floor(total / 60)
-                  const m = total % 60
-                  return h > 0 ? `${h}h ${m}m` : `${m}m`
-                })()}
-              </span>
-            </div>
-            <div className="space-y-1 max-h-40 overflow-y-auto">
-              {taskTimeEntries.slice(0, 10).map((entry) => (
-                <div key={entry.id} className="flex items-center justify-between text-xs bg-muted/50 rounded px-2 py-1.5">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-muted-foreground shrink-0">
-                      {formatCivilDate(timeEntryBusinessDate(entry), { day: "numeric", month: "short" })}
-                    </span>
-                    <span className="font-mono font-medium shrink-0">
-                      {entry.minutes ? `${Math.floor(entry.minutes / 60)}h ${entry.minutes % 60}m` : "—"}
-                    </span>
-                    {entry.notes && (
-                      <span className="text-muted-foreground truncate">{entry.notes}</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {taskTimeEntries.length > 10 && (
-                <p className="text-xs text-muted-foreground text-center">
-                  +{taskTimeEntries.length - 10} registros más
-                </p>
-              )}
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-full"
-              onClick={() => { setTimeLogTask(editing); }}
-            >
-              <Clock className="h-3 w-3 mr-1.5" />
-              Ver todos / Añadir registro
-            </Button>
-          </div>
-        )}
-
-        {/* Datos adicionales — collapsible (comments, attachments) */}
-        {editing && (
-          <div className="mt-4 border border-border/60 rounded-lg overflow-hidden">
-            <button
-              type="button"
-              className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-              onClick={() => setShowAdditionalFields((v) => !v)}
-            >
-              <span>Comentarios y adjuntos</span>
-              {showAdditionalFields
-                ? <ChevronUp className="h-4 w-4" />
-                : <ChevronDown className="h-4 w-4" />}
-            </button>
-            <div className={showAdditionalFields ? "p-3 pt-2 border-t border-border/60 space-y-4" : "hidden"}>
-              {/* Comments */}
-              <div className="space-y-3">
-                <p className="text-sm font-semibold flex items-center gap-1.5">
-                  <MessageSquare className="h-3.5 w-3.5" /> Comentarios ({comments.length})
-                </p>
-                {comments.length > 0 && (
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {comments.map((c) => (
-                      <div key={c.id} className="text-sm bg-muted/50 rounded p-2">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-medium text-xs">{c.user_name ?? `User #${c.user_id}`}</span>
-                          <div className="flex items-center gap-1">
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(c.created_at).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                            </span>
-                            <Button variant="ghost" size="icon" className="h-5 w-5"
-                              onClick={() => deleteCommentMut.mutate(c.id)}>
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                        <p className="text-sm whitespace-pre-wrap">{c.text}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <Textarea
-                    value={newCommentText}
-                    onChange={(e) => setNewCommentText(e.target.value)}
-                    placeholder="Escribe un comentario..."
-                    className="text-sm min-h-[60px] resize-y"
-                    rows={2}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && newCommentText.trim()) {
-                        e.preventDefault()
-                        addCommentMut.mutate(newCommentText.trim())
-                      }
-                    }}
-                  />
-                  <div className="flex justify-end">
-                    <Button size="sm"
-                      onClick={() => newCommentText.trim() && addCommentMut.mutate(newCommentText.trim())}
-                      disabled={!newCommentText.trim() || addCommentMut.isPending}>
-                      {addCommentMut.isPending ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <Send className="h-3 w-3 mr-1.5" />}
-                      Comentar
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Attachments */}
-              <div className="space-y-3 border-t border-border/40 pt-3">
-                <p className="text-sm font-semibold flex items-center gap-1.5">
-                  <Paperclip className="h-3.5 w-3.5" /> Adjuntos ({attachments.length})
-                </p>
-                {attachments.length > 0 && (
-                  <div className="space-y-1.5">
-                    {attachments.map((a) => {
-                      const isImage = a.mime_type?.startsWith("image/")
-                      const isPreviewable = isImage || a.mime_type === "application/pdf"
-                      const previewUrl = `/api/tasks/${editing!.id}/attachments/${a.id}/preview`
-                      return (
-                        <div key={a.id} className="space-y-1">
-                          <div className="flex items-center gap-2 text-sm bg-muted/50 rounded px-2 py-1.5">
-                            <Paperclip className="h-3 w-3 shrink-0" />
-                            <span className="flex-1 truncate">{a.name}</span>
-                            <span className="text-xs text-muted-foreground shrink-0">
-                              {a.size_bytes < 1024 ? `${a.size_bytes} B` : a.size_bytes < 1048576 ? `${Math.round(a.size_bytes / 1024)} KB` : `${(a.size_bytes / 1048576).toFixed(1)} MB`}
-                            </span>
-                            {isPreviewable && (
-                              <Button variant="ghost" size="icon" className="h-6 w-6"
-                                onClick={() => window.open(previewUrl, "_blank")} title="Vista previa">
-                                <Eye className="h-3 w-3" />
-                              </Button>
-                            )}
-                            <Button variant="ghost" size="icon" className="h-6 w-6"
-                              onClick={() => handleDownloadAttachment(a.id, a.name)}>
-                              <Download className="h-3 w-3" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-6 w-6"
-                              onClick={() => deleteAttachmentMut.mutate(a.id)}>
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                          {isImage && (
-                            <img src={previewUrl} alt={a.name} className="ml-5 max-h-32 rounded border object-contain" />
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-                <div>
-                  <input
-                    type="file"
-                    className="hidden"
-                    ref={(el) => setAttachmentFileRef(el)}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) {
-                        uploadAttachmentMut.mutate(file)
-                        e.target.value = ""
-                      }
-                    }}
-                  />
-                  <Button size="sm" variant="outline" className="h-8"
-                    onClick={() => attachmentFileRef?.click()}
-                    disabled={uploadAttachmentMut.isPending}>
-                    {uploadAttachmentMut.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Plus className="h-3 w-3 mr-1" />}
-                    Subir archivo
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </Dialog>
-
-      {/* Time Log Dialog */}
+      <TaskPanel
+        open={dialogOpen}
+        taskId={editing?.id}
+        onOpenChange={(open) => { if (!open) closeDialog() }}
+        onOpenTime={(task) => { setTimeLogTask(task); closeDialog() }}
+      />
       {timeLogTask && (
         <TimeLogDialog
           taskId={timeLogTask.id}
