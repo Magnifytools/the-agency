@@ -301,18 +301,24 @@ function LogsList({ logs, triggerLabels }: { logs: AutomationLogEntry[]; trigger
     <div className="space-y-2">
       {logs.map((log) => (
         <div key={log.id} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card text-sm">
-          {log.success ? (
+          {log.outcome === "skipped" ? (
+            <Clock aria-label="Omitida" className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          ) : log.success ? (
             <CheckCircle2 className="h-4 w-4 text-success flex-shrink-0" />
           ) : (
             <XCircle className="h-4 w-4 text-destructive flex-shrink-0" />
           )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">{log.outcome === "skipped" ? "Omitida" : log.success ? "Completada" : "Fallida"}</span>
               <span className="font-medium truncate">{log.rule_name || `Regla #${log.rule_id}`}</span>
               <Badge variant="secondary" className="text-[10px]">
                 {triggerLabels[log.trigger_event] || log.trigger_event}
               </Badge>
             </div>
+            {log.outcome === "skipped" && typeof log.action_result?.reason === "string" && (
+              <p className="text-xs text-muted-foreground mt-0.5 truncate">{log.action_result.reason}</p>
+            )}
             {log.error_message && (
               <p className="text-xs text-destructive mt-0.5 truncate">{log.error_message}</p>
             )}

@@ -295,6 +295,7 @@ export interface AutomationLogEntry {
   trigger_data: Record<string, unknown> | null
   action_result: Record<string, unknown> | null
   success: boolean
+  outcome: "success" | "skipped" | "error"
   error_message: string | null
   executed_at: string
 }
