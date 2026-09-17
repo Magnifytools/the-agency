@@ -190,7 +190,7 @@ export default function ProjectDetailPage() {
         { label: "Proyectos", href: "/projects" },
         { label: project.name },
       ]} />
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold">{project.name}</h1>
@@ -233,7 +233,7 @@ export default function ProjectDetailPage() {
       {searchParams.get("created") === "1" && <div role="status" className="border-l-2 border-brand pl-4 py-2"><p className="font-medium">Proyecto creado</p><p className="text-sm text-muted-foreground">{project.task_count ? "Revisa las tareas y concreta el próximo paso." : "Añade la primera tarea para concretar el próximo paso."}</p></div>}
       {projectError && <div role="alert" className="text-sm">No se pudo actualizar. Se muestran los últimos datos recibidos. <Button variant="ghost" onClick={() => retryProject()}>Reintentar</Button></div>}
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">

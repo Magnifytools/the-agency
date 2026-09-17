@@ -65,6 +65,8 @@ export async function invalidateTaskChange(
   const invalidations = [
     queryClient.invalidateQueries({ queryKey: taskKeys.all() }),
     queryClient.invalidateQueries({ queryKey: projectKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: timeKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: ["active-timer"] }),
     queryClient.invalidateQueries({ queryKey: dashboardKeys.all() }),
     queryClient.invalidateQueries({ queryKey: myWeekKeys.all() }),
     queryClient.invalidateQueries({ queryKey: briefingKeys.all() }),
@@ -72,13 +74,8 @@ export async function invalidateTaskChange(
   for (const clientId of uniqueIds(affected.clientId, affected.previousClientId, ...(affected.clientIds ?? []))) {
     invalidations.push(
       queryClient.invalidateQueries({ queryKey: clientKeys.summary(clientId) }),
-      queryClient.invalidateQueries({ queryKey: projectKeys.client(clientId) }),
-    )
-  }
-  for (const projectId of uniqueIds(affected.projectId, affected.previousProjectId, ...(affected.projectIds ?? []))) {
-    invalidations.push(
-      queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) }),
-      queryClient.invalidateQueries({ queryKey: projectKeys.burndown(projectId) }),
+      queryClient.invalidateQueries({ queryKey: clientKeys.dashboard(clientId) }),
+      queryClient.invalidateQueries({ queryKey: ["client-activity", clientId] }),
     )
   }
   await Promise.all(invalidations)
@@ -87,12 +84,17 @@ export async function invalidateTaskChange(
 export async function invalidateProjectChange(queryClient: QueryClient, affected: OperationalImpact = {}) {
   const invalidations = [
     queryClient.invalidateQueries({ queryKey: projectKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: taskKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: timeKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: myWeekKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: briefingKeys.all() }),
     queryClient.invalidateQueries({ queryKey: dashboardKeys.all() }),
   ]
   for (const clientId of uniqueIds(affected.clientId, affected.previousClientId, ...(affected.clientIds ?? []))) {
     invalidations.push(
       queryClient.invalidateQueries({ queryKey: clientKeys.summary(clientId) }),
-      queryClient.invalidateQueries({ queryKey: projectKeys.client(clientId) }),
+      queryClient.invalidateQueries({ queryKey: clientKeys.dashboard(clientId) }),
+      queryClient.invalidateQueries({ queryKey: ["client-activity", clientId] }),
     )
   }
   await Promise.all(invalidations)
@@ -100,8 +102,8 @@ export async function invalidateProjectChange(queryClient: QueryClient, affected
 
 export async function invalidateTimeChange(queryClient: QueryClient, affected: OperationalImpact = {}) {
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: timeKeys.all() }),
     queryClient.invalidateQueries({ queryKey: clientKeys.summaries() }),
+    queryClient.invalidateQueries({ queryKey: ["client-dashboard"] }),
     invalidateTaskChange(queryClient, affected),
   ])
 }

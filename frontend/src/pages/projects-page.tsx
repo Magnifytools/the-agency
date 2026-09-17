@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { projectsApi, clientsApi } from "@/lib/api"
 import type { ProjectListItem, ProjectStatus, ProjectDraft } from "@/lib/types"
 import { projectPeriodBounds } from "@/lib/project-filters"
+import { invalidateProjectChange } from "@/lib/query-keys"
 import { projectCreateFromDraft } from "@/lib/project-draft"
 import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
@@ -87,8 +88,8 @@ export default function ProjectsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => projectsApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["projects"] })
+    onSuccess: (_data, deletedId) => {
+      invalidateProjectChange(queryClient, {clientId: projects.find((project) => project.id === deletedId)?.client_id})
       toast.success("Proyecto eliminado")
       setDeleteId(null)
     },
@@ -353,16 +354,16 @@ function NewProjectDialog({
         target_end_date: formData.target_end_date || undefined,
         is_recurring: formData.is_recurring,
         pricing_model: formData.pricing_model || undefined,
-        monthly_fee: formData.monthly_fee ? parseFloat(formData.monthly_fee) : undefined,
-        unit_price: formData.unit_price ? parseFloat(formData.unit_price) : undefined,
-        unit_label: formData.unit_label || undefined,
+        monthly_fee: formData.pricing_model === "monthly" && formData.monthly_fee ? parseFloat(formData.monthly_fee) : undefined,
+        unit_price: ["hourly", "per_piece"].includes(formData.pricing_model) && formData.unit_price ? parseFloat(formData.unit_price) : undefined,
+        unit_label: ["hourly", "per_piece"].includes(formData.pricing_model) ? formData.unit_label || undefined : undefined,
         scope: formData.scope || undefined,
         budget_amount: formData.budget_amount ? parseFloat(formData.budget_amount) : undefined,
         weekly_hours_budget: formData.weekly_hours_budget ? parseFloat(formData.weekly_hours_budget) : undefined,
         monthly_hours_budget: formData.monthly_hours_budget ? parseFloat(formData.monthly_hours_budget) : undefined,
       }),
     onSuccess: (project) => {
-      queryClient.invalidateQueries({ queryKey: ["projects"] })
+      invalidateProjectChange(queryClient, {clientId: project.client_id})
       toast.success("Proyecto creado")
       onOpenChange(false)
       setFormData(emptyForm)
@@ -389,7 +390,7 @@ function NewProjectDialog({
         </div>
         <div className="space-y-2">
           <Label htmlFor="new-project-kind">Tipo de trabajo</Label>
-          <Select id="new-project-kind" value={formData.is_recurring ? "recurring" : "one_time"} onChange={(e) => setFormData({ ...formData, is_recurring: e.target.value === "recurring" })}>
+          <Select id="new-project-kind" value={formData.is_recurring ? "recurring" : "one_time"} onChange={(e) => setFormData({ ...formData, is_recurring: e.target.value === "recurring", pricing_model: e.target.value !== "recurring" && formData.pricing_model === "monthly" ? "" : formData.pricing_model })}>
             <option value="one_time">Proyecto puntual</option><option value="recurring">Servicio recurrente</option>
           </Select>
           <p className="text-xs text-muted-foreground">{formData.is_recurring ? "Trabajo continuo que se revisa cada mes." : "Trabajo con una entrega final."}</p>
@@ -401,14 +402,14 @@ function NewProjectDialog({
         {formData.is_recurring && <div className="space-y-2">
           <Label htmlFor="new-project-monthly-hours">Horas acordadas por mes (opcional)</Label>
           <Input id="new-project-monthly-hours" type="number" min="0" step="0.5" value={formData.monthly_hours_budget} onChange={(e) => setFormData({ ...formData, monthly_hours_budget: e.target.value })} />
-          <p className="text-xs text-muted-foreground">Si no existe un acuerdo, déjalo vacío. El presupuesto efectivo puede heredarse del cliente.</p>
+          <p className="text-xs text-muted-foreground">Si no existe un acuerdo, déjalo vacío. Puedes concretarlo después; no se estiman horas automáticamente.</p>
         </div>}
         <details className="border-t pt-3">
           <summary className="cursor-pointer text-sm font-medium py-2">Alcance, fechas y condiciones económicas</summary>
           <div className="space-y-4 pt-3">
             <div className="space-y-2"><Label htmlFor="new-project-scope">Alcance acordado</Label><textarea id="new-project-scope" className="w-full min-h-20 rounded-md border border-input bg-background p-3 text-sm" value={formData.scope} onChange={(e) => setFormData({ ...formData, scope: e.target.value })} /></div>
             <div className="space-y-2"><Label htmlFor="new-project-start">Fecha de inicio (opcional)</Label><Input id="new-project-start" type="date" max={formData.target_end_date || undefined} value={formData.start_date} onChange={(e) => setFormData({ ...formData, start_date: e.target.value })} /></div>
-            <div className="space-y-2"><Label htmlFor="new-project-pricing">Modelo de precio</Label><Select id="new-project-pricing" value={formData.pricing_model} onChange={(e) => setFormData({ ...formData, pricing_model: e.target.value })}><option value="">Sin definir</option><option value="monthly">Mensual fijo</option><option value="project">Precio cerrado</option><option value="hourly">Por hora</option><option value="per_piece">Por unidad</option></Select></div>
+            <div className="space-y-2"><Label htmlFor="new-project-pricing">Modelo de precio</Label><Select id="new-project-pricing" value={formData.pricing_model} onChange={(e) => setFormData({ ...formData, pricing_model: e.target.value })}><option value="">Sin definir</option>{formData.is_recurring && <option value="monthly">Mensual fijo</option>}<option value="project">Precio cerrado</option><option value="hourly">Por hora</option><option value="per_piece">Por unidad</option></Select></div>
             {formData.pricing_model === "monthly" && <div className="space-y-2"><Label htmlFor="new-project-fee">Tarifa mensual (EUR)</Label><Input id="new-project-fee" type="number" min="0" step="0.01" value={formData.monthly_fee} onChange={(e) => setFormData({ ...formData, monthly_fee: e.target.value })} /></div>}
             {["hourly", "per_piece"].includes(formData.pricing_model) && <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2"><Label htmlFor="new-project-unit-price">Precio por unidad (EUR)</Label><Input id="new-project-unit-price" type="number" min="0" step="0.01" value={formData.unit_price} onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })} /></div>
@@ -455,7 +456,7 @@ function TemplateDialog({
     mutationFn: () =>
       projectsApi.createFromTemplate(parseInt(clientId), templateKey, startDate || undefined),
     onSuccess: (project) => {
-      queryClient.invalidateQueries({ queryKey: ["projects"] })
+      invalidateProjectChange(queryClient, {clientId: project.client_id})
       toast.success("Proyecto creado desde plantilla")
       navigate(`/projects/${project.id}?created=1`)
       onOpenChange(false)
@@ -590,7 +591,7 @@ function ImportFromPdfDialog({
     mutationFn: () =>
       projectsApi.create(projectCreateFromDraft(formData, parseInt(clientId))),
     onSuccess: (project) => {
-      queryClient.invalidateQueries({ queryKey: ["projects"] })
+      invalidateProjectChange(queryClient, {clientId: project.client_id})
       toast.success("Proyecto creado")
       navigate(`/projects/${project.id}?created=1`)
       handleClose()
@@ -825,7 +826,7 @@ function ImportFromTextDialog({
     mutationFn: () =>
       projectsApi.create(projectCreateFromDraft(formData, parseInt(clientId))),
     onSuccess: (project) => {
-      queryClient.invalidateQueries({ queryKey: ["projects"] })
+      invalidateProjectChange(queryClient, {clientId: project.client_id})
       toast.success("Proyecto creado")
       navigate(`/projects/${project.id}?created=1`)
       handleClose()
