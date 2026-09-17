@@ -57,6 +57,19 @@ describe("API Client", () => {
     expect(request?.headers.get("X-Agency-Request-Key")).toBe("test-request-1")
   })
 
+  it("sends the exact preview date for a manual daily summary", async () => {
+    let request: InternalAxiosRequestConfig | undefined
+    api.defaults.adapter = async (config) => {
+      request = config
+      return { data: { success: false, status: "pending" }, status: 202, statusText: "Accepted", headers: {}, config }
+    }
+
+    await discordApi.send("2026-09-17")
+
+    expect(request?.url).toBe("/discord/send")
+    expect(request?.params).toEqual({ date: "2026-09-17" })
+  })
+
   it("creates an axios instance with /api baseURL", async () => {
     // Re-import to get fresh module
     const { default: axiosModule } = await import("axios")

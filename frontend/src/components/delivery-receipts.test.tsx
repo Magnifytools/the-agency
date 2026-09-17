@@ -82,6 +82,21 @@ describe("Delivery receipts", () => {
     expect(mock.list).not.toHaveBeenCalled()
   })
 
+  it("keeps a pending daily summary receipt visible after the submitter closes", async () => {
+    mock.listManual.mockResolvedValue([receipt({
+      source_kind: "communication",
+      source_id: 43,
+      title: "Resumen diario",
+      destination_label: "#equipo",
+    })])
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><ManualDeliveryReceipts kind="daily_summary" /></QueryClientProvider>)
+
+    expect(await screen.findByRole("status")).toHaveTextContent("En cola")
+    expect(screen.getByText(/Resumen diario · #equipo/)).toBeInTheDocument()
+    expect(mock.listManual).toHaveBeenCalledWith("daily_summary", undefined)
+  })
+
   it("keeps the previous version and each real provider receipt visible", async () => {
     mock.list.mockResolvedValue([receipt({ status: "sent", success: true, source_changed: true, can_cancel: false, steps: [{ kind: "header", label: "Cabecera", status: "sent", message_id: "12345" }, { kind: "body", label: "Texto 1", status: "sent", message_id: "67890" }] })])
     show()

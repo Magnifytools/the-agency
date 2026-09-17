@@ -238,7 +238,7 @@ export default function DashboardPage() {
 
   // ─── Mutations ──────────────────────────────────────────────
   const sendMutation = useMutation({
-    mutationFn: () => discordApi.send(),
+    mutationFn: (date?: string) => discordApi.send(date),
     onSuccess: (receipt) => {
       deliveryToast(receipt)
       queryClient.invalidateQueries({ queryKey: ["deliveries", "manual"] })
@@ -425,6 +425,7 @@ export default function DashboardPage() {
         </div>
       </div>
       {isAdmin && <ManualDeliveryReceipts kind="weekly_report" />}
+      {isAdmin && <ManualDeliveryReceipts kind="daily_summary" />}
 
       {/* Overdue Holded invoices alert */}
       {overdueInvoices.length > 0 && (
@@ -865,7 +866,7 @@ export default function DashboardPage() {
           <CardContent className="pt-4">
             <div className="flex flex-wrap gap-2 items-center">
               <Button variant="outline" onClick={handlePreview}><Eye className="h-4 w-4 mr-2" /> Vista previa</Button>
-              <Button onClick={() => sendMutation.mutate()} disabled={sendMutation.isPending || !discordConfigured}><Send className="h-4 w-4 mr-2" /> Enviar a Discord</Button>
+              <Button onClick={() => sendMutation.mutate(undefined)} disabled={sendMutation.isPending || !discordConfigured}><Send className="h-4 w-4 mr-2" /> Enviar a Discord</Button>
               {!discordConfigured && <span className="text-xs text-muted-foreground">Configura el webhook en Ajustes → Discord</span>}
             </div>
           </CardContent>
@@ -877,8 +878,7 @@ export default function DashboardPage() {
         <div className="bg-surface border border-brand/10 p-4 whitespace-pre-wrap text-sm font-mono text-foreground">{preview?.summary || "Cargando..."}</div>
         <div className="flex justify-end gap-2 mt-4">
           <Button variant="outline" onClick={() => setPreviewOpen(false)}>Cerrar</Button>
-          <Button onClick={() => sendMutation.mutate()} disabled={sendMutation.isPending || !discordConfigured}><Send className="h-4 w-4 mr-2" /> {sendMutation.isPending ? "Enviando..." : "Enviar"}</Button>
-          <ManualDeliveryReceipts kind="daily_summary" />
+          <Button onClick={() => sendMutation.mutate(preview?.date)} disabled={sendMutation.isPending || !discordConfigured}><Send className="h-4 w-4 mr-2" /> {sendMutation.isPending ? "Enviando..." : "Enviar"}</Button>
         </div>
       </Dialog>
     </div>
