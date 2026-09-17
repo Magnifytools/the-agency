@@ -10,6 +10,7 @@ import { MetricCard } from "@/components/dashboard/metric-card"
 import { ProfitabilityChart } from "@/components/dashboard/profitability-chart"
 import { InsightsPanel } from "@/components/pm/insights-panel"
 import { DailyBriefingButton } from "@/components/pm/daily-briefing"
+import { deliveryToast, ManualDeliveryReceipts } from "@/components/delivery-receipts"
 import { OverdueTasks } from "@/components/dashboard/overdue-tasks"
 import { DigestTracker } from "@/components/dashboard/digest-tracker"
 import { EngineAlertsWidget } from "@/components/dashboard/engine-alerts-widget"
@@ -238,7 +239,11 @@ export default function DashboardPage() {
   // ─── Mutations ──────────────────────────────────────────────
   const sendMutation = useMutation({
     mutationFn: () => discordApi.send(),
-    onSuccess: () => toast.success("Resumen enviado a Discord"),
+    onSuccess: (receipt) => {
+      deliveryToast(receipt)
+      queryClient.invalidateQueries({ queryKey: ["deliveries", "manual"] })
+      setPreviewOpen(false)
+    },
     onError: (err) => toast.error(getErrorMessage(err, "Error al enviar a Discord")),
   })
   const closeMutation = useMutation({
@@ -289,8 +294,8 @@ export default function DashboardPage() {
   const weeklyReportMutation = useMutation({
     mutationFn: () => discordApi.sendWeeklyReport(),
     onSuccess: (data) => {
-      if (data.success) toast.success(data.message)
-      else toast.error(data.message)
+      deliveryToast(data)
+      queryClient.invalidateQueries({ queryKey: ["deliveries", "manual"] })
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al enviar informe semanal")),
   })
@@ -419,6 +424,7 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+      {isAdmin && <ManualDeliveryReceipts kind="weekly_report" />}
 
       {/* Overdue Holded invoices alert */}
       {overdueInvoices.length > 0 && (
@@ -871,7 +877,8 @@ export default function DashboardPage() {
         <div className="bg-surface border border-brand/10 p-4 whitespace-pre-wrap text-sm font-mono text-foreground">{preview?.summary || "Cargando..."}</div>
         <div className="flex justify-end gap-2 mt-4">
           <Button variant="outline" onClick={() => setPreviewOpen(false)}>Cerrar</Button>
-          <Button onClick={() => { sendMutation.mutate(); setPreviewOpen(false) }} disabled={sendMutation.isPending || !discordConfigured}><Send className="h-4 w-4 mr-2" /> Enviar</Button>
+          <Button onClick={() => sendMutation.mutate()} disabled={sendMutation.isPending || !discordConfigured}><Send className="h-4 w-4 mr-2" /> {sendMutation.isPending ? "Enviando..." : "Enviar"}</Button>
+          <ManualDeliveryReceipts kind="daily_summary" />
         </div>
       </Dialog>
     </div>

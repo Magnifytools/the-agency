@@ -366,7 +366,7 @@ export interface DeliveryReceipt {
   status: "pending" | "sending" | "sent" | "failed" | "uncertain" | "cancelled" | "expired"
   success: boolean
   message: string
-  source_kind: "daily" | "digest"
+  source_kind: "daily" | "digest" | "communication"
   source_id: number
   source_version: string
   source_changed: boolean
@@ -379,6 +379,11 @@ export interface DeliveryReceipt {
   can_resend: boolean
   can_cancel: boolean
   worker_enabled: boolean
+  title?: string | null
+  scope?: "mine" | "team" | null
+  period_start?: string | null
+  period_end?: string | null
+  destination_label?: string | null
 }
 
 export type DailyDiscordResponse = DeliveryReceipt

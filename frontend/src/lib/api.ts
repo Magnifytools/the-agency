@@ -502,21 +502,21 @@ export const discordApi = {
   preview: (date?: string) =>
     api.get<{ summary: string; date: string }>("/discord/preview", { params: date ? { date } : {} }).then((r) => r.data),
   send: (date?: string) =>
-    api.post<{ ok: boolean; date: string }>("/discord/send", null, { params: date ? { date } : {} }).then((r) => r.data),
+    api.post<import("./types").DeliveryReceipt>("/discord/send", null, { params: date ? { date } : {} }).then((r) => r.data),
   settings: () =>
     api.get<import("./types").DiscordSettings>("/discord/settings").then((r) => r.data),
   updateSettings: (data: Partial<import("./types").DiscordSettings>) =>
     api.put<import("./types").DiscordSettings>("/discord/settings", data).then((r) => r.data),
   testWebhook: () =>
-    api.post<import("./types").DiscordTestResponse>("/discord/test-webhook").then((r) => r.data),
+    api.post<import("./types").DeliveryReceipt>("/discord/test-webhook").then((r) => r.data),
   sendDailySummary: (date?: string) =>
-    api.post<import("./types").DiscordSendResponse>("/discord/send-daily-summary", null, { params: date ? { date } : {} }).then((r) => r.data),
+    api.post<import("./types").DeliveryReceipt>("/discord/send-daily-summary", null, { params: date ? { date } : {} }).then((r) => r.data),
   sendDigest: (digestId: number, content?: string) =>
     api.post<import("./types").DeliveryReceipt>(`/discord/send-digest/${digestId}`, { content }).then((r) => r.data),
   sendCustom: (content: string) =>
-    api.post<import("./types").DiscordSendResponse>("/discord/send-custom", { content }, { headers: { "X-Agency-Send-Intent": "custom-v1" } }).then((r) => r.data),
+    api.post<import("./types").DeliveryReceipt>("/discord/send-custom", { content }, { headers: { "X-Agency-Send-Intent": "custom-v1" } }).then((r) => r.data),
   sendWeeklyReport: (weekStart?: string) =>
-    api.post<import("./types").DiscordSendResponse>("/discord/send-weekly-report", null, { params: weekStart ? { week_start: weekStart } : {} }).then((r) => r.data),
+    api.post<import("./types").DeliveryReceipt>("/discord/send-weekly-report", null, { params: weekStart ? { week_start: weekStart } : {} }).then((r) => r.data),
 }
 
 // Task Categories
@@ -602,8 +602,8 @@ export const pmApi = {
     api.get<AlertSettings>("/pm/settings/alerts").then((r) => r.data),
   updateAlertSettings: (data: AlertSettingsUpdate) =>
     api.put<AlertSettings>("/pm/settings/alerts", data).then((r) => r.data),
-  shareBriefingToDiscord: (scope: "mine" | "team" = "mine") =>
-    api.post<{ status: string, message: string }>("/pm/briefing/discord", null, { params: { scope } }).then((r) => r.data),
+  shareBriefingToDiscord: (scope: "mine" | "team" = "mine", content?: string, date?: string) =>
+    api.post<import("./types").DeliveryReceipt>("/pm/briefing/discord", content || date ? { content, date } : null, { params: { scope } }).then((r) => r.data),
 }
 
 // Reports
@@ -902,12 +902,14 @@ export const dailysApi = {
 }
 
 export const deliveriesApi = {
-  list: (source_kind: "daily" | "digest", source_id: number) =>
+  list: (source_kind: "daily" | "digest" | "communication", source_id: number) =>
     api.get<import("./types").DeliveryReceipt[]>("/deliveries", { params: { source_kind, source_id } }).then((r) => r.data),
   retry: (id: string) => api.post<import("./types").DeliveryReceipt>(`/deliveries/${id}/retry`).then((r) => r.data),
   cancel: (id: string) => api.post<import("./types").DeliveryReceipt>(`/deliveries/${id}/cancel`).then((r) => r.data),
   resend: (id: string, reviewKey: string) =>
     api.post<import("./types").DeliveryReceipt>(`/deliveries/${id}/resend`, { reviewed: true, review_key: reviewKey }).then((r) => r.data),
+  listManual: (kind: "pm_briefing" | "weekly_report" | "daily_summary" | "custom" | "connection_test", scope?: "mine" | "team") =>
+    api.get<import("./types").DeliveryReceipt[]>("/deliveries/manual", { params: { kind, ...(scope ? { scope } : {}) } }).then((r) => r.data),
 }
 
 export const financeExportApi = {

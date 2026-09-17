@@ -11,6 +11,7 @@ import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Loader2, Send, CheckCircle, Bell, Bot, Eye, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { deliveryToast, ManualDeliveryReceipts } from "@/components/delivery-receipts"
 
 export default function DiscordSettingsPage() {
   const queryClient = useQueryClient()
@@ -52,11 +53,8 @@ export default function DiscordSettingsPage() {
   const testMutation = useMutation({
     mutationFn: () => discordApi.testWebhook(),
     onSuccess: (data) => {
-      if (data.success) {
-        toast.success(data.message)
-      } else {
-        toast.error(data.message)
-      }
+      deliveryToast(data)
+      queryClient.invalidateQueries({ queryKey: ["deliveries", "manual"] })
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al probar webhook")),
   })
@@ -75,12 +73,8 @@ export default function DiscordSettingsPage() {
     mutationFn: (content: string) => discordApi.sendCustom(content),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["discord-settings"] })
-      if (data.success) {
-        toast.success(data.message)
-        setPreviewOpen(false)
-      } else {
-        toast.error(data.message)
-      }
+      queryClient.invalidateQueries({ queryKey: ["deliveries", "manual"] })
+      deliveryToast(data)
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al enviar resumen")),
   })
@@ -333,8 +327,10 @@ export default function DiscordSettingsPage() {
               Enviar a Discord
             </Button>
           </div>
+          <ManualDeliveryReceipts kind="custom" />
         </div>
       </Dialog>
+      <ManualDeliveryReceipts kind="connection_test" />
     </div>
   )
 }
