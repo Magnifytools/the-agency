@@ -15,7 +15,11 @@ const riskConfig = {
 }
 
 export function HealthGrid({ data }: HealthGridProps) {
-  const sorted = [...data].sort((a, b) => (a.score ?? Number.POSITIVE_INFINITY) - (b.score ?? Number.POSITIVE_INFINITY))
+  const sorted = [...data].sort((a, b) => {
+    if (a.risk_level === "at_risk" && b.risk_level !== "at_risk") return -1
+    if (b.risk_level === "at_risk" && a.risk_level !== "at_risk") return 1
+    return (a.score ?? Number.POSITIVE_INFINITY) - (b.score ?? Number.POSITIVE_INFINITY)
+  })
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

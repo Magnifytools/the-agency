@@ -222,11 +222,15 @@ def _health_capabilities(user: User) -> HealthCapabilities:
         if permission.can_read
     }
     is_admin = user.role == UserRole.admin
+
+    def can_read(module: str) -> bool:
+        return is_enabled(module) and (is_admin or module in readable)
+
     return HealthCapabilities(
-        communications=is_enabled("communications") and (is_admin or "communications" in readable),
-        tasks=is_admin or "tasks" in readable,
-        digests=is_enabled("digests") and (is_admin or "digests" in readable),
-        profitability=is_admin,
+        communications=can_read("communications"),
+        tasks=can_read("tasks"),
+        digests=can_read("digests"),
+        profitability=is_admin and can_read("billing"),
     )
 
 

@@ -244,6 +244,7 @@ export interface ClientHealthScore {
   available_weight: number
   available_source_count: number
   enough_information: boolean
+  risk_signals: string[]
   risk_level: "healthy" | "warning" | "at_risk" | "no_data"
 }
 

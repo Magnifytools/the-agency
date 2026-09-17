@@ -388,10 +388,10 @@ export default function ClientDetailPage() {
                 <Heart className="h-3 w-3 flex-shrink-0" /> <span className="truncate">Salud</span>
               </p>
               <p className={`kpi-value mt-1 ${health.risk_level === "healthy" ? "text-green-600" : health.risk_level === "warning" ? "text-amber-500" : health.risk_level === "no_data" ? "text-muted-foreground" : "text-red-500"}`}>
-                {health.score == null ? "Sin información suficiente" : `${health.score}/100`}
+                {health.score == null ? (health.risk_signals.length ? "Riesgo observado" : "Sin información suficiente") : `${health.score}/100`}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {health.enough_information ? `Basado en ${health.available_source_count} fuentes observables (${health.available_weight}/100 puntos).` : "Faltan fuentes suficientes para clasificar este cliente."}
+                {health.enough_information ? `Basado en ${health.available_source_count} fuentes observables (${health.available_weight}/100 puntos).` : health.risk_signals.length ? "Hay una señal comprobada, pero faltan fuentes para valorar la salud global." : "Faltan fuentes suficientes para clasificar este cliente."}
               </p>
               <div className="mt-2 grid grid-cols-5 gap-1">
                 {[
@@ -420,6 +420,7 @@ export default function ClientDetailPage() {
                       {factor === "profitability" && <> · <Link className="text-brand hover:underline" to={`/clients/${clientId}?tab=panel`}>Ver consumo</Link></>}
                     </p>
                   ))}
+                {health.risk_signals.map((signal) => <p key={signal} className="text-red-600">{signal}</p>)}
                 {!health.enough_information && <p>Activa o registra fuentes reales antes de usar esta señal para decidir.</p>}
               </div>
             </CardContent>

@@ -343,7 +343,7 @@ export default function ClientsPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   {statusBadge(c.status)}
                   {isAdmin && c.monthly_budget != null && <Badge variant="outline" className="text-xs">{formatCurrency(c.monthly_budget)}</Badge>}
-                  {h && <span className={`inline-flex items-center gap-1 text-xs font-semibold ${healthColor}`}><Heart className="h-3 w-3" />{h.score ?? "Sin datos"}</span>}
+                  {h && <span className={`inline-flex items-center gap-1 text-xs font-semibold ${healthColor}`}><Heart className="h-3 w-3" />{h.score ?? (h.risk_signals.length ? "Riesgo" : "Sin datos")}</span>}
                 </div>
               </div>
             )
@@ -448,7 +448,7 @@ export default function ClientsPage() {
                     const color = h.risk_level === "healthy" ? "text-green-600" : h.risk_level === "warning" ? "text-amber-500" : h.risk_level === "no_data" ? "text-muted-foreground" : "text-red-500"
                     return (
                       <span className={`inline-flex items-center gap-1 text-xs font-semibold ${color}`} title={(Object.values(h.observations)).join(" · ")}>
-                        <Heart className="h-3 w-3" />{h.score ?? "Sin datos"}
+                        <Heart className="h-3 w-3" />{h.score ?? (h.risk_signals.length ? "Riesgo" : "Sin datos")}
                       </span>
                     )
                   })()}

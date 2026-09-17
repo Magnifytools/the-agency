@@ -64,9 +64,9 @@ def _task_score_from_counts(total: int, completed: int, overdue: int) -> int:
     return score
 
 
-def _digest_score_from_count(digest_count: int) -> int:
-    """Digest coverage score (15 pts)."""
-    return min(min(digest_count, 4) * 4, 15)
+def _digest_score_from_count(digest_count: int) -> int | None:
+    """A recent digest is positive evidence; absence has no meaning without cadence."""
+    return 15 if digest_count > 0 else None
 
 
 def _profit_score_from_cost(monthly_budget: float | None, estimated_cost: float) -> int:
@@ -117,6 +117,7 @@ def _build_result(
     client_name: str,
     factors: dict[str, int | None],
     observations: dict[str, str],
+    risk_signals: list[str] | None = None,
 ) -> dict:
     """Normalize only measured factors; never turn missing sources into health."""
     available_weight = sum(
@@ -134,7 +135,10 @@ def _build_result(
         if enough_information and available_weight
         else None
     )
-    if score is None:
+    risk_signals = risk_signals or []
+    if risk_signals:
+        risk_level = "at_risk"
+    elif score is None:
         risk_level = "no_data"
     elif score >= 70:
         risk_level = "healthy"
@@ -152,6 +156,7 @@ def _build_result(
         "available_weight": available_weight,
         "available_source_count": len(available_sources),
         "enough_information": enough_information,
+        "risk_signals": risk_signals,
         "risk_level": risk_level,
     }
 
@@ -182,24 +187,28 @@ async def compute_health(
     now = _utc_now_naive()
 
     # --- 1. Communication frequency (25 pts) ---
-    last_comm = await db.execute(
-        select(func.max(CommunicationLog.occurred_at))
-        .where(CommunicationLog.client_id == client.id)
-    )
-    last_comm_date = _as_naive_utc(last_comm.scalar())
+    last_comm_date = None
+    if capabilities.communications:
+        last_comm = await db.execute(
+            select(func.max(CommunicationLog.occurred_at))
+            .where(CommunicationLog.client_id == client.id)
+        )
+        last_comm_date = _as_naive_utc(last_comm.scalar())
     if last_comm_date:
         days_since = (now - last_comm_date).days
     else:
         days_since = None
-    comm_score = _comm_score_from_days(days_since) if capabilities.communications else None
+    comm_score = _comm_score_from_days(days_since) if days_since is not None else None
 
     # --- 2. Task completion (25 pts) ---
-    task_counts = await db.execute(
-        select(Task.status, func.count())
-        .where(Task.client_id == client.id)
-        .group_by(Task.status)
-    )
-    task_map = dict(task_counts.all())
+    task_map = {}
+    if capabilities.tasks:
+        task_counts = await db.execute(
+            select(Task.status, func.count())
+            .where(Task.client_id == client.id)
+            .group_by(Task.status)
+        )
+        task_map = dict(task_counts.all())
     total_tasks = sum(task_map.values())
     completed = task_map.get(TaskStatus.completed, 0)
 
@@ -213,21 +222,23 @@ async def compute_health(
             )
         )
         overdue = overdue_count_result.scalar() or 0
-    task_score = _task_score_from_counts(total_tasks, completed, overdue) if capabilities.tasks else None
+    task_score = _task_score_from_counts(total_tasks, completed, overdue) if total_tasks else None
 
     # --- 3. Digest coverage (15 pts) ---
     four_weeks_ago = (now - timedelta(weeks=4)).date()
-    digest_count_result = await db.execute(
-        select(func.count()).select_from(WeeklyDigest).where(
-            WeeklyDigest.client_id == client.id,
-            WeeklyDigest.period_start >= four_weeks_ago,
+    digest_count = 0
+    if capabilities.digests:
+        digest_count_result = await db.execute(
+            select(func.count()).select_from(WeeklyDigest).where(
+                WeeklyDigest.client_id == client.id,
+                WeeklyDigest.period_start >= four_weeks_ago,
+            )
         )
-    )
-    digest_count = digest_count_result.scalar() or 0
+        digest_count = digest_count_result.scalar() or 0
     digest_score = _digest_score_from_count(digest_count) if capabilities.digests else None
 
     # --- 4. Profitability (20 pts) ---
-    if client.monthly_budget and float(client.monthly_budget) > 0:
+    if capabilities.profitability and client.monthly_budget and float(client.monthly_budget) > 0:
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         # Use actual user hourly rates with fallback to DEFAULT_HOURLY_RATE
         cost_result = await db.execute(
@@ -259,15 +270,27 @@ async def compute_health(
     )
 
     # --- 5. Follow-up compliance (15 pts) ---
-    pending_followups_result = await db.execute(
-        select(func.count()).select_from(CommunicationLog).where(
-            CommunicationLog.client_id == client.id,
-            CommunicationLog.requires_followup == True,  # noqa: E712
-            CommunicationLog.followup_date < now,
+    overdue_followups = 0
+    if capabilities.communications and last_comm_date is not None:
+        pending_followups_result = await db.execute(
+            select(func.count()).select_from(CommunicationLog).where(
+                CommunicationLog.client_id == client.id,
+                CommunicationLog.requires_followup == True,  # noqa: E712
+                CommunicationLog.followup_date < now,
+            )
         )
-    )
-    overdue_followups = pending_followups_result.scalar() or 0
-    followup_score = _followup_score_from_overdue(overdue_followups) if capabilities.communications else None
+        overdue_followups = pending_followups_result.scalar() or 0
+    followup_score = _followup_score_from_overdue(overdue_followups) if last_comm_date is not None else None
+
+    risk_signals = []
+    if days_since is not None and days_since > 30:
+        risk_signals.append(f"Último contacto hace {days_since} días")
+    if overdue >= 2:
+        risk_signals.append(f"{overdue} tareas vencidas")
+    if profitability_available and profit_score == 0:
+        risk_signals.append("El coste estimado supera el presupuesto en más de un 20 %")
+    if overdue_followups > 2:
+        risk_signals.append(f"{overdue_followups} seguimientos vencidos")
 
     return _build_result(client.id, client.name, {
         "communication": comm_score,
@@ -282,12 +305,15 @@ async def compute_health(
         "tasks": "Fuente no disponible" if not capabilities.tasks else (
             f"{completed}/{total_tasks} completadas · {overdue} vencidas" if total_tasks else "Sin tareas registradas"
         ),
-        "digests": "Fuente no disponible" if not capabilities.digests else f"{digest_count} resúmenes en 4 semanas",
-        "profitability": "Presupuesto no configurado" if not profitability_available else (
+        "digests": "Fuente no disponible" if not capabilities.digests else (
+            "Sin cadencia de informes acordada" if not digest_count else f"{digest_count} resúmenes recientes"
+        ),
+        "profitability": "Fuente no disponible" if not capabilities.profitability else (
+            "Presupuesto no configurado" if not profitability_available else
             f"Coste estimado {estimated_cost:.0f} de {float(client.monthly_budget):.0f}"
         ),
-        "followups": "Fuente no disponible" if not capabilities.communications else f"{overdue_followups} seguimientos vencidos",
-    })
+        "followups": "Fuente no disponible" if last_comm_date is None else f"{overdue_followups} seguimientos vencidos",
+    }, risk_signals)
 
 
 # ── Batch version (used by /health-scores) ──────────────────
@@ -311,101 +337,111 @@ async def compute_health_batch(
     client_budget_map = {c.id: float(c.monthly_budget) if c.monthly_budget is not None else None for c in clients}
 
     # --- 1. Last communication date per client ---
-    last_comm_result = await db.execute(
-        select(
-            CommunicationLog.client_id,
-            func.max(CommunicationLog.occurred_at),
+    last_comm_map: dict[int, datetime | None] = {}
+    if capabilities.communications:
+        last_comm_result = await db.execute(
+            select(
+                CommunicationLog.client_id,
+                func.max(CommunicationLog.occurred_at),
+            )
+            .where(CommunicationLog.client_id.in_(client_ids))
+            .group_by(CommunicationLog.client_id)
         )
-        .where(CommunicationLog.client_id.in_(client_ids))
-        .group_by(CommunicationLog.client_id)
-    )
-    last_comm_map: dict[int, datetime | None] = dict(last_comm_result.all())
+        last_comm_map = dict(last_comm_result.all())
 
     # --- 2. Task counts by status per client ---
-    task_counts_result = await db.execute(
-        select(
-            Task.client_id,
-            Task.status,
-            func.count(),
-        )
-        .where(Task.client_id.in_(client_ids))
-        .group_by(Task.client_id, Task.status)
-    )
-    # Build nested dict: {client_id: {status: count}}
     task_status_map: dict[int, dict] = {}
-    for cid, task_status, cnt in task_counts_result.all():
-        task_status_map.setdefault(cid, {})[task_status] = cnt
+    if capabilities.tasks:
+        task_counts_result = await db.execute(
+            select(
+                Task.client_id,
+                Task.status,
+                func.count(),
+            )
+            .where(Task.client_id.in_(client_ids))
+            .group_by(Task.client_id, Task.status)
+        )
+        for cid, task_status, cnt in task_counts_result.all():
+            task_status_map.setdefault(cid, {})[task_status] = cnt
 
     # --- 3. Overdue tasks per client ---
-    overdue_result = await db.execute(
-        select(
-            Task.client_id,
-            func.count(),
+    overdue_map: dict[int, int] = {}
+    if capabilities.tasks:
+        overdue_result = await db.execute(
+            select(
+                Task.client_id,
+                func.count(),
+            )
+            .where(
+                Task.client_id.in_(client_ids),
+                Task.status != TaskStatus.completed,
+                Task.due_date < now,
+            )
+            .group_by(Task.client_id)
         )
-        .where(
-            Task.client_id.in_(client_ids),
-            Task.status != TaskStatus.completed,
-            Task.due_date < now,
-        )
-        .group_by(Task.client_id)
-    )
-    overdue_map: dict[int, int] = dict(overdue_result.all())
+        overdue_map = dict(overdue_result.all())
 
     # --- 4. Digest count per client (last 4 weeks) ---
     four_weeks_ago = (now - timedelta(weeks=4)).date()
-    digest_result = await db.execute(
-        select(
-            WeeklyDigest.client_id,
-            func.count(),
+    digest_map: dict[int, int] = {}
+    if capabilities.digests:
+        digest_result = await db.execute(
+            select(
+                WeeklyDigest.client_id,
+                func.count(),
+            )
+            .where(
+                WeeklyDigest.client_id.in_(client_ids),
+                WeeklyDigest.period_start >= four_weeks_ago,
+            )
+            .group_by(WeeklyDigest.client_id)
         )
-        .where(
-            WeeklyDigest.client_id.in_(client_ids),
-            WeeklyDigest.period_start >= four_weeks_ago,
-        )
-        .group_by(WeeklyDigest.client_id)
-    )
-    digest_map: dict[int, int] = dict(digest_result.all())
+        digest_map = dict(digest_result.all())
 
     # --- 5. Estimated cost per client (this month) ---
     # Uses actual user hourly rates with fallback to DEFAULT_HOURLY_RATE
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    cost_result = await db.execute(
-        select(
-            Task.client_id,
-            func.coalesce(
-                func.sum(
-                    TimeEntry.minutes
-                    * func.coalesce(User.hourly_rate, settings.DEFAULT_HOURLY_RATE)
-                    / 60
+    cost_map: dict[int, float] = {}
+    if capabilities.profitability and any(client_budget_map.values()):
+        cost_result = await db.execute(
+            select(
+                Task.client_id,
+                func.coalesce(
+                    func.sum(
+                        TimeEntry.minutes
+                        * func.coalesce(User.hourly_rate, settings.DEFAULT_HOURLY_RATE)
+                        / 60
+                    ),
+                    0,
                 ),
-                0,
-            ),
+            )
+            .select_from(TimeEntry)
+            .join(Task, TimeEntry.task_id == Task.id)
+            .join(User, TimeEntry.user_id == User.id)
+            .where(
+                Task.client_id.in_(client_ids),
+                TimeEntry.date >= month_start,
+            )
+            .group_by(Task.client_id)
         )
-        .select_from(TimeEntry)
-        .join(Task, TimeEntry.task_id == Task.id)
-        .join(User, TimeEntry.user_id == User.id)
-        .where(
-            Task.client_id.in_(client_ids),
-            TimeEntry.date >= month_start,
-        )
-        .group_by(Task.client_id)
-    )
-    cost_map: dict[int, float] = {cid: float(v) for cid, v in cost_result.all()}
+        cost_map = {cid: float(v) for cid, v in cost_result.all()}
 
     # --- 6. Overdue follow-ups per client ---
-    followup_result = await db.execute(
-        select(
-            CommunicationLog.client_id,
-            func.count(),
+    followup_map: dict[int, int] = {}
+    if capabilities.communications and last_comm_map:
+        followup_result = await db.execute(
+            select(
+                CommunicationLog.client_id,
+                func.count(),
+            )
+            .where(
+                CommunicationLog.client_id.in_(client_ids),
+                CommunicationLog.requires_followup == True,  # noqa: E712
+                CommunicationLog.followup_date < now,
+            )
+            .group_by(CommunicationLog.client_id)
         )
-        .where(
-            CommunicationLog.client_id.in_(client_ids),
-            CommunicationLog.requires_followup == True,  # noqa: E712
-            CommunicationLog.followup_date < now,
-        )
-        .group_by(CommunicationLog.client_id)
-    )
-    followup_map: dict[int, int] = dict(followup_result.all())
+        followup_map = dict(followup_result.all())
 
     # --- Assemble scores ---
     scores: list[dict] = []
@@ -416,14 +452,14 @@ async def compute_health_batch(
             days_since: int | None = (now - last_date).days
         else:
             days_since = None
-        comm = _comm_score_from_days(days_since) if capabilities.communications else None
+        comm = _comm_score_from_days(days_since) if days_since is not None else None
 
         # 2. Tasks
         status_counts = task_status_map.get(cid, {})
         total_tasks = sum(status_counts.values())
         completed = status_counts.get(TaskStatus.completed, 0)
         overdue = overdue_map.get(cid, 0)
-        tasks = _task_score_from_counts(total_tasks, completed, overdue) if capabilities.tasks else None
+        tasks = _task_score_from_counts(total_tasks, completed, overdue) if total_tasks else None
 
         # 3. Digests
         digest_count = digest_map.get(cid, 0)
@@ -436,7 +472,17 @@ async def compute_health_batch(
 
         # 5. Follow-ups
         overdue_followups = followup_map.get(cid, 0)
-        followups = _followup_score_from_overdue(overdue_followups) if capabilities.communications else None
+        followups = _followup_score_from_overdue(overdue_followups) if last_date is not None else None
+
+        risk_signals = []
+        if days_since is not None and days_since > 30:
+            risk_signals.append(f"Último contacto hace {days_since} días")
+        if overdue >= 2:
+            risk_signals.append(f"{overdue} tareas vencidas")
+        if profitability_available and profit == 0:
+            risk_signals.append("El coste estimado supera el presupuesto en más de un 20 %")
+        if overdue_followups > 2:
+            risk_signals.append(f"{overdue_followups} seguimientos vencidos")
 
         scores.append(_build_result(cid, client_name_map[cid], {
             "communication": comm,
@@ -451,11 +497,14 @@ async def compute_health_batch(
             "tasks": "Fuente no disponible" if not capabilities.tasks else (
                 f"{completed}/{total_tasks} completadas · {overdue} vencidas" if total_tasks else "Sin tareas registradas"
             ),
-            "digests": "Fuente no disponible" if not capabilities.digests else f"{digest_count} resúmenes en 4 semanas",
-            "profitability": "Presupuesto no configurado" if not profitability_available else (
+            "digests": "Fuente no disponible" if not capabilities.digests else (
+                "Sin cadencia de informes acordada" if not digest_count else f"{digest_count} resúmenes recientes"
+            ),
+            "profitability": "Fuente no disponible" if not capabilities.profitability else (
+                "Presupuesto no configurado" if not profitability_available else
                 f"Coste estimado {estimated_cost:.0f} de {client_budget_map[cid]:.0f}"
             ),
-            "followups": "Fuente no disponible" if not capabilities.communications else f"{overdue_followups} seguimientos vencidos",
-        }))
+            "followups": "Fuente no disponible" if last_date is None else f"{overdue_followups} seguimientos vencidos",
+        }, risk_signals))
 
     return scores

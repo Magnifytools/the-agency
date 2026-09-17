@@ -19,6 +19,7 @@ const noData: ClientHealthScore = {
   available_weight: 0,
   available_source_count: 0,
   enough_information: false,
+  risk_signals: [],
   risk_level: "no_data",
 }
 
@@ -47,10 +48,27 @@ describe("HealthGrid", () => {
       available_weight: 60,
       available_source_count: 3,
       enough_information: true,
+      risk_signals: ["3 tareas vencidas"],
       risk_level: "at_risk",
     }]} />)
 
     expect(screen.getByText("En riesgo")).toBeInTheDocument()
     expect(screen.getByText("18")).toBeInTheDocument()
+  })
+
+  it("keeps a partial observed risk visible without inventing a global score", () => {
+    render(<HealthGrid data={[{
+      ...noData,
+      client_name: "Cliente con tareas vencidas",
+      factors: { ...noData.factors, tasks: 0 },
+      observations: { ...noData.observations, tasks: "0/3 completadas · 3 vencidas" },
+      available_weight: 25,
+      available_source_count: 1,
+      risk_signals: ["3 tareas vencidas"],
+      risk_level: "at_risk",
+    }]} />)
+
+    expect(screen.getByText("En riesgo")).toBeInTheDocument()
+    expect(screen.getByText("—")).toBeInTheDocument()
   })
 })
