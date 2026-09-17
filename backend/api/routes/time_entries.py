@@ -39,6 +39,11 @@ from backend.services.time_budget import (
 )
 from backend.services.temporal import as_utc_instant, business_today, business_zone
 from backend.services.time_entry_dates import manual_time_entry_date, time_entry_civil_period
+from backend.services.time_writes import (
+    create_manual_time_entry,
+    lock_tasks as _lock_tasks,
+    sync_task_actual_minutes as _sync_task_actual_minutes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,52 +82,6 @@ def _timer_project(entry: TimeEntry) -> tuple[int | None, str | None]:
     except Exception:
         pass
     return None, None
-
-
-async def _lock_tasks(db: AsyncSession, task_ids: set[int]) -> dict[int, Task]:
-    if not task_ids:
-        return {}
-    rows = (await db.execute(
-        select(Task).where(Task.id.in_(sorted(task_ids))).order_by(Task.id).with_for_update().execution_options(populate_existing=True)
-    )).scalars().all()
-    return {task.id: task for task in rows}
-
-
-async def _sync_task_actual_minutes(db: AsyncSession, task_id: int, *, task: Task | None = None) -> None:
-    """Recompute Task.actual_minutes from the sum of its timer-based time entries.
-
-    Excludes '[manual]' entries (created when user edits actual_minutes directly)
-    so they aren't double-counted.  The manual entry represents the portion of
-    actual_minutes that didn't come from timers.
-    """
-    from sqlalchemy import or_
-
-    # Shared serialization point with explicit total edits in tasks.py. Lock
-    # before computing sums, otherwise a waiter can overwrite a newer total
-    # with the snapshot it calculated while the other transaction held Task.
-    if task is None:
-        task = (await _lock_tasks(db, {task_id})).get(task_id)
-    if task is None:
-        return
-
-    timer_result = await db.execute(
-        select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
-            TimeEntry.task_id == task_id,
-            TimeEntry.minutes.isnot(None),
-            or_(TimeEntry.notes != "[manual]", TimeEntry.notes.is_(None)),
-        )
-    )
-    timer_mins = timer_result.scalar() or 0
-
-    manual_result = await db.execute(
-        select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
-            TimeEntry.task_id == task_id,
-            TimeEntry.notes == "[manual]",
-        )
-    )
-    manual_mins = manual_result.scalar() or 0
-
-    task.actual_minutes = int(timer_mins + manual_mins) or None
 
 
 def _entry_to_response(entry: TimeEntry) -> TimeEntryResponse:
@@ -168,29 +127,10 @@ async def create_time_entry(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("timesheet", write=True)),
 ):
-    if body.minutes <= 0:
-        raise HTTPException(status_code=422, detail="Los minutos deben ser mayores a 0")
-
-    if body.task_id is not None:
-        locked = await _lock_tasks(db, {body.task_id})
-        if body.task_id not in locked:
-            raise HTTPException(status_code=404, detail="Task not found")
-
-    entry_date = body.date
-    if entry_date and entry_date.tzinfo is not None:
-        entry_date = entry_date.astimezone(timezone.utc).replace(tzinfo=None)
-
-    entry = TimeEntry(
-        minutes=body.minutes,
-        task_id=body.task_id,
-        user_id=current_user.id,
-        notes=body.notes,
-        date=entry_date or manual_time_entry_date(),
+    entry = await create_manual_time_entry(
+        db, user_id=current_user.id, minutes=body.minutes, task_id=body.task_id,
+        notes=body.notes, entry_date=body.date or manual_time_entry_date(),
     )
-    db.add(entry)
-    await db.flush()
-    if body.task_id is not None:
-        await _sync_task_actual_minutes(db, body.task_id, task=locked[body.task_id])
     await db.commit()
 
     # Save attributes before they expire (async SQLAlchemy lazy-load guard)
