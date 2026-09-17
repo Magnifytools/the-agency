@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { invalidateTimeChange } from "@/lib/query-keys"
 import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
 import { ClipboardList, Sparkles, MessageCircle, Loader2, ChevronDown, ChevronUp, RefreshCw, Trash2, Wand2, Pencil, Check, X } from "lucide-react"
@@ -44,7 +45,7 @@ export default function DailysPage() {
     mutationFn: (text: string) => dailysApi.submit({ raw_text: text }),
     onSuccess: async (daily) => {
       queryClient.invalidateQueries({ queryKey: ["dailys"] })
-      queryClient.invalidateQueries({ queryKey: ["time-entries"] })
+      invalidateTimeChange(queryClient)
       setRawText("")
       const teCount = daily.time_entries_created || 0
       if (!daily.parsed_data) {

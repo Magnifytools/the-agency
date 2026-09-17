@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { dashboardApi, discordApi, tasksApi, timeEntriesApi, timerApi, usersApi, dailysApi, digestsApi, clientsApi, leadsApi, proposalsApi, engineApi, holdedApi } from "@/lib/api"
-import { holdedKeys, invalidateTaskChange, taskKeys } from "@/lib/query-keys"
+import { dashboardKeys, holdedKeys, invalidateTaskChange, invalidateTimeChange, taskKeys, timeKeys } from "@/lib/query-keys"
 import { profitabilityStatus } from "@/lib/profitability"
 import { isEnabled } from "@/lib/hidden-modules"
 import type { PricingOption } from "@/lib/types"
@@ -71,16 +71,16 @@ export default function DashboardPage() {
 
   // ─── Shared queries ─────────────────────────────────────────
   const { data: overview } = useQuery({
-    queryKey: ["dashboard-overview", year, month],
+    queryKey: dashboardKeys.overview(year, month),
     queryFn: () => dashboardApi.overview(params),
   })
   const { data: profitability } = useQuery({
-    queryKey: ["dashboard-profitability", year, month],
+    queryKey: dashboardKeys.profitability(year, month),
     queryFn: () => dashboardApi.profitability(params),
     enabled: isAdmin,
   })
   const { data: team } = useQuery({
-    queryKey: ["dashboard-team", year, month],
+    queryKey: dashboardKeys.team(year, month),
     queryFn: () => dashboardApi.team(params),
   })
   const { data: monthlyClose } = useQuery({
@@ -165,7 +165,7 @@ export default function DashboardPage() {
     enabled: !!user && user.role === "member",
   })
   const { data: weeklyTimesheet } = useQuery({
-    queryKey: ["weekly-timesheet"],
+    queryKey: timeKeys.week(),
     queryFn: () => timeEntriesApi.weekly(),
     enabled: !!user && user.role === "member",
   })
@@ -268,6 +268,7 @@ export default function DashboardPage() {
     onSuccess: () => {
       toast.success("Timer parado")
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
+      invalidateTimeChange(queryClient)
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al parar el timer")),
   })

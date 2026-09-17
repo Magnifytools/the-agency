@@ -33,7 +33,8 @@ import { WeeklyPlannerView } from "@/components/tasks/weekly-planner-view"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { initialTasksView, shouldPreserveCurrentProject, taskQueryKeyWithWeek, withExplicitActualMinutes } from "@/components/tasks/task-page-utils"
-import { invalidateTaskChange, optimisticallyUpdateExactQuery, projectKeys, restoreQuerySnapshot, taskKeys } from "@/lib/query-keys"
+import { invalidateTaskChange, optimisticallyUpdateExactQuery, projectKeys, restoreQuerySnapshot, taskKeys, timeKeys } from "@/lib/query-keys"
+import type { OperationalImpact } from "@/lib/query-keys"
 
 const priorityBadge = (priority: TaskPriority) => {
   const map: Record<TaskPriority, { label: string; variant: "destructive" | "warning" | "secondary" | "outline" }> = {
@@ -199,9 +200,17 @@ export default function TasksPage() {
     return { items: pages.flatMap((item) => item.items), total: last?.total ?? 0, page: last?.page ?? 1, page_size: last?.page_size ?? pageSize }
   }
   const agendaLoading = plannedAgenda.isLoading || carryoverAgenda.isLoading || unplannedAgenda.isLoading || completedAgenda.isLoading
-  const invalidateTaskViews = (affected: { projectId?: number | null; clientId?: number | null } = {}) =>
+  const invalidateTaskViews = (affected: OperationalImpact = {}) =>
     invalidateTaskChange(queryClient, affected)
   const allTasks = tasksData?.items ?? []
+  const agendaTasks = [plannedAgenda, carryoverAgenda, unplannedAgenda, completedAgenda]
+    .flatMap((query) => agendaData(query).items)
+  const visibleTasks = [...allTasks, ...agendaTasks]
+
+  const impactForTasks = (items: Task[], extra: Record<string, unknown> = {}) => ({
+    projectIds: [...items.map((task) => task.project_id), typeof extra.project_id === "number" ? extra.project_id : undefined],
+    clientIds: [...items.map((task) => task.client_id), typeof extra.client_id === "number" ? extra.client_id : undefined],
+  })
 
   const todayStr = localDateString()
   const tasks = allTasks
@@ -215,8 +224,8 @@ export default function TasksPage() {
   const bulkUpdateMutation = useMutation({
     mutationFn: async ({ ids, updates }: { ids: number[]; updates: Record<string, unknown> }) =>
       tasksApi.bulkUpdate(ids, updates),
-    onSuccess: ({ updated, requested }) => {
-      invalidateTaskViews()
+    onSuccess: ({ updated, requested }, { ids, updates }) => {
+      invalidateTaskViews(impactForTasks(visibleTasks.filter((task) => ids.includes(task.id)), updates))
       clearTaskSelection()
       setBulkStatus("")
       if (updated === requested) {
@@ -230,8 +239,8 @@ export default function TasksPage() {
 
   const bulkDeleteMutation = useMutation({
     mutationFn: async (ids: number[]) => tasksApi.bulkDelete(ids),
-    onSuccess: ({ deleted, requested }) => {
-      invalidateTaskViews()
+    onSuccess: ({ deleted, requested }, ids) => {
+      invalidateTaskViews(impactForTasks(visibleTasks.filter((task) => ids.includes(task.id))))
       clearTaskSelection()
       if (deleted === requested) {
         toast.success(`${deleted} tareas eliminadas`)
@@ -288,7 +297,13 @@ export default function TasksPage() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<TaskCreate> }) => tasksApi.update(id, data),
     onSuccess: (task) => {
-      invalidateTaskViews({ projectId: task.project_id, clientId: task.client_id })
+      const previous = visibleTasks.find((item) => item.id === task.id) ?? editing
+      invalidateTaskViews({
+        projectId: task.project_id,
+        previousProjectId: previous?.project_id,
+        clientId: task.client_id,
+        previousClientId: previous?.client_id,
+      })
       queryClient.invalidateQueries({ queryKey: taskKeys.recurring() })
       closeDialog()
       toast.success("Tarea actualizada")
@@ -306,7 +321,7 @@ export default function TasksPage() {
         if (!old) return old
         return { ...old, items: old.items.map((t: Task) => t.id === id ? { ...t, scheduled_date } : t) }
       })
-      const movedTask = tasksData?.items.find((task) => task.id === id)
+      const movedTask = visibleTasks.find((task) => task.id === id)
       return { snapshot, projectId: movedTask?.project_id, clientId: movedTask?.client_id }
     },
     onError: (_err, _vars, ctx) => {
@@ -319,7 +334,7 @@ export default function TasksPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => tasksApi.delete(id),
     onSuccess: (_data, deletedId) => {
-      const deletedTask = tasksData?.items.find((task) => task.id === deletedId)
+      const deletedTask = visibleTasks.find((task) => task.id === deletedId)
       invalidateTaskViews({ projectId: deletedTask?.project_id, clientId: deletedTask?.client_id })
       toast.success("Tarea eliminada")
     },
@@ -369,7 +384,7 @@ export default function TasksPage() {
 
   // Time entries for task detail
   const { data: taskTimeEntries = [] } = useQuery<TimeEntry[]>({
-    queryKey: ["time-entries", editing?.id],
+    queryKey: timeKeys.task(editing?.id ?? 0),
     queryFn: () => timeEntriesApi.list({ task_id: editing!.id }),
     enabled: !!editing?.id,
   })

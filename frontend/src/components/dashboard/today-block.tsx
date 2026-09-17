@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { CalendarCheck, Clock } from "lucide-react"
 import { Link } from "react-router-dom"
+import { dashboardKeys } from "@/lib/query-keys"
 
 const PRIORITY_COLORS: Record<string, string> = {
   urgent: "bg-red-500",
@@ -29,7 +30,7 @@ interface TodayData {
 
 export function TodayBlock() {
   const { data, isLoading } = useQuery<TodayData>({
-    queryKey: ["dashboard-today"],
+    queryKey: dashboardKeys.today(),
     queryFn: () => dashboardApi.today(),
     staleTime: 60_000,
   })

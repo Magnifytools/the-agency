@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Play, Square } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { invalidateTimeChange } from "@/lib/query-keys"
 
 interface TimerButtonProps {
   taskId: number
@@ -57,7 +58,7 @@ export function TimerButton({ taskId }: TimerButtonProps) {
     mutationFn: () => timerApi.stop(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      queryClient.invalidateQueries({ queryKey: ["time-entries"] })
+      invalidateTimeChange(queryClient)
       toast.success("Timer detenido")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al detener timer")),

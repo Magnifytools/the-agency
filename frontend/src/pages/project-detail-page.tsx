@@ -39,7 +39,7 @@ import { ProjectBillingTab } from "@/components/projects/project-billing-tab"
 import { ProjectIdeasTab } from "@/components/projects/project-ideas-tab"
 import { Breadcrumb } from "@/components/ui/breadcrumb"
 import { Skeleton, SkeletonCard } from "@/components/ui/skeleton"
-import { invalidateTaskChange, projectKeys, taskKeys } from "@/lib/query-keys"
+import { invalidateProjectChange, invalidateTaskChange, projectKeys, taskKeys } from "@/lib/query-keys"
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   planning: "Planificación",
@@ -101,8 +101,7 @@ export default function ProjectDetailPage() {
   const updateStatusMutation = useMutation({
     mutationFn: (status: string) => projectsApi.update(projectId, { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) })
-      queryClient.invalidateQueries({ queryKey: projectKeys.all() })
+      invalidateProjectChange(queryClient, { clientId: project?.client_id })
       toast.success("Estado actualizado")
     },
     onError: () => toast.error("Error al actualizar estado"),
@@ -800,8 +799,7 @@ function EditProjectDialog({
         ga4_property_id: formData.ga4_property_id || undefined,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: projectKeys.detail(project.id) })
-      queryClient.invalidateQueries({ queryKey: projectKeys.all() })
+      invalidateProjectChange(queryClient, { clientId: project.client_id })
       toast.success("Proyecto actualizado")
       onOpenChange(false)
     },

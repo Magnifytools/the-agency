@@ -2,11 +2,14 @@ import { QueryClient } from "@tanstack/react-query"
 import { describe, expect, it, vi } from "vitest"
 import {
   clientKeys,
+  dashboardKeys,
+  briefingKeys,
   invalidateTaskChange,
   optimisticallyUpdateExactQuery,
   projectKeys,
   restoreQuerySnapshot,
   taskKeys,
+  myWeekKeys,
 } from "./query-keys"
 
 describe("shared operational query keys", () => {
@@ -20,16 +23,26 @@ describe("shared operational query keys", () => {
       projectKeys.detail(21),
       projectKeys.client(4),
       clientKeys.summary(4),
+      clientKeys.summary(5),
+      projectKeys.detail(22),
+      dashboardKeys.today(),
+      myWeekKeys.week("2026-09-14"),
+      [...briefingKeys.all(), "mine"],
       ["unrelated", "settings"] as const,
     ]
     keys.forEach((key) => client.setQueryData(key, { ok: true }))
 
-    await invalidateTaskChange(client, { projectId: 21, clientId: 4 })
+    await invalidateTaskChange(client, {
+      projectId: 21,
+      previousProjectId: 22,
+      clientId: 4,
+      previousClientId: 5,
+    })
 
-    for (const key of keys.slice(0, 7)) {
+    for (const key of keys.slice(0, -1)) {
       expect(client.getQueryState(key)?.isInvalidated).toBe(true)
     }
-    expect(client.getQueryState(keys[7])?.isInvalidated).toBe(false)
+    expect(client.getQueryState(keys.at(-1)!)?.isInvalidated).toBe(false)
   })
 
   it("updates and rolls back only the exact filtered drag query", async () => {

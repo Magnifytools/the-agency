@@ -9,7 +9,7 @@ import { Square, Clock, Play, Plus } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import type { Task, Client, TimeEntry } from "@/lib/types"
-import { invalidateTaskChange, projectKeys, taskKeys } from "@/lib/query-keys"
+import { invalidateTaskChange, invalidateTimeChange, projectKeys, taskKeys } from "@/lib/query-keys"
 
 function formatElapsed(startedAt: string, accumulatedSeconds = 0, isPaused = false): string {
   let total: number
@@ -145,7 +145,7 @@ export function ActiveTimerBar() {
     mutationFn: () => timerApi.stop(),
     onSuccess: (entry: TimeEntry) => {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      queryClient.invalidateQueries({ queryKey: ["time-entries"] })
+      invalidateTimeChange(queryClient)
       if (!entry.task_id) {
         setStoppedEntryId(entry.id)
         setAssignTaskId("")
@@ -198,7 +198,7 @@ export function ActiveTimerBar() {
     mutationFn: (data: { entryId: number; taskId: number }) =>
       timeEntriesApi.update(data.entryId, { task_id: data.taskId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["time-entries"] })
+      invalidateTimeChange(queryClient)
       setShowAssignDialog(false)
       setStoppedEntryId(null)
       toast.success("Tarea asignada al registro")

@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { invalidateTaskChange } from "@/lib/query-keys"
+import { invalidateTaskChange, myWeekKeys } from "@/lib/query-keys"
 import { myWeekApi, tasksApi } from "@/lib/api"
 import type { MyWeekResponse, MyWeekTask, MyWeekDay, EventResponse, TeamMemberWeek } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -607,12 +607,12 @@ export default function MyWeekPage() {
   const todayStr = toDateStr(new Date())
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["my-week", weekStart],
+    queryKey: myWeekKeys.week(weekStart),
     queryFn: () => myWeekApi.get(weekStart),
   })
 
   const invalidate = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["my-week"] })
+    queryClient.invalidateQueries({ queryKey: myWeekKeys.all() })
   }, [queryClient])
 
   // Mutations
@@ -746,7 +746,7 @@ export default function MyWeekPage() {
       {error && (
         <div className="text-sm text-red-500 py-4">
           Error al cargar datos.{" "}
-          <button className="underline" onClick={() => queryClient.invalidateQueries({ queryKey: ["my-week"] })}>
+          <button className="underline" onClick={() => queryClient.invalidateQueries({ queryKey: myWeekKeys.all() })}>
             Reintentar
           </button>
         </div>

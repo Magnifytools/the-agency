@@ -32,7 +32,7 @@ import { EngineSeoTab } from "@/components/clients/engine-seo-tab"
 // CoreUpdatesTab removed — analysis only available in Engine
 import { FichaTab } from "@/components/clients/ficha-tab"
 import { useAuth } from "@/context/auth-context"
-import { clientKeys, holdedKeys, projectKeys } from "@/lib/query-keys"
+import { clientKeys, holdedKeys, projectKeys, timeKeys } from "@/lib/query-keys"
 import { formatCurrency } from "@/lib/format"
 
 function formatMinutes(m: number): string {
@@ -291,7 +291,7 @@ export default function ClientDetailPage() {
   })
 
   const { data: recentEntries = [] } = useQuery({
-    queryKey: ["time-entries-client", clientId],
+    queryKey: timeKeys.client(clientId),
     queryFn: () => clientsApi.recentTimeEntries(clientId),
     enabled: !!clientId,
   })

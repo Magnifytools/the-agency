@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, Fragment } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { timeEntriesApi, tasksApi, timerApi, clientsApi, projectsApi } from "@/lib/api"
-import { taskKeys } from "@/lib/query-keys"
+import { invalidateTimeChange, projectKeys, taskKeys, timeKeys } from "@/lib/query-keys"
 import { useAuth } from "@/context/auth-context"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
@@ -199,7 +199,7 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
   // Active projects for the selected client (or all if none selected)
   const filterClientNum = filterClient ? parseInt(filterClient, 10) : undefined
   const { data: allActiveProjects = [] } = useQuery({
-    queryKey: ["projects-active", filterClientNum],
+    queryKey: projectKeys.list(["active", "client", filterClientNum]),
     queryFn: () => projectsApi.listAll({ client_id: filterClientNum, status: "active" }),
     enabled: !!filterClientNum,
     staleTime: 30_000,
@@ -639,12 +639,12 @@ export default function TimesheetPage() {
   }, [period]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: weeklyData, isLoading: weekLoading, error: weekError, refetch: weekRefetch } = useQuery({
-    queryKey: ["timesheet-week", weekStart],
+    queryKey: timeKeys.week(weekStart),
     queryFn: () => timeEntriesApi.weekly(weekStart),
   })
 
   const { data: todaysEntries = [] } = useQuery({
-    queryKey: ["time-entries", "today", user?.id],
+    queryKey: timeKeys.today(user?.id),
     queryFn: () => timeEntriesApi.list({ user_id: user?.id, date_from: todayDate + "T00:00:00Z", date_to: todayDate + "T23:59:59Z" }),
     enabled: !!user?.id,
   })
@@ -664,13 +664,13 @@ export default function TimesheetPage() {
   })
 
   const { data: projectReport = [], isLoading: projectLoading } = useQuery({
-    queryKey: ["time-entries-by-project", dateFrom, dateTo],
+    queryKey: [...timeKeys.reports(), "project", dateFrom, dateTo],
     queryFn: () => timeEntriesApi.byProject({ date_from: dateFrom + "T00:00:00Z", date_to: dateTo + "T23:59:59Z" }),
     enabled: activeTab === "proyecto",
   })
 
   const { data: clientReport = [], isLoading: clientLoading } = useQuery({
-    queryKey: ["time-entries-by-client", dateFrom, dateTo],
+    queryKey: [...timeKeys.reports(), "client", dateFrom, dateTo],
     queryFn: () => timeEntriesApi.byClient({ date_from: dateFrom + "T00:00:00Z", date_to: dateTo + "T23:59:59Z" }),
     enabled: activeTab === "cliente",
   })
@@ -680,10 +680,7 @@ export default function TimesheetPage() {
   const [editMins, setEditMins] = useState(0)
   const [editNotes, setEditNotes] = useState("")
 
-  const invalidateTimeEntries = () => {
-    queryClient.invalidateQueries({ queryKey: ["time-entries"] })
-    queryClient.invalidateQueries({ queryKey: ["timesheet-week"] })
-  }
+  const invalidateTimeEntries = () => invalidateTimeChange(queryClient)
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: { task_id?: number; minutes?: number; notes?: string } }) =>
@@ -764,7 +761,6 @@ export default function TimesheetPage() {
         tasks={myTasks}
         onTimerChange={() => {
           invalidateTimeEntries()
-          queryClient.invalidateQueries({ queryKey: ["time-entries"] })
           queryClient.invalidateQueries({ queryKey: ["admin-active-timers"] })
         }}
       />

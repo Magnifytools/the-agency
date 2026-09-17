@@ -11,6 +11,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Trash2, Pencil, Check, X } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { invalidateTimeChange, timeKeys } from "@/lib/query-keys"
 
 interface TimeLogDialogProps {
   taskId: number
@@ -36,16 +37,12 @@ export function TimeLogDialog({ taskId, taskTitle, open, onOpenChange }: TimeLog
   const [editNotes, setEditNotes] = useState("")
 
   const { data: entries = [] } = useQuery({
-    queryKey: ["time-entries", taskId],
+    queryKey: timeKeys.task(taskId),
     queryFn: () => timeEntriesApi.list({ task_id: taskId }),
     enabled: open,
   })
 
-  const invalidateEntries = () => {
-    queryClient.invalidateQueries({ queryKey: ["time-entries", taskId] })
-    queryClient.invalidateQueries({ queryKey: ["time-entries", "today"] })
-    queryClient.invalidateQueries({ queryKey: ["timesheet-week"] })
-  }
+  const invalidateEntries = () => invalidateTimeChange(queryClient)
 
   const createMutation = useMutation({
     mutationFn: (data: { minutes: number; task_id: number; notes?: string }) =>
