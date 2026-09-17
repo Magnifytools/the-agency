@@ -58,7 +58,16 @@ def _timer_project(entry: TimeEntry) -> tuple[int | None, str | None]:
     return None, None
 
 
-async def _sync_task_actual_minutes(db: AsyncSession, task_id: int) -> None:
+async def _lock_tasks(db: AsyncSession, task_ids: set[int]) -> dict[int, Task]:
+    if not task_ids:
+        return {}
+    rows = (await db.execute(
+        select(Task).where(Task.id.in_(sorted(task_ids))).order_by(Task.id).with_for_update().execution_options(populate_existing=True)
+    )).scalars().all()
+    return {task.id: task for task in rows}
+
+
+async def _sync_task_actual_minutes(db: AsyncSession, task_id: int, *, task: Task | None = None) -> None:
     """Recompute Task.actual_minutes from the sum of its timer-based time entries.
 
     Excludes '[manual]' entries (created when user edits actual_minutes directly)
@@ -66,6 +75,14 @@ async def _sync_task_actual_minutes(db: AsyncSession, task_id: int) -> None:
     actual_minutes that didn't come from timers.
     """
     from sqlalchemy import or_
+
+    # Shared serialization point with explicit total edits in tasks.py. Lock
+    # before computing sums, otherwise a waiter can overwrite a newer total
+    # with the snapshot it calculated while the other transaction held Task.
+    if task is None:
+        task = (await _lock_tasks(db, {task_id})).get(task_id)
+    if task is None:
+        return
 
     timer_result = await db.execute(
         select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
@@ -84,10 +101,7 @@ async def _sync_task_actual_minutes(db: AsyncSession, task_id: int) -> None:
     )
     manual_mins = manual_result.scalar() or 0
 
-    task_result = await db.execute(select(Task).where(Task.id == task_id))
-    task = task_result.scalar_one_or_none()
-    if task:
-        task.actual_minutes = int(timer_mins + manual_mins)
+    task.actual_minutes = int(timer_mins + manual_mins) or None
 
 
 def _entry_to_response(entry: TimeEntry) -> TimeEntryResponse:
@@ -137,8 +151,8 @@ async def create_time_entry(
         raise HTTPException(status_code=422, detail="Los minutos deben ser mayores a 0")
 
     if body.task_id is not None:
-        task_result = await db.execute(select(Task).where(Task.id == body.task_id))
-        if task_result.scalar_one_or_none() is None:
+        locked = await _lock_tasks(db, {body.task_id})
+        if body.task_id not in locked:
             raise HTTPException(status_code=404, detail="Task not found")
 
     entry_date = body.date
@@ -153,6 +167,9 @@ async def create_time_entry(
         date=entry_date or datetime.now(timezone.utc).replace(tzinfo=None),
     )
     db.add(entry)
+    await db.flush()
+    if body.task_id is not None:
+        await _sync_task_actual_minutes(db, body.task_id, task=locked[body.task_id])
     await db.commit()
 
     # Save attributes before they expire (async SQLAlchemy lazy-load guard)
@@ -174,16 +191,6 @@ async def create_time_entry(
         logger.debug("Automation hook time_entry_created failed (never break time entry creation): %s", e)
         pass  # Never break time entry creation
 
-    if entry_task_id:
-        try:
-            await _sync_task_actual_minutes(db, entry_task_id)
-            await db.commit()
-        except Exception:
-            logger.warning("Non-critical: task minutes sync failed after time entry creation")
-            try:
-                await db.rollback()
-            except Exception:
-                pass
     entry = await _load_time_entry_for_response(db, entry_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Time entry not found after create")
@@ -623,23 +630,23 @@ async def update_time_entry(
     _UPDATABLE_TIME_ENTRY_FIELDS = {"minutes", "notes", "task_id"}
     update_data = body.model_dump(exclude_unset=True)
     old_task_id = entry.task_id
+    new_task_id = update_data.get("task_id", old_task_id)
+    affected_tasks = {t for t in [old_task_id, new_task_id] if t is not None}
+    locked_tasks = await _lock_tasks(db, affected_tasks)
+    if new_task_id is not None and new_task_id not in locked_tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+    entry = (await db.execute(
+        select(TimeEntry).where(TimeEntry.id == entry_id).with_for_update().execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if entry is None or entry.task_id != old_task_id:
+        raise HTTPException(status_code=409, detail="El registro de tiempo cambió; vuelve a intentarlo")
     for field, value in update_data.items():
         if field in _UPDATABLE_TIME_ENTRY_FIELDS:
             setattr(entry, field, value)
+    await db.flush()
+    for tid in sorted(affected_tasks):
+        await _sync_task_actual_minutes(db, tid, task=locked_tasks[tid])
     await db.commit()
-    # Sync actual_minutes on affected tasks
-    affected_tasks = {t for t in [old_task_id, entry.task_id] if t is not None}
-    if affected_tasks:
-        try:
-            for tid in affected_tasks:
-                await _sync_task_actual_minutes(db, tid)
-            await db.commit()
-        except Exception:
-            logger.warning("Non-critical: task minutes sync failed after time entry update")
-            try:
-                await db.rollback()
-            except Exception:
-                pass
     entry = await _load_time_entry_for_response(db, entry.id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Time entry not found after stop")
@@ -660,11 +667,17 @@ async def delete_time_entry(
     if current_user.role != UserRole.admin and entry.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your time entry")
     task_id = entry.task_id
+    locked_tasks = await _lock_tasks(db, {task_id} if task_id is not None else set())
+    entry = (await db.execute(
+        select(TimeEntry).where(TimeEntry.id == entry_id).with_for_update().execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if entry is None or entry.task_id != task_id:
+        raise HTTPException(status_code=409, detail="El registro de tiempo cambió; vuelve a intentarlo")
     await db.delete(entry)
+    await db.flush()
+    if task_id is not None:
+        await _sync_task_actual_minutes(db, task_id, task=locked_tasks[task_id])
     await db.commit()
-    if task_id:
-        await _sync_task_actual_minutes(db, task_id)
-        await db.commit()
 
 
 # --- Timer ---
@@ -688,6 +701,12 @@ async def start_timer(
         # Auto-stop the current timer before starting a new one — must mirror
         # stop_timer's logic: include accumulated_seconds from pause/resume
         # cycles, and don't count time elapsed while paused.
+        locked_tasks = await _lock_tasks(db, {active.task_id} if active.task_id is not None else set())
+        active = (await db.execute(
+            select(TimeEntry).where(TimeEntry.id == active.id).with_for_update().execution_options(populate_existing=True)
+        )).scalar_one_or_none()
+        if active is None or active.minutes is not None:
+            raise HTTPException(status_code=409, detail="El timer cambió; vuelve a intentarlo")
         now_stop = datetime.now(timezone.utc).replace(tzinfo=None)
         sa = active.started_at if active.started_at and active.started_at.tzinfo is None else (active.started_at.replace(tzinfo=None) if active.started_at else now_stop)
         accumulated = getattr(active, 'accumulated_seconds', 0) or 0
@@ -698,16 +717,10 @@ async def start_timer(
         active.minutes = max(1, min(480, round(elapsed / 60)))
         active.paused_at = None
         active.accumulated_seconds = 0
+        await db.flush()
+        if active.task_id is not None:
+            await _sync_task_actual_minutes(db, active.task_id, task=locked_tasks[active.task_id])
         await db.commit()
-        if active.task_id:
-            try:
-                await _sync_task_actual_minutes(db, active.task_id)
-                await db.commit()
-            except Exception:
-                try:
-                    await db.rollback()
-                except Exception:
-                    pass
         
     if body.task_id is None and not body.notes:
         raise HTTPException(status_code=400, detail="Debes enviar un task_id o una nota")
@@ -715,8 +728,7 @@ async def start_timer(
     task = None
     if body.task_id is not None:
         # Verify task exists
-        task_result = await db.execute(select(Task).where(Task.id == body.task_id))
-        task = task_result.scalar_one_or_none()
+        task = (await _lock_tasks(db, {body.task_id})).get(body.task_id)
         if task is None:
             raise HTTPException(status_code=404, detail="Task not found")
         # Auto-set task to in_progress when starting timer
@@ -788,6 +800,14 @@ async def stop_timer(
     if not entry.started_at:
         raise HTTPException(status_code=400, detail="Timer has no start time")
 
+    original_task_id = entry.task_id
+    locked_tasks = await _lock_tasks(db, {original_task_id} if original_task_id is not None else set())
+    entry = (await db.execute(
+        select(TimeEntry).where(TimeEntry.id == entry.id).with_for_update().execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if entry is None or entry.minutes is not None or entry.task_id != original_task_id:
+        raise HTTPException(status_code=409, detail="El timer cambió; vuelve a intentarlo")
+
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     # Use naive UTC to match DB TIMESTAMP WITHOUT TIME ZONE columns
     sa = entry.started_at if entry.started_at.tzinfo is None else entry.started_at.replace(tzinfo=None)
@@ -804,17 +824,10 @@ async def stop_timer(
     if body.notes:
         entry.notes = body.notes
 
+    await db.flush()
+    if entry.task_id is not None:
+        await _sync_task_actual_minutes(db, entry.task_id, task=locked_tasks[entry.task_id])
     await db.commit()
-    if entry.task_id:
-        try:
-            await _sync_task_actual_minutes(db, entry.task_id)
-            await db.commit()
-        except Exception:
-            logger.warning("Non-critical: task minutes sync failed after timer stop")
-            try:
-                await db.rollback()
-            except Exception:
-                pass
     # Reload with explicit eager loading instead of safe_refresh
     loaded = await _load_time_entry_for_response(db, entry.id)
     return _entry_to_response(loaded or entry)

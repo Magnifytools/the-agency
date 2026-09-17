@@ -62,7 +62,7 @@ async def _generate_recurring_instances():
     from datetime import date as date_type
     from sqlalchemy import select, or_
     from backend.db.database import async_session
-    from backend.db.models import Task, TaskStatus
+    from backend.db.models import Client, ClientStatus, Project, ProjectStatus, Task, TaskStatus
 
     today = date_type.today()
     weekday = today.weekday()  # 0=Mon ... 4=Fri
@@ -72,6 +72,8 @@ async def _generate_recurring_instances():
         result = await session.execute(
             select(Task).where(
                 Task.is_recurring == True,
+                or_(Task.client_id.is_(None), Task.client.has(Client.status == ClientStatus.active)),
+                or_(Task.project_id.is_(None), Task.project.has(Project.status == ProjectStatus.active)),
                 or_(Task.recurrence_end_date == None, Task.recurrence_end_date >= today),
             )
         )
@@ -107,6 +109,10 @@ async def _generate_recurring_instances():
                 title=template.title,
                 description=template.description,
                 client_id=template.client_id,
+                project_id=template.project_id,
+                phase_id=template.phase_id,
+                estimated_minutes=template.estimated_minutes,
+                created_by=template.created_by,
                 category_id=template.category_id,
                 assigned_to=template.assigned_to,
                 priority=template.priority,
@@ -245,51 +251,43 @@ async def _billing_reminder_loop():
 
 
 async def _check_project_billing():
-    """Create notifications for projects with upcoming or overdue billing."""
+    """Notify once per recipient/project/billing date, only when enabled."""
     from datetime import date, timedelta
     from sqlalchemy import select
+    from backend.core.modules import is_enabled
     from backend.db.database import async_session
     from backend.db.models import Project, ProjectStatus, User, UserRole
-    from backend.services.notification_service import create_notification, BILLING_REMINDER
+    from backend.services.notification_checks import NotificationChecks
+    from backend.services.notification_service import BILLING_REMINDER
 
+    if not is_enabled("billing"):
+        return
     async with async_session() as db:
         today = date.today()
-        threshold = today + timedelta(days=3)
-
-        result = await db.execute(
-            select(Project).where(
-                Project.status.in_([ProjectStatus.active, ProjectStatus.completed]),
-                Project.next_billing_date <= threshold,
-                Project.next_billing_date.isnot(None),
-            )
-        )
+        result = await db.execute(select(Project).where(
+            Project.status.in_([ProjectStatus.active, ProjectStatus.completed]),
+            Project.next_billing_date <= today + timedelta(days=3),
+            Project.next_billing_date.isnot(None),
+        ))
         projects = result.scalars().all()
         if not projects:
             return
-
-        admin_result = await db.execute(
-            select(User).where(User.role == UserRole.admin, User.is_active.is_(True))
-        )
-        admin_ids = [u.id for u in admin_result.scalars().all()]
-
-        for proj in projects:
-            amt = float(proj.billing_amount) if proj.billing_amount else 0
-            is_overdue = proj.next_billing_date <= today
-            msg = (
-                f"Factura vencida: {proj.name} ({amt}EUR) desde {proj.next_billing_date}"
-                if is_overdue
-                else f"Toca facturar {proj.name} ({amt}EUR) el {proj.next_billing_date}"
-            )
-            for admin_id in admin_ids:
-                await create_notification(
-                    db, user_id=admin_id, type=BILLING_REMINDER,
-                    title=f"Facturación: {proj.name}",
-                    message=msg,
-                    link_url=f"/projects/{proj.id}",
-                    entity_type="project", entity_id=proj.id,
+        admins = await db.execute(select(User.id).where(
+            User.role == UserRole.admin, User.is_active.is_(True),
+        ).order_by(User.id))
+        for admin_id in admins.scalars().all():
+            checks = await NotificationChecks.load(db, admin_id)
+            for project in projects:
+                if checks.has(BILLING_REMINDER, "project", project.id, project.next_billing_date):
+                    continue
+                amount = float(project.billing_amount or 0)
+                await checks.create(
+                    type=BILLING_REMINDER, entity_type="project", entity_id=project.id,
+                    title=f"Facturación: {project.name}",
+                    message=f"Revisar facturación de {project.name} ({amount:g} EUR), prevista el {project.next_billing_date}",
+                    link_url=f"/projects/{project.id}",
                 )
         await db.commit()
-        logging.info("Billing check: %d projects notified.", len(projects))
 
 
 # ── Daily reminders ──────────────────────────────────────────
@@ -577,6 +575,7 @@ async def _retention_cleanup_loop():
                     delete(Notification).where(
                         Notification.is_read.is_(True),
                         Notification.created_at < cutoff_30d,
+                        Notification.dedupe_key.is_(None),
                     )
                 )
                 total += r.rowcount or 0
@@ -613,9 +612,11 @@ def start_background_tasks() -> list[asyncio.Task]:
     t.add_done_callback(_log_task_error)
     tasks.append(t)
 
-    t = asyncio.create_task(_billing_reminder_loop(), name="billing-check")
-    t.add_done_callback(_log_task_error)
-    tasks.append(t)
+    from backend.core.modules import is_enabled
+    if is_enabled("billing"):
+        t = asyncio.create_task(_billing_reminder_loop(), name="billing-check")
+        t.add_done_callback(_log_task_error)
+        tasks.append(t)
 
     t = asyncio.create_task(_daily_reminders_loop(), name="daily-reminders")
     t.add_done_callback(_log_task_error)

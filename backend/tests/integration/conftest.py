@@ -76,6 +76,12 @@ DEFAULT_TEST_DB_URL = (
     "postgresql+asyncpg://agency:agency@localhost:5432/the_agency_test"
 )
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", DEFAULT_TEST_DB_URL)
+from backend.tests.database_safety import validate_test_database_url  # noqa: E402
+
+try:
+    validate_test_database_url(TEST_DATABASE_URL, settings.DATABASE_URL)
+except ValueError as exc:
+    raise pytest.UsageError(str(exc)) from exc
 
 
 def _db_reachable(url: str) -> tuple[bool, str]:
@@ -98,6 +104,8 @@ def _db_reachable(url: str) -> tuple[bool, str]:
 
 
 _DB_OK, _DB_REASON = _db_reachable(TEST_DATABASE_URL)
+if os.environ.get("REQUIRE_TEST_DATABASE") == "1" and not _DB_OK:
+    raise pytest.UsageError("Required integration database is unavailable; refusing to skip integration tests")
 
 # NOTA: ``pytestmark`` en un conftest NO se propaga a los módulos de test — solo
 # aplica al propio módulo donde se declara. Estaba aquí con esa intención y no

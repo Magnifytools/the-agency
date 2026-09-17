@@ -1,10 +1,9 @@
-import type { Task, TaskStatus } from "@/lib/types"
+import type { PaginatedResponse, Task, TaskStatus } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Pencil, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat, Inbox } from "lucide-react"
+import { Pencil, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useAuth } from "@/context/auth-context"
 
 const STATUS_CONFIG: Record<TaskStatus, { label: string; cls: string }> = {
   backlog:     { label: "Backlog",     cls: "bg-gray-500 text-white border-gray-600" },
@@ -17,7 +16,12 @@ const STATUS_CONFIG: Record<TaskStatus, { label: string; cls: string }> = {
 }
 
 interface Props {
-  tasks: Task[]
+  planned: PaginatedResponse<Task>
+  carryover: PaginatedResponse<Task>
+  unplanned: PaginatedResponse<Task>
+  completed: PaginatedResponse<Task>
+  isLoadingMore?: boolean
+  onLoadMore: (section: "planned" | "carryover" | "unplanned" | "completed") => void
   onStatusChange: (id: number, status: TaskStatus) => void
   onOpenEdit: (task: Task) => void
 }
@@ -42,10 +46,13 @@ const formatMinutes = (mins: number) => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
-  const { user } = useAuth()
-  const now = new Date()
-  const today = now.toISOString().split("T")[0]
+function localDateString(date = new Date()) {
+  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return offsetDate.toISOString().slice(0, 10)
+}
+
+export function MyDayView({ planned, carryover, unplanned, completed, isLoadingMore, onLoadMore, onStatusChange, onOpenEdit }: Props) {
+  const today = localDateString()
 
   const sortTasks = (items: Task[]) => [...items].sort((a, b) => {
     const aOverdue = a.due_date && a.due_date < today ? 1 : 0
@@ -62,30 +69,10 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
     return 0
   })
 
-  const activeTasks = tasks.filter((t) => t.status !== "completed")
-  const plannedTasks = sortTasks(activeTasks.filter((t) => {
-    const assignedToMe = t.assigned_to === user?.id
-    const scheduledForToday = t.scheduled_date === today
-    const scheduledPast = !!t.scheduled_date && t.scheduled_date < today
-    const dueDateStr = t.due_date?.split("T")[0]
-    const overdueWithoutPlan = !t.scheduled_date && !!dueDateStr && dueDateStr <= today
-    return (assignedToMe || !t.assigned_to) && (scheduledForToday || scheduledPast || overdueWithoutPlan)
-  }))
-  const unplannedTasks = sortTasks(activeTasks.filter((t) => {
-    if (plannedTasks.some((planned) => planned.id === t.id)) return false
-    const assignedToMe = t.assigned_to === user?.id
-    const missingPlan = !t.scheduled_date
-    const missingAssignee = !t.assigned_to
-    return (assignedToMe && missingPlan) || (missingAssignee && missingPlan)
-  }))
-
-  const completedToday = tasks.filter(
-    (t) => t.assigned_to === user?.id && t.status === "completed" && t.updated_at?.startsWith(today)
-  )
-
-  const totalEstimated = plannedTasks.reduce((sum, t) => sum + (t.estimated_minutes || 0), 0)
-  const inProgressCount = plannedTasks.filter((t) => t.status === "in_progress").length
-  const overdueCount = plannedTasks.filter((t) => t.due_date && t.due_date < today).length
+  const plannedTodayTasks = sortTasks(planned.items)
+  const carryoverTasks = sortTasks(carryover.items)
+  const unplannedTasks = sortTasks(unplanned.items)
+  const completedToday = completed.items
 
   const renderTaskCard = (task: Task) => {
     const isOverdue = task.due_date && task.due_date < today
@@ -101,7 +88,7 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
         )}
         onClick={() => onOpenEdit(task)}
       >
-        <CardContent className="p-3 flex items-center gap-3">
+        <CardContent className="p-3 grid grid-cols-[minmax(0,1fr)_auto] gap-3 sm:flex sm:items-center">
           <select
             value={task.status}
             onChange={(e) => {
@@ -111,7 +98,7 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
             onClick={(e) => e.stopPropagation()}
             title="Cambiar estado"
             className={cn(
-              "shrink-0 text-[10px] rounded-md border px-1.5 py-1 h-7 cursor-pointer font-semibold transition-colors shadow-sm",
+              "col-span-2 row-start-2 w-fit sm:w-auto shrink-0 text-xs sm:text-[10px] rounded-md border px-2 py-1 min-h-9 sm:min-h-7 cursor-pointer font-semibold transition-colors shadow-sm",
               STATUS_CONFIG[task.status]?.cls ?? STATUS_CONFIG.pending.cls
             )}
           >
@@ -126,7 +113,7 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium truncate inline-flex items-center gap-1">
+              <span className="min-w-0 text-sm font-medium whitespace-normal sm:truncate inline-flex items-center gap-1">
                 {task.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" />}
                 {task.title}
               </span>
@@ -148,7 +135,7 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
               {task.scheduled_date ? (
                 <span className="flex items-center gap-0.5">
                   <Clock className="h-2.5 w-2.5" />
-                  Planificada {new Date(task.scheduled_date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                  Planificada {new Date(`${task.scheduled_date}T12:00:00`).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
                 </span>
               ) : task.due_date ? (
                 <span className={cn("flex items-center gap-0.5", isOverdue && "text-red-500 font-medium")}>
@@ -167,7 +154,8 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+            aria-label={`Editar ${task.title}`}
+            className="h-9 w-9 sm:h-7 sm:w-7 sm:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity shrink-0"
             onClick={(e) => { e.stopPropagation(); onOpenEdit(task) }}
           >
             <Pencil className="h-3.5 w-3.5" />
@@ -179,61 +167,54 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Summary */}
-      <div className="flex items-center gap-4 flex-wrap">
-        <div className="text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">{plannedTasks.length}</span> tareas previstas para hoy
-        </div>
-        {inProgressCount > 0 && (
-          <div className="text-sm text-amber-600">
-            <span className="font-semibold">{inProgressCount}</span> en curso
-          </div>
-        )}
-        {overdueCount > 0 && (
-          <div className="text-sm text-red-500">
-            <span className="font-semibold">{overdueCount}</span> atrasadas
-          </div>
-        )}
-        {totalEstimated > 0 && (
-          <div className="text-sm text-muted-foreground flex items-center gap-1">
-            <Clock className="h-3.5 w-3.5" />
-            ~{formatMinutes(totalEstimated)} estimado
-          </div>
-        )}
-        {unplannedTasks.length > 0 && (
-          <div className="text-sm text-muted-foreground flex items-center gap-1">
-            <Inbox className="h-3.5 w-3.5" />
-            {unplannedTasks.length} sin planificar
-          </div>
-        )}
-      </div>
-
       {/* Tareas del día */}
       <div>
         <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
-          Tareas del día ({plannedTasks.length})
+          Planificadas hoy ({planned.total})
         </p>
-        {plannedTasks.length === 0 ? (
+        {plannedTodayTasks.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center text-muted-foreground">
               <CheckCircle2 className="h-10 w-10 mx-auto mb-3 text-green-400" />
-              <p className="font-medium">¡Todo al día!</p>
-              <p className="text-sm mt-1">No tienes tareas previstas para hoy</p>
+              <p className="font-medium">Sin tareas planificadas para hoy</p>
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-2">{plannedTasks.map(renderTaskCard)}</div>
+          <div className="space-y-2">{plannedTodayTasks.map(renderTaskCard)}</div>
+        )}
+        {planned.total > planned.items.length && (
+          <Button variant="outline" className="mt-3" disabled={isLoadingMore} onClick={() => onLoadMore("planned")}>
+            Ver más planificadas ({planned.total - planned.items.length} restantes)
+          </Button>
         )}
       </div>
+
+      {carryoverTasks.length > 0 && (
+        <div className="mt-6">
+          <p className="text-xs font-bold uppercase tracking-wider text-red-600 mb-2">Arrastre pendiente ({carryover.total})</p>
+          <p className="text-sm text-muted-foreground mb-2">No son compromisos nuevos de hoy. Reprograma, deja en espera o completa cada una.</p>
+          <div className="space-y-2">{carryoverTasks.map(renderTaskCard)}</div>
+          {carryover.total > carryover.items.length && (
+            <Button variant="outline" className="mt-3" disabled={isLoadingMore} onClick={() => onLoadMore("carryover")}>
+              Ver más de arrastre ({carryover.total - carryover.items.length} restantes)
+            </Button>
+          )}
+        </div>
+      )}
 
       {unplannedTasks.length > 0 && (
         <div className="mt-6">
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
-            Sin planificar ({unplannedTasks.length})
+            Sin planificar ({unplanned.total})
           </p>
           <div className="space-y-2">
             {unplannedTasks.map(renderTaskCard)}
           </div>
+          {unplanned.total > unplanned.items.length && (
+            <Button variant="outline" className="mt-3" disabled={isLoadingMore} onClick={() => onLoadMore("unplanned")}>
+              Ver más sin planificar ({unplanned.total - unplanned.items.length} restantes)
+            </Button>
+          )}
         </div>
       )}
 
@@ -241,7 +222,7 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
       {completedToday.length > 0 && (
         <div className="mt-6">
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
-            Completadas hoy ({completedToday.length})
+            Completadas hoy ({completed.total})
           </p>
           <div className="space-y-1">
             {completedToday.map((task) => (
@@ -259,6 +240,11 @@ export function MyDayView({ tasks, onStatusChange, onOpenEdit }: Props) {
               </div>
             ))}
           </div>
+          {completed.total > completed.items.length && (
+            <Button variant="outline" className="mt-3" disabled={isLoadingMore} onClick={() => onLoadMore("completed")}>
+              Ver más completadas ({completed.total - completed.items.length} restantes)
+            </Button>
+          )}
         </div>
       )}
     </div>

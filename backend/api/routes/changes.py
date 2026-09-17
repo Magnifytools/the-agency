@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_current_user
 from backend.db.database import get_db
-from backend.db.models import ChangeLog, User, UserRole
+from backend.db.models import ChangeLog, Task, TimeEntry, User, UserRole
 from backend.services import change_journal
 from backend.services.change_journal import (
     MODELS_BY_TYPE,
@@ -122,6 +122,41 @@ def _columns(model: type) -> dict[str, Any]:
     return {attr.key: attr.expression for attr in model.__mapper__.column_attrs}
 
 
+async def _manual_time_conflict(db: AsyncSession, operations: list[dict]) -> str | None:
+    """Preflight a grouped manual-time undo so Task and TimeEntry stay atomic."""
+    for op in operations:
+        if op.get("entity_type") != "time_entry":
+            continue
+        model = MODELS_BY_TYPE["time_entry"]
+        row = (await db.execute(
+            select(model).where(model.id == op["entity_id"]).with_for_update().execution_options(populate_existing=True)
+        )).scalar_one_or_none()
+        action = op.get("action")
+        if action == "create":
+            if row is None:
+                return "El registro manual ya no existe"
+            after = op.get("after") or {}
+            if any(
+                serialize(getattr(row, k, None)) != after.get(k)
+                for k in {"minutes", "task_id", "user_id", "date", "notes"}
+                if k in after
+            ):
+                return "El registro manual cambió después"
+        elif action == "update":
+            if row is None:
+                return "El registro manual ya no existe"
+            after = op.get("after") or {}
+            if any(
+                serialize(getattr(row, k, None)) != expected
+                for k, expected in after.items()
+                if k != "id"
+            ):
+                return "El registro manual cambió después"
+        elif action == "delete" and row is not None:
+            return "El registro manual fue recreado después"
+    return None
+
+
 async def _undo_delete(db: AsyncSession, op: dict, warnings: list[str]) -> int:
     """Reinsertar la fila borrada, con su id original."""
     model = MODELS_BY_TYPE[op["entity_type"]]
@@ -189,7 +224,7 @@ async def undo_change(
     current_user: User = Depends(get_current_user),
 ):
     entry = (await db.execute(
-        select(ChangeLog).where(ChangeLog.id == change_id)
+        select(ChangeLog).where(ChangeLog.id == change_id).with_for_update().execution_options(populate_existing=True)
     )).scalar_one_or_none()
     if entry is None:
         raise HTTPException(status_code=404, detail="Ese cambio no existe")
@@ -216,6 +251,53 @@ async def undo_change(
     restored = 0
     try:
         with change_journal.paused():
+            manual_ops = [op for op in operations if op.get("entity_type") == "time_entry"]
+            manual_ids = [op["entity_id"] for op in manual_ops if op.get("entity_id") is not None]
+            current_manual_tasks = {
+                task_id for task_id in (await db.execute(
+                    select(TimeEntry.task_id).where(TimeEntry.id.in_(manual_ids))
+                )).scalars().all() if task_id is not None
+            } if manual_ids else set()
+            task_ids = {
+                task_id
+                for op in manual_ops
+                for task_id in [
+                    (op.get("after") or {}).get("task_id"),
+                    (op.get("before") or {}).get("task_id"),
+                ]
+                if task_id is not None
+            } | current_manual_tasks | {
+                op["entity_id"] for op in operations
+                if op.get("entity_type") == "task" and op.get("entity_id") is not None
+            }
+            locked_tasks = {
+                task.id: task
+                for task in (await db.execute(
+                    select(Task).where(Task.id.in_(sorted(task_ids))).order_by(Task.id).with_for_update().execution_options(populate_existing=True)
+                )).scalars().all()
+            } if task_ids else {}
+            if manual_ids:
+                locked_manual_tasks = {
+                    task_id for task_id in (await db.execute(
+                        select(TimeEntry.task_id)
+                        .where(TimeEntry.id.in_(manual_ids))
+                        .order_by(TimeEntry.id)
+                        .with_for_update().execution_options(populate_existing=True)
+                    )).scalars().all() if task_id is not None
+                }
+                if not locked_manual_tasks.issubset(task_ids):
+                    await db.rollback()
+                    raise HTTPException(
+                        status_code=409,
+                        detail="El registro manual cambió de tarea; vuelve a intentarlo.",
+                    )
+            conflict = await _manual_time_conflict(db, operations)
+            if conflict:
+                await db.rollback()
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"{conflict}; el ajuste no se ha marcado como deshecho.",
+                )
             for op in reinserts:
                 restored += await _undo_delete(db, op, warnings)
             await db.flush()
@@ -223,6 +305,13 @@ async def undo_change(
                 restored += await _undo_update(db, op, warnings)
             for op in removals:
                 restored += await _undo_create(db, op, warnings)
+            await db.flush()
+            if manual_ops:
+                from backend.api.routes.time_entries import _sync_task_actual_minutes
+                for task_id in sorted(task_ids):
+                    task = locked_tasks.get(task_id)
+                    if task is not None:
+                        await _sync_task_actual_minutes(db, task_id, task=task)
 
             # func.now(): mismo reloj que created_at (el del servidor), o las dos
             # marcas de la misma fila saldrían de husos distintos.

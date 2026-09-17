@@ -81,12 +81,12 @@ async def test_create_task_returns_201_when_notification_fails(admin_client, adm
 
 
 # ---------------------------------------------------------------------------
-# Test 2: Stopping a timer with sync failure still returns 200
+# Test 2: Stopping a timer and syncing its task are atomic
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_stop_timer_returns_200_when_sync_fails(admin_client, admin_user):
-    """POST /api/timer/stop should return 200 even if _sync_task_actual_minutes raises."""
+async def test_stop_timer_does_not_commit_when_sync_fails(admin_client, admin_user):
+    """A failed total sync must not commit the stopped timer by itself."""
     from datetime import datetime, timezone
 
     fake_entry = MagicMock(spec=TimeEntry)
@@ -138,14 +138,20 @@ async def test_stop_timer_returns_200_when_sync_fails(admin_client, admin_user):
             side_effect=Exception("sync failed"),
         ),
         patch(
+            "backend.api.routes.time_entries._lock_tasks",
+            new_callable=AsyncMock,
+            return_value={10: MagicMock()},
+        ),
+        patch(
             "backend.api.routes.time_entries._load_time_entry_for_response",
             new_callable=AsyncMock,
             return_value=stopped_entry,
         ),
     ):
-        response = await admin_client.post("/api/timer/stop", json={})
+        with pytest.raises(Exception, match="sync failed"):
+            await admin_client.post("/api/timer/stop", json={})
 
-    assert response.status_code == 200, f"Expected 200 but got {response.status_code}: {response.text}"
+    mock_db.commit.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -211,5 +217,4 @@ async def test_create_evidence_returns_201_when_reload_fails(admin_client, admin
         )
 
     assert response.status_code == 201, f"Expected 201 but got {response.status_code}: {response.text}"
-
 

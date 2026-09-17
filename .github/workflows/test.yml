@@ -9,6 +9,21 @@ on:
 jobs:
   backend-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: agency
+          POSTGRES_PASSWORD: agency_test_only
+          POSTGRES_DB: the_agency_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agency -d the_agency_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://agency:agency_test_only@localhost:5432/the_agency_test
+      REQUIRE_TEST_DATABASE: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -49,7 +64,6 @@ jobs:
 
       - name: Run frontend tests
         run: npx vitest run --reporter=verbose
-        continue-on-error: true
 
   lint:
     runs-on: ubuntu-latest

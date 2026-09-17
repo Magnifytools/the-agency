@@ -14,6 +14,11 @@ frontend/dist/
 *.xlsx
 
 output/
+.playwright-cli/
+# Internal audit/work notes are local: the application repository is public.
+tasks/archive/2026-09-17-auditoria-producto/
+tasks/archive/2026-09-17-primera-mejora/
+tasks/current/2026-09-17-implementacion-completa/
 .claude/
 
 # Chrome extension — allow dist artifacts but never the private key

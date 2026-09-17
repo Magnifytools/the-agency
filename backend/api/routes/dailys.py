@@ -116,25 +116,13 @@ async def submit_daily(
     except Exception:
         logger.exception("Error parseando daily_id=%s (queda guardado sin parsear)", daily.id)
 
-    time_entries_created = 0
     if parsed:
         daily.parsed_data = parsed
         await db.commit()
         await safe_refresh(db, daily, log_context="dailys")
 
-        # Auto-generate time entries from parsed data
-        try:
-            from backend.services.daily_timesheet import create_time_entries_from_daily
-            time_entries_created = await create_time_entries_from_daily(
-                db, current_user.id, update_date, parsed,
-            )
-            if time_entries_created:
-                await db.commit()
-        except Exception:
-            logger.exception("Error creating time entries from daily_id=%s", daily.id)
-
     resp = _to_response(daily)
-    resp.time_entries_created = time_entries_created
+    resp.time_entries_created = 0
     return resp
 
 
@@ -178,7 +166,7 @@ async def prefill_daily(
 ):
     """Return tasks completed/moved today by the current user to pre-fill the daily."""
     from backend.db.models import Task, TaskStatus, TimeEntry
-    from sqlalchemy import func, or_
+    from sqlalchemy import func
 
     today = date_type.today()
 

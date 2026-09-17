@@ -7,5 +7,7 @@ venv
 .git
 *.md
 tasks/
+output/
+.playwright-cli/
 frontend/dist
 frontend/node_modules

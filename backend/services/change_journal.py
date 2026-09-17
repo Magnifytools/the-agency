@@ -58,11 +58,13 @@ from backend.db.models import (
     ProjectPhase,
     Task,
     TaskChecklist,
+    TimeEntry,
 )
 
 logger = logging.getLogger(__name__)
 
 _INFO_KEY = "_change_journal_pending"
+_MANUAL_TIME_KEY = "_change_journal_manual_time"
 
 #: Tope de filas por entrada. Una importación masiva no debe generar un JSON
 #: gigante ni una entrada de historial que nadie va a querer deshacer entera.
@@ -128,6 +130,7 @@ _SPECS: dict[type, _Spec] = {
     GrowthIdea:    _Spec("growth_idea",   "title",        "growth",   "Idea",      True,  0),
     ProjectPhase:  _Spec("project_phase", "name",         "projects", "Fase",      True,  1),
     TaskChecklist: _Spec("task_checklist", "text",        "tasks",    "Subtarea",  True,  1),
+    TimeEntry:     _Spec("time_entry",     "notes",       "timesheet", "Registro de tiempo", False, 1),
     LeadActivity:  _Spec("lead_activity", "title",        "growth",   "Actividad", True,  1),
 }
 
@@ -138,6 +141,11 @@ SPECS_BY_TYPE: dict[str, _Spec] = {spec.entity_type: spec for spec in _SPECS.val
 
 def _spec_for(obj: Any) -> Optional[_Spec]:
     return _SPECS.get(type(obj))
+
+
+def capture_manual_time(session: Session) -> None:
+    """Include only task-total manual entries in this transaction's journal."""
+    session.info[_MANUAL_TIME_KEY] = True
 
 
 # ── (De)serialización ────────────────────────────────────────────────────────
@@ -241,6 +249,8 @@ def _capture(session: Session, flush_context, instances) -> None:
     try:
         ops = _pending(session)
         for obj in session.new:
+            if isinstance(obj, TimeEntry) and not session.info.get(_MANUAL_TIME_KEY):
+                continue
             spec = _spec_for(obj)
             if spec is None:
                 continue
@@ -248,10 +258,18 @@ def _capture(session: Session, flush_context, instances) -> None:
             ops.append(_Op(spec=spec, action="create", obj=obj, after=after,
                            name=_label_of(spec, after)))
         for obj in session.dirty:
+            if isinstance(obj, TimeEntry) and not session.info.get(_MANUAL_TIME_KEY):
+                continue
             spec = _spec_for(obj)
             if spec is None:
                 continue
             before, after = _diff(obj)
+            # Task.actual_minutes is a cache derived from TimeEntry outside an
+            # explicit manual-total edit. Journaling that cache alone would let
+            # Undo restore a total that disagrees with the source entries.
+            if isinstance(obj, Task) and not session.info.get(_MANUAL_TIME_KEY):
+                before.pop("actual_minutes", None)
+                after.pop("actual_minutes", None)
             if not after:
                 continue
             ops.append(_Op(spec=spec, action="update", obj=obj,
@@ -259,6 +277,8 @@ def _capture(session: Session, flush_context, instances) -> None:
                            before=before, after=after,
                            name=_label_of(spec, _snapshot(obj))))
         for obj in session.deleted:
+            if isinstance(obj, TimeEntry) and not session.info.get(_MANUAL_TIME_KEY):
+                continue
             spec = _spec_for(obj)
             if spec is None:
                 continue
@@ -287,6 +307,7 @@ def _resolve_ids(session: Session, flush_context) -> None:
 @event.listens_for(Session, "after_commit")
 def _dispatch(session: Session) -> None:
     ops = session.info.pop(_INFO_KEY, None)
+    session.info.pop(_MANUAL_TIME_KEY, None)
     if not ops:
         return
     try:
@@ -317,6 +338,7 @@ def _sink(entry: dict[str, Any]) -> None:
 @event.listens_for(Session, "after_soft_rollback")
 def _discard(session: Session, *args) -> None:
     session.info.pop(_INFO_KEY, None)
+    session.info.pop(_MANUAL_TIME_KEY, None)
 
 
 # ── Colapso a una sola entrada ───────────────────────────────────────────────
