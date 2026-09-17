@@ -24,7 +24,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { projectsApi, tasksApi, usersApi } from "@/lib/api"
-import type { Project, ProjectStatus, PhaseStatus, Task, TaskStatus, ProjectClosingStatus } from "@/lib/types"
+import type { Project, ProjectStatus, PhaseStatus, TaskStatus, ProjectClosingStatus } from "@/lib/types"
 import { isEnabled } from "@/lib/hidden-modules"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -227,11 +227,11 @@ export default function ProjectDetailPage() {
             <option value="completed">Completado</option>
             <option value="cancelled">Cancelado</option>
           </Select>
-          <Button variant="outline" onClick={() => setShowSaveTemplateDialog(true)}>
+          <Button variant="outline" disabled={!hasPermission("projects", true)} onClick={() => setShowSaveTemplateDialog(true)}>
             <Copy className="h-4 w-4 mr-2" />
             Guardar plantilla
           </Button>
-          <Button variant="outline" onClick={() => setShowEditDialog(true)}>
+          <Button variant="outline" disabled={!hasPermission("projects", true)} onClick={() => setShowEditDialog(true)}>
             <Edit2 className="h-4 w-4 mr-2" />
             Editar
           </Button>

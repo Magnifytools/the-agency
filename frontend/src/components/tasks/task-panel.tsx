@@ -126,6 +126,7 @@ export function TaskPanel({
   const queryClient = useQueryClient();
   const { hasPermission } = useAuth();
   const canWrite = hasPermission?.("tasks", true) ?? false;
+  const canReadTime = hasPermission?.("timesheet") ?? false;
   const [draft, setDraft] = useState<TaskCreate>(() =>
     fromTask(undefined, defaults),
   );
@@ -953,14 +954,14 @@ export function TaskPanel({
               </details>
             )}
             <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
-              {taskId && loadedTask && onOpenTime && (
+              {taskId && loadedTask && onOpenTime && canReadTime && (
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => onOpenTime(loadedTask)}
                 >
                   <Clock className="h-4 w-4 mr-1" />
-                  Registrar tiempo
+                  Ver horas y registrar tiempo
                 </Button>
               )}
               <Button

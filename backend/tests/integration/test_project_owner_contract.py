@@ -26,6 +26,26 @@ async def _user(db_session, *, active: bool) -> User:
     return user
 
 
+async def test_member_owner_picker_exposes_activity_without_private_user_fields(member_client, db_session):
+    active = await _user(db_session, active=True)
+    inactive = await _user(db_session, active=False)
+    response = await member_client.get("/api/users", params={"page_size": 1000})
+    assert response.status_code == 200
+    rows = {row["id"]: row for row in response.json()["items"]}
+    assert rows[active.id]["is_active"] is True
+    assert rows[inactive.id]["is_active"] is False
+    assert rows[active.id]["email"] is None
+    assert rows[active.id]["cost_per_hour"] is None
+
+
+async def test_admin_owner_picker_exposes_inactive_users_as_inactive(admin_client, db_session):
+    inactive = await _user(db_session, active=False)
+    response = await admin_client.get("/api/users", params={"page_size": 1000})
+    assert response.status_code == 200
+    row = next(row for row in response.json()["items"] if row["id"] == inactive.id)
+    assert row["is_active"] is False
+
+
 async def test_project_owner_roundtrip_and_explicit_null(admin_client, db_session):
     client = Client(name=f"Owner client {uuid4().hex[:6]}")
     owner = await _user(db_session, active=True)

@@ -49,7 +49,7 @@ async def list_users(
         users = result.scalars().all()
         sanitized = [
             UserListResponse(
-                id=u.id, full_name=u.full_name,
+                id=u.id, full_name=u.full_name, is_active=u.is_active,
                 email=None, role=None, hourly_rate=None,
             )
             for u in users

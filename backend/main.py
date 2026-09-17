@@ -189,6 +189,8 @@ async def lifespan(app: FastAPI):
     # Startup evolves schema only. Legacy cleanup/fee seeds and password resets
     # must never run implicitly on deployment or infer business data from names.
 
+    from backend.startup.project_schema import ensure_project_owner_schema
+    await ensure_project_owner_schema(engine)
     from backend.startup.delivery_schema import ensure_delivery_schema
     await ensure_delivery_schema(engine)
     bg_tasks = start_background_tasks()

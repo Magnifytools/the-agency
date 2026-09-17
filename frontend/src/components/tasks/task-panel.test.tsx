@@ -7,6 +7,7 @@ import { clientKeys } from "@/lib/query-keys";
 
 const mocks = vi.hoisted(() => ({
   canWrite: true,
+  canReadTime: true,
   get: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
@@ -28,7 +29,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/context/auth-context", () => ({
   useAuth: () => ({
     hasPermission: (_module: string, write?: boolean) =>
-      !write || mocks.canWrite,
+      _module === "timesheet" ? mocks.canReadTime : !write || mocks.canWrite,
   }),
 }));
 vi.mock("@/lib/api", () => ({
@@ -144,6 +145,7 @@ describe("TaskPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.canWrite = true;
+  mocks.canReadTime = true;
     mocks.get.mockResolvedValue(task);
     mocks.checklist.mockResolvedValue([]);
     mocks.attachments.mockResolvedValue([]);
@@ -195,6 +197,13 @@ describe("TaskPanel", () => {
     await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(2));
   });
 
+  it("does not expose time history when timesheet is not readable", async () => {
+    mocks.canReadTime = false;
+    setup({ taskId: 9 });
+    await screen.findByDisplayValue("Auditar");
+    expect(screen.queryByRole("button", { name: "Ver horas y registrar tiempo" })).not.toBeInTheDocument();
+  });
+
   it("respects read-only permission and keeps time behind an explicit action", async () => {
     mocks.canWrite = false;
     const { onOpenTime } = setup({ taskId: 9 });
@@ -205,7 +214,7 @@ describe("TaskPanel", () => {
       screen.queryByRole("button", { name: "Guardar" }),
     ).not.toBeInTheDocument();
     await userEvent.click(
-      screen.getByRole("button", { name: "Registrar tiempo" }),
+      screen.getByRole("button", { name: "Ver horas y registrar tiempo" }),
     );
     expect(onOpenTime).toHaveBeenCalledWith(task);
     expect(mocks.update).not.toHaveBeenCalled();
