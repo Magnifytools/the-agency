@@ -1,4 +1,4 @@
-import axios from "axios"
+import axios, { type InternalAxiosRequestConfig } from "axios"
 import { toast } from "sonner"
 import type {
   ProjectEvidence,
@@ -143,6 +143,28 @@ export const api = axios.create({
   withCredentials: true,
 })
 
+type SessionRequestConfig = InternalAxiosRequestConfig & {
+  agencySessionEpoch?: number
+}
+
+let sessionEpoch = 0
+let sessionAbortController = new AbortController()
+
+/**
+ * Starts a new authenticated browser session. Requests from the old session
+ * are aborted and their responses can no longer expire the new session.
+ */
+export function beginApiSessionTransition() {
+  sessionEpoch += 1
+  sessionAbortController.abort()
+  sessionAbortController = new AbortController()
+  return sessionEpoch
+}
+
+function isLogoutRequest(url: string) {
+  return url.includes("/auth/logout")
+}
+
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
   const match = document.cookie
@@ -153,6 +175,13 @@ function getCookie(name: string): string | null {
 }
 
 api.interceptors.request.use((config) => {
+  const sessionConfig = config as SessionRequestConfig
+  sessionConfig.agencySessionEpoch = sessionEpoch
+  // Logout must keep its own request alive: it clears the cookie that belongs
+  // to the session being ended, even while a later login is queued.
+  if (!isLogoutRequest(String(config.url || "")) && !config.signal) {
+    config.signal = sessionAbortController.signal
+  }
   const csrfToken = getCookie(CSRF_COOKIE_NAME)
   if (csrfToken) {
     config.headers["X-CSRF-Token"] = csrfToken
@@ -173,7 +202,8 @@ api.interceptors.response.use(
           requestUrl.includes("/auth/login") ||
           requestUrl.includes("/auth/me") ||
           requestUrl.includes("/auth/logout")
-        if (!isAuthRequest) {
+        const responseEpoch = (error.config as SessionRequestConfig | undefined)?.agencySessionEpoch
+        if (!isAuthRequest && responseEpoch === sessionEpoch) {
           // Signal AuthContext to clear user — ProtectedRoute handles redirect
           localStorage.removeItem("token")
           window.dispatchEvent(new Event("auth:expired"))

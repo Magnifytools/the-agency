@@ -1,5 +1,6 @@
+import axios, { type InternalAxiosRequestConfig } from "axios"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { CSRF_COOKIE_NAME } from "@/lib/api"
+import { api, beginApiSessionTransition, CSRF_COOKIE_NAME } from "@/lib/api"
 
 // Mock sonner before importing api
 vi.mock("sonner", () => ({
@@ -14,13 +15,17 @@ const clearCsrfCookie = () => {
 }
 
 describe("API Client", () => {
+  let originalAdapter: typeof api.defaults.adapter
+
   beforeEach(() => {
     vi.clearAllMocks()
     clearCsrfCookie()
+    originalAdapter = api.defaults.adapter
   })
 
   afterEach(() => {
     clearCsrfCookie()
+    api.defaults.adapter = originalAdapter
     vi.restoreAllMocks()
   })
 
@@ -100,6 +105,51 @@ describe("API Client", () => {
       }
     }
     expect(shouldRedirect).toBe(false)
+  })
+
+  it("aborts a pending data request when the authenticated session changes", async () => {
+    let requestSignal: { aborted: boolean } | undefined
+    api.defaults.adapter = (config) => new Promise((_resolve, reject) => {
+      requestSignal = config.signal
+      const signal = config.signal
+      const addAbortListener = signal?.addEventListener
+      if (addAbortListener) {
+        addAbortListener.call(signal, "abort", () => reject({ __CANCEL__: true, config }))
+      }
+    })
+
+    const pending = api.get("/tasks").catch((error) => error)
+    await vi.waitFor(() => expect(requestSignal).toBeDefined())
+
+    beginApiSessionTransition()
+    const error = await pending
+
+    expect(requestSignal?.aborted).toBe(true)
+    expect(axios.isCancel(error)).toBe(true)
+  })
+
+  it("ignores an old 401 after a new session begins", async () => {
+    const onExpired = vi.fn()
+    let rejectOldRequest!: (reason: unknown) => void
+    let oldConfig!: InternalAxiosRequestConfig
+    window.addEventListener("auth:expired", onExpired)
+    api.defaults.adapter = (config) => new Promise((_resolve, reject) => {
+      oldConfig = config as InternalAxiosRequestConfig
+      rejectOldRequest = reject
+    })
+
+    const pending = api.get("/tasks").catch((error) => error)
+    await vi.waitFor(() => expect(rejectOldRequest).toBeTypeOf("function"))
+    beginApiSessionTransition()
+    rejectOldRequest({
+      config: oldConfig,
+      request: {},
+      response: { status: 401, data: {}, headers: {}, config: oldConfig },
+    })
+
+    await pending
+    expect(onExpired).not.toHaveBeenCalled()
+    window.removeEventListener("auth:expired", onExpired)
   })
 
   it("403 response shows permission error toast for write requests", async () => {

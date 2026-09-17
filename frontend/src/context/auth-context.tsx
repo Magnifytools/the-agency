@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { authApi } from "@/lib/api"
+import { authApi, beginApiSessionTransition } from "@/lib/api"
 import type { User } from "@/lib/types"
 
 interface AuthContextType {
@@ -21,14 +21,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const sessionEpoch = useRef(0)
+  const sessionMutations = useRef<Promise<void>>(Promise.resolve())
 
   const clearSessionCache = useCallback(async () => {
     sessionEpoch.current += 1
+    beginApiSessionTransition()
     await queryClient.cancelQueries()
     queryClient.clear()
     setUser(null)
     setIsLoading(false)
   }, [queryClient])
+
+  const queueSessionMutation = useCallback(<T,>(operation: () => Promise<T>) => {
+    const next = sessionMutations.current.then(operation, operation)
+    sessionMutations.current = next.then(() => undefined, () => undefined)
+    return next
+  }, [])
 
   useEffect(() => {
     const epoch = sessionEpoch.current
@@ -51,18 +59,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("auth:expired", onExpired)
   }, [clearSessionCache])
 
-  const login = async (email: string, password: string) => {
-    await clearSessionCache()
-    const epoch = sessionEpoch.current
-    await authApi.login(email, password)
-    const me = await authApi.me()
-    if (epoch === sessionEpoch.current) setUser(me)
-  }
+  const login = (email: string, password: string) =>
+    queueSessionMutation(async () => {
+      await clearSessionCache()
+      const epoch = sessionEpoch.current
+      await authApi.login(email, password)
+      const me = await authApi.me()
+      if (epoch === sessionEpoch.current) setUser(me)
+    })
 
-  const logout = async () => {
-    await clearSessionCache()
-    await authApi.logout().catch(() => undefined)
-  }
+  const logout = () =>
+    queueSessionMutation(async () => {
+      await clearSessionCache()
+      await authApi.logout().catch(() => undefined)
+    })
 
   const refreshUser = async () => {
     const epoch = sessionEpoch.current

@@ -5,8 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { User } from "@/lib/types"
 import { AuthProvider, useAuth } from "./auth-context"
 
-const api = vi.hoisted(() => ({ me: vi.fn(), login: vi.fn(), logout: vi.fn() }))
-vi.mock("@/lib/api", () => ({ authApi: api }))
+const api = vi.hoisted(() => ({ me: vi.fn(), login: vi.fn(), logout: vi.fn(), beginApiSessionTransition: vi.fn() }))
+vi.mock("@/lib/api", () => ({ authApi: api, beginApiSessionTransition: api.beginApiSessionTransition }))
 
 const admin: User = { id: 1, email: "admin@example.com", full_name: "Admin", role: "admin", hourly_rate: null, is_active: true, permissions: [] }
 const member: User = { id: 2, email: "member@example.com", full_name: "Member", role: "member", hourly_rate: null, is_active: true, permissions: [] }
@@ -79,5 +79,35 @@ describe("AuthProvider session cache", () => {
 
     await act(async () => { lateMe.resolve(admin) })
     expect(screen.getByText("anonymous")).toBeInTheDocument()
+  })
+
+  it("leaves the previous identity cleared when a new login fails", async () => {
+    api.me.mockResolvedValueOnce(admin)
+    api.login.mockRejectedValueOnce(new Error("invalid credentials"))
+    const queryClient = setup()
+    await screen.findByText(admin.email)
+    queryClient.setQueryData(["clients"], ["admin-only"])
+
+    await userEvent.click(screen.getByRole("button", { name: "Cambiar identidad" }))
+
+    await waitFor(() => expect(screen.getByText("anonymous")).toBeInTheDocument())
+    expect(queryClient.getQueryData(["clients"])).toBeUndefined()
+  })
+
+  it("waits for logout to finish before starting a new login", async () => {
+    const pendingLogout = deferred<void>()
+    api.me.mockResolvedValueOnce(admin).mockResolvedValueOnce(member)
+    api.logout.mockReturnValueOnce(pendingLogout.promise)
+    api.login.mockResolvedValueOnce(undefined)
+    setup()
+    await screen.findByText(admin.email)
+
+    await userEvent.click(screen.getByRole("button", { name: "Cerrar sesión" }))
+    await userEvent.click(screen.getByRole("button", { name: "Cambiar identidad" }))
+    expect(api.login).not.toHaveBeenCalled()
+
+    await act(async () => { pendingLogout.resolve(undefined) })
+    await screen.findByText(member.email)
+    expect(api.login).toHaveBeenCalledOnce()
   })
 })
