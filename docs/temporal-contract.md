@@ -10,6 +10,9 @@ La zona civil de negocio se configura con `AGENCY_TIMEZONE` y por defecto es
 - `TimeEntry.date` conserva dos significados históricos. Una entrada manual
   (`started_at IS NULL`) contiene la fecha civil elegida. Una entrada de timer
   (`started_at IS NOT NULL`) contiene un instante UTC naive.
+- Una entrada manual nueva sin fecha explícita usa `business_today()` a
+  medianoche civil. Una fecha explícita se conserva; este criterio no rellena
+  ni modifica entradas históricas.
 - Los períodos civiles son semiabiertos: `[inicio, fin_exclusivo)`. El helper
   `time_entry_civil_period` aplica límites civiles a entradas manuales y límites
   UTC derivados de Madrid a timers. Los lectores no deben comparar ambas

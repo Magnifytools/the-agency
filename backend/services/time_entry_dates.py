@@ -12,7 +12,7 @@ from datetime import date, datetime, time
 from sqlalchemy import and_, or_
 
 from backend.db.models import TimeEntry
-from backend.services.temporal import civil_day_utc_bounds
+from backend.services.temporal import business_today, civil_day_utc_bounds
 from backend.services.temporal import as_utc_instant, business_zone
 
 
@@ -41,3 +41,8 @@ def time_entry_business_date(value: datetime, started_at: datetime | None) -> da
     if started_at is None:
         return value.date()
     return as_utc_instant(value).astimezone(business_zone()).date()
+
+
+def manual_time_entry_date(now: datetime | None = None) -> datetime:
+    """Default date for a new manual entry: business civil day at midnight."""
+    return datetime.combine(business_today(now=now), time.min)

@@ -38,7 +38,7 @@ from backend.services.time_budget import (
     is_recurring_project,
 )
 from backend.services.temporal import as_utc_instant, business_today, business_zone
-from backend.services.time_entry_dates import time_entry_civil_period
+from backend.services.time_entry_dates import manual_time_entry_date, time_entry_civil_period
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +185,7 @@ async def create_time_entry(
         task_id=body.task_id,
         user_id=current_user.id,
         notes=body.notes,
-        date=entry_date or datetime.now(timezone.utc).replace(tzinfo=None),
+        date=entry_date or manual_time_entry_date(),
     )
     db.add(entry)
     await db.flush()

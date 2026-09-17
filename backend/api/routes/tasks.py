@@ -32,6 +32,7 @@ from backend.api.utils.db_helpers import safe_refresh
 from backend.api.middleware.audit_log import log_audit
 from backend.services.task_scope import validate_task_scope
 from backend.services.temporal import civil_day_utc_bounds
+from backend.services.time_entry_dates import manual_time_entry_date
 from backend.services.task_lifecycle import stamp_task_status
 
 logger = logging.getLogger(__name__)
@@ -354,7 +355,7 @@ async def create_task(
                 task_id=task.id,
                 user_id=current_user.id,
                 minutes=task.actual_minutes,
-                date=datetime.now(timezone.utc).replace(tzinfo=None),
+                date=manual_time_entry_date(),
                 notes="[manual]",
             ))
         await db.commit()
@@ -515,7 +516,7 @@ async def update_task(
                     task_id=task_id,
                     user_id=current_user.id,
                     minutes=increase,
-                    date=datetime.now(timezone.utc).replace(tzinfo=None),
+                    date=manual_time_entry_date(),
                     notes="[manual]",
                 ))
         elif manual_diff < current_manual:
