@@ -25,12 +25,14 @@ from backend.schemas.project import (
     TemplateUpdate,
     SaveAsTemplateInput,
     InvoiceTasksInput,
+    ProjectTasksResponse,
 )
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module, require_admin
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 from backend.services.time_budget import effective_budgets, build_closing_status, is_recurring_project
 from backend.services.task_scope import validate_client_exists
+from backend.services.project_owner import validate_project_owner
 from backend.services.temporal import as_utc_instant, business_today, business_zone
 from backend.services.time_entry_dates import time_entry_civil_period
 from backend.api.utils.db_helpers import safe_refresh
@@ -91,6 +93,7 @@ def _project_load_options():
     """
     return [
         selectinload(Project.client),
+        selectinload(Project.owner),
         selectinload(Project.phases),
         selectinload(Project.tasks).selectinload(Task.assigned_user),
     ]
@@ -181,6 +184,8 @@ def _build_project_response(
         last_billed_date=project.last_billed_date,
         client_id=project.client_id,
         client_name=project.client.name if project.client else None,
+        owner_id=project.owner_id,
+        owner_name=project.owner.full_name if project.owner else None,
         phases=[
             ProjectPhaseResponse(
                 id=ph.id,
@@ -252,6 +257,7 @@ async def list_projects(
         # agregan en la DB (ver _list_counts).
         base.options(
             selectinload(Project.client),
+            selectinload(Project.owner),
             noload(Project.tasks),
             noload(Project.phases),
         )
@@ -281,6 +287,8 @@ async def list_projects(
                 monthly_fee=float(p.monthly_fee) if p.monthly_fee is not None else None,
                 client_id=p.client_id,
                 client_name=p.client.name if p.client else None,
+                owner_id=p.owner_id,
+                owner_name=p.owner.full_name if p.owner else None,
                 phase_count=phase_counts.get(p.id, 0),
                 task_count=task_count,
                 completed_task_count=completed_count,
@@ -360,6 +368,7 @@ async def create_project(
     _user=Depends(require_module("projects", write=True)),
 ):
     await validate_client_exists(db, body.client_id)
+    await validate_project_owner(db, body.owner_id)
     project = Project(
         name=body.name,
         description=body.description,
@@ -377,6 +386,7 @@ async def create_project(
         unit_label=body.unit_label,
         scope=body.scope,
         client_id=body.client_id,
+        owner_id=body.owner_id,
     )
     db.add(project)
     await db.commit()
@@ -578,11 +588,13 @@ async def create_project_from_template(
     client_id: int,
     template_key: str,
     start_date: Optional[datetime] = None,
+    owner_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_module("projects", write=True)),
 ):
     """Create a project from a DB template with phases and tasks pre-populated."""
     await validate_client_exists(db, client_id)
+    await validate_project_owner(db, owner_id)
     result = await db.execute(
         select(ProjectTemplateDB).where(ProjectTemplateDB.key == template_key)
     )
@@ -606,6 +618,7 @@ async def create_project_from_template(
         is_recurring=tpl.is_recurring,
         pricing_model=tpl.pricing_model,
         monthly_fee=tpl.monthly_fee,
+        owner_id=owner_id,
     )
     db.add(project)
     await db.flush()
@@ -765,6 +778,7 @@ _UPDATABLE_PROJECT_FIELDS = {
     "gsc_url", "ga4_property_id",
     "pricing_model", "monthly_fee", "unit_price", "unit_label", "scope",
     "billing_day", "billing_amount", "next_billing_date", "last_billed_date",
+    "owner_id",
 }
 
 
@@ -784,6 +798,8 @@ async def update_project(
 
     old_status = project.status.value if hasattr(project.status, "value") else str(project.status)
     update_data = body.model_dump(exclude_unset=True)
+    if "owner_id" in update_data:
+        await validate_project_owner(db, update_data["owner_id"])
     for field, value in update_data.items():
         if field not in _UPDATABLE_PROJECT_FIELDS:
             continue
@@ -996,7 +1012,7 @@ async def delete_phase(
     await db.commit()
 
 
-@router.get("/{project_id}/tasks")
+@router.get("/{project_id}/tasks", response_model=ProjectTasksResponse)
 async def get_project_tasks(
     project_id: int,
     db: AsyncSession = Depends(get_db),
@@ -1022,8 +1038,12 @@ async def get_project_tasks(
             "priority": task.priority.value if task.priority else "medium",
             "start_date": task.start_date,
             "due_date": task.due_date,
+            "scheduled_date": task.scheduled_date,
             "estimated_minutes": task.estimated_minutes,
-            "assigned_to": task.assigned_user.full_name if task.assigned_user else None,
+            "assigned_to": task.assigned_to,
+            "assigned_user_name": task.assigned_user.full_name if task.assigned_user else None,
+            "waiting_for": task.waiting_for,
+            "follow_up_date": task.follow_up_date,
         }
         if task.phase_id:
             if task.phase_id not in tasks_by_phase:

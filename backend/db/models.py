@@ -489,8 +489,10 @@ class Project(TimestampMixin, Base):
     last_billed_date = Column(Date, nullable=True)
 
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
 
     client = relationship("Client", back_populates="projects", lazy="selectin")
+    owner = relationship("User", lazy="selectin", foreign_keys=[owner_id])
     phases = relationship("ProjectPhase", back_populates="project", lazy="selectin", order_by="ProjectPhase.order_index")
     tasks = relationship("Task", back_populates="project", lazy="selectin")
     evidence = relationship("ProjectEvidence", back_populates="project", lazy="noload", order_by="ProjectEvidence.created_at.desc()")

@@ -13,6 +13,17 @@ async def test_readiness_checks_real_schema(engine):
     await check_database_ready(engine)
 
 
+async def test_readiness_rejects_missing_project_owner_column(engine):
+    async with engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE projects RENAME COLUMN owner_id TO owner_id_missing"))
+    try:
+        with pytest.raises(Exception, match="owner_id"):
+            await check_database_ready(engine)
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE projects RENAME COLUMN owner_id_missing TO owner_id"))
+
+
 async def test_readiness_accepts_equivalent_legacy_index_name(engine):
     async with engine.begin() as conn:
         await conn.execute(text("ALTER INDEX uq_time_entries_active_timer RENAME TO uq_one_active_timer"))

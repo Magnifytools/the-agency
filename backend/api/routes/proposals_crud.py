@@ -24,6 +24,7 @@ from backend.schemas.proposal import (
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 from backend.core.rate_limiter import ai_limiter
 from backend.api.utils.db_helpers import safe_refresh
+from backend.services.project_owner import validate_project_owner
 
 router = APIRouter(prefix="/api/proposals", tags=["proposals"])
 logger = logging.getLogger(__name__)
@@ -335,6 +336,7 @@ async def duplicate_proposal(
 @router.post("/{proposal_id}/convert", response_model=ProposalResponse)
 async def convert_proposal(
     proposal_id: int,
+    owner_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_admin),
 ):
@@ -347,6 +349,7 @@ async def convert_proposal(
         raise HTTPException(status_code=400, detail="Solo se pueden convertir propuestas aceptadas")
     if prop.converted_project_id:
         raise HTTPException(status_code=400, detail="Esta propuesta ya fue convertida")
+    await validate_project_owner(db, owner_id)
 
     # If from lead and no client yet, create client from lead
     client_id = prop.client_id
@@ -398,6 +401,7 @@ async def convert_proposal(
         project_type=prop.service_type.value if prop.service_type else "custom",
         status=ProjectStatus.active,
         budget_amount=budget,
+        owner_id=owner_id,
     )
     db.add(project)
     await db.flush()

@@ -131,6 +131,18 @@ async def _ensure_columns():
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_impressions_30d INTEGER",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_metrics_synced_at TIMESTAMPTZ",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS engine_project_id INTEGER",
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS owner_id INTEGER",
+        """DO $$ BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conrelid = 'projects'::regclass
+                  AND conname = 'projects_owner_id_fkey'
+            ) THEN
+                ALTER TABLE projects ADD CONSTRAINT projects_owner_id_fkey
+                    FOREIGN KEY (owner_id) REFERENCES users(id);
+            END IF;
+        END $$""",
+        "CREATE INDEX IF NOT EXISTS ix_projects_owner_id ON projects (owner_id)",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS business_model VARCHAR(50)",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS aov DOUBLE PRECISION",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS conversion_rate DOUBLE PRECISION",

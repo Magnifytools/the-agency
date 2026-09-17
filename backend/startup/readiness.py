@@ -11,6 +11,21 @@ async def check_database_ready(engine) -> None:
             await conn.execute(text("SELECT completed_at FROM tasks LIMIT 0"))
             await conn.execute(text("SELECT dedupe_key FROM notifications LIMIT 0"))
             await conn.execute(text("SELECT paused_at, accumulated_seconds FROM time_entries LIMIT 0"))
+            await conn.execute(text("SELECT owner_id FROM projects LIMIT 0"))
+            owner_fk = await conn.scalar(text("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint c
+                    JOIN pg_attribute a
+                      ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+                    WHERE c.conrelid = 'projects'::regclass
+                      AND c.contype = 'f'
+                      AND c.confrelid = 'users'::regclass
+                      AND a.attname = 'owner_id'
+                )
+            """))
+            if owner_fk is not True:
+                raise RuntimeError("Required project owner foreign key is missing")
             # These source types enforce financial visibility in persisted PM
             # insights; do not serve a revision whose enum upgrade was skipped.
             await conn.execute(text("SELECT 'financial'::insighttype, 'operational_suggestion'::insighttype"))
