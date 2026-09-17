@@ -13,7 +13,7 @@ Se actualizan dependencias Python y se conserva compatibilidad con tokens HS256 
 ## Validación
 
 - Backend conjunto:595 pruebas aprobadas,2 omisiones existentes; PostgreSQL real aislado.12 comprobaciones adicionales de permisos/migración/readiness aprobadas.
-- Frontend:69 pruebas aprobadas; TypeScript y build de producción comprobados.
+- Frontend:70 pruebas aprobadas; TypeScript y build de producción comprobados.
 - Regresiones: más de25proyectos, filtros antes del conteo, completar/reabrir/borrar tareas, conversiones concurrentes, rollback, cambio de identidad, respuesta401 atrasada, cancelación y navegación autorizada.
 - Vista local sintética de escritorio y móvil, cambio Hoy↔Trabajo y enlaces de proyecto; sin escrituras de prueba en producción ni envíos a terceros.
 - El despliegue y la revisión exacta se acreditan en la PR y su CI. Esta entrega no cierra el objetivo completo: siguen pendientes fichas/altas, incidencias proactivas, resúmenes por período e instrucciones naturales.
