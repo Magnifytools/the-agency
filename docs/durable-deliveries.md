@@ -51,10 +51,14 @@ known IDs; uncertainty without an ID requires checking Discord before resending.
    `/api/ready` checks the tables, columns and unique indexes. Do not invoke the
    historical `init_db` script or its seeds/cleanup as a migration.
 2. Drain/stop every previous revision's web instance and allow its outstanding
-   daily/digest requests to finish. Reload open app tabs so their digest preview
-   uses the new linked endpoint. The generic admin custom-message endpoint is
-   still outside this scope and old cached digest UI used that endpoint.
-   Old direct senders do not understand the new
+   daily/digest requests to finish. Cached digest previews that still call the
+   generic custom-message route receive 409 with a reload instruction, before
+   settings resolution or provider HTTP. The route requires the explicit
+   `X-Agency-Send-Intent: custom-v1` contract supplied only by the current custom
+   message client; this version marker is not an authorization boundary, and
+   admin permission remains required. No global tab reload is a rollout prerequisite.
+   The current generic admin sender remains outside the ledger scope.
+   Old server-side direct senders do not understand the new
    dedupe key. Do not run them alongside an enabled new worker. Do not enqueue
    duplicate operational test messages to verify rollout.
 3. Check readiness, existing draft counts, queue/receipt reads and permissions.

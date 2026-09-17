@@ -514,7 +514,7 @@ export const discordApi = {
   sendDigest: (digestId: number, content?: string) =>
     api.post<import("./types").DeliveryReceipt>(`/discord/send-digest/${digestId}`, { content }).then((r) => r.data),
   sendCustom: (content: string) =>
-    api.post<import("./types").DiscordSendResponse>("/discord/send-custom", { content }).then((r) => r.data),
+    api.post<import("./types").DiscordSendResponse>("/discord/send-custom", { content }, { headers: { "X-Agency-Send-Intent": "custom-v1" } }).then((r) => r.data),
   sendWeeklyReport: (weekStart?: string) =>
     api.post<import("./types").DiscordSendResponse>("/discord/send-weekly-report", null, { params: weekStart ? { week_start: weekStart } : {} }).then((r) => r.data),
 }

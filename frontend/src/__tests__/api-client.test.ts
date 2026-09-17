@@ -1,6 +1,6 @@
 import axios, { type InternalAxiosRequestConfig } from "axios"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { api, beginApiSessionTransition, CSRF_COOKIE_NAME } from "@/lib/api"
+import { api, beginApiSessionTransition, CSRF_COOKIE_NAME, discordApi } from "@/lib/api"
 
 // Mock sonner before importing api
 vi.mock("sonner", () => ({
@@ -28,6 +28,20 @@ describe("API Client", () => {
     api.defaults.adapter = originalAdapter
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+  })
+
+  it("versions explicit custom sends while digest sends retain their source route", async () => {
+    const requests: InternalAxiosRequestConfig[] = []
+    api.defaults.adapter = async (config) => {
+      requests.push(config)
+      return { data: { success: false, status: "pending" }, status: 202, statusText: "Accepted", headers: {}, config }
+    }
+    await discordApi.sendCustom("Custom text")
+    await discordApi.sendDigest(42, "Digest text")
+    expect(requests[0].url).toBe("/discord/send-custom")
+    expect(requests[0].headers.get("X-Agency-Send-Intent")).toBe("custom-v1")
+    expect(requests[1].url).toBe("/discord/send-digest/42")
+    expect(requests[1].headers.get("X-Agency-Send-Intent")).toBeUndefined()
   })
 
   it("creates an axios instance with /api baseURL", async () => {

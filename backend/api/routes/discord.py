@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 DISCORD_WEBHOOK_RE = re.compile(
     r"^https://(discord\.com|discordapp\.com)/api/webhooks/\d+/.+$"
 )
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import Date, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -283,8 +283,13 @@ async def send_custom_to_discord(
     body: DiscordSendCustomRequest,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
+    send_intent: str | None = Header(None, alias="X-Agency-Send-Intent"),
 ):
-    """Send custom (edited) content to Discord. Used for preview-then-send flows."""
+    """Send an explicit custom message; old digest clients must use their source route."""
+    # Protocol version, not authorization: require_admin still applies. Cached
+    # digest previews used this route before durable source-linked deliveries.
+    if send_intent != "custom-v1":
+        raise HTTPException(409, "Recarga la aplicación antes de enviar. Los resúmenes se envían desde su propio editor.")
     ds = await _get_or_create_settings(db)
     url = _decrypt_field(ds.webhook_url) or settings.DISCORD_WEBHOOK_URL or ""
 
