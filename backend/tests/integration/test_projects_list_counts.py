@@ -184,3 +184,67 @@ async def test_las_tareas_ya_no_se_cargan_para_contar(admin_client, db_session):
     assert "count(" in sobre_tasks[0].lower(), sobre_tasks[0]
     # Y ninguna debe traerse los usuarios asignados.
     assert not any("FROM users" in q and "tasks" in q for q in consultas)
+
+
+@pytest.mark.asyncio
+async def test_progress_is_derived_after_task_changes(admin_client, db_session):
+    project = await _seed(db_session, tareas_por_estado={TaskStatus.pending: 2})
+    project.progress_percent = 97  # Legacy value must never override live counts.
+    await db_session.commit()
+    tasks = (await db_session.execute(select(Task).where(Task.project_id == project.id))).scalars().all()
+
+    async def assert_progress(expected):
+        response = await admin_client.get("/api/projects")
+        assert _find(response.json(), project.id)["progress_percent"] == expected
+        # The harness shares a session across requests; production does not.
+        # Expire the list's noload collection before the detail request.
+        db_session.expire(project, ["tasks"])
+        detail = await admin_client.get(f"/api/projects/{project.id}")
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["progress_percent"] == expected
+
+    await assert_progress(0)
+    response = await admin_client.put(f"/api/tasks/{tasks[0].id}", json={"status": "completed"})
+    assert response.status_code == 200, response.text
+    await assert_progress(50)
+    response = await admin_client.put(f"/api/tasks/{tasks[0].id}", json={"status": "pending"})
+    assert response.status_code == 200, response.text
+    await assert_progress(0)
+    await admin_client.put(f"/api/tasks/{tasks[1].id}", json={"status": "completed"})
+    response = await admin_client.delete(f"/api/tasks/{tasks[0].id}")
+    assert response.status_code == 204, response.text
+    await assert_progress(100)
+    await admin_client.delete(f"/api/tasks/{tasks[1].id}")
+    await assert_progress(0)
+
+
+@pytest.mark.asyncio
+async def test_project_filters_apply_before_count_and_page(admin_client, db_session):
+    from datetime import datetime, timedelta
+
+    client = Client(name="Pagination filters synthetic")
+    db_session.add(client)
+    await db_session.flush()
+    # First 26 unfiltered rows would hide the one matching project.
+    projects = [Project(name=f"Other {i}", client_id=client.id, is_recurring=False,
+                        created_at=datetime(2026, 9, 1) + timedelta(hours=i)) for i in range(26)]
+    target = Project(name="Matching recurring", client_id=client.id, is_recurring=True,
+                     start_date=datetime(2026, 9, 30, 23, 59), target_end_date=None,
+                     created_at=datetime(2026, 8, 1))
+    db_session.add_all([*projects, target])
+    await db_session.commit()
+    response = await admin_client.get("/api/projects", params={
+        "client_id": client.id, "is_recurring": True,
+        "period_from": "2026-09-01", "period_to": "2026-09-30", "page_size": 25,
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["total"] == 1
+    assert [item["id"] for item in response.json()["items"]] == [target.id]
+    outside = await admin_client.get("/api/projects", params={
+        "client_id": client.id, "is_recurring": True, "period_to": "2026-09-29",
+    })
+    assert outside.json()["total"] == 0
+    invalid = await admin_client.get("/api/projects", params={
+        "period_from": "2026-09-30", "period_to": "2026-09-01",
+    })
+    assert invalid.status_code == 422

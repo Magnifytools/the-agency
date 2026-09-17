@@ -3,9 +3,9 @@ import logging
 from typing import Optional
 
 import base64
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import select, func, case
+from sqlalchemy import Date, cast, or_, select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, noload
 
@@ -156,7 +156,7 @@ def _build_project_response(
         target_end_date=project.target_end_date,
         actual_end_date=project.actual_end_date,
         status=project.status.value,
-        progress_percent=project.progress_percent,
+        progress_percent=calculate_progress(project.tasks),
         budget_hours=project.budget_hours,
         weekly_hours_budget=project.weekly_hours_budget,
         monthly_hours_budget=project.monthly_hours_budget,
@@ -208,6 +208,9 @@ async def list_projects(
     client_id: Optional[int] = None,
     status_filter: Optional[str] = Query(None, alias="status"),
     project_type: Optional[str] = None,
+    is_recurring: Optional[bool] = None,
+    period_from: Optional[date] = None,
+    period_to: Optional[date] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
@@ -220,6 +223,17 @@ async def list_projects(
         base = base.where(Project.status == status_filter)
     if project_type:
         base = base.where(Project.project_type == project_type)
+
+    if is_recurring is not None:
+        base = base.where(Project.is_recurring.is_(is_recurring))
+    if period_from and period_to and period_from > period_to:
+        raise HTTPException(422, "El inicio del período debe ser anterior al final")
+    # Civil dates from the caller: projects overlap the selected period. A
+    # missing bound stays open, and the same filters apply to rows and count.
+    if period_to:
+        base = base.where(or_(Project.start_date.is_(None), cast(Project.start_date, Date) <= period_to))
+    if period_from:
+        base = base.where(or_(Project.target_end_date.is_(None), cast(Project.target_end_date, Date) >= period_from))
 
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
 
@@ -234,7 +248,7 @@ async def list_projects(
             noload(Project.tasks),
             noload(Project.phases),
         )
-        .order_by(Project.created_at.desc())
+        .order_by(Project.created_at.desc(), Project.id.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
@@ -255,7 +269,7 @@ async def list_projects(
                 start_date=p.start_date,
                 target_end_date=p.target_end_date,
                 status=p.status.value,
-                progress_percent=p.progress_percent,
+                progress_percent=int(completed_count * 100 / task_count) if task_count else 0,
                 pricing_model=p.pricing_model,
                 monthly_fee=float(p.monthly_fee) if p.monthly_fee is not None else None,
                 client_id=p.client_id,
@@ -735,7 +749,7 @@ async def project_burndown(
 _UPDATABLE_PROJECT_FIELDS = {
     "name", "description", "project_type", "is_recurring",
     "start_date", "target_end_date", "actual_end_date",
-    "status", "progress_percent", "budget_hours", "weekly_hours_budget", "monthly_hours_budget", "budget_amount",
+    "status", "budget_hours", "weekly_hours_budget", "monthly_hours_budget", "budget_amount",
     "gsc_url", "ga4_property_id",
     "pricing_model", "monthly_fee", "unit_price", "unit_label", "scope",
     "billing_day", "billing_amount", "next_billing_date", "last_billed_date",
@@ -765,9 +779,7 @@ async def update_project(
             value = ProjectStatus(value)
         setattr(project, field, value)
 
-    # Auto-update progress based on tasks
-    if project.tasks:
-        project.progress_percent = calculate_progress(project.tasks)
+    # Progress is derived from current tasks when reading, never an editable snapshot.
 
     await db.commit()
     await safe_refresh(db, project, log_context="projects")

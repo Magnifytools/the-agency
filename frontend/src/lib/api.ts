@@ -509,7 +509,7 @@ export const categoriesApi = {
 
 // Projects
 export const projectsApi = {
-  list: (params?: { client_id?: number; status?: string; project_type?: string; page?: number; page_size?: number }) =>
+  list: (params?: { client_id?: number; status?: string; project_type?: string; is_recurring?: boolean; period_from?: string; period_to?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<ProjectListItem>>("/projects", { params }).then((r) => r.data),
   listAll: (params?: { client_id?: number; status?: string; project_type?: string }) =>
     api.get<PaginatedResponse<ProjectListItem>>("/projects", { params: { ...params, page_size: 1000 } }).then((r) => r.data.items),
