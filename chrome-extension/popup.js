@@ -132,12 +132,22 @@ const tasksEmpty = document.getElementById("tasks-empty");
 
 // ── State ─────────────────────────────────────────────────
 let token = "";
+let captureInFlight = false;
 let timerInterval = null;
 let activeTimerStart = null;
 let timerIsPaused = false;
 let timerAccumulatedSeconds = 0;
 let clientsList = []; // cached for quick-create forms
 let projectsList = []; // cached for task mode
+let assignmentLoadId = 0;
+let timerTasksLoadId = 0;
+let taskListLoadId = 0;
+const assignmentLoadError = document.getElementById("assignment-load-error");
+const assignmentErrorText = document.getElementById("assignment-error-text");
+const assignmentRetry = document.getElementById("assignment-retry");
+const timerTasksRetry = document.getElementById("timer-tasks-retry");
+assignmentRetry.addEventListener("click", loadProjectsAndClients);
+timerTasksRetry.addEventListener("click", loadTimerTasks);
 
 // ── Init ──────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
@@ -167,6 +177,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 // ── Views ─────────────────────────────────────────────────
 function showLoginView() {
+  // A pending response must not restore selectors from a previous account.
+  assignmentLoadId++;
+  timerTasksLoadId++;
+  taskListLoadId++;
+  clientsList = [];
+  projectsList = [];
+  [assignSelect, taskClientSelect, taskProjectSelect, qcTimerClient, qcManualClient,
+   timerTaskSelect, manualTaskSelect].forEach(clearSelect);
+  assignmentLoadError.classList.add("hidden");
+  tasksList.replaceChildren();
   loginView.classList.remove("hidden");
   mainView.classList.add("hidden");
   emailInput.focus();
@@ -181,7 +201,7 @@ function showMainView() {
 
   // Setup capture listeners
   noteText.addEventListener("input", () => {
-    captureBtn.disabled = !noteText.value.trim();
+    captureBtn.disabled = captureInFlight || !noteText.value.trim();
   });
 
   noteText.addEventListener("keydown", (e) => {
@@ -289,75 +309,124 @@ async function verifyToken() {
   }
 }
 
+// ── Paginated lists ───────────────────────────────────────
+async function fetchAllPages(path, filters, sessionToken) {
+  const rows = [];
+  const ids = new Set();
+  for (let page = 1; ; page++) {
+    if (token !== sessionToken) throw new Error("La sesión ha cambiado");
+    const params = new URLSearchParams({ ...filters, page: String(page), page_size: "100" });
+    const res = await fetch(`${API_URL}${path}?${params}`, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    });
+    if (token !== sessionToken) throw new Error("La sesión ha cambiado");
+    if (handle401(res)) throw new Error("La sesión ha caducado. Vuelve a conectar.");
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(getDetail(error, `Error ${res.status}`));
+    }
+    const data = await res.json();
+    if (!Array.isArray(data.items) || data.page !== page ||
+        !Number.isInteger(data.total) || data.total < 0 ||
+        !Number.isInteger(data.page_size) || data.page_size < 1 ||
+        data.items.length > data.page_size) {
+      throw new Error("Respuesta de lista incompleta. Reintenta.");
+    }
+    for (const item of data.items) {
+      if (!Number.isInteger(item.id) || ids.has(item.id)) {
+        throw new Error("La lista ha cambiado mientras se cargaba. Reintenta.");
+      }
+      ids.add(item.id);
+      rows.push(item);
+    }
+    if (page * data.page_size >= data.total) {
+      if (rows.length !== data.total) throw new Error("Respuesta de lista incompleta. Reintenta.");
+      return rows;
+    }
+    if (data.items.length !== data.page_size) {
+      throw new Error("Respuesta de lista incompleta. Reintenta.");
+    }
+  }
+}
+
+function clearSelect(select) {
+  select.replaceChildren(select.options[0].cloneNode(true));
+}
+
+function rememberSelection(select) {
+  return { value: select.value, label: select.selectedOptions[0]?.textContent };
+}
+
+function restoreSelection(select, previous) {
+  if (!previous.value) return;
+  select.value = previous.value;
+  if (select.value !== previous.value) {
+    // Never silently turn an explicitly assigned draft into an AI assignment.
+    const option = document.createElement("option");
+    option.value = previous.value;
+    option.textContent = `${previous.label} (ya no disponible)`;
+    option.disabled = true;
+    option.selected = true;
+    select.appendChild(option);
+  }
+}
+
+function populateSelect(select, rows, label) {
+  const previous = rememberSelection(select);
+  clearSelect(select);
+  rows.forEach((row) => {
+    const option = document.createElement("option");
+    option.value = row.id;
+    option.textContent = label(row);
+    select.appendChild(option);
+  });
+  restoreSelection(select, previous);
+}
+
 // ── Projects + Clients (combined selector) ────────────────
 async function loadProjectsAndClients() {
+  const loadId = ++assignmentLoadId;
+  const sessionToken = token;
+  assignmentRetry.disabled = true;
   try {
-    const [projRes, clientRes] = await Promise.all([
-      fetch(`${API_URL}/api/projects?limit=100&status=active`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-      fetch(`${API_URL}/api/clients?limit=100&status=active`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
+    const [projects, clients] = await Promise.all([
+      fetchAllPages("/api/projects", { status: "active" }, sessionToken),
+      fetchAllPages("/api/clients", { status: "active" }, sessionToken),
     ]);
-
-    // Clear existing optgroups (prevent duplicates on re-login)
-    while (assignSelect.options.length > 1) assignSelect.remove(1);
-
-    // Projects group
-    if (projRes.ok) {
-      const projData = await projRes.json();
-      const projects = projData.items || projData;
-      projectsList = projects; // cache for task mode
-      if (projects.length > 0) {
-        const grp = document.createElement("optgroup");
-        grp.label = "Proyectos";
-        projects.forEach((p) => {
-          const opt = document.createElement("option");
-          opt.value = `project:${p.id}`;
-          opt.textContent = p.name;
-          grp.appendChild(opt);
-        });
-        assignSelect.appendChild(grp);
-      }
+    if (loadId !== assignmentLoadId || token !== sessionToken) return;
+    // Commit both complete lists together. A failed page leaves the last
+    // successful lists, active selections, and unsent drafts intact.
+    projectsList = projects;
+    clientsList = clients;
+    const previous = rememberSelection(assignSelect);
+    clearSelect(assignSelect);
+    for (const [label, type, rows] of [["Proyectos", "project", projects], ["Clientes", "client", clients]]) {
+      if (!rows.length) continue;
+      const group = document.createElement("optgroup");
+      group.label = label;
+      rows.forEach((row) => {
+        const option = document.createElement("option");
+        option.value = `${type}:${row.id}`;
+        option.textContent = row.name;
+        group.appendChild(option);
+      });
+      assignSelect.appendChild(group);
     }
-
-    // Clients group
-    if (clientRes.ok) {
-      const clientData = await clientRes.json();
-      const clients = clientData.items || clientData;
-      clientsList = clients; // cache for quick-create
-      if (clients.length > 0) {
-        const grp = document.createElement("optgroup");
-        grp.label = "Clientes";
-        clients.forEach((c) => {
-          const opt = document.createElement("option");
-          opt.value = `client:${c.id}`;
-          opt.textContent = c.name;
-          grp.appendChild(opt);
-        });
-        assignSelect.appendChild(grp);
-      }
-      // Populate quick-create client selectors
-      populateQuickCreateClients();
-      // Populate task mode selects (needs both clients + projects)
-      populateTaskModeSelects();
-    }
-  } catch {
-    // silently ignore — assignment is optional
+    restoreSelection(assignSelect, previous);
+    populateQuickCreateClients();
+    populateTaskModeSelects();
+    assignmentLoadError.classList.add("hidden");
+  } catch (error) {
+    if (loadId !== assignmentLoadId || token !== sessionToken) return;
+    assignmentErrorText.textContent = `No se pudieron cargar clientes y proyectos. ${error.message}${clientsList.length || projectsList.length ? " Se conserva la lista anterior." : ""}`;
+    assignmentLoadError.classList.remove("hidden");
+  } finally {
+    if (loadId === assignmentLoadId) assignmentRetry.disabled = false;
   }
 }
 
 function populateQuickCreateClients() {
-  [qcTimerClient, qcManualClient].forEach((sel) => {
-    while (sel.options.length > 1) sel.remove(1);
-    clientsList.forEach((c) => {
-      const opt = document.createElement("option");
-      opt.value = c.id;
-      opt.textContent = c.name;
-      sel.appendChild(opt);
-    });
-  });
+  [qcTimerClient, qcManualClient].forEach((select) => populateSelect(select, clientsList, (client) => client.name));
 }
 
 // ── Capture ───────────────────────────────────────────────
@@ -365,8 +434,14 @@ captureBtn.addEventListener("click", () => captureNote());
 
 async function captureNote() {
   const text = noteText.value.trim();
-  if (!text) return;
+  if (!text || captureInFlight) return;
+  if (assignSelect.selectedOptions[0]?.disabled) {
+    captureError.textContent = "Elige un cliente o proyecto disponible antes de capturar.";
+    captureError.classList.remove("hidden");
+    return;
+  }
 
+  captureInFlight = true;
   captureBtn.disabled = true;
   btnText.classList.add("hidden");
   btnLoading.classList.remove("hidden");
@@ -387,7 +462,11 @@ async function captureNote() {
   const selected = assignSelect.value;
   if (selected) {
     const [type, id] = selected.split(":");
-    if (type === "project") body.project_id = parseInt(id, 10);
+    if (type === "project") {
+      body.project_id = parseInt(id, 10);
+      const project = projectsList.find((item) => item.id === body.project_id);
+      if (project?.client_id) body.client_id = project.client_id;
+    }
     else if (type === "client") body.client_id = parseInt(id, 10);
   }
 
@@ -413,11 +492,12 @@ async function captureNote() {
       throw new Error(errData.detail || `Error ${res.status}`);
     }
 
-    // Success — reset form
-    noteText.value = "";
-    linkUrl.value = "";
-    assignSelect.value = "";
-    captureBtn.disabled = true;
+    // Clear only the submitted draft, never edits made while it was sending.
+    if (noteText.value.trim() === text && linkUrl.value.trim() === link && assignSelect.value === selected) {
+      noteText.value = "";
+      linkUrl.value = "";
+      assignSelect.value = "";
+    }
 
     if (selected) {
       successText.textContent = "Nota capturada y asignada ✓";
@@ -436,6 +516,7 @@ async function captureNote() {
     captureError.textContent = err.message || "Error al enviar.";
     captureError.classList.remove("hidden");
   } finally {
+    captureInFlight = false;
     captureBtn.disabled = !noteText.value.trim();
     btnText.classList.remove("hidden");
     btnLoading.classList.add("hidden");
@@ -466,23 +547,9 @@ modeBtns.forEach((btn) => {
 
 // ── Task Mode: populate selects ──────────────────────────
 function populateTaskModeSelects() {
-  // Clients
-  while (taskClientSelect.options.length > 1) taskClientSelect.remove(1);
-  clientsList.forEach((c) => {
-    const opt = document.createElement("option");
-    opt.value = c.id;
-    opt.textContent = c.name;
-    taskClientSelect.appendChild(opt);
-  });
-
-  // Projects
-  while (taskProjectSelect.options.length > 1) taskProjectSelect.remove(1);
-  projectsList.forEach((p) => {
-    const opt = document.createElement("option");
-    opt.value = p.id;
-    opt.textContent = p.name;
-    taskProjectSelect.appendChild(opt);
-  });
+  populateSelect(taskClientSelect, clientsList, (client) => client.name);
+  populateSelect(taskProjectSelect, projectsList, (project) => project.name);
+  updateTaskCreateBtn();
 }
 
 // ── Task Mode: enable/disable button ─────────────────────
@@ -856,36 +923,26 @@ function updateTimerDisplay() {
 }
 
 async function loadTimerTasks() {
+  const loadId = ++timerTasksLoadId;
+  const sessionToken = token;
+  timerTasksRetry.disabled = true;
   try {
-    const res = await fetch(`${API_URL}/api/tasks?assigned_to=me&status=pending,in_progress,waiting,in_review&page_size=50`, {
-      headers: { Authorization: `Bearer ${token}` },
+    const tasks = await fetchAllPages("/api/tasks", {
+      assigned_to: "me", status: "pending,in_progress,waiting,in_review",
+    }, sessionToken);
+    if (loadId !== timerTasksLoadId || token !== sessionToken) return;
+    [timerTaskSelect, manualTaskSelect].forEach((select) => {
+      populateSelect(select, tasks, (task) => task.title.length > 40 ? task.title.slice(0, 40) + "..." : task.title);
     });
-
-    if (handle401(res)) return;
-    if (res.ok) {
-      const data = await res.json();
-      const tasks = data.items || data;
-
-      // Populate both selectors
-      [timerTaskSelect, manualTaskSelect].forEach((sel) => {
-        // Keep first option
-        while (sel.options.length > 1) sel.remove(1);
-        tasks.forEach((t) => {
-          const opt = document.createElement("option");
-          opt.value = t.id;
-          opt.textContent = t.title.length > 40 ? t.title.slice(0, 40) + "..." : t.title;
-          sel.appendChild(opt);
-        });
-      });
-    } else {
-      console.warn("loadTimerTasks: response not ok", res.status);
-      timerError.textContent = "Error cargando tareas";
-      timerError.classList.remove("hidden");
-    }
-  } catch (err) {
-    console.error("loadTimerTasks failed:", err);
-    timerError.textContent = "Error cargando tareas. Reintenta.";
+    timerTasksRetry.classList.add("hidden");
+    timerError.classList.add("hidden");
+  } catch (error) {
+    if (loadId !== timerTasksLoadId || token !== sessionToken) return;
+    timerError.textContent = `No se pudieron cargar las tareas. ${error.message}`;
     timerError.classList.remove("hidden");
+    timerTasksRetry.classList.remove("hidden");
+  } finally {
+    if (loadId === timerTasksLoadId) timerTasksRetry.disabled = false;
   }
 }
 
@@ -1117,23 +1174,16 @@ const STATUS_COLORS = {
 };
 
 async function loadTasks() {
-  tasksList.innerHTML = '<div class="tasks-loading">Cargando tareas...</div>';
+  const loadId = ++taskListLoadId;
+  const sessionToken = token;
+  tasksList.querySelector(".tasks-error")?.remove();
+  if (!tasksList.children.length) tasksList.innerHTML = '<div class="tasks-loading">Cargando tareas...</div>';
   tasksEmpty.classList.add("hidden");
-
-  const status = tasksFilter.value;
-  const params = new URLSearchParams({ assigned_to: "me", limit: "30" });
-  if (status) params.set("status", status);
-
+  const filters = { assigned_to: "me" };
+  if (tasksFilter.value) filters.status = tasksFilter.value;
   try {
-    const res = await fetch(`${API_URL}/api/tasks?${params}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (handle401(res)) return;
-    if (!res.ok) throw new Error("Error al cargar tareas");
-
-    const data = await res.json();
-    const tasks = data.items || data;
+    const tasks = await fetchAllPages("/api/tasks", filters, sessionToken);
+    if (loadId !== taskListLoadId || token !== sessionToken) return;
 
     if (tasks.length === 0) {
       tasksList.innerHTML = "";
@@ -1216,7 +1266,9 @@ async function loadTasks() {
       });
     });
   } catch (err) {
-    tasksList.innerHTML = `<div class="tasks-error">${escapeHtml(err.message)}</div>`;
+    if (loadId !== taskListLoadId || token !== sessionToken) return;
+    tasksList.querySelector(".tasks-loading")?.remove();
+    tasksList.insertAdjacentHTML("afterbegin", `<div class="tasks-error" role="alert">${escapeHtml(err.message)} Pulsa actualizar para reintentar.</div>`);
   }
 }
 

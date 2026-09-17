@@ -37,6 +37,11 @@
       </button>
     </div>
 
+    <div id="assignment-load-error" class="selector-load-error hidden" role="alert">
+      <span id="assignment-error-text"></span>
+      <button id="assignment-retry" type="button" class="secondary-btn small">Reintentar</button>
+    </div>
+
     <!-- Tab bar -->
     <div class="tab-bar">
       <button class="tab active" data-tab="capture">
@@ -202,7 +207,8 @@
         </div>
         <input type="text" id="manual-notes" placeholder="Notas (opcional)" class="field-input">
         <button id="manual-save-btn" class="secondary-btn full-width">Guardar registro</button>
-        <p id="timer-error" class="error hidden"></p>
+        <p id="timer-error" class="error hidden" role="alert"></p>
+        <button id="timer-tasks-retry" type="button" class="secondary-btn small hidden">Reintentar lista de tareas</button>
         <p id="timer-success" class="success-text hidden"></p>
       </div>
     </div>
