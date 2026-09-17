@@ -511,8 +511,8 @@ export const discordApi = {
     api.post<import("./types").DiscordTestResponse>("/discord/test-webhook").then((r) => r.data),
   sendDailySummary: (date?: string) =>
     api.post<import("./types").DiscordSendResponse>("/discord/send-daily-summary", null, { params: date ? { date } : {} }).then((r) => r.data),
-  sendDigest: (digestId: number) =>
-    api.post<import("./types").DiscordSendResponse>(`/discord/send-digest/${digestId}`).then((r) => r.data),
+  sendDigest: (digestId: number, content?: string) =>
+    api.post<import("./types").DeliveryReceipt>(`/discord/send-digest/${digestId}`, { content }).then((r) => r.data),
   sendCustom: (content: string) =>
     api.post<import("./types").DiscordSendResponse>("/discord/send-custom", { content }).then((r) => r.data),
   sendWeeklyReport: (weekStart?: string) =>
@@ -899,6 +899,15 @@ export const dailysApi = {
     api.put<DailyUpdate>(`/dailys/${id}`, data, { timeout: 90_000 }).then((r) => r.data),
   delete: (id: number) => api.delete(`/dailys/${id}`).then((r) => r.data),
   prefill: () => api.get<{ text: string; completed_count: number; worked_on_count: number }>("/dailys/prefill").then((r) => r.data),
+}
+
+export const deliveriesApi = {
+  list: (source_kind: "daily" | "digest", source_id: number) =>
+    api.get<import("./types").DeliveryReceipt[]>("/deliveries", { params: { source_kind, source_id } }).then((r) => r.data),
+  retry: (id: string) => api.post<import("./types").DeliveryReceipt>(`/deliveries/${id}/retry`).then((r) => r.data),
+  cancel: (id: string) => api.post<import("./types").DeliveryReceipt>(`/deliveries/${id}/cancel`).then((r) => r.data),
+  resend: (id: string, reviewKey: string) =>
+    api.post<import("./types").DeliveryReceipt>(`/deliveries/${id}/resend`, { reviewed: true, review_key: reviewKey }).then((r) => r.data),
 }
 
 export const financeExportApi = {

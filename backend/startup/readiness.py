@@ -26,6 +26,8 @@ async def check_database_ready(engine) -> None:
             """))
             if owner_fk is not True:
                 raise RuntimeError("Required project owner foreign key is missing")
+            await conn.execute(text("SELECT id, dedupe_key, actor_id, source_kind, source_id, source_version, destination_key, payload, status, available_at, expires_at, sent_at, error_code, message, resend_of, created_at, updated_at FROM deliveries LIMIT 0"))
+            await conn.execute(text("SELECT id, delivery_id, number, steps, lease_until, status, created_at, updated_at FROM delivery_attempts LIMIT 0"))
             # These source types enforce financial visibility in persisted PM
             # insights; do not serve a revision whose enum upgrade was skipped.
             await conn.execute(text("SELECT 'financial'::insighttype, 'operational_suggestion'::insighttype"))
@@ -35,6 +37,8 @@ async def check_database_ready(engine) -> None:
             for table, columns, predicate in (
                 ("notifications", ["user_id", "dedupe_key"], ""),
                 ("time_entries", ["user_id"], "(minutes IS NULL)"),
+                ("deliveries", ["dedupe_key"], ""),
+                ("delivery_attempts", ["delivery_id", "number"], ""),
             ):
                 valid = await conn.scalar(text("""
                     SELECT EXISTS (

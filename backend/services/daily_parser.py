@@ -136,7 +136,7 @@ async def parse_daily_update(raw_text: str) -> dict:
     return result
 
 
-def format_daily_for_discord(parsed_data: dict, user_name: str, date_str: str) -> str:
+def format_daily_for_discord(parsed_data: dict, user_name: str, date_str: str, *, max_length: int | None = 2000) -> str:
     """Format parsed daily data into a clean Discord message (one line per task)."""
     lines = []
     lines.append(f"**{user_name}** — {date_str}")
@@ -162,8 +162,8 @@ def format_daily_for_discord(parsed_data: dict, user_name: str, date_str: str) -
 
     result = "\n".join(lines).rstrip()
 
-    if len(result) > 2000:
-        result = result[:1997] + "..."
+    if max_length is not None and len(result) > max_length:
+        result = result[:max_length - 3] + "..."
 
     return result
 

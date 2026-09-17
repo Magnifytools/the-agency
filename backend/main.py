@@ -19,7 +19,7 @@ from backend.api.routes import (
     dashboard, discord, billing, projects, communications, pm,
     reports, proposals, growth, invitations, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
-    service_templates, dailys, contacts, activity, notifications, resources,
+    service_templates, dailys, contacts, activity, notifications, resources, deliveries,
     changes,
     billing_events, client_dashboard, engine_integration, investments,
     evidence, search, agency_vault, core_updates, balance,
@@ -189,6 +189,8 @@ async def lifespan(app: FastAPI):
     # Startup evolves schema only. Legacy cleanup/fee seeds and password resets
     # must never run implicitly on deployment or infer business data from names.
 
+    from backend.startup.delivery_schema import ensure_delivery_schema
+    await ensure_delivery_schema(engine)
     bg_tasks = start_background_tasks()
     logging.info("Startup ready.")
     yield
@@ -335,7 +337,7 @@ _HIDDEN = hidden_modules()
 # Núcleo: siempre registrado.
 _CORE_ROUTERS = [
     auth, clients, tasks, task_categories, time_entries, users, dashboard,
-    projects, pm, digests, sync, dailys, contacts, activity, notifications,
+    projects, pm, digests, sync, dailys, contacts, activity, notifications, deliveries,
     client_dashboard, engine_integration, inbox, extension, google_calendar,
     usage_stats,
     # changes: el Undo del shell. No es una pantalla, es la red de seguridad

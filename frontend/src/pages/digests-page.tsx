@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle, Trash2, ClipboardCopy, CheckCircle2 } from "lucide-react"
+import { DeliveryReceipts, deliveryToast } from "@/components/delivery-receipts"
 import { digestsApi, clientsApi, discordApi } from "@/lib/api"
 import type { Digest, DigestStatus, DigestTone } from "@/lib/types"
 
@@ -110,14 +111,10 @@ export default function DigestsPage() {
   })
 
   const discordSendCustomMutation = useMutation({
-    mutationFn: (content: string) => discordApi.sendCustom(content),
+    mutationFn: ({ id, content }: { id: number; content: string }) => discordApi.sendDigest(id, content),
     onSuccess: (data) => {
-      if (data.success) {
-        toast.success(data.message)
-        setDiscordPreviewDigest(null)
-      } else {
-        toast.error(data.message)
-      }
+      deliveryToast(data)
+      queryClient.invalidateQueries({ queryKey: ["deliveries"] })
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al enviar a Discord")),
   })
@@ -527,12 +524,14 @@ export default function DigestsPage() {
             </pre>
           )}
 
+          {discordPreviewDigest && <DeliveryReceipts sourceKind="digest" sourceId={discordPreviewDigest.id} />}
+
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setDiscordPreviewDigest(null)}>
               Cancelar
             </Button>
             <Button
-              onClick={() => discordSendCustomMutation.mutate(discordPreviewContent)}
+              onClick={() => discordPreviewDigest && discordSendCustomMutation.mutate({ id: discordPreviewDigest.id, content: discordPreviewContent })}
               disabled={!discordPreviewContent.trim() || discordSendCustomMutation.isPending}
             >
               {discordSendCustomMutation.isPending ? (

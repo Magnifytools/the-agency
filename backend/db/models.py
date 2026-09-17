@@ -1495,6 +1495,42 @@ class DailyUpdate(TimestampMixin, Base):
     user = relationship("User", lazy="selectin")
 
 
+class Delivery(TimestampMixin, Base):
+    """Immutable message intent; source edits never replace its snapshot."""
+    __tablename__ = "deliveries"
+    __table_args__ = (
+        Index("uq_deliveries_key", "dedupe_key", unique=True),
+        Index("ix_deliveries_pending", "status", "available_at"),
+        Index("ix_deliveries_source", "source_kind", "source_id"),
+    )
+    id = Column(String(36), primary_key=True)
+    dedupe_key = Column(String(64), nullable=False)
+    actor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    source_kind = Column(String(20), nullable=False)
+    source_id = Column(Integer, nullable=False)
+    source_version = Column(String(64), nullable=False)
+    destination_key = Column(String(64), nullable=False)
+    payload = Column(JSONB, nullable=False)
+    status = Column(String(20), nullable=False, default="pending")
+    available_at = Column(DateTime, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    sent_at = Column(DateTime, nullable=True)
+    error_code = Column(String(50), nullable=True)
+    message = Column(Text, nullable=True)
+    resend_of = Column(String(36), ForeignKey("deliveries.id"), nullable=True)
+
+
+class DeliveryAttempt(TimestampMixin, Base):
+    __tablename__ = "delivery_attempts"
+    __table_args__ = (Index("uq_delivery_attempt_number", "delivery_id", "number", unique=True),)
+    id = Column(String(36), primary_key=True)  # also the fencing token
+    delivery_id = Column(String(36), ForeignKey("deliveries.id"), nullable=False)
+    number = Column(Integer, nullable=False)
+    status = Column(String(20), nullable=False)
+    lease_until = Column(DateTime, nullable=False)
+    steps = Column(JSONB, nullable=False)
+
+
 class AssetCategory(str, enum.Enum):
     email = "email"
     domain = "domain"

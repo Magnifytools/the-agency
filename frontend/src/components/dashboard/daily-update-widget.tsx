@@ -1,5 +1,7 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { DeliveryReceipts } from "@/components/delivery-receipts"
+import type { DeliveryReceipt } from "@/lib/types"
 import { dailysApi } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -32,19 +34,18 @@ export function DailyUpdateWidget({ userId, readOnly = false }: DailyUpdateWidge
   const submitMutation = useMutation({
     mutationFn: async (rawText: string) => {
       const daily = await dailysApi.submit({ raw_text: rawText })
-      let discordSent = false
+      let receipt: DeliveryReceipt | null = null
+      let deliveryError: string | null = null
       try {
-        const discordRes = await dailysApi.sendDiscord(daily.id)
-        discordSent = discordRes?.success ?? false
-      } catch { /* Discord send is best-effort */ }
-      return { daily, discordSent }
-    },
-    onSuccess: ({ discordSent }) => {
-      if (discordSent) {
-        toast.success("Daily guardado y publicado en Discord ✓")
-      } else {
-        toast.success("Daily guardado", { description: "Discord no configurado o no disponible." })
+        receipt = await dailysApi.sendDiscord(daily.id)
+      } catch (error) {
+        deliveryError = getErrorMessage(error, "No se pudo poner en cola. Tu daily está guardado.")
       }
+      return { daily, receipt, deliveryError }
+    },
+    onSuccess: ({ receipt, deliveryError }) => {
+      toast.success("Daily guardado", { description: receipt?.message || deliveryError || "Pendiente de envío" })
+      queryClient.invalidateQueries({ queryKey: ["deliveries"] })
       setText("")
       setExpanded(false)
       queryClient.invalidateQueries({ queryKey: ["daily-today", userId] })
@@ -75,6 +76,7 @@ export function DailyUpdateWidget({ userId, readOnly = false }: DailyUpdateWidge
               {expanded ? "Ocultar" : "Ver"}
             </button>
           </div>
+          {!readOnly && <div className="mt-3"><DeliveryReceipts sourceKind="daily" sourceId={todayDaily.id} /></div>}
           {expanded && (
             <div className="mt-3 text-xs text-muted-foreground bg-muted/50 rounded-lg p-3 whitespace-pre-wrap font-mono leading-relaxed">
               {todayDaily.raw_text}

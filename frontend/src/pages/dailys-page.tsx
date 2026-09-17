@@ -4,6 +4,7 @@ import { invalidateTimeChange } from "@/lib/query-keys"
 import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
 import { ClipboardList, Sparkles, MessageCircle, Loader2, ChevronDown, ChevronUp, RefreshCw, Trash2, Wand2, Pencil, Check, X } from "lucide-react"
+import { DeliveryReceipts, deliveryToast } from "@/components/delivery-receipts"
 import { dailysApi } from "@/lib/api"
 import type { DailyUpdate, ParsedProject, ParsedTask } from "@/lib/types"
 
@@ -76,17 +77,12 @@ export default function DailysPage() {
   })
 
   const discordMutation = useMutation({
-    mutationFn: (id: number) => { setSendingId(id); return dailysApi.sendDiscord(id) },
+    mutationFn: (id: number) => { setSendingId(id); setExpandedId(id); return dailysApi.sendDiscord(id) },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["dailys"] })
       setSendingId(null)
-      if (data.success) {
-        // El backend distingue el envío normal del envío en crudo (cuando la IA
-        // no pudo estructurar el daily); mostramos lo que diga, no un genérico.
-        toast.success(data.message || "Enviado a Discord")
-      } else {
-        toast.error(data.message)
-      }
+      deliveryToast(data)
+      queryClient.invalidateQueries({ queryKey: ["deliveries"] })
     },
     onError: (err) => { setSendingId(null); toast.error(getErrorMessage(err, "Error al enviar a Discord")) },
   })
@@ -376,6 +372,8 @@ function DailyCard({
           </div>
         </CardContent>
       )}
+
+      {expanded && <CardContent className="pt-3"><DeliveryReceipts sourceKind="daily" sourceId={daily.id} /></CardContent>}
 
       {expanded && parsed && !editMode && (
         <CardContent className="pt-0 pb-6 border-t border-border">

@@ -613,6 +613,12 @@ def start_background_tasks() -> list[asyncio.Task]:
     """
     tasks: list[asyncio.Task] = []
 
+    if settings.DELIVERY_WORKER_ENABLED:
+        from backend.services.deliveries import delivery_loop
+        t = asyncio.create_task(delivery_loop(), name="manual-deliveries")
+        t.add_done_callback(_log_task_error)
+        tasks.append(t)
+
     if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL:
         t = asyncio.create_task(_engine_sync_loop(), name="engine-sync")
         t.add_done_callback(_log_task_error)
