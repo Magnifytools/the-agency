@@ -19,6 +19,8 @@ import { cn } from "@/lib/utils"
 
 interface Props {
   tasks: Task[]
+  weekOffset: number
+  onWeekOffsetChange: (offset: number) => void
   onScheduleChange: (taskId: number, date: string | null) => void
   onOpenEdit: (task: Task) => void
 }
@@ -231,8 +233,7 @@ function TaskCardOverlay({ task }: { task: Task }) {
 }
 
 // ─── Main Component ───────────────────────────────────────────
-export function WeeklyPlannerView({ tasks, onScheduleChange, onOpenEdit }: Props) {
-  const [weekOffset, setWeekOffset] = useState(0)
+export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onScheduleChange, onOpenEdit }: Props) {
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [openDays, setOpenDays] = useState<Set<string>>(new Set())
@@ -323,7 +324,7 @@ export function WeeklyPlannerView({ tasks, onScheduleChange, onOpenEdit }: Props
     <div className="space-y-4">
       {/* Week navigation */}
       <div className="flex items-center justify-between">
-        <Button variant="outline" size="sm" onClick={() => setWeekOffset((o) => o - 1)}>
+        <Button variant="outline" size="sm" onClick={() => onWeekOffsetChange(weekOffset - 1)}>
           <ChevronLeft className="w-4 h-4" />
         </Button>
         <div className="text-center">
@@ -333,13 +334,13 @@ export function WeeklyPlannerView({ tasks, onScheduleChange, onOpenEdit }: Props
               variant="ghost"
               size="sm"
               className="ml-2 text-xs"
-              onClick={() => setWeekOffset(0)}
+              onClick={() => onWeekOffsetChange(0)}
             >
               Hoy
             </Button>
           )}
         </div>
-        <Button variant="outline" size="sm" onClick={() => setWeekOffset((o) => o + 1)}>
+        <Button variant="outline" size="sm" onClick={() => onWeekOffsetChange(weekOffset + 1)}>
           <ChevronRight className="w-4 h-4" />
         </Button>
       </div>

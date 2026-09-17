@@ -12,8 +12,11 @@ que es lo que luego sabe deshacer la ruta.
 """
 from __future__ import annotations
 
+from datetime import datetime
+
 import pytest
 import pytest_asyncio
+from sqlalchemy import select
 
 from backend.db.models import (
     Client,
@@ -23,6 +26,7 @@ from backend.db.models import (
     TaskChecklist,
     TaskPriority,
     TaskStatus,
+    TimeEntry,
 )
 from backend.services import change_journal as cj
 
@@ -141,6 +145,142 @@ async def test_deshacer_una_edicion_devuelve_los_valores_anteriores(
     await db_session.refresh(task)
     assert task.title == "Título viejo"
     assert task.status == TaskStatus.pending
+
+
+async def test_deshacer_ajuste_manual_restaura_tarea_y_entrada(
+    admin_client, db_session, base_client, journal
+):
+    task = await _make_task(db_session, base_client, actual_minutes=None)
+    await db_session.commit()
+    response = await admin_client.put(
+        f"/api/tasks/{task.id}", json={"actual_minutes": 45}
+    )
+    assert response.status_code == 200, response.text
+    entry = await journal.only()
+    assert {op["entity_type"] for op in entry.operations} == {"task", "time_entry"}
+
+    undone = await admin_client.post(f"/api/changes/{entry.id}/undo")
+    assert undone.status_code == 200, undone.text
+    await db_session.refresh(task)
+    assert task.actual_minutes is None, (entry.operations, undone.json())
+    assert not (await db_session.execute(
+        select(TimeEntry).where(TimeEntry.task_id == task.id)
+    )).scalars().all()
+
+
+async def test_conflicto_manual_no_deja_total_falso(
+    admin_client, db_session, base_client, journal
+):
+    task = await _make_task(db_session, base_client, actual_minutes=None)
+    await db_session.commit()
+    await admin_client.put(f"/api/tasks/{task.id}", json={"actual_minutes": 45})
+    entry = await journal.only()
+    manual = (await db_session.execute(
+        select(TimeEntry).where(TimeEntry.task_id == task.id)
+    )).scalar_one()
+
+    cj.set_actor(None)
+    manual.minutes = 60
+    task.actual_minutes = 60
+    await db_session.commit()
+    undone = await admin_client.post(f"/api/changes/{entry.id}/undo")
+    assert undone.status_code == 409
+    await db_session.refresh(entry)
+    assert entry.undone_at is None
+    await db_session.refresh(task)
+    await db_session.refresh(manual)
+    assert task.actual_minutes == manual.minutes == 60
+
+
+async def test_deshacer_manual_recalcula_si_aparece_tiempo_de_timer(
+    admin_client, db_session, base_client, journal
+):
+    task = await _make_task(db_session, base_client, actual_minutes=None)
+    await db_session.commit()
+    assert (await admin_client.put(
+        f"/api/tasks/{task.id}", json={"actual_minutes": 45}
+    )).status_code == 200
+    entry = await journal.only()
+
+    cj.set_actor(None)
+    db_session.add(TimeEntry(
+        task_id=task.id, user_id=admin_client.test_user.id, minutes=10,
+        date=datetime(2026, 9, 17, 9, 0), notes="timer",
+    ))
+    await db_session.commit()
+
+    assert (await admin_client.post(f"/api/changes/{entry.id}/undo")).status_code == 200
+    await db_session.refresh(task)
+    assert task.actual_minutes == 10
+
+
+async def test_crear_tarea_con_horas_y_deshacer_borra_entrada_manual(
+    admin_client, db_session, base_client, journal
+):
+    response = await admin_client.post("/api/tasks", json={
+        "title": "Con horas", "client_id": base_client.id, "actual_minutes": 25,
+    })
+    assert response.status_code == 201, response.text
+    task_id = response.json()["id"]
+    entry = await journal.only()
+    assert {op["entity_type"] for op in entry.operations} == {"task", "time_entry"}
+    assert (await admin_client.post(f"/api/changes/{entry.id}/undo")).status_code == 200
+    assert await db_session.get(Task, task_id) is None
+    assert not (await db_session.execute(
+        select(TimeEntry).where(TimeEntry.task_id == task_id)
+    )).scalars().all()
+
+
+async def test_deshacer_edicion_de_ajuste_manual_conserva_fecha(
+    admin_client, db_session, base_client, journal
+):
+    task = await _make_task(db_session, base_client, actual_minutes=30)
+    manual = TimeEntry(
+        task_id=task.id,
+        user_id=admin_client.test_user.id,
+        minutes=30,
+        date=datetime(2026, 9, 1, 9, 0),
+        notes="[manual]",
+    )
+    db_session.add(manual)
+    await db_session.commit()
+    original_date = manual.date
+
+    assert (await admin_client.put(
+        f"/api/tasks/{task.id}", json={"actual_minutes": 50}
+    )).status_code == 200
+    entry = await journal.only()
+    assert (await admin_client.post(f"/api/changes/{entry.id}/undo")).status_code == 200
+    await db_session.refresh(task)
+    await db_session.refresh(manual)
+    assert task.actual_minutes == 30
+    assert manual.minutes == 30
+    assert manual.date == original_date
+
+
+async def test_deshacer_edicion_manual_suma_tiempo_nuevo_de_timer(
+    admin_client, db_session, base_client, journal
+):
+    task = await _make_task(db_session, base_client, actual_minutes=60)
+    manual = TimeEntry(
+        task_id=task.id, user_id=admin_client.test_user.id, minutes=60,
+        date=datetime(2026, 9, 1, 9, 0), notes="[manual]",
+    )
+    db_session.add(manual)
+    await db_session.commit()
+    assert (await admin_client.put(
+        f"/api/tasks/{task.id}", json={"actual_minutes": 90}
+    )).status_code == 200
+    entry = await journal.only()
+    cj.set_actor(None)
+    db_session.add(TimeEntry(
+        task_id=task.id, user_id=admin_client.test_user.id, minutes=10,
+        date=datetime(2026, 9, 17, 9, 0), notes="timer",
+    ))
+    await db_session.commit()
+    assert (await admin_client.post(f"/api/changes/{entry.id}/undo")).status_code == 200
+    await db_session.refresh(task)
+    assert task.actual_minutes == 70
 
 
 async def test_deshacer_un_borrado_reinserta_la_tarea_con_su_id_y_su_checklist(

@@ -90,6 +90,10 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS invoiced_at TIMESTAMPTZ",
                 "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS link_url TEXT",
                 "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS advanced_at DATE",
+                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP",
+                "CREATE INDEX IF NOT EXISTS ix_tasks_completed_at ON tasks (completed_at)",
+                "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedupe_key VARCHAR(255)",
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_user_dedupe ON notifications (user_id, dedupe_key)",
                 "ALTER TABLE clients ADD COLUMN IF NOT EXISTS onboarding_intelligence JSONB",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS billing_day INTEGER",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS billing_amount NUMERIC(12,2)",
@@ -165,30 +169,6 @@ async def lifespan(app: FastAPI):
                 "updated_at TIMESTAMP NOT NULL DEFAULT NOW())",
                 # El acceso real es siempre el mismo: los últimos N de un usuario.
                 "CREATE INDEX IF NOT EXISTS ix_change_logs_user_created ON change_logs (user_id, created_at DESC)",
-                # Drop tables retired with /news, /resources and /assistant cuts
-                "DROP TABLE IF EXISTS industry_news",
-                "DROP TABLE IF EXISTS news_sources",
-                "DROP TABLE IF EXISTS team_resources",
-                # Seed valores CFO (solo primera ejecución, idempotente)
-                "UPDATE users SET cost_per_hour = 20.10, available_hours_month = 147 WHERE (full_name ILIKE '%nacho%' OR full_name ILIKE '%ignacio%' OR email ILIKE 'nacho@%') AND cost_per_hour = 0",
-                "UPDATE users SET cost_per_hour = 23.52, available_hours_month = 147 WHERE (full_name ILIKE '%david%' OR email ILIKE 'david@%') AND cost_per_hour = 0",
-                # Seed monthly_fee (BASE, sin IVA) solo si no está configurado
-                "UPDATE projects SET monthly_fee = 2450.00, fee_is_base = TRUE WHERE name ILIKE '%fit%' AND name ILIKE '%seo%' AND (monthly_fee IS NULL OR monthly_fee = 0)",
-                "UPDATE projects SET monthly_fee = 2300.00, fee_is_base = TRUE WHERE (name ILIKE '%mind the gap%' OR name ILIKE '%casino%') AND (monthly_fee IS NULL OR monthly_fee = 0)",
-                "UPDATE projects SET monthly_fee = 950.00, fee_is_base = TRUE WHERE name ILIKE '%sage%' AND (name ILIKE '%retainer%' OR name ILIKE '%partnership%') AND (monthly_fee IS NULL OR monthly_fee = 0)",
-                # VAT treatment según país
-                "UPDATE clients SET vat_treatment = 'andorra_exempt' WHERE name ILIKE '%fit%generation%'",
-                # Crear proyecto AI-Driven Content bajo Sage si no existe (fee en base, proyecto puntual)
-                """
-                INSERT INTO projects (name, client_id, status, monthly_fee, fee_is_base, pricing_model, is_recurring, progress_percent, created_at, updated_at)
-                SELECT 'AI-Driven Content', c.id, 'active', 3000.00, TRUE, 'project', FALSE, 0, NOW(), NOW()
-                FROM clients c
-                WHERE c.name ILIKE '%sage%'
-                  AND NOT EXISTS (
-                    SELECT 1 FROM projects p WHERE p.client_id = c.id AND p.name ILIKE '%ai%driven%content%'
-                  )
-                LIMIT 1
-                """,
             ]:
                 # Each statement runs in its own SAVEPOINT so a single failure
                 # does not abort the whole transaction (PG aborts all subsequent
@@ -206,52 +186,8 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logging.warning("Startup DDL failed (may be expected): %s", e)
 
-    # Cleanup QA/test data and set correct reminder times
-    # NOTE: Each SQL uses a SAVEPOINT so that a single failure does not
-    # poison the entire PostgreSQL transaction (PG aborts all commands
-    # after an error until ROLLBACK, even inside a Python try/except).
-    try:
-        async with engine.begin() as conn:
-            # Define QA user condition
-            qa_user_cond = "email LIKE '%example.com' OR full_name LIKE 'QA %' OR full_name LIKE 'AUDIT%'"
-            qa_task_cond = "title LIKE 'QA Task%' OR title LIKE 'AUDIT-%'"
-            qa_client_cond = "name LIKE 'QA%' OR name LIKE 'AUDIT%' OR name LIKE '__TEST%' OR name LIKE 'QA Client%'"
-            for sql in [
-                f"UPDATE tasks SET assigned_to = NULL WHERE ({qa_task_cond})",
-                f"DELETE FROM time_entries WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"DELETE FROM time_entries WHERE task_id IN (SELECT id FROM tasks WHERE {qa_task_cond})",
-                f"DELETE FROM task_comments WHERE task_id IN (SELECT id FROM tasks WHERE {qa_task_cond})",
-                f"DELETE FROM task_attachments WHERE task_id IN (SELECT id FROM tasks WHERE {qa_task_cond})",
-                f"DELETE FROM tasks WHERE {qa_task_cond}",
-                f"DELETE FROM daily_updates WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"DELETE FROM user_permissions WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"DELETE FROM inbox_notes WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"DELETE FROM inbox_attachments WHERE uploaded_by IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"DELETE FROM alert_settings WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"DELETE FROM generated_reports WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"UPDATE proposals SET created_by = NULL WHERE created_by IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"UPDATE audit_logs SET user_id = NULL WHERE user_id IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"UPDATE project_evidence SET created_by = NULL WHERE created_by IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"UPDATE users SET invited_by = NULL WHERE invited_by IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"DELETE FROM user_invitations WHERE invited_by IN (SELECT id FROM users WHERE {qa_user_cond})",
-                f"DELETE FROM projects WHERE client_id IN (SELECT id FROM clients WHERE {qa_client_cond})",
-                f"DELETE FROM clients WHERE {qa_client_cond}",
-                f"DELETE FROM users WHERE {qa_user_cond}",
-            ]:
-                try:
-                    await conn.execute(text("SAVEPOINT cleanup_sp"))
-                    result = await conn.execute(text(sql))
-                    await conn.execute(text("RELEASE SAVEPOINT cleanup_sp"))
-                    if result.rowcount > 0:
-                        logging.info("QA cleanup: %s -> %d rows", sql[:60], result.rowcount)
-                except Exception as sql_err:
-                    await conn.execute(text("ROLLBACK TO SAVEPOINT cleanup_sp"))
-                    logging.warning("QA cleanup SQL failed (skipping): %s — %s", sql[:60], sql_err)
-    except Exception as e:
-        logging.warning("QA data cleanup failed (non-fatal): %s", e)
-
-    await _reset_admin_password()
+    # Startup evolves schema only. Legacy cleanup/fee seeds and password resets
+    # must never run implicitly on deployment or infer business data from names.
 
     bg_tasks = start_background_tasks()
     logging.info("Startup ready.")
@@ -465,6 +401,18 @@ if _HIDDEN:
 async def health_check():
     """Health check endpoint for monitoring and deployment probes."""
     return {"status": "ok", "build": "v6-sprint-digest-timer", "routes": len(app.routes)}
+
+
+@app.get("/api/ready")
+async def readiness_check():
+    from backend.db.database import engine
+    from backend.startup.readiness import check_database_ready
+    try:
+        await check_database_ready(engine)
+    except Exception:
+        logging.exception("Readiness check failed")
+        return JSONResponse(status_code=503, content={"status": "unavailable"})
+    return {"status": "ready", "revision": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "local")}
 
 
 # Serve frontend static files in production

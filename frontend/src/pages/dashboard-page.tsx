@@ -86,12 +86,12 @@ export default function DashboardPage() {
   const { data: monthlyClose } = useQuery({
     queryKey: ["dashboard-monthly-close", year, month],
     queryFn: () => dashboardApi.monthlyClose(params),
-    enabled: isAdmin,
+    enabled: isAdmin && isEnabled("finance"),
   })
   const { data: financialSettings } = useQuery({
     queryKey: ["dashboard-financial-settings"],
     queryFn: () => dashboardApi.financialSettings(),
-    enabled: isAdmin,
+    enabled: isAdmin && isEnabled("finance"),
   })
   const { data: recentDigests } = useQuery({
     queryKey: ["recent-digests"],
@@ -694,7 +694,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {closeReminder && (
+      {isEnabled("finance") && closeReminder && (
         <Card><CardContent className="pt-6"><div className="text-sm font-medium">Recordatorio de cierre mensual</div><div className="text-xs text-muted-foreground mt-1">Estamos a partir del día {closeDay}. Completa el cierre mensual para evitar decisiones con datos incompletos.</div></CardContent></Card>
       )}
 
@@ -756,7 +756,7 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {financialAlerts.length > 0 && isAdmin && (
+      {isEnabled("finance") && financialAlerts.length > 0 && isAdmin && (
         <Card className="border-warning/50 bg-warning/5">
           <CardHeader className="pb-2"><CardTitle className="text-warning text-sm">Alertas financieras</CardTitle></CardHeader>
           <CardContent className="space-y-2">
@@ -765,7 +765,7 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {financialSettings && isAdmin && (
+      {isEnabled("finance") && financialSettings && isAdmin && (
         <details className="group border border-border rounded-xl bg-card">
           <summary className="flex cursor-pointer items-center justify-between p-4 font-medium marker:content-none hover:bg-muted/50 transition-colors rounded-xl">
             Configuración Financiera
@@ -786,7 +786,7 @@ export default function DashboardPage() {
         </details>
       )}
 
-      {monthlyClose && <MonthlyCloseChecklist monthlyClose={monthlyClose as unknown as Record<string, string | boolean | null>} onUpdate={(p) => closeMutation.mutate(p)} onExport={handleExportClose} isPending={closeMutation.isPending} lastHoldedSync={lastHoldedSync} />}
+      {isEnabled("finance") && monthlyClose && <MonthlyCloseChecklist monthlyClose={monthlyClose as unknown as Record<string, string | boolean | null>} onUpdate={(p) => closeMutation.mutate(p)} onExport={handleExportClose} isPending={closeMutation.isPending} lastHoldedSync={lastHoldedSync} />}
 
       {isAdmin && profitability && profitability.clients.length > 0 && (
         <div className="grid lg:grid-cols-2 gap-6">

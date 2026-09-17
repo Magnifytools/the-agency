@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-08-17T04:10:00.000000",
-  "estado_general": "produccion_estable",
+  "ultima_actualizacion": "2026-09-17T05:10:00Z",
+  "estado_general": "produccion_sin_cambios_mejora_verificada_local",
   "progreso_estimado": 95,
   "tareas": [
     {
@@ -122,6 +122,13 @@
       "estado": "completado",
       "prioridad": "alta",
       "notas": "Auditoria sobre datos reales de audit_logs (ventana 2 jun - 17 ago, 75.042 peticiones). Desplegado 17 ago: estado no_data en rentabilidad, fix None€ en alertas, N+1 del listado de proyectos (449ms -> 19ms), User.tasks fuera de get_current_user, KPI del dashboard etiquetado, monthly_fee en el listado, npm audit 12 vulns -> 0, y desbloqueo de CI (UnboundLocalError en fiscal_brief + tests de integracion que daban ERROR sin Postgres). Informe completo en tasks/archive/2026-08-17-audit-fixes/."
+    },
+    {
+      "id": "AUDIT-20260917-P1",
+      "descripcion": "Hoy fiable, integridad de horas, vínculo de proyecto, recurrencias y avisos idempotentes",
+      "estado": "verificado_local_pendiente_publicacion",
+      "prioridad": "alta",
+      "notas": "Sol + Terra dirigidos por Codex. 538 backend (69 PostgreSQL), 51 frontend y build aprobados; recorrido visual local. Detalle docs/primera-mejora-2026-09-17.md."
     }
   ],
   "bugs": [
@@ -192,7 +199,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "Backlog salido de la auditoria de ago 2026, por orden de impacto: (1) decidir el recorte de modulos muertos — 279 de 349 endpoints sin una sola llamada en 77 dias, ~16.000 lineas entre finanzas custom, reports, automations, vault, cfo, billing, my-week; (2) lazy='selectin' global — explica los 240ms que aun tiene /api/tasks, refactor con riesgo, tarea propia; (3) notificaciones: 284 sin leer, nadie las abre; (4) caducidad de alertas: hay tareas vencidas hace 144 dias fijas en el panel; (5) estimaciones: estimated_minutes esta en 1 de 725 tareas, las columnas Estimado/Delta son decorativas; (6) unificar umbrales de rentabilidad (dashboard 20% vs ficha 30%/10%).",
+  "proximos_pasos": "Publicar primera mejora local verificada (docs/primera-mejora-2026-09-17.md); después simplificar Hoy/Trabajo/proyectos, fiabilidad y períodos de informes, y comandos naturales sobre operaciones comunes. Auditoría actual en output/audit-2026-09-17/informe-agency.md. Veinte módulos ya están ocultos; no repetir la poda histórica.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
@@ -203,5 +210,5 @@
     "url": "https://agency.magnifytools.com",
     "estado": "produccion"
   },
-  "pendiente_david": "Decision de producto, no tecnica: que se hace con los modulos muertos. El CLAUDE.md dice 'no tocar finanzas, se sustituye por Holded', pero Holded tambien esta en 26 hits en 77 dias: la sustitucion tampoco ocurrio."
+  "pendiente_david": "Primera mejora preparada para revisión/publicación; no se han cambiado producción ni datos históricos."
 }

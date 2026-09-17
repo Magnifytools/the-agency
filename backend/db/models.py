@@ -2,6 +2,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (
+    Index,
     CheckConstraint,
     Column,
     Integer,
@@ -648,6 +649,8 @@ class Task(TimestampMixin, Base):
     # in_progress toda tarea advanced con advanced_at anterior a hoy, de modo
     # que un servidor caído a medianoche se recupera solo al arrancar.
     advanced_at = Column(Date, nullable=True)
+    # Real completion transition; legacy rows remain unknown rather than using updated_at.
+    completed_at = Column(DateTime, nullable=True, index=True)
     waiting_for = Column(String(255), nullable=True)
     follow_up_date = Column(Date, nullable=True)
     link_url = Column(Text, nullable=True)
@@ -1537,6 +1540,10 @@ class BalanceSnapshot(TimestampMixin, Base):
 class Notification(TimestampMixin, Base):
     __tablename__ = "notifications"
 
+    __table_args__ = (
+        Index("uq_notifications_user_dedupe", "user_id", "dedupe_key", unique=True),
+    )
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     type = Column(String(50), nullable=False)  # task_assigned, task_overdue, lead_followup, digest_pending
@@ -1546,6 +1553,7 @@ class Notification(TimestampMixin, Base):
     link_url = Column(String(500), nullable=True)  # e.g. "/tasks?id=123"
     entity_type = Column(String(50), nullable=True)  # task, lead, digest
     entity_id = Column(Integer, nullable=True)
+    dedupe_key = Column(String(255), nullable=True)
 
     user = relationship("User", lazy="selectin")
 

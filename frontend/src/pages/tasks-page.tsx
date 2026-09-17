@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query"
 import { tasksApi, clientsApi, categoriesApi, usersApi, timeEntriesApi, projectsApi } from "@/lib/api"
 import type { Task, TaskCreate, TaskStatus, TaskPriority, TimeEntry } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -32,6 +32,7 @@ import { TaskCalendarView } from "@/components/tasks/task-calendar-view"
 import { WeeklyPlannerView } from "@/components/tasks/weekly-planner-view"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { initialTasksView, shouldPreserveCurrentProject, taskQueryKeyWithWeek, withExplicitActualMinutes } from "@/components/tasks/task-page-utils"
 
 const priorityBadge = (priority: TaskPriority) => {
   const map: Record<TaskPriority, { label: string; variant: "destructive" | "warning" | "secondary" | "outline" }> = {
@@ -51,6 +52,21 @@ const formatMinutes = (mins: number) => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
+const localDateString = (date = new Date()) => {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 10)
+}
+
+const weekRange = (offset: number) => {
+  const today = new Date()
+  const day = today.getDay()
+  const monday = new Date(today)
+  monday.setDate(today.getDate() + (day === 0 ? -6 : 1 - day) + offset * 7)
+  const friday = new Date(monday)
+  friday.setDate(monday.getDate() + 4)
+  return { from: localDateString(monday), to: localDateString(friday) }
+}
+
 export default function TasksPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
@@ -61,7 +77,8 @@ export default function TasksPage() {
   const [timeLogTask, setTimeLogTask] = useState<Task | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
-  const [view, setView] = useState<"my_day" | "sprint" | "all" | "calendar" | "weekly" | "recurring">("my_day")
+  const [view, setView] = useState<"my_day" | "sprint" | "all" | "calendar" | "weekly" | "recurring">(() => initialTasksView(searchParams))
+  const [weekOffset, setWeekOffset] = useState(0)
   const [calMonth, setCalMonth] = useState(() => {
     const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }
   })
@@ -95,7 +112,6 @@ export default function TasksPage() {
   const [newCommentText, setNewCommentText] = useState("")
   const [attachmentFileRef, setAttachmentFileRef] = useState<HTMLInputElement | null>(null)
   // Dialog — collapsible sections
-  const [showAssignmentFields, setShowAssignmentFields] = useState(false)
   const [showDeadlineFields, setShowDeadlineFields] = useState(false)
   const [showHierarchyFields, setShowHierarchyFields] = useState(false)
   const [showAdditionalFields, setShowAdditionalFields] = useState(false)
@@ -104,7 +120,10 @@ export default function TasksPage() {
   const [recurrencePattern, setRecurrencePattern] = useState<string>("weekly")
   const [recurrenceDay, setRecurrenceDay] = useState<number>(0)
   const [showRecurringFields, setShowRecurringFields] = useState(false)
-  const deepLinkTaskId = searchParams.get("edit") || searchParams.get("task")
+  const [formClientId, setFormClientId] = useState<string>("")
+  const [formProjectId, setFormProjectId] = useState<string>("")
+  const [actualMinutesEdited, setActualMinutesEdited] = useState(false)
+  const deepLinkTaskId = searchParams.get("edit") || searchParams.get("task") || searchParams.get("id")
 
   // Calendar date range: first and last day of the selected month
   const calDateFrom = view === "calendar"
@@ -114,8 +133,13 @@ export default function TasksPage() {
     ? (() => { const d = new Date(calMonth.year, calMonth.month + 1, 0); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` })()
     : undefined
 
-  const { data: tasksData, isLoading } = useQuery({
-    queryKey: ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, filterDateField, searchQuery, page, pageSize, qaFilter, view, calMonth.year, calMonth.month],
+  const selectedWeek = weekRange(weekOffset)
+  const tasksQueryKey = taskQueryKeyWithWeek(
+    ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, filterDateField, searchQuery, page, pageSize, qaFilter, view, calMonth.year, calMonth.month],
+    selectedWeek,
+  )
+  const { data: tasksData, isLoading, isError: isTasksError, refetch: refetchTasks } = useQuery({
+    queryKey: tasksQueryKey,
     queryFn: () =>
       tasksApi.list({
         client_id: filterClient ? Number(filterClient) : undefined,
@@ -125,20 +149,43 @@ export default function TasksPage() {
         assigned_to: qaFilter === "unassigned" ? ("unassigned" as unknown as number) : (filterAssigned ? Number(filterAssigned) : undefined),
         due_date_from: calDateFrom ?? (filterDateField === "due_date" && filterDateFrom ? filterDateFrom : undefined),
         due_date_to: calDateTo ?? (filterDateField === "due_date" && filterDateTo ? filterDateTo : undefined),
-        scheduled_date_from: filterDateField === "scheduled_date" && filterDateFrom ? filterDateFrom : undefined,
-        scheduled_date_to: filterDateField === "scheduled_date" && filterDateTo ? filterDateTo : undefined,
+        scheduled_date_from: view === "weekly" ? selectedWeek.from : (filterDateField === "scheduled_date" && filterDateFrom ? filterDateFrom : undefined),
+        scheduled_date_to: view === "weekly" ? selectedWeek.to : (filterDateField === "scheduled_date" && filterDateTo ? filterDateTo : undefined),
         overdue: qaFilter === "overdue" ? true : undefined,
         no_date: qaFilter === "no_date" ? true : undefined,
         no_estimate: qaFilter === "no_estimate" ? true : undefined,
         no_project: qaFilter === "no_project" ? true : undefined,
         search: searchQuery || undefined,
-        page: view === "calendar" ? 1 : page,
-        page_size: view === "calendar" ? 500 : pageSize,
+        page,
+        page_size: pageSize,
       }),
+    enabled: view !== "my_day",
   })
+
+  const useAgendaQuery = (section: "planned" | "carryover" | "unplanned" | "completed") => useInfiniteQuery({
+    queryKey: ["tasks-agenda", section, localDateString(), user?.id, new Date().getTimezoneOffset()],
+    queryFn: ({ pageParam }) => tasksApi.agenda({ date: localDateString(), section, assigned_to: user?.role === "admin" ? undefined : "me", timezone_offset_minutes: new Date().getTimezoneOffset(), page: pageParam, page_size: pageSize }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.page * lastPage.page_size < lastPage.total ? lastPage.page + 1 : undefined,
+    enabled: view === "my_day",
+  })
+  const plannedAgenda = useAgendaQuery("planned")
+  const carryoverAgenda = useAgendaQuery("carryover")
+  const unplannedAgenda = useAgendaQuery("unplanned")
+  const completedAgenda = useAgendaQuery("completed")
+  const agendaData = (query: typeof plannedAgenda) => {
+    const pages = query.data?.pages ?? []
+    const last = pages[pages.length - 1]
+    return { items: pages.flatMap((item) => item.items), total: last?.total ?? 0, page: last?.page ?? 1, page_size: last?.page_size ?? pageSize }
+  }
+  const agendaLoading = plannedAgenda.isLoading || carryoverAgenda.isLoading || unplannedAgenda.isLoading || completedAgenda.isLoading
+  const invalidateTaskViews = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+    queryClient.invalidateQueries({ queryKey: ["tasks-agenda"] }),
+  ])
   const allTasks = tasksData?.items ?? []
 
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = localDateString()
   const tasks = allTasks
 
   const { sortedItems: sortedTasks, sortConfig: taskSortConfig, requestSort: requestTaskSort } = useTableSort(tasks)
@@ -151,7 +198,7 @@ export default function TasksPage() {
     mutationFn: async ({ ids, updates }: { ids: number[]; updates: Record<string, unknown> }) =>
       tasksApi.bulkUpdate(ids, updates),
     onSuccess: ({ updated, requested }) => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      invalidateTaskViews()
       clearTaskSelection()
       setBulkStatus("")
       if (updated === requested) {
@@ -166,7 +213,7 @@ export default function TasksPage() {
   const bulkDeleteMutation = useMutation({
     mutationFn: async (ids: number[]) => tasksApi.bulkDelete(ids),
     onSuccess: ({ deleted, requested }) => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      invalidateTaskViews()
       clearTaskSelection()
       if (deleted === requested) {
         toast.success(`${deleted} tareas eliminadas`)
@@ -197,6 +244,10 @@ export default function TasksPage() {
     queryFn: () => projectsApi.listAll({ status: "active" }),
     staleTime: 60_000,
   })
+  const formProjects = formClientId
+    ? projects.filter((project) => project.client_id === Number(formClientId))
+    : projects
+  const suggestedProject = formClientId && formProjects.length === 1 ? formProjects[0] : null
 
   // Recurring templates query (only fetched when tab is active)
   const { data: recurringTemplates = [] } = useQuery({
@@ -208,7 +259,7 @@ export default function TasksPage() {
   const createMutation = useMutation({
     mutationFn: (data: TaskCreate) => tasksApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      invalidateTaskViews()
       queryClient.invalidateQueries({ queryKey: ["tasks-recurring"] })
       closeDialog()
       toast.success("Tarea creada")
@@ -219,7 +270,7 @@ export default function TasksPage() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<TaskCreate> }) => tasksApi.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      invalidateTaskViews()
       queryClient.invalidateQueries({ queryKey: ["tasks-recurring"] })
       closeDialog()
       toast.success("Tarea actualizada")
@@ -228,7 +279,7 @@ export default function TasksPage() {
   })
 
   // Separate mutation for drag & drop schedule changes (no dialog close, optimistic update)
-  const scheduleQueryKey = ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, page, pageSize]
+  const scheduleQueryKey = tasksQueryKey
   const scheduleMutation = useMutation({
     mutationFn: ({ id, scheduled_date }: { id: number; scheduled_date: string | null }) =>
       tasksApi.update(id, { scheduled_date }),
@@ -245,13 +296,13 @@ export default function TasksPage() {
       if (ctx?.prev) queryClient.setQueryData(scheduleQueryKey, ctx.prev)
       toast.error("Error al mover tarea")
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+    onSettled: () => invalidateTaskViews(),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => tasksApi.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      invalidateTaskViews()
       toast.success("Tarea eliminada")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar tarea")),
@@ -272,7 +323,7 @@ export default function TasksPage() {
   const toggleChecklistMut = useMutation({
     mutationFn: ({ id, is_done }: { id: number; is_done: boolean }) =>
       tasksApi.checklist.update(editing!.id, id, { is_done }),
-    onSuccess: () => { refetchChecklist(); queryClient.invalidateQueries({ queryKey: ["tasks"] }) },
+    onSuccess: () => { refetchChecklist(); invalidateTaskViews() },
   })
   const updateChecklistMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<{ text: string; description: string | null; is_done: boolean; assigned_to: number | null; due_date: string | null }> }) =>
@@ -343,7 +394,9 @@ export default function TasksPage() {
 
   const openCreate = () => {
     setEditing(null)
-    setShowAssignmentFields(false)
+    setFormClientId("")
+    setFormProjectId("")
+    setActualMinutesEdited(false)
     setShowDeadlineFields(false)
     setShowHierarchyFields(false)
     setShowAdditionalFields(false)
@@ -356,7 +409,9 @@ export default function TasksPage() {
 
   const openEdit = (task: Task) => {
     setEditing(task)
-    setShowAssignmentFields(false)
+    setFormClientId(task.client_id ? String(task.client_id) : "")
+    setFormProjectId(task.project_id ? String(task.project_id) : "")
+    setActualMinutesEdited(false)
     setShowDeadlineFields(false)
     setShowHierarchyFields(false)
     setShowAdditionalFields(false)
@@ -382,6 +437,7 @@ export default function TasksPage() {
         const next = new URLSearchParams(window.location.search)
         next.delete("edit")
         next.delete("task")
+        next.delete("id")
         setSearchParams(next, { replace: true })
       })
       .catch((err) => {
@@ -406,7 +462,6 @@ export default function TasksPage() {
       status: (fd.get("status") as TaskStatus) || "pending",
       priority: (fd.get("priority") as TaskPriority) || "medium",
       estimated_minutes: fd.get("estimated_minutes") ? Number(fd.get("estimated_minutes")) : null,
-      actual_minutes: fd.get("actual_minutes") ? Number(fd.get("actual_minutes")) : null,
       due_date: (fd.get("due_date") as string) || null,
       client_id: clientIdStr ? Number(clientIdStr) : null,
       project_id: fd.get("project_id") ? Number(fd.get("project_id")) : null,
@@ -421,10 +476,11 @@ export default function TasksPage() {
       recurrence_day: isRecurring ? recurrenceDay : null,
       recurrence_end_date: isRecurring ? ((fd.get("recurrence_end_date") as string) || null) : null,
     }
+    const submittedData = withExplicitActualMinutes(data, fd.get("actual_minutes"), actualMinutesEdited)
     if (editing) {
-      updateMutation.mutate({ id: editing.id, data })
+      updateMutation.mutate({ id: editing.id, data: submittedData })
     } else {
-      createMutation.mutate(data)
+      createMutation.mutate(submittedData)
     }
   }
 
@@ -433,7 +489,11 @@ export default function TasksPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold uppercase tracking-wide">Tareas</h2>
-          {tasksData && (
+          {view === "my_day" ? (
+            <p className="text-sm text-muted-foreground mt-1">
+              {agendaData(plannedAgenda).total} para hoy · {agendaData(carryoverAgenda).total} de arrastre · {agendaData(unplannedAgenda).total} sin planificar · {agendaData(completedAgenda).total} completadas hoy
+            </p>
+          ) : tasksData && (
             <p className="text-sm text-muted-foreground mt-1">
               {tasksData.total} tareas
               <span className="text-muted-foreground/70 text-xs ml-1">(según filtros)</span>
@@ -447,6 +507,7 @@ export default function TasksPage() {
         </Button>
       </div>
 
+      {view !== "my_day" && <>
       {/* Search + Filters */}
       <div className="flex flex-wrap gap-3">
         <Input
@@ -569,6 +630,7 @@ export default function TasksPage() {
           </Button>
         )}
       </div>
+      </>}
 
       <div className="relative mb-6">
       <div className="flex gap-2 overflow-x-auto scrollbar-none flex-nowrap bg-muted/30 p-1 sm:w-fit rounded-lg border border-border">
@@ -625,7 +687,7 @@ export default function TasksPage() {
       </div>
 
       {/* Table & Planner */}
-      {isLoading ? (
+      {(isLoading || (view === "my_day" && agendaLoading)) ? (
         <Table>
           <TableHeader>
             <TableRow>
@@ -645,6 +707,12 @@ export default function TasksPage() {
             {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={10} />)}
           </TableBody>
         </Table>
+      ) : isTasksError && view !== "my_day" ? (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center">
+          <p className="font-medium">No se pudieron cargar las tareas</p>
+          <p className="text-sm text-muted-foreground mt-1">No mostramos un estado vacío porque la información no está disponible.</p>
+          <Button variant="outline" className="mt-3" onClick={() => refetchTasks()}>Reintentar</Button>
+        </div>
       ) : view === "all" ? (
         <Table>
           <TableHeader>
@@ -795,20 +863,32 @@ export default function TasksPage() {
         </Table>
       ) : null}
 
-      {view === "all" && (
+      {(view === "all" || view === "sprint" || view === "weekly" || view === "calendar") && (
         <Pagination page={page} pageSize={pageSize} total={tasksData?.total ?? 0} onPageChange={setPage} />
       )}
 
       {/* Conditional Rendering of Views */}
-      {!isLoading && view === "my_day" && (
-        <MyDayView
-          tasks={tasks}
-          onStatusChange={(id, status) => updateMutation.mutate({ id, data: { status } })}
-          onOpenEdit={openEdit}
-        />
+      {!isLoading && !agendaLoading && view === "my_day" && (
+        plannedAgenda.isError || carryoverAgenda.isError || unplannedAgenda.isError || completedAgenda.isError ? (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center">
+            <p className="font-medium">No hemos podido cargar tus tareas. Reintenta.</p>
+            <Button variant="outline" className="mt-3" onClick={() => { plannedAgenda.refetch(); carryoverAgenda.refetch(); unplannedAgenda.refetch(); completedAgenda.refetch() }}>Reintentar</Button>
+          </div>
+        ) : (
+          <MyDayView
+            planned={agendaData(plannedAgenda)}
+            carryover={agendaData(carryoverAgenda)}
+            unplanned={agendaData(unplannedAgenda)}
+            completed={agendaData(completedAgenda)}
+            isLoadingMore={plannedAgenda.isFetchingNextPage || carryoverAgenda.isFetchingNextPage || unplannedAgenda.isFetchingNextPage || completedAgenda.isFetchingNextPage}
+            onLoadMore={(section) => ({ planned: plannedAgenda, carryover: carryoverAgenda, unplanned: unplannedAgenda, completed: completedAgenda }[section].fetchNextPage())}
+            onStatusChange={(id, status) => updateMutation.mutate({ id, data: { status } })}
+            onOpenEdit={openEdit}
+          />
+        )
       )}
 
-      {!isLoading && view === "sprint" && (
+      {!isLoading && !isTasksError && view === "sprint" && (
         <KanbanBoard
           tasks={tasks}
           onStatusChange={(taskId, newStatus) => updateMutation.mutate({ id: taskId, data: { status: newStatus } })}
@@ -816,26 +896,28 @@ export default function TasksPage() {
         />
       )}
 
-      {!isLoading && view === "calendar" && (
+      {!isLoading && !isTasksError && view === "calendar" && (
         <TaskCalendarView
           tasks={allTasks}
           year={calMonth.year}
           month={calMonth.month}
-          onPrev={() => setCalMonth(({ year, month }) => month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 })}
-          onNext={() => setCalMonth(({ year, month }) => month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 })}
+          onPrev={() => { reset(); setCalMonth(({ year, month }) => month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 }) }}
+          onNext={() => { reset(); setCalMonth(({ year, month }) => month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 }) }}
           onOpenEdit={openEdit}
         />
       )}
 
-      {!isLoading && view === "weekly" && (
+      {!isLoading && !isTasksError && view === "weekly" && (
         <WeeklyPlannerView
           tasks={allTasks}
+          weekOffset={weekOffset}
+          onWeekOffsetChange={(offset) => { setWeekOffset(offset); reset() }}
           onScheduleChange={(taskId, date) => scheduleMutation.mutate({ id: taskId, scheduled_date: date })}
           onOpenEdit={openEdit}
         />
       )}
 
-      {!isLoading && view === "recurring" && (
+      {!isLoading && !isTasksError && view === "recurring" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold">Plantillas recurrentes</h3>
@@ -920,23 +1002,12 @@ export default function TasksPage() {
             />
           </div>
 
-          {/* Datos de asignación — collapsible */}
-          <div className="border border-border/60 rounded-lg overflow-hidden">
-            <button
-              type="button"
-              className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-              onClick={() => setShowAssignmentFields((v) => !v)}
-            >
-              <span>Datos de asignación</span>
-              {showAssignmentFields
-                ? <ChevronUp className="h-4 w-4" />
-                : <ChevronDown className="h-4 w-4" />}
-            </button>
-            <div className={showAssignmentFields ? "p-3 pt-2 border-t border-border/60" : "hidden"}>
+          <div className="border border-border/60 rounded-lg p-3">
+            <p className="text-sm font-medium mb-3">Planificación y responsable</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="client_id" className="text-xs">Cliente</Label>
-                  <Select id="client_id" name="client_id" defaultValue={editing?.client_id ? String(editing.client_id) : ""}>
+                  <Select id="client_id" name="client_id" value={formClientId} onChange={(e) => { setFormClientId(e.target.value); setFormProjectId("") }}>
                     <option value="">Seleccionar...</option>
                     {clients.map((c) => (
                       <option key={c.id} value={String(c.id)}>{c.name}</option>
@@ -945,12 +1016,27 @@ export default function TasksPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="project_id" className="text-xs">Proyecto</Label>
-                  <Select id="project_id" name="project_id" defaultValue={editing?.project_id ? String(editing.project_id) : ""}>
-                    <option value="">Sin proyecto</option>
-                    {projects.map((p) => (
+                  <Select id="project_id" name="project_id" value={formProjectId} onChange={(e) => setFormProjectId(e.target.value)} disabled={!formClientId || formProjects.length === 0}>
+                    <option value="">{formClientId ? "Sin proyecto" : "Selecciona primero un cliente"}</option>
+                    {shouldPreserveCurrentProject(editing?.project_id, formProjectId, formProjects.map((project) => project.id)) && (
+                      <option value={formProjectId}>{editing?.project_name ?? "Proyecto actual"} (cerrado)</option>
+                    )}
+                    {formProjects.map((p) => (
                       <option key={p.id} value={String(p.id)}>{p.name}</option>
                     ))}
                   </Select>
+                  {suggestedProject && !formProjectId && (
+                    <p className="text-xs text-muted-foreground">Proyecto activo sugerido: <button type="button" className="underline font-medium text-foreground" onClick={() => setFormProjectId(String(suggestedProject.id))}>{suggestedProject.name}</button>. Selecciónalo si corresponde.</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="scheduled_date" className="text-xs">Planificar para</Label>
+                  <Input
+                    id="scheduled_date"
+                    name="scheduled_date"
+                    type="date"
+                    defaultValue={editing?.scheduled_date ?? ""}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="category_id" className="text-xs">Categoría</Label>
@@ -992,7 +1078,6 @@ export default function TasksPage() {
                   </Select>
                 </div>
               </div>
-            </div>
           </div>
 
           {/* Plazos — collapsible */}
@@ -1025,6 +1110,7 @@ export default function TasksPage() {
                     name="actual_minutes"
                     type="number"
                     defaultValue={editing?.actual_minutes ?? ""}
+                    onChange={() => setActualMinutesEdited(true)}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -1034,15 +1120,6 @@ export default function TasksPage() {
                     name="due_date"
                     type="date"
                     defaultValue={editing?.due_date ? editing.due_date.split("T")[0] : ""}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="scheduled_date" className="text-xs">Fecha planificada</Label>
-                  <Input
-                    id="scheduled_date"
-                    name="scheduled_date"
-                    type="date"
-                    defaultValue={editing?.scheduled_date ?? new Date().toISOString().split("T")[0]}
                   />
                 </div>
                 <div className="space-y-1.5">

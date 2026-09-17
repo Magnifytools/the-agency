@@ -11,8 +11,8 @@ class TaskCreate(BaseModel):
     description: Optional[str] = None
     status: TaskStatus = TaskStatus.pending
     priority: TaskPriority = TaskPriority.medium
-    estimated_minutes: Optional[int] = None
-    actual_minutes: Optional[int] = None
+    estimated_minutes: Optional[int] = Field(None, ge=0)
+    actual_minutes: Optional[int] = Field(None, ge=0)
     start_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
     client_id: Optional[int] = None
@@ -38,8 +38,8 @@ class TaskUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[TaskStatus] = None
     priority: Optional[TaskPriority] = None
-    estimated_minutes: Optional[int] = None
-    actual_minutes: Optional[int] = None
+    estimated_minutes: Optional[int] = Field(None, ge=0)
+    actual_minutes: Optional[int] = Field(None, ge=0)
     start_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
     client_id: Optional[int] = None
@@ -90,6 +90,7 @@ class TaskResponse(BaseModel):
     link_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    completed_at: Optional[datetime] = None
 
     # Nested names for display
     client_name: Optional[str] = None

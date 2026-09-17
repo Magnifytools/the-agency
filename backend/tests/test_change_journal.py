@@ -147,7 +147,7 @@ def test_solo_se_vigilan_las_entidades_operativas():
     """Finanzas queda fuera a propósito (ver "No tocar" en CLAUDE.md)."""
     assert set(cj.MODELS_BY_TYPE) == {
         "task", "project", "client", "lead", "growth_idea",
-        "project_phase", "task_checklist", "lead_activity",
+        "project_phase", "task_checklist", "lead_activity", "time_entry",
     }
     from backend.db.models import Expense, Income
     assert Income not in cj._SPECS and Expense not in cj._SPECS

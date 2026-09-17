@@ -217,7 +217,7 @@ function InsightCard({
         {link && (
           <div
             className="p-1.5 rounded-md hover:bg-brand/10 text-muted-foreground hover:text-brand"
-            title="Ver y actuar"
+            title="Ver detalle"
           >
             <ChevronRight className="h-4 w-4" />
           </div>
@@ -243,7 +243,6 @@ function InsightCard({
   return link ? (
     <Link
       to={link}
-      onClick={() => { setTimeout(onAct, 300) }}
       className={`block p-3 rounded-lg border border-border bg-card border-l-4 ${PRIORITY_COLORS[insight.priority]} group hover:shadow-sm transition-shadow cursor-pointer`}
     >
       {cardContent}

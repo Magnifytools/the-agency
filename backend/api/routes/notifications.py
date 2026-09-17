@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func, update, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.modules import is_enabled
+from backend.services.notification_checks import NotificationChecks, visible_notification_condition
 from backend.db.database import get_db
 from backend.db.models import (
     IN_PROGRESS_TASK_STATUSES,
@@ -17,7 +19,7 @@ from backend.db.models import (
 from backend.api.deps import get_current_user
 from backend.schemas.notification import NotificationResponse
 from backend.services.notification_service import (
-    create_notification, TASK_OVERDUE, LEAD_FOLLOWUP, BILLING_REMINDER,
+    TASK_OVERDUE, LEAD_FOLLOWUP, BILLING_REMINDER,
     DAILY_MISSING, TIMESHEET_INCOMPLETE, CAPACITY_OVERLOAD, CLIENT_NO_HOURS,
     PROJECT_MONTHLY_HOURS_WARNING, PROJECT_MONTHLY_HOURS_EXCEEDED,
     PROJECT_CLOSING_SOON, PROJECT_CLOSING_OVERDUE,
@@ -45,7 +47,7 @@ async def list_notifications(
 ) -> list[NotificationResponse]:
     """List notifications for the current user."""
     try:
-        q = select(Notification).where(Notification.user_id == user.id)
+        q = select(Notification).where(Notification.user_id == user.id, visible_notification_condition())
         if unread_only:
             q = q.where(Notification.is_read.is_(False))
         q = q.order_by(Notification.created_at.desc()).limit(limit).offset(offset)
@@ -71,6 +73,7 @@ async def unread_count(
             select(func.count(Notification.id)).where(
                 Notification.user_id == user.id,
                 Notification.is_read.is_(False),
+                visible_notification_condition(),
             )
         )
         count = result.scalar() or 0
@@ -135,7 +138,7 @@ async def generate_notification_checks(
 ) -> dict:
     """Generate notifications for overdue tasks and lead followups due.
 
-    Optimized: pre-loads all existing unread notifications in 1 query
+    Optimized: pre-loads existing checks, including read ones, in 1 query
     instead of checking per-item (eliminates N+1 pattern).
     """
     from datetime import timedelta
@@ -144,21 +147,23 @@ async def generate_notification_checks(
     today = date.today()
     now = datetime.now(timezone.utc).replace(tzinfo=None)
 
-    # ── Pre-load ALL unread notifications for this user (1 query) ──
-    existing_result = await db.execute(
-        select(Notification.type, Notification.entity_type, Notification.entity_id)
-        .where(
-            Notification.user_id == user.id,
-            Notification.is_read.is_(False),
-        )
-    )
-    existing_set: set[tuple[str, str, int]] = {
-        (row.type, row.entity_type, row.entity_id)
-        for row in existing_result.all()
-    }
+    checks = await NotificationChecks.load(db, user.id)
+    week_start = today - timedelta(days=today.weekday())
+    cycles: dict[tuple[str, str, int], date] = {}
 
     def _has_existing(ntype: str, etype: str, eid: int) -> bool:
-        return (ntype, etype, eid) in existing_set
+        if ntype in (PROJECT_MONTHLY_HOURS_WARNING, PROJECT_MONTHLY_HOURS_EXCEEDED):
+            default_cycle = today.replace(day=1)
+        elif ntype in (CLIENT_NO_HOURS, CAPACITY_OVERLOAD):
+            default_cycle = week_start
+        elif ntype == TIMESHEET_INCOMPLETE:
+            default_cycle = today - timedelta(days=1)
+        else:
+            default_cycle = today
+        return checks.has(ntype, etype, eid, cycles.get((ntype, etype, eid), default_cycle))
+
+    async def _create_checked_notification(_db, *, user_id, **fields):
+        return await checks.create(**fields)
 
     # 1. Overdue tasks assigned to this user
     try:
@@ -170,9 +175,10 @@ async def generate_notification_checks(
             )
         )
         for task in overdue_result.scalars().all():
+            cycles[(TASK_OVERDUE, "task", task.id)] = task.due_date.date()
             if not _has_existing(TASK_OVERDUE, "task", task.id):
                 due_str = task.due_date.strftime("%d/%m/%Y") if task.due_date else "—"
-                await create_notification(
+                await _create_checked_notification(
                     db,
                     user_id=user.id,
                     type=TASK_OVERDUE,
@@ -187,33 +193,35 @@ async def generate_notification_checks(
         logger.error("Error checking overdue tasks: %s", e)
 
     # 2. Lead followups due today or past
-    try:
-        leads_result = await db.execute(
-            select(Lead).where(
-                Lead.assigned_to == user.id,
-                Lead.next_followup_date <= today,
-                Lead.status.notin_([LeadStatus.won, LeadStatus.lost]),
-            )
-        )
-        for lead in leads_result.scalars().all():
-            if not _has_existing(LEAD_FOLLOWUP, "lead", lead.id):
-                followup_str = lead.next_followup_date.strftime("%d/%m/%Y") if lead.next_followup_date else "hoy"
-                await create_notification(
-                    db,
-                    user_id=user.id,
-                    type=LEAD_FOLLOWUP,
-                    title=f"Seguimiento pendiente: {lead.company_name}",
-                    message=lead.next_followup_notes or f"Seguimiento programado para {followup_str}",
-                    link_url=f"/leads/{lead.id}",
-                    entity_type="lead",
-                    entity_id=lead.id,
+    if is_enabled("leads"):
+        try:
+            leads_result = await db.execute(
+                select(Lead).where(
+                    Lead.assigned_to == user.id,
+                    Lead.next_followup_date <= today,
+                    Lead.status.notin_([LeadStatus.won, LeadStatus.lost]),
                 )
-                created += 1
-    except Exception as e:
-        logger.error("Error checking lead followups: %s", e)
+            )
+            for lead in leads_result.scalars().all():
+                cycles[(LEAD_FOLLOWUP, "lead", lead.id)] = lead.next_followup_date
+                if not _has_existing(LEAD_FOLLOWUP, "lead", lead.id):
+                    followup_str = lead.next_followup_date.strftime("%d/%m/%Y") if lead.next_followup_date else "hoy"
+                    await _create_checked_notification(
+                        db,
+                        user_id=user.id,
+                        type=LEAD_FOLLOWUP,
+                        title=f"Seguimiento pendiente: {lead.company_name}",
+                        message=lead.next_followup_notes or f"Seguimiento programado para {followup_str}",
+                        link_url=f"/leads/{lead.id}",
+                        entity_type="lead",
+                        entity_id=lead.id,
+                    )
+                    created += 1
+        except Exception as e:
+            logger.error("Error checking lead followups: %s", e)
 
     # 3. Billing reminders for clients due within 3 days (admin only)
-    if user.role == UserRole.admin:
+    if user.role == UserRole.admin and is_enabled("billing"):
         try:
             threshold = today + timedelta(days=3)
             billing_result = await db.execute(
@@ -224,11 +232,12 @@ async def generate_notification_checks(
                 )
             )
             for client in billing_result.scalars().all():
+                cycles[(BILLING_REMINDER, "client", client.id)] = client.next_invoice_date
                 if not _has_existing(BILLING_REMINDER, "client", client.id):
                     date_str = client.next_invoice_date.strftime("%d/%m/%Y")
                     days_left = (client.next_invoice_date - today).days
                     msg = f"Toca facturar a {client.name} el {date_str}" if days_left >= 0 else f"Factura vencida para {client.name} desde el {date_str}"
-                    await create_notification(
+                    await _create_checked_notification(
                         db,
                         user_id=user.id,
                         type=BILLING_REMINDER,
@@ -262,7 +271,7 @@ async def generate_notification_checks(
 
             for u in all_users:
                 if u.id not in users_with_daily and not _has_existing(DAILY_MISSING, "user", u.id):
-                    await create_notification(
+                    await _create_checked_notification(
                         db,
                         user_id=user.id,
                         type=DAILY_MISSING,
@@ -302,7 +311,7 @@ async def generate_notification_checks(
                     total_minutes = hours_map.get(u.id, 0)
                     if total_minutes < 360 and not _has_existing(TIMESHEET_INCOMPLETE, "user", u.id):
                         hours_str = f"{total_minutes // 60}h {total_minutes % 60}m" if total_minutes > 0 else "0h"
-                        await create_notification(
+                        await _create_checked_notification(
                             db,
                             user_id=user.id,
                             type=TIMESHEET_INCOMPLETE,
@@ -342,7 +351,7 @@ async def generate_notification_checks(
             if today.weekday() >= 2:
                 for client in active_clients:
                     if client_hours_map.get(client.id, 0) == 0 and not _has_existing(CLIENT_NO_HOURS, "client", client.id):
-                        await create_notification(
+                        await _create_checked_notification(
                             db,
                             user_id=user.id,
                             type=CLIENT_NO_HOURS,
@@ -357,48 +366,49 @@ async def generate_notification_checks(
             logger.error("Error checking client hours: %s", e)
 
     # 7. Capacity overload — users with 20+ hours of pending estimated work
-    try:
-        overloaded_users = await db.execute(
-            select(
-                Task.assigned_to,
-                func.sum(Task.estimated_minutes).label("total_est"),
-            ).where(
-                Task.assigned_to.isnot(None),
-                Task.status.in_([TaskStatus.pending, *IN_PROGRESS_TASK_STATUSES]),
-                Task.estimated_minutes.isnot(None),
-            ).group_by(Task.assigned_to)
-        )
-
-        # Collect overloaded user IDs, then batch-fetch names (1 query)
-        overloaded_rows = [
-            (row.assigned_to, row.total_est)
-            for row in overloaded_users.all()
-            if row.total_est and row.total_est > 1200
-        ]
-        if overloaded_rows:
-            overloaded_ids = [r[0] for r in overloaded_rows]
-            users_result = await db.execute(
-                select(User).where(User.id.in_(overloaded_ids))
+    if is_enabled("capacity"):
+        try:
+            overloaded_users = await db.execute(
+                select(
+                    Task.assigned_to,
+                    func.sum(Task.estimated_minutes).label("total_est"),
+                ).where(
+                    Task.assigned_to.isnot(None),
+                    Task.status.in_([TaskStatus.pending, *IN_PROGRESS_TASK_STATUSES]),
+                    Task.estimated_minutes.isnot(None),
+                ).group_by(Task.assigned_to)
             )
-            user_name_map = {u.id: u.full_name for u in users_result.scalars().all()}
 
-            for assigned_to, total_est in overloaded_rows:
-                if not _has_existing(CAPACITY_OVERLOAD, "user", assigned_to):
-                    name = user_name_map.get(assigned_to, f"Usuario #{assigned_to}")
-                    hours = total_est // 60
-                    await create_notification(
-                        db,
-                        user_id=user.id,
-                        type=CAPACITY_OVERLOAD,
-                        title=f"Sobrecargado: {name}",
-                        message=f"{name} tiene {hours}h+ de trabajo estimado pendiente",
-                        link_url="/capacity",
-                        entity_type="user",
-                        entity_id=assigned_to,
-                    )
-                    created += 1
-    except Exception as e:
-        logger.error("Error checking capacity overload: %s", e)
+            # Collect overloaded user IDs, then batch-fetch names (1 query)
+            overloaded_rows = [
+                (row.assigned_to, row.total_est)
+                for row in overloaded_users.all()
+                if row.total_est and row.total_est > 1200
+            ]
+            if overloaded_rows:
+                overloaded_ids = [r[0] for r in overloaded_rows]
+                users_result = await db.execute(
+                    select(User).where(User.id.in_(overloaded_ids))
+                )
+                user_name_map = {u.id: u.full_name for u in users_result.scalars().all()}
+
+                for assigned_to, total_est in overloaded_rows:
+                    if not _has_existing(CAPACITY_OVERLOAD, "user", assigned_to):
+                        name = user_name_map.get(assigned_to, f"Usuario #{assigned_to}")
+                        hours = total_est // 60
+                        await _create_checked_notification(
+                            db,
+                            user_id=user.id,
+                            type=CAPACITY_OVERLOAD,
+                            title=f"Sobrecargado: {name}",
+                            message=f"{name} tiene {hours}h+ de trabajo estimado pendiente",
+                            link_url="/capacity",
+                            entity_type="user",
+                            entity_id=assigned_to,
+                        )
+                        created += 1
+        except Exception as e:
+            logger.error("Error checking capacity overload: %s", e)
 
     # 8. Projects exceeding monthly_hours_budget — visible to admins and users with projects module access.
     # The weekly_hours_budget field is purely visual guidance and does NOT trigger notifications,
@@ -466,7 +476,7 @@ async def generate_notification_checks(
 
                     if pct >= 1.0:
                         if not _has_existing(PROJECT_MONTHLY_HOURS_EXCEEDED, "project", project.id):
-                            await create_notification(
+                            await _create_checked_notification(
                                 db,
                                 user_id=user.id,
                                 type=PROJECT_MONTHLY_HOURS_EXCEEDED,
@@ -480,7 +490,7 @@ async def generate_notification_checks(
                     elif pct >= 0.8:
                         if not _has_existing(PROJECT_MONTHLY_HOURS_WARNING, "project", project.id) \
                                 and not _has_existing(PROJECT_MONTHLY_HOURS_EXCEEDED, "project", project.id):
-                            await create_notification(
+                            await _create_checked_notification(
                                 db,
                                 user_id=user.id,
                                 type=PROJECT_MONTHLY_HOURS_WARNING,
@@ -522,6 +532,8 @@ async def generate_notification_checks(
                 cp_minutes = {row.project_id: row.total or 0 for row in cp_hours.all()}
 
                 for project in closing_projects:
+                    cycles[(PROJECT_CLOSING_SOON, "project", project.id)] = project.target_end_date.date()
+                    cycles[(PROJECT_CLOSING_OVERDUE, "project", project.id)] = project.target_end_date.date()
                     closing = build_closing_status(project, cp_minutes.get(project.id, 0), today)
                     if not closing or closing["status"] == "ok":
                         continue
@@ -535,7 +547,7 @@ async def generate_notification_checks(
 
                     if closing["overdue"]:
                         if not _has_existing(PROJECT_CLOSING_OVERDUE, "project", project.id):
-                            await create_notification(
+                            await _create_checked_notification(
                                 db,
                                 user_id=user.id,
                                 type=PROJECT_CLOSING_OVERDUE,
@@ -553,7 +565,7 @@ async def generate_notification_checks(
                                 msg = f"Ritmo de horas alto para cerrar a tiempo{hours_bit}"
                             else:
                                 msg = f"Cierra en {closing['days_left']}d{hours_bit}"
-                            await create_notification(
+                            await _create_checked_notification(
                                 db,
                                 user_id=user.id,
                                 type=PROJECT_CLOSING_SOON,
@@ -567,7 +579,7 @@ async def generate_notification_checks(
         except Exception as e:
             logger.error("Error checking project closing dates: %s", e)
 
-    if created > 0:
-        await db.commit()
+    # Also persist adopted legacy keys and release the recipient lock.
+    await db.commit()
 
     return {"created": created}

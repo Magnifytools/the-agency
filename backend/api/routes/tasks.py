@@ -1,16 +1,28 @@
 from __future__ import annotations
 import logging
-from typing import Optional
+from datetime import date as date_type, datetime, time, timedelta, timezone
+from typing import Literal, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
-from backend.db.models import Task, TaskStatus, TaskPriority, User, TaskChecklist, TaskComment, TaskAttachment, TimeEntry
+from backend.db.models import (
+    Project,
+    ProjectPhase,
+    Task,
+    TaskStatus,
+    TaskPriority,
+    User,
+    TaskChecklist,
+    TaskComment,
+    TaskAttachment,
+    TimeEntry,
+)
 from backend.schemas.task import TaskCreate, TaskUpdate, TaskResponse
 from backend.schemas.task_checklist import ChecklistItemCreate, ChecklistItemUpdate, ChecklistItemResponse
 from backend.schemas.task_comment import TaskCommentCreate, TaskCommentResponse
@@ -68,6 +80,7 @@ def _task_to_response(task: Task) -> TaskResponse:
         follow_up_date=task.follow_up_date,
         created_at=task.created_at,
         updated_at=task.updated_at,
+        completed_at=task.completed_at,
         is_recurring=task.is_recurring,
         recurrence_pattern=task.recurrence_pattern,
         recurrence_day=task.recurrence_day,
@@ -95,6 +108,49 @@ async def _load_task_for_response(db: AsyncSession, task_id: int) -> Task | None
         .where(Task.id == task_id)
     )
     return result.scalar_one_or_none()
+
+
+async def _validate_task_scope(
+    db: AsyncSession,
+    data: dict,
+    *,
+    existing: Task | None = None,
+) -> None:
+    """Resolve and validate the client/project/phase hierarchy in-place."""
+    project_id = data.get("project_id", existing.project_id if existing else None)
+    phase_id = data.get("phase_id", existing.phase_id if existing else None)
+    client_id = data.get("client_id", existing.client_id if existing else None)
+
+    # Clearing/changing a project cannot leave its previous phase attached.
+    if existing is not None and "project_id" in data and "phase_id" not in data:
+        if data["project_id"] != existing.project_id:
+            phase_id = None
+            data["phase_id"] = None
+
+    if phase_id is not None:
+        phase_project_id = (await db.execute(
+            select(ProjectPhase.project_id).where(ProjectPhase.id == phase_id)
+        )).scalar_one_or_none()
+        if phase_project_id is None:
+            raise HTTPException(status_code=422, detail="La fase seleccionada no existe")
+        if project_id is None:
+            project_id = phase_project_id
+            data["project_id"] = project_id
+        elif phase_project_id != project_id:
+            raise HTTPException(status_code=422, detail="La fase no pertenece al proyecto seleccionado")
+
+    if project_id is not None:
+        project_client_id = (await db.execute(
+            select(Project.client_id).where(Project.id == project_id)
+        )).scalar_one_or_none()
+        if project_client_id is None:
+            raise HTTPException(status_code=422, detail="El proyecto seleccionado no existe")
+        if client_id is None:
+            data["client_id"] = project_client_id
+        elif client_id != project_client_id:
+            raise HTTPException(status_code=422, detail="El proyecto no pertenece al cliente seleccionado")
+    elif phase_id is not None:
+        raise HTTPException(status_code=422, detail="Una fase requiere un proyecto")
 
 
 def _stamp_advanced(task: Task) -> None:
@@ -171,7 +227,7 @@ async def list_tasks(
     if priority is not None:
         base = base.where(Task.priority == priority)
     if overdue:
-        from datetime import date as _date, timezone
+        from datetime import date as _date
         base = base.where(
             Task.due_date < _date.today(),
             Task.status != TaskStatus.completed,
@@ -243,6 +299,83 @@ async def list_tasks(
     )
 
 
+@router.get("/agenda", response_model=PaginatedResponse[TaskResponse])
+async def list_task_agenda(
+    date: date_type = Query(...),
+    section: Literal["planned", "carryover", "unplanned", "completed"] = Query(...),
+    assigned_to: str = Query("me"),
+    timezone_offset_minutes: int = Query(0, ge=-840, le=840),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_module("tasks")),
+):
+    """Return one explicitly paginated section of a user's civil-day agenda."""
+    base = select(Task).where(Task.is_recurring.is_(False))
+    if assigned_to == "me":
+        if section == "completed":
+            base = base.where(Task.assigned_to == current_user.id)
+        else:
+            base = base.where(or_(Task.assigned_to == current_user.id, Task.assigned_to.is_(None)))
+    elif assigned_to == "unassigned":
+        base = base.where(Task.assigned_to.is_(None))
+    else:
+        try:
+            base = base.where(Task.assigned_to == int(assigned_to))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="assigned_to must be 'me', 'unassigned', or a valid user ID")
+
+    due_day = func.date(Task.due_date)
+    if section == "planned":
+        base = base.where(
+            Task.status != TaskStatus.completed,
+            or_(
+                due_day == date,
+                (Task.scheduled_date == date)
+                & or_(Task.due_date.is_(None), due_day > date),
+            ),
+        )
+    elif section == "carryover":
+        base = base.where(
+            Task.status != TaskStatus.completed,
+            or_(
+                due_day < date,
+                (Task.scheduled_date < date)
+                & or_(Task.due_date.is_(None), due_day != date),
+            ),
+        )
+    elif section == "unplanned":
+        base = base.where(
+            Task.status != TaskStatus.completed,
+            Task.scheduled_date.is_(None),
+            or_(Task.due_date.is_(None), due_day > date),
+        )
+    else:
+        utc_start = datetime.combine(date, time.min) + timedelta(minutes=timezone_offset_minutes)
+        utc_end = utc_start + timedelta(days=1)
+        base = base.where(
+            Task.status == TaskStatus.completed,
+            Task.completed_at >= utc_start,
+            Task.completed_at < utc_end,
+        )
+
+    total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
+    query = (
+        base.options(*_TASK_RESPONSE_OPTIONS)
+        .order_by(Task.priority.asc(), Task.due_date.asc().nullslast(), Task.created_at.asc(), Task.id.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    result = await db.execute(query)
+    return PaginatedResponse(
+        items=[_task_to_response(task) for task in result.scalars().all()],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(
     body: TaskCreate,
@@ -250,17 +383,32 @@ async def create_task(
     current_user: User = Depends(require_module("tasks", write=True)),
 ):
     data = body.model_dump()
-    # Auto-assign to creator if no assignee specified
-    if not data.get("assigned_to"):
-        data["assigned_to"] = current_user.id
-    # Default scheduled_date to today if not specified
-    if not data.get("scheduled_date"):
-        from datetime import date as _date
-        data["scheduled_date"] = _date.today()
+    await _validate_task_scope(db, data)
+    if data.get("actual_minutes") and current_user.role.value != "admin":
+        can_write_time = any(
+            permission.module == "timesheet" and permission.can_write
+            for permission in (current_user.permissions or [])
+        )
+        if not can_write_time:
+            raise HTTPException(403, "Crear horas reales requiere permiso de escritura en timesheet")
+    if data.get("actual_minutes"):
+        from backend.services.change_journal import capture_manual_time
+        capture_manual_time(db.sync_session)
     task = Task(**data, created_by=current_user.id)
     _stamp_advanced(task)
+    if task.status == TaskStatus.completed:
+        task.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.add(task)
     try:
+        await db.flush()
+        if task.actual_minutes:
+            db.add(TimeEntry(
+                task_id=task.id,
+                user_id=current_user.id,
+                minutes=task.actual_minutes,
+                date=datetime.now(timezone.utc).replace(tzinfo=None),
+                notes="[manual]",
+            ))
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -327,7 +475,12 @@ async def update_task(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("tasks", write=True)),
 ):
-    result = await db.execute(select(Task).where(Task.id == task_id))
+    # Serialize all task edits before comparing or deriving actual_minutes.
+    # Without this lock, two concurrent explicit total edits can both observe
+    # the old total and each create the same manual adjustment.
+    result = await db.execute(
+        select(Task).where(Task.id == task_id).with_for_update().execution_options(populate_existing=True)
+    )
     task = result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -344,51 +497,94 @@ async def update_task(
         "unit_cost", "link_url",
     }
     update_data = body.model_dump(exclude_unset=True)
-    manual_minutes_changed = "actual_minutes" in update_data
+    manual_minutes_changed = (
+        "actual_minutes" in update_data
+        and update_data["actual_minutes"] != task.actual_minutes
+    )
+    if manual_minutes_changed and current_user.role.value != "admin":
+        can_write_time = any(
+            permission.module == "timesheet" and permission.can_write
+            for permission in (current_user.permissions or [])
+        )
+        if not can_write_time:
+            raise HTTPException(
+                status_code=403,
+                detail="Editar horas reales requiere permiso de escritura en timesheet",
+            )
+    if manual_minutes_changed:
+        from backend.services.change_journal import capture_manual_time
+        capture_manual_time(db.sync_session)
     new_actual = update_data.get("actual_minutes")
+    await _validate_task_scope(db, update_data, existing=task)
     for field, value in update_data.items():
         if field in _UPDATABLE_TASK_FIELDS:
             setattr(task, field, value)
 
     if "status" in update_data:
         _stamp_advanced(task)
+        new_status_value = update_data["status"]
+        if new_status_value == TaskStatus.completed and old_status != TaskStatus.completed.value:
+            task.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        elif new_status_value != TaskStatus.completed and old_status == TaskStatus.completed.value:
+            task.completed_at = None
 
-    # If actual_minutes changed manually, sync a "manual" TimeEntry so it
-    # counts toward daily hours even without a timer.
-    if manual_minutes_changed and new_actual is not None:
-        from datetime import datetime, timezone
-        timer_sum_result = await db.execute(
+    # Only an explicit total edit may change manual time. Other users' manual
+    # entries and all timer entries are immutable here, preserving attribution.
+    if manual_minutes_changed:
+        fixed_sum_result = await db.execute(
             select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
                 TimeEntry.task_id == task_id,
                 TimeEntry.minutes.isnot(None),
-                TimeEntry.notes != "[manual]",
+                or_(
+                    TimeEntry.notes.is_(None),
+                    TimeEntry.notes != "[manual]",
+                    TimeEntry.user_id != current_user.id,
+                ),
             )
         )
-        timer_sum = timer_sum_result.scalar() or 0
-        manual_diff = max(0, new_actual - timer_sum)
+        fixed_sum = fixed_sum_result.scalar() or 0
+        target_actual = fixed_sum if new_actual is None else new_actual
+        if target_actual < fixed_sum:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Las horas reales no pueden ser menores que los {fixed_sum} minutos ya registrados",
+            )
+        manual_diff = target_actual - fixed_sum
+        task.actual_minutes = target_actual or None
 
-        # Find existing manual entry for this task, or create one
+        # Find the current actor's manual adjustment. Never reattribute or
+        # redatate another person's historical manual entry.
         manual_result = await db.execute(
             select(TimeEntry).where(
                 TimeEntry.task_id == task_id,
+                TimeEntry.user_id == current_user.id,
                 TimeEntry.notes == "[manual]",
-            )
+            ).order_by(TimeEntry.date.desc(), TimeEntry.id.desc())
         )
-        manual_entry = manual_result.scalar_one_or_none()
-        if manual_diff > 0:
-            if manual_entry:
-                manual_entry.minutes = manual_diff
-                manual_entry.date = datetime.now(timezone.utc).replace(tzinfo=None)
+        manual_entries = list(manual_result.scalars().all())
+        current_manual = sum(entry.minutes or 0 for entry in manual_entries)
+        if manual_diff > current_manual:
+            increase = manual_diff - current_manual
+            if manual_entries:
+                manual_entries[0].minutes = (manual_entries[0].minutes or 0) + increase
             else:
                 db.add(TimeEntry(
                     task_id=task_id,
                     user_id=current_user.id,
-                    minutes=manual_diff,
+                    minutes=increase,
                     date=datetime.now(timezone.utc).replace(tzinfo=None),
                     notes="[manual]",
                 ))
-        elif manual_entry:
-            await db.delete(manual_entry)
+        elif manual_diff < current_manual:
+            remaining_reduction = current_manual - manual_diff
+            for manual_entry in manual_entries:
+                current_minutes = manual_entry.minutes or 0
+                if remaining_reduction >= current_minutes:
+                    remaining_reduction -= current_minutes
+                    await db.delete(manual_entry)
+                else:
+                    manual_entry.minutes = current_minutes - remaining_reduction
+                    break
 
     try:
         await db.commit()
@@ -504,7 +700,10 @@ async def bulk_update_tasks(
     for task in tasks:
         try:
             async with db.begin_nested():
-                for field, value in updates.items():
+                scoped_updates = dict(updates)
+                await _validate_task_scope(db, scoped_updates, existing=task)
+                old_task_status = task.status
+                for field, value in scoped_updates.items():
                     if field == "status" and value:
                         value = TaskStatus(value)
                     if field == "priority" and value:
@@ -512,6 +711,10 @@ async def bulk_update_tasks(
                     setattr(task, field, value)
                 if "status" in updates:
                     _stamp_advanced(task)
+                    if task.status == TaskStatus.completed and old_task_status != TaskStatus.completed:
+                        task.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                    elif task.status != TaskStatus.completed and old_task_status == TaskStatus.completed:
+                        task.completed_at = None
                 await db.flush()
             updated += 1
         except Exception as e:
