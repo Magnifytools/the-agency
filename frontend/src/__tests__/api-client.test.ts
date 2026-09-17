@@ -44,6 +44,19 @@ describe("API Client", () => {
     expect(requests[1].headers.get("X-Agency-Send-Intent")).toBeUndefined()
   })
 
+  it("sends the stable request key supplied for a webhook connection test", async () => {
+    let request: InternalAxiosRequestConfig | undefined
+    api.defaults.adapter = async (config) => {
+      request = config
+      return { data: { success: false, status: "pending" }, status: 202, statusText: "Accepted", headers: {}, config }
+    }
+
+    await discordApi.testWebhook("test-request-1")
+
+    expect(request?.url).toBe("/discord/test-webhook")
+    expect(request?.headers.get("X-Agency-Request-Key")).toBe("test-request-1")
+  })
+
   it("creates an axios instance with /api baseURL", async () => {
     // Re-import to get fresh module
     const { default: axiosModule } = await import("axios")

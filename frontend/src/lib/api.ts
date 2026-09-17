@@ -507,8 +507,10 @@ export const discordApi = {
     api.get<import("./types").DiscordSettings>("/discord/settings").then((r) => r.data),
   updateSettings: (data: Partial<import("./types").DiscordSettings>) =>
     api.put<import("./types").DiscordSettings>("/discord/settings", data).then((r) => r.data),
-  testWebhook: () =>
-    api.post<import("./types").DeliveryReceipt>("/discord/test-webhook").then((r) => r.data),
+  testWebhook: (requestKey: string) =>
+    api.post<import("./types").DeliveryReceipt>("/discord/test-webhook", null, {
+      headers: { "X-Agency-Request-Key": requestKey },
+    }).then((r) => r.data),
   sendDailySummary: (date?: string) =>
     api.post<import("./types").DeliveryReceipt>("/discord/send-daily-summary", null, { params: date ? { date } : {} }).then((r) => r.data),
   sendDigest: (digestId: number, content?: string) =>

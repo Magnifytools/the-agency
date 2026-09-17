@@ -51,7 +51,7 @@ export default function DiscordSettingsPage() {
   })
 
   const testMutation = useMutation({
-    mutationFn: () => discordApi.testWebhook(),
+    mutationFn: (requestKey: string) => discordApi.testWebhook(requestKey),
     onSuccess: (data) => {
       deliveryToast(data)
       queryClient.invalidateQueries({ queryKey: ["deliveries", "manual"] })
@@ -173,7 +173,7 @@ export default function DiscordSettingsPage() {
               />
               <Button
                 variant="outline"
-                onClick={() => testMutation.mutate()}
+                onClick={() => testMutation.mutate(crypto.randomUUID())}
                 disabled={testMutation.isPending || (!webhookInput.trim() && !settings?.webhook_configured)}
               >
                 {testMutation.isPending ? (
