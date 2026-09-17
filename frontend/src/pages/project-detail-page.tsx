@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react"
+import { useAuth } from "@/context/auth-context"
+import { ProjectTaskList } from "@/components/projects/project-task-list"
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
@@ -66,6 +68,7 @@ const PHASE_STATUS_ICONS: Record<PhaseStatus, typeof Circle> = {
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
+  const { hasPermission } = useAuth()
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showAddTaskDialog, setShowAddTaskDialog] = useState<number | null>(null)
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false)
@@ -86,7 +89,7 @@ export default function ProjectDetailPage() {
     enabled: validId,
   })
 
-  const { data: tasksData } = useQuery({
+  const { data: tasksData, isLoading: tasksLoading, isError: tasksError, refetch: retryTasks } = useQuery({
     queryKey: taskKeys.project(projectId),
     queryFn: () => projectsApi.tasks(projectId),
     enabled: validId,
@@ -205,12 +208,12 @@ export default function ProjectDetailPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => setShowAddTaskDialog(0)}><Plus className="h-4 w-4 mr-2" />Añadir tarea</Button>
+          {hasPermission("tasks", true) && <Button onClick={() => setShowAddTaskDialog(0)}><Plus className="h-4 w-4 mr-2" />Añadir tarea</Button>}
           <Select
             aria-label="Estado del proyecto"
             value={project.status}
             onChange={(e) => updateStatusMutation.mutate(e.target.value)}
-            disabled={updateStatusMutation.isPending}
+            disabled={!hasPermission("projects", true) || updateStatusMutation.isPending}
             className="w-40"
           >
             <option value="planning">Planificación</option>
@@ -467,8 +470,8 @@ export default function ProjectDetailPage() {
 
       {/* View Toggle + Phases and Tasks */}
       {activeTab === "tasks" && <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Fases y Tareas</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">Trabajo del proyecto</h2>
           <div className="flex items-center gap-1">
             <Button
               variant={viewMode === "list" ? "default" : "outline"}
@@ -505,6 +508,7 @@ export default function ProjectDetailPage() {
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
+                aria-label="Buscar tarea en el proyecto"
                 placeholder="Buscar tarea..."
                 value={filterSearch}
                 onChange={(e) => setFilterSearch(e.target.value)}
@@ -512,6 +516,7 @@ export default function ProjectDetailPage() {
               />
             </div>
             <Select
+              aria-label="Estado de las tareas del proyecto"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value as TaskStatus | "all")}
               className="h-8 w-36 text-xs"
@@ -537,6 +542,14 @@ export default function ProjectDetailPage() {
             )}
           </div>
         )}
+
+        {tasksLoading && <p role="status" className="text-sm text-muted-foreground">Cargando tareas…</p>}
+        {tasksError && <div role="alert" className="text-sm space-y-2">
+          <p>{tasksData ? "No se pudieron actualizar las tareas. Se muestran los últimos datos recibidos." : "No se pudieron cargar las tareas del proyecto."}</p>
+          <Button variant="outline" onClick={() => retryTasks()}>Reintentar tareas</Button>
+        </div>}
+        {tasksData && !tasksError && !tasksData.phases.some((group: { tasks: Task[] }) => group.tasks.length) && !tasksData.unassigned_tasks.length && <p className="text-sm text-muted-foreground">Aún no hay tareas. Añade la primera cuando tengas claro el próximo paso.</p>}
+        {tasksData && hasActiveFilters && filteredPhases.length === 0 && filteredUnassigned.length === 0 && <p className="text-sm text-muted-foreground">No hay tareas que coincidan con estos filtros.</p>}
 
         {viewMode === "gantt" && project && tasksData && (
           <GanttChart project={project} tasksData={{
@@ -589,7 +602,8 @@ export default function ProjectDetailPage() {
                       onChange={(e) =>
                         updatePhaseMutation.mutate({ phaseId: phase.id, status: e.target.value })
                       }
-                      disabled={updatePhaseMutation.isPending}
+                      aria-label={`Estado de la fase ${phase.name}`}
+                      disabled={!hasPermission("projects", true) || updatePhaseMutation.isPending}
                       className="w-32 h-8 text-xs"
                     >
                       <option value="pending">Pendiente</option>
@@ -599,6 +613,8 @@ export default function ProjectDetailPage() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      aria-label={`Añadir tarea a ${phase.name}`}
+                      disabled={!hasPermission("tasks", true)}
                       onClick={() => setShowAddTaskDialog(phase.id)}
                     >
                       <Plus className="h-4 w-4" />
@@ -610,18 +626,11 @@ export default function ProjectDetailPage() {
                 {tasks.length === 0 ? (
                   <p className="text-sm text-muted-foreground py-2">Sin tareas en esta fase</p>
                 ) : (
-                  <div className="space-y-1">
-                    {tasks.map((task: Task) => (
-                      <TaskRow
-                        key={task.id}
-                        task={task}
-                        onStatusChange={(status) =>
-                          updateTaskMutation.mutate({ taskId: task.id, status })
-                        }
-                        onPreview={(taskId) => setPreviewTaskId(taskId)}
-                      />
-                    ))}
-                  </div>
+                  <ProjectTaskList tasks={tasks} showCompleted={hasActiveFilters}
+                    canWrite={hasPermission("tasks", true)}
+                    pendingTaskId={updateTaskMutation.isPending ? updateTaskMutation.variables.taskId : undefined}
+                    onStatusChange={(taskId, status) => updateTaskMutation.mutate({ taskId, status })}
+                    onOpen={setPreviewTaskId} />
                 )}
               </CardContent>
             </Card>
@@ -637,18 +646,11 @@ export default function ProjectDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-1">
-                {filteredUnassigned.map((task: Task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    onStatusChange={(status) =>
-                      updateTaskMutation.mutate({ taskId: task.id, status })
-                    }
-                    onPreview={(taskId) => setPreviewTaskId(taskId)}
-                  />
-                ))}
-              </div>
+              <ProjectTaskList tasks={filteredUnassigned} showCompleted={hasActiveFilters}
+                canWrite={hasPermission("tasks", true)}
+                pendingTaskId={updateTaskMutation.isPending ? updateTaskMutation.variables.taskId : undefined}
+                onStatusChange={(taskId, status) => updateTaskMutation.mutate({ taskId, status })}
+                onOpen={setPreviewTaskId} />
             </CardContent>
           </Card>
         )}
@@ -696,50 +698,6 @@ export default function ProjectDetailPage() {
           }}
         />
       )}
-    </div>
-  )
-}
-
-function TaskRow({
-  task,
-  onStatusChange,
-  onPreview,
-}: {
-  task: { id: number; title: string; status: TaskStatus; due_date: string | null; assigned_to: number | string | null }
-  onStatusChange: (status: TaskStatus) => void
-  onPreview?: (taskId: number) => void
-}) {
-  const isCompleted = task.status === "completed"
-
-  return (
-    <div
-      className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-card/50 group cursor-pointer"
-      onClick={() => onPreview?.(task.id)}
-    >
-      <button
-        onClick={(e) => { e.stopPropagation(); onStatusChange(isCompleted ? "pending" : "completed") }}
-        className={`flex-shrink-0 ${isCompleted ? "text-success" : "text-muted-foreground hover:text-brand"}`}
-      >
-        {isCompleted ? (
-          <CheckCircle2 className="h-5 w-5" />
-        ) : (
-          <Circle className="h-5 w-5" />
-        )}
-      </button>
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm ${isCompleted ? "line-through text-muted-foreground" : ""}`}>
-          {task.title}
-        </p>
-      </div>
-      {task.assigned_to && (
-        <span className="text-xs text-muted-foreground">{task.assigned_to}</span>
-      )}
-      <button
-        onClick={(e) => { e.stopPropagation(); onPreview?.(task.id) }}
-        className="text-xs text-muted-foreground hover:text-brand opacity-0 group-hover:opacity-100"
-      >
-        Ver
-      </button>
     </div>
   )
 }
@@ -1221,7 +1179,7 @@ function TaskPreviewDialog({
   onOpenChange: (open: boolean) => void
   onEditFull: (taskId: number) => void
 }) {
-  const { data: task, isLoading } = useQuery({
+  const { data: task, isLoading, isError, error, refetch } = useQuery({
     queryKey: taskKeys.detail(taskId),
     queryFn: () => tasksApi.get(taskId),
     enabled: open,
@@ -1232,6 +1190,7 @@ function TaskPreviewDialog({
       <DialogHeader>
         <DialogTitle>Detalle de tarea</DialogTitle>
       </DialogHeader>
+      {isError && <div role="alert" className="space-y-2 text-sm"><p>{getErrorMessage(error, "No se pudo cargar la tarea.")}{task && " Se muestran los últimos datos recibidos."}</p><Button variant="outline" onClick={() => refetch()}>Reintentar tarea</Button></div>}
       {isLoading ? (
         <div className="py-8 text-center text-sm text-muted-foreground">Cargando...</div>
       ) : task ? (
@@ -1295,7 +1254,7 @@ function TaskPreviewDialog({
           </div>
         </div>
       ) : (
-        <div className="py-8 text-center text-sm text-muted-foreground">No se encontró la tarea</div>
+        !isError && <div className="py-8 text-center text-sm text-muted-foreground">No se encontró la tarea</div>
       )}
     </Dialog>
   )
