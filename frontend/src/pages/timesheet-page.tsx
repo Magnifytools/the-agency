@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, Fragment } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { timeEntriesApi, tasksApi, timerApi, clientsApi, projectsApi } from "@/lib/api"
+import { invalidateTimeChange, projectKeys, taskKeys, timeKeys } from "@/lib/query-keys"
 import { useAuth } from "@/context/auth-context"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
@@ -13,12 +14,12 @@ import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
 import type { ProjectTimeReport, ClientTimeReport, WeeklyTimesheetTask } from "@/lib/types"
+import { agencyTimezoneLabel, civilDateRangeUtc, parseCivilDate } from "@/lib/dates"
+import { useBusinessDate } from "@/hooks/use-business-date"
+import { elapsedSeconds, formatElapsedSeconds } from "@/lib/timer"
 
 /** Parse "YYYY-MM-DD" as local date (not UTC) to avoid timezone shift */
-function parseLocalDate(str: string) {
-  const [y, m, d] = str.split("-").map(Number)
-  return new Date(y, m - 1, d)
-}
+const parseLocalDate = parseCivilDate
 
 function getMonday(date: Date) {
   const d = new Date(date)
@@ -77,9 +78,8 @@ const PERIOD_OPTIONS: { value: PeriodType; label: string }[] = [
   { value: "personalizado", label: "Personalizado" },
 ]
 
-function computePeriodDates(period: PeriodType): { from: string; to: string } {
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+function computePeriodDates(period: PeriodType, todayValue: string): { from: string; to: string } {
+  const today = parseCivilDate(todayValue)
   switch (period) {
     case "esta-semana": {
       const mon = getMonday(today)
@@ -198,7 +198,7 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
   // Active projects for the selected client (or all if none selected)
   const filterClientNum = filterClient ? parseInt(filterClient, 10) : undefined
   const { data: allActiveProjects = [] } = useQuery({
-    queryKey: ["projects-active", filterClientNum],
+    queryKey: projectKeys.list(["active", "client", filterClientNum]),
     queryFn: () => projectsApi.listAll({ client_id: filterClientNum, status: "active" }),
     enabled: !!filterClientNum,
     staleTime: 30_000,
@@ -208,16 +208,17 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
   useEffect(() => {
     if (!activeTimer?.started_at) { setElapsed(""); return }
     const tick = () => {
-      const secs = Math.floor((Date.now() - new Date(activeTimer.started_at).getTime()) / 1000)
-      const h = Math.floor(secs / 3600)
-      const m = Math.floor((secs % 3600) / 60)
-      const s = secs % 60
-      setElapsed(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`)
+      setElapsed(formatElapsedSeconds(elapsedSeconds(
+        activeTimer.started_at,
+        activeTimer.accumulated_seconds || 0,
+        activeTimer.is_paused || false,
+      )))
     }
     tick()
+    if (activeTimer.is_paused) return
     const iv = setInterval(tick, 1000)
     return () => clearInterval(iv)
-  }, [activeTimer?.started_at])
+  }, [activeTimer?.started_at, activeTimer?.accumulated_seconds, activeTimer?.is_paused])
 
   // Cliente: SIEMPRE todos los activos (no derivado de tareas del usuario).
   const clients: [number, string][] = allActiveClients.map((c) => [c.id, c.name])
@@ -596,12 +597,13 @@ function WorkerTab({ weeklyData, weekLoading, assignedTasks }: WorkerTabProps) {
 export default function TimesheetPage() {
   const { user, isAdmin } = useAuth()
   const queryClient = useQueryClient()
-  const [weekStart, setWeekStart] = useState(() => toInputDate(getMonday(new Date())))
+  const businessToday = useBusinessDate()
+  const [weekStart, setWeekStart] = useState(() => toInputDate(getMonday(parseCivilDate(businessToday))))
   const [activeTab, setActiveTab] = useState<TabKey>("resumen")
   const [period, setPeriod] = useState<PeriodType>("esta-semana")
   const [customFrom, setCustomFrom] = useState("")
   const [customTo, setCustomTo] = useState("")
-  const todayDate = toInputDate(new Date())
+  const todayDate = businessToday
 
   const weekEnd = (() => {
     const d = parseLocalDate(weekStart)
@@ -618,16 +620,16 @@ export default function TimesheetPage() {
     if (period === "personalizado") {
       return { dateFrom: customFrom || weekStart, dateTo: customTo || weekEnd }
     }
-    const { from, to } = computePeriodDates(period)
+    const { from, to } = computePeriodDates(period, businessToday)
     return { dateFrom: from, dateTo: to }
-  }, [period, weekStart, weekEnd, customFrom, customTo, isWeekPeriod])
+  }, [period, weekStart, weekEnd, customFrom, customTo, isWeekPeriod, businessToday])
 
   // When period changes (non-custom, non-week), also sync weekStart for the weekly query
   useEffect(() => {
     if (period === "esta-semana") {
-      setWeekStart(toInputDate(getMonday(new Date())))
+      setWeekStart(toInputDate(getMonday(parseCivilDate(businessToday))))
     } else if (period === "semana-pasada") {
-      const d = getMonday(new Date())
+      const d = getMonday(parseCivilDate(businessToday))
       d.setDate(d.getDate() - 7)
       setWeekStart(toInputDate(d))
     }
@@ -635,21 +637,24 @@ export default function TimesheetPage() {
     if (!isWeekPeriod && activeTab === "resumen") {
       setActiveTab("trabajador")
     }
-  }, [period]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [period, businessToday]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: weeklyData, isLoading: weekLoading, error: weekError, refetch: weekRefetch } = useQuery({
-    queryKey: ["timesheet-week", weekStart],
+    queryKey: timeKeys.week(weekStart),
     queryFn: () => timeEntriesApi.weekly(weekStart),
   })
 
   const { data: todaysEntries = [] } = useQuery({
-    queryKey: ["time-entries", "today", user?.id],
-    queryFn: () => timeEntriesApi.list({ user_id: user?.id, date_from: todayDate + "T00:00:00Z", date_to: todayDate + "T23:59:59Z" }),
+    queryKey: timeKeys.today(user?.id, todayDate),
+    queryFn: () => {
+      const range = civilDateRangeUtc(todayDate, todayDate)
+      return timeEntriesApi.list({ user_id: user?.id, date_from: range.start, date_to: range.endInclusive })
+    },
     enabled: !!user?.id,
   })
 
   const { data: myTasks = [] } = useQuery({
-    queryKey: ["tasks-all", "my-tasks", user?.id],
+    queryKey: taskKeys.assigned("timesheet", user?.id),
     queryFn: () => tasksApi.listAll({ assigned_to: user!.id }),
     enabled: !!user?.id,
   })
@@ -663,14 +668,20 @@ export default function TimesheetPage() {
   })
 
   const { data: projectReport = [], isLoading: projectLoading } = useQuery({
-    queryKey: ["time-entries-by-project", dateFrom, dateTo],
-    queryFn: () => timeEntriesApi.byProject({ date_from: dateFrom + "T00:00:00Z", date_to: dateTo + "T23:59:59Z" }),
+    queryKey: [...timeKeys.reports(), "project", dateFrom, dateTo],
+    queryFn: () => {
+      const range = civilDateRangeUtc(dateFrom, dateTo)
+      return timeEntriesApi.byProject({ date_from: range.start, date_to: range.endInclusive })
+    },
     enabled: activeTab === "proyecto",
   })
 
   const { data: clientReport = [], isLoading: clientLoading } = useQuery({
-    queryKey: ["time-entries-by-client", dateFrom, dateTo],
-    queryFn: () => timeEntriesApi.byClient({ date_from: dateFrom + "T00:00:00Z", date_to: dateTo + "T23:59:59Z" }),
+    queryKey: [...timeKeys.reports(), "client", dateFrom, dateTo],
+    queryFn: () => {
+      const range = civilDateRangeUtc(dateFrom, dateTo)
+      return timeEntriesApi.byClient({ date_from: range.start, date_to: range.endInclusive })
+    },
     enabled: activeTab === "cliente",
   })
 
@@ -679,10 +690,7 @@ export default function TimesheetPage() {
   const [editMins, setEditMins] = useState(0)
   const [editNotes, setEditNotes] = useState("")
 
-  const invalidateTimeEntries = () => {
-    queryClient.invalidateQueries({ queryKey: ["time-entries"] })
-    queryClient.invalidateQueries({ queryKey: ["timesheet-week"] })
-  }
+  const invalidateTimeEntries = () => invalidateTimeChange(queryClient)
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: { task_id?: number; minutes?: number; notes?: string } }) =>
@@ -750,7 +758,7 @@ export default function TimesheetPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold uppercase tracking-wide">Timesheet</h2>
-          <p className="text-sm text-muted-foreground mt-1">{PERIOD_OPTIONS.find(o => o.value === period)?.label} · {todaysEntries.length} registros hoy</p>
+          <p className="text-sm text-muted-foreground mt-1">{PERIOD_OPTIONS.find(o => o.value === period)?.label} · {todaysEntries.length} registros hoy · {agencyTimezoneLabel()}</p>
         </div>
         <Button variant="outline" size="sm" onClick={handleExportCsv}>
           <Download className="h-4 w-4 mr-2" />
@@ -763,7 +771,6 @@ export default function TimesheetPage() {
         tasks={myTasks}
         onTimerChange={() => {
           invalidateTimeEntries()
-          queryClient.invalidateQueries({ queryKey: ["time-entries"] })
           queryClient.invalidateQueries({ queryKey: ["admin-active-timers"] })
         }}
       />

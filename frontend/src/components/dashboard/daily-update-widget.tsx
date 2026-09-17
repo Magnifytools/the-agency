@@ -7,6 +7,9 @@ import { Badge } from "@/components/ui/badge"
 import { MessageSquare, Send, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { invalidateTimeChange } from "@/lib/query-keys"
+import { agencyTimezoneLabel } from "@/lib/dates"
+import { useBusinessDate } from "@/hooks/use-business-date"
 
 interface DailyUpdateWidgetProps {
   userId: number
@@ -18,7 +21,7 @@ export function DailyUpdateWidget({ userId, readOnly = false }: DailyUpdateWidge
   const [expanded, setExpanded] = useState(false)
   const queryClient = useQueryClient()
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = useBusinessDate()
 
   const { data: todayDailys } = useQuery({
     queryKey: ["daily-today", userId, today],
@@ -45,6 +48,7 @@ export function DailyUpdateWidget({ userId, readOnly = false }: DailyUpdateWidge
       setText("")
       setExpanded(false)
       queryClient.invalidateQueries({ queryKey: ["daily-today", userId] })
+      invalidateTimeChange(queryClient)
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al enviar el daily")),
   })
@@ -96,7 +100,7 @@ export function DailyUpdateWidget({ userId, readOnly = false }: DailyUpdateWidge
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
           <MessageSquare className="h-4 w-4 text-brand" />
-          Daily Update
+          Daily Update <span className="text-xs font-normal text-muted-foreground">· {agencyTimezoneLabel()}</span>
         </CardTitle>
       </CardHeader>
       <CardContent>

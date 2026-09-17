@@ -11,6 +11,8 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Trash2, Pencil, Check, X } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { invalidateTimeChange, timeKeys } from "@/lib/query-keys"
+import { formatCivilDate, timeEntryBusinessDate } from "@/lib/dates"
 
 interface TimeLogDialogProps {
   taskId: number
@@ -36,16 +38,12 @@ export function TimeLogDialog({ taskId, taskTitle, open, onOpenChange }: TimeLog
   const [editNotes, setEditNotes] = useState("")
 
   const { data: entries = [] } = useQuery({
-    queryKey: ["time-entries", taskId],
+    queryKey: timeKeys.task(taskId),
     queryFn: () => timeEntriesApi.list({ task_id: taskId }),
     enabled: open,
   })
 
-  const invalidateEntries = () => {
-    queryClient.invalidateQueries({ queryKey: ["time-entries", taskId] })
-    queryClient.invalidateQueries({ queryKey: ["time-entries", "today"] })
-    queryClient.invalidateQueries({ queryKey: ["timesheet-week"] })
-  }
+  const invalidateEntries = () => invalidateTimeChange(queryClient)
 
   const createMutation = useMutation({
     mutationFn: (data: { minutes: number; task_id: number; notes?: string }) =>
@@ -172,7 +170,7 @@ export function TimeLogDialog({ taskId, taskTitle, open, onOpenChange }: TimeLog
                 <TableRow key={e.id}>
                   {editingId === e.id ? (
                     <>
-                      <TableCell className="mono">{new Date(e.date).toLocaleDateString("es-ES")}</TableCell>
+                      <TableCell className="mono">{formatCivilDate(timeEntryBusinessDate(e))}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <Input
@@ -228,7 +226,7 @@ export function TimeLogDialog({ taskId, taskTitle, open, onOpenChange }: TimeLog
                     </>
                   ) : (
                     <>
-                      <TableCell className="mono">{new Date(e.date).toLocaleDateString("es-ES")}</TableCell>
+                      <TableCell className="mono">{formatCivilDate(timeEntryBusinessDate(e))}</TableCell>
                       <TableCell className="mono">{e.minutes ? formatMinutes(e.minutes) : "-"}</TableCell>
                       <TableCell className="max-w-[200px] truncate">{e.notes || "-"}</TableCell>
                       <TableCell>

@@ -16,10 +16,16 @@ from backend.db.models import (
     Task,
     Project,
     User,
-    Notification,
+    TaskStatus,
+    ProjectStatus,
 )
 from backend.api.deps import get_current_user, require_admin
 from backend.api.utils.db_helpers import safe_refresh
+from backend.core.modules import is_enabled
+from backend.schemas.task import TaskCreate
+from backend.services.task_scope import validate_task_scope
+from backend.services.task_lifecycle import stamp_task_status
+from backend.services.notification_service import create_notification
 
 router = APIRouter(prefix="/api/automations", tags=["automations"])
 
@@ -57,7 +63,6 @@ VALID_TRIGGERS = {
     "project_status_changed",
     "time_entry_created",
     "communication_logged",
-    "daily_check",
 }
 
 VALID_ACTIONS = {
@@ -104,7 +109,16 @@ def _rule_to_dict(r: AutomationRule) -> dict:
     }
 
 
+def _action_outcome(result: dict, success: bool = True) -> str:
+    if result.get("skipped"):
+        return "skipped"
+    if not success or result.get("sent") is False or result.get("outcome") == "error":
+        return "error"
+    return "success"
+
+
 def _log_to_dict(log: AutomationLog) -> dict:
+    outcome = _action_outcome(log.action_result or {}, log.success)
     return {
         "id": log.id,
         "rule_id": log.rule_id,
@@ -112,7 +126,8 @@ def _log_to_dict(log: AutomationLog) -> dict:
         "trigger_event": log.trigger_event,
         "trigger_data": log.trigger_data,
         "action_result": log.action_result,
-        "success": log.success,
+        "success": outcome == "success",
+        "outcome": outcome,
         "error_message": log.error_message,
         "executed_at": log.executed_at.isoformat() if log.executed_at else None,
     }
@@ -162,7 +177,6 @@ async def list_triggers(
             {"key": "project_status_changed", "label": "Estado de proyecto cambia", "description": "Cuando un proyecto cambia de estado"},
             {"key": "time_entry_created", "label": "Registro de tiempo", "description": "Cuando se registra una entrada de tiempo"},
             {"key": "communication_logged", "label": "Comunicación registrada", "description": "Cuando se registra una comunicación con cliente"},
-            {"key": "daily_check", "label": "Check diario", "description": "Se ejecuta automáticamente cada día"},
         ],
         "actions": [
             {"key": "create_task", "label": "Crear tarea", "description": "Crea una nueva tarea automáticamente"},
@@ -253,6 +267,9 @@ async def update_automation(
     if "action_type" in update_data and update_data["action_type"] not in VALID_ACTIONS:
         raise HTTPException(400, "Acción inválida")
 
+    if update_data.get("is_active") and update_data.get("trigger", rule.trigger) not in VALID_TRIGGERS:
+        raise HTTPException(400, "Este trigger no tiene ejecución disponible")
+
     for k, v in update_data.items():
         setattr(rule, k, v)
 
@@ -293,6 +310,8 @@ async def toggle_automation(
     if not rule:
         raise HTTPException(status_code=404, detail="Regla no encontrada")
 
+    if not rule.is_active and rule.trigger not in VALID_TRIGGERS:
+        raise HTTPException(400, "Este trigger no tiene ejecución disponible")
     rule.is_active = not rule.is_active
     await db.commit()
     await safe_refresh(db, rule, log_context="automations")
@@ -310,6 +329,10 @@ async def execute_automations(
     Called from other parts of the app when events occur.
     Finds matching active rules and executes their actions.
     """
+    # Hooks and jobs bypass the router, so the capability must be checked here.
+    if not is_enabled("automations") or trigger not in VALID_TRIGGERS:
+        return
+
     result = await db.execute(
         select(AutomationRule).where(
             AutomationRule.trigger == trigger,
@@ -322,16 +345,23 @@ async def execute_automations(
         if not _conditions_match(rule.conditions, trigger_data):
             continue
 
-        success = True
         error_msg = None
-        action_result = {}
-
         try:
-            action_result = await _execute_action(rule.action_type, rule.action_config, trigger_data, db)
+            # A broken FK/enum/action must not poison the caller's session or
+            # prevent subsequent rules from recording their actual outcome.
+            async with db.begin_nested():
+                action_result = await _execute_action(rule.action_type, rule.action_config or {}, trigger_data, db)
+                await db.flush()
+            outcome = _action_outcome(action_result)
+            if outcome == "error":
+                error_msg = "La acción no se completó correctamente"
         except Exception as exc:
-            success = False
-            error_msg = str(exc)
-            logger.error("Automation %s (id=%d) failed: %s", rule.name, rule.id, exc)
+            outcome = "error"
+            # Transport/SQL exceptions may contain webhook credentials or data.
+            error_msg = f"Acción fallida ({type(exc).__name__})"
+            action_result = {}
+            logger.warning("Automation id=%d failed (%s)", rule.id, type(exc).__name__)
+        action_result["outcome"] = outcome
 
         # Log execution
         log = AutomationLog(
@@ -339,7 +369,7 @@ async def execute_automations(
             trigger_event=trigger,
             trigger_data=trigger_data,
             action_result=action_result,
-            success=success,
+            success=outcome == "success",
             error_message=error_msg,
             executed_at=datetime.now(timezone.utc).replace(tzinfo=None),
         )
@@ -360,7 +390,7 @@ def _conditions_match(conditions: dict, trigger_data: dict) -> bool:
     for key, expected in conditions.items():
         actual = trigger_data.get(key)
         if actual is None:
-            continue
+            return False
         # Support lists (any match)
         if isinstance(expected, list):
             if actual not in expected:
@@ -399,7 +429,7 @@ async def _execute_action(
 
 async def _action_create_task(config: dict, data: dict, db: AsyncSession) -> dict:
     """Create a task from automation config."""
-    task = Task(
+    task_data = TaskCreate(
         title=config.get("title", "Tarea automática"),
         description=config.get("description"),
         project_id=config.get("project_id") or data.get("project_id"),
@@ -409,7 +439,12 @@ async def _action_create_task(config: dict, data: dict, db: AsyncSession) -> dic
         status="pending",
         priority=config.get("priority", "medium"),
         estimated_minutes=config.get("estimated_minutes"),
-    )
+    ).model_dump()
+    await validate_task_scope(db, task_data)
+    if task_data.get("assigned_to"):
+        await _require_active_user(db, task_data["assigned_to"])
+    task = Task(**task_data)
+    stamp_task_status(task)
     db.add(task)
     await db.flush()
     return {"task_id": task.id, "title": task.title}
@@ -418,15 +453,16 @@ async def _action_create_task(config: dict, data: dict, db: AsyncSession) -> dic
 async def _action_change_task_status(config: dict, data: dict, db: AsyncSession) -> dict:
     """Change status of a task (from trigger or config)."""
     task_id = config.get("task_id") or data.get("task_id")
-    new_status = config.get("new_status", "pending")
+    new_status = TaskStatus(config.get("new_status", "pending"))
     if not task_id:
         return {"skipped": True, "reason": "No task_id"}
 
-    result = await db.execute(select(Task).where(Task.id == task_id))
+    result = await db.execute(select(Task).where(Task.id == task_id).with_for_update().execution_options(populate_existing=True))
     task = result.scalar_one_or_none()
     if task:
         old = task.status
         task.status = new_status
+        stamp_task_status(task, old)
         return {"task_id": task_id, "old_status": old, "new_status": new_status}
     return {"skipped": True, "reason": f"Task {task_id} not found"}
 
@@ -434,7 +470,7 @@ async def _action_change_task_status(config: dict, data: dict, db: AsyncSession)
 async def _action_change_project_status(config: dict, data: dict, db: AsyncSession) -> dict:
     """Change project status."""
     project_id = config.get("project_id") or data.get("project_id")
-    new_status = config.get("new_status", "active")
+    new_status = ProjectStatus(config.get("new_status", "active"))
     if not project_id:
         return {"skipped": True, "reason": "No project_id"}
 
@@ -447,6 +483,12 @@ async def _action_change_project_status(config: dict, data: dict, db: AsyncSessi
     return {"skipped": True, "reason": f"Project {project_id} not found"}
 
 
+async def _require_active_user(db: AsyncSession, user_id: int) -> None:
+    user = (await db.execute(select(User.id).where(User.id == user_id, User.is_active.is_(True)))).scalar_one_or_none()
+    if user is None:
+        raise ValueError("The target user does not exist or is inactive")
+
+
 async def _action_assign_user(config: dict, data: dict, db: AsyncSession) -> dict:
     """Assign user to a task."""
     task_id = config.get("task_id") or data.get("task_id")
@@ -454,9 +496,10 @@ async def _action_assign_user(config: dict, data: dict, db: AsyncSession) -> dic
     if not task_id or not user_id:
         return {"skipped": True, "reason": "Missing task_id or user_id"}
 
-    result = await db.execute(select(Task).where(Task.id == task_id))
+    result = await db.execute(select(Task).where(Task.id == task_id).with_for_update().execution_options(populate_existing=True))
     task = result.scalar_one_or_none()
     if task:
+        await _require_active_user(db, user_id)
         task.assigned_to = user_id
         return {"task_id": task_id, "assigned_to": user_id}
     return {"skipped": True, "reason": f"Task {task_id} not found"}
@@ -471,13 +514,10 @@ async def _action_send_notification(config: dict, data: dict, db: AsyncSession) 
     if not user_id:
         return {"skipped": True, "reason": "No user_id for notification"}
 
-    notif = Notification(
-        user_id=user_id,
-        title=title,
-        message=message,
-        type="automation",
-    )
-    db.add(notif)
+    await _require_active_user(db, user_id)
+    notif = await create_notification(db, user_id=user_id, title=title, message=message, type="automation")
+    if notif is None:
+        raise RuntimeError("Notification creation failed")
     await db.flush()
     return {"notification_id": notif.id, "user_id": user_id}
 

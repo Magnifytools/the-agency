@@ -16,6 +16,8 @@ from backend.db.models import (
     Client, Task, Project, CommunicationLog, TimeEntry, GeneratedReport,
     TaskStatus, ClientStatus, ProjectStatus, ReportType, ReportAudience,
 )
+from backend.services.temporal import business_today, civil_day_utc_bounds
+from backend.services.time_entry_dates import time_entry_civil_period
 
 
 async def generate_client_status_report(
@@ -27,12 +29,16 @@ async def generate_client_status_report(
 ) -> GeneratedReport:
     """Generate a status report for a specific client."""
     now = datetime.now(timezone.utc).replace(tzinfo=None)
+    today = business_today()
 
     # Calculate period
     if period == "week":
-        period_start = now - timedelta(days=7)
+        period_start_day = today - timedelta(days=7)
     else:  # month
-        period_start = now - timedelta(days=30)
+        period_start_day = today - timedelta(days=30)
+    period_end_exclusive_day = today + timedelta(days=1)
+    period_start, _ = civil_day_utc_bounds(period_start_day)
+    period_end, _ = civil_day_utc_bounds(period_end_exclusive_day)
 
     # Fetch client
     result = await db.execute(select(Client).where(Client.id == client_id))
@@ -40,15 +46,25 @@ async def generate_client_status_report(
     if not client:
         raise ValueError(f"Client {client_id} not found")
 
-    # Fetch tasks for period
+    # Completion belongs to a period only through its explicit completion time.
+    completed_result = await db.execute(
+        select(Task)
+        .where(Task.client_id == client_id)
+        .where(Task.status == TaskStatus.completed)
+        .where(Task.completed_at >= period_start)
+        .where(Task.completed_at < period_end)
+    )
+    completed_tasks = list(completed_result.scalars().all())
+
+    # Active task edits remain useful as current-period operational context.
     tasks_result = await db.execute(
         select(Task)
         .where(Task.client_id == client_id)
         .where(Task.updated_at >= period_start)
+        .where(Task.status != TaskStatus.completed)
     )
     tasks = list(tasks_result.scalars().all())
 
-    completed_tasks = [t for t in tasks if t.status == TaskStatus.completed]
     pending_tasks = [t for t in tasks if t.status == TaskStatus.pending]
     in_progress_tasks = [t for t in tasks if t.status in IN_PROGRESS_TASK_STATUSES]
 
@@ -57,7 +73,7 @@ async def generate_client_status_report(
         select(func.sum(TimeEntry.minutes))
         .join(Task)
         .where(Task.client_id == client_id)
-        .where(TimeEntry.date >= period_start)
+        .where(time_entry_civil_period(period_start_day, period_end_exclusive_day))
     )
     total_minutes = time_result.scalar() or 0
     total_hours = round(total_minutes / 60, 1)
@@ -141,7 +157,7 @@ async def generate_client_status_report(
         title=f"Informe de estado - {client.name} ({period_name})",
         generated_at=now,
         period_start=period_start,
-        period_end=now,
+        period_end=period_end,
         content=json.dumps({
             "sections": sections,
             "summary": summary_text,
@@ -165,12 +181,17 @@ async def generate_weekly_summary_report(
 ) -> GeneratedReport:
     """Generate a weekly summary report for all clients."""
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    week_start = now - timedelta(days=7)
+    today = business_today()
+    week_start_day = today - timedelta(days=7)
+    period_end_exclusive_day = today + timedelta(days=1)
+    week_start, _ = civil_day_utc_bounds(week_start_day)
+    period_end, _ = civil_day_utc_bounds(period_end_exclusive_day)
 
     # Fetch all completed tasks this week
     tasks_result = await db.execute(
         select(Task)
-        .where(Task.updated_at >= week_start)
+        .where(Task.completed_at >= week_start)
+        .where(Task.completed_at < period_end)
         .where(Task.status == TaskStatus.completed)
     )
     completed_tasks = list(tasks_result.scalars().all())
@@ -184,7 +205,7 @@ async def generate_weekly_summary_report(
     time_result = await db.execute(
         select(Task.client_id, func.sum(TimeEntry.minutes))
         .join(TimeEntry)
-        .where(TimeEntry.date >= week_start)
+        .where(time_entry_civil_period(week_start_day, period_end_exclusive_day))
         .group_by(Task.client_id)
     )
     time_by_client = {row[0]: row[1] for row in time_result.all()}
@@ -246,7 +267,7 @@ async def generate_weekly_summary_report(
         title=f"Resumen semanal - {now.strftime('%d/%m/%Y')}",
         generated_at=now,
         period_start=week_start,
-        period_end=now,
+        period_end=period_end,
         content=json.dumps({
             "sections": sections,
             "summary": overview,

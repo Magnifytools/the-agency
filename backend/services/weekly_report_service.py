@@ -3,9 +3,8 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,9 +14,10 @@ from backend.db.models import (
     User, TimeEntry, Task, Client, Project, TaskStatus,
 )
 from backend.startup.background_tasks import _is_qa_user
+from backend.services.temporal import business_zone, civil_day_utc_bounds
+from backend.services.time_entry_dates import time_entry_civil_period
 
 logger = logging.getLogger(__name__)
-MADRID_TZ = ZoneInfo("Europe/Madrid")
 
 
 def _fmt_h(minutes: float) -> str:
@@ -27,13 +27,13 @@ def _fmt_h(minutes: float) -> str:
 
 async def generate_weekly_report(db: AsyncSession) -> str:
     """Generate the full weekly report text. Returns Discord-formatted string."""
-    now = datetime.now(MADRID_TZ)
+    now = datetime.now(business_zone())
     today = now.date()
     ws = today - timedelta(days=5)  # Monday (Saturday - 5)
     we_fri = ws + timedelta(days=4)
     we_sun = ws + timedelta(days=6)
-    start_dt = datetime.combine(ws, datetime.min.time())
-    end_dt = datetime.combine(we_sun + timedelta(days=1), datetime.min.time())
+    start_dt, _ = civil_day_utc_bounds(ws)
+    end_dt, _ = civil_day_utc_bounds(we_sun + timedelta(days=1))
 
     # Users
     users_result = await db.execute(
@@ -46,8 +46,7 @@ async def generate_weekly_report(db: AsyncSession) -> str:
     entries_result = await db.execute(
         select(TimeEntry).where(
             TimeEntry.minutes.isnot(None),
-            TimeEntry.date >= start_dt,
-            TimeEntry.date < end_dt,
+            time_entry_civil_period(ws, we_sun + timedelta(days=1)),
         )
     )
     entries = entries_result.scalars().all()
@@ -55,7 +54,7 @@ async def generate_weekly_report(db: AsyncSession) -> str:
     # Tasks
     completed_result = await db.execute(
         select(Task).options(selectinload(Task.client))
-        .where(Task.status == TaskStatus.completed, Task.updated_at >= start_dt, Task.updated_at < end_dt)
+        .where(Task.status == TaskStatus.completed, Task.completed_at >= start_dt, Task.completed_at < end_dt)
         .order_by(Task.client_id, Task.title)
     )
     completed_tasks = completed_result.scalars().all()
@@ -66,15 +65,23 @@ async def generate_weekly_report(db: AsyncSession) -> str:
     )
     in_progress_tasks = in_progress_result.scalars().all()
 
+    pending_filter = Task.status == TaskStatus.pending
+    pending_total = (await db.execute(select(func.count(Task.id)).where(pending_filter))).scalar() or 0
     pending_result = await db.execute(
         select(Task).options(selectinload(Task.client), selectinload(Task.assigned_user))
-        .where(Task.status == TaskStatus.pending).order_by(Task.due_date.asc().nulls_last(), Task.title).limit(15)
+        .where(pending_filter).order_by(Task.due_date.asc().nulls_last(), Task.title).limit(15)
     )
     pending_tasks = pending_result.scalars().all()
 
+    overdue_filter = (
+        Task.status.notin_([TaskStatus.completed])
+        & (Task.due_date < start_dt)
+        & Task.due_date.isnot(None)
+    )
+    overdue_total = (await db.execute(select(func.count(Task.id)).where(overdue_filter))).scalar() or 0
     overdue_result = await db.execute(
         select(Task).options(selectinload(Task.client), selectinload(Task.assigned_user))
-        .where(Task.status.notin_([TaskStatus.completed]), Task.due_date < start_dt, Task.due_date.isnot(None))
+        .where(overdue_filter)
         .order_by(Task.due_date.asc()).limit(15)
     )
     overdue_tasks = overdue_result.scalars().all()
@@ -122,9 +129,9 @@ async def generate_weekly_report(db: AsyncSession) -> str:
         lines.append(f"\u23f1\ufe0f **Tiempo total:** {_fmt_h(total_mins)}")
     lines.append(f"\u2705 **Tareas completadas:** {len(completed_tasks)}")
     lines.append(f"\U0001f504 **En progreso:** {len(in_progress_tasks)}")
-    lines.append(f"\U0001f4cb **Pendientes:** {len(pending_tasks)}")
+    lines.append(f"\U0001f4cb **Pendientes:** {pending_total}")
     if overdue_tasks:
-        lines.append(f"\U0001f534 **Vencidas:** {len(overdue_tasks)}")
+        lines.append(f"\U0001f534 **Vencidas:** {overdue_total}")
     lines.append("")
 
     # Per person
@@ -185,14 +192,14 @@ async def generate_weekly_report(db: AsyncSession) -> str:
 
     # Overdue
     if overdue_tasks:
-        lines.append(f"\U0001f534 **Tareas vencidas ({len(overdue_tasks)}):**")
+        lines.append(f"\U0001f534 **Tareas vencidas ({overdue_total}):**")
         for t in overdue_tasks[:10]:
             cn = t.client.name if t.client else "Sin cliente"
             assignee = f" \u2192 {t.assigned_user.short_name or t.assigned_user.full_name}" if t.assigned_user else ""
             due = t.due_date.strftime("%d/%m") if t.due_date else "?"
             lines.append(f"  \u2022 [{cn}] {t.title}{assignee} (venc\u00eda {due})")
-        if len(overdue_tasks) > 10:
-            lines.append(f"  ... y {len(overdue_tasks) - 10} m\u00e1s")
+        if overdue_total > 10:
+            lines.append(f"  ... y {overdue_total - 10} m\u00e1s")
         lines.append("")
 
     # Upcoming

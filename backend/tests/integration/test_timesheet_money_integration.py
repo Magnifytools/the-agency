@@ -122,3 +122,65 @@ async def test_weekly_timesheet_totals(admin_client, admin_user, db_session):
     assert me is not None, data["users"]
     assert me["total_minutes"] == 60
     assert me["daily_minutes"]["2026-06-15"] == 60
+
+
+@pytest.mark.asyncio
+async def test_weekly_timesheet_keeps_manual_civil_date_but_converts_timer_instant(
+    admin_client, admin_user, db_session
+):
+    """The overloaded legacy date column has two deliberate meanings."""
+    _, task = await _make_client_and_task(db_session, client_name="Frontera Madrid")
+    db_session.add_all([
+        TimeEntry(
+            minutes=20,
+            task_id=task.id,
+            user_id=admin_user.id,
+            # Explicit manual Sunday stays Sunday and is outside this week.
+            date=datetime(2026, 6, 14, 23, 30),
+        ),
+        TimeEntry(
+            minutes=30,
+            task_id=task.id,
+            user_id=admin_user.id,
+            # Timer instant Sunday 22:30 UTC is Monday 00:30 in Madrid.
+            date=datetime(2026, 6, 14, 22, 30),
+            started_at=datetime(2026, 6, 14, 22, 30),
+        ),
+    ])
+    await db_session.flush()
+
+    response = await admin_client.get(
+        # A mid-week input is normalized once to that week's Monday.
+        "/api/time-entries/weekly", params={"week_start": "2026-06-17"}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["week_start"] == "2026-06-15"
+    me = next(user for user in response.json()["users"] if user["user_id"] == admin_user.id)
+    assert me["daily_minutes"]["2026-06-15"] == 30
+    assert me["total_minutes"] == 30
+
+
+@pytest.mark.asyncio
+async def test_date_range_keeps_manual_day_and_timer_instant_semantics(
+    admin_client, admin_user, db_session
+):
+    _, task = await _make_client_and_task(db_session, client_name="Rango mixto")
+    entries = [
+        TimeEntry(minutes=10, task_id=task.id, user_id=admin_user.id, date=datetime(2026, 9, 16, 23)),
+        TimeEntry(minutes=20, task_id=task.id, user_id=admin_user.id, date=datetime(2026, 9, 17)),
+        TimeEntry(
+            minutes=30, task_id=task.id, user_id=admin_user.id,
+            date=datetime(2026, 9, 16, 22, 30), started_at=datetime(2026, 9, 16, 22, 30),
+        ),
+    ]
+    db_session.add_all(entries)
+    await db_session.flush()
+
+    response = await admin_client.get("/api/time-entries", params={
+        "date_from": "2026-09-16T22:00:00Z",
+        "date_to": "2026-09-17T21:59:59.999Z",
+    })
+    assert response.status_code == 200, response.text
+    returned_ids = {row["id"] for row in response.json()}
+    assert entries[0].id not in returned_ids
+    assert {entries[1].id, entries[2].id} <= returned_ids

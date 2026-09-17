@@ -10,6 +10,7 @@ from backend.db.models import GrowthIdea, User, Project, Task
 from backend.schemas.growth import GrowthIdeaCreate, GrowthIdeaUpdate, GrowthIdeaResponse
 from backend.api.deps import get_current_user, require_module
 from backend.api.utils.db_helpers import safe_refresh
+from backend.services.task_scope import validate_client_exists, validate_task_scope
 
 router = APIRouter(tags=["growth"])
 
@@ -139,6 +140,8 @@ async def convert_to_project(
     if not idea:
         raise HTTPException(status_code=404, detail="Idea no encontrada")
 
+    await validate_client_exists(db, client_id)
+
     desc_parts = [idea.description] if idea.description else []
     desc_parts.append(f"Origen: Buffer de Ideas (ICE: {idea.ice_score})")
     if idea.results_notes:
@@ -174,6 +177,9 @@ async def create_task_from_idea(
     if not idea:
         raise HTTPException(status_code=404, detail="Idea no encontrada")
 
+    scope = {"client_id": client_id}
+    await validate_task_scope(db, scope)
+
     desc_parts = [idea.description] if idea.description else []
     desc_parts.append(f"Origen: Buffer de Ideas (ICE: {idea.ice_score})")
     if idea.results_notes:
@@ -182,7 +188,7 @@ async def create_task_from_idea(
     task = Task(
         title=f"[Buffer] {idea.title}",
         description="\n\n".join(desc_parts),
-        client_id=client_id,
+        client_id=scope["client_id"],
         status="pending",
         priority="medium",
         created_by=current_user.id,

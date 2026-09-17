@@ -231,15 +231,21 @@ export interface ClientDashboard {
 export interface ClientHealthScore {
   client_id: number
   client_name: string
-  score: number
+  score: number | null
   factors: {
-    communication: number
-    tasks: number
-    digests: number
-    profitability: number
-    followups: number
+    communication: number | null
+    tasks: number | null
+    digests: number | null
+    profitability: number | null
+    followups: number | null
   }
-  risk_level: "healthy" | "warning" | "at_risk"
+  factor_max: Record<keyof ClientHealthScore["factors"], number>
+  observations: Record<keyof ClientHealthScore["factors"], string>
+  available_weight: number
+  available_source_count: number
+  enough_information: boolean
+  risk_signals: string[]
+  risk_level: "healthy" | "warning" | "at_risk" | "no_data"
 }
 
 // Client Summary

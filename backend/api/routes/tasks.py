@@ -1,6 +1,6 @@
 from __future__ import annotations
 import logging
-from datetime import date as date_type, datetime, time, timedelta, timezone
+from datetime import date as date_type, datetime, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -31,6 +31,9 @@ from backend.api.deps import get_current_user, require_module
 from backend.api.utils.db_helpers import safe_refresh
 from backend.api.middleware.audit_log import log_audit
 from backend.services.task_scope import validate_task_scope
+from backend.services.temporal import civil_day_utc_bounds
+from backend.services.time_entry_dates import manual_time_entry_date
+from backend.services.task_lifecycle import stamp_task_status
 
 logger = logging.getLogger(__name__)
 
@@ -108,17 +111,6 @@ async def _load_task_for_response(db: AsyncSession, task_id: int) -> Task | None
         .where(Task.id == task_id)
     )
     return result.scalar_one_or_none()
-
-
-def _stamp_advanced(task: Task) -> None:
-    """Mantener ``advanced_at`` en sintonía con el estado "Avanzada".
-
-    Sólo tiene sentido mientras la tarea está en ``advanced``: la barrida
-    nocturna la devuelve a ``in_progress`` comparando esta fecha con hoy.
-    """
-    from datetime import date as _date
-
-    task.advanced_at = _date.today() if task.status == TaskStatus.advanced else None
 
 
 @router.get("", response_model=PaginatedResponse[TaskResponse])
@@ -261,7 +253,10 @@ async def list_task_agenda(
     date: date_type = Query(...),
     section: Literal["planned", "carryover", "unplanned", "completed"] = Query(...),
     assigned_to: str = Query("me"),
-    timezone_offset_minutes: int = Query(0, ge=-840, le=840),
+    timezone_offset_minutes: int = Query(
+        0, ge=-840, le=840, deprecated=True,
+        description="Compatibilidad: Hoy usa AGENCY_TIMEZONE; este offset ya no altera el resultado.",
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
@@ -309,8 +304,7 @@ async def list_task_agenda(
             or_(Task.due_date.is_(None), due_day > date),
         )
     else:
-        utc_start = datetime.combine(date, time.min) + timedelta(minutes=timezone_offset_minutes)
-        utc_end = utc_start + timedelta(days=1)
+        utc_start, utc_end = civil_day_utc_bounds(date)
         base = base.where(
             Task.status == TaskStatus.completed,
             Task.completed_at >= utc_start,
@@ -352,9 +346,7 @@ async def create_task(
         from backend.services.change_journal import capture_manual_time
         capture_manual_time(db.sync_session)
     task = Task(**data, created_by=current_user.id)
-    _stamp_advanced(task)
-    if task.status == TaskStatus.completed:
-        task.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    stamp_task_status(task)
     db.add(task)
     try:
         await db.flush()
@@ -363,7 +355,7 @@ async def create_task(
                 task_id=task.id,
                 user_id=current_user.id,
                 minutes=task.actual_minutes,
-                date=datetime.now(timezone.utc).replace(tzinfo=None),
+                date=manual_time_entry_date(),
                 notes="[manual]",
             ))
         await db.commit()
@@ -478,12 +470,7 @@ async def update_task(
             setattr(task, field, value)
 
     if "status" in update_data:
-        _stamp_advanced(task)
-        new_status_value = update_data["status"]
-        if new_status_value == TaskStatus.completed and old_status != TaskStatus.completed.value:
-            task.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        elif new_status_value != TaskStatus.completed and old_status == TaskStatus.completed.value:
-            task.completed_at = None
+        stamp_task_status(task, old_status)
 
     # Only an explicit total edit may change manual time. Other users' manual
     # entries and all timer entries are immutable here, preserving attribution.
@@ -529,7 +516,7 @@ async def update_task(
                     task_id=task_id,
                     user_id=current_user.id,
                     minutes=increase,
-                    date=datetime.now(timezone.utc).replace(tzinfo=None),
+                    date=manual_time_entry_date(),
                     notes="[manual]",
                 ))
         elif manual_diff < current_manual:
@@ -667,11 +654,7 @@ async def bulk_update_tasks(
                         value = TaskPriority(value)
                     setattr(task, field, value)
                 if "status" in updates:
-                    _stamp_advanced(task)
-                    if task.status == TaskStatus.completed and old_task_status != TaskStatus.completed:
-                        task.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
-                    elif task.status != TaskStatus.completed and old_task_status == TaskStatus.completed:
-                        task.completed_at = None
+                    stamp_task_status(task, old_task_status)
                 await db.flush()
             updated += 1
         except Exception as e:

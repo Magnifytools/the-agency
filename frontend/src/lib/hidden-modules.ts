@@ -38,6 +38,12 @@ export type HiddenModule = (typeof HIDDEN_MODULES)[number]
 
 const HIDDEN = new Set<string>(HIDDEN_MODULES)
 
+/** Apply the backend's runtime override before React renders. */
+export function setRuntimeHiddenModules(modules: string[]) {
+  HIDDEN.clear()
+  modules.forEach((module) => HIDDEN.add(module))
+}
+
 /** ¿Está oculto este módulo? */
 export function isHidden(module: string): boolean {
   return HIDDEN.has(module)

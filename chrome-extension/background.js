@@ -7,6 +7,12 @@ const STORAGE_KEYS = {
   token: "am_token",
 };
 
+// Do not let a response sent for an old account affect the new one.
+async function ownsSession(token) {
+  const stored = await chrome.storage.local.get([STORAGE_KEYS.token]);
+  return Boolean(token) && stored[STORAGE_KEYS.token] === token;
+}
+
 // ── Context menu setup ────────────────────────────────────
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
@@ -64,6 +70,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       }),
     });
 
+    if (!await ownsSession(token)) return;
     if (res.ok) {
       showNotification("✓ Nota capturada", "IA clasificando en segundo plano...");
       updateBadge(token);
@@ -72,11 +79,12 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         "Sesion expirada",
         "Abre la extension para reconectar."
       );
-      await chrome.storage.local.remove(STORAGE_KEYS.token);
+      // The popup owns session expiry; never remove a possibly newer token here.
     } else {
       showNotification("Error", "No se pudo enviar la nota.");
     }
   } catch (err) {
+    if (!await ownsSession(token)) return;
     showNotification("Error de conexion", "No se pudo conectar al servidor.");
   }
 });
@@ -86,7 +94,7 @@ chrome.runtime.onMessage.addListener(async (msg) => {
   if (msg.type === "AUTH_UPDATE") {
     if (msg.token) {
       updateBadge(msg.token);
-    } else {
+    } else if (!(await chrome.storage.local.get([STORAGE_KEYS.token]))[STORAGE_KEYS.token]) {
       chrome.action.setBadgeText({ text: "" });
     }
   }
@@ -107,6 +115,7 @@ async function updateBadge(token) {
 
     if (res.ok) {
       const data = await res.json();
+      if (!await ownsSession(token)) return;
       const count = data.count || 0;
       chrome.action.setBadgeText({
         text: count > 0 ? String(count) : "",
@@ -148,8 +157,9 @@ async function _getNotifiedMeetings() {
   return new Set(data.notifiedMeetings || []);
 }
 
-async function _addNotifiedMeeting(id) {
+async function _addNotifiedMeeting(id, token) {
   const notified = await _getNotifiedMeetings();
+  if (!await ownsSession(token)) return;
   notified.add(id);
   await chrome.storage.session.set({ notifiedMeetings: [...notified] });
 }
@@ -162,14 +172,16 @@ async function checkUpcomingMeetings(token) {
     if (!res.ok) return;
     const meetings = await res.json();
     const notified = await _getNotifiedMeetings();
+    if (!await ownsSession(token)) return;
     for (const m of meetings) {
+      if (!await ownsSession(token)) return;
       if (notified.has(m.id)) continue;
       if (m.minutes_until <= 30) {
         showNotification(
           `📅 Reunión en ${m.minutes_until} min`,
           m.title
         );
-        await _addNotifiedMeeting(m.id);
+        await _addNotifiedMeeting(m.id, token);
       }
     }
   } catch {

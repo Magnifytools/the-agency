@@ -167,6 +167,41 @@ class TestProjectExtractSchema:
         assert obj.monthly_fee == 999.0
 
 
+class TestStandaloneProjectExtractionPrompts:
+    """PDF/TXT extraction keeps recurring fees separate from total budget."""
+
+    def test_prompts_request_both_prices_without_deriving_them(self):
+        from backend.api.routes.projects import EXTRACT_PROMPT, EXTRACT_TEXT_PROMPT
+
+        for prompt in (EXTRACT_PROMPT, EXTRACT_TEXT_PROMPT):
+            assert "budget_amount" in prompt
+            assert "monthly_fee" in prompt
+            assert "No " in prompt and ("inventes" in prompt or "inventa" in prompt)
+
+    @pytest.mark.parametrize("prompt_name", ["EXTRACT_PROMPT", "EXTRACT_TEXT_PROMPT"])
+    def test_simulated_ai_result_preserves_distinct_prices(self, prompt_name):
+        from backend.api.routes import projects
+        from backend.schemas.project import ProjectExtract
+
+        assert "monthly_fee" in getattr(projects, prompt_name)
+        extracted = ProjectExtract.model_validate({
+            "name": "SEO anual",
+            "budget_amount": 5400,
+            "monthly_fee": 450,
+            "pricing_model": "monthly",
+        })
+
+        assert extracted.budget_amount == 5400
+        assert extracted.monthly_fee == 450
+
+    def test_simulated_ai_result_does_not_invent_absent_prices(self):
+        from backend.schemas.project import ProjectExtract
+
+        extracted = ProjectExtract.model_validate({"name": "Proyecto sin precio"})
+        assert extracted.budget_amount is None
+        assert extracted.monthly_fee is None
+
+
 # ---------------------------------------------------------------------------
 # Dashboard pricing aggregation tests (async, mocked DB)
 # ---------------------------------------------------------------------------

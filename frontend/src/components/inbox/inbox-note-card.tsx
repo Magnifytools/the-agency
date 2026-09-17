@@ -1,7 +1,7 @@
 import { useState, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { inboxApi, projectsApi, clientsApi, usersApi } from "@/lib/api"
-import { inboxKeys } from "@/lib/query-keys"
+import { inboxKeys, invalidateTaskChange, projectKeys } from "@/lib/query-keys"
 import type { InboxNote, AISuggestion } from "@/lib/types"
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from "@/components/ui/dialog"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -77,7 +77,7 @@ export function InboxNoteCard({ note }: Props) {
   }
 
   const { data: projects = [] } = useQuery({
-    queryKey: ["projects-active-list"],
+    queryKey: projectKeys.list(["active"]),
     queryFn: () => projectsApi.listAll({ status: "active" }),
     staleTime: 60_000,
   })
@@ -387,7 +387,7 @@ function ConvertToTaskDialog({
   const [priority, setPriority] = useState(ai?.suggested_priority ?? "medium")
 
   const { data: projects = [] } = useQuery({
-    queryKey: ["projects-active-list"],
+    queryKey: projectKeys.list(["active"]),
     queryFn: () => projectsApi.listAll({ status: "active" }),
     staleTime: 60_000,
   })
@@ -418,7 +418,10 @@ function ConvertToTaskDialog({
     onSuccess: (data) => {
       onOpenChange(false)
       onConverted()
-      queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      invalidateTaskChange(queryClient, {
+        projectId: projectId ? Number(projectId) : undefined,
+        clientId: clientId ? Number(clientId) : undefined,
+      })
       toast.success(`Tarea #${data.task_id} creada`, { icon: "✅" })
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al crear tarea")),

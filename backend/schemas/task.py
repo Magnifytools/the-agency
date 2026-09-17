@@ -2,8 +2,9 @@ from __future__ import annotations
 from typing import Optional
 
 from datetime import datetime, date
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 from backend.db.models import TaskStatus, TaskPriority
+from backend.services.temporal import civil_date_isoformat, utc_isoformat
 
 
 class TaskCreate(BaseModel):
@@ -102,5 +103,13 @@ class TaskResponse(BaseModel):
     created_by_name: Optional[str] = None
     recurring_parent_title: Optional[str] = None
     checklist_count: int = 0
+
+    @field_serializer("completed_at", when_used="json")
+    def serialize_completed_at(self, value: datetime | None) -> str | None:
+        return utc_isoformat(value)
+
+    @field_serializer("start_date", "due_date", when_used="json")
+    def serialize_civil_datetime(self, value: datetime | None) -> str | None:
+        return civil_date_isoformat(value)
 
     model_config = {"from_attributes": True}

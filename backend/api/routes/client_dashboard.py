@@ -1,10 +1,10 @@
 """Client dashboard API — aggregated KPIs per client."""
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select, func, extract, and_
+from sqlalchemy import Date as SQLDate, cast, select, func, extract, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
@@ -14,6 +14,8 @@ from backend.db.models import (
 from backend.schemas.dashboard import ClientDashboardResponse
 from backend.services.profitability import classify_profitability
 from backend.api.deps import get_current_user, require_module
+from backend.services.temporal import business_today
+from backend.services.time_entry_dates import time_entry_business_date, time_entry_civil_period
 
 router = APIRouter(prefix="/api/clients/{client_id}/dashboard", tags=["client-dashboard"])
 
@@ -24,9 +26,10 @@ async def client_dashboard(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("clients")),
 ):
-    today = date.today()
+    today = business_today()
     first_of_month = today.replace(day=1)
     first_of_last_month = (first_of_month - timedelta(days=1)).replace(day=1)
+    next_month = (first_of_month.replace(day=28) + timedelta(days=4)).replace(day=1)
 
     # --- Tasks by status ---
     task_result = await db.execute(
@@ -37,11 +40,10 @@ async def client_dashboard(
     tasks_by_status = {row[0].value: row[1] for row in task_result.all()}
 
     # Overdue tasks
-    now = datetime.now(timezone.utc).replace(tzinfo=None)  # naive UTC — matches DB DateTime columns
     overdue_result = await db.execute(
         select(func.count(Task.id)).where(
             Task.client_id == client_id,
-            Task.due_date < now,
+            cast(Task.due_date, SQLDate) < today,
             Task.status != TaskStatus.completed,
         )
     )
@@ -52,8 +54,8 @@ async def client_dashboard(
     due_week_result = await db.execute(
         select(func.count(Task.id)).where(
             Task.client_id == client_id,
-            Task.due_date <= datetime.combine(week_end, datetime.max.time()),
-            Task.due_date >= datetime.combine(today, datetime.min.time()),
+            cast(Task.due_date, SQLDate) <= week_end,
+            cast(Task.due_date, SQLDate) >= today,
             Task.status != TaskStatus.completed,
         )
     )
@@ -75,7 +77,7 @@ async def client_dashboard(
         .where(
             TimeEntry.task_id.in_(task_subq),
             TimeEntry.minutes.isnot(None),
-            TimeEntry.date >= datetime.combine(first_of_month, datetime.min.time()),
+            time_entry_civil_period(first_of_month, next_month),
         )
     )
     for minutes, user_id, full_name, hourly_rate in entries_this_month.all():
@@ -100,8 +102,7 @@ async def client_dashboard(
         select(func.sum(TimeEntry.minutes)).where(
             TimeEntry.task_id.in_(task_subq),
             TimeEntry.minutes.isnot(None),
-            TimeEntry.date >= datetime.combine(first_of_last_month, datetime.min.time()),
-            TimeEntry.date < datetime.combine(first_of_month, datetime.min.time()),
+            time_entry_civil_period(first_of_last_month, first_of_month),
         )
     )
     last_month_mins = last_month_result.scalar() or 0
@@ -114,21 +115,27 @@ async def client_dashboard(
 
     monthly_result = await db.execute(
         select(
-            extract("year", TimeEntry.date).label("yr"),
-            extract("month", TimeEntry.date).label("mo"),
-            func.sum(TimeEntry.minutes),
+            TimeEntry.date,
+            TimeEntry.started_at,
+            TimeEntry.minutes,
+            User.hourly_rate,
         )
+        .join(User, TimeEntry.user_id == User.id)
         .where(
             TimeEntry.task_id.in_(task_subq),
             TimeEntry.minutes.isnot(None),
-            TimeEntry.date >= datetime.combine(six_months_ago, datetime.min.time()),
+            time_entry_civil_period(six_months_ago, next_month),
         )
-        .group_by("yr", "mo")
-        .order_by("yr", "mo")
     )
-    for yr, mo, total_mins in monthly_result.all():
-        key = f"{int(yr)}-{int(mo):02d}"
-        monthly_hours[key] = round((total_mins or 0) / 60, 1)
+    monthly_rows = monthly_result.all()
+    monthly_minutes: dict[str, int] = {}
+    monthly_costs: dict[str, float] = {}
+    for entry_date, started_at, minutes, hourly_rate in monthly_rows:
+        day = time_entry_business_date(entry_date, started_at)
+        key = f"{day.year}-{day.month:02d}"
+        monthly_minutes[key] = monthly_minutes.get(key, 0) + (minutes or 0)
+        monthly_costs[key] = monthly_costs.get(key, 0) + (minutes or 0) * float(hourly_rate or 0) / 60
+    monthly_hours = {key: round(minutes / 60, 1) for key, minutes in monthly_minutes.items()}
 
     # --- Monthly profitability breakdown (last 6 months): income vs cost ---
     monthly_profitability: dict[str, dict] = {}
@@ -151,27 +158,11 @@ async def client_dashboard(
         key = f"{int(yr)}-{int(mo):02d}"
         monthly_profitability[key] = {"income": round(float(total_amount or 0), 2), "cost": 0.0}
 
-    # Monthly cost from TimeEntry (hours * hourly_rate)
-    cost_monthly = await db.execute(
-        select(
-            extract("year", TimeEntry.date).label("yr"),
-            extract("month", TimeEntry.date).label("mo"),
-            func.sum(TimeEntry.minutes * User.hourly_rate / 60),
-        )
-        .join(User, TimeEntry.user_id == User.id)
-        .where(
-            TimeEntry.task_id.in_(task_subq),
-            TimeEntry.minutes.isnot(None),
-            TimeEntry.date >= datetime.combine(six_months_ago, datetime.min.time()),
-        )
-        .group_by("yr", "mo")
-        .order_by("yr", "mo")
-    )
-    for yr, mo, total_cost_val in cost_monthly.all():
-        key = f"{int(yr)}-{int(mo):02d}"
+    # Monthly cost uses the same resolved business month as the hours series.
+    for key, total_cost_val in monthly_costs.items():
         if key not in monthly_profitability:
             monthly_profitability[key] = {"income": 0.0, "cost": 0.0}
-        monthly_profitability[key]["cost"] = round(float(total_cost_val or 0), 2)
+        monthly_profitability[key]["cost"] = round(total_cost_val, 2)
 
     # --- Client financial data: derive from active projects, fallback to client fields ---
     project_fee_result = await db.execute(

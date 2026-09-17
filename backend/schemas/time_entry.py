@@ -2,7 +2,8 @@ from __future__ import annotations
 from typing import Optional
 
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
+from backend.services.temporal import utc_isoformat
 
 
 class TimeEntryCreate(BaseModel):
@@ -33,6 +34,10 @@ class TimeEntryResponse(BaseModel):
     task_title: Optional[str] = None
     client_name: Optional[str] = None
 
+    @field_serializer("started_at", when_used="json")
+    def serialize_started_at(self, value: datetime | None) -> str | None:
+        return utc_isoformat(value)
+
     model_config = {"from_attributes": True}
 
 
@@ -56,6 +61,10 @@ class ActiveTimerResponse(BaseModel):
     is_paused: bool = False
     accumulated_seconds: int = 0
 
+    @field_serializer("started_at", when_used="json")
+    def serialize_started_at(self, value: datetime) -> str:
+        return utc_isoformat(value)  # type: ignore[return-value]
+
     model_config = {"from_attributes": True}
 
 
@@ -69,6 +78,10 @@ class AdminActiveTimerResponse(BaseModel):
     client_name: Optional[str] = None
     started_at: datetime
     elapsed_seconds: int
+
+    @field_serializer("started_at", when_used="json")
+    def serialize_started_at(self, value: datetime) -> str:
+        return utc_isoformat(value)  # type: ignore[return-value]
 
     model_config = {"from_attributes": True}
 

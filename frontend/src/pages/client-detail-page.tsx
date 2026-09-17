@@ -1,3 +1,4 @@
+import { formatCivilDate, timeEntryBusinessDate } from "@/lib/dates"
 import { useState } from "react"
 import { useParams, Link, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
@@ -32,7 +33,7 @@ import { EngineSeoTab } from "@/components/clients/engine-seo-tab"
 // CoreUpdatesTab removed — analysis only available in Engine
 import { FichaTab } from "@/components/clients/ficha-tab"
 import { useAuth } from "@/context/auth-context"
-import { holdedKeys } from "@/lib/query-keys"
+import { clientKeys, holdedKeys, projectKeys, timeKeys } from "@/lib/query-keys"
 import { formatCurrency } from "@/lib/format"
 
 function formatMinutes(m: number): string {
@@ -81,7 +82,7 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
   const updateMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => clientsApi.update(client.id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["client-summary", client.id] })
+      queryClient.invalidateQueries({ queryKey: clientKeys.summary(client.id) })
       setEditing(false)
     },
     onError: () => toast.error("Error al guardar los datos del cliente"),
@@ -249,13 +250,13 @@ export default function ClientDetailPage() {
   const setActiveTab = (tab: Tab) => setSearchParams({ tab }, { replace: true })
 
   const { data: summary, isLoading } = useQuery({
-    queryKey: ["client-summary", clientId],
+    queryKey: clientKeys.summary(clientId),
     queryFn: () => clientsApi.summary(clientId),
     enabled: !!clientId,
   })
 
   const { data: projects = [] } = useQuery({
-    queryKey: ["client-projects", clientId],
+    queryKey: projectKeys.client(clientId),
     queryFn: () => projectsApi.listAll({ client_id: clientId }),
     enabled: !!clientId,
   })
@@ -291,7 +292,7 @@ export default function ClientDetailPage() {
   })
 
   const { data: recentEntries = [] } = useQuery({
-    queryKey: ["time-entries-client", clientId],
+    queryKey: timeKeys.client(clientId),
     queryFn: () => clientsApi.recentTimeEntries(clientId),
     enabled: !!clientId,
   })
@@ -387,24 +388,41 @@ export default function ClientDetailPage() {
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                 <Heart className="h-3 w-3 flex-shrink-0" /> <span className="truncate">Salud</span>
               </p>
-              <p className={`kpi-value mt-1 ${health.risk_level === "healthy" ? "text-green-600" : health.risk_level === "warning" ? "text-amber-500" : "text-red-500"}`}>
-                {health.score}/100
+              <p className={`kpi-value mt-1 ${health.risk_level === "healthy" ? "text-green-600" : health.risk_level === "warning" ? "text-amber-500" : health.risk_level === "no_data" ? "text-muted-foreground" : "text-red-500"}`}>
+                {health.score == null ? (health.risk_signals.length ? "Riesgo observado" : "Sin información suficiente") : `${health.score}/100`}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {health.enough_information ? `Basado en ${health.available_source_count} fuentes observables (${health.available_weight}/100 puntos).` : health.risk_signals.length ? "Hay una señal comprobada, pero faltan fuentes para valorar la salud global." : "Faltan fuentes suficientes para clasificar este cliente."}
               </p>
               <div className="mt-2 grid grid-cols-5 gap-1">
                 {[
-                  { label: "Com", val: health.factors.communication, max: 25 },
-                  { label: "Tar", val: health.factors.tasks, max: 25 },
-                  { label: "Dig", val: health.factors.digests, max: 15 },
-                  { label: "Ren", val: health.factors.profitability, max: 20 },
-                  { label: "Fup", val: health.factors.followups, max: 15 },
+                  { key: "communication", label: "Com", val: health.factors.communication, max: 25 },
+                  { key: "tasks", label: "Tar", val: health.factors.tasks, max: 25 },
+                  { key: "digests", label: "Dig", val: health.factors.digests, max: 15 },
+                  { key: "profitability", label: "Ren", val: health.factors.profitability, max: 20 },
+                  { key: "followups", label: "Fup", val: health.factors.followups, max: 15 },
                 ].map((f) => (
-                  <div key={f.label} className="text-center">
+                  <div key={f.label} className="text-center" title={health.observations[f.key as keyof typeof health.observations]}>
                     <div className="text-[9px] text-muted-foreground">{f.label}</div>
                     <div className="h-1 bg-muted rounded-full overflow-hidden mt-0.5">
-                      <div className="h-full bg-brand rounded-full" style={{ width: `${(f.val / f.max) * 100}%` }} />
+                      <div className="h-full bg-brand rounded-full" style={{ width: `${f.val == null ? 0 : (f.val / f.max) * 100}%` }} />
                     </div>
+                    <div className="text-[9px] text-muted-foreground mt-0.5">{f.val ?? "—"}</div>
                   </div>
                 ))}
+              </div>
+              <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                {(Object.keys(health.factors) as Array<keyof typeof health.factors>)
+                  .filter((factor) => health.factors[factor] != null)
+                  .map((factor) => (
+                    <p key={factor}>
+                      {health.observations[factor]}
+                      {factor === "tasks" && <> · <Link className="text-brand hover:underline" to={`/clients/${clientId}?tab=tareas`}>Ver tareas</Link></>}
+                      {factor === "profitability" && <> · <Link className="text-brand hover:underline" to={`/clients/${clientId}?tab=panel`}>Ver consumo</Link></>}
+                    </p>
+                  ))}
+                {health.risk_signals.map((signal) => <p key={signal} className="text-red-600">{signal}</p>)}
+                {!health.enough_information && <p>Activa o registra fuentes reales antes de usar esta señal para decidir.</p>}
               </div>
             </CardContent>
           </Card>
@@ -672,7 +690,7 @@ export default function ClientDetailPage() {
               <TableBody>
                 {recentEntries.map((e) => (
                   <TableRow key={e.id}>
-                    <TableCell className="mono">{new Date(e.date).toLocaleDateString("es-ES")}</TableCell>
+                    <TableCell className="mono">{formatCivilDate(timeEntryBusinessDate(e))}</TableCell>
                     <TableCell>{e.task_title || "-"}</TableCell>
                     <TableCell className="mono">{e.minutes ? formatMinutes(e.minutes) : "-"}</TableCell>
                     <TableCell className="max-w-[200px] truncate">{e.notes || "-"}</TableCell>

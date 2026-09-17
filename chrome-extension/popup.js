@@ -8,15 +8,47 @@ const STORAGE_KEYS = {
   email: "am_email",
 };
 
-// Helper: check if API response is 401 and force re-login
-function handle401(res) {
-  if (res.status === 401) {
-    token = "";
-    chrome.storage.local.remove(STORAGE_KEYS.token);
-    showLoginView();
-    return true;
+// Every async operation belongs to one popup session, including JSON parsing.
+function captureSession() { return { token, epoch: sessionEpoch }; }
+function isCurrentSession(session) { return session.epoch === sessionEpoch && session.token === token; }
+function requireCurrentSession(session) {
+  if (!isCurrentSession(session)) throw new Error("La sesión ha cambiado");
+}
+async function sessionFetch(session, url, options) {
+  requireCurrentSession(session);
+  const response = await fetch(url, options);
+  requireCurrentSession(session);
+  if (response.status === 401) {
+    endSession();
+    throw new Error("La sesión ha caducado. Vuelve a conectar.");
   }
-  return false;
+  return {
+    ok: response.ok, status: response.status,
+    json: async () => {
+      const data = await response.json();
+      requireCurrentSession(session);
+      return data;
+    },
+  };
+}
+function scheduleForSession(callback, delay) {
+  const session = captureSession();
+  const id = setTimeout(() => {
+    sessionTimeouts.delete(id);
+    if (isCurrentSession(session)) callback();
+  }, delay);
+  sessionTimeouts.add(id);
+}
+function persistSession(session) {
+  const email = accountEmail;
+  // Serialize writes from this popup: an old remove cannot finish after a new set.
+  storageWrites = storageWrites.catch(() => {}).then(() => {
+    if (!isCurrentSession(session)) return;
+    return session.token
+      ? chrome.storage.local.set({ [STORAGE_KEYS.token]: session.token, [STORAGE_KEYS.email]: email })
+      : chrome.storage.local.remove(STORAGE_KEYS.token);
+  });
+  return storageWrites;
 }
 
 // Helper: extract error message from API response
@@ -25,6 +57,14 @@ function getDetail(err, fallback) {
   if (Array.isArray(err.detail)) return err.detail.map((d) => d.msg || d).join(", ");
   if (err.detail && typeof err.detail === "object") return JSON.stringify(err.detail);
   return fallback;
+}
+
+function endSession() {
+  showLoginView();
+  const session = captureSession();
+  persistSession(session).then(() => {
+    if (isCurrentSession(session)) chrome.runtime.sendMessage({ type: "AUTH_UPDATE", token: "" });
+  }).catch(() => {});
 }
 
 // ── DOM refs ──────────────────────────────────────────────
@@ -132,33 +172,46 @@ const tasksEmpty = document.getElementById("tasks-empty");
 
 // ── State ─────────────────────────────────────────────────
 let token = "";
+let sessionEpoch = 0;
+let accountEmail = "";
+let storageWrites = Promise.resolve();
+const sessionTimeouts = new Set();
+const accountDrafts = new Map();
+let taskCreateInFlight = false;
+let captureInFlight = false;
 let timerInterval = null;
 let activeTimerStart = null;
 let timerIsPaused = false;
 let timerAccumulatedSeconds = 0;
 let clientsList = []; // cached for quick-create forms
 let projectsList = []; // cached for task mode
+let assignmentLoadId = 0;
+let timerTasksLoadId = 0;
+let taskListLoadId = 0;
+const assignmentLoadError = document.getElementById("assignment-load-error");
+const assignmentErrorText = document.getElementById("assignment-error-text");
+const assignmentRetry = document.getElementById("assignment-retry");
+const timerTasksRetry = document.getElementById("timer-tasks-retry");
+assignmentRetry.addEventListener("click", loadProjectsAndClients);
+timerTasksRetry.addEventListener("click", loadTimerTasks);
 
 // ── Init ──────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
+  const initializing = captureSession();
   const stored = await chrome.storage.local.get([
     STORAGE_KEYS.token,
     STORAGE_KEYS.email,
   ]);
 
+  if (!isCurrentSession(initializing)) return;
+  accountEmail = stored[STORAGE_KEYS.email] || "";
   token = stored[STORAGE_KEYS.token] || "";
-  if (stored[STORAGE_KEYS.email]) emailInput.value = stored[STORAGE_KEYS.email];
+  if (accountEmail) emailInput.value = accountEmail;
 
   if (token) {
     // Show main view immediately — verify in background
     showMainView();
-    verifyToken().then((valid) => {
-      if (!valid) {
-        token = "";
-        chrome.storage.local.remove(STORAGE_KEYS.token);
-        showLoginView();
-      }
-    });
+    verifyToken();
     return;
   }
 
@@ -166,40 +219,100 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 // ── Views ─────────────────────────────────────────────────
+function resetSessionUi() {
+  if (token && accountEmail) {
+    accountDrafts.set(accountEmail.toLowerCase(), draftFields.map((element) => ({
+      value: element.value, label: element.selectedOptions?.[0]?.textContent,
+    })));
+  }
+  sessionEpoch++;
+  captureInFlight = false;
+  taskCreateInFlight = false;
+  sessionTimeouts.forEach(clearTimeout);
+  sessionTimeouts.clear();
+  clearInterval(timerInterval);
+  timerInterval = null;
+  activeTimerStart = null;
+  timerIsPaused = false;
+  timerAccumulatedSeconds = 0;
+  draftFields.forEach(element => { element.value = element.type === "number" ? "0" : ""; });
+  [successMsg, captureError, taskCaptureError, timerError, timerSuccess, inboxBar,
+   headerTimer, timerActive, timerBudget, qcTimerForm, qcManualForm].forEach(el => el.classList.add("hidden"));
+  [timerIdle, qcTimerLink, qcManualLink, btnText, taskBtnText].forEach(el => el.classList.remove("hidden"));
+  [btnLoading, taskBtnLoading].forEach(el => el.classList.add("hidden"));
+  captureBtn.disabled = taskCreateBtn.disabled = timerStartBtn.disabled = true;
+  for (const [button, html] of sessionButtonMarkup) {
+    button.innerHTML = html;
+    button.disabled = button === timerStartBtn;
+  }
+  assignmentRetry.disabled = timerTasksRetry.disabled = false;
+  timerTasksRetry.classList.add("hidden");
+}
+const draftFields = [noteText, linkUrl, taskTitle, qcTimerTitle, qcManualTitle,
+  manualHours, manualMins, manualNotes, assignSelect, taskClientSelect,
+  taskProjectSelect, qcTimerClient, qcManualClient, timerTaskSelect, manualTaskSelect];
+const sessionButtonMarkup = [timerStartBtn, timerStopBtn, timerPauseBtn, timerResumeBtn,
+  manualSaveBtn, qcTimerSave, qcManualSave].map(button => [button, button.innerHTML]);
+function acceptSession(nextToken, email) {
+  resetSessionUi();
+  token = nextToken;
+  accountEmail = email;
+  const draft = accountDrafts.get(email.toLowerCase());
+  if (draft) draftFields.forEach((element, index) => {
+    if (element.tagName === "SELECT") restoreSelection(element, draft[index]);
+    else element.value = draft[index].value;
+  });
+  captureBtn.disabled = !noteText.value.trim();
+  updateTaskCreateBtn();
+}
 function showLoginView() {
+  resetSessionUi();
+  token = "";
+  // A pending response must not restore selectors from a previous account.
+  assignmentLoadId++;
+  timerTasksLoadId++;
+  taskListLoadId++;
+  clientsList = [];
+  projectsList = [];
+  [assignSelect, taskClientSelect, taskProjectSelect, qcTimerClient, qcManualClient,
+   timerTaskSelect, manualTaskSelect].forEach(clearSelect);
+  assignmentLoadError.classList.add("hidden");
+  tasksList.replaceChildren();
   loginView.classList.remove("hidden");
   mainView.classList.add("hidden");
   emailInput.focus();
 }
 
+// Setup capture listeners
+noteText.addEventListener("input", () => {
+  captureBtn.disabled = captureInFlight || !noteText.value.trim();
+});
+
+noteText.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+    e.preventDefault();
+    if (noteText.value.trim()) captureNote();
+  }
+});
+
+// Click header timer indicator to switch to Timer tab
+headerTimer.addEventListener("click", () => switchToTab("timer"));
+
+
 function showMainView() {
+  const session = captureSession();
   loginView.classList.add("hidden");
   mainView.classList.remove("hidden");
   noteText.focus();
 
   openInbox.href = `${API_URL}/inbox`;
 
-  // Setup capture listeners
-  noteText.addEventListener("input", () => {
-    captureBtn.disabled = !noteText.value.trim();
-  });
-
-  noteText.addEventListener("keydown", (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-      e.preventDefault();
-      if (noteText.value.trim()) captureNote();
-    }
-  });
-
-  // Click header timer indicator to switch to Timer tab
-  headerTimer.addEventListener("click", () => switchToTab("timer"));
-
   // Load data
   loadProjectsAndClients();
   loadInboxCount();
   loadActiveTimer().then(() => {
     // Auto-select Timer tab when a timer is running
-    if (activeTimerStart) switchToTab("timer");
+    if (isCurrentSession(session) && activeTimerStart) switchToTab("timer");
   });
   loadTasks();
 }
@@ -239,134 +352,198 @@ tabs.forEach((tab) => {
 // ── Auth ──────────────────────────────────────────────────
 loginForm.addEventListener("submit", async (e) => {
   e.preventDefault();
+  const attempt = ++sessionEpoch;
+  let activeAttempt = attempt;
+  const email = emailInput.value.trim();
   loginError.classList.add("hidden");
-
   try {
     const res = await fetch(`${API_URL}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: emailInput.value,
-        password: passwordInput.value,
-      }),
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password: passwordInput.value }),
     });
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.detail || "Credenciales invalidas");
-    }
-
+    if (attempt !== sessionEpoch) return;
     const data = await res.json();
-    token = data.access_token;
-
-    await chrome.storage.local.set({
-      [STORAGE_KEYS.token]: token,
-      [STORAGE_KEYS.email]: emailInput.value,
-    });
-
+    if (attempt !== sessionEpoch) return;
+    if (!res.ok) throw new Error(getDetail(data, "Credenciales inválidas"));
+    acceptSession(data.access_token, email);
+    activeAttempt = sessionEpoch;
+    const session = captureSession();
+    await persistSession(session);
+    if (!isCurrentSession(session)) return;
+    passwordInput.value = "";
     chrome.runtime.sendMessage({ type: "AUTH_UPDATE", token });
     showMainView();
   } catch (err) {
+    if (activeAttempt !== sessionEpoch) return;
     loginError.textContent = err.message;
     loginError.classList.remove("hidden");
   }
 });
 
 async function verifyToken() {
+  const session = captureSession();
   // Only an explicit 401 means the token is actually invalid. A network blip,
   // timeout, or 5xx (e.g. backend redeploy / cold start) must NOT wipe the
   // session — otherwise a momentary server hiccup logs the user out and forces
   // them to re-enter the password even though their token is still valid.
   try {
-    const res = await fetch(`${API_URL}/api/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
+    const res = await sessionFetch(session, `${API_URL}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${session.token}` },
     });
+    if (!isCurrentSession(session)) return;
     if (res.status === 401) return false;
     return true;
   } catch {
+    if (!isCurrentSession(session)) return;
     // Network error / server unreachable → keep the session, don't force login.
     return true;
   }
 }
 
+// ── Paginated lists ───────────────────────────────────────
+async function fetchAllPages(path, filters, session) {
+  const rows = [];
+  const ids = new Set();
+  for (let page = 1; ; page++) {
+    if (!isCurrentSession(session)) throw new Error("La sesión ha cambiado");
+    const params = new URLSearchParams({ ...filters, page: String(page), page_size: "100" });
+    const res = await sessionFetch(session, `${API_URL}${path}?${params}`, {
+      headers: { Authorization: `Bearer ${session.token}` },
+    });
+    if (!isCurrentSession(session)) return;
+    if (!isCurrentSession(session)) throw new Error("La sesión ha cambiado");
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      if (!isCurrentSession(session)) return;
+      throw new Error(getDetail(error, `Error ${res.status}`));
+    }
+    const data = await res.json();
+    if (!isCurrentSession(session)) return;
+    if (!Array.isArray(data.items) || data.page !== page ||
+        !Number.isInteger(data.total) || data.total < 0 ||
+        !Number.isInteger(data.page_size) || data.page_size < 1 ||
+        data.items.length > data.page_size) {
+      throw new Error("Respuesta de lista incompleta. Reintenta.");
+    }
+    for (const item of data.items) {
+      if (!Number.isInteger(item.id) || ids.has(item.id)) {
+        throw new Error("La lista ha cambiado mientras se cargaba. Reintenta.");
+      }
+      ids.add(item.id);
+      rows.push(item);
+    }
+    if (page * data.page_size >= data.total) {
+      if (rows.length !== data.total) throw new Error("Respuesta de lista incompleta. Reintenta.");
+      return rows;
+    }
+    if (data.items.length !== data.page_size) {
+      throw new Error("Respuesta de lista incompleta. Reintenta.");
+    }
+  }
+}
+
+function clearSelect(select) {
+  select.replaceChildren(select.options[0].cloneNode(true));
+}
+
+function rememberSelection(select) {
+  return { value: select.value, label: select.selectedOptions[0]?.textContent };
+}
+
+function restoreSelection(select, previous) {
+  if (!previous.value) return;
+  select.value = previous.value;
+  if (select.value !== previous.value) {
+    // Never silently turn an explicitly assigned draft into an AI assignment.
+    const option = document.createElement("option");
+    option.value = previous.value;
+    option.textContent = `${previous.label} (ya no disponible)`;
+    option.disabled = true;
+    option.selected = true;
+    select.appendChild(option);
+  }
+}
+
+function hasUnavailableSelection(...selects) {
+  return selects.some(select => select.value &&
+    (!select.options[select.selectedIndex] || select.options[select.selectedIndex].disabled));
+}
+
+function populateSelect(select, rows, label) {
+  const previous = rememberSelection(select);
+  clearSelect(select);
+  rows.forEach((row) => {
+    const option = document.createElement("option");
+    option.value = row.id;
+    option.textContent = label(row);
+    select.appendChild(option);
+  });
+  restoreSelection(select, previous);
+}
+
 // ── Projects + Clients (combined selector) ────────────────
 async function loadProjectsAndClients() {
+  const session = captureSession();
+  const loadId = ++assignmentLoadId;
+  assignmentRetry.disabled = true;
   try {
-    const [projRes, clientRes] = await Promise.all([
-      fetch(`${API_URL}/api/projects?limit=100&status=active`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-      fetch(`${API_URL}/api/clients?limit=100&status=active`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
+    const [projects, clients] = await Promise.all([
+      fetchAllPages("/api/projects", { status: "active" }, session),
+      fetchAllPages("/api/clients", { status: "active" }, session),
     ]);
-
-    // Clear existing optgroups (prevent duplicates on re-login)
-    while (assignSelect.options.length > 1) assignSelect.remove(1);
-
-    // Projects group
-    if (projRes.ok) {
-      const projData = await projRes.json();
-      const projects = projData.items || projData;
-      projectsList = projects; // cache for task mode
-      if (projects.length > 0) {
-        const grp = document.createElement("optgroup");
-        grp.label = "Proyectos";
-        projects.forEach((p) => {
-          const opt = document.createElement("option");
-          opt.value = `project:${p.id}`;
-          opt.textContent = p.name;
-          grp.appendChild(opt);
-        });
-        assignSelect.appendChild(grp);
-      }
+    if (!isCurrentSession(session)) return;
+    if (loadId !== assignmentLoadId || !isCurrentSession(session)) return;
+    // Commit both complete lists together. A failed page leaves the last
+    // successful lists, active selections, and unsent drafts intact.
+    projectsList = projects;
+    clientsList = clients;
+    const previous = rememberSelection(assignSelect);
+    clearSelect(assignSelect);
+    for (const [label, type, rows] of [["Proyectos", "project", projects], ["Clientes", "client", clients]]) {
+      if (!rows.length) continue;
+      const group = document.createElement("optgroup");
+      group.label = label;
+      rows.forEach((row) => {
+        const option = document.createElement("option");
+        option.value = `${type}:${row.id}`;
+        option.textContent = row.name;
+        group.appendChild(option);
+      });
+      assignSelect.appendChild(group);
     }
-
-    // Clients group
-    if (clientRes.ok) {
-      const clientData = await clientRes.json();
-      const clients = clientData.items || clientData;
-      clientsList = clients; // cache for quick-create
-      if (clients.length > 0) {
-        const grp = document.createElement("optgroup");
-        grp.label = "Clientes";
-        clients.forEach((c) => {
-          const opt = document.createElement("option");
-          opt.value = `client:${c.id}`;
-          opt.textContent = c.name;
-          grp.appendChild(opt);
-        });
-        assignSelect.appendChild(grp);
-      }
-      // Populate quick-create client selectors
-      populateQuickCreateClients();
-      // Populate task mode selects (needs both clients + projects)
-      populateTaskModeSelects();
-    }
-  } catch {
-    // silently ignore — assignment is optional
+    restoreSelection(assignSelect, previous);
+    populateQuickCreateClients();
+    populateTaskModeSelects();
+    assignmentLoadError.classList.add("hidden");
+  } catch (error) {
+    if (!isCurrentSession(session)) return;
+    if (loadId !== assignmentLoadId || !isCurrentSession(session)) return;
+    assignmentErrorText.textContent = `No se pudieron cargar clientes y proyectos. ${error.message}${clientsList.length || projectsList.length ? " Se conserva la lista anterior." : ""}`;
+    assignmentLoadError.classList.remove("hidden");
+  } finally {
+    if (!isCurrentSession(session)) return;
+    if (loadId === assignmentLoadId) assignmentRetry.disabled = false;
   }
 }
 
 function populateQuickCreateClients() {
-  [qcTimerClient, qcManualClient].forEach((sel) => {
-    while (sel.options.length > 1) sel.remove(1);
-    clientsList.forEach((c) => {
-      const opt = document.createElement("option");
-      opt.value = c.id;
-      opt.textContent = c.name;
-      sel.appendChild(opt);
-    });
-  });
+  [qcTimerClient, qcManualClient].forEach((select) => populateSelect(select, clientsList, (client) => client.name));
 }
 
 // ── Capture ───────────────────────────────────────────────
 captureBtn.addEventListener("click", () => captureNote());
 
 async function captureNote() {
+  const session = captureSession();
   const text = noteText.value.trim();
-  if (!text) return;
+  if (!text || captureInFlight) return;
+  if (hasUnavailableSelection(assignSelect)) {
+    captureError.textContent = "Elige un cliente o proyecto disponible antes de capturar.";
+    captureError.classList.remove("hidden");
+    return;
+  }
 
+  captureInFlight = true;
   captureBtn.disabled = true;
   btnText.classList.add("hidden");
   btnLoading.classList.remove("hidden");
@@ -387,37 +564,38 @@ async function captureNote() {
   const selected = assignSelect.value;
   if (selected) {
     const [type, id] = selected.split(":");
-    if (type === "project") body.project_id = parseInt(id, 10);
+    if (type === "project") {
+      body.project_id = parseInt(id, 10);
+      const project = projectsList.find((item) => item.id === body.project_id);
+      if (project?.client_id) body.client_id = project.client_id;
+    }
     else if (type === "client") body.client_id = parseInt(id, 10);
   }
 
   try {
-    const res = await fetch(`${API_URL}/api/inbox`, {
+    const res = await sessionFetch(session, `${API_URL}/api/inbox`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${session.token}`,
       },
       body: JSON.stringify(body),
     });
+    if (!isCurrentSession(session)) return;
 
-    if (res.status === 401) {
-      token = "";
-      await chrome.storage.local.remove(STORAGE_KEYS.token);
-      showLoginView();
-      return;
-    }
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
+      if (!isCurrentSession(session)) return;
       throw new Error(errData.detail || `Error ${res.status}`);
     }
 
-    // Success — reset form
-    noteText.value = "";
-    linkUrl.value = "";
-    assignSelect.value = "";
-    captureBtn.disabled = true;
+    // Clear only the submitted draft, never edits made while it was sending.
+    if (noteText.value.trim() === text && linkUrl.value.trim() === link && assignSelect.value === selected) {
+      noteText.value = "";
+      linkUrl.value = "";
+      assignSelect.value = "";
+    }
 
     if (selected) {
       successText.textContent = "Nota capturada y asignada ✓";
@@ -429,13 +607,16 @@ async function captureNote() {
 
     chrome.runtime.sendMessage({ type: "NOTE_CREATED" });
 
-    setTimeout(() => {
+    scheduleForSession(() => {
       successMsg.classList.add("hidden");
     }, 3000);
   } catch (err) {
+    if (!isCurrentSession(session)) return;
     captureError.textContent = err.message || "Error al enviar.";
     captureError.classList.remove("hidden");
   } finally {
+    if (!isCurrentSession(session)) return;
+    captureInFlight = false;
     captureBtn.disabled = !noteText.value.trim();
     btnText.classList.remove("hidden");
     btnLoading.classList.add("hidden");
@@ -466,32 +647,19 @@ modeBtns.forEach((btn) => {
 
 // ── Task Mode: populate selects ──────────────────────────
 function populateTaskModeSelects() {
-  // Clients
-  while (taskClientSelect.options.length > 1) taskClientSelect.remove(1);
-  clientsList.forEach((c) => {
-    const opt = document.createElement("option");
-    opt.value = c.id;
-    opt.textContent = c.name;
-    taskClientSelect.appendChild(opt);
-  });
-
-  // Projects
-  while (taskProjectSelect.options.length > 1) taskProjectSelect.remove(1);
-  projectsList.forEach((p) => {
-    const opt = document.createElement("option");
-    opt.value = p.id;
-    opt.textContent = p.name;
-    taskProjectSelect.appendChild(opt);
-  });
+  populateSelect(taskClientSelect, clientsList, (client) => client.name);
+  populateSelect(taskProjectSelect, projectsList, (project) => project.name);
+  updateTaskCreateBtn();
 }
 
 // ── Task Mode: enable/disable button ─────────────────────
 function updateTaskCreateBtn() {
-  taskCreateBtn.disabled = !(taskTitle.value.trim() && taskClientSelect.value);
+  taskCreateBtn.disabled = taskCreateInFlight || hasUnavailableSelection(taskClientSelect, taskProjectSelect) || !(taskTitle.value.trim() && taskClientSelect.value);
 }
 
 taskTitle.addEventListener("input", updateTaskCreateBtn);
 taskClientSelect.addEventListener("change", updateTaskCreateBtn);
+taskProjectSelect.addEventListener("change", updateTaskCreateBtn);
 
 // ── Task Mode: button text based on timer checkbox ───────
 taskStartTimer.addEventListener("change", () => {
@@ -510,10 +678,17 @@ taskTitle.addEventListener("keydown", (e) => {
 taskCreateBtn.addEventListener("click", () => createTaskDirect());
 
 async function createTaskDirect() {
+  const session = captureSession();
   const title = taskTitle.value.trim();
   const clientId = taskClientSelect.value;
-  if (!title || !clientId) return;
+  if (!title || !clientId || taskCreateInFlight) return;
+  if (hasUnavailableSelection(taskClientSelect, taskProjectSelect)) {
+    taskCaptureError.textContent = "Elige un cliente y proyecto disponibles antes de crear.";
+    taskCaptureError.classList.remove("hidden");
+    return;
+  }
 
+  taskCreateInFlight = true;
   taskCreateBtn.disabled = true;
   taskBtnText.classList.add("hidden");
   taskBtnLoading.classList.remove("hidden");
@@ -530,39 +705,44 @@ async function createTaskDirect() {
     const projectId = taskProjectSelect.value;
     if (projectId) body.project_id = parseInt(projectId, 10);
 
-    const res = await fetch(`${API_URL}/api/tasks`, {
+    const res = await sessionFetch(session, `${API_URL}/api/tasks`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${session.token}`,
       },
       body: JSON.stringify(body),
     });
+    if (!isCurrentSession(session)) return;
 
-    if (handle401(res)) return;
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
+      if (!isCurrentSession(session)) return;
       throw new Error(getDetail(err, "Error al crear tarea"));
     }
 
     const task = await res.json();
+    if (!isCurrentSession(session)) return;
 
     // 2. Optionally start timer
     if (taskStartTimer.checked) {
-      const timerRes = await fetch(`${API_URL}/api/timer/start`, {
+      const timerRes = await sessionFetch(session, `${API_URL}/api/timer/start`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${session.token}`,
         },
         body: JSON.stringify({ task_id: task.id }),
       });
+      if (!isCurrentSession(session)) return;
 
       if (timerRes.ok) {
         const timerData = await timerRes.json();
+        if (!isCurrentSession(session)) return;
         showActiveTimer(timerData);
       } else {
         const timerErr = await timerRes.json().catch(() => ({}));
+        if (!isCurrentSession(session)) return;
         taskCaptureError.textContent = "Tarea creada, pero error al iniciar timer: " + getDetail(timerErr, `Error ${timerRes.status}`);
         taskCaptureError.classList.remove("hidden");
       }
@@ -578,17 +758,20 @@ async function createTaskDirect() {
       successText.textContent = "Tarea creada — timer iniciado";
       successMsg.classList.remove("hidden");
       // Switch to timer tab after brief delay
-      setTimeout(() => switchToTab("timer"), 1200);
+      scheduleForSession(() => switchToTab("timer"), 1200);
     } else {
       successText.textContent = "Tarea creada";
       successMsg.classList.remove("hidden");
     }
 
-    setTimeout(() => successMsg.classList.add("hidden"), 3000);
+    scheduleForSession(() => successMsg.classList.add("hidden"), 3000);
   } catch (err) {
+    if (!isCurrentSession(session)) return;
     taskCaptureError.textContent = err.message || "Error al crear tarea.";
     taskCaptureError.classList.remove("hidden");
   } finally {
+    if (!isCurrentSession(session)) return;
+    taskCreateInFlight = false;
     taskBtnText.classList.remove("hidden");
     taskBtnLoading.classList.add("hidden");
     updateTaskCreateBtn();
@@ -597,12 +780,15 @@ async function createTaskDirect() {
 
 // ── Inbox count ───────────────────────────────────────────
 async function loadInboxCount() {
+  const session = captureSession();
   try {
-    const res = await fetch(`${API_URL}/api/inbox/count`, {
-      headers: { Authorization: `Bearer ${token}` },
+    const res = await sessionFetch(session, `${API_URL}/api/inbox/count`, {
+      headers: { Authorization: `Bearer ${session.token}` },
     });
+    if (!isCurrentSession(session)) return;
     if (res.ok) {
       const data = await res.json();
+      if (!isCurrentSession(session)) return;
       if (data.count > 0) {
         inboxCount.textContent = data.count;
         inboxBar.classList.remove("hidden");
@@ -611,6 +797,7 @@ async function loadInboxCount() {
       }
     }
   } catch {
+    if (!isCurrentSession(session)) return;
     // silently ignore
   }
 }
@@ -623,32 +810,41 @@ openInbox.addEventListener("click", (e) => {
 });
 
 // ── Settings (logout) ─────────────────────────────────────
-settingsBtn.addEventListener("click", async () => {
-  token = "";
-  await chrome.storage.local.remove(STORAGE_KEYS.token);
-  chrome.runtime.sendMessage({ type: "AUTH_UPDATE", token: "" });
-  showLoginView();
-});
+settingsBtn.addEventListener("click", endSession);
 
 // ══════════════════════════════════════════════════════════
 // TIMER TAB
 // ══════════════════════════════════════════════════════════
 
-async function loadActiveTimer() {
-  try {
-    const res = await fetch(`${API_URL}/api/timer/active`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+function parseApiInstant(value) {
+  // New API responses include Z. Legacy naive values were also stored as UTC,
+  // so make that convention explicit instead of letting the browser use local time.
+  return new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`);
+}
 
-    if (handle401(res)) return;
+function elapsedSeconds(startedAt, accumulatedSeconds = 0, paused = false, nowMs = Date.now()) {
+  if (paused) return Math.max(0, accumulatedSeconds);
+  return Math.max(0, accumulatedSeconds + Math.floor((nowMs - startedAt.getTime()) / 1000));
+}
+
+async function loadActiveTimer() {
+  const session = captureSession();
+  try {
+    const res = await sessionFetch(session, `${API_URL}/api/timer/active`, {
+      headers: { Authorization: `Bearer ${session.token}` },
+    });
+    if (!isCurrentSession(session)) return;
+
     if (res.ok) {
       const data = await res.json();
+      if (!isCurrentSession(session)) return;
       if (data && data.started_at) {
         showActiveTimer(data);
         return;
       }
     }
   } catch {
+    if (!isCurrentSession(session)) return;
     // no active timer
   }
 
@@ -659,7 +855,7 @@ function showActiveTimer(data) {
   timerActive.classList.remove("hidden");
   timerIdle.classList.add("hidden");
 
-  activeTimerStart = new Date(data.started_at);
+  activeTimerStart = parseApiInstant(data.started_at);
   timerAccumulatedSeconds = data.accumulated_seconds || 0;
   timerIsPaused = data.is_paused || false;
   timerTaskName.textContent = data.task_title || "Sin tarea";
@@ -695,23 +891,26 @@ function fmtHours(h) {
 }
 
 async function loadProjectBudget(projectId, projectName) {
+  const session = captureSession();
   // No project on the active task → hide panel
   if (!projectId) {
     timerBudget.classList.add("hidden");
     return;
   }
   try {
-    const res = await fetch(`${API_URL}/api/timer/project-budget/${projectId}`, {
-      headers: { Authorization: `Bearer ${token}` },
+    const res = await sessionFetch(session, `${API_URL}/api/timer/project-budget/${projectId}`, {
+      headers: { Authorization: `Bearer ${session.token}` },
     });
-    if (handle401(res)) return;
+    if (!isCurrentSession(session)) return;
     if (!res.ok) {
       timerBudget.classList.add("hidden");
       return;
     }
     const data = await res.json();
+    if (!isCurrentSession(session)) return;
     renderProjectBudget(data, projectName);
   } catch {
+    if (!isCurrentSession(session)) return;
     timerBudget.classList.add("hidden");
   }
 }
@@ -841,13 +1040,7 @@ function showIdleTimer() {
 
 function updateTimerDisplay() {
   if (!activeTimerStart) return;
-  let diff;
-  if (timerIsPaused) {
-    diff = timerAccumulatedSeconds;
-  } else {
-    const now = new Date();
-    diff = timerAccumulatedSeconds + Math.floor((now - activeTimerStart) / 1000);
-  }
+  const diff = elapsedSeconds(activeTimerStart, timerAccumulatedSeconds, timerIsPaused);
   const h = Math.floor(diff / 3600);
   const m = Math.floor((diff % 3600) / 60);
   const s = diff % 60;
@@ -856,47 +1049,42 @@ function updateTimerDisplay() {
 }
 
 async function loadTimerTasks() {
+  const session = captureSession();
+  const loadId = ++timerTasksLoadId;
+  timerTasksRetry.disabled = true;
   try {
-    const res = await fetch(`${API_URL}/api/tasks?assigned_to=me&status=pending,in_progress,waiting,in_review&page_size=50`, {
-      headers: { Authorization: `Bearer ${token}` },
+    const tasks = await fetchAllPages("/api/tasks", {
+      assigned_to: "me", status: "pending,in_progress,waiting,in_review",
+    }, session);
+    if (!isCurrentSession(session)) return;
+    if (loadId !== timerTasksLoadId || !isCurrentSession(session)) return;
+    [timerTaskSelect, manualTaskSelect].forEach((select) => {
+      populateSelect(select, tasks, (task) => task.title.length > 40 ? task.title.slice(0, 40) + "..." : task.title);
     });
-
-    if (handle401(res)) return;
-    if (res.ok) {
-      const data = await res.json();
-      const tasks = data.items || data;
-
-      // Populate both selectors
-      [timerTaskSelect, manualTaskSelect].forEach((sel) => {
-        // Keep first option
-        while (sel.options.length > 1) sel.remove(1);
-        tasks.forEach((t) => {
-          const opt = document.createElement("option");
-          opt.value = t.id;
-          opt.textContent = t.title.length > 40 ? t.title.slice(0, 40) + "..." : t.title;
-          sel.appendChild(opt);
-        });
-      });
-    } else {
-      console.warn("loadTimerTasks: response not ok", res.status);
-      timerError.textContent = "Error cargando tareas";
-      timerError.classList.remove("hidden");
-    }
-  } catch (err) {
-    console.error("loadTimerTasks failed:", err);
-    timerError.textContent = "Error cargando tareas. Reintenta.";
+    timerStartBtn.disabled = !timerTaskSelect.value || hasUnavailableSelection(timerTaskSelect);
+    timerTasksRetry.classList.add("hidden");
+    timerError.classList.add("hidden");
+  } catch (error) {
+    if (!isCurrentSession(session)) return;
+    if (loadId !== timerTasksLoadId || !isCurrentSession(session)) return;
+    timerError.textContent = `No se pudieron cargar las tareas. ${error.message}`;
     timerError.classList.remove("hidden");
+    timerTasksRetry.classList.remove("hidden");
+  } finally {
+    if (!isCurrentSession(session)) return;
+    if (loadId === timerTasksLoadId) timerTasksRetry.disabled = false;
   }
 }
 
 // ── Task selection required for timer ─────────────────────
 timerTaskSelect.addEventListener("change", () => {
-  timerStartBtn.disabled = !timerTaskSelect.value;
+  timerStartBtn.disabled = !timerTaskSelect.value || hasUnavailableSelection(timerTaskSelect);
 });
 
 // Start timer (task_id is now required)
 timerStartBtn.addEventListener("click", async () => {
-  if (!timerTaskSelect.value) {
+  const session = captureSession();
+  if (!timerTaskSelect.value || hasUnavailableSelection(timerTaskSelect)) {
     timerError.textContent = "Selecciona una tarea para iniciar el timer";
     timerError.classList.remove("hidden");
     return;
@@ -909,59 +1097,66 @@ timerStartBtn.addEventListener("click", async () => {
   const body = { task_id: parseInt(timerTaskSelect.value, 10) };
 
   try {
-    const res = await fetch(`${API_URL}/api/timer/start`, {
+    const res = await sessionFetch(session, `${API_URL}/api/timer/start`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${session.token}`,
       },
       body: JSON.stringify(body),
     });
+    if (!isCurrentSession(session)) return;
 
-    if (handle401(res)) return;
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
+      if (!isCurrentSession(session)) return;
       throw new Error(getDetail(err, "Error al iniciar timer"));
     }
 
     const data = await res.json();
     showActiveTimer(data);
   } catch (err) {
+    if (!isCurrentSession(session)) return;
     timerError.textContent = err.message;
     timerError.classList.remove("hidden");
   } finally {
-    timerStartBtn.disabled = !timerTaskSelect.value;
+    if (!isCurrentSession(session)) return;
+    timerStartBtn.disabled = !timerTaskSelect.value || hasUnavailableSelection(timerTaskSelect);
     timerStartBtn.textContent = "Iniciar Timer";
   }
 });
 
 // Stop timer
 timerStopBtn.addEventListener("click", async () => {
+  const session = captureSession();
   timerStopBtn.disabled = true;
   timerStopBtn.textContent = "Deteniendo...";
 
   try {
-    const res = await fetch(`${API_URL}/api/timer/stop`, {
+    const res = await sessionFetch(session, `${API_URL}/api/timer/stop`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${session.token}`,
       },
       body: JSON.stringify({}),
     });
+    if (!isCurrentSession(session)) return;
 
-    if (handle401(res)) return;
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
+      if (!isCurrentSession(session)) return;
       throw new Error(getDetail(err, "Error al detener timer"));
     }
 
     showIdleTimer();
     showTimerSuccess("Timer detenido y registrado ✓");
   } catch (err) {
+    if (!isCurrentSession(session)) return;
     timerError.textContent = err.message;
     timerError.classList.remove("hidden");
   } finally {
+    if (!isCurrentSession(session)) return;
     timerStopBtn.disabled = false;
     timerStopBtn.textContent = "Detener";
   }
@@ -969,68 +1164,79 @@ timerStopBtn.addEventListener("click", async () => {
 
 // Pause timer
 timerPauseBtn.addEventListener("click", async () => {
+  const session = captureSession();
   timerPauseBtn.disabled = true;
   timerError.classList.add("hidden");
 
   try {
-    const res = await fetch(`${API_URL}/api/timer/pause`, {
+    const res = await sessionFetch(session, `${API_URL}/api/timer/pause`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${session.token}`,
       },
     });
+    if (!isCurrentSession(session)) return;
 
-    if (handle401(res)) return;
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
+      if (!isCurrentSession(session)) return;
       throw new Error(getDetail(err, "Error al pausar timer"));
     }
 
     const data = await res.json();
+    if (!isCurrentSession(session)) return;
     showActiveTimer(data);
     showTimerSuccess("Timer en pausa ⏸");
   } catch (err) {
+    if (!isCurrentSession(session)) return;
     timerError.textContent = err.message;
     timerError.classList.remove("hidden");
   } finally {
+    if (!isCurrentSession(session)) return;
     timerPauseBtn.disabled = false;
   }
 });
 
 // Resume timer
 timerResumeBtn.addEventListener("click", async () => {
+  const session = captureSession();
   timerResumeBtn.disabled = true;
   timerError.classList.add("hidden");
 
   try {
-    const res = await fetch(`${API_URL}/api/timer/resume`, {
+    const res = await sessionFetch(session, `${API_URL}/api/timer/resume`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${session.token}`,
       },
     });
+    if (!isCurrentSession(session)) return;
 
-    if (handle401(res)) return;
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
+      if (!isCurrentSession(session)) return;
       throw new Error(getDetail(err, "Error al reanudar timer"));
     }
 
     const data = await res.json();
+    if (!isCurrentSession(session)) return;
     showActiveTimer(data);
     showTimerSuccess("Timer reanudado ▶");
   } catch (err) {
+    if (!isCurrentSession(session)) return;
     timerError.textContent = err.message;
     timerError.classList.remove("hidden");
   } finally {
+    if (!isCurrentSession(session)) return;
     timerResumeBtn.disabled = false;
   }
 });
 
 // Manual time entry (task required)
 manualSaveBtn.addEventListener("click", async () => {
+  const session = captureSession();
   const hours = Math.max(0, parseInt(manualHours.value, 10) || 0);
   const mins = Math.max(0, Math.min(59, parseInt(manualMins.value, 10) || 0));
   const totalMinutes = hours * 60 + mins;
@@ -1038,7 +1244,7 @@ manualSaveBtn.addEventListener("click", async () => {
   timerError.classList.add("hidden");
   timerSuccess.classList.add("hidden");
 
-  if (!manualTaskSelect.value) {
+  if (!manualTaskSelect.value || hasUnavailableSelection(manualTaskSelect)) {
     timerError.textContent = "Selecciona una tarea para el registro";
     timerError.classList.remove("hidden");
     return;
@@ -1057,18 +1263,19 @@ manualSaveBtn.addEventListener("click", async () => {
   if (manualNotes.value.trim()) body.notes = manualNotes.value.trim();
 
   try {
-    const res = await fetch(`${API_URL}/api/time-entries`, {
+    const res = await sessionFetch(session, `${API_URL}/api/time-entries`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${session.token}`,
       },
       body: JSON.stringify(body),
     });
+    if (!isCurrentSession(session)) return;
 
-    if (handle401(res)) return;
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
+      if (!isCurrentSession(session)) return;
       throw new Error(getDetail(err, "Error al guardar"));
     }
 
@@ -1080,9 +1287,11 @@ manualSaveBtn.addEventListener("click", async () => {
 
     showTimerSuccess("Tiempo registrado ✓");
   } catch (err) {
+    if (!isCurrentSession(session)) return;
     timerError.textContent = err.message;
     timerError.classList.remove("hidden");
   } finally {
+    if (!isCurrentSession(session)) return;
     manualSaveBtn.disabled = false;
     manualSaveBtn.textContent = "Guardar registro";
   }
@@ -1091,7 +1300,7 @@ manualSaveBtn.addEventListener("click", async () => {
 function showTimerSuccess(msg) {
   timerSuccess.textContent = msg;
   timerSuccess.classList.remove("hidden");
-  setTimeout(() => timerSuccess.classList.add("hidden"), 3000);
+  scheduleForSession(() => timerSuccess.classList.add("hidden"), 3000);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1117,23 +1326,17 @@ const STATUS_COLORS = {
 };
 
 async function loadTasks() {
-  tasksList.innerHTML = '<div class="tasks-loading">Cargando tareas...</div>';
+  const session = captureSession();
+  const loadId = ++taskListLoadId;
+  tasksList.querySelector(".tasks-error")?.remove();
+  if (!tasksList.children.length) tasksList.innerHTML = '<div class="tasks-loading">Cargando tareas...</div>';
   tasksEmpty.classList.add("hidden");
-
-  const status = tasksFilter.value;
-  const params = new URLSearchParams({ assigned_to: "me", limit: "30" });
-  if (status) params.set("status", status);
-
+  const filters = { assigned_to: "me" };
+  if (tasksFilter.value) filters.status = tasksFilter.value;
   try {
-    const res = await fetch(`${API_URL}/api/tasks?${params}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (handle401(res)) return;
-    if (!res.ok) throw new Error("Error al cargar tareas");
-
-    const data = await res.json();
-    const tasks = data.items || data;
+    const tasks = await fetchAllPages("/api/tasks", filters, session);
+    if (!isCurrentSession(session)) return;
+    if (loadId !== taskListLoadId || !isCurrentSession(session)) return;
 
     if (tasks.length === 0) {
       tasksList.innerHTML = "";
@@ -1147,27 +1350,31 @@ async function loadTasks() {
     // Check button: toggle task completion
     tasksList.querySelectorAll(".task-check-btn").forEach((btn) => {
       btn.addEventListener("click", async (e) => {
+        const session = captureSession();
         e.stopPropagation();
         const taskId = parseInt(btn.dataset.taskId, 10);
         const currentStatus = btn.dataset.status;
         const newStatus = currentStatus === "completed" ? "pending" : "completed";
         btn.disabled = true;
         try {
-          const res = await fetch(`${API_URL}/api/tasks/${taskId}`, {
+          const res = await sessionFetch(session, `${API_URL}/api/tasks/${taskId}`, {
             method: "PUT",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
             body: JSON.stringify({ status: newStatus }),
           });
-          if (handle401(res)) return;
-          if (!res.ok) {
+          if (!isCurrentSession(session)) return;
+                if (!res.ok) {
             const err = await res.json().catch(() => ({}));
+            if (!isCurrentSession(session)) return;
             throw new Error(getDetail(err, "Error al actualizar"));
           }
           loadTasks(); // Reload task list
         } catch (err) {
+          if (!isCurrentSession(session)) return;
           timerError.textContent = err.message;
           timerError.classList.remove("hidden");
         } finally {
+          if (!isCurrentSession(session)) return;
           btn.disabled = false;
         }
       });
@@ -1187,36 +1394,44 @@ async function loadTasks() {
     // Play button: start timer on this task
     tasksList.querySelectorAll(".task-play-btn").forEach((btn) => {
       btn.addEventListener("click", async (e) => {
+        const session = captureSession();
         e.stopPropagation();
         const taskId = parseInt(btn.dataset.taskId, 10);
         btn.disabled = true;
         try {
-          const res = await fetch(`${API_URL}/api/timer/start`, {
+          const res = await sessionFetch(session, `${API_URL}/api/timer/start`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
+              Authorization: `Bearer ${session.token}`,
             },
             body: JSON.stringify({ task_id: taskId }),
           });
-          if (handle401(res)) return;
-          if (!res.ok) {
+          if (!isCurrentSession(session)) return;
+                if (!res.ok) {
             const err = await res.json().catch(() => ({}));
+            if (!isCurrentSession(session)) return;
             throw new Error(getDetail(err, "Error al iniciar timer"));
           }
           const data = await res.json();
+          if (!isCurrentSession(session)) return;
           showActiveTimer(data);
           switchToTab("timer");
         } catch (err) {
+          if (!isCurrentSession(session)) return;
           timerError.textContent = err.message;
           timerError.classList.remove("hidden");
         } finally {
+          if (!isCurrentSession(session)) return;
           btn.disabled = false;
         }
       });
     });
   } catch (err) {
-    tasksList.innerHTML = `<div class="tasks-error">${escapeHtml(err.message)}</div>`;
+    if (!isCurrentSession(session)) return;
+    if (loadId !== taskListLoadId || !isCurrentSession(session)) return;
+    tasksList.querySelector(".tasks-loading")?.remove();
+    tasksList.insertAdjacentHTML("afterbegin", `<div class="tasks-error" role="alert">${escapeHtml(err.message)} Pulsa actualizar para reintentar.</div>`);
   }
 }
 
@@ -1278,10 +1493,11 @@ function setupQuickCreate(linkEl, formEl, titleEl, clientEl, cancelEl, saveEl, t
   });
 
   saveEl.addEventListener("click", async () => {
+    const session = captureSession();
     const title = titleEl.value.trim();
     const clientId = clientEl.value;
 
-    if (!title || !clientId) {
+    if (!title || !clientId || hasUnavailableSelection(clientEl)) {
       timerError.textContent = "Titulo y cliente son obligatorios";
       timerError.classList.remove("hidden");
       return;
@@ -1292,11 +1508,11 @@ function setupQuickCreate(linkEl, formEl, titleEl, clientEl, cancelEl, saveEl, t
     timerError.classList.add("hidden");
 
     try {
-      const res = await fetch(`${API_URL}/api/tasks`, {
+      const res = await sessionFetch(session, `${API_URL}/api/tasks`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${session.token}`,
         },
         body: JSON.stringify({
           title,
@@ -1304,13 +1520,16 @@ function setupQuickCreate(linkEl, formEl, titleEl, clientEl, cancelEl, saveEl, t
           status: "in_progress",
         }),
       });
+      if (!isCurrentSession(session)) return;
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
+        if (!isCurrentSession(session)) return;
         throw new Error(getDetail(err, "Error al crear tarea"));
       }
 
       const task = await res.json();
+      if (!isCurrentSession(session)) return;
 
       // Add to both selectors and auto-select in target
       [timerTaskSelect, manualTaskSelect].forEach((sel) => {
@@ -1331,9 +1550,11 @@ function setupQuickCreate(linkEl, formEl, titleEl, clientEl, cancelEl, saveEl, t
 
       showTimerSuccess("Tarea creada y seleccionada");
     } catch (err) {
+      if (!isCurrentSession(session)) return;
       timerError.textContent = err.message;
       timerError.classList.remove("hidden");
     } finally {
+      if (!isCurrentSession(session)) return;
       saveEl.disabled = false;
       saveEl.textContent = "Crear";
     }

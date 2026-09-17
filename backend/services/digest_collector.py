@@ -8,7 +8,7 @@ Given a client_id and date range, collects:
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timezone, timedelta
+from datetime import date, timedelta
 
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +17,8 @@ from backend.db.models import (
     IN_PROGRESS_TASK_STATUSES,
     Task, TaskStatus, TimeEntry, CommunicationLog, Client, Project,
 )
+from backend.services.temporal import civil_day_utc_bounds
+from backend.services.time_entry_dates import time_entry_civil_period
 
 
 async def collect_digest_data(
@@ -27,8 +29,8 @@ async def collect_digest_data(
 ) -> dict:
     """Collect all relevant data for a client digest within the given period."""
 
-    start_dt = datetime.combine(period_start, datetime.min.time())
-    end_dt = datetime.combine(period_end, datetime.max.time())
+    start_dt, _ = civil_day_utc_bounds(period_start)
+    _, end_dt = civil_day_utc_bounds(period_end)
 
     # --- Client info ---
     client_result = await db.execute(select(Client).where(Client.id == client_id))
@@ -46,9 +48,9 @@ async def collect_digest_data(
         select(Task).where(
             Task.client_id == client_id,
             Task.status == TaskStatus.completed,
-            Task.updated_at >= start_dt,
-            Task.updated_at <= end_dt,
-        ).order_by(Task.updated_at.desc())
+            Task.completed_at >= start_dt,
+            Task.completed_at < end_dt,
+        ).order_by(Task.completed_at.desc())
     )
     completed_tasks = [
         {
@@ -102,8 +104,7 @@ async def collect_digest_data(
     time_result = await db.execute(
         select(TimeEntry).where(
             TimeEntry.minutes.isnot(None),
-            TimeEntry.date >= start_dt,
-            TimeEntry.date <= end_dt,
+            time_entry_civil_period(period_start, period_end + timedelta(days=1)),
         ).join(Task, TimeEntry.task_id == Task.id).where(
             Task.client_id == client_id,
         )

@@ -5,17 +5,11 @@ import { Button } from "@/components/ui/button"
 import { Play, Square } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { invalidateTimeChange } from "@/lib/query-keys"
+import { elapsedSeconds, formatElapsedSeconds } from "@/lib/timer"
 
 interface TimerButtonProps {
   taskId: number
-}
-
-function formatElapsed(startedAt: string): string {
-  const elapsed = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)
-  const h = Math.floor(elapsed / 3600)
-  const m = Math.floor((elapsed % 3600) / 60)
-  const s = elapsed % 60
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
 }
 
 export function TimerButton({ taskId }: TimerButtonProps) {
@@ -37,12 +31,18 @@ export function TimerButton({ taskId }: TimerButtonProps) {
       setElapsed("")
       return
     }
-    setElapsed(formatElapsed(timer.started_at))
+    const updateElapsed = () => setElapsed(formatElapsedSeconds(elapsedSeconds(
+      timer.started_at,
+      timer.accumulated_seconds || 0,
+      timer.is_paused || false,
+    )))
+    updateElapsed()
+    if (timer.is_paused) return
     const interval = setInterval(() => {
-      setElapsed(formatElapsed(timer.started_at))
+      updateElapsed()
     }, 1000)
     return () => clearInterval(interval)
-  }, [isThisTaskRunning, timer?.started_at])
+  }, [isThisTaskRunning, timer?.started_at, timer?.is_paused, timer?.accumulated_seconds])
 
   const startMutation = useMutation({
     mutationFn: () => timerApi.start({ task_id: taskId }),
@@ -57,7 +57,7 @@ export function TimerButton({ taskId }: TimerButtonProps) {
     mutationFn: () => timerApi.stop(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      queryClient.invalidateQueries({ queryKey: ["time-entries"] })
+      invalidateTimeChange(queryClient)
       toast.success("Timer detenido")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al detener timer")),

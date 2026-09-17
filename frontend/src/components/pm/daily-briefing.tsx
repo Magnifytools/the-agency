@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
+import { Select } from "@/components/ui/select"
+import { useAuth } from "@/context/auth-context"
 import { getErrorMessage } from "@/lib/utils"
 
 export function DailyBriefingDialog({
@@ -16,14 +18,17 @@ export function DailyBriefingDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { data: briefing, isLoading, isError } = useQuery({
-    queryKey: ["daily-briefing"],
-    queryFn: () => pmApi.dailyBriefing(),
+  const { user, hasPermission } = useAuth()
+  const [chosenScope, setChosenScope] = useState<"mine" | "team">("mine")
+  const scope = user?.role === "admin" ? chosenScope : "mine"
+  const { data: briefing, isLoading, isError, refetch } = useQuery({
+    queryKey: ["daily-briefing", scope],
+    queryFn: () => pmApi.dailyBriefing(scope),
     enabled: open,
   })
 
   const shareMutation = useMutation({
-    mutationFn: () => pmApi.shareBriefingToDiscord(),
+    mutationFn: () => pmApi.shareBriefingToDiscord(scope),
     onSuccess: () => {
       toast.success("Briefing compartido en Discord")
     },
@@ -38,6 +43,7 @@ export function DailyBriefingDialog({
         <DialogTitle>{briefing?.greeting || "Briefing del día"}</DialogTitle>
       </DialogHeader>
 
+      {user?.role === "admin" ? <Select aria-label="Ámbito del resumen" value={scope} onChange={(e) => setChosenScope(e.target.value as "mine" | "team")} disabled={shareMutation.isPending}><option value="mine">Mi trabajo</option><option value="team">Todo el equipo</option></Select> : <p className="text-sm text-muted-foreground">Mi trabajo</p>}
       {isLoading ? (
         <div className="py-8 text-center text-muted-foreground">Cargando briefing...</div>
       ) : briefing ? (
@@ -150,20 +156,21 @@ export function DailyBriefingDialog({
         <div className="py-8 text-center">
           <AlertTriangle className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
           <p className="text-muted-foreground text-sm">
-            No se pudo cargar el briefing. Inténtalo de nuevo más tarde.
+            No se pudo cargar el resumen.
           </p>
+          <Button variant="outline" onClick={() => refetch()}>Reintentar</Button>
         </div>
       ) : null}
 
       <div className="flex justify-between items-center mt-6">
-        <Button
+        {hasPermission("pm", true) && <Button
           variant="outline"
           onClick={() => shareMutation.mutate()}
           disabled={shareMutation.isPending || isLoading || !briefing}
         >
           <Send className="w-4 h-4 mr-2" />
           {shareMutation.isPending ? "Enviando..." : "Compartir en Discord"}
-        </Button>
+        </Button>}
         <Button onClick={() => onOpenChange(false)}>Cerrar</Button>
       </div>
     </Dialog>

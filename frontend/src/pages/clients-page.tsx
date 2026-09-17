@@ -324,7 +324,7 @@ export default function ClientsPage() {
         <div className="sm:hidden space-y-3">
           {sortedClients.map((c) => {
             const h = healthMap.get(c.id)
-            const healthColor = h ? (h.risk_level === "healthy" ? "text-green-600" : h.risk_level === "warning" ? "text-amber-500" : "text-red-500") : ""
+            const healthColor = h ? (h.risk_level === "healthy" ? "text-green-600" : h.risk_level === "warning" ? "text-amber-500" : h.risk_level === "no_data" ? "text-muted-foreground" : "text-red-500") : ""
             return (
               <div key={c.id} className="border border-border rounded-xl p-4 bg-card space-y-2">
                 <div className="flex items-start justify-between">
@@ -343,7 +343,7 @@ export default function ClientsPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   {statusBadge(c.status)}
                   {isAdmin && c.monthly_budget != null && <Badge variant="outline" className="text-xs">{formatCurrency(c.monthly_budget)}</Badge>}
-                  {h && <span className={`inline-flex items-center gap-1 text-xs font-semibold ${healthColor}`}><Heart className="h-3 w-3" />{h.score}</span>}
+                  {h && <span className={`inline-flex items-center gap-1 text-xs font-semibold ${healthColor}`}><Heart className="h-3 w-3" />{h.score ?? (h.risk_signals.length ? "Riesgo" : "Sin datos")}</span>}
                 </div>
               </div>
             )
@@ -445,10 +445,10 @@ export default function ClientsPage() {
                   {(() => {
                     const h = healthMap.get(c.id)
                     if (!h) return <span className="text-muted-foreground text-xs">-</span>
-                    const color = h.risk_level === "healthy" ? "text-green-600" : h.risk_level === "warning" ? "text-amber-500" : "text-red-500"
+                    const color = h.risk_level === "healthy" ? "text-green-600" : h.risk_level === "warning" ? "text-amber-500" : h.risk_level === "no_data" ? "text-muted-foreground" : "text-red-500"
                     return (
-                      <span className={`inline-flex items-center gap-1 text-xs font-semibold ${color}`} title={`Comunicacion: ${h.factors.communication} | Tareas: ${h.factors.tasks} | Digests: ${h.factors.digests} | Rentabilidad: ${h.factors.profitability} | Followups: ${h.factors.followups}`}>
-                        <Heart className="h-3 w-3" />{h.score}
+                      <span className={`inline-flex items-center gap-1 text-xs font-semibold ${color}`} title={(Object.values(h.observations)).join(" · ")}>
+                        <Heart className="h-3 w-3" />{h.score ?? (h.risk_signals.length ? "Riesgo" : "Sin datos")}
                       </span>
                     )
                   })()}

@@ -2,6 +2,8 @@ import { useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import type { Task } from "@/lib/types"
+import { parseCivilDate } from "@/lib/dates"
+import { useBusinessDate } from "@/hooks/use-business-date"
 
 const DAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
@@ -43,7 +45,7 @@ export function TaskCalendarView({ tasks, year, month, onPrev, onNext, onOpenEdi
     const map: Record<number, Task[]> = {}
     for (const t of tasks) {
       if (!t.due_date) continue
-      const d = new Date(t.due_date)
+      const d = parseCivilDate(t.due_date)
       if (d.getFullYear() === year && d.getMonth() === month) {
         const day = d.getDate()
         if (!map[day]) map[day] = []
@@ -53,7 +55,7 @@ export function TaskCalendarView({ tasks, year, month, onPrev, onNext, onOpenEdi
     return map
   }, [tasks, year, month])
 
-  const today = new Date()
+  const today = parseCivilDate(useBusinessDate())
   const isToday = (d: number) => today.getFullYear() === year && today.getMonth() === month && today.getDate() === d
 
   return (

@@ -65,6 +65,7 @@ logger = logging.getLogger(__name__)
 
 _INFO_KEY = "_change_journal_pending"
 _MANUAL_TIME_KEY = "_change_journal_manual_time"
+_SAVEPOINTS_KEY = "_change_journal_savepoints"
 
 #: Tope de filas por entrada. Una importación masiva no debe generar un JSON
 #: gigante ni una entrada de historial que nadie va a querer deshacer entera.
@@ -242,6 +243,17 @@ def _pending(session: Session) -> list[_Op]:
     return session.info.setdefault(_INFO_KEY, [])
 
 
+@event.listens_for(Session, "after_transaction_create")
+def _checkpoint_savepoint(session: Session, transaction) -> None:
+    if transaction.nested:
+        # begin_nested flushes outer work before creating this transaction.
+        # Keep that prefix when only this savepoint is rolled back.
+        session.info.setdefault(_SAVEPOINTS_KEY, {})[transaction] = (
+            len(session.info.get(_INFO_KEY, [])),
+            session.info.get(_MANUAL_TIME_KEY, False),
+        )
+
+
 @event.listens_for(Session, "before_flush")
 def _capture(session: Session, flush_context, instances) -> None:
     if _actor.get() is None or _paused.get():
@@ -306,6 +318,11 @@ def _resolve_ids(session: Session, flush_context) -> None:
 
 @event.listens_for(Session, "after_commit")
 def _dispatch(session: Session) -> None:
+    # after_commit also fires when a SAVEPOINT is released. Its writes remain
+    # provisional until the outer transaction commits.
+    if session.in_nested_transaction():
+        return
+    session.info.pop(_SAVEPOINTS_KEY, None)
     ops = session.info.pop(_INFO_KEY, None)
     session.info.pop(_MANUAL_TIME_KEY, None)
     if not ops:
@@ -334,11 +351,36 @@ def _sink(entry: dict[str, Any]) -> None:
     loop.create_task(_write(entry))
 
 
-@event.listens_for(Session, "after_rollback")
 @event.listens_for(Session, "after_soft_rollback")
-def _discard(session: Session, *args) -> None:
+def _discard(session: Session, previous_transaction) -> None:
+    if previous_transaction.nested:
+        checkpoints = session.info.get(_SAVEPOINTS_KEY, {})
+        checkpoint = checkpoints.pop(previous_transaction, None)
+        if checkpoint is not None:
+            length, manual_time = checkpoint
+            del session.info.get(_INFO_KEY, [])[length:]
+            if manual_time:
+                session.info[_MANUAL_TIME_KEY] = True
+            else:
+                session.info.pop(_MANUAL_TIME_KEY, None)
+        # A failed flush also emits rollback events for its internal transaction.
+        # Only the enclosing savepoint (or root) determines which work survived.
+    elif previous_transaction.parent is None:
+        _clear_pending(session)
+
+
+def _clear_pending(session: Session) -> None:
     session.info.pop(_INFO_KEY, None)
     session.info.pop(_MANUAL_TIME_KEY, None)
+    session.info.pop(_SAVEPOINTS_KEY, None)
+
+
+@event.listens_for(Session, "after_transaction_end")
+def _clear_ended_transaction(session: Session, transaction) -> None:
+    # Session.close() can end a transaction without after_soft_rollback. Do not
+    # let a reused Session carry abandoned changes into a later commit.
+    if transaction.parent is None:
+        _clear_pending(session)
 
 
 # ── Colapso a una sola entrada ───────────────────────────────────────────────

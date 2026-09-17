@@ -8,6 +8,7 @@ import { toast } from "sonner"
 import { api } from "@/lib/api"
 import type { Project } from "@/lib/types"
 import { getErrorMessage } from "@/lib/utils"
+import { invalidateProjectChange } from "@/lib/query-keys"
 
 interface BillableTask {
   id: number
@@ -59,7 +60,7 @@ export function ProjectBillingTab({ projectId, project }: { projectId: number; p
     mutationFn: () => api.post(`/projects/${projectId}/mark-billed`).then((r: { data: { amount: number; next_billing_date: string | null } }) => r.data),
     onSuccess: (data: { amount: number; next_billing_date: string | null }) => {
       queryClient.invalidateQueries({ queryKey: ["project-billing", projectId] })
-      queryClient.invalidateQueries({ queryKey: ["project", projectId.toString()] })
+      invalidateProjectChange(queryClient, { clientId: project?.client_id })
       toast.success(`Facturado: ${data.amount}€${data.next_billing_date ? ` — próxima: ${data.next_billing_date}` : ""}`)
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err, "Error al facturar")),

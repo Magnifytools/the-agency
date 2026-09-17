@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react"
-import { useParams, Link, useNavigate } from "react-router-dom"
+import { useAuth } from "@/context/auth-context"
+import { ProjectTaskList } from "@/components/projects/project-task-list"
+import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 import {
@@ -23,6 +25,7 @@ import { toast } from "sonner"
 import { projectsApi, tasksApi, usersApi } from "@/lib/api"
 import type { Project, ProjectPhase, ProjectStatus, PhaseStatus, Task, TaskStatus, ProjectClosingStatus } from "@/lib/types"
 import { isEnabled } from "@/lib/hidden-modules"
+import { formatCivilDate } from "@/lib/dates"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -39,6 +42,7 @@ import { ProjectBillingTab } from "@/components/projects/project-billing-tab"
 import { ProjectIdeasTab } from "@/components/projects/project-ideas-tab"
 import { Breadcrumb } from "@/components/ui/breadcrumb"
 import { Skeleton, SkeletonCard } from "@/components/ui/skeleton"
+import { invalidateProjectChange, invalidateTaskChange, projectKeys, taskKeys } from "@/lib/query-keys"
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   planning: "Planificación",
@@ -65,41 +69,44 @@ const PHASE_STATUS_ICONS: Record<PhaseStatus, typeof Circle> = {
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
+  const { hasPermission } = useAuth()
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showAddTaskDialog, setShowAddTaskDialog] = useState<number | null>(null)
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false)
   const [viewMode, setViewMode] = useState<"list" | "gantt" | "kanban">("list")
   const [activeTab, setActiveTab] = useState<"tasks" | "ideas" | "evidence" | "billing">("tasks")
   const [previewTaskId, setPreviewTaskId] = useState<number | null>(null)
+  const [showMetrics, setShowMetrics] = useState(false)
   const [filterStatus, setFilterStatus] = useState<TaskStatus | "all">("all")
   const [filterSearch, setFilterSearch] = useState("")
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const projectId = id ? parseInt(id) : NaN
   const validId = !isNaN(projectId)
 
-  const { data: project, isLoading } = useQuery({
-    queryKey: ["project", id],
+  const { data: project, isLoading, isError: projectError, error: projectLoadError, refetch: retryProject } = useQuery({
+    queryKey: projectKeys.detail(projectId),
     queryFn: () => projectsApi.get(projectId),
     enabled: validId,
   })
 
-  const { data: tasksData } = useQuery({
-    queryKey: ["project-tasks", id],
+  const { data: tasksData, isLoading: tasksLoading, isError: tasksError, refetch: retryTasks } = useQuery({
+    queryKey: taskKeys.project(projectId),
     queryFn: () => projectsApi.tasks(projectId),
     enabled: validId,
   })
 
   const { data: burndown } = useQuery({
-    queryKey: ["project-burndown", id],
+    queryKey: projectKeys.burndown(projectId),
     queryFn: () => projectsApi.burndown(projectId),
-    enabled: validId,
+    enabled: validId && showMetrics && project?.is_recurring === false,
   })
 
   const updateStatusMutation = useMutation({
     mutationFn: (status: string) => projectsApi.update(projectId, { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project", id] })
+      invalidateProjectChange(queryClient, { clientId: project?.client_id })
       toast.success("Estado actualizado")
     },
     onError: () => toast.error("Error al actualizar estado"),
@@ -109,8 +116,8 @@ export default function ProjectDetailPage() {
     mutationFn: ({ phaseId, status }: { phaseId: number; status: string }) =>
       projectsApi.updatePhase(phaseId, { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project", id] })
-      queryClient.invalidateQueries({ queryKey: ["project-tasks", id] })
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) })
+      queryClient.invalidateQueries({ queryKey: taskKeys.project(projectId) })
       toast.success("Fase actualizada")
     },
     onError: () => toast.error("Error al actualizar fase"),
@@ -120,8 +127,7 @@ export default function ProjectDetailPage() {
     mutationFn: ({ taskId, status }: { taskId: number; status: TaskStatus }) =>
       tasksApi.update(taskId, { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project", id] })
-      queryClient.invalidateQueries({ queryKey: ["project-tasks", id] })
+      invalidateTaskChange(queryClient, { projectId, clientId: project?.client_id })
     },
     onError: () => toast.error("Error al actualizar tarea"),
   })
@@ -167,9 +173,10 @@ export default function ProjectDetailPage() {
     )
   }
 
-  if (!project) {
-    return <div className="text-muted-foreground">Proyecto no encontrado</div>
+  if (projectError && !project) {
+    return <div role="alert" className="space-y-3"><p>{getErrorMessage(projectLoadError, "No se pudo cargar el proyecto.")}</p><Button variant="outline" onClick={() => retryProject()}>Reintentar</Button></div>
   }
+  if (!project) return <div className="text-muted-foreground">Proyecto no encontrado</div>
 
   const formatDate = (date: string | null) => {
     if (!date) return "—"
@@ -188,7 +195,7 @@ export default function ProjectDetailPage() {
         { label: "Proyectos", href: "/projects" },
         { label: project.name },
       ]} />
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold">{project.name}</h1>
@@ -202,11 +209,13 @@ export default function ProjectDetailPage() {
             </Link>
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {hasPermission("tasks", true) && <Button onClick={() => setShowAddTaskDialog(0)}><Plus className="h-4 w-4 mr-2" />Añadir tarea</Button>}
           <Select
+            aria-label="Estado del proyecto"
             value={project.status}
             onChange={(e) => updateStatusMutation.mutate(e.target.value)}
-            disabled={updateStatusMutation.isPending}
+            disabled={!hasPermission("projects", true) || updateStatusMutation.isPending}
             className="w-40"
           >
             <option value="planning">Planificación</option>
@@ -226,8 +235,15 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
+      {searchParams.get("created") === "1" && <div role="status" className="border-l-2 border-brand pl-4 py-2"><p className="font-medium">Proyecto creado</p><p className="text-sm text-muted-foreground">{project.task_count ? "Revisa las tareas y concreta el próximo paso." : "Añade la primera tarea para concretar el próximo paso."}</p></div>}
+      {projectError && <div role="alert" className="text-sm">No se pudo actualizar. Se muestran los últimos datos recibidos. <Button variant="ghost" onClick={() => retryProject()}>Reintentar</Button></div>}
+      <details onToggle={event => setShowMetrics(event.currentTarget.open)} className="border-y border-border py-1">
+        <summary className="cursor-pointer py-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded">
+          Plazos, horas y progreso{project.target_end_date ? ` · Entrega prevista: ${formatDate(project.target_end_date)}` : " · Sin fecha de entrega"}
+        </summary>
+        {showMetrics && <div className="space-y-4 pb-4">
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -305,10 +321,10 @@ export default function ProjectDetailPage() {
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1.5">
-              <span className="text-sm font-medium">Tiempo tracked</span>
+              <span className="text-sm font-medium">Tiempo registrado</span>
               <span
                 className="text-muted-foreground/60 cursor-help text-xs"
-                title="Suma del tiempo registrado en el timesheet (cronómetro real) para tareas vinculadas a este proyecto. No incluye tareas del cliente que estén sin proyecto asignado."
+                title="Suma del tiempo registrado en el registro de horas para tareas vinculadas a este proyecto. No incluye tareas del cliente que estén sin proyecto asignado."
               >
                 ⓘ
               </span>
@@ -404,8 +420,11 @@ export default function ProjectDetailPage() {
         </Card>
       )}
 
+        </div>}
+      </details>
+
       {/* Tab Toggle: Tasks / Evidence */}
-      <div className="flex items-center space-x-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
+      {(isEnabled("growth") || isEnabled("evidence") || isEnabled("billing")) && <div className="flex flex-wrap items-center gap-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
         <Button
           variant={activeTab === "tasks" ? "default" : "ghost"}
           size="sm"
@@ -442,7 +461,7 @@ export default function ProjectDetailPage() {
             Facturación
           </Button>
         )}
-      </div>
+      </div>}
 
       {/* Ideas Tab */}
       {activeTab === "ideas" && project && isEnabled("growth") && (
@@ -461,8 +480,8 @@ export default function ProjectDetailPage() {
 
       {/* View Toggle + Phases and Tasks */}
       {activeTab === "tasks" && <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Fases y Tareas</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">Trabajo del proyecto</h2>
           <div className="flex items-center gap-1">
             <Button
               variant={viewMode === "list" ? "default" : "outline"}
@@ -499,6 +518,7 @@ export default function ProjectDetailPage() {
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
+                aria-label="Buscar tarea en el proyecto"
                 placeholder="Buscar tarea..."
                 value={filterSearch}
                 onChange={(e) => setFilterSearch(e.target.value)}
@@ -506,6 +526,7 @@ export default function ProjectDetailPage() {
               />
             </div>
             <Select
+              aria-label="Estado de las tareas del proyecto"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value as TaskStatus | "all")}
               className="h-8 w-36 text-xs"
@@ -531,6 +552,14 @@ export default function ProjectDetailPage() {
             )}
           </div>
         )}
+
+        {tasksLoading && <p role="status" className="text-sm text-muted-foreground">Cargando tareas…</p>}
+        {tasksError && <div role="alert" className="text-sm space-y-2">
+          <p>{tasksData ? "No se pudieron actualizar las tareas. Se muestran los últimos datos recibidos." : "No se pudieron cargar las tareas del proyecto."}</p>
+          <Button variant="outline" onClick={() => retryTasks()}>Reintentar tareas</Button>
+        </div>}
+        {tasksData && !tasksError && !tasksData.phases.some((group: { tasks: Task[] }) => group.tasks.length) && !tasksData.unassigned_tasks.length && <p className="text-sm text-muted-foreground">Aún no hay tareas. Añade la primera cuando tengas claro el próximo paso.</p>}
+        {tasksData && hasActiveFilters && filteredPhases.length === 0 && filteredUnassigned.length === 0 && <p className="text-sm text-muted-foreground">No hay tareas que coincidan con estos filtros.</p>}
 
         {viewMode === "gantt" && project && tasksData && (
           <GanttChart project={project} tasksData={{
@@ -583,7 +612,8 @@ export default function ProjectDetailPage() {
                       onChange={(e) =>
                         updatePhaseMutation.mutate({ phaseId: phase.id, status: e.target.value })
                       }
-                      disabled={updatePhaseMutation.isPending}
+                      aria-label={`Estado de la fase ${phase.name}`}
+                      disabled={!hasPermission("projects", true) || updatePhaseMutation.isPending}
                       className="w-32 h-8 text-xs"
                     >
                       <option value="pending">Pendiente</option>
@@ -593,6 +623,8 @@ export default function ProjectDetailPage() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      aria-label={`Añadir tarea a ${phase.name}`}
+                      disabled={!hasPermission("tasks", true)}
                       onClick={() => setShowAddTaskDialog(phase.id)}
                     >
                       <Plus className="h-4 w-4" />
@@ -604,18 +636,11 @@ export default function ProjectDetailPage() {
                 {tasks.length === 0 ? (
                   <p className="text-sm text-muted-foreground py-2">Sin tareas en esta fase</p>
                 ) : (
-                  <div className="space-y-1">
-                    {tasks.map((task: Task) => (
-                      <TaskRow
-                        key={task.id}
-                        task={task}
-                        onStatusChange={(status) =>
-                          updateTaskMutation.mutate({ taskId: task.id, status })
-                        }
-                        onPreview={(taskId) => setPreviewTaskId(taskId)}
-                      />
-                    ))}
-                  </div>
+                  <ProjectTaskList tasks={tasks} showCompleted={hasActiveFilters}
+                    canWrite={hasPermission("tasks", true)}
+                    pendingTaskId={updateTaskMutation.isPending ? updateTaskMutation.variables.taskId : undefined}
+                    onStatusChange={(taskId, status) => updateTaskMutation.mutate({ taskId, status })}
+                    onOpen={setPreviewTaskId} />
                 )}
               </CardContent>
             </Card>
@@ -631,18 +656,11 @@ export default function ProjectDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-1">
-                {filteredUnassigned.map((task: Task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    onStatusChange={(status) =>
-                      updateTaskMutation.mutate({ taskId: task.id, status })
-                    }
-                    onPreview={(taskId) => setPreviewTaskId(taskId)}
-                  />
-                ))}
-              </div>
+              <ProjectTaskList tasks={filteredUnassigned} showCompleted={hasActiveFilters}
+                canWrite={hasPermission("tasks", true)}
+                pendingTaskId={updateTaskMutation.isPending ? updateTaskMutation.variables.taskId : undefined}
+                onStatusChange={(taskId, status) => updateTaskMutation.mutate({ taskId, status })}
+                onOpen={setPreviewTaskId} />
             </CardContent>
           </Card>
         )}
@@ -668,7 +686,7 @@ export default function ProjectDetailPage() {
       )}
 
       {/* Add Task Dialog */}
-      {showAddTaskDialog && project && (
+      {showAddTaskDialog !== null && project && (
         <AddTaskDialog
           open={showAddTaskDialog !== null}
           onOpenChange={(open) => !open && setShowAddTaskDialog(null)}
@@ -690,50 +708,6 @@ export default function ProjectDetailPage() {
           }}
         />
       )}
-    </div>
-  )
-}
-
-function TaskRow({
-  task,
-  onStatusChange,
-  onPreview,
-}: {
-  task: { id: number; title: string; status: TaskStatus; due_date: string | null; assigned_to: number | string | null }
-  onStatusChange: (status: TaskStatus) => void
-  onPreview?: (taskId: number) => void
-}) {
-  const isCompleted = task.status === "completed"
-
-  return (
-    <div
-      className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-card/50 group cursor-pointer"
-      onClick={() => onPreview?.(task.id)}
-    >
-      <button
-        onClick={(e) => { e.stopPropagation(); onStatusChange(isCompleted ? "pending" : "completed") }}
-        className={`flex-shrink-0 ${isCompleted ? "text-success" : "text-muted-foreground hover:text-brand"}`}
-      >
-        {isCompleted ? (
-          <CheckCircle2 className="h-5 w-5" />
-        ) : (
-          <Circle className="h-5 w-5" />
-        )}
-      </button>
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm ${isCompleted ? "line-through text-muted-foreground" : ""}`}>
-          {task.title}
-        </p>
-      </div>
-      {task.assigned_to && (
-        <span className="text-xs text-muted-foreground">{task.assigned_to}</span>
-      )}
-      <button
-        onClick={(e) => { e.stopPropagation(); onPreview?.(task.id) }}
-        className="text-xs text-muted-foreground hover:text-brand opacity-0 group-hover:opacity-100"
-      >
-        Ver
-      </button>
     </div>
   )
 }
@@ -793,7 +767,7 @@ function EditProjectDialog({
         ga4_property_id: formData.ga4_property_id || undefined,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project", project.id.toString()] })
+      invalidateProjectChange(queryClient, { clientId: project.client_id })
       toast.success("Proyecto actualizado")
       onOpenChange(false)
     },
@@ -813,24 +787,24 @@ function EditProjectDialog({
         className="space-y-4 mt-4"
       >
         <div className="space-y-2">
-          <Label>Nombre</Label>
-          <Input
+          <Label htmlFor="project-detail-page-field-1">Nombre</Label>
+          <Input id="project-detail-page-field-1"
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             required
           />
         </div>
         <div className="space-y-2">
-          <Label>Descripción</Label>
-          <Input
+          <Label htmlFor="project-detail-page-field-2">Descripción</Label>
+          <Input id="project-detail-page-field-2"
             value={formData.description}
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
           />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>Fecha inicio</Label>
-            <Input
+            <Label htmlFor="project-detail-page-field-3">Fecha inicio</Label>
+            <Input id="project-detail-page-field-3"
               type="date"
               value={formData.start_date}
               onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
@@ -873,8 +847,8 @@ function EditProjectDialog({
         {/* --- Techos de horas (mes dispara alerta, semana = guía visual) --- */}
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>Horas/mes (techo de alerta)</Label>
-            <Input
+            <Label htmlFor="project-detail-page-field-4">Horas/mes (techo de alerta)</Label>
+            <Input id="project-detail-page-field-4"
               type="number"
               step="0.5"
               min="0"
@@ -884,8 +858,8 @@ function EditProjectDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label>Horas/semana (guía visual)</Label>
-            <Input
+            <Label htmlFor="project-detail-page-field-5">Horas/semana (guía visual)</Label>
+            <Input id="project-detail-page-field-5"
               type="number"
               step="0.5"
               min="0"
@@ -919,12 +893,12 @@ function EditProjectDialog({
         {formData.pricing_model === "monthly" && (
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Fee mensual (EUR)</Label>
-              <Input type="number" step="0.01" value={formData.monthly_fee} onChange={(e) => setFormData({ ...formData, monthly_fee: e.target.value })} placeholder="950" />
+              <Label htmlFor="project-detail-page-field-6">Fee mensual (EUR)</Label>
+              <Input id="project-detail-page-field-6" type="number" step="0.01" value={formData.monthly_fee} onChange={(e) => setFormData({ ...formData, monthly_fee: e.target.value })} placeholder="950" />
             </div>
             <div className="space-y-2">
-              <Label>Presupuesto horas/mes</Label>
-              <Input type="number" value={formData.budget_hours} onChange={(e) => setFormData({ ...formData, budget_hours: e.target.value })} placeholder="40" />
+              <Label htmlFor="project-detail-page-field-7">Presupuesto horas/mes</Label>
+              <Input id="project-detail-page-field-7" type="number" value={formData.budget_hours} onChange={(e) => setFormData({ ...formData, budget_hours: e.target.value })} placeholder="40" />
             </div>
           </div>
         )}
@@ -933,12 +907,12 @@ function EditProjectDialog({
         {formData.pricing_model === "per_piece" && (
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Precio por unidad (EUR)</Label>
-              <Input type="number" step="0.01" value={formData.unit_price} onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })} placeholder="200" />
+              <Label htmlFor="project-detail-page-field-8">Precio por unidad (EUR)</Label>
+              <Input id="project-detail-page-field-8" type="number" step="0.01" value={formData.unit_price} onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })} placeholder="200" />
             </div>
             <div className="space-y-2">
-              <Label>Unidad</Label>
-              <Input value={formData.unit_label} onChange={(e) => setFormData({ ...formData, unit_label: e.target.value })} placeholder="briefing review, pieza, articulo..." />
+              <Label htmlFor="project-detail-page-field-9">Unidad</Label>
+              <Input id="project-detail-page-field-9" value={formData.unit_label} onChange={(e) => setFormData({ ...formData, unit_label: e.target.value })} placeholder="briefing review, pieza, articulo..." />
             </div>
           </div>
         )}
@@ -947,12 +921,12 @@ function EditProjectDialog({
         {formData.pricing_model === "hourly" && (
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Tarifa/hora (EUR)</Label>
-              <Input type="number" step="0.01" value={formData.unit_price} onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })} placeholder="50" />
+              <Label htmlFor="project-detail-page-field-10">Tarifa/hora (EUR)</Label>
+              <Input id="project-detail-page-field-10" type="number" step="0.01" value={formData.unit_price} onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })} placeholder="50" />
             </div>
             <div className="space-y-2">
-              <Label>Presupuesto horas</Label>
-              <Input type="number" value={formData.budget_hours} onChange={(e) => setFormData({ ...formData, budget_hours: e.target.value })} placeholder="40" />
+              <Label htmlFor="project-detail-page-field-11">Presupuesto horas</Label>
+              <Input id="project-detail-page-field-11" type="number" value={formData.budget_hours} onChange={(e) => setFormData({ ...formData, budget_hours: e.target.value })} placeholder="40" />
             </div>
           </div>
         )}
@@ -961,19 +935,19 @@ function EditProjectDialog({
         {formData.pricing_model === "project" && (
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Precio total proyecto (EUR)</Label>
-              <Input type="number" step="0.01" value={formData.budget_amount} onChange={(e) => setFormData({ ...formData, budget_amount: e.target.value })} placeholder="5000" />
+              <Label htmlFor="project-detail-page-field-12">Precio total proyecto (EUR)</Label>
+              <Input id="project-detail-page-field-12" type="number" step="0.01" value={formData.budget_amount} onChange={(e) => setFormData({ ...formData, budget_amount: e.target.value })} placeholder="5000" />
             </div>
             <div className="space-y-2">
-              <Label>Presupuesto horas</Label>
-              <Input type="number" value={formData.budget_hours} onChange={(e) => setFormData({ ...formData, budget_hours: e.target.value })} placeholder="80" />
+              <Label htmlFor="project-detail-page-field-13">Presupuesto horas</Label>
+              <Input id="project-detail-page-field-13" type="number" value={formData.budget_hours} onChange={(e) => setFormData({ ...formData, budget_hours: e.target.value })} placeholder="80" />
             </div>
           </div>
         )}
         {/* --- Propuesta / Scope --- */}
         <div className="space-y-2">
-          <Label>Propuesta / Condiciones</Label>
-          <textarea
+          <Label htmlFor="project-detail-page-field-14">Propuesta / Condiciones</Label>
+          <textarea id="project-detail-page-field-14"
             className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
             value={formData.scope}
             onChange={(e) => setFormData({ ...formData, scope: e.target.value })}
@@ -986,8 +960,8 @@ function EditProjectDialog({
         {/* --- Facturación --- */}
         <div className="grid grid-cols-3 gap-4">
           <div className="space-y-2">
-            <Label>Día factura (1-28)</Label>
-            <Input
+            <Label htmlFor="project-detail-page-field-15">Día factura (1-28)</Label>
+            <Input id="project-detail-page-field-15"
               type="number"
               min="1"
               max="28"
@@ -997,8 +971,8 @@ function EditProjectDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label>Importe factura (€)</Label>
-            <Input
+            <Label htmlFor="project-detail-page-field-16">Importe factura (€)</Label>
+            <Input id="project-detail-page-field-16"
               type="number"
               step="0.01"
               value={formData.billing_amount}
@@ -1007,8 +981,8 @@ function EditProjectDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label>Próxima factura</Label>
-            <Input
+            <Label htmlFor="project-detail-page-field-17">Próxima factura</Label>
+            <Input id="project-detail-page-field-17"
               type="date"
               value={formData.next_billing_date}
               onChange={(e) => setFormData({ ...formData, next_billing_date: e.target.value })}
@@ -1017,8 +991,8 @@ function EditProjectDialog({
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>Google Search Console URL</Label>
-            <Input
+            <Label htmlFor="project-detail-page-field-18">Google Search Console URL</Label>
+            <Input id="project-detail-page-field-18"
               type="url"
               placeholder="https://ejemplo.com"
               value={formData.gsc_url}
@@ -1026,8 +1000,8 @@ function EditProjectDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label>GA4 Property ID</Label>
-            <Input
+            <Label htmlFor="project-detail-page-field-19">GA4 Property ID</Label>
+            <Input id="project-detail-page-field-19"
               type="text"
               placeholder="123456789"
               value={formData.ga4_property_id}
@@ -1081,15 +1055,14 @@ function AddTaskDialog({
         description: description || undefined,
         client_id: clientId,
         project_id: projectId,
-        phase_id: phaseId,
+        phase_id: phaseId || null,
         assigned_to: assignedTo ? parseInt(assignedTo) : undefined,
         priority: (priority as "urgent" | "high" | "medium" | "low") || undefined,
         due_date: dueDate || undefined,
         estimated_minutes: estimatedMinutes ? parseInt(estimatedMinutes) : undefined,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project-tasks", projectId.toString()] })
-      queryClient.invalidateQueries({ queryKey: ["project", projectId.toString()] })
+      invalidateTaskChange(queryClient, { projectId, clientId })
       toast.success("Tarea añadida")
       onOpenChange(false)
       setTitle("")
@@ -1105,7 +1078,7 @@ function AddTaskDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogHeader>
-        <DialogTitle>Añadir tarea a la fase</DialogTitle>
+        <DialogTitle>{phaseId ? "Añadir tarea a la fase" : "Añadir tarea al proyecto"}</DialogTitle>
       </DialogHeader>
       <form
         onSubmit={(e) => {
@@ -1115,8 +1088,8 @@ function AddTaskDialog({
         className="space-y-4 mt-4"
       >
         <div className="space-y-2">
-          <Label>Título *</Label>
-          <Input
+          <Label htmlFor="project-detail-page-field-20">Título *</Label>
+          <Input id="project-detail-page-field-20"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Nombre de la tarea"
@@ -1125,8 +1098,8 @@ function AddTaskDialog({
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>Asignado a</Label>
-            <Select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
+            <Label htmlFor="project-detail-page-field-21">Asignado a</Label>
+            <Select id="project-detail-page-field-21" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
               <option value="">Sin asignar</option>
               {users.map((u) => (
                 <option key={u.id} value={u.id}>{u.full_name}</option>
@@ -1134,8 +1107,8 @@ function AddTaskDialog({
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Prioridad</Label>
-            <Select value={priority} onChange={(e) => setPriority(e.target.value)}>
+            <Label htmlFor="project-detail-page-field-22">Prioridad</Label>
+            <Select id="project-detail-page-field-22" value={priority} onChange={(e) => setPriority(e.target.value)}>
               <option value="">Media (por defecto)</option>
               <option value="urgent">Urgente</option>
               <option value="high">Alta</option>
@@ -1146,16 +1119,16 @@ function AddTaskDialog({
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>Fecha límite</Label>
-            <Input
+            <Label htmlFor="project-detail-page-field-23">Fecha límite</Label>
+            <Input id="project-detail-page-field-23"
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
             />
           </div>
           <div className="space-y-2">
-            <Label>Tiempo estimado (minutos)</Label>
-            <Input
+            <Label htmlFor="project-detail-page-field-24">Tiempo estimado (minutos)</Label>
+            <Input id="project-detail-page-field-24"
               type="number"
               value={estimatedMinutes}
               onChange={(e) => setEstimatedMinutes(e.target.value)}
@@ -1216,8 +1189,8 @@ function TaskPreviewDialog({
   onOpenChange: (open: boolean) => void
   onEditFull: (taskId: number) => void
 }) {
-  const { data: task, isLoading } = useQuery({
-    queryKey: ["task-preview", taskId],
+  const { data: task, isLoading, isError, error, refetch } = useQuery({
+    queryKey: taskKeys.detail(taskId),
     queryFn: () => tasksApi.get(taskId),
     enabled: open,
   })
@@ -1227,6 +1200,7 @@ function TaskPreviewDialog({
       <DialogHeader>
         <DialogTitle>Detalle de tarea</DialogTitle>
       </DialogHeader>
+      {isError && <div role="alert" className="space-y-2 text-sm"><p>{getErrorMessage(error, "No se pudo cargar la tarea.")}{task && " Se muestran los últimos datos recibidos."}</p><Button variant="outline" onClick={() => refetch()}>Reintentar tarea</Button></div>}
       {isLoading ? (
         <div className="py-8 text-center text-sm text-muted-foreground">Cargando...</div>
       ) : task ? (
@@ -1271,7 +1245,7 @@ function TaskPreviewDialog({
             {task.due_date && (
               <div>
                 <span className="text-xs text-muted-foreground block">Fecha límite</span>
-                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{new Date(task.due_date).toLocaleDateString("es-ES")}</span>
+                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{formatCivilDate(task.due_date)}</span>
               </div>
             )}
             {task.estimated_minutes && (
@@ -1290,7 +1264,7 @@ function TaskPreviewDialog({
           </div>
         </div>
       ) : (
-        <div className="py-8 text-center text-sm text-muted-foreground">No se encontró la tarea</div>
+        !isError && <div className="py-8 text-center text-sm text-muted-foreground">No se encontró la tarea</div>
       )}
     </Dialog>
   )
@@ -1339,8 +1313,8 @@ function SaveTemplateDialog({
         </p>
 
         <div className="space-y-2">
-          <Label>Nombre de la plantilla *</Label>
-          <Input
+          <Label htmlFor="project-detail-page-field-25">Nombre de la plantilla *</Label>
+          <Input id="project-detail-page-field-25"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Ej: SEO Mensual Completo"
@@ -1349,8 +1323,8 @@ function SaveTemplateDialog({
         </div>
 
         <div className="space-y-2">
-          <Label>Descripción</Label>
-          <Input
+          <Label htmlFor="project-detail-page-field-26">Descripción</Label>
+          <Input id="project-detail-page-field-26"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Breve descripción de qué incluye"

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Pencil, Clock, AlertTriangle, User, GripVertical, UserX, CalendarX, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { businessDateString, formatCivilDate } from "@/lib/dates"
 
 interface Props {
   tasks: Task[]
@@ -89,7 +90,7 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
     dragTaskRef.current = null
   }
 
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = businessDateString()
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -191,7 +192,7 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
                         )}
                         {task.due_date && !isOverdue && (
                           <span className="text-[10px] text-muted-foreground">
-                            {new Date(task.due_date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                            {formatCivilDate(task.due_date, { day: "numeric", month: "short" })}
                           </span>
                         )}
                         {isUnassigned && (

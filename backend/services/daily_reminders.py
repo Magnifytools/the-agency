@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select, and_, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,8 @@ from backend.db.models import (
 import re
 
 from backend.services.discord import send_to_discord
+from backend.services.temporal import business_today, civil_day_utc_bounds
+from backend.services.time_entry_dates import time_entry_civil_period
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +78,7 @@ async def generate_morning_plan(db: AsyncSession, user: User) -> str:
     if not tasks:
         return f"\u2600\ufe0f Buenos d\u00edas, {name}\n\n\u2705 No tienes tareas pendientes. \u00a1Buen d\u00eda!"
 
-    today = date.today()
+    today = business_today()
     lines = [
         f"\u2600\ufe0f Buenos d\u00edas, {name}",
         f"\U0001f4cb Tus tareas para hoy:\n",
@@ -133,16 +135,15 @@ async def generate_evening_recap(db: AsyncSession, user: User, day: date) -> str
     """Build the evening recap for a user."""
     name = user.short_name or user.full_name
 
-    day_start = f"{day.isoformat()} 00:00:00"
-    day_end = f"{day.isoformat()} 23:59:59"
+    day_start, day_end = civil_day_utc_bounds(day)
 
     # Completed today
     completed_result = await db.execute(
         select(Task).where(
             Task.assigned_to == user.id,
             Task.status == TaskStatus.completed,
-            Task.updated_at >= day_start,
-            Task.updated_at <= day_end,
+            Task.completed_at >= day_start,
+            Task.completed_at < day_end,
         )
     )
     completed_tasks = completed_result.scalars().all()
@@ -151,8 +152,7 @@ async def generate_evening_recap(db: AsyncSession, user: User, day: date) -> str
     time_result = await db.execute(
         select(TimeEntry).where(
             TimeEntry.user_id == user.id,
-            TimeEntry.date >= day_start,
-            TimeEntry.date <= day_end,
+            time_entry_civil_period(day, day + timedelta(days=1)),
             TimeEntry.minutes.isnot(None),
         )
     )

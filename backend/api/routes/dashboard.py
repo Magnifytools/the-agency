@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -46,6 +47,8 @@ from backend.services.report_period import (
     month_range_naive,
     resolve_default_period,
 )
+from backend.services.temporal import business_today
+from backend.services.time_entry_dates import time_entry_civil_period
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -70,6 +73,8 @@ async def get_overview(
 ):
     y, m = resolve_default_period(year, month)
     start, end = month_range_naive(y, m)
+    month_start_day = start.date()
+    month_end_exclusive_day = (end + timedelta(seconds=1)).date()
 
     # Active clients
     r = await db.execute(
@@ -98,7 +103,8 @@ async def get_overview(
     # Hours this month
     r = await db.execute(
         select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
-            and_(TimeEntry.minutes.isnot(None), TimeEntry.date >= start, TimeEntry.date <= end)
+            TimeEntry.minutes.isnot(None),
+            time_entry_civil_period(month_start_day, month_end_exclusive_day),
         )
     )
     hours_this_month = round((r.scalar() or 0) / 60, 1)
@@ -124,7 +130,8 @@ async def get_overview(
         select(func.coalesce(func.sum(TimeEntry.minutes * func.coalesce(User.hourly_rate, settings.DEFAULT_HOURLY_RATE) / 60), 0)).select_from(
             TimeEntry
         ).join(User, TimeEntry.user_id == User.id).where(
-            and_(TimeEntry.minutes.isnot(None), TimeEntry.date >= start, TimeEntry.date <= end)
+            TimeEntry.minutes.isnot(None),
+            time_entry_civil_period(month_start_day, month_end_exclusive_day),
         )
     )
     total_cost = round(float(r.scalar() or 0), 2)
@@ -152,6 +159,8 @@ async def get_profitability(
 ):
     y, m = resolve_default_period(year, month)
     start, end = month_range_naive(y, m)
+    month_start_day = start.date()
+    month_end_exclusive_day = (end + timedelta(seconds=1)).date()
 
     # Get active clients (1 query)
     r = await db.execute(select(Client).where(
@@ -191,8 +200,7 @@ async def get_profitability(
         .where(
             Task.client_id.in_(client_ids),
             TimeEntry.minutes.isnot(None),
-            TimeEntry.date >= start,
-            TimeEntry.date <= end,
+            time_entry_civil_period(month_start_day, month_end_exclusive_day),
         )
         .group_by(Task.client_id)
     )
@@ -256,6 +264,8 @@ async def get_team_summary(
 ):
     y, m = resolve_default_period(year, month)
     start, end = month_range_naive(y, m)
+    month_start_day = start.date()
+    month_end_exclusive_day = (end + timedelta(seconds=1)).date()
 
     # Get users (1 query)
     r = await db.execute(select(User).order_by(User.full_name))
@@ -273,8 +283,7 @@ async def get_team_summary(
         .outerjoin(Task, TimeEntry.task_id == Task.id)
         .where(
             TimeEntry.minutes.isnot(None),
-            TimeEntry.date >= start,
-            TimeEntry.date <= end,
+            time_entry_civil_period(month_start_day, month_end_exclusive_day),
         )
         .group_by(TimeEntry.user_id)
     )
@@ -632,12 +641,13 @@ async def get_utilization(
     from datetime import date, timedelta
     import calendar
 
-    today = date.today()
+    today = business_today()
     y = year or today.year
     m = month or today.month
     days_in_month = calendar.monthrange(y, m)[1]
     start = date(y, m, 1)
     end = date(y, m, days_in_month)
+    end_exclusive = end + timedelta(days=1)
 
     # Count business days in month
     business_days = sum(1 for d in range(days_in_month)
@@ -653,10 +663,7 @@ async def get_utilization(
         select(
             TimeEntry.user_id,
             func.coalesce(func.sum(TimeEntry.minutes), 0),
-        ).where(
-            func.date(TimeEntry.date) >= start,
-            func.date(TimeEntry.date) <= end,
-        ).group_by(TimeEntry.user_id)
+        ).where(time_entry_civil_period(start, end_exclusive)).group_by(TimeEntry.user_id)
     )
     hours_map = {row[0]: row[1] for row in hours_result.all()}
 
@@ -702,8 +709,7 @@ async def get_today(
     current_user: User = Depends(get_current_user),
 ):
     """Tasks scheduled for today, grouped by user. Returns all users' tasks for admin, own for member."""
-    from datetime import date
-    today = date.today()
+    today = business_today()
 
     query = (
         select(Task)
@@ -753,9 +759,9 @@ async def alerts_summary(
     Categories: overdue_tasks, missing_dailys, incomplete_timesheets,
     clients_no_hours, capacity_overloads.
     """
-    from datetime import date, timedelta
+    from datetime import timedelta
 
-    today = date.today()
+    today = business_today()
     alerts: list[dict] = []
 
     # 1. Overdue tasks (all users, for admin view)
@@ -827,9 +833,7 @@ async def alerts_summary(
             select(
                 TimeEntry.user_id,
                 func.coalesce(func.sum(TimeEntry.minutes), 0).label("total"),
-            ).where(
-                func.date(TimeEntry.date) == yesterday,
-            ).group_by(TimeEntry.user_id)
+            ).where(time_entry_civil_period(yesterday, yesterday + timedelta(days=1))).group_by(TimeEntry.user_id)
         )
         hours_map = {row.user_id: row.total for row in hours_result.all()}
 
@@ -861,7 +865,7 @@ async def alerts_summary(
             .join(TimeEntry, TimeEntry.task_id == Task.id)
             .where(
                 Task.client_id.in_(active_ids),
-                func.date(TimeEntry.date) >= week_start,
+                time_entry_civil_period(week_start, week_start + timedelta(days=7)),
                 TimeEntry.minutes.isnot(None),
             )
             .group_by(Task.client_id)

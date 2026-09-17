@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { inboxApi, projectsApi, clientsApi } from "@/lib/api"
-import { inboxKeys } from "@/lib/query-keys"
+import { inboxKeys, projectKeys } from "@/lib/query-keys"
 import { Dialog, DialogHeader, DialogTitle, DialogContent } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Select } from "@/components/ui/select"
@@ -32,7 +32,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   })
 
   const { data: projects = [] } = useQuery({
-    queryKey: ["projects-active-list"],
+    queryKey: projectKeys.list(["active"]),
     queryFn: () => projectsApi.listAll({ status: "active" }),
     staleTime: 60_000,
     enabled: open,

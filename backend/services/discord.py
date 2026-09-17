@@ -1,32 +1,27 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
 import httpx
 
 logger = logging.getLogger(__name__)
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import TimeEntry
 from backend.config import settings
+from backend.services.time_entry_dates import time_entry_civil_period
 
 
 async def generate_daily_summary(db: AsyncSession, date: datetime) -> str:
-    # Remove timezone info for comparison with naive TIMESTAMP columns
-    naive = date.replace(tzinfo=None)
-    start = naive.replace(hour=0, minute=0, second=0, microsecond=0)
-    end = naive.replace(hour=23, minute=59, second=59, microsecond=999999)
+    day = date.date()
 
     result = await db.execute(
         select(TimeEntry).where(
-            and_(
-                TimeEntry.minutes.isnot(None),
-                TimeEntry.date >= start,
-                TimeEntry.date <= end,
-            )
+            TimeEntry.minutes.isnot(None),
+            time_entry_civil_period(day, day + timedelta(days=1)),
         )
     )
     entries = result.scalars().all()

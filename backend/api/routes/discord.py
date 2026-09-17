@@ -13,7 +13,7 @@ DISCORD_WEBHOOK_RE = re.compile(
     r"^https://(discord\.com|discordapp\.com)/api/webhooks/\d+/.+$"
 )
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import Date, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
@@ -416,7 +416,9 @@ async def send_weekly_report(
         raise HTTPException(status_code=400, detail="DISCORD_OWNER_USER_ID no configurado en variables de entorno")
 
     # Calculate week range
-    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
+    from backend.services.temporal import business_today
+    from backend.services.time_entry_dates import time_entry_civil_period
+    today = business_today()
     if week_start:
         ws = datetime.strptime(week_start, "%Y-%m-%d").date()
     else:
@@ -428,8 +430,6 @@ async def send_weekly_report(
             ws = today - timedelta(days=today.weekday())  # This week's Monday (in progress)
 
     we = ws + timedelta(days=6)  # Sunday
-    start_dt = datetime.combine(ws, datetime.min.time())
-    end_dt = datetime.combine(we + timedelta(days=1), datetime.min.time())
 
     # Load all users (excluding QA/test)
     from backend.db.models import TimeEntry, Task, Client, Project
@@ -443,8 +443,7 @@ async def send_weekly_report(
     entries_result = await db.execute(
         select(TimeEntry).where(
             TimeEntry.minutes.isnot(None),
-            TimeEntry.date >= start_dt,
-            TimeEntry.date < end_dt,
+            time_entry_civil_period(ws, we + timedelta(days=1)),
         )
     )
     entries = entries_result.scalars().all()
@@ -489,7 +488,7 @@ async def send_weekly_report(
         .outerjoin(Client, Task.client_id == Client.id)
         .where(
             Task.status.notin_([TaskStatus.completed]),
-            Task.due_date < start_dt,
+            cast(Task.due_date, Date) < ws,
             Task.due_date.isnot(None),
         )
         .options(selectinload(Task.client))

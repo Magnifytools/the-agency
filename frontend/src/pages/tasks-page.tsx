@@ -33,6 +33,10 @@ import { WeeklyPlannerView } from "@/components/tasks/weekly-planner-view"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { initialTasksView, shouldPreserveCurrentProject, taskQueryKeyWithWeek, withExplicitActualMinutes } from "@/components/tasks/task-page-utils"
+import { invalidateTaskChange, optimisticallyUpdateExactQuery, projectKeys, restoreQuerySnapshot, taskKeys, timeKeys } from "@/lib/query-keys"
+import type { OperationalImpact } from "@/lib/query-keys"
+import { addCivilDays, formatCivilDate, timeEntryBusinessDate } from "@/lib/dates"
+import { useBusinessDate } from "@/hooks/use-business-date"
 
 const priorityBadge = (priority: TaskPriority) => {
   const map: Record<TaskPriority, { label: string; variant: "destructive" | "warning" | "secondary" | "outline" }> = {
@@ -52,19 +56,10 @@ const formatMinutes = (mins: number) => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-const localDateString = (date = new Date()) => {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-  return local.toISOString().slice(0, 10)
-}
-
-const weekRange = (offset: number) => {
-  const today = new Date()
-  const day = today.getDay()
-  const monday = new Date(today)
-  monday.setDate(today.getDate() + (day === 0 ? -6 : 1 - day) + offset * 7)
-  const friday = new Date(monday)
-  friday.setDate(monday.getDate() + 4)
-  return { from: localDateString(monday), to: localDateString(friday) }
+const weekRange = (offset: number, today: string) => {
+  const day = new Date(`${today}T12:00:00`).getDay()
+  const monday = addCivilDays(today, (day === 0 ? -6 : 1 - day) + offset * 7)
+  return { from: monday, to: addCivilDays(monday, 4) }
 }
 
 export default function TasksPage() {
@@ -72,6 +67,7 @@ export default function TasksPage() {
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const { page, pageSize, setPage, reset } = usePagination(25)
+  const businessToday = useBusinessDate()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Task | null>(null)
   const [timeLogTask, setTimeLogTask] = useState<Task | null>(null)
@@ -115,6 +111,13 @@ export default function TasksPage() {
     else next.set("qaFilter", value)
     return next
   })
+  const agendaScope = user?.role === "admin" && searchParams.get("scope") === "team" ? "team" : "mine"
+  const setAgendaScope = (scope: string) => setSearchParams((previous) => {
+    const next = new URLSearchParams(previous)
+    if (scope === "team") next.set("scope", "team")
+    else next.delete("scope")
+    return next
+  })
   const [bulkStatus, setBulkStatus] = useState("")
 
   // Checklist state
@@ -145,9 +148,9 @@ export default function TasksPage() {
     ? (() => { const d = new Date(calMonth.year, calMonth.month + 1, 0); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` })()
     : undefined
 
-  const selectedWeek = weekRange(weekOffset)
+  const selectedWeek = weekRange(weekOffset, businessToday)
   const tasksQueryKey = taskQueryKeyWithWeek(
-    ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, filterDateField, searchQuery, page, pageSize, qaFilter, view, calMonth.year, calMonth.month],
+    taskKeys.list([filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, filterDateField, searchQuery, page, pageSize, qaFilter, view, calMonth.year, calMonth.month]),
     selectedWeek,
   )
   const { data: tasksData, isLoading, isError: isTasksError, refetch: refetchTasks } = useQuery({
@@ -175,8 +178,8 @@ export default function TasksPage() {
   })
 
   const useAgendaQuery = (section: "planned" | "carryover" | "unplanned" | "completed") => useInfiniteQuery({
-    queryKey: ["tasks-agenda", section, localDateString(), user?.id, new Date().getTimezoneOffset()],
-    queryFn: ({ pageParam }) => tasksApi.agenda({ date: localDateString(), section, assigned_to: user?.role === "admin" ? undefined : "me", timezone_offset_minutes: new Date().getTimezoneOffset(), page: pageParam, page_size: pageSize }),
+    queryKey: taskKeys.agenda(section, businessToday, user?.id, 0, agendaScope),
+    queryFn: ({ pageParam }) => tasksApi.agenda({ date: businessToday, section, assigned_to: agendaScope === "team" ? undefined : "me", page: pageParam, page_size: pageSize }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => lastPage.page * lastPage.page_size < lastPage.total ? lastPage.page + 1 : undefined,
     enabled: view === "my_day",
@@ -191,16 +194,19 @@ export default function TasksPage() {
     return { items: pages.flatMap((item) => item.items), total: last?.total ?? 0, page: last?.page ?? 1, page_size: last?.page_size ?? pageSize }
   }
   const agendaLoading = plannedAgenda.isLoading || carryoverAgenda.isLoading || unplannedAgenda.isLoading || completedAgenda.isLoading
-  const invalidateTaskViews = () => Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["tasks"] }),
-    queryClient.invalidateQueries({ queryKey: ["tasks-agenda"] }),
-    queryClient.invalidateQueries({ queryKey: ["projects"] }),
-    queryClient.invalidateQueries({ queryKey: ["project"] }),
-    queryClient.invalidateQueries({ queryKey: ["client-projects"] }),
-  ])
+  const invalidateTaskViews = (affected: OperationalImpact = {}) =>
+    invalidateTaskChange(queryClient, affected)
   const allTasks = tasksData?.items ?? []
+  const agendaTasks = [plannedAgenda, carryoverAgenda, unplannedAgenda, completedAgenda]
+    .flatMap((query) => agendaData(query).items)
+  const visibleTasks = [...allTasks, ...agendaTasks]
 
-  const todayStr = localDateString()
+  const impactForTasks = (items: Task[], extra: Record<string, unknown> = {}) => ({
+    projectIds: [...items.map((task) => task.project_id), typeof extra.project_id === "number" ? extra.project_id : undefined],
+    clientIds: [...items.map((task) => task.client_id), typeof extra.client_id === "number" ? extra.client_id : undefined],
+  })
+
+  const todayStr = businessToday
   const tasks = allTasks
 
   const { sortedItems: sortedTasks, sortConfig: taskSortConfig, requestSort: requestTaskSort } = useTableSort(tasks)
@@ -212,8 +218,8 @@ export default function TasksPage() {
   const bulkUpdateMutation = useMutation({
     mutationFn: async ({ ids, updates }: { ids: number[]; updates: Record<string, unknown> }) =>
       tasksApi.bulkUpdate(ids, updates),
-    onSuccess: ({ updated, requested }) => {
-      invalidateTaskViews()
+    onSuccess: ({ updated, requested }, { ids, updates }) => {
+      invalidateTaskViews(impactForTasks(visibleTasks.filter((task) => ids.includes(task.id)), updates))
       clearTaskSelection()
       setBulkStatus("")
       if (updated === requested) {
@@ -227,8 +233,8 @@ export default function TasksPage() {
 
   const bulkDeleteMutation = useMutation({
     mutationFn: async (ids: number[]) => tasksApi.bulkDelete(ids),
-    onSuccess: ({ deleted, requested }) => {
-      invalidateTaskViews()
+    onSuccess: ({ deleted, requested }, ids) => {
+      invalidateTaskViews(impactForTasks(visibleTasks.filter((task) => ids.includes(task.id))))
       clearTaskSelection()
       if (deleted === requested) {
         toast.success(`${deleted} tareas eliminadas`)
@@ -255,7 +261,7 @@ export default function TasksPage() {
   })
 
   const { data: projects = [] } = useQuery({
-    queryKey: ["projects-active-list"],
+    queryKey: projectKeys.list(["active"]),
     queryFn: () => projectsApi.listAll({ status: "active" }),
     staleTime: 60_000,
   })
@@ -266,16 +272,16 @@ export default function TasksPage() {
 
   // Recurring templates query (only fetched when tab is active)
   const { data: recurringTemplates = [] } = useQuery({
-    queryKey: ["tasks-recurring"],
+    queryKey: taskKeys.recurring(),
     queryFn: () => tasksApi.listAll({ is_recurring: true }),
     enabled: view === "recurring",
   })
 
   const createMutation = useMutation({
     mutationFn: (data: TaskCreate) => tasksApi.create(data),
-    onSuccess: () => {
-      invalidateTaskViews()
-      queryClient.invalidateQueries({ queryKey: ["tasks-recurring"] })
+    onSuccess: (task) => {
+      invalidateTaskViews({ projectId: task.project_id, clientId: task.client_id })
+      queryClient.invalidateQueries({ queryKey: taskKeys.recurring() })
       closeDialog()
       toast.success("Tarea creada")
     },
@@ -284,9 +290,15 @@ export default function TasksPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<TaskCreate> }) => tasksApi.update(id, data),
-    onSuccess: () => {
-      invalidateTaskViews()
-      queryClient.invalidateQueries({ queryKey: ["tasks-recurring"] })
+    onSuccess: (task) => {
+      const previous = visibleTasks.find((item) => item.id === task.id) ?? editing
+      invalidateTaskViews({
+        projectId: task.project_id,
+        previousProjectId: previous?.project_id,
+        clientId: task.client_id,
+        previousClientId: previous?.client_id,
+      })
+      queryClient.invalidateQueries({ queryKey: taskKeys.recurring() })
       closeDialog()
       toast.success("Tarea actualizada")
     },
@@ -299,25 +311,25 @@ export default function TasksPage() {
     mutationFn: ({ id, scheduled_date }: { id: number; scheduled_date: string | null }) =>
       tasksApi.update(id, { scheduled_date }),
     onMutate: async ({ id, scheduled_date }) => {
-      await queryClient.cancelQueries({ queryKey: scheduleQueryKey })
-      const prev = queryClient.getQueryData(scheduleQueryKey)
-      queryClient.setQueryData(scheduleQueryKey, (old: typeof tasksData) => {
+      const snapshot = await optimisticallyUpdateExactQuery<typeof tasksData>(queryClient, scheduleQueryKey, (old) => {
         if (!old) return old
         return { ...old, items: old.items.map((t: Task) => t.id === id ? { ...t, scheduled_date } : t) }
       })
-      return { prev }
+      const movedTask = visibleTasks.find((task) => task.id === id)
+      return { snapshot, projectId: movedTask?.project_id, clientId: movedTask?.client_id }
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(scheduleQueryKey, ctx.prev)
+      restoreQuerySnapshot(queryClient, ctx?.snapshot)
       toast.error("Error al mover tarea")
     },
-    onSettled: () => invalidateTaskViews(),
+    onSettled: (_data, _error, _vars, ctx) => invalidateTaskViews({ projectId: ctx?.projectId, clientId: ctx?.clientId }),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => tasksApi.delete(id),
-    onSuccess: () => {
-      invalidateTaskViews()
+    onSuccess: (_data, deletedId) => {
+      const deletedTask = visibleTasks.find((task) => task.id === deletedId)
+      invalidateTaskViews({ projectId: deletedTask?.project_id, clientId: deletedTask?.client_id })
       toast.success("Tarea eliminada")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar tarea")),
@@ -366,7 +378,7 @@ export default function TasksPage() {
 
   // Time entries for task detail
   const { data: taskTimeEntries = [] } = useQuery<TimeEntry[]>({
-    queryKey: ["time-entries", editing?.id],
+    queryKey: timeKeys.task(editing?.id ?? 0),
     queryFn: () => timeEntriesApi.list({ task_id: editing!.id }),
     enabled: !!editing?.id,
   })
@@ -522,6 +534,7 @@ export default function TasksPage() {
         </Button>
       </div>
 
+      {view === "my_day" && (user?.role === "admin" ? <Select aria-label="Ámbito de Hoy" className="w-full sm:w-48" value={agendaScope} onChange={(event) => setAgendaScope(event.target.value)}><option value="mine">Mi trabajo</option><option value="team">Todo el equipo</option></Select> : <p className="text-sm text-muted-foreground">Mi trabajo</p>)}
       {view !== "my_day" && <>
       {/* Search + Filters */}
       <div className="flex flex-wrap gap-3">
@@ -835,7 +848,7 @@ export default function TasksPage() {
                   <TableCell className={`mono ${(qaFilter === "no_date" && QA_nodate) || (qaFilter === "overdue" && QA_overdue)
                       ? "text-destructive font-bold" : ""
                     }`}>
-                    {t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : (QA_nodate && qaFilter === "no_date" ? "⚠️ Sin planificar" : "-")}
+                    {t.due_date ? formatCivilDate(t.due_date) : (QA_nodate && qaFilter === "no_date" ? "⚠️ Sin planificar" : "-")}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
@@ -1430,7 +1443,7 @@ export default function TasksPage() {
                 <div key={entry.id} className="flex items-center justify-between text-xs bg-muted/50 rounded px-2 py-1.5">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-muted-foreground shrink-0">
-                      {new Date(entry.date || entry.started_at || "").toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                      {formatCivilDate(timeEntryBusinessDate(entry), { day: "numeric", month: "short" })}
                     </span>
                     <span className="font-mono font-medium shrink-0">
                       {entry.minutes ? `${Math.floor(entry.minutes / 60)}h ${entry.minutes % 60}m` : "—"}

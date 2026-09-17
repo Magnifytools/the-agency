@@ -30,6 +30,9 @@ from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module, require_admin
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 from backend.services.time_budget import effective_budgets, build_closing_status, is_recurring_project
+from backend.services.task_scope import validate_client_exists
+from backend.services.temporal import as_utc_instant, business_today, business_zone
+from backend.services.time_entry_dates import time_entry_civil_period
 from backend.api.utils.db_helpers import safe_refresh
 from backend.api.middleware.audit_log import log_audit
 
@@ -39,15 +42,17 @@ EXTRACT_PROMPT = """Extrae la información de esta propuesta comercial y respond
   "description": "resumen del alcance en 2-3 frases",
   "project_type": "uno de: seo_audit | content_strategy | linkbuilding | technical_seo | custom",
   "is_recurring": true si es retención/servicio mensual, false si es proyecto puntual,
-  "budget_amount": importe numérico sin símbolo o null,
+  "budget_amount": presupuesto total del proyecto, numérico sin símbolo, o null si no aparece explícito,
   "start_date": "YYYY-MM-DD" o null,
   "target_end_date": "YYYY-MM-DD" o null,
   "client_name": "nombre de la empresa cliente",
   "pricing_model": "uno de: monthly | per_piece | hourly | project (o null si no aplica)",
+  "monthly_fee": tarifa mensual recurrente, numérica sin símbolo, o null si no aparece explícita,
   "unit_price": precio por unidad numérico o null,
   "unit_label": "etiqueta de la unidad (pieza, artículo, hora, etc.) o null",
   "scope": "descripción detallada del alcance/scope del proyecto"
 }
+No calcules monthly_fee a partir de budget_amount ni budget_amount a partir de monthly_fee. No inventes importes.
 Sin texto adicional. Solo el JSON."""
 
 EXTRACT_TEXT_PROMPT = """Analiza este documento de contexto de proyecto y extrae la información relevante.
@@ -62,10 +67,12 @@ Responde SOLO con un JSON válido:
   "target_end_date": "YYYY-MM-DD" o null,
   "client_name": "nombre de la empresa cliente o null",
   "pricing_model": "uno de: monthly | per_piece | hourly | project (o null)",
+  "monthly_fee": tarifa mensual recurrente numérica sin símbolo o null si no está escrita,
   "unit_price": precio por unidad numérico o null,
   "unit_label": "etiqueta de la unidad (pieza, artículo, hora, etc.) o null",
   "scope": "descripción detallada del alcance/scope aprobado del proyecto"
 }
+Mantén budget_amount (presupuesto total) y monthly_fee (tarifa mensual) separados. No derives ni inventes uno desde el otro.
 Sin texto adicional. Solo el JSON."""
 
 logger = logging.getLogger(__name__)
@@ -352,6 +359,7 @@ async def create_project(
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_module("projects", write=True)),
 ):
+    await validate_client_exists(db, body.client_id)
     project = Project(
         name=body.name,
         description=body.description,
@@ -400,7 +408,7 @@ async def get_project_templates(
             "phase_count": len(t.phases or []),
             "task_count": len(t.default_tasks or []),
             "pricing_model": t.pricing_model,
-            "monthly_fee": float(t.monthly_fee) if t.monthly_fee else None,
+            "monthly_fee": float(t.monthly_fee) if t.monthly_fee is not None else None,
             "is_recurring": t.is_recurring,
         }
         for t in templates
@@ -430,7 +438,7 @@ async def get_template_detail(
         "phases": tpl.phases or [],
         "default_tasks": tpl.default_tasks or [],
         "pricing_model": tpl.pricing_model,
-        "monthly_fee": float(tpl.monthly_fee) if tpl.monthly_fee else None,
+        "monthly_fee": float(tpl.monthly_fee) if tpl.monthly_fee is not None else None,
         "created_at": tpl.created_at.isoformat() if tpl.created_at else None,
     }
 
@@ -574,6 +582,7 @@ async def create_project_from_template(
     _user=Depends(require_module("projects", write=True)),
 ):
     """Create a project from a DB template with phases and tasks pre-populated."""
+    await validate_client_exists(db, client_id)
     result = await db.execute(
         select(ProjectTemplateDB).where(ProjectTemplateDB.key == template_key)
     )
@@ -652,25 +661,26 @@ async def get_project(
         raise HTTPException(status_code=404, detail="Project not found")
 
     # Compute hours used via TimeEntry → Task → Project (all-time + current week/month)
-    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
-    week_start = datetime.combine(today - timedelta(days=today.weekday()), datetime.min.time())
-    month_start = datetime.combine(today.replace(day=1), datetime.min.time())
+    today = business_today()
+    week_start = today - timedelta(days=today.weekday())
+    month_start = today.replace(day=1)
+    next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
 
-    async def _project_minutes(since: Optional[datetime] = None) -> float:
+    async def _project_minutes(start: Optional[date] = None, end: Optional[date] = None) -> float:
         q = (
             select(func.coalesce(func.sum(TimeEntry.minutes), 0))
             .join(Task, TimeEntry.task_id == Task.id)
             .where(Task.project_id == project_id, TimeEntry.minutes.isnot(None))
         )
-        if since is not None:
-            q = q.where(TimeEntry.date >= since)
+        if start is not None and end is not None:
+            q = q.where(time_entry_civil_period(start, end))
         r = await db.execute(q)
         return float(r.scalar() or 0)
 
     total_minutes = await _project_minutes()
     hours_used = round(total_minutes / 60, 2)
-    hours_used_week = round(await _project_minutes(week_start) / 60, 2)
-    hours_used_month = round(await _project_minutes(month_start) / 60, 2)
+    hours_used_week = round(await _project_minutes(week_start, week_start + timedelta(days=7)) / 60, 2)
+    hours_used_month = round(await _project_minutes(month_start, next_month) / 60, 2)
 
     # Closing status for puntual (non-recurring) projects with an end date
     closing_status = None
@@ -703,7 +713,7 @@ async def project_burndown(
 
     # Get all tasks for the project
     r_tasks = await db.execute(
-        select(Task.id, Task.status, Task.updated_at)
+        select(Task.id, Task.status, Task.completed_at)
         .where(Task.project_id == project_id)
     )
     all_tasks = r_tasks.all()
@@ -715,16 +725,18 @@ async def project_burndown(
     from collections import defaultdict
     completed_by_date: dict = defaultdict(int)
     for t in all_tasks:
-        if t.status == TaskStatus.completed and t.updated_at:
-            day = t.updated_at.date() if hasattr(t.updated_at, 'date') else t.updated_at
-            if hasattr(day, 'date'):
-                day = day.date()
+        if t.status == TaskStatus.completed and t.completed_at:
+            day = as_utc_instant(t.completed_at).astimezone(business_zone()).date()
             completed_by_date[day.isoformat()] += 1
 
     # Build cumulative series from project start
     from datetime import date, timedelta
-    start = project.start_date.date() if project.start_date and hasattr(project.start_date, 'date') else (project.created_at.date() if hasattr(project.created_at, 'date') else date.today())
-    end = date.today()
+    start = (
+        project.start_date.date()
+        if project.start_date and hasattr(project.start_date, "date")
+        else as_utc_instant(project.created_at).astimezone(business_zone()).date()
+    )
+    end = business_today()
 
     points = []
     cumulative = 0
@@ -1079,7 +1091,7 @@ async def get_billing_summary(
             "completed": is_completed,
             "invoiced": t.invoiced_at is not None,
             "invoiced_at": t.invoiced_at.isoformat() if t.invoiced_at else None,
-            "completed_at": t.updated_at.isoformat() if is_completed and t.updated_at else None,
+            "completed_at": t.completed_at.isoformat() if is_completed and t.completed_at else None,
         })
 
     completed = [t for t in billable_tasks if t["completed"]]

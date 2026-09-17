@@ -9,19 +9,9 @@ import { Square, Clock, Play, Plus } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import type { Task, Client, TimeEntry } from "@/lib/types"
-
-function formatElapsed(startedAt: string, accumulatedSeconds = 0, isPaused = false): string {
-  let total: number
-  if (isPaused) {
-    total = accumulatedSeconds
-  } else {
-    total = accumulatedSeconds + Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)
-  }
-  const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
-  const s = total % 60
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-}
+import { invalidateTaskChange, invalidateTimeChange, projectKeys, taskKeys } from "@/lib/query-keys"
+import { elapsedSeconds, formatElapsedSeconds } from "@/lib/timer"
+import { useBusinessDate } from "@/hooks/use-business-date"
 
 export function ActiveTimerBar() {
   const queryClient = useQueryClient()
@@ -29,6 +19,7 @@ export function ActiveTimerBar() {
   const [omniInput, setOmniInput] = useState("")
   const [selectedTaskId, setSelectedTaskId] = useState<string>("")
   const [reminderShown, setReminderShown] = useState(false)
+  const businessToday = useBusinessDate()
 
   // Post-stop assignment dialog
   const [showAssignDialog, setShowAssignDialog] = useState(false)
@@ -60,8 +51,8 @@ export function ActiveTimerBar() {
 
   // Fetch user's tasks for selector
   const { data: tasks = [] } = useQuery({
-    queryKey: ["my-tasks-timer"],
-    queryFn: () => tasksApi.listAll({ assigned_to: "me", status: "pending,in_progress,advanced,waiting,in_review", scheduled_date: new Date().toISOString().split("T")[0] }),
+    queryKey: taskKeys.assigned("timer", "me", businessToday),
+    queryFn: () => tasksApi.listAll({ assigned_to: "me", status: "pending,in_progress,advanced,waiting,in_review", scheduled_date: businessToday }),
   })
 
   // Fetch clients for quick create
@@ -74,7 +65,7 @@ export function ActiveTimerBar() {
   // Fetch active projects for the selected client (drives the Proyecto select)
   const qcClientIdNum = qcClientId ? parseInt(qcClientId, 10) : undefined
   const { data: qcProjects = [] } = useQuery({
-    queryKey: ["projects-by-client-active", qcClientIdNum],
+    queryKey: projectKeys.list(["active", "client", qcClientIdNum]),
     queryFn: () => projectsApi.listAll({ client_id: qcClientIdNum, status: "active" }),
     enabled: !!qcClientIdNum && showQuickCreate,
     staleTime: 30_000,
@@ -103,10 +94,10 @@ export function ActiveTimerBar() {
     if (!timer?.started_at) return
     const acc = timer.accumulated_seconds || 0
     const paused = timer.is_paused || false
-    setElapsed(formatElapsed(timer.started_at, acc, paused))
+    setElapsed(formatElapsedSeconds(elapsedSeconds(timer.started_at, acc, paused)))
     if (paused) return // Don't tick when paused
     const interval = setInterval(() => {
-      setElapsed(formatElapsed(timer.started_at, acc, false))
+      setElapsed(formatElapsedSeconds(elapsedSeconds(timer.started_at, acc, false)))
     }, 1000)
     return () => clearInterval(interval)
   }, [timer?.started_at, timer?.is_paused, timer?.accumulated_seconds])
@@ -118,7 +109,11 @@ export function ActiveTimerBar() {
       return
     }
     const check = () => {
-      const secs = Math.floor((Date.now() - new Date(timer.started_at).getTime()) / 1000)
+      const secs = elapsedSeconds(
+        timer.started_at,
+        timer.accumulated_seconds || 0,
+        timer.is_paused || false,
+      )
       if (secs > 14400 && !reminderShown) {
         toast.warning("¡Llevas más de 4 horas con el timer activo! ¿Sigue corriendo?")
         setReminderShown(true)
@@ -127,7 +122,7 @@ export function ActiveTimerBar() {
     check()
     const interval = setInterval(check, 60_000)
     return () => clearInterval(interval)
-  }, [timer?.started_at, reminderShown])
+  }, [timer?.started_at, timer?.accumulated_seconds, timer?.is_paused, reminderShown])
 
   const startMutation = useMutation({
     mutationFn: (data: { task_id?: number; notes?: string }) => timerApi.start(data),
@@ -135,7 +130,6 @@ export function ActiveTimerBar() {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       setOmniInput("")
       setSelectedTaskId("")
-      toast.success("Timer iniciado")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al iniciar timer")),
   })
@@ -144,7 +138,7 @@ export function ActiveTimerBar() {
     mutationFn: () => timerApi.stop(),
     onSuccess: (entry: TimeEntry) => {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      queryClient.invalidateQueries({ queryKey: ["time-entries"] })
+      invalidateTimeChange(queryClient)
       if (!entry.task_id) {
         setStoppedEntryId(entry.id)
         setAssignTaskId("")
@@ -172,7 +166,6 @@ export function ActiveTimerBar() {
     mutationFn: () => timerApi.pause(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      toast.success("Timer en pausa ⏸")
     },
     onError: (err) => {
       resyncTimer()
@@ -184,7 +177,6 @@ export function ActiveTimerBar() {
     mutationFn: () => timerApi.resume(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      toast.success("Timer reanudado ▶")
     },
     onError: (err) => {
       resyncTimer()
@@ -197,7 +189,7 @@ export function ActiveTimerBar() {
     mutationFn: (data: { entryId: number; taskId: number }) =>
       timeEntriesApi.update(data.entryId, { task_id: data.taskId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["time-entries"] })
+      invalidateTimeChange(queryClient)
       setShowAssignDialog(false)
       setStoppedEntryId(null)
       toast.success("Tarea asignada al registro")
@@ -215,7 +207,7 @@ export function ActiveTimerBar() {
         status: "in_progress",
       }),
     onSuccess: (task: Task) => {
-      queryClient.invalidateQueries({ queryKey: ["my-tasks-timer"] })
+      invalidateTaskChange(queryClient, { projectId: task.project_id, clientId: task.client_id })
       setSelectedTaskId(String(task.id))
       setShowQuickCreate(false)
       setQcTitle("")
@@ -243,7 +235,8 @@ export function ActiveTimerBar() {
             <Select
               value={selectedTaskId}
               onChange={(e) => setSelectedTaskId(e.target.value)}
-              className="w-48 shrink-0 h-9 text-xs"
+              aria-label="Tarea del cronómetro"
+              className="w-36 sm:w-48 shrink-0 h-9 text-xs"
             >
               <option value="">Sin tarea</option>
               {tasks.map((t) => (
@@ -260,7 +253,7 @@ export function ActiveTimerBar() {
             >
               <Plus className="h-4 w-4" />
             </button>
-            <div className="relative flex-1">
+            <div className="relative flex-1 min-w-0">
               <Input
                 value={omniInput}
                 onChange={(e) => setOmniInput(e.target.value)}
@@ -269,6 +262,7 @@ export function ActiveTimerBar() {
               />
               <Button
                 type="submit"
+                aria-label="Iniciar cronómetro"
                 size="sm"
                 variant="ghost"
                 disabled={(!omniInput.trim() && !selectedTaskId) || startMutation.isPending}
@@ -374,16 +368,17 @@ export function ActiveTimerBar() {
   // Si hay timer activo, mostramos la barra superior
   return (
     <>
-      <div className="bg-brand text-primary-foreground px-4 py-2 flex items-center justify-between text-sm">
-        <div className="flex items-center gap-3">
-          <Clock className="h-4 w-4 animate-pulse" />
-          <span className="font-bold uppercase tracking-wide">{timer.task_title || "Tarea sin nombre"}</span>
+      <div className="bg-brand text-primary-foreground px-4 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm">
+        <span role="status" className="sr-only">{timer.is_paused ? "Cronómetro en pausa" : "Cronómetro en marcha"}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <Clock className="h-4 w-4 shrink-0" />
+          <span className="font-semibold truncate" title={timer.task_title || "Tarea sin nombre"}>{timer.task_title || "Tarea sin nombre"}</span>
           {timer.client_name && (
-            <span className="opacity-75">— {timer.client_name}</span>
+            <span className="hidden md:inline opacity-75 truncate">— {timer.client_name}</span>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <span className={`font-mono font-bold ${timer?.is_paused ? "opacity-50 animate-pulse" : ""}`}>
+        <div className="flex items-center justify-end gap-2 shrink-0">
+          <span className="font-mono font-bold mr-auto sm:mr-0" aria-label="Tiempo del cronómetro">
             {timer?.is_paused ? "⏸ " : ""}{elapsed}
           </span>
           {timer?.is_paused ? (
@@ -392,7 +387,7 @@ export function ActiveTimerBar() {
               variant="secondary"
               onClick={() => resumeMutation.mutate()}
               disabled={resumeMutation.isPending}
-              className="bg-green-500 text-white hover:bg-green-600 font-semibold"
+              className="bg-background text-foreground hover:bg-background/90 font-semibold min-h-9"
             >
               <Play className="h-3 w-3 mr-1" /> Reanudar
             </Button>
@@ -402,7 +397,7 @@ export function ActiveTimerBar() {
               variant="secondary"
               onClick={() => pauseMutation.mutate()}
               disabled={pauseMutation.isPending}
-              className="bg-yellow-500 text-white hover:bg-yellow-600 font-semibold"
+              className="bg-background text-foreground hover:bg-background/90 font-semibold min-h-9"
             >
               ⏸ Pausa
             </Button>
@@ -412,7 +407,7 @@ export function ActiveTimerBar() {
             variant="secondary"
             onClick={() => stopMutation.mutate()}
             disabled={stopMutation.isPending}
-            className="bg-white text-brand hover:bg-white/90 font-semibold"
+            className="bg-background text-foreground hover:bg-background/90 font-semibold min-h-9"
           >
             <Square className="h-3 w-3 mr-1" /> Detener
           </Button>

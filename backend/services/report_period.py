@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 from calendar import monthrange
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional, Tuple
+
+from backend.services.temporal import business_today
 
 MIN_REPORT_YEAR = 2000
 MAX_REPORT_YEAR = 2100
 
 
 def resolve_default_period(year: Optional[int], month: Optional[int]) -> Tuple[int, int]:
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    return year or now.year, month or now.month
+    today = business_today()
+    return year or today.year, month or today.month
 
 
 def month_range_naive(year: int, month: int) -> Tuple[datetime, datetime]:

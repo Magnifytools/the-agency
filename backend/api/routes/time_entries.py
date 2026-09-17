@@ -2,10 +2,10 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from datetime import datetime, timezone, timedelta, date as date_type
+from datetime import datetime, timezone, timedelta, date as date_type, time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -37,10 +37,31 @@ from backend.services.time_budget import (
     effective_budgets,
     is_recurring_project,
 )
+from backend.services.temporal import as_utc_instant, business_today, business_zone
+from backend.services.time_entry_dates import manual_time_entry_date, time_entry_civil_period
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["time-entries"])
+
+
+def _filter_entry_date_range(query, date_from: datetime | None, date_to: datetime | None):
+    """Filter the overloaded date column without changing either stored meaning."""
+    if date_from is not None:
+        instant_from = as_utc_instant(date_from)
+        civil_from = datetime.combine(instant_from.astimezone(business_zone()).date(), time.min)
+        query = query.where(or_(
+            and_(TimeEntry.started_at.is_(None), TimeEntry.date >= civil_from),
+            and_(TimeEntry.started_at.isnot(None), TimeEntry.date >= instant_from.replace(tzinfo=None)),
+        ))
+    if date_to is not None:
+        instant_to = as_utc_instant(date_to)
+        civil_to = datetime.combine(instant_to.astimezone(business_zone()).date(), time.max)
+        query = query.where(or_(
+            and_(TimeEntry.started_at.is_(None), TimeEntry.date <= civil_to),
+            and_(TimeEntry.started_at.isnot(None), TimeEntry.date <= instant_to.replace(tzinfo=None)),
+        ))
+    return query
 
 _TIME_ENTRY_RESPONSE_OPTIONS = (
     selectinload(TimeEntry.task).selectinload(Task.client),
@@ -164,7 +185,7 @@ async def create_time_entry(
         task_id=body.task_id,
         user_id=current_user.id,
         notes=body.notes,
-        date=entry_date or datetime.now(timezone.utc).replace(tzinfo=None),
+        date=entry_date or manual_time_entry_date(),
     )
     db.add(entry)
     await db.flush()
@@ -214,10 +235,7 @@ async def list_time_entries(
         query = query.where(TimeEntry.user_id == user_id)
     if task_id is not None:
         query = query.where(TimeEntry.task_id == task_id)
-    if date_from is not None:
-        query = query.where(TimeEntry.date >= date_from.replace(tzinfo=None))
-    if date_to is not None:
-        query = query.where(TimeEntry.date <= date_to.replace(tzinfo=None))
+    query = _filter_entry_date_range(query, date_from, date_to)
     query = query.order_by(TimeEntry.date.desc())
     result = await db.execute(query)
     return [_entry_to_response(e) for e in result.scalars().all()]
@@ -229,11 +247,11 @@ async def weekly_timesheet(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("timesheet")),
 ):
-    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
+    today = business_today()
     if week_start is None:
         week_start = today - timedelta(days=today.weekday())  # Monday
-    start_dt = datetime.combine(week_start, datetime.min.time())
-    end_dt = start_dt + timedelta(days=7)
+    else:
+        week_start = week_start - timedelta(days=week_start.weekday())
 
     # Load users — non-admin only sees themselves
     if current_user.role == UserRole.admin:
@@ -257,8 +275,7 @@ async def weekly_timesheet(
     # Fetch time entries within range — non-admin filtered to own entries
     entry_query = select(TimeEntry).where(
         TimeEntry.minutes.isnot(None),
-        TimeEntry.date >= start_dt,
-        TimeEntry.date < end_dt,
+        time_entry_civil_period(week_start, week_start + timedelta(days=7)),
     )
     if current_user.role != UserRole.admin:
         entry_query = entry_query.where(TimeEntry.user_id == current_user.id)
@@ -297,7 +314,11 @@ async def weekly_timesheet(
     for entry in entries:
         if entry.user_id not in user_map:
             continue
-        day_key = entry.date.date().isoformat()
+        day_key = (
+            as_utc_instant(entry.date).astimezone(business_zone()).date().isoformat()
+            if entry.started_at is not None
+            else entry.date.date().isoformat()
+        )
         mins = entry.minutes or 0
 
         # Accumulate user-level daily totals (existing behaviour)
@@ -337,7 +358,7 @@ async def weekly_timesheet(
             continue
         # Bucket the active timer by its date column (matches how completed
         # entries are grouped — same UTC day semantics).
-        day_key = active.date.date().isoformat()
+        day_key = as_utc_instant(active.date).astimezone(business_zone()).date().isoformat()
         if day_key in user_map[active.user_id]["daily_minutes"]:
             user_map[active.user_id]["daily_minutes"][day_key] += mins
             user_map[active.user_id]["total_minutes"] += mins
@@ -390,10 +411,7 @@ async def export_time_entries_csv(
         query = query.where(TimeEntry.user_id == current_user.id)
     elif user_id is not None:
         query = query.where(TimeEntry.user_id == user_id)
-    if date_from is not None:
-        query = query.where(TimeEntry.date >= date_from.replace(tzinfo=None))
-    if date_to is not None:
-        query = query.where(TimeEntry.date <= date_to.replace(tzinfo=None))
+    query = _filter_entry_date_range(query, date_from, date_to)
     if client_id is not None:
         query = query.join(TimeEntry.task).where(Task.client_id == client_id)
     if project_id is not None:
@@ -444,10 +462,7 @@ async def time_entries_by_project(
     # Members can only see their own time entries in aggregates
     if current_user.role != UserRole.admin:
         query = query.where(TimeEntry.user_id == current_user.id)
-    if date_from is not None:
-        query = query.where(TimeEntry.date >= date_from.replace(tzinfo=None))
-    if date_to is not None:
-        query = query.where(TimeEntry.date <= date_to.replace(tzinfo=None))
+    query = _filter_entry_date_range(query, date_from, date_to)
     if client_id is not None:
         query = query.join(TimeEntry.task).where(Task.client_id == client_id)
     result = await db.execute(query)
@@ -524,10 +539,7 @@ async def time_entries_by_client(
     # Members can only see their own time entries in aggregates
     if current_user.role != UserRole.admin:
         query = query.where(TimeEntry.user_id == current_user.id)
-    if date_from is not None:
-        query = query.where(TimeEntry.date >= date_from.replace(tzinfo=None))
-    if date_to is not None:
-        query = query.where(TimeEntry.date <= date_to.replace(tzinfo=None))
+    query = _filter_entry_date_range(query, date_from, date_to)
     result = await db.execute(query)
     entries = result.scalars().all()
 
@@ -970,26 +982,29 @@ async def get_project_time_budget(
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
-    week_start = datetime.combine(today - timedelta(days=today.weekday()), datetime.min.time())
-    month_start = datetime.combine(today.replace(day=1), datetime.min.time())
+    today = business_today()
+    week_start = today - timedelta(days=today.weekday())
+    month_start = today.replace(day=1)
+    next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
 
-    async def _sum_minutes(since: datetime) -> float:
-        q = await db.execute(
+    async def _sum_minutes(start: date_type | None = None, end: date_type | None = None) -> float:
+        statement = (
             select(func.coalesce(func.sum(TimeEntry.minutes), 0))
             .join(Task, TimeEntry.task_id == Task.id)
             .where(
                 Task.project_id == project_id,
                 TimeEntry.minutes.isnot(None),
-                TimeEntry.date >= since,
             )
         )
-        return float(q.scalar() or 0)
+        if start is not None and end is not None:
+            statement = statement.where(time_entry_civil_period(start, end))
+        result = await db.execute(statement)
+        return float(result.scalar() or 0)
 
     if is_recurring_project(project):
         # Retainer / mensual → techos semanal + mensual
-        week_minutes = await _sum_minutes(week_start)
-        month_minutes = await _sum_minutes(month_start)
+        week_minutes = await _sum_minutes(week_start, week_start + timedelta(days=7))
+        month_minutes = await _sum_minutes(month_start, next_month)
         weekly_budget, monthly_budget = effective_budgets(project)
         status_block = build_budget_status(
             weekly_budget,
@@ -1006,7 +1021,7 @@ async def get_project_time_budget(
         }
 
     # Puntual / cerrado → aviso de cierre (fecha final) + horas vs tiempo restante
-    total_minutes = await _sum_minutes(datetime.min)
+    total_minutes = await _sum_minutes()
     closing = build_closing_status(project, total_minutes, today)
     return {
         "project_id": project.id,

@@ -763,3 +763,14 @@ textarea::placeholder {
   padding: 5px 12px;
   font-size: 11px;
 }
+
+.selector-load-error {
+  margin: 10px 16px;
+  padding: 10px;
+  border: 1px solid #92400e;
+  border-radius: 8px;
+  color: #fcd34d;
+  font-size: 12px;
+}
+.selector-load-error span { display: block; }
+.selector-load-error button { margin-top: 8px; }

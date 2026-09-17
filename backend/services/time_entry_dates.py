@@ -1,0 +1,48 @@
+"""SQL contract for the legacy dual-purpose ``TimeEntry.date`` column.
+
+Manual entries store a user-selected civil date (``started_at IS NULL``).
+Timer entries store a naive UTC instant (``started_at IS NOT NULL``). Readers
+must filter each cohort with its own boundaries; the stored values are not
+rewritten or reinterpreted.
+"""
+from __future__ import annotations
+
+from datetime import date, datetime, time
+
+from sqlalchemy import and_, or_
+
+from backend.db.models import TimeEntry
+from backend.services.temporal import business_today, civil_day_utc_bounds
+from backend.services.temporal import as_utc_instant, business_zone
+
+
+def time_entry_civil_period(start: date, end_exclusive: date):
+    """Return a half-open SQL condition for ``[start, end_exclusive)``."""
+    utc_start, _ = civil_day_utc_bounds(start)
+    utc_end, _ = civil_day_utc_bounds(end_exclusive)
+    civil_start = datetime.combine(start, time.min)
+    civil_end = datetime.combine(end_exclusive, time.min)
+    return or_(
+        and_(
+            TimeEntry.started_at.is_(None),
+            TimeEntry.date >= civil_start,
+            TimeEntry.date < civil_end,
+        ),
+        and_(
+            TimeEntry.started_at.isnot(None),
+            TimeEntry.date >= utc_start,
+            TimeEntry.date < utc_end,
+        ),
+    )
+
+
+def time_entry_business_date(value: datetime, started_at: datetime | None) -> date:
+    """Resolve the reporting day without changing the stored legacy value."""
+    if started_at is None:
+        return value.date()
+    return as_utc_instant(value).astimezone(business_zone()).date()
+
+
+def manual_time_entry_date(now: datetime | None = None) -> datetime:
+    """Default date for a new manual entry: business civil day at midnight."""
+    return datetime.combine(business_today(now=now), time.min)

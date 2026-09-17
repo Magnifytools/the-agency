@@ -54,7 +54,7 @@ async def get_client_activity(
     tasks_q = (
         select(Task)
         .where(Task.client_id == client_id, Task.status == "completed")
-        .order_by(desc(Task.updated_at))
+        .order_by(desc(Task.completed_at))
         .limit(limit)
     )
     completed_tasks = (await db.execute(tasks_q)).scalars().all()

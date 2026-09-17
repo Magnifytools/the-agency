@@ -10,6 +10,18 @@ interface DialogProps {
   children: React.ReactNode
 }
 
+function visibleFocusable(panel: HTMLElement) {
+  return Array.from(panel.querySelectorAll<HTMLElement>(
+    'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
+  )).filter((element) => {
+    for (let ancestor: HTMLElement | null = element; ancestor && ancestor !== panel; ancestor = ancestor.parentElement) {
+      if (ancestor.hidden || getComputedStyle(ancestor).display === "none" || getComputedStyle(ancestor).visibility === "hidden") return false
+      if (ancestor instanceof HTMLDetailsElement && !ancestor.open && !ancestor.querySelector(":scope > summary")?.contains(element)) return false
+    }
+    return true
+  })
+}
+
 function Dialog({ open, onOpenChange, children }: DialogProps) {
   const titleId = React.useMemo(() => `dialog-title-${++dialogIdCounter}`, [])
   const panelRef = React.useRef<HTMLDivElement>(null)
@@ -26,9 +38,7 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
         return
       }
       if (e.key === "Tab" && panelRef.current) {
-        const focusable = panelRef.current.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        )
+        const focusable = visibleFocusable(panelRef.current)
         if (focusable.length === 0) {
           e.preventDefault()
           return
@@ -62,9 +72,7 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
     const focusFirst = () => {
       const panel = panelRef.current
       if (!panel) return
-      const focusable = panel.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      )
+      const focusable = visibleFocusable(panel)
       if (focusable.length > 0) focusable[0].focus()
       else panel.focus()
     }
