@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select, and_, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,7 @@ import re
 
 from backend.services.discord import send_to_discord
 from backend.services.temporal import business_today, civil_day_utc_bounds
+from backend.services.time_entry_dates import time_entry_civil_period
 
 logger = logging.getLogger(__name__)
 
@@ -151,8 +152,7 @@ async def generate_evening_recap(db: AsyncSession, user: User, day: date) -> str
     time_result = await db.execute(
         select(TimeEntry).where(
             TimeEntry.user_id == user.id,
-            TimeEntry.date >= day_start,
-            TimeEntry.date < day_end,
+            time_entry_civil_period(day, day + timedelta(days=1)),
             TimeEntry.minutes.isnot(None),
         )
     )

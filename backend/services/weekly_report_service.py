@@ -15,6 +15,7 @@ from backend.db.models import (
 )
 from backend.startup.background_tasks import _is_qa_user
 from backend.services.temporal import business_zone, civil_day_utc_bounds
+from backend.services.time_entry_dates import time_entry_civil_period
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +46,7 @@ async def generate_weekly_report(db: AsyncSession) -> str:
     entries_result = await db.execute(
         select(TimeEntry).where(
             TimeEntry.minutes.isnot(None),
-            TimeEntry.date >= start_dt,
-            TimeEntry.date < end_dt,
+            time_entry_civil_period(ws, we_sun + timedelta(days=1)),
         )
     )
     entries = entries_result.scalars().all()

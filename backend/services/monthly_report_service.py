@@ -5,7 +5,7 @@ from __future__ import annotations
 import calendar
 import json
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 
 import httpx
 from sqlalchemy import select, func
@@ -17,6 +17,8 @@ from backend.db.models import (
     Task, TaskStatus, TimeEntry, CommunicationLog,
 )
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
+from backend.services.temporal import civil_day_utc_bounds
+from backend.services.time_entry_dates import time_entry_civil_period
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,10 @@ async def generate_client_monthly_report(
     period_start = datetime(year, month, 1)
     period_exclusive_end = datetime(year, month, last_day) + timedelta(days=1)
     period_end = period_exclusive_end - timedelta(microseconds=1)
+    period_start_day = date(year, month, 1)
+    period_end_exclusive_day = date(year, month, last_day) + timedelta(days=1)
+    instant_start, _ = civil_day_utc_bounds(period_start_day)
+    instant_end, _ = civil_day_utc_bounds(period_end_exclusive_day)
 
     # 3. Fetch report data from Engine
     engine_data = {}
@@ -73,8 +79,7 @@ async def generate_client_monthly_report(
         .join(Task, TimeEntry.task_id == Task.id)
         .where(
             Task.client_id == client_id,
-            TimeEntry.date >= period_start,
-            TimeEntry.date < period_exclusive_end,
+            time_entry_civil_period(period_start_day, period_end_exclusive_day),
         )
         .group_by(TimeEntry.user_id)
     )
@@ -85,8 +90,8 @@ async def generate_client_monthly_report(
         select(func.count(Task.id)).where(
             Task.client_id == client_id,
             Task.status == TaskStatus.completed,
-            Task.completed_at >= period_start,
-            Task.completed_at < period_exclusive_end,
+            Task.completed_at >= instant_start,
+            Task.completed_at < instant_end,
         )
     )
     completed_tasks = completed_tasks_result.scalar() or 0
@@ -94,8 +99,8 @@ async def generate_client_monthly_report(
     comms_result = await db.execute(
         select(func.count(CommunicationLog.id)).where(
             CommunicationLog.client_id == client_id,
-            CommunicationLog.occurred_at >= period_start,
-            CommunicationLog.occurred_at < period_exclusive_end,
+            CommunicationLog.occurred_at >= instant_start,
+            CommunicationLog.occurred_at < instant_end,
         )
     )
     communications_count = comms_result.scalar() or 0

@@ -37,7 +37,8 @@ from backend.services.time_budget import (
     effective_budgets,
     is_recurring_project,
 )
-from backend.services.temporal import as_utc_instant, business_today, business_zone, civil_week_utc_bounds
+from backend.services.temporal import as_utc_instant, business_today, business_zone
+from backend.services.time_entry_dates import time_entry_civil_period
 
 logger = logging.getLogger(__name__)
 
@@ -249,9 +250,8 @@ async def weekly_timesheet(
     today = business_today()
     if week_start is None:
         week_start = today - timedelta(days=today.weekday())  # Monday
-    start_dt, end_dt = civil_week_utc_bounds(week_start)
-    civil_start = datetime.combine(week_start, time.min)
-    civil_end = civil_start + timedelta(days=7)
+    else:
+        week_start = week_start - timedelta(days=week_start.weekday())
 
     # Load users — non-admin only sees themselves
     if current_user.role == UserRole.admin:
@@ -275,20 +275,7 @@ async def weekly_timesheet(
     # Fetch time entries within range — non-admin filtered to own entries
     entry_query = select(TimeEntry).where(
         TimeEntry.minutes.isnot(None),
-        or_(
-            # Manual entries carry a user-selected civil date in this legacy
-            # column. Timer entries carry a UTC instant. Keep both contracts.
-            and_(
-                TimeEntry.started_at.is_(None),
-                TimeEntry.date >= civil_start,
-                TimeEntry.date < civil_end,
-            ),
-            and_(
-                TimeEntry.started_at.isnot(None),
-                TimeEntry.date >= start_dt,
-                TimeEntry.date < end_dt,
-            ),
-        ),
+        time_entry_civil_period(week_start, week_start + timedelta(days=7)),
     )
     if current_user.role != UserRole.admin:
         entry_query = entry_query.where(TimeEntry.user_id == current_user.id)

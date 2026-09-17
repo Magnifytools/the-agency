@@ -150,9 +150,11 @@ async def test_weekly_timesheet_keeps_manual_civil_date_but_converts_timer_insta
     await db_session.flush()
 
     response = await admin_client.get(
-        "/api/time-entries/weekly", params={"week_start": "2026-06-15"}
+        # A mid-week input is normalized once to that week's Monday.
+        "/api/time-entries/weekly", params={"week_start": "2026-06-17"}
     )
     assert response.status_code == 200, response.text
+    assert response.json()["week_start"] == "2026-06-15"
     me = next(user for user in response.json()["users"] if user["user_id"] == admin_user.id)
     assert me["daily_minutes"]["2026-06-15"] == 30
     assert me["total_minutes"] == 30
