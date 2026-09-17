@@ -17,6 +17,10 @@ búsqueda siguen encontrándolas y permiten reabrirlas. Las filas tienen accione
 teclado explícitas, muestran la ausencia de responsable y respetan permisos de
 escritura. Un fallo de carga ofrece reintento y no se presenta como una lista vacía.
 
+El cronómetro global mantiene accesibles los controles en móvil. Pausa y reanudación
+se reflejan en la barra y se anuncian a lectores de pantalla, sin confirmaciones
+superpuestas que impidan la siguiente acción.
+
 ## Integridad y fechas
 
 La validación común rechaza referencias incompatibles de cliente, proyecto y fase

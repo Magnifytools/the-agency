@@ -130,7 +130,6 @@ export function ActiveTimerBar() {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       setOmniInput("")
       setSelectedTaskId("")
-      toast.success("Timer iniciado")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al iniciar timer")),
   })
@@ -167,7 +166,6 @@ export function ActiveTimerBar() {
     mutationFn: () => timerApi.pause(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      toast.success("Timer en pausa ⏸")
     },
     onError: (err) => {
       resyncTimer()
@@ -179,7 +177,6 @@ export function ActiveTimerBar() {
     mutationFn: () => timerApi.resume(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      toast.success("Timer reanudado ▶")
     },
     onError: (err) => {
       resyncTimer()
@@ -238,7 +235,8 @@ export function ActiveTimerBar() {
             <Select
               value={selectedTaskId}
               onChange={(e) => setSelectedTaskId(e.target.value)}
-              className="w-48 shrink-0 h-9 text-xs"
+              aria-label="Tarea del cronómetro"
+              className="w-36 sm:w-48 shrink-0 h-9 text-xs"
             >
               <option value="">Sin tarea</option>
               {tasks.map((t) => (
@@ -255,7 +253,7 @@ export function ActiveTimerBar() {
             >
               <Plus className="h-4 w-4" />
             </button>
-            <div className="relative flex-1">
+            <div className="relative flex-1 min-w-0">
               <Input
                 value={omniInput}
                 onChange={(e) => setOmniInput(e.target.value)}
@@ -264,6 +262,7 @@ export function ActiveTimerBar() {
               />
               <Button
                 type="submit"
+                aria-label="Iniciar cronómetro"
                 size="sm"
                 variant="ghost"
                 disabled={(!omniInput.trim() && !selectedTaskId) || startMutation.isPending}
@@ -369,16 +368,17 @@ export function ActiveTimerBar() {
   // Si hay timer activo, mostramos la barra superior
   return (
     <>
-      <div className="bg-brand text-primary-foreground px-4 py-2 flex items-center justify-between text-sm">
-        <div className="flex items-center gap-3">
-          <Clock className="h-4 w-4 animate-pulse" />
-          <span className="font-bold uppercase tracking-wide">{timer.task_title || "Tarea sin nombre"}</span>
+      <div className="bg-brand text-primary-foreground px-4 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm">
+        <span role="status" className="sr-only">{timer.is_paused ? "Cronómetro en pausa" : "Cronómetro en marcha"}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <Clock className="h-4 w-4 shrink-0" />
+          <span className="font-semibold truncate" title={timer.task_title || "Tarea sin nombre"}>{timer.task_title || "Tarea sin nombre"}</span>
           {timer.client_name && (
-            <span className="opacity-75">— {timer.client_name}</span>
+            <span className="hidden md:inline opacity-75 truncate">— {timer.client_name}</span>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <span className={`font-mono font-bold ${timer?.is_paused ? "opacity-50 animate-pulse" : ""}`}>
+        <div className="flex items-center justify-end gap-2 shrink-0">
+          <span className="font-mono font-bold mr-auto sm:mr-0" aria-label="Tiempo del cronómetro">
             {timer?.is_paused ? "⏸ " : ""}{elapsed}
           </span>
           {timer?.is_paused ? (
@@ -387,7 +387,7 @@ export function ActiveTimerBar() {
               variant="secondary"
               onClick={() => resumeMutation.mutate()}
               disabled={resumeMutation.isPending}
-              className="bg-green-500 text-white hover:bg-green-600 font-semibold"
+              className="bg-background text-foreground hover:bg-background/90 font-semibold min-h-9"
             >
               <Play className="h-3 w-3 mr-1" /> Reanudar
             </Button>
@@ -397,7 +397,7 @@ export function ActiveTimerBar() {
               variant="secondary"
               onClick={() => pauseMutation.mutate()}
               disabled={pauseMutation.isPending}
-              className="bg-yellow-500 text-white hover:bg-yellow-600 font-semibold"
+              className="bg-background text-foreground hover:bg-background/90 font-semibold min-h-9"
             >
               ⏸ Pausa
             </Button>
@@ -407,7 +407,7 @@ export function ActiveTimerBar() {
             variant="secondary"
             onClick={() => stopMutation.mutate()}
             disabled={stopMutation.isPending}
-            className="bg-white text-brand hover:bg-white/90 font-semibold"
+            className="bg-background text-foreground hover:bg-background/90 font-semibold min-h-9"
           >
             <Square className="h-3 w-3 mr-1" /> Detener
           </Button>

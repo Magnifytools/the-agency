@@ -1,3 +1,4 @@
+import { formatCivilDate, timeEntryBusinessDate } from "@/lib/dates"
 import { useState } from "react"
 import { useParams, Link, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
@@ -689,7 +690,7 @@ export default function ClientDetailPage() {
               <TableBody>
                 {recentEntries.map((e) => (
                   <TableRow key={e.id}>
-                    <TableCell className="mono">{new Date(e.date).toLocaleDateString("es-ES")}</TableCell>
+                    <TableCell className="mono">{formatCivilDate(timeEntryBusinessDate(e))}</TableCell>
                     <TableCell>{e.task_title || "-"}</TableCell>
                     <TableCell className="mono">{e.minutes ? formatMinutes(e.minutes) : "-"}</TableCell>
                     <TableCell className="max-w-[200px] truncate">{e.notes || "-"}</TableCell>

@@ -35,7 +35,7 @@ import { getErrorMessage } from "@/lib/utils"
 import { initialTasksView, shouldPreserveCurrentProject, taskQueryKeyWithWeek, withExplicitActualMinutes } from "@/components/tasks/task-page-utils"
 import { invalidateTaskChange, optimisticallyUpdateExactQuery, projectKeys, restoreQuerySnapshot, taskKeys, timeKeys } from "@/lib/query-keys"
 import type { OperationalImpact } from "@/lib/query-keys"
-import { addCivilDays, formatCivilDate } from "@/lib/dates"
+import { addCivilDays, formatCivilDate, timeEntryBusinessDate } from "@/lib/dates"
 import { useBusinessDate } from "@/hooks/use-business-date"
 
 const priorityBadge = (priority: TaskPriority) => {
@@ -1443,7 +1443,7 @@ export default function TasksPage() {
                 <div key={entry.id} className="flex items-center justify-between text-xs bg-muted/50 rounded px-2 py-1.5">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-muted-foreground shrink-0">
-                      {new Date(entry.date || entry.started_at || "").toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                      {formatCivilDate(timeEntryBusinessDate(entry), { day: "numeric", month: "short" })}
                     </span>
                     <span className="font-mono font-medium shrink-0">
                       {entry.minutes ? `${Math.floor(entry.minutes / 60)}h ${entry.minutes % 60}m` : "—"}
