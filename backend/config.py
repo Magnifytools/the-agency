@@ -6,6 +6,7 @@ from typing import Optional
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 DEFAULT_SECRET_KEY = "dev-secret-change-in-production"
@@ -47,6 +48,7 @@ class Settings(BaseSettings):
     ENGINE_SYNC_ENABLED: bool = True
     ENGINE_FRONTEND_URL: Optional[str] = None
     VOYAGE_API_KEY: Optional[str] = None
+    AGENCY_TIMEZONE: str = "Europe/Madrid"
 
     # Google Calendar OAuth2
     GOOGLE_CLIENT_ID: Optional[str] = None
@@ -81,6 +83,11 @@ class Settings(BaseSettings):
             raise ValueError("AUTH_COOKIE_SECURE must be true in production")
         if self.AUTH_COOKIE_SAMESITE == "none" and not self.AUTH_COOKIE_SECURE:
             logging.warning("AUTH_COOKIE_SAMESITE=none usually requires AUTH_COOKIE_SECURE=true")
+
+        try:
+            ZoneInfo(self.AGENCY_TIMEZONE)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(f"Unknown AGENCY_TIMEZONE: {self.AGENCY_TIMEZONE}") from exc
 
         return self
 

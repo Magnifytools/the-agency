@@ -7,11 +7,11 @@ Extracted from main.py to keep the entry point lean.
 """
 import asyncio
 import logging
-from zoneinfo import ZoneInfo
-
-MADRID_TZ = ZoneInfo("Europe/Madrid")
 
 from backend.config import settings
+from backend.services.temporal import business_today, business_zone, utc_now_naive
+
+BUSINESS_TZ = business_zone()
 
 
 def _log_task_error(t: asyncio.Task) -> None:
@@ -66,7 +66,7 @@ async def _generate_recurring_instances():
     from backend.services.task_scope import validate_task_scope
     from fastapi import HTTPException
 
-    today = date_type.today()
+    today = business_today()
     weekday = today.weekday()  # 0=Mon ... 4=Fri
     day_of_month = today.day
 
@@ -154,7 +154,7 @@ async def _check_overdue_tasks():
     from backend.db.database import async_session
     from backend.db.models import Task, TaskStatus
 
-    today = date_type.today()
+    today = business_today()
     today_midnight = dt_type.combine(today, dt_type.min.time())
 
     async with async_session() as session:
@@ -203,7 +203,7 @@ async def _reset_advanced_tasks():
     from backend.db.database import async_session
     from backend.db.models import Task, TaskStatus
 
-    today = date_type.today()
+    today = business_today()
 
     async with async_session() as session:
         result = await session.execute(
@@ -280,7 +280,7 @@ async def _check_project_billing():
     if not is_enabled("billing"):
         return
     async with async_session() as db:
-        today = date.today()
+        today = business_today()
         result = await db.execute(select(Project).where(
             Project.status.in_([ProjectStatus.active, ProjectStatus.completed]),
             Project.next_billing_date <= today + timedelta(days=3),
@@ -353,7 +353,7 @@ async def _daily_reminders_loop():
     while True:
         await asyncio.sleep(300)  # 5 min interval
         try:
-            now = datetime.now(MADRID_TZ)
+            now = datetime.now(BUSINESS_TZ)
             today = now.date()
             if current_date != today:
                 sent_today.clear()
@@ -408,7 +408,7 @@ async def _weekly_report_loop():
     while True:
         await asyncio.sleep(300)
         try:
-            now = datetime.now(MADRID_TZ)
+            now = datetime.now(BUSINESS_TZ)
             week_key = now.strftime("%G-W%V")
 
             if now.weekday() != 5 or now.hour < 8:
@@ -484,7 +484,7 @@ async def _meeting_alert_loop():
     while True:
         await asyncio.sleep(60)  # every minute
         try:
-            now = datetime.now(MADRID_TZ).replace(tzinfo=None)
+            local_now = datetime.now(BUSINESS_TZ).replace(tzinfo=None)
 
             async with async_session() as db:
                 # Get users with calendar connected
@@ -505,12 +505,12 @@ async def _meeting_alert_loop():
                     send_discord = prefs.get("discord_dm", True)
 
                     # Find events starting in [now, now + minutes_before]
-                    cutoff = now + timedelta(minutes=minutes_before)
+                    cutoff = local_now + timedelta(minutes=minutes_before)
                     events_result = await db.execute(
                         select(Event).where(
                             Event.user_id == user.id,
                             Event.event_type == EventType.meeting,
-                            Event.start_time > now,
+                            Event.start_time > local_now,
                             Event.start_time <= cutoff,
                             Event.alert_sent_at.is_(None),
                         )
@@ -521,7 +521,7 @@ async def _meeting_alert_loop():
                         if event.id in sent_alerts:
                             continue
 
-                        mins = int((event.start_time - now).total_seconds() / 60)
+                        mins = int((event.start_time - local_now).total_seconds() / 60)
                         time_str = event.start_time.strftime("%H:%M")
                         name = user.short_name or user.full_name
 
@@ -542,7 +542,7 @@ async def _meeting_alert_loop():
                                 logging.warning("Meeting alert DM failed for event %s: %s", event.id, e)
 
                         # Mark as alerted
-                        event.alert_sent_at = now
+                        event.alert_sent_at = utc_now_naive()
                         sent_alerts.add(event.id)
 
                     await db.commit()
@@ -570,7 +570,7 @@ async def _retention_cleanup_loop():
 
     while True:
         try:
-            now = datetime.now(MADRID_TZ).replace(tzinfo=None)
+            now = utc_now_naive()
             cutoff_90d = now - timedelta(days=90)
             cutoff_30d = now - timedelta(days=30)
 

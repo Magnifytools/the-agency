@@ -397,6 +397,12 @@ if _HIDDEN:
     )
 
 
+@app.get("/api/config")
+async def get_app_config():
+    """Public presentation contract shared by web and extension clients."""
+    return {"timezone": settings.AGENCY_TIMEZONE}
+
+
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint for monitoring and deployment probes."""

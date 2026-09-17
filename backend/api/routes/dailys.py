@@ -31,6 +31,7 @@ from backend.services.daily_parser import (
 from backend.api.utils.db_helpers import safe_refresh
 from backend.core.security import decrypt_vault_secret
 from backend.api.middleware.audit_log import log_audit
+from backend.services.temporal import business_today
 
 router = APIRouter(prefix="/api/dailys", tags=["daily-updates"])
 logger = logging.getLogger(__name__)
@@ -76,7 +77,7 @@ async def submit_daily(
     if not body.raw_text.strip():
         raise HTTPException(status_code=400, detail="El texto del daily no puede estar vacío")
 
-    update_date = body.date or date_type.today()
+    update_date = body.date or business_today()
 
     # Check for duplicate daily on same date for this user
     existing = await db.execute(
@@ -168,7 +169,7 @@ async def prefill_daily(
     from backend.db.models import Task, TaskStatus, TimeEntry
     from sqlalchemy import func
 
-    today = date_type.today()
+    today = business_today()
 
     # Tasks completed today by this user
     completed_result = await db.execute(

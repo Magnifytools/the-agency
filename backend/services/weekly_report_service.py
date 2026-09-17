@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -15,9 +14,9 @@ from backend.db.models import (
     User, TimeEntry, Task, Client, Project, TaskStatus,
 )
 from backend.startup.background_tasks import _is_qa_user
+from backend.services.temporal import business_zone, civil_day_utc_bounds
 
 logger = logging.getLogger(__name__)
-MADRID_TZ = ZoneInfo("Europe/Madrid")
 
 
 def _fmt_h(minutes: float) -> str:
@@ -27,13 +26,13 @@ def _fmt_h(minutes: float) -> str:
 
 async def generate_weekly_report(db: AsyncSession) -> str:
     """Generate the full weekly report text. Returns Discord-formatted string."""
-    now = datetime.now(MADRID_TZ)
+    now = datetime.now(business_zone())
     today = now.date()
     ws = today - timedelta(days=5)  # Monday (Saturday - 5)
     we_fri = ws + timedelta(days=4)
     we_sun = ws + timedelta(days=6)
-    start_dt = datetime.combine(ws, datetime.min.time(), MADRID_TZ).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
-    end_dt = datetime.combine(we_sun + timedelta(days=1), datetime.min.time(), MADRID_TZ).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+    start_dt, _ = civil_day_utc_bounds(ws)
+    end_dt, _ = civil_day_utc_bounds(we_sun + timedelta(days=1))
 
     # Users
     users_result = await db.execute(

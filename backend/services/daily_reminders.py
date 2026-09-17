@@ -2,8 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, time, timedelta, timezone
-from zoneinfo import ZoneInfo
+from datetime import date
 
 from sqlalchemy import select, and_, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,9 +15,9 @@ from backend.db.models import (
 import re
 
 from backend.services.discord import send_to_discord
+from backend.services.temporal import business_today, civil_day_utc_bounds
 
 logger = logging.getLogger(__name__)
-MADRID_TZ = ZoneInfo("Europe/Madrid")
 
 # Strip monetary amounts from task titles shown in shared channels
 _MONEY_RE = re.compile(r"\s*\(?\s*[\d.,]+\s*€\s*\)?|\s*\(?\s*€\s*[\d.,]+\s*\)?", re.IGNORECASE)
@@ -78,7 +77,7 @@ async def generate_morning_plan(db: AsyncSession, user: User) -> str:
     if not tasks:
         return f"\u2600\ufe0f Buenos d\u00edas, {name}\n\n\u2705 No tienes tareas pendientes. \u00a1Buen d\u00eda!"
 
-    today = date.today()
+    today = business_today()
     lines = [
         f"\u2600\ufe0f Buenos d\u00edas, {name}",
         f"\U0001f4cb Tus tareas para hoy:\n",
@@ -135,8 +134,7 @@ async def generate_evening_recap(db: AsyncSession, user: User, day: date) -> str
     """Build the evening recap for a user."""
     name = user.short_name or user.full_name
 
-    day_start = datetime.combine(day, time.min, MADRID_TZ).astimezone(timezone.utc).replace(tzinfo=None)
-    day_end = datetime.combine(day + timedelta(days=1), time.min, MADRID_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+    day_start, day_end = civil_day_utc_bounds(day)
 
     # Completed today
     completed_result = await db.execute(
@@ -154,7 +152,7 @@ async def generate_evening_recap(db: AsyncSession, user: User, day: date) -> str
         select(TimeEntry).where(
             TimeEntry.user_id == user.id,
             TimeEntry.date >= day_start,
-            TimeEntry.date <= day_end,
+            TimeEntry.date < day_end,
             TimeEntry.minutes.isnot(None),
         )
     )
