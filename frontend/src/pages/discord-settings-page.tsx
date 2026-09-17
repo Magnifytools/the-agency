@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { discordApi } from "@/lib/api"
 import type { DiscordSettings } from "@/lib/types"
@@ -21,6 +21,7 @@ export default function DiscordSettingsPage() {
   const [autoSendInput, setAutoSendInput] = useState(false)
   const [includeAiInput, setIncludeAiInput] = useState(true)
   const [initialized, setInitialized] = useState(false)
+  const pendingTestRequestKey = useRef<string | null>(null)
 
   // Preview/edit state for daily summary
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -53,6 +54,7 @@ export default function DiscordSettingsPage() {
   const testMutation = useMutation({
     mutationFn: (requestKey: string) => discordApi.testWebhook(requestKey),
     onSuccess: (data) => {
+      pendingTestRequestKey.current = null
       deliveryToast(data)
       queryClient.invalidateQueries({ queryKey: ["deliveries", "manual"] })
     },
@@ -173,7 +175,10 @@ export default function DiscordSettingsPage() {
               />
               <Button
                 variant="outline"
-                onClick={() => testMutation.mutate(crypto.randomUUID())}
+                onClick={() => {
+                  pendingTestRequestKey.current ??= crypto.randomUUID()
+                  testMutation.mutate(pendingTestRequestKey.current)
+                }}
                 disabled={testMutation.isPending || (!webhookInput.trim() && !settings?.webhook_configured)}
               >
                 {testMutation.isPending ? (
