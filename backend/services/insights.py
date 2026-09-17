@@ -123,7 +123,7 @@ async def _enhance_insights_with_ai(
     if overall and isinstance(overall, str) and overall.strip():
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         return PMInsight(
-            insight_type=InsightType.suggestion,
+            insight_type=InsightType.operational_suggestion,
             priority=InsightPriority.low,
             title="💡 Recomendación estratégica del día",
             description=overall.strip(),
@@ -217,7 +217,7 @@ async def _generate_overdue_income_insights(
 
         client_name = row.client_name or f"Cliente #{row.client_id}"
         insight = PMInsight(
-            insight_type=InsightType.overdue,
+            insight_type=InsightType.financial,
             priority=InsightPriority.high,
             title=f"💰 {int(row.total_amount or 0)}€ pendiente de cobro con {client_name}",
             description=f"Llevan {days_pending} días sin cobrar.",
@@ -233,7 +233,14 @@ async def _generate_overdue_income_insights(
     return insights
 
 
-async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> list[PMInsight]:
+async def generate_insights(
+    db: AsyncSession,
+    user_id: Optional[int] = None,
+    *,
+    allow_financial: bool = False,
+    team_scope: bool = False,
+    commit: bool = True,
+) -> list[PMInsight]:
     """
     Generate insights based on current state.
     Returns list of newly created insights.
@@ -315,18 +322,26 @@ async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> 
 
     # 3. Stalled clients (no task activity based on user threshold)
     threshold = now - timedelta(days=thresholds.days_without_activity)
-    active_clients = await db.execute(
-        select(Client).where(Client.status == ClientStatus.active)
-    )
+    active_clients_query = select(Client).where(Client.status == ClientStatus.active)
+    if not team_scope and user_id is not None:
+        active_clients_query = (
+            active_clients_query.join(Task, Task.client_id == Client.id)
+            .where(Task.assigned_to == user_id)
+            .distinct()
+        )
+    active_clients = await db.execute(active_clients_query)
 
     for client in active_clients.scalars().all():
         # Check last task update
-        last_task = await db.execute(
+        last_task_query = (
             select(Task)
             .where(Task.client_id == client.id)
             .order_by(Task.updated_at.desc())
             .limit(1)
         )
+        if not team_scope and user_id is not None:
+            last_task_query = last_task_query.where(Task.assigned_to == user_id)
+        last_task = await db.execute(last_task_query)
         last = last_task.scalar_one_or_none()
 
         if last and last.updated_at < threshold:
@@ -346,12 +361,15 @@ async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> 
             new_insights.append(insight)
 
     # 4. Pending followups from communications
-    pending_followups = await db.execute(
+    pending_followups_query = (
         select(CommunicationLog)
         .where(CommunicationLog.requires_followup.is_(True))
         .where(CommunicationLog.followup_date <= now + timedelta(days=2))
         .order_by(CommunicationLog.followup_date.asc())
     )
+    if not team_scope and user_id is not None:
+        pending_followups_query = pending_followups_query.where(CommunicationLog.user_id == user_id)
+    pending_followups = await db.execute(pending_followups_query)
 
     for comm in pending_followups.scalars().all():
         is_overdue = comm.followup_date and comm.followup_date < now
@@ -374,12 +392,15 @@ async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> 
     week_start = now - timedelta(days=now.weekday())
     week_end = week_start + timedelta(days=7)
 
-    this_week_tasks = await db.execute(
+    this_week_query = (
         select(func.count(Task.id))
         .where(Task.due_date >= week_start)
         .where(Task.due_date < week_end)
         .where(Task.status != TaskStatus.completed)
     )
+    if not team_scope and user_id is not None:
+        this_week_query = this_week_query.where(Task.assigned_to == user_id)
+    this_week_tasks = await db.execute(this_week_query)
     task_count = this_week_tasks.scalar() or 0
 
     warning_threshold = thresholds.max_tasks_per_week * 0.7  # Warn at 70%
@@ -398,28 +419,37 @@ async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> 
         new_insights.append(insight)
 
     # 6. Quality Assurance: Tasks without estimation or assignees
-    active_tasks_no_estimate = await db.execute(
+    no_estimate_query = (
         select(Task)
         .where(Task.status == TaskStatus.pending)
         .where(Task.estimated_minutes == None)
         .limit(20)
     )
+    if not team_scope and user_id is not None:
+        no_estimate_query = no_estimate_query.where(Task.assigned_to == user_id)
+    active_tasks_no_estimate = await db.execute(no_estimate_query)
     no_estimate_list = list(active_tasks_no_estimate.scalars().all())
 
-    active_tasks_unassigned = await db.execute(
+    unassigned_query = (
         select(Task)
         .where(Task.status == TaskStatus.pending)
         .where(Task.assigned_to == None)
         .limit(20)
     )
+    if not team_scope and user_id is not None:
+        unassigned_query = unassigned_query.where(False)
+    active_tasks_unassigned = await db.execute(unassigned_query)
     unassigned_list = list(active_tasks_unassigned.scalars().all())
 
-    active_tasks_no_date = await db.execute(
+    no_date_query = (
         select(Task)
         .where(Task.status == TaskStatus.pending)
         .where(Task.due_date == None)
         .limit(20)
     )
+    if not team_scope and user_id is not None:
+        no_date_query = no_date_query.where(Task.assigned_to == user_id)
+    active_tasks_no_date = await db.execute(no_date_query)
     no_date_list = list(active_tasks_no_date.scalars().all())
 
     if no_estimate_list:
@@ -465,34 +495,30 @@ async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> 
         new_insights.append(insight)
 
     # Overdue income alerts (>15 days pending)
-    overdue_income = await _generate_overdue_income_insights(db, user_id, now)
-    new_insights.extend(overdue_income)
+    if allow_financial:
+        overdue_income = await _generate_overdue_income_insights(db, user_id, now)
+        new_insights.extend(overdue_income)
 
     # Enhance insights with AI (best-effort; originals kept on failure)
-    ai_suggestion = await _enhance_insights_with_ai(new_insights, user_id)
+    # Financial rows never enter the operational AI prompt. Otherwise their
+    # amounts can be copied into a generic suggestion that survives permission
+    # loss even when the source row itself is hidden.
+    operational_insights = [
+        insight for insight in new_insights
+        if insight.insight_type != InsightType.financial
+    ]
+    ai_suggestion = await _enhance_insights_with_ai(operational_insights, user_id)
     if ai_suggestion is not None:
         new_insights.append(ai_suggestion)
-
-    # Fallback: if no issues found, generate a positive insight
-    if not new_insights:
-        insight = PMInsight(
-            insight_type=InsightType.positive,
-            priority=InsightPriority.low,
-            title="Todo en orden",
-            description="No se detectan tareas vencidas, clientes inactivos ni horas sin registrar. Buen trabajo del equipo.",
-            recommendation="Aprovecha para planificar la semana que viene o revisar proyectos en curso.",
-            status=InsightStatus.active,
-            generated_at=now,
-            expires_at=now + timedelta(days=1),
-            user_id=user_id,
-        )
-        new_insights.append(insight)
 
     # Save all new insights
     for insight in new_insights:
         db.add(insight)
 
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
 
     # Refresh to get IDs
     for insight in new_insights:
@@ -501,7 +527,9 @@ async def generate_insights(db: AsyncSession, user_id: Optional[int] = None) -> 
     return new_insights
 
 
-async def get_daily_briefing(db: AsyncSession, user_id: Optional[int] = None) -> dict:
+async def get_daily_briefing(
+    db: AsyncSession, user_id: Optional[int] = None, *, team: bool = False,
+) -> dict:
     """
     Generate a daily briefing summary.
     """
@@ -510,13 +538,16 @@ async def get_daily_briefing(db: AsyncSession, user_id: Optional[int] = None) ->
     today_end = today_start + timedelta(days=1)
 
     # Tasks due today
-    today_tasks = await db.execute(
+    today_query = (
         select(Task)
         .where(Task.due_date >= today_start)
         .where(Task.due_date < today_end)
         .where(Task.status != TaskStatus.completed)
         .order_by(Task.due_date.asc())
     )
+    if not team and user_id is not None:
+        today_query = today_query.where(Task.assigned_to == user_id)
+    today_tasks = await db.execute(today_query)
     priorities = [
         {
             "id": t.id,
@@ -528,12 +559,15 @@ async def get_daily_briefing(db: AsyncSession, user_id: Optional[int] = None) ->
     ]
 
     # Overdue tasks
-    overdue_tasks = await db.execute(
+    overdue_query = (
         select(Task)
         .where(Task.due_date < today_start)
         .where(Task.status != TaskStatus.completed)
         .limit(5)
     )
+    if not team and user_id is not None:
+        overdue_query = overdue_query.where(Task.assigned_to == user_id)
+    overdue_tasks = await db.execute(overdue_query)
     alerts = [
         {
             "id": t.id,
@@ -545,12 +579,15 @@ async def get_daily_briefing(db: AsyncSession, user_id: Optional[int] = None) ->
     ]
 
     # Pending followups
-    pending_comms = await db.execute(
+    communications_query = (
         select(CommunicationLog)
         .where(CommunicationLog.requires_followup.is_(True))
         .where(CommunicationLog.followup_date <= today_end)
         .limit(5)
     )
+    if not team and user_id is not None:
+        communications_query = communications_query.where(CommunicationLog.user_id == user_id)
+    pending_comms = await db.execute(communications_query)
     followups = [
         {
             "client": c.client.name if c.client else None,

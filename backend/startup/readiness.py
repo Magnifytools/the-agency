@@ -11,6 +11,9 @@ async def check_database_ready(engine) -> None:
             await conn.execute(text("SELECT completed_at FROM tasks LIMIT 0"))
             await conn.execute(text("SELECT dedupe_key FROM notifications LIMIT 0"))
             await conn.execute(text("SELECT paused_at, accumulated_seconds FROM time_entries LIMIT 0"))
+            # These source types enforce financial visibility in persisted PM
+            # insights; do not serve a revision whose enum upgrade was skipped.
+            await conn.execute(text("SELECT 'financial'::insighttype, 'operational_suggestion'::insighttype"))
             # Production's legacy timer index has a different name. Validate
             # semantics, so an equivalent index passes and a wrongly named one
             # with different keys cannot falsely certify the schema.

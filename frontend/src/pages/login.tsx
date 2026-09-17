@@ -21,7 +21,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await login(email, password)
-      navigate("/dashboard")
+      navigate("/")
     } catch (err) {
       if (err instanceof AxiosError) {
         if (!err.response) {

@@ -13,7 +13,6 @@ from sqlalchemy.orm import selectinload
 from backend.db.database import get_db
 from backend.db.models import (
     Project,
-    ProjectPhase,
     Task,
     TaskStatus,
     TaskPriority,
@@ -31,6 +30,7 @@ from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module
 from backend.api.utils.db_helpers import safe_refresh
 from backend.api.middleware.audit_log import log_audit
+from backend.services.task_scope import validate_task_scope
 
 logger = logging.getLogger(__name__)
 
@@ -108,49 +108,6 @@ async def _load_task_for_response(db: AsyncSession, task_id: int) -> Task | None
         .where(Task.id == task_id)
     )
     return result.scalar_one_or_none()
-
-
-async def _validate_task_scope(
-    db: AsyncSession,
-    data: dict,
-    *,
-    existing: Task | None = None,
-) -> None:
-    """Resolve and validate the client/project/phase hierarchy in-place."""
-    project_id = data.get("project_id", existing.project_id if existing else None)
-    phase_id = data.get("phase_id", existing.phase_id if existing else None)
-    client_id = data.get("client_id", existing.client_id if existing else None)
-
-    # Clearing/changing a project cannot leave its previous phase attached.
-    if existing is not None and "project_id" in data and "phase_id" not in data:
-        if data["project_id"] != existing.project_id:
-            phase_id = None
-            data["phase_id"] = None
-
-    if phase_id is not None:
-        phase_project_id = (await db.execute(
-            select(ProjectPhase.project_id).where(ProjectPhase.id == phase_id)
-        )).scalar_one_or_none()
-        if phase_project_id is None:
-            raise HTTPException(status_code=422, detail="La fase seleccionada no existe")
-        if project_id is None:
-            project_id = phase_project_id
-            data["project_id"] = project_id
-        elif phase_project_id != project_id:
-            raise HTTPException(status_code=422, detail="La fase no pertenece al proyecto seleccionado")
-
-    if project_id is not None:
-        project_client_id = (await db.execute(
-            select(Project.client_id).where(Project.id == project_id)
-        )).scalar_one_or_none()
-        if project_client_id is None:
-            raise HTTPException(status_code=422, detail="El proyecto seleccionado no existe")
-        if client_id is None:
-            data["client_id"] = project_client_id
-        elif client_id != project_client_id:
-            raise HTTPException(status_code=422, detail="El proyecto no pertenece al cliente seleccionado")
-    elif phase_id is not None:
-        raise HTTPException(status_code=422, detail="Una fase requiere un proyecto")
 
 
 def _stamp_advanced(task: Task) -> None:
@@ -383,7 +340,7 @@ async def create_task(
     current_user: User = Depends(require_module("tasks", write=True)),
 ):
     data = body.model_dump()
-    await _validate_task_scope(db, data)
+    await validate_task_scope(db, data)
     if data.get("actual_minutes") and current_user.role.value != "admin":
         can_write_time = any(
             permission.module == "timesheet" and permission.can_write
@@ -515,7 +472,7 @@ async def update_task(
         from backend.services.change_journal import capture_manual_time
         capture_manual_time(db.sync_session)
     new_actual = update_data.get("actual_minutes")
-    await _validate_task_scope(db, update_data, existing=task)
+    await validate_task_scope(db, update_data, existing=task)
     for field, value in update_data.items():
         if field in _UPDATABLE_TASK_FIELDS:
             setattr(task, field, value)
@@ -701,7 +658,7 @@ async def bulk_update_tasks(
         try:
             async with db.begin_nested():
                 scoped_updates = dict(updates)
-                await _validate_task_scope(db, scoped_updates, existing=task)
+                await validate_task_scope(db, scoped_updates, existing=task)
                 old_task_status = task.status
                 for field, value in scoped_updates.items():
                     if field == "status" and value:
@@ -749,12 +706,13 @@ async def bulk_delete_tasks(
     if deleted:
         try:
             await db.commit()
-        except Exception:
-            logger.warning("Non-critical: final commit failed after bulk delete of %d tasks", deleted)
-            try:
-                await db.rollback()
-            except Exception:
-                pass
+        except Exception as exc:
+            logger.error("bulk_delete_tasks: commit failed; no deletion confirmed: %s", exc)
+            await db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail="No se pudo confirmar el borrado; no se ha marcado ninguna tarea como eliminada",
+            )
     detail = None
     if skipped_ids:
         detail = f"No se pudieron eliminar {len(skipped_ids)} tareas porque tienen registros de tiempo asociados. Elimínalos primero."

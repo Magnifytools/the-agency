@@ -299,9 +299,9 @@ async def generate_project_status_report(
     sections = []
 
     # Project overview
-    progress = project.progress_percent or 0
+    progress = int(len(completed_tasks) * 100 / len(tasks)) if tasks else 0
     status_emoji = "✅" if progress >= 80 else "🔄" if progress >= 40 else "🚀"
-    overview = f"{status_emoji} El proyecto está al {progress}% de avance. "
+    overview = f"{status_emoji} Se ha completado el {progress}% de las tareas del proyecto. "
     if project.target_end_date:
         days_left = (project.target_end_date - now).days
         if days_left > 0:

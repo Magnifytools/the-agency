@@ -9,18 +9,20 @@ from fastapi.responses import Response
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db, async_session
 from backend.db.models import (
     InboxNote, InboxNoteStatus, InboxAttachment, Project, ProjectStatus, Client, ClientStatus,
-    Task, TaskStatus, TaskPriority,
+    Task, TaskStatus, TaskPriority, User,
 )
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, require_module
 from backend.api.utils.db_helpers import safe_refresh
 from backend.schemas.inbox import (
     InboxNoteCreate, InboxNoteUpdate, InboxNoteResponse, ConvertToTaskBody,
 )
 from backend.core.rate_limiter import ai_limiter
+from backend.services.task_scope import validate_task_scope
 
 logger = logging.getLogger(__name__)
 
@@ -88,24 +90,41 @@ async def _get_note_or_404(
     return note
 
 
-async def _fetch_context(db: AsyncSession) -> tuple[list[dict], list[dict]]:
-    """Fetch active projects and clients for AI classification context."""
-    proj_coro = db.execute(
-        select(Project.id, Project.name, Client.name.label("client_name"))
-        .join(Client, Project.client_id == Client.id)
-        .where(Project.status == ProjectStatus.active)
-        .order_by(Project.name)
-        .limit(200)
-    )
-    cli_coro = db.execute(
-        select(Client.id, Client.name)
-        .where(Client.status == ClientStatus.active)
-        .order_by(Client.name)
-        .limit(200)
-    )
-    proj_result, cli_result = await asyncio.gather(proj_coro, cli_coro)
-    projects = [{"id": r.id, "name": r.name, "client_name": r.client_name} for r in proj_result.all()]
-    clients = [{"id": r.id, "name": r.name} for r in cli_result.all()]
+def _can_read(user, module: str) -> bool:
+    if user.role.value == "admin":
+        return True
+    return any(p.module == module and p.can_read for p in (user.permissions or []))
+
+
+async def _fetch_context(db: AsyncSession, user) -> tuple[list[dict], list[dict]]:
+    """Return entity modules visible to the actor.
+
+    There is no per-client ACL in the data model. Module permissions are the
+    real boundary, so this deliberately does not invent row ownership rules.
+    """
+    projects: list[dict] = []
+    clients: list[dict] = []
+    if _can_read(user, "projects"):
+        proj_result = await db.execute(
+            select(Project.id, Project.name, Client.name.label("client_name"))
+            .join(Client, Project.client_id == Client.id)
+            .where(Project.status == ProjectStatus.active)
+            .order_by(Project.name)
+            .limit(200)
+        )
+        projects = [
+            {"id": r.id, "name": r.name,
+             "client_name": r.client_name if _can_read(user, "clients") else None}
+            for r in proj_result.all()
+        ]
+    if _can_read(user, "clients"):
+        cli_result = await db.execute(
+            select(Client.id, Client.name)
+            .where(Client.status == ClientStatus.active)
+            .order_by(Client.name)
+            .limit(200)
+        )
+        clients = [{"id": r.id, "name": r.name} for r in cli_result.all()]
     return projects, clients
 
 
@@ -120,7 +139,12 @@ async def _classify_note_background(note_id: int) -> None:
             if not note or note.status != InboxNoteStatus.pending:
                 return
 
-            projects, clients = await _fetch_context(db)
+            user = (await db.execute(
+                select(User).where(User.id == note.user_id).options(selectinload(User.permissions))
+            )).scalar_one_or_none()
+            if user is None:
+                return
+            projects, clients = await _fetch_context(db, user)
             if not projects and not clients:
                 logger.info("No active projects/clients for classification, skipping note %d", note_id)
                 return
@@ -279,7 +303,7 @@ async def classify_note(
     ai_limiter.check(user.id, max_requests=20, window_seconds=60)
 
     note = await _get_note_or_404(note_id, user.id, db)
-    projects, clients = await _fetch_context(db)
+    projects, clients = await _fetch_context(db, user)
 
     try:
         suggestion = await classify_inbox_note(note.raw_text, projects, clients)
@@ -303,14 +327,26 @@ async def convert_to_task(
     note_id: int,
     body: ConvertToTaskBody | None = None,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(require_module("tasks", write=True)),
 ) -> dict:
     """Convert an inbox note into a real task."""
-    note = await _get_note_or_404(note_id, user.id, db)
+    note = (await db.execute(
+        select(InboxNote)
+        .where(InboxNote.id == note_id, InboxNote.user_id == user.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if note is None:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
     body = body or ConvertToTaskBody()
 
-    # Guard: don't convert an already-processed note
+    # A retry (including a concurrent waiter) resolves to the task already
+    # created by this same actor instead of creating a duplicate.
     if note.status == InboxNoteStatus.processed:
+        if note.resolved_as == "task" and note.resolved_entity_id is not None:
+            existing_task = await db.get(Task, note.resolved_entity_id)
+            if existing_task is not None and existing_task.created_by == user.id:
+                return {"ok": True, "task_id": existing_task.id, "note": _to_response(note).model_dump()}
         raise HTTPException(status_code=409, detail="Esta nota ya fue convertida en tarea")
 
     # Resolve fields: explicit > AI suggestion > defaults
@@ -334,6 +370,11 @@ async def convert_to_task(
         row = proj.first()
         if row:
             client_id = row.client_id
+
+    scope = {"client_id": client_id, "project_id": project_id}
+    await validate_task_scope(db, scope)
+    client_id = scope.get("client_id")
+    project_id = scope.get("project_id")
 
     if not client_id:
         raise HTTPException(
@@ -361,6 +402,7 @@ async def convert_to_task(
         due_date=body.due_date,
         scheduled_date=today,
         link_url=note.link_url,
+        created_by=user.id,
     )
     db.add(task)
 

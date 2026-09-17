@@ -5,6 +5,10 @@ describe("task page query and submit helpers", () => {
   it("opens Todas when a PM QA deep link carries a filter", () => {
     expect(initialTasksView(new URLSearchParams("qaFilter=unassigned"))).toBe("all")
     expect(initialTasksView(new URLSearchParams())).toBe("my_day")
+    expect(initialTasksView(new URLSearchParams("view=all"))).toBe("all")
+    expect(initialTasksView(new URLSearchParams("view=weekly"))).toBe("weekly")
+    expect(initialTasksView(new URLSearchParams("view=unknown"))).toBe("my_day")
+    expect(initialTasksView(new URLSearchParams("view=my_day&qaFilter=overdue"))).toBe("all")
   })
 
   it("changes the query key when the visible week changes", () => {

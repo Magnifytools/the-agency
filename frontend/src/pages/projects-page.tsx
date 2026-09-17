@@ -1,11 +1,11 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { Plus, FolderKanban, Calendar, Trash2, Repeat, FileUp, FileText } from "lucide-react"
 import { toast } from "sonner"
 import { projectsApi, clientsApi } from "@/lib/api"
 import type { ProjectListItem, ProjectStatus, ProjectDraft } from "@/lib/types"
-import { usePagination } from "@/hooks/use-pagination"
+import { projectPeriodBounds } from "@/lib/project-filters"
 import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -38,10 +38,26 @@ const STATUS_VARIANTS: Record<ProjectStatus, "default" | "success" | "warning" |
 
 export default function ProjectsPage() {
   const queryClient = useQueryClient()
-  const { page, pageSize, setPage, reset } = usePagination(25)
-  const [statusFilter, setStatusFilter] = useState<string>("")
-  const [typeFilter, setTypeFilter] = useState<string>("")
-  const [periodFilter, setPeriodFilter] = useState<string>("")
+  const [searchParams, setSearchParams] = useSearchParams()
+  const pageSize = 25
+  const rawPage = Number(searchParams.get("page") || 1)
+  const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1
+  const statusFilter = searchParams.get("status") || ""
+  const typeFilter = searchParams.get("type") || ""
+  const periodFilter = searchParams.get("period") || ""
+  const setFilter = (key: string, value: string) => setSearchParams((previous) => {
+    const next = new URLSearchParams(previous)
+    if (value) next.set(key, value)
+    else next.delete(key)
+    next.delete("page")
+    return next
+  })
+  const setPage = (value: number) => setSearchParams((previous) => {
+    const next = new URLSearchParams(previous)
+    next.set("page", String(value))
+    return next
+  })
+  const periodBounds = projectPeriodBounds(periodFilter)
   const [showNewDialog, setShowNewDialog] = useState(false)
   const [showTemplateDialog, setShowTemplateDialog] = useState(false)
   const [showImportDialog, setShowImportDialog] = useState(false)
@@ -49,9 +65,13 @@ export default function ProjectsPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [showNewMenu, setShowNewMenu] = useState(false)
 
-  const { data: projectsData, isLoading } = useQuery({
-    queryKey: ["projects", statusFilter, page, pageSize],
-    queryFn: () => projectsApi.list({ ...(statusFilter ? { status: statusFilter } : {}), page, page_size: pageSize }),
+  const { data: projectsData, isLoading, isError, refetch } = useQuery({
+    queryKey: ["projects", statusFilter, typeFilter, periodBounds, page, pageSize],
+    queryFn: () => projectsApi.list({
+      ...(statusFilter ? { status: statusFilter } : {}),
+      ...(["recurring", "one_time"].includes(typeFilter) ? { is_recurring: typeFilter === "recurring" } : {}),
+      ...periodBounds, page, page_size: pageSize,
+    }),
   })
   const projects = projectsData?.items ?? []
 
@@ -80,36 +100,6 @@ export default function ProjectsPage() {
     return new Date(date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })
   }
 
-  const filterByPeriod = (p: ProjectListItem) => {
-    if (!periodFilter) return true
-    const now = new Date()
-    const endDate = p.target_end_date ? new Date(p.target_end_date) : null
-    const startDate = p.start_date ? new Date(p.start_date) : null
-
-    // Project overlaps with the selected period if it started before period end AND ends after period start
-    let periodStart: Date
-    let periodEnd: Date
-
-    if (periodFilter === "week") {
-      const day = now.getDay()
-      periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (day === 0 ? 6 : day - 1))
-      periodEnd = new Date(periodStart)
-      periodEnd.setDate(periodEnd.getDate() + 6)
-    } else if (periodFilter === "month") {
-      periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
-      periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-    } else if (periodFilter === "quarter") {
-      const q = Math.floor(now.getMonth() / 3)
-      periodStart = new Date(now.getFullYear(), q * 3, 1)
-      periodEnd = new Date(now.getFullYear(), q * 3 + 3, 0)
-    } else {
-      return true
-    }
-
-    const pStart = startDate ?? new Date(0)
-    const pEnd = endDate ?? new Date(9999, 11, 31)
-    return pStart <= periodEnd && pEnd >= periodStart
-  }
 
   return (
     <div className="space-y-6">
@@ -171,7 +161,8 @@ export default function ProjectsPage() {
       <div className="flex flex-wrap gap-3">
         <Select
           value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); reset() }}
+          aria-label="Estado del proyecto"
+          onChange={(e) => setFilter("status", e.target.value)}
           className="w-full sm:w-48"
         >
           <option value="">Todos los estados</option>
@@ -183,7 +174,8 @@ export default function ProjectsPage() {
         </Select>
         <Select
           value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
+          aria-label="Tipo de proyecto"
+          onChange={(e) => setFilter("type", e.target.value)}
           className="w-full sm:w-48"
         >
           <option value="">Todos los tipos</option>
@@ -192,7 +184,8 @@ export default function ProjectsPage() {
         </Select>
         <Select
           value={periodFilter}
-          onChange={(e) => setPeriodFilter(e.target.value)}
+          aria-label="Período del proyecto"
+          onChange={(e) => setFilter("period", e.target.value)}
           className="w-full sm:w-48"
         >
           <option value="">Todos los periodos</option>
@@ -213,25 +206,22 @@ export default function ProjectsPage() {
             </div>
           ))}
         </div>
-      ) : (projects.filter(p => {
-          if (typeFilter && (typeFilter === "recurring" ? !p.is_recurring : p.is_recurring)) return false
-          if (!filterByPeriod(p)) return false
-          return true
-        })).length === 0 ? (
+      ) : isError ? (
+        <div role="alert" className="rounded-lg border p-4 space-y-2">
+          <p>No se pudieron cargar los proyectos. Vuelve a intentarlo.</p>
+          <Button variant="outline" onClick={() => void refetch()}>Reintentar</Button>
+        </div>
+      ) : projects.length === 0 ? (
         <EmptyState
           icon={FolderKanban}
-          title="Sin proyectos todavia"
+          title={statusFilter || typeFilter || periodFilter ? "Sin proyectos con estos filtros" : "Sin proyectos todavía"}
           description={statusFilter ? "No hay proyectos con este estado. Prueba a cambiar el filtro o crea uno nuevo." : "Organiza el trabajo en proyectos con fases y tareas. Puedes empezar desde una plantilla o importar una propuesta."}
           actionLabel="Crear desde plantilla"
           onAction={() => setShowTemplateDialog(true)}
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {projects.filter(p => {
-            if (typeFilter && (typeFilter === "recurring" ? !p.is_recurring : p.is_recurring)) return false
-            if (!filterByPeriod(p)) return false
-            return true
-          }).map((project) => (
+          {projects.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}
@@ -306,6 +296,7 @@ function ProjectCard({
               <p className="text-sm text-muted-foreground mt-1">{project.client_name}</p>
             </div>
             <button
+              aria-label={`Eliminar proyecto ${project.name}`}
               onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
@@ -330,12 +321,12 @@ function ProjectCard({
               )}
             </div>
             <span className="text-sm text-muted-foreground">
-              {project.progress_percent}%
+              {project.progress_percent}% completado
             </span>
           </div>
 
           {/* Progress bar */}
-          <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+          <div role="progressbar" aria-label="Tareas completadas" aria-valuenow={project.progress_percent} aria-valuemin={0} aria-valuemax={100} className="h-1.5 bg-secondary rounded-full overflow-hidden">
             <div
               className="h-full bg-brand transition-all"
               style={{ width: `${project.progress_percent}%` }}

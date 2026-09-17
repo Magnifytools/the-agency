@@ -1,15 +1,16 @@
 from __future__ import annotations
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, or_, delete
+from sqlalchemy import and_, select, or_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
-from backend.db.models import PMInsight, User, InsightStatus, AlertSettings
+from backend.db.models import PMInsight, User, InsightStatus, InsightType, AlertSettings
+from backend.core.modules import is_enabled
 from backend.schemas.insight import InsightResponse, DailyBriefingResponse
 from backend.schemas.alert_settings import AlertSettingsResponse, AlertSettingsUpdate
 from backend.services.insights import generate_insights, get_daily_briefing
@@ -20,6 +21,46 @@ from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/pm", tags=["pm"])
 logger = logging.getLogger(__name__)
+
+
+def _can_read_module(user: User, module: str) -> bool:
+    if user.role == UserRole.admin:
+        return True
+    return any(p.module == module and p.can_read for p in (user.permissions or []))
+
+
+def _can_read_financial_insights(user: User) -> bool:
+    return (
+        is_enabled("finance")
+        and is_enabled("billing")
+        and _can_read_module(user, "finance_income")
+    )
+
+
+def _sensitive_insight_clause():
+    """Rows that may contain finance under current or legacy provenance.
+
+    Before ``financial`` existed, both grouped task debt and overdue income
+    used ``overdue`` without a task id. They cannot be separated safely now,
+    so access is intentionally conservative. Legacy generic suggestions may
+    also have been generated from those amounts; new suggestions use the
+    explicit ``operational_suggestion`` type.
+    """
+    return or_(
+        PMInsight.insight_type == InsightType.financial,
+        PMInsight.insight_type == InsightType.suggestion,
+        and_(
+            PMInsight.insight_type == InsightType.overdue,
+            PMInsight.task_id.is_(None),
+        ),
+    )
+
+
+def _is_sensitive_insight(insight: PMInsight) -> bool:
+    return (
+        insight.insight_type in {InsightType.financial, InsightType.suggestion}
+        or (insight.insight_type == InsightType.overdue and insight.task_id is None)
+    )
 
 
 def _to_response(insight: PMInsight) -> InsightResponse:
@@ -71,6 +112,8 @@ async def list_insights(
     # F-04: isolate by user_id for non-admin
     if current_user.role != UserRole.admin:
         query = query.where(PMInsight.user_id == current_user.id)
+    if not _can_read_financial_insights(current_user):
+        query = query.where(~_sensitive_insight_clause())
 
     if status_filter:
         query = query.where(PMInsight.status == status_filter)
@@ -117,12 +160,17 @@ async def trigger_generate_insights(
             ),
         )
     )
-    await db.commit()
-
-    # Generate new insights
     try:
-        new_insights = await generate_insights(db, user_id=current_user.id)
+        new_insights = await generate_insights(
+            db,
+            user_id=current_user.id,
+            allow_financial=_can_read_financial_insights(current_user),
+            team_scope=current_user.role == UserRole.admin,
+            commit=False,
+        )
+        await db.commit()
     except Exception as e:
+        await db.rollback()
         logger.error(f"Insights generation failed: {e}")
         raise HTTPException(status_code=502, detail="Error generando insights con IA")
 
@@ -145,6 +193,8 @@ async def dismiss_insight(
     # F-04: ownership check
     if current_user.role != UserRole.admin and insight.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your insight")
+    if _is_sensitive_insight(insight) and not _can_read_financial_insights(current_user):
+        raise HTTPException(status_code=403, detail="Sin acceso al origen financiero de este hallazgo")
 
     insight.status = InsightStatus.dismissed
     insight.dismissed_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -171,6 +221,8 @@ async def act_on_insight(
     # F-04: ownership check
     if current_user.role != UserRole.admin and insight.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your insight")
+    if _is_sensitive_insight(insight) and not _can_read_financial_insights(current_user):
+        raise HTTPException(status_code=403, detail="Sin acceso al origen financiero de este hallazgo")
 
     insight.status = InsightStatus.acted
     insight.acted_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -183,12 +235,17 @@ async def act_on_insight(
 
 @router.get("/daily-briefing", response_model=DailyBriefingResponse)
 async def get_briefing(
+    scope: Literal["mine", "team"] = "mine",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("pm")),
 ):
     """Get the daily briefing summary."""
     ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
-    briefing = await get_daily_briefing(db, user_id=current_user.id)
+    if scope == "team" and current_user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="La vista de equipo requiere rol administrador")
+    briefing = await get_daily_briefing(
+        db, user_id=current_user.id, team=scope == "team"
+    )
     return DailyBriefingResponse(**briefing)
 
 
@@ -281,6 +338,8 @@ async def get_insight_count(
     # F-04: scope to user
     if current_user.role != UserRole.admin:
         query = query.where(PMInsight.user_id == current_user.id)
+    if not _can_read_financial_insights(current_user):
+        query = query.where(~_sensitive_insight_clause())
     result = await db.execute(query)
     insights = list(result.scalars().all())
 

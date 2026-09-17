@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-17T05:10:00Z",
-  "estado_general": "produccion_sin_cambios_mejora_verificada_local",
+  "ultima_actualizacion": "2026-09-17T05:50:00Z",
+  "estado_general": "produccion_primera_mejora_publicada_objetivo_en_curso",
   "progreso_estimado": 95,
   "tareas": [
     {
@@ -126,9 +126,9 @@
     {
       "id": "AUDIT-20260917-P1",
       "descripcion": "Hoy fiable, integridad de horas, vínculo de proyecto, recurrencias y avisos idempotentes",
-      "estado": "verificado_local_pendiente_publicacion",
+      "estado": "completado",
       "prioridad": "alta",
-      "notas": "Sol + Terra dirigidos por Codex. 538 backend (69 PostgreSQL), 51 frontend y build aprobados; recorrido visual local. Detalle docs/primera-mejora-2026-09-17.md."
+      "notas": "Publicada PR12, commit a4ec5cf;557backend (PG17),52frontend/build; readiness y agenda/avisos/timer verificados en producción, desktop/móvil. El objetivo global continúa por fases."
     }
   ],
   "bugs": [
@@ -191,7 +191,7 @@
   ],
   "notas_tecnicas": [
     "Stack: React 19 + FastAPI + PostgreSQL + Railway",
-    "Tests: 427 backend (incluye tests/integration contra Postgres real) + 45 frontend",
+    "Tests entrega17sep:557backend (2omitidos),52frontend;CI conPG17 obligatorio",
     "CUIDADO: lazy='selectin' esta en ~80 relaciones de models.py. Quitar un selectinload() de .options() NO evita la carga; hace falta noload() explicito",
     "La suite unitaria mockea get_db: cualquier cambio de SQL debe verificarse en tests/integration/",
     "Los estados de rentabilidad viven en services/profitability.py (backend) y lib/profitability.ts (frontend), un unico mapa cada uno",
@@ -199,7 +199,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "Publicar primera mejora local verificada (docs/primera-mejora-2026-09-17.md); después simplificar Hoy/Trabajo/proyectos, fiabilidad y períodos de informes, y comandos naturales sobre operaciones comunes. Auditoría actual en output/audit-2026-09-17/informe-agency.md. Veinte módulos ya están ocultos; no repetir la poda histórica.",
+  "proximos_pasos": "Revisar e integrar F2: aislamiento de sesión/caché, permisos e idempotencia Inbox, borrado masivo fiable. Después UX de cinco entradas, alertas proactivas, resúmenes fiables y órdenes naturales. Matriz interna en tasks/current/2026-09-17-implementacion-completa/coverage.md.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
@@ -208,7 +208,9 @@
   "deploy": {
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
-    "estado": "produccion"
+    "estado": "produccion",
+    "revision": "a4ec5cff5c781d3116a52a4e1f3b91e6a3ddb49b",
+    "healthcheck": "/api/ready"
   },
-  "pendiente_david": "Primera mejora preparada para revisión/publicación; no se han cambiado producción ni datos históricos."
+  "pendiente_david": "Sin bloqueo actual; se prepararán propuestas concretas para datos históricos ambiguos cuando corresponda."
 }

@@ -1,5 +1,6 @@
+import axios, { type InternalAxiosRequestConfig } from "axios"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { CSRF_COOKIE_NAME } from "@/lib/api"
+import { api, beginApiSessionTransition, CSRF_COOKIE_NAME } from "@/lib/api"
 
 // Mock sonner before importing api
 vi.mock("sonner", () => ({
@@ -14,14 +15,19 @@ const clearCsrfCookie = () => {
 }
 
 describe("API Client", () => {
+  let originalAdapter: typeof api.defaults.adapter
+
   beforeEach(() => {
     vi.clearAllMocks()
     clearCsrfCookie()
+    originalAdapter = api.defaults.adapter
   })
 
   afterEach(() => {
     clearCsrfCookie()
+    api.defaults.adapter = originalAdapter
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it("creates an axios instance with /api baseURL", async () => {
@@ -100,6 +106,85 @@ describe("API Client", () => {
       }
     }
     expect(shouldRedirect).toBe(false)
+  })
+
+  it("aborts a pending data request when the authenticated session changes", async () => {
+    let requestSignal: { aborted: boolean } | undefined
+    api.defaults.adapter = (config) => new Promise((_resolve, reject) => {
+      requestSignal = config.signal
+      const signal = config.signal
+      const addAbortListener = signal?.addEventListener
+      if (addAbortListener) {
+        addAbortListener.call(signal, "abort", () => reject({ __CANCEL__: true, config }))
+      }
+    })
+
+    const pending = api.get("/tasks").catch((error) => error)
+    await vi.waitFor(() => expect(requestSignal).toBeDefined())
+
+    beginApiSessionTransition()
+    const error = await pending
+
+    expect(requestSignal?.aborted).toBe(true)
+    expect(axios.isCancel(error)).toBe(true)
+  })
+
+  it("combines a caller signal with the session signal and silences cancellation toasts", async () => {
+    const { toast } = await import("sonner")
+    const ownController = new AbortController()
+    let requestSignal: { aborted: boolean } | undefined
+    api.defaults.adapter = (config) => new Promise((_resolve, reject) => {
+      requestSignal = config.signal
+      const addAbortListener = config.signal?.addEventListener
+      if (addAbortListener) {
+        addAbortListener.call(config.signal, "abort", () => reject({ __CANCEL__: true, config, request: {} }))
+      }
+    })
+
+    const pending = api.post("/tasks", {}, { signal: ownController.signal }).catch((error) => error)
+    await vi.waitFor(() => expect(requestSignal).toBeDefined())
+    beginApiSessionTransition()
+    const error = await pending
+
+    expect(requestSignal?.aborted).toBe(true)
+    expect(ownController.signal.aborted).toBe(false)
+    expect(axios.isCancel(error)).toBe(true)
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it("keeps an already cancelled caller signal cancelled without AbortSignal.any", async () => {
+    vi.stubGlobal("AbortSignal", { any: undefined })
+    const caller = new AbortController()
+    caller.abort()
+    const adapter = vi.fn()
+    api.defaults.adapter = adapter
+    const error = await api.get("/tasks", { signal: caller.signal }).catch((err) => err)
+    expect(axios.isCancel(error)).toBe(true)
+    expect(adapter).not.toHaveBeenCalled()
+  })
+
+  it("ignores an old 401 after a new session begins", async () => {
+    const onExpired = vi.fn()
+    let rejectOldRequest!: (reason: unknown) => void
+    let oldConfig!: InternalAxiosRequestConfig
+    window.addEventListener("auth:expired", onExpired)
+    api.defaults.adapter = (config) => new Promise((_resolve, reject) => {
+      oldConfig = config as InternalAxiosRequestConfig
+      rejectOldRequest = reject
+    })
+
+    const pending = api.get("/tasks").catch((error) => error)
+    await vi.waitFor(() => expect(rejectOldRequest).toBeTypeOf("function"))
+    beginApiSessionTransition()
+    rejectOldRequest({
+      config: oldConfig,
+      request: {},
+      response: { status: 401, data: {}, headers: {}, config: oldConfig },
+    })
+
+    await pending
+    expect(onExpired).not.toHaveBeenCalled()
+    window.removeEventListener("auth:expired", onExpired)
   })
 
   it("403 response shows permission error toast for write requests", async () => {

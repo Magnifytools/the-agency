@@ -201,7 +201,9 @@ class InsightType(str, enum.Enum):
     followup = "followup"
     workload = "workload"
     suggestion = "suggestion"
+    operational_suggestion = "operational_suggestion"
     quality = "quality"
+    financial = "financial"
 
 
 class InsightPriority(str, enum.Enum):

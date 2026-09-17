@@ -134,7 +134,10 @@ async def collect_digest_data(
         "client_id": client_id,
         "client_name": client_name,
         "project_name": project.name if project else None,
-        "project_progress": project.progress_percent if project else None,
+        "project_progress": (
+            int(sum(task.status == TaskStatus.completed for task in project.tasks) * 100 / len(project.tasks))
+            if project.tasks else 0
+        ) if project else None,
         "period_start": period_start.isoformat(),
         "period_end": period_end.isoformat(),
         "completed_tasks": completed_tasks,
