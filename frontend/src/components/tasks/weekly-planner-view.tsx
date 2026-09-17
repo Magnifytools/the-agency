@@ -16,6 +16,7 @@ import type { Task } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, ChevronDown, Pencil, Clock, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { addCivilDays, businessDateString, formatCivilDate, parseCivilDate } from "@/lib/dates"
 
 interface Props {
   tasks: Task[]
@@ -35,30 +36,22 @@ const priorityColors: Record<string, string> = {
 }
 
 function getWeekDates(offset: number): { dates: string[]; label: string } {
-  const now = new Date()
-  const day = now.getDay()
+  const today = businessDateString()
+  const day = parseCivilDate(today).getDay()
   // Monday = 1, Sunday = 0 → adjust so Monday is start
   const mondayOffset = day === 0 ? -6 : 1 - day
-  const monday = new Date(now)
-  monday.setDate(now.getDate() + mondayOffset + offset * 7)
+  const monday = addCivilDays(today, mondayOffset + offset * 7)
 
-  const dates: string[] = []
-  for (let i = 0; i < 5; i++) {
-    const d = new Date(monday)
-    d.setDate(monday.getDate() + i)
-    dates.push(d.toISOString().slice(0, 10))
-  }
+  const dates = Array.from({ length: 5 }, (_, index) => addCivilDays(monday, index))
 
-  const fri = new Date(monday)
-  fri.setDate(monday.getDate() + 4)
-  const label = `${monday.getDate()} ${monday.toLocaleDateString("es-ES", { month: "short" })} – ${fri.getDate()} ${fri.toLocaleDateString("es-ES", { month: "short", year: "numeric" })}`
+  const friday = addCivilDays(monday, 4)
+  const label = `${formatCivilDate(monday, { day: "numeric", month: "short" })} – ${formatCivilDate(friday, { day: "numeric", month: "short", year: "numeric" })}`
 
   return { dates, label }
 }
 
 function formatDay(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00")
-  return `${d.getDate()}`
+  return `${parseCivilDate(dateStr).getDate()}`
 }
 
 // ─── Droppable Column ─────────────────────────────────────────
@@ -253,7 +246,7 @@ export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onSch
   )
 
   const { dates, label } = useMemo(() => getWeekDates(weekOffset), [weekOffset])
-  const today = new Date().toISOString().slice(0, 10)
+  const today = businessDateString()
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- Pre-open today's accordion on mobile detection
   useEffect(() => {

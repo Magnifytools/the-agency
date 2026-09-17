@@ -25,6 +25,7 @@ import { toast } from "sonner"
 import { projectsApi, tasksApi, usersApi } from "@/lib/api"
 import type { Project, ProjectPhase, ProjectStatus, PhaseStatus, Task, TaskStatus, ProjectClosingStatus } from "@/lib/types"
 import { isEnabled } from "@/lib/hidden-modules"
+import { formatCivilDate } from "@/lib/dates"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -1235,7 +1236,7 @@ function TaskPreviewDialog({
             {task.due_date && (
               <div>
                 <span className="text-xs text-muted-foreground block">Fecha límite</span>
-                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{new Date(task.due_date).toLocaleDateString("es-ES")}</span>
+                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{formatCivilDate(task.due_date)}</span>
               </div>
             )}
             {task.estimated_minutes && (

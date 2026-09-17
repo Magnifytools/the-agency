@@ -400,7 +400,10 @@ if _HIDDEN:
 @app.get("/api/config")
 async def get_app_config():
     """Public presentation contract shared by web and extension clients."""
-    return {"timezone": settings.AGENCY_TIMEZONE}
+    return {
+        "timezone": settings.AGENCY_TIMEZONE,
+        "hidden_modules": sorted(hidden_modules()),
+    }
 
 
 @app.get("/api/health")

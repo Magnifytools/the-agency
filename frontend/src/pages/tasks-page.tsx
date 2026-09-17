@@ -35,6 +35,8 @@ import { getErrorMessage } from "@/lib/utils"
 import { initialTasksView, shouldPreserveCurrentProject, taskQueryKeyWithWeek, withExplicitActualMinutes } from "@/components/tasks/task-page-utils"
 import { invalidateTaskChange, optimisticallyUpdateExactQuery, projectKeys, restoreQuerySnapshot, taskKeys, timeKeys } from "@/lib/query-keys"
 import type { OperationalImpact } from "@/lib/query-keys"
+import { addCivilDays, formatCivilDate } from "@/lib/dates"
+import { useBusinessDate } from "@/hooks/use-business-date"
 
 const priorityBadge = (priority: TaskPriority) => {
   const map: Record<TaskPriority, { label: string; variant: "destructive" | "warning" | "secondary" | "outline" }> = {
@@ -54,19 +56,10 @@ const formatMinutes = (mins: number) => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-const localDateString = (date = new Date()) => {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-  return local.toISOString().slice(0, 10)
-}
-
-const weekRange = (offset: number) => {
-  const today = new Date()
-  const day = today.getDay()
-  const monday = new Date(today)
-  monday.setDate(today.getDate() + (day === 0 ? -6 : 1 - day) + offset * 7)
-  const friday = new Date(monday)
-  friday.setDate(monday.getDate() + 4)
-  return { from: localDateString(monday), to: localDateString(friday) }
+const weekRange = (offset: number, today: string) => {
+  const day = new Date(`${today}T12:00:00`).getDay()
+  const monday = addCivilDays(today, (day === 0 ? -6 : 1 - day) + offset * 7)
+  return { from: monday, to: addCivilDays(monday, 4) }
 }
 
 export default function TasksPage() {
@@ -74,6 +67,7 @@ export default function TasksPage() {
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const { page, pageSize, setPage, reset } = usePagination(25)
+  const businessToday = useBusinessDate()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Task | null>(null)
   const [timeLogTask, setTimeLogTask] = useState<Task | null>(null)
@@ -154,7 +148,7 @@ export default function TasksPage() {
     ? (() => { const d = new Date(calMonth.year, calMonth.month + 1, 0); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` })()
     : undefined
 
-  const selectedWeek = weekRange(weekOffset)
+  const selectedWeek = weekRange(weekOffset, businessToday)
   const tasksQueryKey = taskQueryKeyWithWeek(
     taskKeys.list([filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, filterDateField, searchQuery, page, pageSize, qaFilter, view, calMonth.year, calMonth.month]),
     selectedWeek,
@@ -184,8 +178,8 @@ export default function TasksPage() {
   })
 
   const useAgendaQuery = (section: "planned" | "carryover" | "unplanned" | "completed") => useInfiniteQuery({
-    queryKey: taskKeys.agenda(section, localDateString(), user?.id, new Date().getTimezoneOffset(), agendaScope),
-    queryFn: ({ pageParam }) => tasksApi.agenda({ date: localDateString(), section, assigned_to: agendaScope === "team" ? undefined : "me", timezone_offset_minutes: new Date().getTimezoneOffset(), page: pageParam, page_size: pageSize }),
+    queryKey: taskKeys.agenda(section, businessToday, user?.id, 0, agendaScope),
+    queryFn: ({ pageParam }) => tasksApi.agenda({ date: businessToday, section, assigned_to: agendaScope === "team" ? undefined : "me", page: pageParam, page_size: pageSize }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => lastPage.page * lastPage.page_size < lastPage.total ? lastPage.page + 1 : undefined,
     enabled: view === "my_day",
@@ -212,7 +206,7 @@ export default function TasksPage() {
     clientIds: [...items.map((task) => task.client_id), typeof extra.client_id === "number" ? extra.client_id : undefined],
   })
 
-  const todayStr = localDateString()
+  const todayStr = businessToday
   const tasks = allTasks
 
   const { sortedItems: sortedTasks, sortConfig: taskSortConfig, requestSort: requestTaskSort } = useTableSort(tasks)
@@ -854,7 +848,7 @@ export default function TasksPage() {
                   <TableCell className={`mono ${(qaFilter === "no_date" && QA_nodate) || (qaFilter === "overdue" && QA_overdue)
                       ? "text-destructive font-bold" : ""
                     }`}>
-                    {t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : (QA_nodate && qaFilter === "no_date" ? "⚠️ Sin planificar" : "-")}
+                    {t.due_date ? formatCivilDate(t.due_date) : (QA_nodate && qaFilter === "no_date" ? "⚠️ Sin planificar" : "-")}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">

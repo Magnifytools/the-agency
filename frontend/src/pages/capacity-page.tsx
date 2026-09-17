@@ -5,6 +5,8 @@ import type { CapacityMemberDetail, CapacityTask } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Users, ChevronDown, ChevronRight, AlertTriangle, Clock, Building2, FolderKanban } from "lucide-react"
+import { formatCivilDate } from "@/lib/dates"
+import { useBusinessDate } from "@/hooks/use-business-date"
 
 function formatMinutes(m: number): string {
   const h = Math.floor(m / 60)
@@ -36,10 +38,9 @@ const statusLabels: Record<string, string> = {
   advanced: "Avanzada",
 }
 
-function TaskRow({ task }: { task: CapacityTask }) {
+function TaskRow({ task, today }: { task: CapacityTask; today: string }) {
   const prio = priorityConfig[task.priority] || priorityConfig.medium
-  const todayStr = new Date().toISOString().slice(0, 10)
-  const isOverdue = task.due_date && task.due_date < todayStr
+  const isOverdue = task.due_date && task.due_date < today
 
   return (
     <div className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/40 group text-sm">
@@ -72,7 +73,7 @@ function TaskRow({ task }: { task: CapacityTask }) {
         )}
         {task.due_date && (
           <span className={`text-xs ${isOverdue ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
-            {new Date(task.due_date).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
+            {formatCivilDate(task.due_date, { day: "2-digit", month: "short" })}
           </span>
         )}
       </div>
@@ -80,7 +81,7 @@ function TaskRow({ task }: { task: CapacityTask }) {
   )
 }
 
-function MemberCard({ member }: { member: CapacityMemberDetail }) {
+function MemberCard({ member, today }: { member: CapacityMemberDetail; today: string }) {
   const [expanded, setExpanded] = useState(false)
   const cfg = statusConfig[member.status]
   const barWidth = Math.min(member.load_percent, 150)
@@ -151,7 +152,7 @@ function MemberCard({ member }: { member: CapacityMemberDetail }) {
                 </div>
                 <div className="px-1 py-1 divide-y divide-border/30">
                   {clientGroup.tasks.map((task) => (
-                    <TaskRow key={task.task_id} task={task} />
+                    <TaskRow key={task.task_id} task={task} today={today} />
                   ))}
                 </div>
               </div>
@@ -168,6 +169,7 @@ function MemberCard({ member }: { member: CapacityMemberDetail }) {
 }
 
 export default function CapacityPage() {
+  const today = useBusinessDate()
   const { data: members = [], isLoading } = useQuery({
     queryKey: ["capacity-detail"],
     queryFn: () => capacityApi.detail(),
@@ -238,7 +240,7 @@ export default function CapacityPage() {
       {/* Member cards */}
       <div className="space-y-3">
         {members.map((m) => (
-          <MemberCard key={m.user_id} member={m} />
+          <MemberCard key={m.user_id} member={m} today={today} />
         ))}
       </div>
 

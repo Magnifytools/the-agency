@@ -36,7 +36,7 @@ async def test_digest_uses_completion_time_and_half_open_period(db_session, repo
             title="Fuera aunque se editó dentro",
             client_id=reporting_client.id,
             status=TaskStatus.completed,
-            completed_at=datetime(2026, 8, 31, 23, 59, 59),
+            completed_at=datetime(2026, 8, 31, 21, 59, 59),
             updated_at=datetime(2026, 9, 2, 10),
         ),
         Task(
@@ -49,7 +49,7 @@ async def test_digest_uses_completion_time_and_half_open_period(db_session, repo
             title="Último instante incluido",
             client_id=reporting_client.id,
             status=TaskStatus.completed,
-            completed_at=datetime(2026, 9, 7, 23, 59, 59, 999999),
+            completed_at=datetime(2026, 9, 7, 21, 59, 59, 999999),
         ),
     ]
     db_session.add_all(rows)

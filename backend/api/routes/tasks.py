@@ -1,6 +1,6 @@
 from __future__ import annotations
 import logging
-from datetime import date as date_type, datetime, time, timedelta, timezone
+from datetime import date as date_type, datetime, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -31,6 +31,7 @@ from backend.api.deps import get_current_user, require_module
 from backend.api.utils.db_helpers import safe_refresh
 from backend.api.middleware.audit_log import log_audit
 from backend.services.task_scope import validate_task_scope
+from backend.services.temporal import civil_day_utc_bounds
 from backend.services.task_lifecycle import stamp_task_status
 
 logger = logging.getLogger(__name__)
@@ -251,7 +252,10 @@ async def list_task_agenda(
     date: date_type = Query(...),
     section: Literal["planned", "carryover", "unplanned", "completed"] = Query(...),
     assigned_to: str = Query("me"),
-    timezone_offset_minutes: int = Query(0, ge=-840, le=840),
+    timezone_offset_minutes: int = Query(
+        0, ge=-840, le=840, deprecated=True,
+        description="Compatibilidad: Hoy usa AGENCY_TIMEZONE; este offset ya no altera el resultado.",
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
@@ -299,8 +303,7 @@ async def list_task_agenda(
             or_(Task.due_date.is_(None), due_day > date),
         )
     else:
-        utc_start = datetime.combine(date, time.min) + timedelta(minutes=timezone_offset_minutes)
-        utc_end = utc_start + timedelta(days=1)
+        utc_start, utc_end = civil_day_utc_bounds(date)
         base = base.where(
             Task.status == TaskStatus.completed,
             Task.completed_at >= utc_start,

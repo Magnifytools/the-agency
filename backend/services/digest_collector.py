@@ -8,7 +8,7 @@ Given a client_id and date range, collects:
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timezone, timedelta
+from datetime import date
 
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +17,7 @@ from backend.db.models import (
     IN_PROGRESS_TASK_STATUSES,
     Task, TaskStatus, TimeEntry, CommunicationLog, Client, Project,
 )
+from backend.services.temporal import civil_day_utc_bounds
 
 
 async def collect_digest_data(
@@ -27,8 +28,8 @@ async def collect_digest_data(
 ) -> dict:
     """Collect all relevant data for a client digest within the given period."""
 
-    start_dt = datetime.combine(period_start, datetime.min.time())
-    end_dt = datetime.combine(period_end + timedelta(days=1), datetime.min.time())
+    start_dt, _ = civil_day_utc_bounds(period_start)
+    _, end_dt = civil_day_utc_bounds(period_end)
 
     # --- Client info ---
     client_result = await db.execute(select(Client).where(Client.id == client_id))

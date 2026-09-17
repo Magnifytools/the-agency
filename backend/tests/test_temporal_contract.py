@@ -3,6 +3,7 @@
 from datetime import date, datetime, timezone
 
 from backend.config import settings
+from backend.core.modules import hidden_modules
 from backend.db.models import TaskPriority, TaskStatus
 from backend.schemas.task import TaskResponse
 from backend.schemas.time_entry import ActiveTimerResponse, TimeEntryResponse
@@ -77,4 +78,7 @@ def test_timer_json_marks_legacy_naive_instants_as_utc_without_touching_entry_da
 async def test_app_config_exposes_the_single_business_timezone(admin_client):
     response = await admin_client.get("/api/config")
     assert response.status_code == 200
-    assert response.json() == {"timezone": settings.AGENCY_TIMEZONE}
+    assert response.json() == {
+        "timezone": settings.AGENCY_TIMEZONE,
+        "hidden_modules": sorted(hidden_modules()),
+    }

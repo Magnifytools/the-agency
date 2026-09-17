@@ -267,7 +267,9 @@ async def test_agenda_is_server_filtered_paginated_and_timezone_aware(
         params={
             "date": target_day.isoformat(),
             "section": "completed",
-            "timezone_offset_minutes": -120,
+            # Legacy browser offset is accepted but ignored: the business day
+            # is defined by the server's configured Europe/Madrid timezone.
+            "timezone_offset_minutes": 480,
         },
     )
     assert completed.status_code == 200, completed.text

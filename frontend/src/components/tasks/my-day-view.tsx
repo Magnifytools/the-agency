@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Pencil, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { agencyTimezoneLabel, businessDateString, formatCivilDate } from "@/lib/dates"
 
 
 interface Props {
@@ -37,13 +38,8 @@ const formatMinutes = (mins: number) => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-function localDateString(date = new Date()) {
-  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-  return offsetDate.toISOString().slice(0, 10)
-}
-
 export function MyDayView({ planned, carryover, unplanned, completed, isLoadingMore, onLoadMore, onStatusChange, onOpenEdit }: Props) {
-  const today = localDateString()
+  const today = businessDateString()
 
   const sortTasks = (items: Task[]) => [...items].sort((a, b) => {
     const aOverdue = a.due_date && a.due_date < today ? 1 : 0
@@ -126,12 +122,12 @@ export function MyDayView({ planned, carryover, unplanned, completed, isLoadingM
               {task.scheduled_date ? (
                 <span className="flex items-center gap-0.5">
                   <Clock className="h-2.5 w-2.5" />
-                  Planificada {new Date(`${task.scheduled_date}T12:00:00`).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                  Planificada {formatCivilDate(task.scheduled_date, { day: "numeric", month: "short" })}
                 </span>
               ) : task.due_date ? (
                 <span className={cn("flex items-center gap-0.5", isOverdue && "text-red-500 font-medium")}>
                   {isOverdue && <AlertTriangle className="h-2.5 w-2.5" />}
-                  {new Date(task.due_date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                  {formatCivilDate(task.due_date, { day: "numeric", month: "short" })}
                 </span>
               ) : (
                 <span className="flex items-center gap-0.5 text-muted-foreground">
@@ -158,6 +154,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, isLoadingM
 
   return (
     <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">{agencyTimezoneLabel()}</p>
       {/* Tareas del día */}
       <div>
         <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">

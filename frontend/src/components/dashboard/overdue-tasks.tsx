@@ -1,6 +1,8 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import type { Task } from "@/lib/types"
+import { civilDayDifference, formatCivilDate } from "@/lib/dates"
+import { useBusinessDate } from "@/hooks/use-business-date"
 
 interface OverdueTasksProps {
   tasks: Task[]
@@ -10,12 +12,10 @@ interface OverdueTasksProps {
 
 export function OverdueTasks({ tasks, showAssigned = false, title }: OverdueTasksProps) {
   // Filter out tasks due today or in the future — only truly overdue
-  const todayStr = new Date().toISOString().split("T")[0]
+  const todayStr = useBusinessDate()
   const trulyOverdue = (tasks || []).filter(
     (t) => t.due_date && t.due_date < todayStr
   )
-  // eslint-disable-next-line react-hooks/purity -- Date.now() for computing days overdue is intentional
-  const now = Date.now()
   if (trulyOverdue.length === 0) return null
 
   return (
@@ -39,7 +39,7 @@ export function OverdueTasks({ tasks, showAssigned = false, title }: OverdueTask
           <TableBody>
             {trulyOverdue.map((t) => {
               const daysOverdue = t.due_date
-                ? Math.max(1, Math.floor((now - new Date(t.due_date).getTime()) / 86400000))
+                ? Math.max(1, civilDayDifference(t.due_date, todayStr))
                 : 1
               return (
                 <TableRow key={t.id}>
@@ -47,7 +47,7 @@ export function OverdueTasks({ tasks, showAssigned = false, title }: OverdueTask
                   <TableCell>{t.client_name || "-"}</TableCell>
                   {showAssigned && <TableCell>{t.assigned_user_name || "-"}</TableCell>}
                   <TableCell className="mono">
-                    {t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : "-"}
+                    {t.due_date ? formatCivilDate(t.due_date) : "-"}
                   </TableCell>
                   <TableCell className="text-red-400 font-bold">{daysOverdue}d</TableCell>
                 </TableRow>

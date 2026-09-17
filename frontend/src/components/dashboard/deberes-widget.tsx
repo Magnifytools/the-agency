@@ -4,9 +4,11 @@ import { dailysApi } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ClipboardCheck, Check, X } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { addCivilDays } from "@/lib/dates"
+import { useBusinessDate } from "@/hooks/use-business-date"
 
 export function DeberesWidget({ userId }: { userId: number }) {
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+  const yesterday = addCivilDays(useBusinessDate(), -1)
   const [dismissed, setDismissed] = useState<Set<number>>(new Set())
   const [completed, setCompleted] = useState<Set<number>>(new Set())
 

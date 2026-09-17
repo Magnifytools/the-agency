@@ -34,6 +34,8 @@ import { TodayBlock } from "@/components/dashboard/today-block"
 import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
 import { SkeletonCard } from "@/components/ui/skeleton"
+import { addCivilDays, businessHour, formatCivilDate, parseCivilDate } from "@/lib/dates"
+import { useBusinessDate } from "@/hooks/use-business-date"
 
 const MONTHS = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -47,17 +49,19 @@ function profitBadge(status: string) {
 
 export default function DashboardPage() {
   const { user } = useAuth()
-  const now = new Date()
-  const todayStr = now.toISOString().slice(0, 10)
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+  const todayStr = useBusinessDate()
+  const businessNow = parseCivilDate(todayStr)
+  const businessWeekday = businessNow.getDay()
+  const thisMonday = addCivilDays(todayStr, businessWeekday === 0 ? -6 : 1 - businessWeekday)
+  const [year, setYear] = useState(businessNow.getFullYear())
+  const [month, setMonth] = useState(businessNow.getMonth() + 1)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [viewAsUserId, setViewAsUserId] = useState<number | null>(null)
   const queryClient = useQueryClient()
 
   const params = { year, month }
   const isAdmin = user?.role === "admin"
-  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1
+  const isCurrentMonth = year === businessNow.getFullYear() && month === businessNow.getMonth() + 1
 
   const goToPrevMonth = () => {
     if (month === 1) { setMonth(12); setYear(year - 1) }
@@ -67,7 +71,7 @@ export default function DashboardPage() {
     if (month === 12) { setMonth(1); setYear(year + 1) }
     else setMonth(month + 1)
   }
-  const goToCurrentMonth = () => { setYear(now.getFullYear()); setMonth(now.getMonth() + 1) }
+  const goToCurrentMonth = () => { setYear(businessNow.getFullYear()); setMonth(businessNow.getMonth() + 1) }
 
   // ─── Shared queries ─────────────────────────────────────────
   const { data: overview } = useQuery({
@@ -165,8 +169,8 @@ export default function DashboardPage() {
     enabled: !!user && user.role === "member",
   })
   const { data: weeklyTimesheet } = useQuery({
-    queryKey: timeKeys.week(),
-    queryFn: () => timeEntriesApi.weekly(),
+    queryKey: timeKeys.week(thisMonday),
+    queryFn: () => timeEntriesApi.weekly(thisMonday),
     enabled: !!user && user.role === "member",
   })
   const { data: activeTimer } = useQuery({
@@ -176,14 +180,14 @@ export default function DashboardPage() {
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   })
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayStr
   const { data: todayDailys } = useQuery({
     queryKey: ["daily-today", user?.id, today],
     queryFn: () => dailysApi.list({ user_id: user!.id, date_from: today, date_to: today, limit: 1 }),
     enabled: !!user && user.role === "member",
   })
   const todayDaily = todayDailys?.[0]
-  const showDailyReminder = !todayDaily && now.getHours() >= 17
+  const showDailyReminder = !todayDaily && businessHour() >= 17
 
   // ─── Admin queries ──────────────────────────────────────────
   const { data: allOverdueTasks } = useQuery({
@@ -213,8 +217,8 @@ export default function DashboardPage() {
     enabled: isAdmin && !!viewAsUserId,
   })
   const { data: viewAsWeekly } = useQuery({
-    queryKey: ["weekly-timesheet-viewas", viewAsUserId],
-    queryFn: () => timeEntriesApi.weekly(),
+    queryKey: timeKeys.week(thisMonday),
+    queryFn: () => timeEntriesApi.weekly(thisMonday),
     enabled: isAdmin && !!viewAsUserId,
   })
   const viewAsUser = memberUsers.find((u) => u.id === viewAsUserId)
@@ -292,12 +296,6 @@ export default function DashboardPage() {
   })
 
   // ─── Computed ───────────────────────────────────────────────
-  const getMondayOfWeek = (d: Date) => {
-    const day = d.getDay()
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1)
-    return new Date(d.getFullYear(), d.getMonth(), diff).toISOString().slice(0, 10)
-  }
-  const thisMonday = getMondayOfWeek(new Date())
   const clientsWithDigestThisWeek = new Set(
     (recentDigests || [])
       .filter((d) => d.period_start >= thisMonday || d.created_at >= thisMonday)
@@ -408,7 +406,7 @@ export default function DashboardPage() {
               {MONTHS.map((m, i) => (<option key={i} value={i + 1}>{m}</option>))}
             </Select>
             <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-24">
-              {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map((y) => (<option key={y} value={y}>{y}</option>))}
+              {[businessNow.getFullYear() - 1, businessNow.getFullYear(), businessNow.getFullYear() + 1].map((y) => (<option key={y} value={y}>{y}</option>))}
             </Select>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goToNextMonth} title="Mes siguiente">
               <ChevronRight className="h-4 w-4" />
@@ -549,7 +547,7 @@ export default function DashboardPage() {
                     </div>
                     {t.due_date && (
                       <span className={`text-xs mono flex-shrink-0 ${t.due_date < todayStr ? "text-red-400" : "text-muted-foreground"}`}>
-                        {new Date(t.due_date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                        {formatCivilDate(t.due_date, { day: "numeric", month: "short" })}
                       </span>
                     )}
                     {activeTimer?.task_id === t.id ? (
@@ -593,7 +591,7 @@ export default function DashboardPage() {
                     {t.client_name && <span className="text-xs text-muted-foreground hidden group-hover:block">{t.client_name}</span>}
                     {t.due_date && (
                       <span className={`text-xs mono flex-shrink-0 ${t.due_date < todayStr ? "text-red-400" : "text-muted-foreground"}`}>
-                        {new Date(t.due_date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                        {formatCivilDate(t.due_date, { day: "numeric", month: "short" })}
                       </span>
                     )}
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
@@ -661,7 +659,7 @@ export default function DashboardPage() {
                       <TableRow key={t.id}>
                         <TableCell className="font-medium">{t.title}</TableCell>
                         <TableCell>{t.client_name || "-"}</TableCell>
-                        <TableCell className="mono">{t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : "-"}</TableCell>
+                        <TableCell className="mono">{t.due_date ? formatCivilDate(t.due_date) : "-"}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -680,7 +678,7 @@ export default function DashboardPage() {
                       <TableRow key={t.id}>
                         <TableCell className="font-medium">{t.title}</TableCell>
                         <TableCell>{t.client_name || "-"}</TableCell>
-                        <TableCell className="mono">{t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : "-"}</TableCell>
+                        <TableCell className="mono">{t.due_date ? formatCivilDate(t.due_date) : "-"}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

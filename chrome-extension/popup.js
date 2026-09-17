@@ -816,6 +816,17 @@ settingsBtn.addEventListener("click", endSession);
 // TIMER TAB
 // ══════════════════════════════════════════════════════════
 
+function parseApiInstant(value) {
+  // New API responses include Z. Legacy naive values were also stored as UTC,
+  // so make that convention explicit instead of letting the browser use local time.
+  return new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`);
+}
+
+function elapsedSeconds(startedAt, accumulatedSeconds = 0, paused = false, nowMs = Date.now()) {
+  if (paused) return Math.max(0, accumulatedSeconds);
+  return Math.max(0, accumulatedSeconds + Math.floor((nowMs - startedAt.getTime()) / 1000));
+}
+
 async function loadActiveTimer() {
   const session = captureSession();
   try {
@@ -844,7 +855,7 @@ function showActiveTimer(data) {
   timerActive.classList.remove("hidden");
   timerIdle.classList.add("hidden");
 
-  activeTimerStart = new Date(data.started_at);
+  activeTimerStart = parseApiInstant(data.started_at);
   timerAccumulatedSeconds = data.accumulated_seconds || 0;
   timerIsPaused = data.is_paused || false;
   timerTaskName.textContent = data.task_title || "Sin tarea";
@@ -1029,13 +1040,7 @@ function showIdleTimer() {
 
 function updateTimerDisplay() {
   if (!activeTimerStart) return;
-  let diff;
-  if (timerIsPaused) {
-    diff = timerAccumulatedSeconds;
-  } else {
-    const now = new Date();
-    diff = timerAccumulatedSeconds + Math.floor((now - activeTimerStart) / 1000);
-  }
+  const diff = elapsedSeconds(activeTimerStart, timerAccumulatedSeconds, timerIsPaused);
   const h = Math.floor(diff / 3600);
   const m = Math.floor((diff % 3600) / 60);
   const s = diff % 60;

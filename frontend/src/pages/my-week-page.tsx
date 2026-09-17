@@ -15,13 +15,12 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { parseCivilDate } from "@/lib/dates"
+import { useBusinessDate } from "@/hooks/use-business-date"
 
 // ── Helpers ────────────────────────────────────────────────
 
-function parseLocalDate(str: string) {
-  const [y, m, d] = str.split("-").map(Number)
-  return new Date(y, m - 1, d)
-}
+const parseLocalDate = parseCivilDate
 
 function toDateStr(d: Date) {
   const y = d.getFullYear()
@@ -482,10 +481,9 @@ const TEAM_STATUS_ICONS: Record<string, { Icon: React.ComponentType<{ className?
   holiday: { Icon: PartyPopper, cls: "text-purple-500", lbl: "Festivo" },
 }
 
-function TeamStrip({ team }: { team: TeamMemberWeek[] }) {
+function TeamStrip({ team, today }: { team: TeamMemberWeek[]; today: string }) {
   if (!team || team.length === 0) return null
   // Only weekdays (first 5)
-  const todayStr = toDateStr(new Date())
 
   return (
     <Card>
@@ -499,7 +497,7 @@ function TeamStrip({ team }: { team: TeamMemberWeek[] }) {
               {member.short_name || member.full_name.split(" ")[0]}
             </span>
             {member.days.slice(0, 5).map((d) => {
-              const isToday = d.date === todayStr
+              const isToday = d.date === today
               const meta = d.status ? TEAM_STATUS_ICONS[d.status] : null
               const holidayMeta = !meta && d.holiday_name ? TEAM_STATUS_ICONS.holiday : null
               const effective = meta || holidayMeta
@@ -601,10 +599,9 @@ function SummaryPanel({ data }: { data: MyWeekResponse }) {
 
 export default function MyWeekPage() {
   const queryClient = useQueryClient()
-  const [weekStart, setWeekStart] = useState(() => toDateStr(getMonday(new Date())))
+  const todayStr = useBusinessDate()
+  const [weekStart, setWeekStart] = useState(() => toDateStr(getMonday(parseCivilDate(todayStr))))
   const [addEventDate, setAddEventDate] = useState<string | null>(null)
-
-  const todayStr = toDateStr(new Date())
 
   const { data, isLoading, error } = useQuery({
     queryKey: myWeekKeys.week(weekStart),
@@ -707,7 +704,7 @@ export default function MyWeekPage() {
     setWeekStart(toDateStr(getMonday(d)))
   }
 
-  const goToday = () => setWeekStart(toDateStr(getMonday(new Date())))
+  const goToday = () => setWeekStart(toDateStr(getMonday(parseCivilDate(todayStr))))
 
   // Only show Mon-Fri
   const weekDays = data?.days.filter((_, i) => i < 5) || []
@@ -753,7 +750,7 @@ export default function MyWeekPage() {
       )}
 
       {data && data.team && data.team.length > 0 && (
-        <TeamStrip team={data.team} />
+        <TeamStrip team={data.team} today={todayStr} />
       )}
 
       {data && (
