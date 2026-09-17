@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { authApi } from "@/lib/api"
 import type { User } from "@/lib/types"
 
@@ -16,36 +17,57 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient()
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const sessionEpoch = useRef(0)
+
+  const clearSessionCache = useCallback(async () => {
+    sessionEpoch.current += 1
+    await queryClient.cancelQueries()
+    queryClient.clear()
+    setUser(null)
+    setIsLoading(false)
+  }, [queryClient])
 
   useEffect(() => {
+    const epoch = sessionEpoch.current
     authApi
       .me()
-      .then(setUser)
-      .catch(() => setUser(null))
-      .finally(() => setIsLoading(false))
+      .then((nextUser) => {
+        if (epoch === sessionEpoch.current) setUser(nextUser)
+      })
+      .catch(() => {
+        if (epoch === sessionEpoch.current) setUser(null)
+      })
+      .finally(() => {
+        if (epoch === sessionEpoch.current) setIsLoading(false)
+      })
 
-    // Listen for 401 from API interceptor — clear user so ProtectedRoute redirects
-    const onExpired = () => setUser(null)
+    // A 401 can race an older response. Cancel and remove every query first so
+    // that response cannot repopulate the cache for the next identity.
+    const onExpired = () => { void clearSessionCache() }
     window.addEventListener("auth:expired", onExpired)
     return () => window.removeEventListener("auth:expired", onExpired)
-  }, [])
+  }, [clearSessionCache])
 
   const login = async (email: string, password: string) => {
+    await clearSessionCache()
+    const epoch = sessionEpoch.current
     await authApi.login(email, password)
     const me = await authApi.me()
-    setUser(me)
+    if (epoch === sessionEpoch.current) setUser(me)
   }
 
   const logout = async () => {
+    await clearSessionCache()
     await authApi.logout().catch(() => undefined)
-    setUser(null)
   }
 
   const refreshUser = async () => {
+    const epoch = sessionEpoch.current
     const me = await authApi.me()
-    setUser(me)
+    if (epoch === sessionEpoch.current) setUser(me)
   }
 
   const isAdmin = user?.role === "admin"
