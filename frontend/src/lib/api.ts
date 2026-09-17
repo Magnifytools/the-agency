@@ -1,4 +1,4 @@
-import axios, { type InternalAxiosRequestConfig } from "axios"
+import axios, { type GenericAbortSignal, type InternalAxiosRequestConfig } from "axios"
 import { toast } from "sonner"
 import type {
   ProjectEvidence,
@@ -165,6 +165,20 @@ function isLogoutRequest(url: string) {
   return url.includes("/auth/logout")
 }
 
+function withSessionAbortSignal(requestSignal?: GenericAbortSignal) {
+  if (!requestSignal) return sessionAbortController.signal
+
+  if (typeof AbortSignal.any === "function") {
+    return AbortSignal.any([sessionAbortController.signal, requestSignal as AbortSignal])
+  }
+
+  const combined = new AbortController()
+  const abort = () => combined.abort()
+  sessionAbortController.signal.addEventListener("abort", abort, { once: true })
+  requestSignal.addEventListener?.("abort", abort, { once: true })
+  return combined.signal
+}
+
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
   const match = document.cookie
@@ -179,8 +193,8 @@ api.interceptors.request.use((config) => {
   sessionConfig.agencySessionEpoch = sessionEpoch
   // Logout must keep its own request alive: it clears the cookie that belongs
   // to the session being ended, even while a later login is queued.
-  if (!isLogoutRequest(String(config.url || "")) && !config.signal) {
-    config.signal = sessionAbortController.signal
+  if (!isLogoutRequest(String(config.url || ""))) {
+    config.signal = withSessionAbortSignal(config.signal)
   }
   const csrfToken = getCookie(CSRF_COOKIE_NAME)
   if (csrfToken) {
@@ -192,6 +206,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (error) => {
+    if (axios.isCancel(error) || error.code === "ERR_CANCELED") {
+      return Promise.reject(error)
+    }
     const method = String(error.config?.method || "").toLowerCase()
     const isGetRequest = method === "get"
     const requestUrl = String(error.config?.url || "")

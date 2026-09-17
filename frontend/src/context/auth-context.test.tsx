@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -19,9 +20,11 @@ function deferred<T>() {
 
 function Controls() {
   const { user, login, logout } = useAuth()
+  const [loginError, setLoginError] = useState("")
   return <>
     <p>{user?.email ?? "anonymous"}</p>
-    <button onClick={() => void login("member@example.com", "password")}>Cambiar identidad</button>
+    {loginError && <p role="alert">{loginError}</p>}
+    <button onClick={() => void login("member@example.com", "password").catch(() => setLoginError("No se pudo iniciar sesión"))}>Cambiar identidad</button>
     <button onClick={() => void logout()}>Cerrar sesión</button>
   </>
 }
@@ -90,7 +93,8 @@ describe("AuthProvider session cache", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Cambiar identidad" }))
 
-    await waitFor(() => expect(screen.getByText("anonymous")).toBeInTheDocument())
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo iniciar sesión")
+    expect(screen.getByText("anonymous")).toBeInTheDocument()
     expect(queryClient.getQueryData(["clients"])).toBeUndefined()
   })
 

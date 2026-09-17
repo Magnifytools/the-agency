@@ -128,6 +128,29 @@ describe("API Client", () => {
     expect(axios.isCancel(error)).toBe(true)
   })
 
+  it("combines a caller signal with the session signal and silences cancellation toasts", async () => {
+    const { toast } = await import("sonner")
+    const ownController = new AbortController()
+    let requestSignal: { aborted: boolean } | undefined
+    api.defaults.adapter = (config) => new Promise((_resolve, reject) => {
+      requestSignal = config.signal
+      const addAbortListener = config.signal?.addEventListener
+      if (addAbortListener) {
+        addAbortListener.call(config.signal, "abort", () => reject({ __CANCEL__: true, config, request: {} }))
+      }
+    })
+
+    const pending = api.post("/tasks", {}, { signal: ownController.signal }).catch((error) => error)
+    await vi.waitFor(() => expect(requestSignal).toBeDefined())
+    beginApiSessionTransition()
+    const error = await pending
+
+    expect(requestSignal?.aborted).toBe(true)
+    expect(ownController.signal.aborted).toBe(false)
+    expect(axios.isCancel(error)).toBe(true)
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
   it("ignores an old 401 after a new session begins", async () => {
     const onExpired = vi.fn()
     let rejectOldRequest!: (reason: unknown) => void
