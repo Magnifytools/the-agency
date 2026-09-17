@@ -982,26 +982,29 @@ async def get_project_time_budget(
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
-    week_start = datetime.combine(today - timedelta(days=today.weekday()), datetime.min.time())
-    month_start = datetime.combine(today.replace(day=1), datetime.min.time())
+    today = business_today()
+    week_start = today - timedelta(days=today.weekday())
+    month_start = today.replace(day=1)
+    next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
 
-    async def _sum_minutes(since: datetime) -> float:
-        q = await db.execute(
+    async def _sum_minutes(start: date_type | None = None, end: date_type | None = None) -> float:
+        statement = (
             select(func.coalesce(func.sum(TimeEntry.minutes), 0))
             .join(Task, TimeEntry.task_id == Task.id)
             .where(
                 Task.project_id == project_id,
                 TimeEntry.minutes.isnot(None),
-                TimeEntry.date >= since,
             )
         )
-        return float(q.scalar() or 0)
+        if start is not None and end is not None:
+            statement = statement.where(time_entry_civil_period(start, end))
+        result = await db.execute(statement)
+        return float(result.scalar() or 0)
 
     if is_recurring_project(project):
         # Retainer / mensual → techos semanal + mensual
-        week_minutes = await _sum_minutes(week_start)
-        month_minutes = await _sum_minutes(month_start)
+        week_minutes = await _sum_minutes(week_start, week_start + timedelta(days=7))
+        month_minutes = await _sum_minutes(month_start, next_month)
         weekly_budget, monthly_budget = effective_budgets(project)
         status_block = build_budget_status(
             weekly_budget,
@@ -1018,7 +1021,7 @@ async def get_project_time_budget(
         }
 
     # Puntual / cerrado → aviso de cierre (fecha final) + horas vs tiempo restante
-    total_minutes = await _sum_minutes(datetime.min)
+    total_minutes = await _sum_minutes()
     closing = build_closing_status(project, total_minutes, today)
     return {
         "project_id": project.id,

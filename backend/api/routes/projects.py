@@ -31,6 +31,8 @@ from backend.api.deps import get_current_user, require_module, require_admin
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 from backend.services.time_budget import effective_budgets, build_closing_status, is_recurring_project
 from backend.services.task_scope import validate_client_exists
+from backend.services.temporal import as_utc_instant, business_today, business_zone
+from backend.services.time_entry_dates import time_entry_civil_period
 from backend.api.utils.db_helpers import safe_refresh
 from backend.api.middleware.audit_log import log_audit
 
@@ -659,25 +661,26 @@ async def get_project(
         raise HTTPException(status_code=404, detail="Project not found")
 
     # Compute hours used via TimeEntry → Task → Project (all-time + current week/month)
-    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
-    week_start = datetime.combine(today - timedelta(days=today.weekday()), datetime.min.time())
-    month_start = datetime.combine(today.replace(day=1), datetime.min.time())
+    today = business_today()
+    week_start = today - timedelta(days=today.weekday())
+    month_start = today.replace(day=1)
+    next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
 
-    async def _project_minutes(since: Optional[datetime] = None) -> float:
+    async def _project_minutes(start: Optional[date] = None, end: Optional[date] = None) -> float:
         q = (
             select(func.coalesce(func.sum(TimeEntry.minutes), 0))
             .join(Task, TimeEntry.task_id == Task.id)
             .where(Task.project_id == project_id, TimeEntry.minutes.isnot(None))
         )
-        if since is not None:
-            q = q.where(TimeEntry.date >= since)
+        if start is not None and end is not None:
+            q = q.where(time_entry_civil_period(start, end))
         r = await db.execute(q)
         return float(r.scalar() or 0)
 
     total_minutes = await _project_minutes()
     hours_used = round(total_minutes / 60, 2)
-    hours_used_week = round(await _project_minutes(week_start) / 60, 2)
-    hours_used_month = round(await _project_minutes(month_start) / 60, 2)
+    hours_used_week = round(await _project_minutes(week_start, week_start + timedelta(days=7)) / 60, 2)
+    hours_used_month = round(await _project_minutes(month_start, next_month) / 60, 2)
 
     # Closing status for puntual (non-recurring) projects with an end date
     closing_status = None
@@ -723,15 +726,17 @@ async def project_burndown(
     completed_by_date: dict = defaultdict(int)
     for t in all_tasks:
         if t.status == TaskStatus.completed and t.completed_at:
-            day = t.completed_at.date() if hasattr(t.completed_at, 'date') else t.completed_at
-            if hasattr(day, 'date'):
-                day = day.date()
+            day = as_utc_instant(t.completed_at).astimezone(business_zone()).date()
             completed_by_date[day.isoformat()] += 1
 
     # Build cumulative series from project start
     from datetime import date, timedelta
-    start = project.start_date.date() if project.start_date and hasattr(project.start_date, 'date') else (project.created_at.date() if hasattr(project.created_at, 'date') else date.today())
-    end = date.today()
+    start = (
+        project.start_date.date()
+        if project.start_date and hasattr(project.start_date, "date")
+        else as_utc_instant(project.created_at).astimezone(business_zone()).date()
+    )
+    end = business_today()
 
     points = []
     cumulative = 0

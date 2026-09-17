@@ -13,6 +13,7 @@ from sqlalchemy import and_, or_
 
 from backend.db.models import TimeEntry
 from backend.services.temporal import civil_day_utc_bounds
+from backend.services.temporal import as_utc_instant, business_zone
 
 
 def time_entry_civil_period(start: date, end_exclusive: date):
@@ -33,3 +34,10 @@ def time_entry_civil_period(start: date, end_exclusive: date):
             TimeEntry.date < utc_end,
         ),
     )
+
+
+def time_entry_business_date(value: datetime, started_at: datetime | None) -> date:
+    """Resolve the reporting day without changing the stored legacy value."""
+    if started_at is None:
+        return value.date()
+    return as_utc_instant(value).astimezone(business_zone()).date()

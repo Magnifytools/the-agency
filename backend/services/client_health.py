@@ -22,6 +22,7 @@ from backend.db.models import (
     WeeklyDigest, TimeEntry, User,
 )
 from backend.services.temporal import business_today
+from backend.services.time_entry_dates import time_entry_civil_period
 
 
 # ── Scoring helpers ──────────────────────────────────────────
@@ -240,7 +241,8 @@ async def compute_health(
 
     # --- 4. Profitability (20 pts) ---
     if capabilities.profitability and client.monthly_budget and float(client.monthly_budget) > 0:
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_start = business_today().replace(day=1)
+        next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
         # Use actual user hourly rates with fallback to DEFAULT_HOURLY_RATE
         cost_result = await db.execute(
             select(
@@ -255,7 +257,10 @@ async def compute_health(
             )
             .join(Task, TimeEntry.task_id == Task.id)
             .join(User, TimeEntry.user_id == User.id)
-            .where(Task.client_id == client.id, TimeEntry.date >= month_start)
+            .where(
+                Task.client_id == client.id,
+                time_entry_civil_period(month_start, next_month),
+            )
         )
         estimated_cost = float(cost_result.scalar() or 0)
     else:
@@ -401,7 +406,8 @@ async def compute_health_batch(
 
     # --- 5. Estimated cost per client (this month) ---
     # Uses actual user hourly rates with fallback to DEFAULT_HOURLY_RATE
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_start = business_today().replace(day=1)
+    next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
     cost_map: dict[int, float] = {}
     if capabilities.profitability and any(client_budget_map.values()):
         cost_result = await db.execute(
@@ -421,7 +427,7 @@ async def compute_health_batch(
             .join(User, TimeEntry.user_id == User.id)
             .where(
                 Task.client_id.in_(client_ids),
-                TimeEntry.date >= month_start,
+                time_entry_civil_period(month_start, next_month),
             )
             .group_by(Task.client_id)
         )

@@ -27,6 +27,8 @@ from backend.services.notification_service import (
 from backend.services.time_budget import (
     effective_budgets, build_closing_status, CLOSING_SOON_DAYS,
 )
+from backend.services.temporal import business_today
+from backend.services.time_entry_dates import time_entry_civil_period
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +146,7 @@ async def generate_notification_checks(
     from datetime import timedelta
 
     created = 0
-    today = date.today()
+    today = business_today()
     now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     checks = await NotificationChecks.load(db, user.id)
@@ -302,7 +304,7 @@ async def generate_notification_checks(
                         TimeEntry.user_id,
                         func.coalesce(func.sum(TimeEntry.minutes), 0).label("total"),
                     ).where(
-                        func.date(TimeEntry.date) == yesterday,
+                        time_entry_civil_period(yesterday, yesterday + timedelta(days=1)),
                     ).group_by(TimeEntry.user_id)
                 )
                 hours_map = {row.user_id: row.total for row in hours_by_user_result.all()}
@@ -342,7 +344,7 @@ async def generate_notification_checks(
                     func.coalesce(func.sum(TimeEntry.minutes), 0).label("total"),
                 )
                 .join(Task, TimeEntry.task_id == Task.id)
-                .where(func.date(TimeEntry.date) >= week_start)
+                .where(time_entry_civil_period(week_start, week_start + timedelta(days=7)))
                 .group_by(Task.client_id)
             )
             client_hours_map = {row.client_id: row.total for row in client_hours_result.all()}
@@ -424,6 +426,7 @@ async def generate_notification_checks(
     if _has_projects_access(user):
         try:
             month_start = today.replace(day=1)
+            next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
             # Include projects with an explicit monthly ceiling OR recurring/monthly
             # retainers whose `budget_hours` ("Presupuesto horas/mes") acts as it.
             # The effective ceiling is resolved per-project via effective_budgets().
@@ -458,7 +461,7 @@ async def generate_notification_checks(
                     .join(Task, TimeEntry.task_id == Task.id)
                     .where(
                         Task.project_id.in_(project_ids),
-                        func.date(TimeEntry.date) >= month_start,
+                        time_entry_civil_period(month_start, next_month),
                     )
                     .group_by(Task.project_id)
                 )
