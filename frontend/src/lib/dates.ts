@@ -88,6 +88,12 @@ export function parseApiInstant(value: string) {
   return new Date(explicit)
 }
 
+export function timeEntryBusinessDate(entry: { date: string; started_at?: string | null }) {
+  return entry.started_at
+    ? businessDateString(parseApiInstant(entry.date))
+    : entry.date.slice(0, 10)
+}
+
 function civilMidnightUtc(value: string) {
   const [year, month, day] = value.split("-").map(Number)
   let candidate = Date.UTC(year, month - 1, day)

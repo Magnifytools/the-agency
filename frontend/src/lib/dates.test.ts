@@ -7,11 +7,17 @@ import {
   millisecondsUntilNextBusinessDay,
   parseApiInstant,
   setAgencyTimezone,
+  timeEntryBusinessDate,
 } from "./dates"
 
 afterEach(() => setAgencyTimezone("Europe/Madrid"))
 
 describe("agency date contract", () => {
+  it("renders timer and manual entries using their distinct stored date meanings", () => {
+    const date = "2026-09-17T22:30:00"
+    expect(timeEntryBusinessDate({ date, started_at: date })).toBe("2026-09-18")
+    expect(timeEntryBusinessDate({ date, started_at: null })).toBe("2026-09-17")
+  })
   it("uses the configured business date at Madrid midnight", () => {
     setAgencyTimezone("Europe/Madrid")
     expect(businessDateString(new Date("2026-09-17T22:30:00Z"))).toBe("2026-09-18")
