@@ -2,12 +2,8 @@ import { CheckCircle2, Circle } from "lucide-react"
 import type { TaskStatus } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 
-export interface ProjectTaskItem {
-  id: number
-  title: string
-  status: TaskStatus
-  assigned_to: number | string | null
-}
+import type { ProjectTaskItem } from "@/lib/project-work"
+export type { ProjectTaskItem } from "@/lib/project-work"
 
 interface Props {
   tasks: ProjectTaskItem[]
@@ -36,7 +32,7 @@ export function ProjectTaskList({ tasks, showCompleted, canWrite, pendingTaskId,
       <button type="button" aria-label={`Abrir tarea: ${task.title}`} onClick={() => onOpen(task.id)}
         className="min-w-0 flex-1 py-3 px-1 text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand">
         <span className={`block text-sm break-words ${done ? "line-through text-muted-foreground" : ""}`}>{task.title}</span>
-        <span className="block text-xs text-muted-foreground mt-0.5">{task.assigned_to || "Sin responsable"}</span>
+        <span className="block text-xs text-muted-foreground mt-0.5">{task.assigned_user_name || "Sin responsable"}</span>
       </button>
     </div>
   }

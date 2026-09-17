@@ -3,9 +3,10 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import { ProjectTaskList, type ProjectTaskItem } from "./project-task-list"
 
+const defaults = { priority: "medium" as const, assigned_user_name: null, scheduled_date: null, start_date: null, due_date: null, estimated_minutes: null, waiting_for: null, follow_up_date: null }
 const tasks: ProjectTaskItem[] = [
-  { id: 1, title: "Revisar propuesta", status: "pending", assigned_to: "Persona de prueba" },
-  { id: 2, title: "Preparar borrador", status: "completed", assigned_to: null },
+  { ...defaults, id: 1, title: "Revisar propuesta", status: "pending", assigned_to: 7, assigned_user_name: "Persona de prueba" },
+  { ...defaults, id: 2, title: "Preparar borrador", status: "completed", assigned_to: null },
 ]
 const callbacks = () => ({ onStatusChange: vi.fn(), onOpen: vi.fn() })
 
@@ -39,5 +40,7 @@ describe("project task working list", () => {
     await userEvent.click(screen.getByRole("button", { name: "Completar: Revisar propuesta" }))
     expect(actions.onStatusChange).not.toHaveBeenCalled()
     expect(screen.getByText("Sin responsable")).toBeInTheDocument()
+    expect(screen.getByText("Persona de prueba")).toBeInTheDocument()
+    expect(screen.queryByText("7")).not.toBeInTheDocument()
   })
 })

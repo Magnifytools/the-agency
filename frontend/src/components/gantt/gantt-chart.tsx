@@ -25,7 +25,8 @@ interface PhaseTaskData {
     start_date?: string | null
     due_date?: string | null
     estimated_minutes?: number | null
-    assigned_to?: string | null
+    assigned_to?: number | null
+    assigned_user_name?: string | null
   }[]
 }
 
@@ -184,7 +185,7 @@ export function GanttChart({ project, tasksData }: GanttChartProps) {
                           type="task"
                           config={config}
                           isChild
-                          assignedTo={task.assigned_to}
+                          assignedTo={task.assigned_user_name}
                         />
                       ))}
                   </div>
@@ -212,7 +213,7 @@ export function GanttChart({ project, tasksData }: GanttChartProps) {
                       type="task"
                       config={config}
                       isChild
-                      assignedTo={task.assigned_to}
+                      assignedTo={task.assigned_user_name}
                     />
                   ))}
                 </div>

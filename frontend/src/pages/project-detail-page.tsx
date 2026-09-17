@@ -1,3 +1,6 @@
+import { ProjectWorkSummary } from "@/components/projects/project-work-summary"
+import type { ProjectTaskItem, ProjectTaskGroup } from "@/lib/project-work"
+import { useBusinessDate } from "@/hooks/use-business-date"
 import { useMemo, useState } from "react"
 import { useAuth } from "@/context/auth-context"
 import { ProjectTaskList } from "@/components/projects/project-task-list"
@@ -23,7 +26,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { projectsApi, tasksApi, usersApi } from "@/lib/api"
-import type { Project, ProjectPhase, ProjectStatus, PhaseStatus, Task, TaskStatus, ProjectClosingStatus } from "@/lib/types"
+import type { Project, ProjectStatus, PhaseStatus, Task, TaskStatus, ProjectClosingStatus } from "@/lib/types"
 import { isEnabled } from "@/lib/hidden-modules"
 import { formatCivilDate } from "@/lib/dates"
 import { Button } from "@/components/ui/button"
@@ -82,6 +85,7 @@ export default function ProjectDetailPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
+  const businessToday = useBusinessDate()
   const projectId = id ? parseInt(id) : NaN
   const validId = !isNaN(projectId)
 
@@ -132,7 +136,7 @@ export default function ProjectDetailPage() {
     onError: () => toast.error("Error al actualizar tarea"),
   })
 
-  const filterTask = (t: Task) => {
+  const filterTask = (t: ProjectTaskItem) => {
     if (filterStatus !== "all" && t.status !== filterStatus) return false
     if (filterSearch && !t.title.toLowerCase().includes(filterSearch.toLowerCase())) return false
     return true
@@ -142,11 +146,11 @@ export default function ProjectDetailPage() {
     if (!tasksData?.phases) return []
     if (filterStatus === "all" && !filterSearch) return tasksData.phases
     return tasksData.phases
-      .map((pg: { phase: ProjectPhase; tasks: Task[] }) => ({
+      .map((pg: ProjectTaskGroup) => ({
         ...pg,
         tasks: pg.tasks.filter(filterTask),
       }))
-      .filter((pg: { phase: ProjectPhase; tasks: Task[] }) => pg.tasks.length > 0)
+      .filter((pg: ProjectTaskGroup) => pg.tasks.length > 0)
   }, [tasksData, filterStatus, filterSearch])
 
   const filteredUnassigned = useMemo(() => {
@@ -208,6 +212,7 @@ export default function ProjectDetailPage() {
               {project.client_name}
             </Link>
           </p>
+          <p className="mt-1 text-sm text-muted-foreground">Responsable: {project.owner_name || "Sin responsable"}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {hasPermission("tasks", true) && <Button onClick={() => setShowAddTaskDialog(0)}><Plus className="h-4 w-4 mr-2" />Añadir tarea</Button>}
@@ -237,6 +242,14 @@ export default function ProjectDetailPage() {
 
       {searchParams.get("created") === "1" && <div role="status" className="border-l-2 border-brand pl-4 py-2"><p className="font-medium">Proyecto creado</p><p className="text-sm text-muted-foreground">{project.task_count ? "Revisa las tareas y concreta el próximo paso." : "Añade la primera tarea para concretar el próximo paso."}</p></div>}
       {projectError && <div role="alert" className="text-sm">No se pudo actualizar. Se muestran los últimos datos recibidos. <Button variant="ghost" onClick={() => retryProject()}>Reintentar</Button></div>}
+      {tasksData && !tasksError && <ProjectWorkSummary
+        tasks={[...tasksData.phases.flatMap(group => group.tasks), ...tasksData.unassigned_tasks]}
+        today={businessToday}
+        canWrite={hasPermission("tasks", true)}
+        onOpen={setPreviewTaskId}
+        onAdd={() => setShowAddTaskDialog(0)}
+      />}
+
       <details onToggle={event => setShowMetrics(event.currentTarget.open)} className="border-y border-border py-1">
         <summary className="cursor-pointer py-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded">
           Plazos, horas y progreso{project.target_end_date ? ` · Entrega prevista: ${formatDate(project.target_end_date)}` : " · Sin fecha de entrega"}
@@ -558,7 +571,7 @@ export default function ProjectDetailPage() {
           <p>{tasksData ? "No se pudieron actualizar las tareas. Se muestran los últimos datos recibidos." : "No se pudieron cargar las tareas del proyecto."}</p>
           <Button variant="outline" onClick={() => retryTasks()}>Reintentar tareas</Button>
         </div>}
-        {tasksData && !tasksError && !tasksData.phases.some((group: { tasks: Task[] }) => group.tasks.length) && !tasksData.unassigned_tasks.length && <p className="text-sm text-muted-foreground">Aún no hay tareas. Añade la primera cuando tengas claro el próximo paso.</p>}
+        {tasksData && !tasksError && !tasksData.phases.some((group: ProjectTaskGroup) => group.tasks.length) && !tasksData.unassigned_tasks.length && <p className="text-sm text-muted-foreground">Aún no hay tareas. Añade la primera cuando tengas claro el próximo paso.</p>}
         {tasksData && hasActiveFilters && filteredPhases.length === 0 && filteredUnassigned.length === 0 && <p className="text-sm text-muted-foreground">No hay tareas que coincidan con estos filtros.</p>}
 
         {viewMode === "gantt" && project && tasksData && (
@@ -578,11 +591,11 @@ export default function ProjectDetailPage() {
           />
         )}
 
-        {viewMode === "list" && filteredPhases.map((phaseGroup: { phase: ProjectPhase; tasks: Task[] }) => {
+        {viewMode === "list" && filteredPhases.map((phaseGroup: ProjectTaskGroup) => {
           const phase = phaseGroup.phase
           const tasks = phaseGroup.tasks
           const PhaseIcon = PHASE_STATUS_ICONS[phase.status as PhaseStatus] || Circle
-          const completedTasks = tasks.filter((t: Task) => t.status === "completed").length
+          const completedTasks = tasks.filter((t) => t.status === "completed").length
 
           return (
             <Card key={phase.id}>
@@ -724,6 +737,7 @@ function EditProjectDialog({
   const queryClient = useQueryClient()
   const [formData, setFormData] = useState({
     name: project.name,
+    owner_id: project.owner_id?.toString() || "",
     description: project.description || "",
     start_date: project.start_date?.split("T")[0] || "",
     target_end_date: project.target_end_date?.split("T")[0] || "",
@@ -744,9 +758,13 @@ function EditProjectDialog({
     ga4_property_id: project.ga4_property_id || "",
   })
 
+  const { data: projectOwners = [], isError: ownersError } = useQuery({
+    queryKey: ["users-all"], queryFn: () => usersApi.listAll(), enabled: open,
+  })
   const updateMutation = useMutation({
     mutationFn: () =>
       projectsApi.update(project.id, {
+        ...(formData.owner_id !== (project.owner_id?.toString() || "") ? { owner_id: formData.owner_id ? Number(formData.owner_id) : null } : {}),
         name: formData.name,
         description: formData.description || undefined,
         start_date: formData.start_date || undefined,
@@ -793,6 +811,15 @@ function EditProjectDialog({
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             required
           />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="project-owner">Responsable del proyecto</Label>
+          <Select id="project-owner" value={formData.owner_id} onChange={(event) => setFormData({ ...formData, owner_id: event.target.value })} disabled={ownersError}>
+            <option value="">Sin responsable</option>
+            {project.owner_id && !projectOwners.some(owner => owner.id === project.owner_id && owner.is_active) && <option value={project.owner_id}>{project.owner_name || "Responsable actual"} (conservado)</option>}
+            {projectOwners.filter(owner => owner.is_active).map(owner => <option key={owner.id} value={owner.id}>{owner.full_name}</option>)}
+          </Select>
+          {ownersError && <p role="alert" className="text-xs text-muted-foreground">No se pudo cargar el equipo. Se conserva el responsable actual.</p>}
         </div>
         <div className="space-y-2">
           <Label htmlFor="project-detail-page-field-2">Descripción</Label>

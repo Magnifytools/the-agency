@@ -1,3 +1,4 @@
+import type { ProjectTasksResponse } from "@/lib/project-work"
 import axios, { type GenericAbortSignal, type InternalAxiosRequestConfig } from "axios"
 import { toast } from "sonner"
 import type {
@@ -558,7 +559,7 @@ export const projectsApi = {
     form.append("file", file)
     return api.post<ProjectDraft>("/projects/extract-from-text", form).then((r) => r.data)
   },
-  tasks: (id: number) => api.get(`/projects/${id}/tasks`).then((r) => r.data),
+  tasks: (id: number) => api.get<ProjectTasksResponse>(`/projects/${id}/tasks`).then((r) => r.data),
   burndown: (id: number) => api.get(`/projects/${id}/burndown`).then((r) => r.data),
   createPhase: (project_id: number, data: { name: string; order_index: number; start_date?: string; due_date?: string }) =>
     api.post<ProjectPhase>(`/projects/${project_id}/phases`, data).then((r) => r.data),
