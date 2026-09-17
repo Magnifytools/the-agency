@@ -13,6 +13,41 @@ async def test_readiness_checks_real_schema(engine):
     await check_database_ready(engine)
 
 
+async def test_real_web_startup_adds_project_owner_to_existing_schema(engine, monkeypatch):
+    import backend.main as main
+    import backend.db.database as database
+    from backend.startup.project_schema import ensure_project_owner_schema
+
+    monkeypatch.setattr(database, "engine", engine)
+    monkeypatch.setattr(main, "_ensure_pg_enums", AsyncMock())
+    monkeypatch.setattr(main, "_ensure_enum_values", AsyncMock())
+    monkeypatch.setattr(main, "start_background_tasks", lambda: [])
+    async with engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE projects DROP COLUMN owner_id CASCADE"))
+    lifecycle = main.lifespan(main.app)
+    try:
+        await lifecycle.__anext__()
+        await check_database_ready(engine)
+        # Repeated starts must be safe and must not assign anyone.
+        await ensure_project_owner_schema(engine)
+        async with engine.connect() as conn:
+            assert await conn.scalar(text("SELECT count(*) FROM projects WHERE owner_id IS NOT NULL")) == 0
+    finally:
+        await lifecycle.aclose()
+        await ensure_project_owner_schema(engine)
+
+
+async def test_readiness_rejects_missing_project_owner_column(engine):
+    async with engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE projects RENAME COLUMN owner_id TO owner_id_missing"))
+    try:
+        with pytest.raises(Exception, match="owner_id"):
+            await check_database_ready(engine)
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE projects RENAME COLUMN owner_id_missing TO owner_id"))
+
+
 async def test_readiness_accepts_equivalent_legacy_index_name(engine):
     async with engine.begin() as conn:
         await conn.execute(text("ALTER INDEX uq_time_entries_active_timer RENAME TO uq_one_active_timer"))

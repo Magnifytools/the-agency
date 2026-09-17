@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     AUTH_COOKIE_PATH: str = "/"
     DISCORD_WEBHOOK_URL: Optional[str] = None
     DISCORD_OWNER_USER_ID: Optional[str] = None
+    # Enable only after older direct-sender instances have drained.
+    DELIVERY_WORKER_ENABLED: bool = False
     ANTHROPIC_API_KEY: Optional[str] = None
     HOLDED_API_KEY: Optional[str] = None
     DEFAULT_HOURLY_RATE: float = 40.0

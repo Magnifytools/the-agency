@@ -61,6 +61,7 @@ class ProjectCreate(BaseModel):
     unit_label: Optional[str] = None
     scope: Optional[str] = None
     client_id: int
+    owner_id: Optional[int] = None
 
 
 class ProjectUpdate(BaseModel):
@@ -87,6 +88,7 @@ class ProjectUpdate(BaseModel):
     billing_day: Optional[int] = None
     billing_amount: Optional[float] = None
     next_billing_date: Optional[date] = None
+    owner_id: Optional[int] = None
 
 
 class ProjectResponse(BaseModel):
@@ -117,6 +119,8 @@ class ProjectResponse(BaseModel):
     last_billed_date: Optional[date] = None
     client_id: int
     client_name: Optional[str] = None
+    owner_id: Optional[int] = None
+    owner_name: Optional[str] = None
     phases: list[ProjectPhaseResponse] = []
     task_count: int = 0
     completed_task_count: int = 0
@@ -152,11 +156,50 @@ class ProjectListResponse(BaseModel):
     monthly_fee: Optional[float] = None
     client_id: int
     client_name: Optional[str] = None
+    owner_id: Optional[int] = None
+    owner_name: Optional[str] = None
     phase_count: int = 0
     task_count: int = 0
     completed_task_count: int = 0
 
     model_config = {"from_attributes": True}
+
+
+class ProjectTaskItemResponse(BaseModel):
+    id: int
+    title: str
+    status: str
+    priority: str
+    start_date: Optional[datetime] = None
+    due_date: Optional[datetime] = None
+    scheduled_date: Optional[date] = None
+    estimated_minutes: Optional[int] = None
+    assigned_to: Optional[int] = None
+    assigned_user_name: Optional[str] = None
+    waiting_for: Optional[str] = None
+    follow_up_date: Optional[date] = None
+
+
+class ProjectTaskPhaseSummary(BaseModel):
+    id: int
+    name: str
+    order_index: int
+    status: str
+    phase_type: str
+    start_date: Optional[datetime] = None
+    due_date: Optional[datetime] = None
+
+
+class ProjectTaskGroupResponse(BaseModel):
+    phase: ProjectTaskPhaseSummary
+    tasks: list[ProjectTaskItemResponse]
+
+
+class ProjectTasksResponse(BaseModel):
+    project_id: int
+    project_name: str
+    phases: list[ProjectTaskGroupResponse]
+    unassigned_tasks: list[ProjectTaskItemResponse]
 
 
 class ProjectExtract(BaseModel):

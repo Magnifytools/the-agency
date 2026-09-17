@@ -11,6 +11,23 @@ async def check_database_ready(engine) -> None:
             await conn.execute(text("SELECT completed_at FROM tasks LIMIT 0"))
             await conn.execute(text("SELECT dedupe_key FROM notifications LIMIT 0"))
             await conn.execute(text("SELECT paused_at, accumulated_seconds FROM time_entries LIMIT 0"))
+            await conn.execute(text("SELECT owner_id FROM projects LIMIT 0"))
+            owner_fk = await conn.scalar(text("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint c
+                    JOIN pg_attribute a
+                      ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+                    WHERE c.conrelid = 'projects'::regclass
+                      AND c.contype = 'f'
+                      AND c.confrelid = 'users'::regclass
+                      AND a.attname = 'owner_id'
+                )
+            """))
+            if owner_fk is not True:
+                raise RuntimeError("Required project owner foreign key is missing")
+            await conn.execute(text("SELECT id, dedupe_key, actor_id, source_kind, source_id, source_version, destination_key, payload, status, available_at, expires_at, sent_at, error_code, message, resend_of, created_at, updated_at FROM deliveries LIMIT 0"))
+            await conn.execute(text("SELECT id, delivery_id, number, steps, lease_until, status, created_at, updated_at FROM delivery_attempts LIMIT 0"))
             # These source types enforce financial visibility in persisted PM
             # insights; do not serve a revision whose enum upgrade was skipped.
             await conn.execute(text("SELECT 'financial'::insighttype, 'operational_suggestion'::insighttype"))
@@ -20,6 +37,8 @@ async def check_database_ready(engine) -> None:
             for table, columns, predicate in (
                 ("notifications", ["user_id", "dedupe_key"], ""),
                 ("time_entries", ["user_id"], "(minutes IS NULL)"),
+                ("deliveries", ["dedupe_key"], ""),
+                ("delivery_attempts", ["delivery_id", "number"], ""),
             ):
                 valid = await conn.scalar(text("""
                     SELECT EXISTS (

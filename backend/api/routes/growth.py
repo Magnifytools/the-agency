@@ -11,6 +11,7 @@ from backend.schemas.growth import GrowthIdeaCreate, GrowthIdeaUpdate, GrowthIde
 from backend.api.deps import get_current_user, require_module
 from backend.api.utils.db_helpers import safe_refresh
 from backend.services.task_scope import validate_client_exists, validate_task_scope
+from backend.services.project_owner import validate_project_owner
 
 router = APIRouter(tags=["growth"])
 
@@ -131,6 +132,7 @@ async def delete_growth_idea(
 async def convert_to_project(
     idea_id: int,
     client_id: int = Query(...),
+    owner_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("growth", write=True)),
 ):
@@ -141,6 +143,7 @@ async def convert_to_project(
         raise HTTPException(status_code=404, detail="Idea no encontrada")
 
     await validate_client_exists(db, client_id)
+    await validate_project_owner(db, owner_id)
 
     desc_parts = [idea.description] if idea.description else []
     desc_parts.append(f"Origen: Buffer de Ideas (ICE: {idea.ice_score})")
@@ -152,6 +155,7 @@ async def convert_to_project(
         description="\n\n".join(desc_parts),
         client_id=client_id,
         status="planning",
+        owner_id=owner_id,
     )
     db.add(project)
     await db.commit()

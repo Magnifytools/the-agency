@@ -1,12 +1,16 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, useLocation } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import ProjectsPage from "./projects-page"
 
-const api = vi.hoisted(() => ({ list: vi.fn(), templates: vi.fn(), clients: vi.fn(), create: vi.fn() }))
-vi.mock("@/lib/api", () => ({ projectsApi: { list: api.list, templates: api.templates, create: api.create }, clientsApi: { listAll: api.clients } }))
+const api = vi.hoisted(() => ({ list: vi.fn(), templates: vi.fn(), clients: vi.fn(), users: vi.fn(), create: vi.fn(), createFromTemplate: vi.fn(), extractFromPdf: vi.fn(), extractFromText: vi.fn() }))
+vi.mock("@/lib/api", () => ({
+  projectsApi: { list: api.list, templates: api.templates, create: api.create, createFromTemplate: api.createFromTemplate, extractFromPdf: api.extractFromPdf, extractFromText: api.extractFromText },
+  clientsApi: { listAll: api.clients },
+  usersApi: { listAll: api.users },
+}))
 function Location() { return <output data-testid="location">{useLocation().pathname + useLocation().search}</output> }
 function setup(url = "/projects") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -19,7 +23,11 @@ describe("projects filter navigation", () => {
     api.list.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 })
     api.templates.mockResolvedValue({})
     api.clients.mockResolvedValue([{id: 17, name: "Cliente de prueba"}])
-    api.create.mockResolvedValue({id: 91})
+    api.users.mockResolvedValue([{id: 8, full_name: "Persona activa", is_active: true}, {id: 9, full_name: "Persona inactiva", is_active: false}])
+    api.create.mockResolvedValue({id: 91, client_id: 17})
+    api.createFromTemplate.mockResolvedValue({id: 92, client_id: 17})
+    api.extractFromPdf.mockResolvedValue({name: "Extraído"})
+    api.extractFromText.mockResolvedValue({name: "Extraído"})
   })
   it("restores URL filters and resets pagination when the type changes", async () => {
     setup("/projects?status=active&type=recurring&period=month&page=2")
@@ -42,6 +50,7 @@ describe("projects filter navigation", () => {
     await userEvent.click(screen.getByRole("button", {name: "Nuevo proyecto"}))
     await userEvent.type(screen.getByLabelText("Nombre *"), "Entrega nueva")
     await userEvent.selectOptions(screen.getByLabelText("Cliente *"), "17")
+    await userEvent.selectOptions(screen.getByLabelText("Responsable (opcional)"), "8")
     expect(screen.getByLabelText("Entrega prevista (opcional)")).not.toBeRequired()
     await userEvent.click(screen.getByRole("button", {name: "Crear proyecto"}))
     await screen.findByRole("alert")
@@ -49,7 +58,8 @@ describe("projects filter navigation", () => {
     expect(screen.getByLabelText("Cliente *")).toHaveValue("17")
     await userEvent.click(screen.getByRole("button", {name: "Crear proyecto"}))
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/projects/91?created=1"))
-    expect(api.create).toHaveBeenLastCalledWith(expect.objectContaining({name: "Entrega nueva", client_id: 17, is_recurring: false, start_date: undefined, target_end_date: undefined, monthly_fee: undefined, budget_amount: undefined}))
+    expect(api.create).toHaveBeenLastCalledWith(expect.objectContaining({name: "Entrega nueva", client_id: 17, owner_id: 8, is_recurring: false, start_date: undefined, target_end_date: undefined, monthly_fee: undefined, budget_amount: undefined}))
+    expect(screen.queryByRole("option", {name: "Persona inactiva"})).not.toBeInTheDocument()
   })
   it("separates monthly pricing and total budget without requiring guessed hours", async () => {
     setup()
@@ -72,6 +82,46 @@ describe("projects filter navigation", () => {
     await userEvent.click(screen.getByText("Partir de una plantilla o un documento"))
     await userEvent.click(screen.getByRole("button", {name: "Usar plantilla"}))
     expect(screen.getByRole("dialog", {name: "Crear desde plantilla"})).toBeInTheDocument()
+  })
+
+  it("sends the explicitly selected owner through the template flow", async () => {
+    api.templates.mockResolvedValue({seo: {name: "SEO", phase_count: 1, task_count: 1}})
+    setup()
+    await userEvent.click(screen.getByRole("button", {name: "Nuevo proyecto"}))
+    await userEvent.click(screen.getByText("Partir de una plantilla o un documento"))
+    await userEvent.click(screen.getByRole("button", {name: "Usar plantilla"}))
+    await userEvent.selectOptions(screen.getByLabelText("Cliente *"), "17")
+    await userEvent.selectOptions(screen.getByLabelText("Responsable (opcional)"), "8")
+    await userEvent.selectOptions(screen.getByLabelText("Plantilla *"), "seo")
+    await userEvent.click(screen.getByRole("button", {name: "Crear proyecto"}))
+    await waitFor(() => expect(api.createFromTemplate).toHaveBeenCalledWith(17, "seo", undefined, 8))
+  })
+
+  it("keeps an owner selected by the user when a PDF draft has no owner context", async () => {
+    setup()
+    await userEvent.click(screen.getByRole("button", {name: "Nuevo proyecto"}))
+    await userEvent.click(screen.getByText("Partir de una plantilla o un documento"))
+    await userEvent.click(screen.getByRole("button", {name: "Importar PDF"}))
+    await userEvent.upload(screen.getByLabelText("Propuesta PDF *"), new File(["pdf"], "proposal.pdf", {type: "application/pdf"}))
+    await userEvent.selectOptions(screen.getByLabelText("Cliente *"), "17")
+    await userEvent.selectOptions(screen.getByLabelText("Responsable (opcional)"), "8")
+    await userEvent.click(screen.getByRole("button", {name: "Analizar propuesta"}))
+    await waitFor(() => expect(api.extractFromPdf).toHaveBeenCalled())
+    expect(await screen.findByText("Revisar datos extraídos")).toBeInTheDocument()
+    const review = screen.getByRole("dialog", {name: "Revisar datos extraídos"})
+    await userEvent.click(within(review).getByRole("button", {name: "Crear proyecto"}))
+    await waitFor(() => expect(api.create).toHaveBeenCalledWith(expect.objectContaining({name: "Extraído", client_id: 17, owner_id: 8})))
+  })
+
+  it("allows creating with no owner when there are no active users", async () => {
+    api.users.mockResolvedValue([{id: 9, full_name: "Persona inactiva", is_active: false}])
+    setup()
+    await userEvent.click(screen.getByRole("button", {name: "Nuevo proyecto"}))
+    await userEvent.type(screen.getByLabelText("Nombre *"), "Sin contexto")
+    await userEvent.selectOptions(screen.getByLabelText("Cliente *"), "17")
+    expect(screen.getByLabelText("Responsable (opcional)")).toHaveDisplayValue("Sin responsable")
+    await userEvent.click(screen.getByRole("button", {name: "Crear proyecto"}))
+    await waitFor(() => expect(api.create).toHaveBeenCalledWith(expect.objectContaining({owner_id: undefined})))
   })
 
 })

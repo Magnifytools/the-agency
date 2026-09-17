@@ -185,7 +185,7 @@ def discord_falso(monkeypatch):
     # Webhook de mentira: aunque el .env local tenga uno real, no se usa.
     from backend.config import settings
 
-    monkeypatch.setattr(settings, "DISCORD_WEBHOOK_URL", "https://discord.invalid/webhook/test")
+    monkeypatch.setattr(settings, "DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/123/fake-test-token")
     return _DiscordFalso
 
 
@@ -215,16 +215,12 @@ async def test_un_daily_sin_parsear_se_envia_en_crudo_en_vez_de_dar_400(
 
     enviado = await admin_client.post(f"/api/dailys/{daily_id}/send-discord")
 
-    assert enviado.status_code == 200, enviado.text
-    assert enviado.json()["success"] is True
-    # El mensaje avisa: no se envió estructurado, y el autor debe poder notarlo.
-    assert "sin estructurar" in enviado.json()["message"].lower()
-
-    # Y lo que llegó a Discord es el texto del autor, entero.
-    assert len(discord_falso.posts) == 1
-    embed = discord_falso.posts[0]["json"]["embeds"][0]
-    assert embed["description"] == texto
-    assert "Sin estructurar" in embed["footer"]["text"]
+    assert enviado.status_code == 202, enviado.text
+    assert enviado.json()["success"] is False
+    assert enviado.json()["status"] == "pending"
+    assert "Sin estructurar" in enviado.json()["content"]
+    assert texto in enviado.json()["content"]
+    assert discord_falso.posts == []  # the route never sends before durable processing
 
 
 @pytest.mark.asyncio
@@ -250,10 +246,8 @@ async def test_el_daily_parseado_se_sigue_enviando_estructurado(
 
     enviado = await admin_client.post(f"/api/dailys/{daily_id}/send-discord")
 
-    assert enviado.status_code == 200, enviado.text
-    assert enviado.json()["message"] == "Daily enviado a Discord"
-
-    embed = discord_falso.posts[0]["json"]["embeds"][0]
-    assert "description" not in embed
-    nombres = [f["name"] for f in embed["fields"]]
-    assert nombres == ["Acme", "📅 Mañana"]
+    assert enviado.status_code == 202, enviado.text
+    assert enviado.json()["success"] is False
+    assert "Acme" in enviado.json()["content"]
+    assert "Terminar el informe" in enviado.json()["content"]
+    assert discord_falso.posts == []

@@ -19,5 +19,6 @@ export function projectCreateFromDraft(
     unit_price: draft.unit_price ?? undefined,
     unit_label: draft.unit_label ?? undefined,
     scope: draft.scope ?? undefined,
+    owner_id: draft.owner_id ?? undefined,
   }
 }

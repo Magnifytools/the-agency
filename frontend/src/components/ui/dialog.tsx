@@ -1,4 +1,5 @@
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 import { X } from "lucide-react"
 
@@ -72,6 +73,8 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
     const focusFirst = () => {
       const panel = panelRef.current
       if (!panel) return
+      // Preserve autofocus and any user interaction that happened before this frame.
+      if (panel.contains(document.activeElement)) return
       const focusable = visibleFocusable(panel)
       if (focusable.length > 0) focusable[0].focus()
       else panel.focus()
@@ -85,9 +88,9 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
   }, [open])
 
   if (!open) return null
-  return (
+  return createPortal(
     <DialogContext.Provider value={{ titleId }}>
-      <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4">
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm"
           onClick={() => onOpenChange(false)}
@@ -111,7 +114,8 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
           {children}
         </div>
       </div>
-    </DialogContext.Provider>
+    </DialogContext.Provider>,
+    document.body,
   )
 }
 

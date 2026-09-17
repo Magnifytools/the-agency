@@ -13,24 +13,18 @@ from sqlalchemy.orm import selectinload
 from backend.db.database import get_db
 from backend.db.models import DailyUpdate, DailyUpdateStatus, DiscordSettings, User
 from backend.api.deps import get_current_user
-from backend.config import settings
 from backend.core.rate_limiter import ai_limiter
+from backend.schemas.delivery import DeliveryReceipt
 from backend.schemas.daily import (
     DailySubmitRequest,
     DailyEditRequest,
     DailyUpdateResponse,
-    DailyDiscordResponse,
     ParsedDailyData,
 )
 from backend.services.daily_parser import (
     parse_daily_update,
-    format_daily_for_discord,
-    format_daily_embed,
-    format_raw_daily_embed,
 )
 from backend.api.utils.db_helpers import safe_refresh
-from backend.core.security import decrypt_vault_secret
-from backend.api.middleware.audit_log import log_audit
 from backend.services.temporal import business_today, civil_day_utc_bounds
 from backend.services.time_entry_dates import time_entry_civil_period
 
@@ -284,6 +278,8 @@ async def reparse_daily(
         logger.exception("Unexpected error reparsing daily_id=%s", daily_id)
         raise HTTPException(status_code=502, detail="Error al re-parsear el daily")
 
+    if daily.parsed_data != parsed:
+        daily.status = DailyUpdateStatus.draft
     daily.parsed_data = parsed
     await db.commit()
     await safe_refresh(db, daily, log_context="dailys")
@@ -320,7 +316,8 @@ async def edit_daily(
             parsed = await parse_daily_update(body.raw_text)
             daily.parsed_data = parsed
         except Exception:
-            logger.warning("Auto-reparse failed for daily_id=%s, keeping old parsed_data", daily_id)
+            daily.parsed_data = None
+            logger.warning("Auto-reparse failed for daily_id=%s; raw draft retained", daily_id)
 
     await db.commit()
     await safe_refresh(db, daily, log_context="dailys")
@@ -404,145 +401,17 @@ async def _send_daily_as_thread(
     return True
 
 
-@router.post("/{daily_id}/send-discord", response_model=DailyDiscordResponse)
+@router.post("/{daily_id}/send-discord", response_model=DeliveryReceipt, status_code=202)
 async def send_daily_to_discord(
     daily_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Send a parsed daily update to Discord, as a thread if bot_token is configured."""
-    import httpx
-
-    result = await db.execute(select(DailyUpdate).where(DailyUpdate.id == daily_id))
-    daily = result.scalars().first()
-    if not daily:
-        raise HTTPException(status_code=404, detail="Daily update no encontrado")
-
-    # Ownership check: only owner or admin
-    if daily.user_id != current_user.id and current_user.role.value != "admin":
-        raise HTTPException(status_code=403, detail="Solo puedes enviar tus propios dailys a Discord")
-
-    # Un fallo de la IA no puede impedir que el informe del día salga. Si el daily
-    # se guardó sin estructurar, se publica el texto en crudo: antes esto era un
-    # 400 ("El daily no tiene datos parseados") y el autor se quedaba sin poder
-    # enviar nada hasta conseguir que el parseo funcionara.
-    sin_estructurar = not daily.parsed_data
-
-    # Get Discord settings
-    ds_result = await db.execute(select(DiscordSettings).limit(1))
-    ds = ds_result.scalar_one_or_none()
-    raw_wh = ds.webhook_url if ds else None
-    webhook_url = ""
-    if raw_wh:
-        if raw_wh.startswith("v1:"):
-            try:
-                webhook_url = decrypt_vault_secret(raw_wh)
-            except Exception as e:
-                logger.warning("Failed to decrypt webhook_url vault secret: %s", e)
-                webhook_url = ""
-        else:
-            # Legacy plaintext — auto-encrypt on read and use it
-            logger.warning("Auto-encrypting plaintext Discord webhook for discord_settings id=%s", ds.id if ds else "?")
-            webhook_url = raw_wh
-            try:
-                from backend.core.security import encrypt_vault_secret
-                ds.webhook_url = encrypt_vault_secret(raw_wh)
-                await db.commit()
-                logger.info("Discord webhook auto-encrypted successfully")
-            except Exception as enc_err:
-                logger.warning("Auto-encryption failed (will retry next time): %s", enc_err)
-    if not webhook_url:
-        webhook_url = settings.DISCORD_WEBHOOK_URL or ""
-
-    if not webhook_url:
-        raise HTTPException(status_code=400, detail="Discord webhook no configurado. Configúralo en Ajustes > Discord.")
-
-    # Format as rich embed — safely access user relationship
-    try:
-        user_name = daily.user.full_name if daily.user else current_user.full_name
-    except Exception:
-        user_name = current_user.full_name  # Fallback: we already have the user from auth
-    date_str = daily.date.isoformat()
-    if sin_estructurar:
-        logger.warning("Enviando daily_id=%s a Discord sin estructurar", daily_id)
-        embed = format_raw_daily_embed(daily.raw_text, user_name, date_str)
-    else:
-        embed = format_daily_embed(daily.parsed_data, user_name, date_str)
-
-    success = False
-    try:
-        async with httpx.AsyncClient(timeout=15) as http:
-            raw_bt = ds.bot_token if ds else None
-            bot_token = None
-            if raw_bt:
-                if raw_bt.startswith("v1:"):
-                    try:
-                        bot_token = decrypt_vault_secret(raw_bt)
-                    except Exception as e:
-                        logger.warning("Failed to decrypt bot_token vault secret: %s", e)
-                else:
-                    # Legacy plaintext — auto-encrypt and use
-                    bot_token = raw_bt
-                    try:
-                        from backend.core.security import encrypt_vault_secret
-                        ds.bot_token = encrypt_vault_secret(raw_bt)
-                        await db.commit()
-                    except Exception:
-                        pass
-                    bot_token = None
-
-            if bot_token:
-                # Thread mode: send embed as header, body in thread
-                channel_id = await _resolve_channel_id(ds, webhook_url, http)
-                if channel_id:
-                    header = embed["title"]
-                    # Send embed as the main message, then plain-text body in thread
-                    if sin_estructurar:
-                        # El texto en crudo no lleva cabecera que quitar: cada
-                        # línea es contenido del autor.
-                        thread_body = daily.raw_text.strip()[:2000]
-                    else:
-                        body = format_daily_for_discord(daily.parsed_data, user_name, date_str)
-                        body_lines = body.split("\n")
-                        thread_body = "\n".join(body_lines[1:]).strip() or body
-                    success = await _send_daily_as_thread(
-                        webhook_url, bot_token, channel_id, header, thread_body, http
-                    )
-                    if success and ds.channel_id:
-                        await db.commit()
-
-            if not success:
-                # Send as rich embed (no thread)
-                resp = await http.post(webhook_url, json={
-                    "embeds": [embed],
-                    "username": "Daily Recap",
-                    "avatar_url": "https://agency.magnifytools.com/daily_recap_icon.png",
-                })
-                success = resp.status_code in (200, 204)
-    except Exception as exc:
-        logger.error("Error sending daily to Discord: %s", exc)
-        success = False
-
-    if success:
-        try:
-            daily.status = DailyUpdateStatus.sent
-            daily.discord_sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
-            await db.commit()
-        except Exception:
-            logger.warning("Non-critical: daily status update failed after Discord send for daily_id=%s", daily_id)
-            try:
-                await db.rollback()
-            except Exception:
-                pass
-        log_audit(current_user.id, "send_discord", "daily", daily_id)
-        if sin_estructurar:
-            return DailyDiscordResponse(
-                success=True,
-                message="Enviado a Discord sin estructurar: la IA no pudo procesar el daily",
-            )
-        return DailyDiscordResponse(success=True, message="Daily enviado a Discord")
-    else:
-        return DailyDiscordResponse(success=False, message="Error al enviar a Discord")
+    """Persist an intent; the durable worker is the only daily sender."""
+    from backend.services import deliveries
+    row = await deliveries.enqueue(db, "daily", daily_id, current_user)
+    source = await deliveries.authorize_source(db, "daily", daily_id, current_user)
+    return await deliveries.receipt(db, row, source)
 
 
 @router.delete("/{daily_id}", status_code=status.HTTP_204_NO_CONTENT)

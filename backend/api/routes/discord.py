@@ -12,17 +12,16 @@ logger = logging.getLogger(__name__)
 DISCORD_WEBHOOK_RE = re.compile(
     r"^https://(discord\.com|discordapp\.com)/api/webhooks/\d+/.+$"
 )
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import Date, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
-from backend.db.models import User, WeeklyDigest, DiscordSettings
+from backend.db.models import User, DiscordSettings
 from backend.api.deps import require_admin, require_module
 from backend.services.discord import generate_daily_summary, send_to_discord
 from backend.api.routes.dailys import _resolve_channel_id, _send_daily_as_thread
-from backend.services.digest_renderer import render_discord
-from backend.schemas.digest import DigestContent
+from backend.schemas.delivery import DeliveryReceipt, DigestDeliveryRequest
 from backend.core.security import encrypt_vault_secret, decrypt_vault_secret
 from backend.api.middleware.audit_log import log_audit
 from backend.schemas.discord import (
@@ -284,8 +283,13 @@ async def send_custom_to_discord(
     body: DiscordSendCustomRequest,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
+    send_intent: str | None = Header(None, alias="X-Agency-Send-Intent"),
 ):
-    """Send custom (edited) content to Discord. Used for preview-then-send flows."""
+    """Send an explicit custom message; old digest clients must use their source route."""
+    # Protocol version, not authorization: require_admin still applies. Cached
+    # digest previews used this route before durable source-linked deliveries.
+    if send_intent != "custom-v1":
+        raise HTTPException(409, "Recarga la aplicación antes de enviar. Los resúmenes se envían desde su propio editor.")
     ds = await _get_or_create_settings(db)
     url = _decrypt_field(ds.webhook_url) or settings.DISCORD_WEBHOOK_URL or ""
 
@@ -317,47 +321,17 @@ async def send_custom_to_discord(
 # ── Send digest to Discord ────────────────────────────────
 
 
-@router.post("/send-digest/{digest_id}", response_model=DiscordSendResponse)
+@router.post("/send-digest/{digest_id}", response_model=DeliveryReceipt, status_code=202)
 async def send_digest_to_discord(
     digest_id: int,
+    body: DigestDeliveryRequest | None = None,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("digests", write=True)),
+    current_user: User = Depends(require_module("digests", write=True)),
 ):
-    """Send a specific digest rendered as Discord markdown to the webhook."""
-    ds = await _get_or_create_settings(db)
-    url = _decrypt_field(ds.webhook_url) or settings.DISCORD_WEBHOOK_URL or ""
-
-    if not url.strip():
-        raise HTTPException(status_code=400, detail="No hay webhook configurado")
-
-    # Load digest
-    result = await db.execute(select(WeeklyDigest).where(WeeklyDigest.id == digest_id))
-    digest = result.scalar_one_or_none()
-    if not digest:
-        raise HTTPException(status_code=404, detail="Digest no encontrado")
-    if not digest.content:
-        raise HTTPException(status_code=400, detail="El digest no tiene contenido")
-
-    try:
-        content = DigestContent(**digest.content)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Contenido del digest malformado")
-
-    rendered = render_discord(content)
-    success = await _send_discord_message(url, rendered)
-
-    if success:
-        ds.last_sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        await db.commit()
-        return DiscordSendResponse(
-            success=True,
-            message=f"Digest #{digest_id} enviado a Discord",
-        )
-
-    return DiscordSendResponse(
-        success=False,
-        message=f"Error al enviar digest #{digest_id} a Discord. Verifica el webhook.",
-    )
+    from backend.services import deliveries
+    row = await deliveries.enqueue(db, "digest", digest_id, current_user, custom_content=body.content if body else None)
+    source = await deliveries.authorize_source(db, "digest", digest_id, current_user)
+    return await deliveries.receipt(db, row, source)
 
 
 # ── Weekly Report via Discord DM ─────────────────────────────

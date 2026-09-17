@@ -1,10 +1,10 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
-import { Plus, FolderKanban, Calendar, Trash2, Repeat, FileUp, FileText } from "lucide-react"
+import { Plus, FolderKanban, Calendar, Trash2, Repeat, FileUp, FileText, UserRound } from "lucide-react"
 import { toast } from "sonner"
-import { projectsApi, clientsApi } from "@/lib/api"
-import type { ProjectListItem, ProjectStatus, ProjectDraft } from "@/lib/types"
+import { projectsApi, clientsApi, usersApi } from "@/lib/api"
+import type { ProjectListItem, ProjectStatus, ProjectDraft, User } from "@/lib/types"
 import { projectPeriodBounds } from "@/lib/project-filters"
 import { invalidateProjectChange } from "@/lib/query-keys"
 import { projectCreateFromDraft } from "@/lib/project-draft"
@@ -85,6 +85,11 @@ export default function ProjectsPage() {
     queryKey: ["project-templates"],
     queryFn: () => projectsApi.templates(),
   })
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ["users-all"],
+    queryFn: () => usersApi.listAll(),
+  })
+  const activeUsers = allUsers.filter((user) => user.is_active)
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => projectsApi.delete(id),
@@ -199,6 +204,7 @@ export default function ProjectsPage() {
         open={showNewDialog}
         onOpenChange={setShowNewDialog}
         clients={clients}
+        users={activeUsers}
         onTemplate={() => { setShowNewDialog(false); setShowTemplateDialog(true) }}
         onPdf={() => { setShowNewDialog(false); setShowImportDialog(true) }}
         onText={() => { setShowNewDialog(false); setShowImportTextDialog(true) }}
@@ -209,6 +215,7 @@ export default function ProjectsPage() {
         open={showTemplateDialog}
         onOpenChange={setShowTemplateDialog}
         clients={clients}
+        users={activeUsers}
         templates={templates}
       />
 
@@ -217,6 +224,7 @@ export default function ProjectsPage() {
         open={showImportDialog}
         onOpenChange={setShowImportDialog}
         clients={clients}
+        users={activeUsers}
       />
 
       {/* Import from TXT/MD Dialog */}
@@ -224,6 +232,7 @@ export default function ProjectsPage() {
         open={showImportTextDialog}
         onOpenChange={setShowImportTextDialog}
         clients={clients}
+        users={activeUsers}
       />
 
       {/* Delete Confirmation */}
@@ -257,6 +266,7 @@ function ProjectCard({
                 {project.name}
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">{project.client_name}</p>
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><UserRound className="h-3 w-3" />{project.owner_name || "Sin responsable"}</p>
             </div>
             <button
               aria-label={`Eliminar proyecto ${project.name}`}
@@ -315,11 +325,13 @@ function NewProjectDialog({
   open,
   onOpenChange,
   clients,
+  users,
   onTemplate, onPdf, onText,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   clients: { id: number; name: string }[]
+  users: User[]
   onTemplate: () => void
   onPdf: () => void
   onText: () => void
@@ -341,6 +353,7 @@ function NewProjectDialog({
     budget_amount: "",
     weekly_hours_budget: "",
     monthly_hours_budget: "",
+    owner_id: "",
   }
   const [formData, setFormData] = useState(emptyForm)
 
@@ -361,6 +374,7 @@ function NewProjectDialog({
         budget_amount: formData.budget_amount ? parseFloat(formData.budget_amount) : undefined,
         weekly_hours_budget: formData.weekly_hours_budget ? parseFloat(formData.weekly_hours_budget) : undefined,
         monthly_hours_budget: formData.monthly_hours_budget ? parseFloat(formData.monthly_hours_budget) : undefined,
+        owner_id: formData.owner_id ? parseInt(formData.owner_id) : undefined,
       }),
     onSuccess: (project) => {
       invalidateProjectChange(queryClient, {clientId: project.client_id})
@@ -381,6 +395,7 @@ function NewProjectDialog({
           <Label htmlFor="new-project-name">Nombre *</Label>
           <Input id="new-project-name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Ej. Rediseño de la web" required />
         </div>
+        <OwnerSelect id="new-project-owner" value={formData.owner_id} users={users} onChange={(owner_id) => setFormData({ ...formData, owner_id })} />
         <div className="space-y-2">
           <Label htmlFor="new-project-client">Cliente *</Label>
           <Select id="new-project-client" value={formData.client_id} onChange={(e) => setFormData({ ...formData, client_id: e.target.value })} required>
@@ -440,21 +455,24 @@ function TemplateDialog({
   onOpenChange,
   clients,
   templates,
+  users,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   clients: { id: number; name: string }[]
   templates: Record<string, { name: string; description?: string | null; phase_count: number; task_count: number; pricing_model?: string | null; monthly_fee?: number | null; is_recurring?: boolean }>
+  users: User[]
 }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [clientId, setClientId] = useState("")
   const [templateKey, setTemplateKey] = useState("")
   const [startDate, setStartDate] = useState("")
+  const [ownerId, setOwnerId] = useState("")
 
   const createMutation = useMutation({
     mutationFn: () =>
-      projectsApi.createFromTemplate(parseInt(clientId), templateKey, startDate || undefined),
+      projectsApi.createFromTemplate(parseInt(clientId), templateKey, startDate || undefined, ownerId ? parseInt(ownerId) : undefined),
     onSuccess: (project) => {
       invalidateProjectChange(queryClient, {clientId: project.client_id})
       toast.success("Proyecto creado desde plantilla")
@@ -463,6 +481,7 @@ function TemplateDialog({
       setClientId("")
       setTemplateKey("")
       setStartDate("")
+      setOwnerId("")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al crear proyecto")),
   })
@@ -492,6 +511,7 @@ function TemplateDialog({
             ))}
           </Select>
         </div>
+        <OwnerSelect id="template-project-owner" value={ownerId} users={users} onChange={setOwnerId} />
 
         <div className="space-y-2">
           <Label htmlFor="projects-page-field-2">Plantilla *</Label>
@@ -563,16 +583,19 @@ function ImportFromPdfDialog({
   open,
   onOpenChange,
   clients,
+  users,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   clients: { id: number; name: string }[]
+  users: User[]
 }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [step, setStep] = useState<"upload" | "review">("upload")
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [clientId, setClientId] = useState("")
+  const [ownerId, setOwnerId] = useState("")
   const [formData, setFormData] = useState<Partial<ProjectDraft>>({})
 
   const extractMutation = useMutation({
@@ -589,7 +612,7 @@ function ImportFromPdfDialog({
 
   const createMutation = useMutation({
     mutationFn: () =>
-      projectsApi.create(projectCreateFromDraft(formData, parseInt(clientId))),
+      projectsApi.create(projectCreateFromDraft({ ...formData, owner_id: ownerId ? parseInt(ownerId) : null }, parseInt(clientId))),
     onSuccess: (project) => {
       invalidateProjectChange(queryClient, {clientId: project.client_id})
       toast.success("Proyecto creado")
@@ -604,6 +627,7 @@ function ImportFromPdfDialog({
     setStep("upload")
     setPdfFile(null)
     setClientId("")
+    setOwnerId("")
     setFormData({})
   }
 
@@ -625,6 +649,7 @@ function ImportFromPdfDialog({
               onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)}
             />
           </div>
+          <OwnerSelect id="pdf-project-owner" value={ownerId} users={users} onChange={setOwnerId} />
           <div className="space-y-2">
             <Label htmlFor="projects-page-field-5">Cliente *</Label>
             <Select id="projects-page-field-5" value={clientId} onChange={(e) => setClientId(e.target.value)} required>
@@ -798,16 +823,19 @@ function ImportFromTextDialog({
   open,
   onOpenChange,
   clients,
+  users,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   clients: { id: number; name: string }[]
+  users: User[]
 }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [step, setStep] = useState<"upload" | "review">("upload")
   const [textFile, setTextFile] = useState<File | null>(null)
   const [clientId, setClientId] = useState("")
+  const [ownerId, setOwnerId] = useState("")
   const [formData, setFormData] = useState<Partial<ProjectDraft>>({})
 
   const extractMutation = useMutation({
@@ -824,7 +852,7 @@ function ImportFromTextDialog({
 
   const createMutation = useMutation({
     mutationFn: () =>
-      projectsApi.create(projectCreateFromDraft(formData, parseInt(clientId))),
+      projectsApi.create(projectCreateFromDraft({ ...formData, owner_id: ownerId ? parseInt(ownerId) : null }, parseInt(clientId))),
     onSuccess: (project) => {
       invalidateProjectChange(queryClient, {clientId: project.client_id})
       toast.success("Proyecto creado")
@@ -839,6 +867,7 @@ function ImportFromTextDialog({
     setStep("upload")
     setTextFile(null)
     setClientId("")
+    setOwnerId("")
     setFormData({})
   }
 
@@ -860,6 +889,7 @@ function ImportFromTextDialog({
               onChange={(e) => setTextFile(e.target.files?.[0] ?? null)}
             />
           </div>
+          <OwnerSelect id="text-project-owner" value={ownerId} users={users} onChange={setOwnerId} />
           <div className="space-y-2">
             <Label htmlFor="projects-page-field-18">Cliente *</Label>
             <Select id="projects-page-field-18" value={clientId} onChange={(e) => setClientId(e.target.value)} required>
@@ -1025,4 +1055,15 @@ function ImportFromTextDialog({
       )}
     </Dialog>
   )
+}
+
+function OwnerSelect({ id, value, users, onChange }: { id: string; value: string; users: User[]; onChange: (value: string) => void }) {
+  return <div className="space-y-2">
+    <Label htmlFor={id}>Responsable (opcional)</Label>
+    <Select id={id} value={value} onChange={(event) => onChange(event.target.value)}>
+      <option value="">Sin responsable</option>
+      {users.map((user) => <option key={user.id} value={user.id}>{user.full_name}</option>)}
+    </Select>
+    <p className="text-xs text-muted-foreground">Se guarda solo la persona elegida aquí.</p>
+  </div>
 }

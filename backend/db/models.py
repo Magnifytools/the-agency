@@ -489,8 +489,10 @@ class Project(TimestampMixin, Base):
     last_billed_date = Column(Date, nullable=True)
 
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
 
     client = relationship("Client", back_populates="projects", lazy="selectin")
+    owner = relationship("User", lazy="selectin", foreign_keys=[owner_id])
     phases = relationship("ProjectPhase", back_populates="project", lazy="selectin", order_by="ProjectPhase.order_index")
     tasks = relationship("Task", back_populates="project", lazy="selectin")
     evidence = relationship("ProjectEvidence", back_populates="project", lazy="noload", order_by="ProjectEvidence.created_at.desc()")
@@ -1491,6 +1493,42 @@ class DailyUpdate(TimestampMixin, Base):
     discord_sent_at = Column(DateTime, nullable=True)
 
     user = relationship("User", lazy="selectin")
+
+
+class Delivery(TimestampMixin, Base):
+    """Immutable message intent; source edits never replace its snapshot."""
+    __tablename__ = "deliveries"
+    __table_args__ = (
+        Index("uq_deliveries_key", "dedupe_key", unique=True),
+        Index("ix_deliveries_pending", "status", "available_at"),
+        Index("ix_deliveries_source", "source_kind", "source_id"),
+    )
+    id = Column(String(36), primary_key=True)
+    dedupe_key = Column(String(64), nullable=False)
+    actor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    source_kind = Column(String(20), nullable=False)
+    source_id = Column(Integer, nullable=False)
+    source_version = Column(String(64), nullable=False)
+    destination_key = Column(String(64), nullable=False)
+    payload = Column(JSONB, nullable=False)
+    status = Column(String(20), nullable=False, default="pending")
+    available_at = Column(DateTime, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    sent_at = Column(DateTime, nullable=True)
+    error_code = Column(String(50), nullable=True)
+    message = Column(Text, nullable=True)
+    resend_of = Column(String(36), ForeignKey("deliveries.id"), nullable=True)
+
+
+class DeliveryAttempt(TimestampMixin, Base):
+    __tablename__ = "delivery_attempts"
+    __table_args__ = (Index("uq_delivery_attempt_number", "delivery_id", "number", unique=True),)
+    id = Column(String(36), primary_key=True)  # also the fencing token
+    delivery_id = Column(String(36), ForeignKey("deliveries.id"), nullable=False)
+    number = Column(Integer, nullable=False)
+    status = Column(String(20), nullable=False)
+    lease_until = Column(DateTime, nullable=False)
+    steps = Column(JSONB, nullable=False)
 
 
 class AssetCategory(str, enum.Enum):

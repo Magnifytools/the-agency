@@ -1,3 +1,4 @@
+import type { ProjectTasksResponse } from "@/lib/project-work"
 import axios, { type GenericAbortSignal, type InternalAxiosRequestConfig } from "axios"
 import { toast } from "sonner"
 import type {
@@ -510,10 +511,10 @@ export const discordApi = {
     api.post<import("./types").DiscordTestResponse>("/discord/test-webhook").then((r) => r.data),
   sendDailySummary: (date?: string) =>
     api.post<import("./types").DiscordSendResponse>("/discord/send-daily-summary", null, { params: date ? { date } : {} }).then((r) => r.data),
-  sendDigest: (digestId: number) =>
-    api.post<import("./types").DiscordSendResponse>(`/discord/send-digest/${digestId}`).then((r) => r.data),
+  sendDigest: (digestId: number, content?: string) =>
+    api.post<import("./types").DeliveryReceipt>(`/discord/send-digest/${digestId}`, { content }).then((r) => r.data),
   sendCustom: (content: string) =>
-    api.post<import("./types").DiscordSendResponse>("/discord/send-custom", { content }).then((r) => r.data),
+    api.post<import("./types").DiscordSendResponse>("/discord/send-custom", { content }, { headers: { "X-Agency-Send-Intent": "custom-v1" } }).then((r) => r.data),
   sendWeeklyReport: (weekStart?: string) =>
     api.post<import("./types").DiscordSendResponse>("/discord/send-weekly-report", null, { params: weekStart ? { week_start: weekStart } : {} }).then((r) => r.data),
 }
@@ -546,8 +547,8 @@ export const projectsApi = {
   deleteTemplate: (id: number) => api.delete(`/projects/templates/${id}`).then((r) => r.data),
   saveAsTemplate: (projectId: number, data: { name: string; key?: string; description?: string }) =>
     api.post(`/projects/${projectId}/save-as-template`, data).then((r) => r.data),
-  createFromTemplate: (client_id: number, template_key: string, start_date?: string) =>
-    api.post<Project>("/projects/from-template", null, { params: { client_id, template_key, start_date } }).then((r) => r.data),
+  createFromTemplate: (client_id: number, template_key: string, start_date?: string, owner_id?: number) =>
+    api.post<Project>("/projects/from-template", null, { params: { client_id, template_key, start_date, owner_id } }).then((r) => r.data),
   extractFromPdf: (file: File) => {
     const form = new FormData()
     form.append("file", file)
@@ -558,7 +559,7 @@ export const projectsApi = {
     form.append("file", file)
     return api.post<ProjectDraft>("/projects/extract-from-text", form).then((r) => r.data)
   },
-  tasks: (id: number) => api.get(`/projects/${id}/tasks`).then((r) => r.data),
+  tasks: (id: number) => api.get<ProjectTasksResponse>(`/projects/${id}/tasks`).then((r) => r.data),
   burndown: (id: number) => api.get(`/projects/${id}/burndown`).then((r) => r.data),
   createPhase: (project_id: number, data: { name: string; order_index: number; start_date?: string; due_date?: string }) =>
     api.post<ProjectPhase>(`/projects/${project_id}/phases`, data).then((r) => r.data),
@@ -898,6 +899,15 @@ export const dailysApi = {
     api.put<DailyUpdate>(`/dailys/${id}`, data, { timeout: 90_000 }).then((r) => r.data),
   delete: (id: number) => api.delete(`/dailys/${id}`).then((r) => r.data),
   prefill: () => api.get<{ text: string; completed_count: number; worked_on_count: number }>("/dailys/prefill").then((r) => r.data),
+}
+
+export const deliveriesApi = {
+  list: (source_kind: "daily" | "digest", source_id: number) =>
+    api.get<import("./types").DeliveryReceipt[]>("/deliveries", { params: { source_kind, source_id } }).then((r) => r.data),
+  retry: (id: string) => api.post<import("./types").DeliveryReceipt>(`/deliveries/${id}/retry`).then((r) => r.data),
+  cancel: (id: string) => api.post<import("./types").DeliveryReceipt>(`/deliveries/${id}/cancel`).then((r) => r.data),
+  resend: (id: string, reviewKey: string) =>
+    api.post<import("./types").DeliveryReceipt>(`/deliveries/${id}/resend`, { reviewed: true, review_key: reviewKey }).then((r) => r.data),
 }
 
 export const financeExportApi = {

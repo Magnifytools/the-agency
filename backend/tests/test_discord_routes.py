@@ -76,3 +76,54 @@ class TestDiscordAdmin:
     async def test_test_webhook_member_forbidden(self, member_client):
         resp = await member_client.post("/api/discord/test-webhook")
         assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+class TestCustomContract:
+    @pytest.mark.parametrize("intent", [None, "digest", "custom-v0"])
+    async def test_cached_digest_rejected_before_settings_or_provider(self, admin_client, monkeypatch, intent):
+        from unittest.mock import AsyncMock
+        from backend.api.routes import discord
+
+        settings_lookup = AsyncMock(side_effect=AssertionError("must not resolve destination"))
+        provider = AsyncMock(side_effect=AssertionError("must not send"))
+        monkeypatch.setattr(discord, "_get_or_create_settings", settings_lookup)
+        monkeypatch.setattr(discord, "_send_discord_message", provider)
+        response = await admin_client.post(
+            "/api/discord/send-custom", json={"content": "Cached digest preview"},
+            headers={"X-Agency-Send-Intent": intent} if intent else {},
+        )
+        assert response.status_code == 409
+        assert "Recarga" in response.json()["detail"]
+        settings_lookup.assert_not_awaited()
+        provider.assert_not_awaited()
+
+    async def test_current_custom_contract_preserves_explicit_send(self, admin_client, monkeypatch):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        from backend.api.routes import discord
+
+        destination = SimpleNamespace(webhook_url="https://discord.com/api/webhooks/123/test", last_sent_at=None)
+        monkeypatch.setattr(discord, "_get_or_create_settings", AsyncMock(return_value=destination))
+        provider = AsyncMock(return_value=True)
+        monkeypatch.setattr(discord, "_send_discord_message", provider)
+        response = await admin_client.post(
+            "/api/discord/send-custom", json={"content": "  Explicit custom text  "},
+            headers={"X-Agency-Send-Intent": "custom-v1"},
+        )
+        assert response.status_code == 200 and response.json()["success"] is True
+        provider.assert_awaited_once_with(destination.webhook_url, "Explicit custom text")
+        assert destination.last_sent_at is not None
+
+    async def test_contract_header_does_not_grant_admin(self, member_client, monkeypatch):
+        from unittest.mock import AsyncMock
+        from backend.api.routes import discord
+
+        provider = AsyncMock(side_effect=AssertionError("must not send"))
+        monkeypatch.setattr(discord, "_send_discord_message", provider)
+        response = await member_client.post(
+            "/api/discord/send-custom", json={"content": "Unauthorized text"},
+            headers={"X-Agency-Send-Intent": "custom-v1"},
+        )
+        assert response.status_code == 403
+        provider.assert_not_awaited()

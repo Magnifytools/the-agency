@@ -42,6 +42,8 @@ export interface Project {
   last_billed_date: string | null
   client_id: number
   client_name: string | null
+  owner_id: number | null
+  owner_name: string | null
   phases: ProjectPhase[]
   task_count: number
   completed_task_count: number
@@ -78,6 +80,8 @@ export interface ProjectListItem {
   progress_percent: number
   client_id: number
   client_name: string | null
+  owner_id: number | null
+  owner_name: string | null
   gsc_url: string | null
   ga4_property_id: string | null
   is_recurring: boolean
@@ -110,6 +114,7 @@ export interface ProjectCreate {
   billing_amount?: number | null
   next_billing_date?: string | null
   client_id: number
+  owner_id?: number | null
 }
 
 export interface ProjectTemplate {
@@ -151,6 +156,7 @@ export interface ProjectDraft {
   unit_price?: number
   unit_label?: string
   scope?: string
+  owner_id?: number | null
 }
 
 export interface ProjectTeamBreakdown {

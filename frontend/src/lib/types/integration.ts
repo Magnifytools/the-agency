@@ -361,10 +361,27 @@ export interface DailySubmitRequest {
   date?: string | null
 }
 
-export interface DailyDiscordResponse {
+export interface DeliveryReceipt {
+  delivery_id: string
+  status: "pending" | "sending" | "sent" | "failed" | "uncertain" | "cancelled" | "expired"
   success: boolean
   message: string
+  source_kind: "daily" | "digest"
+  source_id: number
+  source_version: string
+  source_changed: boolean
+  content: string
+  created_at: string
+  sent_at: string | null
+  error_code: string | null
+  steps: { label: string; kind: string; status: string; message_id?: string; error?: string }[]
+  can_retry: boolean
+  can_resend: boolean
+  can_cancel: boolean
+  worker_enabled: boolean
 }
+
+export type DailyDiscordResponse = DeliveryReceipt
 
 // --- Discord Integration ---
 

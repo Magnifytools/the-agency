@@ -33,6 +33,7 @@ class UserUpdate(BaseModel):
 
 class UserListResponse(BaseModel):
     id: int
+    is_active: bool = True
     email: Optional[str] = None
     full_name: str
     role: Optional[UserRole] = None
