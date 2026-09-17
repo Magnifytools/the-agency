@@ -29,4 +29,10 @@ describe("projectCreateFromDraft", () => {
     expect(missing.monthly_fee).toBeUndefined()
     expect(missing.budget_amount).toBeUndefined()
   })
+
+  it("preserves only the explicitly reviewed owner", () => {
+    expect(projectCreateFromDraft({ name: "Con responsable", owner_id: 8 }, 3).owner_id).toBe(8)
+    expect(projectCreateFromDraft({ name: "Sin responsable", owner_id: null }, 3).owner_id).toBeUndefined()
+    expect(projectCreateFromDraft({ name: "Sin contexto" }, 3).owner_id).toBeUndefined()
+  })
 })

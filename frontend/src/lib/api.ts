@@ -547,8 +547,8 @@ export const projectsApi = {
   deleteTemplate: (id: number) => api.delete(`/projects/templates/${id}`).then((r) => r.data),
   saveAsTemplate: (projectId: number, data: { name: string; key?: string; description?: string }) =>
     api.post(`/projects/${projectId}/save-as-template`, data).then((r) => r.data),
-  createFromTemplate: (client_id: number, template_key: string, start_date?: string) =>
-    api.post<Project>("/projects/from-template", null, { params: { client_id, template_key, start_date } }).then((r) => r.data),
+  createFromTemplate: (client_id: number, template_key: string, start_date?: string, owner_id?: number) =>
+    api.post<Project>("/projects/from-template", null, { params: { client_id, template_key, start_date, owner_id } }).then((r) => r.data),
   extractFromPdf: (file: File) => {
     const form = new FormData()
     form.append("file", file)
