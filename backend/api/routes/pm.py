@@ -1,6 +1,6 @@
 from __future__ import annotations
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -20,6 +20,12 @@ from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/pm", tags=["pm"])
 logger = logging.getLogger(__name__)
+
+
+def _can_read_module(user: User, module: str) -> bool:
+    if user.role == UserRole.admin:
+        return True
+    return any(p.module == module and p.can_read for p in (user.permissions or []))
 
 
 def _to_response(insight: PMInsight) -> InsightResponse:
@@ -121,7 +127,12 @@ async def trigger_generate_insights(
 
     # Generate new insights
     try:
-        new_insights = await generate_insights(db, user_id=current_user.id)
+        new_insights = await generate_insights(
+            db,
+            user_id=current_user.id,
+            allow_financial=_can_read_module(current_user, "finance_income"),
+            team_scope=current_user.role == UserRole.admin,
+        )
     except Exception as e:
         logger.error(f"Insights generation failed: {e}")
         raise HTTPException(status_code=502, detail="Error generando insights con IA")
@@ -183,12 +194,17 @@ async def act_on_insight(
 
 @router.get("/daily-briefing", response_model=DailyBriefingResponse)
 async def get_briefing(
+    scope: Literal["mine", "team"] = "mine",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("pm")),
 ):
     """Get the daily briefing summary."""
     ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
-    briefing = await get_daily_briefing(db, user_id=current_user.id)
+    if scope == "team" and current_user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="La vista de equipo requiere rol administrador")
+    briefing = await get_daily_briefing(
+        db, user_id=current_user.id, team=scope == "team"
+    )
     return DailyBriefingResponse(**briefing)
 
 

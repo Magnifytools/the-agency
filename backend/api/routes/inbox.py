@@ -9,11 +9,12 @@ from fastapi.responses import Response
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db, async_session
 from backend.db.models import (
     InboxNote, InboxNoteStatus, InboxAttachment, Project, ProjectStatus, Client, ClientStatus,
-    Task, TaskStatus, TaskPriority,
+    Task, TaskStatus, TaskPriority, User,
 )
 from backend.api.deps import get_current_user, require_module
 from backend.api.utils.db_helpers import safe_refresh
@@ -89,24 +90,41 @@ async def _get_note_or_404(
     return note
 
 
-async def _fetch_context(db: AsyncSession) -> tuple[list[dict], list[dict]]:
-    """Fetch active projects and clients for AI classification context."""
-    proj_coro = db.execute(
-        select(Project.id, Project.name, Client.name.label("client_name"))
-        .join(Client, Project.client_id == Client.id)
-        .where(Project.status == ProjectStatus.active)
-        .order_by(Project.name)
-        .limit(200)
-    )
-    cli_coro = db.execute(
-        select(Client.id, Client.name)
-        .where(Client.status == ClientStatus.active)
-        .order_by(Client.name)
-        .limit(200)
-    )
-    proj_result, cli_result = await asyncio.gather(proj_coro, cli_coro)
-    projects = [{"id": r.id, "name": r.name, "client_name": r.client_name} for r in proj_result.all()]
-    clients = [{"id": r.id, "name": r.name} for r in cli_result.all()]
+def _can_read(user, module: str) -> bool:
+    if user.role.value == "admin":
+        return True
+    return any(p.module == module and p.can_read for p in (user.permissions or []))
+
+
+async def _fetch_context(db: AsyncSession, user) -> tuple[list[dict], list[dict]]:
+    """Return entity modules visible to the actor.
+
+    There is no per-client ACL in the data model. Module permissions are the
+    real boundary, so this deliberately does not invent row ownership rules.
+    """
+    projects: list[dict] = []
+    clients: list[dict] = []
+    if _can_read(user, "projects"):
+        proj_result = await db.execute(
+            select(Project.id, Project.name, Client.name.label("client_name"))
+            .join(Client, Project.client_id == Client.id)
+            .where(Project.status == ProjectStatus.active)
+            .order_by(Project.name)
+            .limit(200)
+        )
+        projects = [
+            {"id": r.id, "name": r.name,
+             "client_name": r.client_name if _can_read(user, "clients") else None}
+            for r in proj_result.all()
+        ]
+    if _can_read(user, "clients"):
+        cli_result = await db.execute(
+            select(Client.id, Client.name)
+            .where(Client.status == ClientStatus.active)
+            .order_by(Client.name)
+            .limit(200)
+        )
+        clients = [{"id": r.id, "name": r.name} for r in cli_result.all()]
     return projects, clients
 
 
@@ -121,7 +139,12 @@ async def _classify_note_background(note_id: int) -> None:
             if not note or note.status != InboxNoteStatus.pending:
                 return
 
-            projects, clients = await _fetch_context(db)
+            user = (await db.execute(
+                select(User).where(User.id == note.user_id).options(selectinload(User.permissions))
+            )).scalar_one_or_none()
+            if user is None:
+                return
+            projects, clients = await _fetch_context(db, user)
             if not projects and not clients:
                 logger.info("No active projects/clients for classification, skipping note %d", note_id)
                 return
@@ -280,7 +303,7 @@ async def classify_note(
     ai_limiter.check(user.id, max_requests=20, window_seconds=60)
 
     note = await _get_note_or_404(note_id, user.id, db)
-    projects, clients = await _fetch_context(db)
+    projects, clients = await _fetch_context(db, user)
 
     try:
         suggestion = await classify_inbox_note(note.raw_text, projects, clients)
