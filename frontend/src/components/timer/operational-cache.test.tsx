@@ -23,6 +23,10 @@ vi.mock("@/lib/api", () => ({
 }))
 
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }) }))
+vi.mock("@/context/auth-context", () => ({
+  useAuth: () => ({ user: { id: 7, role: "member" }, isAdmin: false, hasPermission: () => true }),
+}))
+vi.mock("@/hooks/use-business-date", () => ({ useBusinessDate: () => "2026-09-17" }))
 
 function setup(element: React.ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -58,7 +62,7 @@ describe("time mutation cache surfaces", () => {
     await userEvent.type(screen.getByLabelText("Minutos"), "30")
     await userEvent.click(screen.getByRole("button", { name: "Guardar" }))
 
-    await waitFor(() => expect(api.createEntry).toHaveBeenCalledWith({ minutes: 30, task_id: 9, notes: undefined }))
+    await waitFor(() => expect(api.createEntry).toHaveBeenCalledWith({ minutes: 30, task_id: 9, notes: undefined, date: "2026-09-17" }))
     affectedKeys.forEach((key) => expect(client.getQueryState(key)?.isInvalidated).toBe(true))
     expect(client.getQueryState(unrelatedKey)?.isInvalidated).toBe(false)
   })
