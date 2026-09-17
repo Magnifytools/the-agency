@@ -10,6 +10,7 @@ Score 0-100 based on 5 weighted factors:
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
 from typing import List
 
 from sqlalchemy import select, func, case
@@ -23,6 +24,16 @@ from backend.db.models import (
 
 
 # ── Scoring helpers ──────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class HealthCapabilities:
+    """Sources this caller can actually observe through the product."""
+
+    communications: bool = True
+    tasks: bool = True
+    digests: bool = True
+    profitability: bool = True
 
 
 def _comm_score_from_days(days_since: int | None) -> int:
@@ -83,28 +94,64 @@ def _followup_score_from_overdue(overdue_followups: int) -> int:
     return 0
 
 
-def _build_result(client_id: int, client_name: str, comm: int, tasks: int,
-                  digests: int, profit: int, followups: int) -> dict:
-    """Assemble the health score dict from individual factor scores."""
-    total = comm + tasks + digests + profit + followups
-    total = max(0, min(100, total))
-    if total >= 70:
+FACTOR_MAX = {
+    "communication": 25,
+    "tasks": 25,
+    "digests": 15,
+    "profitability": 20,
+    "followups": 15,
+}
+FACTOR_SOURCE = {
+    "communication": "communications",
+    "tasks": "tasks",
+    "digests": "digests",
+    "profitability": "profitability",
+    "followups": "communications",
+}
+MINIMUM_MEASURED_WEIGHT = 40
+MINIMUM_SOURCE_COUNT = 2
+
+
+def _build_result(
+    client_id: int,
+    client_name: str,
+    factors: dict[str, int | None],
+    observations: dict[str, str],
+) -> dict:
+    """Normalize only measured factors; never turn missing sources into health."""
+    available_weight = sum(
+        FACTOR_MAX[name] for name, value in factors.items() if value is not None
+    )
+    available_sources = {
+        FACTOR_SOURCE[name] for name, value in factors.items() if value is not None
+    }
+    enough_information = (
+        available_weight >= MINIMUM_MEASURED_WEIGHT
+        and len(available_sources) >= MINIMUM_SOURCE_COUNT
+    )
+    score = (
+        round(sum(value for value in factors.values() if value is not None) * 100 / available_weight)
+        if enough_information and available_weight
+        else None
+    )
+    if score is None:
+        risk_level = "no_data"
+    elif score >= 70:
         risk_level = "healthy"
-    elif total >= 40:
+    elif score >= 40:
         risk_level = "warning"
     else:
         risk_level = "at_risk"
     return {
         "client_id": client_id,
         "client_name": client_name,
-        "score": total,
-        "factors": {
-            "communication": comm,
-            "tasks": tasks,
-            "digests": digests,
-            "profitability": profit,
-            "followups": followups,
-        },
+        "score": score,
+        "factors": factors,
+        "factor_max": FACTOR_MAX,
+        "observations": observations,
+        "available_weight": available_weight,
+        "available_source_count": len(available_sources),
+        "enough_information": enough_information,
         "risk_level": risk_level,
     }
 
@@ -125,8 +172,13 @@ def _as_naive_utc(value: datetime | None) -> datetime | None:
 # ── Single-client version (used by /{client_id}/health) ─────
 
 
-async def compute_health(client: Client, db: AsyncSession) -> dict:
+async def compute_health(
+    client: Client,
+    db: AsyncSession,
+    capabilities: HealthCapabilities | None = None,
+) -> dict:
     """Return health score dict for a single client."""
+    capabilities = capabilities or HealthCapabilities()
     now = _utc_now_naive()
 
     # --- 1. Communication frequency (25 pts) ---
@@ -139,7 +191,7 @@ async def compute_health(client: Client, db: AsyncSession) -> dict:
         days_since = (now - last_comm_date).days
     else:
         days_since = None
-    comm_score = _comm_score_from_days(days_since)
+    comm_score = _comm_score_from_days(days_since) if capabilities.communications else None
 
     # --- 2. Task completion (25 pts) ---
     task_counts = await db.execute(
@@ -161,7 +213,7 @@ async def compute_health(client: Client, db: AsyncSession) -> dict:
             )
         )
         overdue = overdue_count_result.scalar() or 0
-    task_score = _task_score_from_counts(total_tasks, completed, overdue)
+    task_score = _task_score_from_counts(total_tasks, completed, overdue) if capabilities.tasks else None
 
     # --- 3. Digest coverage (15 pts) ---
     four_weeks_ago = (now - timedelta(weeks=4)).date()
@@ -172,7 +224,7 @@ async def compute_health(client: Client, db: AsyncSession) -> dict:
         )
     )
     digest_count = digest_count_result.scalar() or 0
-    digest_score = _digest_score_from_count(digest_count)
+    digest_score = _digest_score_from_count(digest_count) if capabilities.digests else None
 
     # --- 4. Profitability (20 pts) ---
     if client.monthly_budget and float(client.monthly_budget) > 0:
@@ -196,7 +248,15 @@ async def compute_health(client: Client, db: AsyncSession) -> dict:
         estimated_cost = float(cost_result.scalar() or 0)
     else:
         estimated_cost = 0
-    profit_score = _profit_score_from_cost(float(client.monthly_budget) if client.monthly_budget is not None else None, estimated_cost)
+    profitability_available = (
+        capabilities.profitability
+        and client.monthly_budget is not None
+        and float(client.monthly_budget) > 0
+    )
+    profit_score = (
+        _profit_score_from_cost(float(client.monthly_budget), estimated_cost)
+        if profitability_available else None
+    )
 
     # --- 5. Follow-up compliance (15 pts) ---
     pending_followups_result = await db.execute(
@@ -207,24 +267,41 @@ async def compute_health(client: Client, db: AsyncSession) -> dict:
         )
     )
     overdue_followups = pending_followups_result.scalar() or 0
-    followup_score = _followup_score_from_overdue(overdue_followups)
+    followup_score = _followup_score_from_overdue(overdue_followups) if capabilities.communications else None
 
-    return _build_result(
-        client.id, client.name,
-        comm_score, task_score, digest_score, profit_score, followup_score,
-    )
+    return _build_result(client.id, client.name, {
+        "communication": comm_score,
+        "tasks": task_score,
+        "digests": digest_score,
+        "profitability": profit_score,
+        "followups": followup_score,
+    }, {
+        "communication": "Fuente no disponible" if not capabilities.communications else (
+            f"Último contacto hace {days_since} días" if days_since is not None else "Sin comunicaciones registradas"
+        ),
+        "tasks": "Fuente no disponible" if not capabilities.tasks else (
+            f"{completed}/{total_tasks} completadas · {overdue} vencidas" if total_tasks else "Sin tareas registradas"
+        ),
+        "digests": "Fuente no disponible" if not capabilities.digests else f"{digest_count} resúmenes en 4 semanas",
+        "profitability": "Presupuesto no configurado" if not profitability_available else (
+            f"Coste estimado {estimated_cost:.0f} de {float(client.monthly_budget):.0f}"
+        ),
+        "followups": "Fuente no disponible" if not capabilities.communications else f"{overdue_followups} seguimientos vencidos",
+    })
 
 
 # ── Batch version (used by /health-scores) ──────────────────
 
 
 async def compute_health_batch(
-    clients: List[Client], db: AsyncSession
+    clients: List[Client], db: AsyncSession,
+    capabilities: HealthCapabilities | None = None,
 ) -> list[dict]:
     """Compute health scores for many clients using 6 batch queries
     instead of N*6 individual ones.  Returns identical results to
     calling compute_health per client.
     """
+    capabilities = capabilities or HealthCapabilities()
     if not clients:
         return []
 
@@ -339,28 +416,46 @@ async def compute_health_batch(
             days_since: int | None = (now - last_date).days
         else:
             days_since = None
-        comm = _comm_score_from_days(days_since)
+        comm = _comm_score_from_days(days_since) if capabilities.communications else None
 
         # 2. Tasks
         status_counts = task_status_map.get(cid, {})
         total_tasks = sum(status_counts.values())
         completed = status_counts.get(TaskStatus.completed, 0)
         overdue = overdue_map.get(cid, 0)
-        tasks = _task_score_from_counts(total_tasks, completed, overdue)
+        tasks = _task_score_from_counts(total_tasks, completed, overdue) if capabilities.tasks else None
 
         # 3. Digests
-        digests = _digest_score_from_count(digest_map.get(cid, 0))
+        digest_count = digest_map.get(cid, 0)
+        digests = _digest_score_from_count(digest_count) if capabilities.digests else None
 
         # 4. Profitability
         estimated_cost = cost_map.get(cid, 0.0)
-        profit = _profit_score_from_cost(client_budget_map[cid], estimated_cost)
+        profitability_available = capabilities.profitability and bool(client_budget_map[cid] and client_budget_map[cid] > 0)
+        profit = _profit_score_from_cost(client_budget_map[cid], estimated_cost) if profitability_available else None
 
         # 5. Follow-ups
-        followups = _followup_score_from_overdue(followup_map.get(cid, 0))
+        overdue_followups = followup_map.get(cid, 0)
+        followups = _followup_score_from_overdue(overdue_followups) if capabilities.communications else None
 
-        scores.append(_build_result(
-            cid, client_name_map[cid],
-            comm, tasks, digests, profit, followups,
-        ))
+        scores.append(_build_result(cid, client_name_map[cid], {
+            "communication": comm,
+            "tasks": tasks,
+            "digests": digests,
+            "profitability": profit,
+            "followups": followups,
+        }, {
+            "communication": "Fuente no disponible" if not capabilities.communications else (
+                f"Último contacto hace {days_since} días" if days_since is not None else "Sin comunicaciones registradas"
+            ),
+            "tasks": "Fuente no disponible" if not capabilities.tasks else (
+                f"{completed}/{total_tasks} completadas · {overdue} vencidas" if total_tasks else "Sin tareas registradas"
+            ),
+            "digests": "Fuente no disponible" if not capabilities.digests else f"{digest_count} resúmenes en 4 semanas",
+            "profitability": "Presupuesto no configurado" if not profitability_available else (
+                f"Coste estimado {estimated_cost:.0f} de {client_budget_map[cid]:.0f}"
+            ),
+            "followups": "Fuente no disponible" if not capabilities.communications else f"{overdue_followups} seguimientos vencidos",
+        }))
 
     return scores

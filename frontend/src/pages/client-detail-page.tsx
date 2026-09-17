@@ -387,24 +387,40 @@ export default function ClientDetailPage() {
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                 <Heart className="h-3 w-3 flex-shrink-0" /> <span className="truncate">Salud</span>
               </p>
-              <p className={`kpi-value mt-1 ${health.risk_level === "healthy" ? "text-green-600" : health.risk_level === "warning" ? "text-amber-500" : "text-red-500"}`}>
-                {health.score}/100
+              <p className={`kpi-value mt-1 ${health.risk_level === "healthy" ? "text-green-600" : health.risk_level === "warning" ? "text-amber-500" : health.risk_level === "no_data" ? "text-muted-foreground" : "text-red-500"}`}>
+                {health.score == null ? "Sin información suficiente" : `${health.score}/100`}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {health.enough_information ? `Basado en ${health.available_source_count} fuentes observables (${health.available_weight}/100 puntos).` : "Faltan fuentes suficientes para clasificar este cliente."}
               </p>
               <div className="mt-2 grid grid-cols-5 gap-1">
                 {[
-                  { label: "Com", val: health.factors.communication, max: 25 },
-                  { label: "Tar", val: health.factors.tasks, max: 25 },
-                  { label: "Dig", val: health.factors.digests, max: 15 },
-                  { label: "Ren", val: health.factors.profitability, max: 20 },
-                  { label: "Fup", val: health.factors.followups, max: 15 },
+                  { key: "communication", label: "Com", val: health.factors.communication, max: 25 },
+                  { key: "tasks", label: "Tar", val: health.factors.tasks, max: 25 },
+                  { key: "digests", label: "Dig", val: health.factors.digests, max: 15 },
+                  { key: "profitability", label: "Ren", val: health.factors.profitability, max: 20 },
+                  { key: "followups", label: "Fup", val: health.factors.followups, max: 15 },
                 ].map((f) => (
-                  <div key={f.label} className="text-center">
+                  <div key={f.label} className="text-center" title={health.observations[f.key as keyof typeof health.observations]}>
                     <div className="text-[9px] text-muted-foreground">{f.label}</div>
                     <div className="h-1 bg-muted rounded-full overflow-hidden mt-0.5">
-                      <div className="h-full bg-brand rounded-full" style={{ width: `${(f.val / f.max) * 100}%` }} />
+                      <div className="h-full bg-brand rounded-full" style={{ width: `${f.val == null ? 0 : (f.val / f.max) * 100}%` }} />
                     </div>
+                    <div className="text-[9px] text-muted-foreground mt-0.5">{f.val ?? "—"}</div>
                   </div>
                 ))}
+              </div>
+              <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                {(Object.keys(health.factors) as Array<keyof typeof health.factors>)
+                  .filter((factor) => health.factors[factor] != null)
+                  .map((factor) => (
+                    <p key={factor}>
+                      {health.observations[factor]}
+                      {factor === "tasks" && <> · <Link className="text-brand hover:underline" to={`/clients/${clientId}?tab=tareas`}>Ver tareas</Link></>}
+                      {factor === "profitability" && <> · <Link className="text-brand hover:underline" to={`/clients/${clientId}?tab=panel`}>Ver consumo</Link></>}
+                    </p>
+                  ))}
+                {!health.enough_information && <p>Activa o registra fuentes reales antes de usar esta señal para decidir.</p>}
               </div>
             </CardContent>
           </Card>

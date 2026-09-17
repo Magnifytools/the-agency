@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import (
-    Client, ClientStatus, Task, TimeEntry, User,
+    Client, ClientStatus, Task, TimeEntry, User, UserRole,
     Project, ProjectPhase, ProjectEvidence,
     ClientContact, ClientResource, BillingEvent,
     CommunicationLog, WeeklyDigest, Invoice, InvoiceItem,
@@ -24,7 +24,8 @@ from backend.db.models import (
 from backend.schemas.client import ClientCreate, ClientUpdate, ClientResponse, ClientDocumentResponse
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module, require_admin
-from backend.services.client_health import compute_health, compute_health_batch
+from backend.services.client_health import HealthCapabilities, compute_health, compute_health_batch
+from backend.core.modules import is_enabled
 from backend.api.utils.db_helpers import safe_refresh
 
 logger = logging.getLogger(__name__)
@@ -213,10 +214,26 @@ async def create_client(
     return client
 
 
+def _health_capabilities(user: User) -> HealthCapabilities:
+    """Only score sources exposed to this caller by the current product."""
+    readable = {
+        permission.module
+        for permission in (user.permissions or [])
+        if permission.can_read
+    }
+    is_admin = user.role == UserRole.admin
+    return HealthCapabilities(
+        communications=is_enabled("communications") and (is_admin or "communications" in readable),
+        tasks=is_admin or "tasks" in readable,
+        digests=is_enabled("digests") and (is_admin or "digests" in readable),
+        profitability=is_admin,
+    )
+
+
 @router.get("/health-scores")
 async def list_health_scores(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("clients")),
+    current_user: User = Depends(require_module("clients")),
 ):
     """Health scores for all active clients."""
     try:
@@ -224,9 +241,9 @@ async def list_health_scores(
             select(Client).where(Client.status == ClientStatus.active).order_by(Client.name)
         )
         clients = result.scalars().all()
-        scores = await compute_health_batch(clients, db)
+        scores = await compute_health_batch(clients, db, _health_capabilities(current_user))
         # Sort by score ascending (worst first)
-        scores.sort(key=lambda s: s["score"])
+        scores.sort(key=lambda s: (s["score"] is None, s["score"] or 0))
         return scores
     except Exception as e:
         logger.error("Error computing batch health scores: %s", e, exc_info=True)
@@ -237,7 +254,7 @@ async def list_health_scores(
 async def get_client_health(
     client_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("clients")),
+    current_user: User = Depends(require_module("clients")),
 ):
     """Health score for a single client."""
     result = await db.execute(select(Client).where(Client.id == client_id))
@@ -245,7 +262,7 @@ async def get_client_health(
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
     try:
-        return await compute_health(client, db)
+        return await compute_health(client, db, _health_capabilities(current_user))
     except Exception as e:
         logger.error("Error computing health for client %s: %s", client_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Error calculando health score")
