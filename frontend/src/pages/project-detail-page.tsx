@@ -76,6 +76,7 @@ export default function ProjectDetailPage() {
   const [viewMode, setViewMode] = useState<"list" | "gantt" | "kanban">("list")
   const [activeTab, setActiveTab] = useState<"tasks" | "ideas" | "evidence" | "billing">("tasks")
   const [previewTaskId, setPreviewTaskId] = useState<number | null>(null)
+  const [showMetrics, setShowMetrics] = useState(false)
   const [filterStatus, setFilterStatus] = useState<TaskStatus | "all">("all")
   const [filterSearch, setFilterSearch] = useState("")
   const navigate = useNavigate()
@@ -99,7 +100,7 @@ export default function ProjectDetailPage() {
   const { data: burndown } = useQuery({
     queryKey: projectKeys.burndown(projectId),
     queryFn: () => projectsApi.burndown(projectId),
-    enabled: validId,
+    enabled: validId && showMetrics && project?.is_recurring === false,
   })
 
   const updateStatusMutation = useMutation({
@@ -236,6 +237,11 @@ export default function ProjectDetailPage() {
 
       {searchParams.get("created") === "1" && <div role="status" className="border-l-2 border-brand pl-4 py-2"><p className="font-medium">Proyecto creado</p><p className="text-sm text-muted-foreground">{project.task_count ? "Revisa las tareas y concreta el próximo paso." : "Añade la primera tarea para concretar el próximo paso."}</p></div>}
       {projectError && <div role="alert" className="text-sm">No se pudo actualizar. Se muestran los últimos datos recibidos. <Button variant="ghost" onClick={() => retryProject()}>Reintentar</Button></div>}
+      <details onToggle={event => setShowMetrics(event.currentTarget.open)} className="border-y border-border py-1">
+        <summary className="cursor-pointer py-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded">
+          Plazos, horas y progreso{project.target_end_date ? ` · Entrega prevista: ${formatDate(project.target_end_date)}` : " · Sin fecha de entrega"}
+        </summary>
+        {showMetrics && <div className="space-y-4 pb-4">
       {/* Stats Cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Card>
@@ -315,10 +321,10 @@ export default function ProjectDetailPage() {
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1.5">
-              <span className="text-sm font-medium">Tiempo tracked</span>
+              <span className="text-sm font-medium">Tiempo registrado</span>
               <span
                 className="text-muted-foreground/60 cursor-help text-xs"
-                title="Suma del tiempo registrado en el timesheet (cronómetro real) para tareas vinculadas a este proyecto. No incluye tareas del cliente que estén sin proyecto asignado."
+                title="Suma del tiempo registrado en el registro de horas para tareas vinculadas a este proyecto. No incluye tareas del cliente que estén sin proyecto asignado."
               >
                 ⓘ
               </span>
@@ -414,8 +420,11 @@ export default function ProjectDetailPage() {
         </Card>
       )}
 
+        </div>}
+      </details>
+
       {/* Tab Toggle: Tasks / Evidence */}
-      <div className="flex items-center space-x-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
+      {(isEnabled("growth") || isEnabled("evidence") || isEnabled("billing")) && <div className="flex flex-wrap items-center gap-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
         <Button
           variant={activeTab === "tasks" ? "default" : "ghost"}
           size="sm"
@@ -452,7 +461,7 @@ export default function ProjectDetailPage() {
             Facturación
           </Button>
         )}
-      </div>
+      </div>}
 
       {/* Ideas Tab */}
       {activeTab === "ideas" && project && isEnabled("growth") && (
