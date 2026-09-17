@@ -170,7 +170,7 @@ async def test_lost_finance_permission_hides_persisted_financial_insight(
     db_session, make_member_client
 ):
     member = await make_member_client([
-        ("pm", True, False), ("finance_income", True, False),
+        ("pm", True, True), ("finance_income", True, False),
     ])
     insight = PMInsight(
         insight_type=InsightType.financial,
@@ -182,6 +182,35 @@ async def test_lost_finance_permission_hides_persisted_financial_insight(
         user_id=member.test_user.id,
     )
     db_session.add(insight)
+    legacy_overdue = PMInsight(
+        insight_type=InsightType.overdue,
+        priority=InsightPriority.high,
+        title="Legacy ambiguo 700€",
+        description="Sin provenance histórica",
+        status=InsightStatus.active,
+        generated_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        user_id=member.test_user.id,
+        task_id=None,
+    )
+    legacy_suggestion = PMInsight(
+        insight_type=InsightType.suggestion,
+        priority=InsightPriority.low,
+        title="Sugerencia legacy mezclada",
+        description="Pudo derivar de importes",
+        status=InsightStatus.active,
+        generated_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        user_id=member.test_user.id,
+    )
+    safe_suggestion = PMInsight(
+        insight_type=InsightType.operational_suggestion,
+        priority=InsightPriority.low,
+        title="Sugerencia operativa segura",
+        description="Solo tareas",
+        status=InsightStatus.active,
+        generated_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        user_id=member.test_user.id,
+    )
+    db_session.add_all([legacy_overdue, legacy_suggestion, safe_suggestion])
     await db_session.flush()
     try:
         visible = await member.get("/api/pm/insights")
@@ -198,7 +227,11 @@ async def test_lost_finance_permission_hides_persisted_financial_insight(
         count = await member.get("/api/pm/insights/count")
         assert hidden.status_code == count.status_code == 200
         assert "Importe privado 900€" not in {item["title"] for item in hidden.json()}
-        assert count.json()["total"] == 0
+        remaining = {item["title"] for item in hidden.json()}
+        assert remaining == {"Sugerencia operativa segura"}
+        assert count.json()["total"] == 1
+        assert (await member.put(f"/api/pm/insights/{insight.id}/dismiss")).status_code == 403
+        assert (await member.put(f"/api/pm/insights/{legacy_overdue.id}/act")).status_code == 403
     finally:
         await member.aclose()
 
@@ -249,3 +282,49 @@ async def test_failed_regeneration_preserves_previous_insights(
         assert titles == {"Hallazgo anterior"}
     finally:
         await member.aclose()
+
+
+@pytest.mark.asyncio
+async def test_startup_migration_knows_pm_insight_enum_values(engine, monkeypatch):
+    from sqlalchemy import text
+    from backend.db import database as db_module
+    from backend.startup import migrations
+
+    monkeypatch.setattr(db_module, "engine", engine)
+    await migrations._ensure_enum_values()
+    async with engine.begin() as connection:
+        labels = set((await connection.execute(text(
+            "SELECT enumlabel FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid "
+            "WHERE t.typname='insighttype'"
+        ))).scalars().all())
+    assert {"financial", "operational_suggestion"}.issubset(labels)
+
+
+@pytest.mark.asyncio
+async def test_financial_rows_never_enter_operational_ai_prompt(db_session, monkeypatch):
+    from backend.services import insights as insights_service
+
+    financial = PMInsight(
+        insight_type=InsightType.financial,
+        priority=InsightPriority.high,
+        title="1.200€ pendientes",
+        description="Dato financiero sensible",
+        status=InsightStatus.active,
+        generated_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    seen: list[list[InsightType]] = []
+
+    async def fake_financial(*_args, **_kwargs):
+        return [financial]
+
+    async def fake_ai(rows, _user_id):
+        seen.append([row.insight_type for row in rows])
+        return None
+
+    monkeypatch.setattr(insights_service, "_generate_overdue_income_insights", fake_financial)
+    monkeypatch.setattr(insights_service, "_enhance_insights_with_ai", fake_ai)
+    generated = await insights_service.generate_insights(
+        db_session, allow_financial=True, commit=False
+    )
+    assert financial in generated
+    assert seen == [[]]

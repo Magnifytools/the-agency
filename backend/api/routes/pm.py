@@ -4,7 +4,7 @@ from typing import Literal, Optional
 
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, or_, delete
+from sqlalchemy import and_, select, or_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -34,6 +34,32 @@ def _can_read_financial_insights(user: User) -> bool:
         is_enabled("finance")
         and is_enabled("billing")
         and _can_read_module(user, "finance_income")
+    )
+
+
+def _sensitive_insight_clause():
+    """Rows that may contain finance under current or legacy provenance.
+
+    Before ``financial`` existed, both grouped task debt and overdue income
+    used ``overdue`` without a task id. They cannot be separated safely now,
+    so access is intentionally conservative. Legacy generic suggestions may
+    also have been generated from those amounts; new suggestions use the
+    explicit ``operational_suggestion`` type.
+    """
+    return or_(
+        PMInsight.insight_type == InsightType.financial,
+        PMInsight.insight_type == InsightType.suggestion,
+        and_(
+            PMInsight.insight_type == InsightType.overdue,
+            PMInsight.task_id.is_(None),
+        ),
+    )
+
+
+def _is_sensitive_insight(insight: PMInsight) -> bool:
+    return (
+        insight.insight_type in {InsightType.financial, InsightType.suggestion}
+        or (insight.insight_type == InsightType.overdue and insight.task_id is None)
     )
 
 
@@ -87,7 +113,7 @@ async def list_insights(
     if current_user.role != UserRole.admin:
         query = query.where(PMInsight.user_id == current_user.id)
     if not _can_read_financial_insights(current_user):
-        query = query.where(PMInsight.insight_type != InsightType.financial)
+        query = query.where(~_sensitive_insight_clause())
 
     if status_filter:
         query = query.where(PMInsight.status == status_filter)
@@ -167,6 +193,8 @@ async def dismiss_insight(
     # F-04: ownership check
     if current_user.role != UserRole.admin and insight.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your insight")
+    if _is_sensitive_insight(insight) and not _can_read_financial_insights(current_user):
+        raise HTTPException(status_code=403, detail="Sin acceso al origen financiero de este hallazgo")
 
     insight.status = InsightStatus.dismissed
     insight.dismissed_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -193,6 +221,8 @@ async def act_on_insight(
     # F-04: ownership check
     if current_user.role != UserRole.admin and insight.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your insight")
+    if _is_sensitive_insight(insight) and not _can_read_financial_insights(current_user):
+        raise HTTPException(status_code=403, detail="Sin acceso al origen financiero de este hallazgo")
 
     insight.status = InsightStatus.acted
     insight.acted_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -309,7 +339,7 @@ async def get_insight_count(
     if current_user.role != UserRole.admin:
         query = query.where(PMInsight.user_id == current_user.id)
     if not _can_read_financial_insights(current_user):
-        query = query.where(PMInsight.insight_type != InsightType.financial)
+        query = query.where(~_sensitive_insight_clause())
     result = await db.execute(query)
     insights = list(result.scalars().all())
 

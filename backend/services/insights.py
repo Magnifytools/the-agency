@@ -123,7 +123,7 @@ async def _enhance_insights_with_ai(
     if overall and isinstance(overall, str) and overall.strip():
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         return PMInsight(
-            insight_type=InsightType.suggestion,
+            insight_type=InsightType.operational_suggestion,
             priority=InsightPriority.low,
             title="💡 Recomendación estratégica del día",
             description=overall.strip(),
@@ -500,7 +500,14 @@ async def generate_insights(
         new_insights.extend(overdue_income)
 
     # Enhance insights with AI (best-effort; originals kept on failure)
-    ai_suggestion = await _enhance_insights_with_ai(new_insights, user_id)
+    # Financial rows never enter the operational AI prompt. Otherwise their
+    # amounts can be copied into a generic suggestion that survives permission
+    # loss even when the source row itself is hidden.
+    operational_insights = [
+        insight for insight in new_insights
+        if insight.insight_type != InsightType.financial
+    ]
+    ai_suggestion = await _enhance_insights_with_ai(operational_insights, user_id)
     if ai_suggestion is not None:
         new_insights.append(ai_suggestion)
 
