@@ -50,6 +50,21 @@ async function setup(t) {
   return { dom, run, get, requests, state };
 }
 
+test('popup UTC parsing accepts explicit Z and legacy instants without doubling the suffix', async t => {
+  const h = await setup(t);
+  assert.equal(h.run('parseApiInstant("2026-09-17T10:00:00Z").toISOString()'), '2026-09-17T10:00:00.000Z');
+  assert.equal(h.run('parseApiInstant("2026-09-17T10:00:00").toISOString()'), '2026-09-17T10:00:00.000Z');
+  assert.equal(h.run('parseApiInstant("2026-09-17T12:00:00+02:00").toISOString()'), '2026-09-17T10:00:00.000Z');
+});
+
+test('popup paused timer freezes at accumulated time and renders the pause indicator', async t => {
+  const h = await setup(t);
+  h.run('showActiveTimer({started_at:"2026-09-17T10:00:00Z", task_title:"Prueba pausa", is_paused:true, accumulated_seconds:3661})');
+  h.run('updateTimerDisplay()');
+  assert.equal(h.get('timer-elapsed').textContent, '1:01:01');
+  assert.equal(h.get('header-timer-text').textContent, '⏸ 1:01');
+});
+
 test('all selector pages use page/page_size, including clients/projects beyond 25 and 100', async t => {
   const { run, get, requests } = await setup(t);
   await run('loadProjectsAndClients()');
