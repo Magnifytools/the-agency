@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.db.database import get_db
-from backend.db.models import PMInsight, User, InsightStatus, AlertSettings
+from backend.db.models import PMInsight, User, InsightStatus, InsightType, AlertSettings
+from backend.core.modules import is_enabled
 from backend.schemas.insight import InsightResponse, DailyBriefingResponse
 from backend.schemas.alert_settings import AlertSettingsResponse, AlertSettingsUpdate
 from backend.services.insights import generate_insights, get_daily_briefing
@@ -26,6 +27,14 @@ def _can_read_module(user: User, module: str) -> bool:
     if user.role == UserRole.admin:
         return True
     return any(p.module == module and p.can_read for p in (user.permissions or []))
+
+
+def _can_read_financial_insights(user: User) -> bool:
+    return (
+        is_enabled("finance")
+        and is_enabled("billing")
+        and _can_read_module(user, "finance_income")
+    )
 
 
 def _to_response(insight: PMInsight) -> InsightResponse:
@@ -77,6 +86,8 @@ async def list_insights(
     # F-04: isolate by user_id for non-admin
     if current_user.role != UserRole.admin:
         query = query.where(PMInsight.user_id == current_user.id)
+    if not _can_read_financial_insights(current_user):
+        query = query.where(PMInsight.insight_type != InsightType.financial)
 
     if status_filter:
         query = query.where(PMInsight.status == status_filter)
@@ -123,17 +134,17 @@ async def trigger_generate_insights(
             ),
         )
     )
-    await db.commit()
-
-    # Generate new insights
     try:
         new_insights = await generate_insights(
             db,
             user_id=current_user.id,
-            allow_financial=_can_read_module(current_user, "finance_income"),
+            allow_financial=_can_read_financial_insights(current_user),
             team_scope=current_user.role == UserRole.admin,
+            commit=False,
         )
+        await db.commit()
     except Exception as e:
+        await db.rollback()
         logger.error(f"Insights generation failed: {e}")
         raise HTTPException(status_code=502, detail="Error generando insights con IA")
 
@@ -297,6 +308,8 @@ async def get_insight_count(
     # F-04: scope to user
     if current_user.role != UserRole.admin:
         query = query.where(PMInsight.user_id == current_user.id)
+    if not _can_read_financial_insights(current_user):
+        query = query.where(PMInsight.insight_type != InsightType.financial)
     result = await db.execute(query)
     insights = list(result.scalars().all())
 

@@ -7,7 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from backend.api.routes.inbox import _fetch_context
-from backend.db.models import Client, ClientStatus, Project, ProjectStatus, Task, TaskStatus, User
+from backend.db.models import (
+    Client, ClientStatus, InsightPriority, InsightStatus, InsightType, PMInsight,
+    Project, ProjectStatus, Task, TaskStatus, User,
+)
 
 
 async def _loaded_user(db, user_id: int) -> User:
@@ -106,7 +109,7 @@ async def test_pm_financial_source_requires_finance_income_permission(
     calls: list[bool] = []
 
     async def fake_generate(
-        _db, user_id=None, *, allow_financial=False, team_scope=False
+        _db, user_id=None, *, allow_financial=False, team_scope=False, commit=True
     ):
         calls.append(allow_financial)
         return []
@@ -125,3 +128,124 @@ async def test_pm_financial_source_requires_finance_income_permission(
     finally:
         await pm_only.aclose()
         await pm_finance.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hidden_finance_disables_source_even_for_admin(
+    monkeypatch, admin_client, db_session
+):
+    from backend.api.routes import pm as pm_route
+
+    seen: list[bool] = []
+
+    async def fake_generate(
+        _db, user_id=None, *, allow_financial=False, team_scope=False, commit=True
+    ):
+        seen.append(allow_financial)
+        return []
+
+    monkeypatch.setenv("AGENCY_HIDDEN_MODULES", "finance")
+    monkeypatch.setattr(pm_route, "generate_insights", fake_generate)
+    db_session.add(PMInsight(
+        insight_type=InsightType.financial,
+        priority=InsightPriority.high,
+        title="Importe oculto por capacidad",
+        description="No debe salir",
+        status=InsightStatus.active,
+        generated_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        user_id=admin_client.test_user.id,
+    ))
+    await db_session.flush()
+    listed = await admin_client.get("/api/pm/insights")
+    counted = await admin_client.get("/api/pm/insights/count")
+    assert "Importe oculto por capacidad" not in {item["title"] for item in listed.json()}
+    assert counted.json()["total"] == 0
+    response = await admin_client.post("/api/pm/generate-insights")
+    assert response.status_code == 200, response.text
+    assert seen == [False]
+
+
+@pytest.mark.asyncio
+async def test_lost_finance_permission_hides_persisted_financial_insight(
+    db_session, make_member_client
+):
+    member = await make_member_client([
+        ("pm", True, False), ("finance_income", True, False),
+    ])
+    insight = PMInsight(
+        insight_type=InsightType.financial,
+        priority=InsightPriority.high,
+        title="Importe privado 900€",
+        description="Cobro pendiente",
+        status=InsightStatus.active,
+        generated_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        user_id=member.test_user.id,
+    )
+    db_session.add(insight)
+    await db_session.flush()
+    try:
+        visible = await member.get("/api/pm/insights")
+        assert visible.status_code == 200
+        assert "Importe privado 900€" in {item["title"] for item in visible.json()}
+
+        actor = await _loaded_user(db_session, member.test_user.id)
+        finance_permission = next(p for p in actor.permissions if p.module == "finance_income")
+        await db_session.delete(finance_permission)
+        await db_session.flush()
+        db_session.expire(actor, ["permissions"])
+
+        hidden = await member.get("/api/pm/insights")
+        count = await member.get("/api/pm/insights/count")
+        assert hidden.status_code == count.status_code == 200
+        assert "Importe privado 900€" not in {item["title"] for item in hidden.json()}
+        assert count.json()["total"] == 0
+    finally:
+        await member.aclose()
+
+
+@pytest.mark.asyncio
+async def test_failed_regeneration_preserves_previous_insights(
+    monkeypatch, db_session, make_member_client
+):
+    from backend.api.routes import pm as pm_route
+
+    member = await make_member_client([("pm", True, True)])
+    old = PMInsight(
+        insight_type=InsightType.quality,
+        priority=InsightPriority.low,
+        title="Hallazgo anterior",
+        description="Debe sobrevivir",
+        status=InsightStatus.active,
+        generated_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        user_id=member.test_user.id,
+    )
+    db_session.add(old)
+    await db_session.commit()
+    old_id = old.id
+
+    async def fail_after_write(
+        db, user_id=None, *, allow_financial=False, team_scope=False, commit=True
+    ):
+        db.add(PMInsight(
+            insight_type=InsightType.quality,
+            priority=InsightPriority.low,
+            title="Hallazgo incompleto",
+            description="No debe persistir",
+            status=InsightStatus.active,
+            generated_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            user_id=user_id,
+        ))
+        await db.flush()
+        raise RuntimeError("generation failed")
+
+    monkeypatch.setattr(pm_route, "generate_insights", fail_after_write)
+    try:
+        response = await member.post("/api/pm/generate-insights")
+        assert response.status_code == 502
+        assert await db_session.get(PMInsight, old_id) is not None
+        titles = set((await db_session.execute(
+            select(PMInsight.title).where(PMInsight.user_id == member.test_user.id)
+        )).scalars().all())
+        assert titles == {"Hallazgo anterior"}
+    finally:
+        await member.aclose()
