@@ -9,7 +9,7 @@ import secrets
 
 import bcrypt
 from cryptography.fernet import Fernet, InvalidToken
-from jose import JWTError, jwt
+import jwt
 
 from backend.config import settings
 
@@ -71,7 +71,7 @@ def decode_access_token(token: str) -> Optional[dict]:
             token,
             settings.SECRET_KEY,
             algorithms=[settings.ALGORITHM],
-            options={"require_exp": True},
+            options={"require": ["exp"]},
         )
-    except JWTError:
+    except jwt.InvalidTokenError:
         return None
