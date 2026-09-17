@@ -32,7 +32,7 @@ import { EngineSeoTab } from "@/components/clients/engine-seo-tab"
 // CoreUpdatesTab removed — analysis only available in Engine
 import { FichaTab } from "@/components/clients/ficha-tab"
 import { useAuth } from "@/context/auth-context"
-import { holdedKeys } from "@/lib/query-keys"
+import { clientKeys, holdedKeys, projectKeys } from "@/lib/query-keys"
 import { formatCurrency } from "@/lib/format"
 
 function formatMinutes(m: number): string {
@@ -81,7 +81,7 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
   const updateMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => clientsApi.update(client.id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["client-summary", client.id] })
+      queryClient.invalidateQueries({ queryKey: clientKeys.summary(client.id) })
       setEditing(false)
     },
     onError: () => toast.error("Error al guardar los datos del cliente"),
@@ -249,13 +249,13 @@ export default function ClientDetailPage() {
   const setActiveTab = (tab: Tab) => setSearchParams({ tab }, { replace: true })
 
   const { data: summary, isLoading } = useQuery({
-    queryKey: ["client-summary", clientId],
+    queryKey: clientKeys.summary(clientId),
     queryFn: () => clientsApi.summary(clientId),
     enabled: !!clientId,
   })
 
   const { data: projects = [] } = useQuery({
-    queryKey: ["client-projects", clientId],
+    queryKey: projectKeys.client(clientId),
     queryFn: () => projectsApi.listAll({ client_id: clientId }),
     enabled: !!clientId,
   })

@@ -9,6 +9,7 @@ import { Square, Clock, Play, Plus } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import type { Task, Client, TimeEntry } from "@/lib/types"
+import { invalidateTaskChange, projectKeys, taskKeys } from "@/lib/query-keys"
 
 function formatElapsed(startedAt: string, accumulatedSeconds = 0, isPaused = false): string {
   let total: number
@@ -60,7 +61,7 @@ export function ActiveTimerBar() {
 
   // Fetch user's tasks for selector
   const { data: tasks = [] } = useQuery({
-    queryKey: ["my-tasks-timer"],
+    queryKey: taskKeys.assigned("timer", "me", new Date().toISOString().split("T")[0]),
     queryFn: () => tasksApi.listAll({ assigned_to: "me", status: "pending,in_progress,advanced,waiting,in_review", scheduled_date: new Date().toISOString().split("T")[0] }),
   })
 
@@ -74,7 +75,7 @@ export function ActiveTimerBar() {
   // Fetch active projects for the selected client (drives the Proyecto select)
   const qcClientIdNum = qcClientId ? parseInt(qcClientId, 10) : undefined
   const { data: qcProjects = [] } = useQuery({
-    queryKey: ["projects-by-client-active", qcClientIdNum],
+    queryKey: projectKeys.list(["active", "client", qcClientIdNum]),
     queryFn: () => projectsApi.listAll({ client_id: qcClientIdNum, status: "active" }),
     enabled: !!qcClientIdNum && showQuickCreate,
     staleTime: 30_000,
@@ -215,7 +216,7 @@ export function ActiveTimerBar() {
         status: "in_progress",
       }),
     onSuccess: (task: Task) => {
-      queryClient.invalidateQueries({ queryKey: ["my-tasks-timer"] })
+      invalidateTaskChange(queryClient, { projectId: task.project_id, clientId: task.client_id })
       setSelectedTaskId(String(task.id))
       setShowQuickCreate(false)
       setQcTitle("")

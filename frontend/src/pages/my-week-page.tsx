@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { invalidateTaskChange } from "@/lib/query-keys"
 import { myWeekApi, tasksApi } from "@/lib/api"
 import type { MyWeekResponse, MyWeekTask, MyWeekDay, EventResponse, TeamMemberWeek } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -640,15 +641,19 @@ export default function MyWeekPage() {
   const scheduleMutation = useMutation({
     mutationFn: (vars: { taskId: number; date: string | null }) =>
       myWeekApi.scheduleTask(vars.taskId, vars.date),
-    onSuccess: invalidate,
+    onSuccess: (task) => {
+      invalidate()
+      invalidateTaskChange(queryClient, { projectId: task.project_id, clientId: task.client_id })
+    },
     onError: (err) => toast.error(getErrorMessage(err, "Error al programar tarea")),
   })
 
   const completeMutation = useMutation({
     mutationFn: (taskId: number) =>
       tasksApi.update(taskId, { status: "completed" }),
-    onSuccess: (_data, taskId) => {
+    onSuccess: (task, taskId) => {
       invalidate()
+      invalidateTaskChange(queryClient, { projectId: task.project_id, clientId: task.client_id })
       toast("Tarea completada", {
         action: {
           label: "Deshacer",
@@ -662,7 +667,11 @@ export default function MyWeekPage() {
   const undoCompleteMutation = useMutation({
     mutationFn: (taskId: number) =>
       tasksApi.update(taskId, { status: "pending" }),
-    onSuccess: () => { invalidate(); toast.success("Tarea restaurada") },
+    onSuccess: (task) => {
+      invalidate()
+      invalidateTaskChange(queryClient, { projectId: task.project_id, clientId: task.client_id })
+      toast.success("Tarea restaurada")
+    },
     onError: (err) => toast.error(getErrorMessage(err, "Error al restaurar tarea")),
   })
 

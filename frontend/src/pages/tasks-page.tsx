@@ -33,6 +33,7 @@ import { WeeklyPlannerView } from "@/components/tasks/weekly-planner-view"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { initialTasksView, shouldPreserveCurrentProject, taskQueryKeyWithWeek, withExplicitActualMinutes } from "@/components/tasks/task-page-utils"
+import { invalidateTaskChange, optimisticallyUpdateExactQuery, projectKeys, restoreQuerySnapshot, taskKeys } from "@/lib/query-keys"
 
 const priorityBadge = (priority: TaskPriority) => {
   const map: Record<TaskPriority, { label: string; variant: "destructive" | "warning" | "secondary" | "outline" }> = {
@@ -154,7 +155,7 @@ export default function TasksPage() {
 
   const selectedWeek = weekRange(weekOffset)
   const tasksQueryKey = taskQueryKeyWithWeek(
-    ["tasks", filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, filterDateField, searchQuery, page, pageSize, qaFilter, view, calMonth.year, calMonth.month],
+    taskKeys.list([filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, filterDateField, searchQuery, page, pageSize, qaFilter, view, calMonth.year, calMonth.month]),
     selectedWeek,
   )
   const { data: tasksData, isLoading, isError: isTasksError, refetch: refetchTasks } = useQuery({
@@ -182,7 +183,7 @@ export default function TasksPage() {
   })
 
   const useAgendaQuery = (section: "planned" | "carryover" | "unplanned" | "completed") => useInfiniteQuery({
-    queryKey: ["tasks-agenda", section, localDateString(), user?.id, new Date().getTimezoneOffset(), agendaScope],
+    queryKey: taskKeys.agenda(section, localDateString(), user?.id, new Date().getTimezoneOffset(), agendaScope),
     queryFn: ({ pageParam }) => tasksApi.agenda({ date: localDateString(), section, assigned_to: agendaScope === "team" ? undefined : "me", timezone_offset_minutes: new Date().getTimezoneOffset(), page: pageParam, page_size: pageSize }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => lastPage.page * lastPage.page_size < lastPage.total ? lastPage.page + 1 : undefined,
@@ -198,13 +199,8 @@ export default function TasksPage() {
     return { items: pages.flatMap((item) => item.items), total: last?.total ?? 0, page: last?.page ?? 1, page_size: last?.page_size ?? pageSize }
   }
   const agendaLoading = plannedAgenda.isLoading || carryoverAgenda.isLoading || unplannedAgenda.isLoading || completedAgenda.isLoading
-  const invalidateTaskViews = () => Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["tasks"] }),
-    queryClient.invalidateQueries({ queryKey: ["tasks-agenda"] }),
-    queryClient.invalidateQueries({ queryKey: ["projects"] }),
-    queryClient.invalidateQueries({ queryKey: ["project"] }),
-    queryClient.invalidateQueries({ queryKey: ["client-projects"] }),
-  ])
+  const invalidateTaskViews = (affected: { projectId?: number | null; clientId?: number | null } = {}) =>
+    invalidateTaskChange(queryClient, affected)
   const allTasks = tasksData?.items ?? []
 
   const todayStr = localDateString()
@@ -262,7 +258,7 @@ export default function TasksPage() {
   })
 
   const { data: projects = [] } = useQuery({
-    queryKey: ["projects-active-list"],
+    queryKey: projectKeys.list(["active"]),
     queryFn: () => projectsApi.listAll({ status: "active" }),
     staleTime: 60_000,
   })
@@ -273,16 +269,16 @@ export default function TasksPage() {
 
   // Recurring templates query (only fetched when tab is active)
   const { data: recurringTemplates = [] } = useQuery({
-    queryKey: ["tasks-recurring"],
+    queryKey: taskKeys.recurring(),
     queryFn: () => tasksApi.listAll({ is_recurring: true }),
     enabled: view === "recurring",
   })
 
   const createMutation = useMutation({
     mutationFn: (data: TaskCreate) => tasksApi.create(data),
-    onSuccess: () => {
-      invalidateTaskViews()
-      queryClient.invalidateQueries({ queryKey: ["tasks-recurring"] })
+    onSuccess: (task) => {
+      invalidateTaskViews({ projectId: task.project_id, clientId: task.client_id })
+      queryClient.invalidateQueries({ queryKey: taskKeys.recurring() })
       closeDialog()
       toast.success("Tarea creada")
     },
@@ -291,9 +287,9 @@ export default function TasksPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<TaskCreate> }) => tasksApi.update(id, data),
-    onSuccess: () => {
-      invalidateTaskViews()
-      queryClient.invalidateQueries({ queryKey: ["tasks-recurring"] })
+    onSuccess: (task) => {
+      invalidateTaskViews({ projectId: task.project_id, clientId: task.client_id })
+      queryClient.invalidateQueries({ queryKey: taskKeys.recurring() })
       closeDialog()
       toast.success("Tarea actualizada")
     },
@@ -306,25 +302,25 @@ export default function TasksPage() {
     mutationFn: ({ id, scheduled_date }: { id: number; scheduled_date: string | null }) =>
       tasksApi.update(id, { scheduled_date }),
     onMutate: async ({ id, scheduled_date }) => {
-      await queryClient.cancelQueries({ queryKey: scheduleQueryKey })
-      const prev = queryClient.getQueryData(scheduleQueryKey)
-      queryClient.setQueryData(scheduleQueryKey, (old: typeof tasksData) => {
+      const snapshot = await optimisticallyUpdateExactQuery<typeof tasksData>(queryClient, scheduleQueryKey, (old) => {
         if (!old) return old
         return { ...old, items: old.items.map((t: Task) => t.id === id ? { ...t, scheduled_date } : t) }
       })
-      return { prev }
+      const movedTask = tasksData?.items.find((task) => task.id === id)
+      return { snapshot, projectId: movedTask?.project_id, clientId: movedTask?.client_id }
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(scheduleQueryKey, ctx.prev)
+      restoreQuerySnapshot(queryClient, ctx?.snapshot)
       toast.error("Error al mover tarea")
     },
-    onSettled: () => invalidateTaskViews(),
+    onSettled: (_data, _error, _vars, ctx) => invalidateTaskViews({ projectId: ctx?.projectId, clientId: ctx?.clientId }),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => tasksApi.delete(id),
-    onSuccess: () => {
-      invalidateTaskViews()
+    onSuccess: (_data, deletedId) => {
+      const deletedTask = tasksData?.items.find((task) => task.id === deletedId)
+      invalidateTaskViews({ projectId: deletedTask?.project_id, clientId: deletedTask?.client_id })
       toast.success("Tarea eliminada")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar tarea")),

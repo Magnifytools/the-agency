@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, Fragment } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { timeEntriesApi, tasksApi, timerApi, clientsApi, projectsApi } from "@/lib/api"
+import { taskKeys } from "@/lib/query-keys"
 import { useAuth } from "@/context/auth-context"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
@@ -649,7 +650,7 @@ export default function TimesheetPage() {
   })
 
   const { data: myTasks = [] } = useQuery({
-    queryKey: ["tasks-all", "my-tasks", user?.id],
+    queryKey: taskKeys.assigned("timesheet", user?.id),
     queryFn: () => tasksApi.listAll({ assigned_to: user!.id }),
     enabled: !!user?.id,
   })

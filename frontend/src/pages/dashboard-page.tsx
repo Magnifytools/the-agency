@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { dashboardApi, discordApi, tasksApi, timeEntriesApi, timerApi, usersApi, dailysApi, digestsApi, clientsApi, leadsApi, proposalsApi, engineApi, holdedApi } from "@/lib/api"
-import { holdedKeys } from "@/lib/query-keys"
+import { holdedKeys, invalidateTaskChange, taskKeys } from "@/lib/query-keys"
 import { profitabilityStatus } from "@/lib/profitability"
 import { isEnabled } from "@/lib/hidden-modules"
 import type { PricingOption } from "@/lib/types"
@@ -150,17 +150,17 @@ export default function DashboardPage() {
 
   // ─── Worker queries ─────────────────────────────────────────
   const { data: myInProgressTasks } = useQuery({
-    queryKey: ["my-tasks-in-progress", user?.id],
+    queryKey: taskKeys.assigned("dashboard", user?.id, "in_progress"),
     queryFn: () => tasksApi.listAll({ assigned_to: user!.id, status: "in_progress" }),
     enabled: !!user && user.role === "member",
   })
   const { data: myPendingTasks } = useQuery({
-    queryKey: ["my-tasks-pending", user?.id],
+    queryKey: taskKeys.assigned("dashboard", user?.id, "pending"),
     queryFn: () => tasksApi.listAll({ assigned_to: user!.id, status: "pending" }),
     enabled: !!user && user.role === "member",
   })
   const { data: myOverdueTasks } = useQuery({
-    queryKey: ["my-tasks-overdue", user?.id],
+    queryKey: taskKeys.assigned("dashboard", user?.id, "overdue"),
     queryFn: () => tasksApi.listAll({ assigned_to: user!.id, overdue: true }),
     enabled: !!user && user.role === "member",
   })
@@ -187,7 +187,7 @@ export default function DashboardPage() {
 
   // ─── Admin queries ──────────────────────────────────────────
   const { data: allOverdueTasks } = useQuery({
-    queryKey: ["all-overdue-tasks"],
+    queryKey: taskKeys.assigned("dashboard", "all", "overdue"),
     queryFn: () => tasksApi.listAll({ overdue: true }),
     enabled: !!user && user.role === "admin",
   })
@@ -198,17 +198,17 @@ export default function DashboardPage() {
   })
   const memberUsers = (allUsers || []).filter((u) => u.role === "member")
   const { data: viewAsInProgress } = useQuery({
-    queryKey: ["viewas-tasks-in-progress", viewAsUserId],
+    queryKey: taskKeys.assigned("dashboard-view-as", viewAsUserId, "in_progress"),
     queryFn: () => tasksApi.listAll({ assigned_to: viewAsUserId!, status: "in_progress" }),
     enabled: isAdmin && !!viewAsUserId,
   })
   const { data: viewAsPending } = useQuery({
-    queryKey: ["viewas-tasks-pending", viewAsUserId],
+    queryKey: taskKeys.assigned("dashboard-view-as", viewAsUserId, "pending"),
     queryFn: () => tasksApi.listAll({ assigned_to: viewAsUserId!, status: "pending" }),
     enabled: isAdmin && !!viewAsUserId,
   })
   const { data: viewAsOverdue } = useQuery({
-    queryKey: ["viewas-tasks-overdue", viewAsUserId],
+    queryKey: taskKeys.assigned("dashboard-view-as", viewAsUserId, "overdue"),
     queryFn: () => tasksApi.listAll({ assigned_to: viewAsUserId!, overdue: true }),
     enabled: isAdmin && !!viewAsUserId,
   })
@@ -249,13 +249,9 @@ export default function DashboardPage() {
   })
   const markDoneMutation = useMutation({
     mutationFn: (taskId: number) => tasksApi.update(taskId, { status: "completed" }),
-    onSuccess: () => {
+    onSuccess: (task) => {
       toast.success("Tarea completada")
-      queryClient.invalidateQueries({ queryKey: ["my-tasks-in-progress", user?.id] })
-      queryClient.invalidateQueries({ queryKey: ["my-tasks-pending", user?.id] })
-      queryClient.invalidateQueries({ queryKey: ["my-tasks-overdue", user?.id] })
-      queryClient.invalidateQueries({ queryKey: ["tasks"] })
-      queryClient.invalidateQueries({ queryKey: ["project-tasks"] })
+      invalidateTaskChange(queryClient, { projectId: task.project_id, clientId: task.client_id })
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al completar la tarea")),
   })

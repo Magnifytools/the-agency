@@ -39,6 +39,7 @@ import { ProjectBillingTab } from "@/components/projects/project-billing-tab"
 import { ProjectIdeasTab } from "@/components/projects/project-ideas-tab"
 import { Breadcrumb } from "@/components/ui/breadcrumb"
 import { Skeleton, SkeletonCard } from "@/components/ui/skeleton"
+import { invalidateTaskChange, projectKeys, taskKeys } from "@/lib/query-keys"
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   planning: "Planificación",
@@ -80,19 +81,19 @@ export default function ProjectDetailPage() {
   const validId = !isNaN(projectId)
 
   const { data: project, isLoading, isError: projectError, error: projectLoadError, refetch: retryProject } = useQuery({
-    queryKey: ["project", id],
+    queryKey: projectKeys.detail(projectId),
     queryFn: () => projectsApi.get(projectId),
     enabled: validId,
   })
 
   const { data: tasksData } = useQuery({
-    queryKey: ["project-tasks", id],
+    queryKey: taskKeys.project(projectId),
     queryFn: () => projectsApi.tasks(projectId),
     enabled: validId,
   })
 
   const { data: burndown } = useQuery({
-    queryKey: ["project-burndown", id],
+    queryKey: projectKeys.burndown(projectId),
     queryFn: () => projectsApi.burndown(projectId),
     enabled: validId,
   })
@@ -100,7 +101,8 @@ export default function ProjectDetailPage() {
   const updateStatusMutation = useMutation({
     mutationFn: (status: string) => projectsApi.update(projectId, { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project", id] })
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) })
+      queryClient.invalidateQueries({ queryKey: projectKeys.all() })
       toast.success("Estado actualizado")
     },
     onError: () => toast.error("Error al actualizar estado"),
@@ -110,8 +112,8 @@ export default function ProjectDetailPage() {
     mutationFn: ({ phaseId, status }: { phaseId: number; status: string }) =>
       projectsApi.updatePhase(phaseId, { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project", id] })
-      queryClient.invalidateQueries({ queryKey: ["project-tasks", id] })
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) })
+      queryClient.invalidateQueries({ queryKey: taskKeys.project(projectId) })
       toast.success("Fase actualizada")
     },
     onError: () => toast.error("Error al actualizar fase"),
@@ -121,8 +123,7 @@ export default function ProjectDetailPage() {
     mutationFn: ({ taskId, status }: { taskId: number; status: TaskStatus }) =>
       tasksApi.update(taskId, { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project", id] })
-      queryClient.invalidateQueries({ queryKey: ["project-tasks", id] })
+      invalidateTaskChange(queryClient, { projectId, clientId: project?.client_id })
     },
     onError: () => toast.error("Error al actualizar tarea"),
   })
@@ -799,7 +800,8 @@ function EditProjectDialog({
         ga4_property_id: formData.ga4_property_id || undefined,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project", project.id.toString()] })
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(project.id) })
+      queryClient.invalidateQueries({ queryKey: projectKeys.all() })
       toast.success("Proyecto actualizado")
       onOpenChange(false)
     },
@@ -1094,8 +1096,7 @@ function AddTaskDialog({
         estimated_minutes: estimatedMinutes ? parseInt(estimatedMinutes) : undefined,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project-tasks", projectId.toString()] })
-      queryClient.invalidateQueries({ queryKey: ["project", projectId.toString()] })
+      invalidateTaskChange(queryClient, { projectId, clientId })
       toast.success("Tarea añadida")
       onOpenChange(false)
       setTitle("")
@@ -1223,7 +1224,7 @@ function TaskPreviewDialog({
   onEditFull: (taskId: number) => void
 }) {
   const { data: task, isLoading } = useQuery({
-    queryKey: ["task-preview", taskId],
+    queryKey: taskKeys.detail(taskId),
     queryFn: () => tasksApi.get(taskId),
     enabled: open,
   })
