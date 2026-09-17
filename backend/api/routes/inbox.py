@@ -15,12 +15,13 @@ from backend.db.models import (
     InboxNote, InboxNoteStatus, InboxAttachment, Project, ProjectStatus, Client, ClientStatus,
     Task, TaskStatus, TaskPriority,
 )
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, require_module
 from backend.api.utils.db_helpers import safe_refresh
 from backend.schemas.inbox import (
     InboxNoteCreate, InboxNoteUpdate, InboxNoteResponse, ConvertToTaskBody,
 )
 from backend.core.rate_limiter import ai_limiter
+from backend.services.task_scope import validate_task_scope
 
 logger = logging.getLogger(__name__)
 
@@ -303,14 +304,26 @@ async def convert_to_task(
     note_id: int,
     body: ConvertToTaskBody | None = None,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(require_module("tasks", write=True)),
 ) -> dict:
     """Convert an inbox note into a real task."""
-    note = await _get_note_or_404(note_id, user.id, db)
+    note = (await db.execute(
+        select(InboxNote)
+        .where(InboxNote.id == note_id, InboxNote.user_id == user.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if note is None:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
     body = body or ConvertToTaskBody()
 
-    # Guard: don't convert an already-processed note
+    # A retry (including a concurrent waiter) resolves to the task already
+    # created by this same actor instead of creating a duplicate.
     if note.status == InboxNoteStatus.processed:
+        if note.resolved_as == "task" and note.resolved_entity_id is not None:
+            existing_task = await db.get(Task, note.resolved_entity_id)
+            if existing_task is not None and existing_task.created_by == user.id:
+                return {"ok": True, "task_id": existing_task.id, "note": _to_response(note).model_dump()}
         raise HTTPException(status_code=409, detail="Esta nota ya fue convertida en tarea")
 
     # Resolve fields: explicit > AI suggestion > defaults
@@ -334,6 +347,11 @@ async def convert_to_task(
         row = proj.first()
         if row:
             client_id = row.client_id
+
+    scope = {"client_id": client_id, "project_id": project_id}
+    await validate_task_scope(db, scope)
+    client_id = scope.get("client_id")
+    project_id = scope.get("project_id")
 
     if not client_id:
         raise HTTPException(
@@ -361,6 +379,7 @@ async def convert_to_task(
         due_date=body.due_date,
         scheduled_date=today,
         link_url=note.link_url,
+        created_by=user.id,
     )
     db.add(task)
 
