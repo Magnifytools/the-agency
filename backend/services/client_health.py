@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import List
 
-from sqlalchemy import select, func, case
+from sqlalchemy import Date as SQLDate, cast, select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import settings
@@ -21,6 +21,7 @@ from backend.db.models import (
     Client, ClientStatus, CommunicationLog, Task, TaskStatus,
     WeeklyDigest, TimeEntry, User,
 )
+from backend.services.temporal import business_today
 
 
 # ── Scoring helpers ──────────────────────────────────────────
@@ -218,7 +219,7 @@ async def compute_health(
             select(func.count()).select_from(Task).where(
                 Task.client_id == client.id,
                 Task.status != TaskStatus.completed,
-                Task.due_date < now,
+                cast(Task.due_date, SQLDate) < business_today(),
             )
         )
         overdue = overdue_count_result.scalar() or 0
@@ -306,7 +307,7 @@ async def compute_health(
             f"{completed}/{total_tasks} completadas · {overdue} vencidas" if total_tasks else "Sin tareas registradas"
         ),
         "digests": "Fuente no disponible" if not capabilities.digests else (
-            "Sin cadencia de informes acordada" if not digest_count else f"{digest_count} resúmenes recientes"
+            "Sin resúmenes recientes; cadencia no configurada" if not digest_count else f"{digest_count} resúmenes recientes"
         ),
         "profitability": "Fuente no disponible" if not capabilities.profitability else (
             "Presupuesto no configurado" if not profitability_available else
@@ -375,7 +376,7 @@ async def compute_health_batch(
             .where(
                 Task.client_id.in_(client_ids),
                 Task.status != TaskStatus.completed,
-                Task.due_date < now,
+                cast(Task.due_date, SQLDate) < business_today(),
             )
             .group_by(Task.client_id)
         )
@@ -498,7 +499,7 @@ async def compute_health_batch(
                 f"{completed}/{total_tasks} completadas · {overdue} vencidas" if total_tasks else "Sin tareas registradas"
             ),
             "digests": "Fuente no disponible" if not capabilities.digests else (
-                "Sin cadencia de informes acordada" if not digest_count else f"{digest_count} resúmenes recientes"
+                "Sin resúmenes recientes; cadencia no configurada" if not digest_count else f"{digest_count} resúmenes recientes"
             ),
             "profitability": "Fuente no disponible" if not capabilities.profitability else (
                 "Presupuesto no configurado" if not profitability_available else

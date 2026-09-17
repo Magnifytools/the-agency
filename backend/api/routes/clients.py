@@ -230,7 +230,21 @@ def _health_capabilities(user: User) -> HealthCapabilities:
         communications=can_read("communications"),
         tasks=can_read("tasks"),
         digests=can_read("digests"),
-        profitability=is_admin and can_read("billing"),
+        profitability=(
+            is_admin
+            and is_enabled("finance")
+            and is_enabled("billing")
+            and (is_admin or "finance_income" in readable)
+        ),
+    )
+
+
+def _health_sort_key(result: dict) -> tuple[bool, bool, int]:
+    """Put observed risk first, including partial risk without a global score."""
+    return (
+        result["risk_level"] != "at_risk",
+        result["score"] is None,
+        result["score"] or 0,
     )
 
 
@@ -247,7 +261,7 @@ async def list_health_scores(
         clients = result.scalars().all()
         scores = await compute_health_batch(clients, db, _health_capabilities(current_user))
         # Sort by score ascending (worst first)
-        scores.sort(key=lambda s: (s["score"] is None, s["score"] or 0))
+        scores.sort(key=_health_sort_key)
         return scores
     except Exception as e:
         logger.error("Error computing batch health scores: %s", e, exc_info=True)

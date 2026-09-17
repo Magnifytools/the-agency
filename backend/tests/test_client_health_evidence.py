@@ -1,11 +1,12 @@
 """Health must represent measured evidence, not missing instrumentation."""
 
+from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.api.routes.clients import _health_capabilities
+from backend.api.routes.clients import _health_capabilities, _health_sort_key
 from backend.db.models import TaskStatus, UserRole
 from backend.services.client_health import HealthCapabilities, _build_result, compute_health
 
@@ -106,6 +107,25 @@ def test_hidden_billing_disables_profitability_even_for_admin(monkeypatch):
     assert _health_capabilities(admin).profitability is False
 
 
+def test_hidden_finance_disables_profitability_even_when_billing_is_visible(monkeypatch):
+    monkeypatch.setenv("AGENCY_HIDDEN_MODULES", "finance")
+    admin = SimpleNamespace(role=UserRole.admin, permissions=[])
+
+    assert _health_capabilities(admin).profitability is False
+
+
+def test_partial_observed_risk_sorts_before_scored_clients():
+    scores = [
+        {"risk_level": "warning", "score": 55},
+        {"risk_level": "at_risk", "score": None},
+        {"risk_level": "healthy", "score": 90},
+    ]
+
+    scores.sort(key=_health_sort_key)
+
+    assert scores[0] == {"risk_level": "at_risk", "score": None}
+
+
 @pytest.mark.asyncio
 async def test_compute_health_treats_client_without_tasks_as_unmeasured():
     db = AsyncMock()
@@ -134,12 +154,13 @@ async def test_compute_health_does_not_invent_digest_cadence():
     result = await compute_health(_client(), db, capabilities)
 
     assert result["factors"]["digests"] is None
-    assert result["observations"]["digests"] == "Sin cadencia de informes acordada"
+    assert result["observations"]["digests"] == "Sin resúmenes recientes; cadencia no configurada"
     assert result["risk_level"] == "no_data"
 
 
 @pytest.mark.asyncio
-async def test_compute_health_exposes_single_observed_risk_without_global_score():
+async def test_compute_health_exposes_single_observed_risk_without_global_score(monkeypatch):
+    monkeypatch.setattr("backend.services.client_health.business_today", lambda: date(2026, 9, 17))
     db = AsyncMock()
     db.execute.side_effect = [
         _query_result(rows=[(TaskStatus.pending, 3)]),
@@ -155,6 +176,9 @@ async def test_compute_health_exposes_single_observed_risk_without_global_score(
     assert result["enough_information"] is False
     assert result["risk_level"] == "at_risk"
     assert result["risk_signals"] == ["3 tareas vencidas"]
+    overdue_query = db.execute.await_args_list[1].args[0]
+    assert "CAST(tasks.due_date AS DATE)" in str(overdue_query)
+    assert date(2026, 9, 17) in overdue_query.compile().params.values()
 
 
 @pytest.mark.asyncio
