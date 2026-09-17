@@ -30,6 +30,7 @@ from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module, require_admin
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 from backend.services.time_budget import effective_budgets, build_closing_status, is_recurring_project
+from backend.services.task_scope import validate_client_exists
 from backend.api.utils.db_helpers import safe_refresh
 from backend.api.middleware.audit_log import log_audit
 
@@ -356,6 +357,7 @@ async def create_project(
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_module("projects", write=True)),
 ):
+    await validate_client_exists(db, body.client_id)
     project = Project(
         name=body.name,
         description=body.description,
@@ -578,6 +580,7 @@ async def create_project_from_template(
     _user=Depends(require_module("projects", write=True)),
 ):
     """Create a project from a DB template with phases and tasks pre-populated."""
+    await validate_client_exists(db, client_id)
     result = await db.execute(
         select(ProjectTemplateDB).where(ProjectTemplateDB.key == template_key)
     )

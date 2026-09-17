@@ -63,6 +63,8 @@ async def _generate_recurring_instances():
     from sqlalchemy import select, or_
     from backend.db.database import async_session
     from backend.db.models import Client, ClientStatus, Project, ProjectStatus, Task, TaskStatus
+    from backend.services.task_scope import validate_task_scope
+    from fastapi import HTTPException
 
     today = date_type.today()
     weekday = today.weekday()  # 0=Mon ... 4=Fri
@@ -105,12 +107,27 @@ async def _generate_recurring_instances():
             if dup.scalar_one_or_none() is not None:
                 continue
 
+            scope = {
+                "client_id": template.client_id,
+                "project_id": template.project_id,
+                "phase_id": template.phase_id,
+            }
+            try:
+                await validate_task_scope(session, scope)
+            except HTTPException as exc:
+                logging.warning(
+                    "Recurring task %s skipped because its scope is invalid: %s",
+                    template.id,
+                    exc.detail,
+                )
+                continue
+
             new_task = Task(
                 title=template.title,
                 description=template.description,
-                client_id=template.client_id,
-                project_id=template.project_id,
-                phase_id=template.phase_id,
+                client_id=scope.get("client_id"),
+                project_id=scope.get("project_id"),
+                phase_id=scope.get("phase_id"),
                 estimated_minutes=template.estimated_minutes,
                 created_by=template.created_by,
                 category_id=template.category_id,

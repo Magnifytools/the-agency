@@ -3,7 +3,18 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import Project, ProjectPhase, Task
+from backend.db.models import Client, Project, ProjectPhase, Task
+
+
+async def validate_client_exists(db: AsyncSession, client_id: int | None) -> None:
+    """Reject an explicit dangling client while preserving internal unscoped work."""
+    if client_id is None:
+        return
+    exists = (await db.execute(
+        select(Client.id).where(Client.id == client_id)
+    )).scalar_one_or_none()
+    if exists is None:
+        raise HTTPException(422, "El cliente seleccionado no existe")
 
 
 async def validate_task_scope(
@@ -13,6 +24,8 @@ async def validate_task_scope(
     project_id = data.get("project_id", existing.project_id if existing else None)
     phase_id = data.get("phase_id", existing.phase_id if existing else None)
     client_id = data.get("client_id", existing.client_id if existing else None)
+
+    await validate_client_exists(db, client_id)
 
     if existing is not None and "project_id" in data and "phase_id" not in data:
         if data["project_id"] != existing.project_id:
