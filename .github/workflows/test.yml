@@ -113,3 +113,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build production image without publishing
         run: docker build --tag agency-ci .
+
+  extension-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: chrome-extension/package-lock.json
+      - name: Verify extension behavior and dependencies
+        run: |
+          npm --prefix chrome-extension ci
+          npm --prefix chrome-extension test
+          npm --prefix chrome-extension audit --audit-level=high

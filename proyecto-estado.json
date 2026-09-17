@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-17T05:50:00Z",
-  "estado_general": "produccion_primera_mejora_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-17T06:38:00Z",
+  "estado_general": "produccion_segunda_mejora_publicada_objetivo_en_curso",
   "progreso_estimado": 95,
   "tareas": [
     {
@@ -129,6 +129,13 @@
       "estado": "completado",
       "prioridad": "alta",
       "notas": "Publicada PR12, commit a4ec5cf;557backend (PG17),52frontend/build; readiness y agenda/avisos/timer verificados en producción, desktop/móvil. El objetivo global continúa por fases."
+    },
+    {
+      "id": "AUDIT-20260917-P2",
+      "descripcion": "Cinco áreas de navegación, aislamiento de sesión, permisos Inbox/PM y progreso de proyectos fiable",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "Publicada PR13, aa7fa2a;595backend/70frontend, audit0, DockerLinux y producción verificados. Objetivo global sigue activo."
     }
   ],
   "bugs": [
@@ -191,7 +198,7 @@
   ],
   "notas_tecnicas": [
     "Stack: React 19 + FastAPI + PostgreSQL + Railway",
-    "Tests entrega17sep:557backend (2omitidos),52frontend;CI conPG17 obligatorio",
+    "Tests segunda entrega17sep:595backend (2omitidos),70frontend;CI PG17, auditoría dependencias y build Linux obligatorios",
     "CUIDADO: lazy='selectin' esta en ~80 relaciones de models.py. Quitar un selectinload() de .options() NO evita la carga; hace falta noload() explicito",
     "La suite unitaria mockea get_db: cualquier cambio de SQL debe verificarse en tests/integration/",
     "Los estados de rentabilidad viven en services/profitability.py (backend) y lib/profitability.ts (frontend), un unico mapa cada uno",
@@ -199,7 +206,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "Revisar e integrar F2: aislamiento de sesión/caché, permisos e idempotencia Inbox, borrado masivo fiable. Después UX de cinco entradas, alertas proactivas, resúmenes fiables y órdenes naturales. Matriz interna en tasks/current/2026-09-17-implementacion-completa/coverage.md.",
+  "proximos_pasos": "Completar operaciones compartidas, UX de tareas/proyectos/clientes, alertas y resúmenes fiables, instrucciones naturales; matriz de cobertura interna mantiene alcance pendiente.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
@@ -209,7 +216,7 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "a4ec5cff5c781d3116a52a4e1f3b91e6a3ddb49b",
+    "revision": "aa7fa2a706c5fb1a90335195c25468e6c5783caf",
     "healthcheck": "/api/ready"
   },
   "pendiente_david": "Sin bloqueo actual; se prepararán propuestas concretas para datos históricos ambiguos cuando corresponda."

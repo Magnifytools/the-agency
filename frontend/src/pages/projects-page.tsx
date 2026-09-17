@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Link, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { Plus, FolderKanban, Calendar, Trash2, Repeat, FileUp, FileText } from "lucide-react"
 import { toast } from "sonner"
 import { projectsApi, clientsApi } from "@/lib/api"
@@ -64,7 +64,6 @@ export default function ProjectsPage() {
   const [showImportDialog, setShowImportDialog] = useState(false)
   const [showImportTextDialog, setShowImportTextDialog] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
-  const [showNewMenu, setShowNewMenu] = useState(false)
 
   const { data: projectsData, isLoading, isError, refetch } = useQuery({
     queryKey: ["projects", statusFilter, typeFilter, periodBounds, page, pageSize],
@@ -112,50 +111,9 @@ export default function ProjectsPage() {
             Gestiona proyectos con fases y tareas
           </p>
         </div>
-        {/* Desktop: 3 buttons */}
-        <div className="hidden sm:flex gap-2">
-          <Button variant="outline" onClick={() => setShowImportTextDialog(true)}>
-            <FileText className="h-4 w-4 mr-2" />
-            Importar TXT/MD
-          </Button>
-          <Button variant="outline" onClick={() => setShowImportDialog(true)}>
-            <FileUp className="h-4 w-4 mr-2" />
-            Importar PDF
-          </Button>
-          <Button variant="outline" onClick={() => setShowNewDialog(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Nuevo vacío
-          </Button>
-          <Button onClick={() => setShowTemplateDialog(true)}>
-            <FolderKanban className="h-4 w-4 mr-2" />
-            Desde plantilla
-          </Button>
-        </div>
-        {/* Mobile: single dropdown */}
-        <div className="sm:hidden relative">
-          <Button onClick={() => setShowNewMenu(!showNewMenu)}>
-            <Plus className="h-4 w-4 mr-2" /> Nuevo
-          </Button>
-          {showNewMenu && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowNewMenu(false)} />
-              <div className="absolute right-0 top-full z-50 mt-1 w-52 rounded-md border bg-card shadow-md py-1">
-                <button className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-muted" onClick={() => { setShowNewMenu(false); setShowNewDialog(true) }}>
-                  <Plus className="h-4 w-4" /> Nuevo vacío
-                </button>
-                <button className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-muted" onClick={() => { setShowNewMenu(false); setShowTemplateDialog(true) }}>
-                  <FolderKanban className="h-4 w-4" /> Desde plantilla
-                </button>
-                <button className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-muted" onClick={() => { setShowNewMenu(false); setShowImportDialog(true) }}>
-                  <FileUp className="h-4 w-4" /> Importar PDF
-                </button>
-                <button className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-muted" onClick={() => { setShowNewMenu(false); setShowImportTextDialog(true) }}>
-                  <FileText className="h-4 w-4" /> Importar TXT/MD
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+        <Button onClick={() => setShowNewDialog(true)}>
+          <Plus className="h-4 w-4 mr-2" /> Nuevo proyecto
+        </Button>
       </div>
 
       {/* Filters */}
@@ -217,8 +175,8 @@ export default function ProjectsPage() {
           icon={FolderKanban}
           title={statusFilter || typeFilter || periodFilter ? "Sin proyectos con estos filtros" : "Sin proyectos todavía"}
           description={statusFilter ? "No hay proyectos con este estado. Prueba a cambiar el filtro o crea uno nuevo." : "Organiza el trabajo en proyectos con fases y tareas. Puedes empezar desde una plantilla o importar una propuesta."}
-          actionLabel="Crear desde plantilla"
-          onAction={() => setShowTemplateDialog(true)}
+          actionLabel="Crear un proyecto"
+          onAction={() => setShowNewDialog(true)}
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -240,6 +198,9 @@ export default function ProjectsPage() {
         open={showNewDialog}
         onOpenChange={setShowNewDialog}
         clients={clients}
+        onTemplate={() => { setShowNewDialog(false); setShowTemplateDialog(true) }}
+        onPdf={() => { setShowNewDialog(false); setShowImportDialog(true) }}
+        onText={() => { setShowNewDialog(false); setShowImportTextDialog(true) }}
       />
 
       {/* New Project from Template Dialog */}
@@ -353,12 +314,17 @@ function NewProjectDialog({
   open,
   onOpenChange,
   clients,
+  onTemplate, onPdf, onText,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   clients: { id: number; name: string }[]
+  onTemplate: () => void
+  onPdf: () => void
+  onText: () => void
 }) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const emptyForm = {
     name: "",
     client_id: "",
@@ -395,194 +361,75 @@ function NewProjectDialog({
         weekly_hours_budget: formData.weekly_hours_budget ? parseFloat(formData.weekly_hours_budget) : undefined,
         monthly_hours_budget: formData.monthly_hours_budget ? parseFloat(formData.monthly_hours_budget) : undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (project) => {
       queryClient.invalidateQueries({ queryKey: ["projects"] })
       toast.success("Proyecto creado")
       onOpenChange(false)
       setFormData(emptyForm)
+      navigate(`/projects/${project.id}?created=1`)
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al crear proyecto")),
   })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogHeader>
-        <DialogTitle>Nuevo proyecto</DialogTitle>
-      </DialogHeader>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          createMutation.mutate()
-        }}
-        className="space-y-4 mt-4"
-      >
+      <DialogHeader><DialogTitle>Nuevo proyecto</DialogTitle></DialogHeader>
+      <p className="text-sm text-muted-foreground">Empieza con el nombre y el cliente. Podrás concretar el trabajo en su ficha.</p>
+      <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate() }} className="space-y-4 mt-4">
         <div className="space-y-2">
-          <Label>Nombre *</Label>
-          <Input
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            placeholder="Auditoría SEO Q1"
-            required
-          />
+          <Label htmlFor="new-project-name">Nombre *</Label>
+          <Input id="new-project-name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Ej. Rediseño de la web" required />
         </div>
         <div className="space-y-2">
-          <Label>Cliente *</Label>
-          <Select
-            value={formData.client_id}
-            onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
-            required
-          >
+          <Label htmlFor="new-project-client">Cliente *</Label>
+          <Select id="new-project-client" value={formData.client_id} onChange={(e) => setFormData({ ...formData, client_id: e.target.value })} required>
             <option value="">Seleccionar cliente</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
+            {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
           </Select>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Fecha inicio *</Label>
-            <Input
-              type="date"
-              value={formData.start_date}
-              onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>{formData.is_recurring ? "Fecha fin objetivo" : "Fecha fin objetivo *"}</Label>
-            <Input
-              type="date"
-              value={formData.target_end_date}
-              min={formData.start_date || undefined}
-              onChange={(e) => setFormData({ ...formData, target_end_date: e.target.value })}
-              required={!formData.is_recurring}
-            />
-            <p className="text-xs text-muted-foreground">
-              {formData.is_recurring
-                ? "Opcional en recurrentes (sin fecha de cierre)."
-                : "Necesaria para el aviso de cierre del proyecto."}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            id="is_recurring_new"
-            type="checkbox"
-            checked={formData.is_recurring}
-            onChange={(e) => setFormData({ ...formData, is_recurring: e.target.checked })}
-            className="h-4 w-4"
-          />
-          <Label htmlFor="is_recurring_new">Servicio recurrente</Label>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="monthly_hours_budget_new">
-              {formData.is_recurring
-                ? "Horas/mes (techo de alerta) *"
-                : "Horas/mes (techo de alerta, opcional)"}
-            </Label>
-            <Input
-              id="monthly_hours_budget_new"
-              type="number"
-              step="0.5"
-              min="0"
-              value={formData.monthly_hours_budget}
-              onChange={(e) => setFormData({ ...formData, monthly_hours_budget: e.target.value })}
-              placeholder="Ej: 24"
-              required={formData.is_recurring}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="weekly_hours_budget_new">Horas/semana (guía visual)</Label>
-            <Input
-              id="weekly_hours_budget_new"
-              type="number"
-              step="0.5"
-              min="0"
-              value={formData.weekly_hours_budget}
-              onChange={(e) => setFormData({ ...formData, weekly_hours_budget: e.target.value })}
-              placeholder="Ej: 6"
-            />
-          </div>
-        </div>
-        <p className="text-xs text-muted-foreground -mt-2">
-          La alerta usa el techo mensual (aviso al 80%, alerta al pasarse). El semanal es solo referencia visual; se permite compensar entre semanas del mismo mes.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Modelo de precio</Label>
-            <Select
-              value={formData.pricing_model}
-              onChange={(e) => setFormData({ ...formData, pricing_model: e.target.value })}
-            >
-              <option value="">Sin definir</option>
-              <option value="monthly">Mensual fijo</option>
-              <option value="per_piece">Por pieza/unidad</option>
-              <option value="hourly">Por hora</option>
-              <option value="project">Precio cerrado</option>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Fee mensual (EUR)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              value={formData.monthly_fee}
-              onChange={(e) => setFormData({ ...formData, monthly_fee: e.target.value })}
-              placeholder="Retainer mensual"
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label>Precio unitario (EUR)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              value={formData.unit_price}
-              onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })}
-              placeholder="200"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Unidad</Label>
-            <Input
-              value={formData.unit_label}
-              onChange={(e) => setFormData({ ...formData, unit_label: e.target.value })}
-              placeholder="pieza, hora, mes..."
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Presupuesto total (EUR)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              value={formData.budget_amount}
-              onChange={(e) => setFormData({ ...formData, budget_amount: e.target.value })}
-              placeholder="Opcional"
-            />
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="new-project-kind">Tipo de trabajo</Label>
+          <Select id="new-project-kind" value={formData.is_recurring ? "recurring" : "one_time"} onChange={(e) => setFormData({ ...formData, is_recurring: e.target.value === "recurring" })}>
+            <option value="one_time">Proyecto puntual</option><option value="recurring">Servicio recurrente</option>
+          </Select>
+          <p className="text-xs text-muted-foreground">{formData.is_recurring ? "Trabajo continuo que se revisa cada mes." : "Trabajo con una entrega final."}</p>
         </div>
         <div className="space-y-2">
-          <Label>Scope / Alcance</Label>
-          <textarea
-            className="w-full min-h-[80px] text-sm bg-background border border-input rounded-md p-3 resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-            value={formData.scope}
-            onChange={(e) => setFormData({ ...formData, scope: e.target.value })}
-            placeholder="Descripcion del alcance aprobado..."
-          />
+          <Label htmlFor="new-project-end">{formData.is_recurring ? "Fin del servicio (opcional)" : "Entrega prevista (opcional)"}</Label>
+          <Input id="new-project-end" type="date" value={formData.target_end_date} min={formData.start_date || undefined} onChange={(e) => setFormData({ ...formData, target_end_date: e.target.value })} />
         </div>
-        <div className="flex justify-end gap-2 pt-4">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button type="submit" disabled={createMutation.isPending}>
-            {createMutation.isPending ? "Creando..." : "Crear proyecto"}
-          </Button>
-        </div>
+        {formData.is_recurring && <div className="space-y-2">
+          <Label htmlFor="new-project-monthly-hours">Horas acordadas por mes (opcional)</Label>
+          <Input id="new-project-monthly-hours" type="number" min="0" step="0.5" value={formData.monthly_hours_budget} onChange={(e) => setFormData({ ...formData, monthly_hours_budget: e.target.value })} />
+          <p className="text-xs text-muted-foreground">Si no existe un acuerdo, déjalo vacío. El presupuesto efectivo puede heredarse del cliente.</p>
+        </div>}
+        <details className="border-t pt-3">
+          <summary className="cursor-pointer text-sm font-medium py-2">Alcance, fechas y condiciones económicas</summary>
+          <div className="space-y-4 pt-3">
+            <div className="space-y-2"><Label htmlFor="new-project-scope">Alcance acordado</Label><textarea id="new-project-scope" className="w-full min-h-20 rounded-md border border-input bg-background p-3 text-sm" value={formData.scope} onChange={(e) => setFormData({ ...formData, scope: e.target.value })} /></div>
+            <div className="space-y-2"><Label htmlFor="new-project-start">Fecha de inicio (opcional)</Label><Input id="new-project-start" type="date" max={formData.target_end_date || undefined} value={formData.start_date} onChange={(e) => setFormData({ ...formData, start_date: e.target.value })} /></div>
+            <div className="space-y-2"><Label htmlFor="new-project-pricing">Modelo de precio</Label><Select id="new-project-pricing" value={formData.pricing_model} onChange={(e) => setFormData({ ...formData, pricing_model: e.target.value })}><option value="">Sin definir</option><option value="monthly">Mensual fijo</option><option value="project">Precio cerrado</option><option value="hourly">Por hora</option><option value="per_piece">Por unidad</option></Select></div>
+            {formData.pricing_model === "monthly" && <div className="space-y-2"><Label htmlFor="new-project-fee">Tarifa mensual (EUR)</Label><Input id="new-project-fee" type="number" min="0" step="0.01" value={formData.monthly_fee} onChange={(e) => setFormData({ ...formData, monthly_fee: e.target.value })} /></div>}
+            {["hourly", "per_piece"].includes(formData.pricing_model) && <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2"><Label htmlFor="new-project-unit-price">Precio por unidad (EUR)</Label><Input id="new-project-unit-price" type="number" min="0" step="0.01" value={formData.unit_price} onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })} /></div>
+              <div className="space-y-2"><Label htmlFor="new-project-unit">Unidad</Label><Input id="new-project-unit" value={formData.unit_label} placeholder="hora, artículo…" onChange={(e) => setFormData({ ...formData, unit_label: e.target.value })} /></div>
+            </div>}
+            <div className="space-y-2"><Label htmlFor="new-project-budget">Presupuesto total (EUR, opcional)</Label><Input id="new-project-budget" type="number" min="0" step="0.01" value={formData.budget_amount} onChange={(e) => setFormData({ ...formData, budget_amount: e.target.value })} /><p className="text-xs text-muted-foreground">Importe total acordado. No se calcula a partir de la tarifa mensual.</p></div>
+            {!formData.is_recurring && <div className="space-y-2"><Label htmlFor="new-project-monthly-hours">Límite de horas mensual (opcional)</Label><Input id="new-project-monthly-hours" type="number" min="0" step="0.5" value={formData.monthly_hours_budget} onChange={(e) => setFormData({ ...formData, monthly_hours_budget: e.target.value })} /></div>}
+            <div className="space-y-2"><Label htmlFor="new-project-weekly-hours">Referencia de horas por semana (opcional)</Label><Input id="new-project-weekly-hours" type="number" min="0" step="0.5" value={formData.weekly_hours_budget} onChange={(e) => setFormData({ ...formData, weekly_hours_budget: e.target.value })} /></div>
+          </div>
+        </details>
+        {createMutation.isError && <p role="alert" className="text-sm text-destructive">{getErrorMessage(createMutation.error, "No se pudo crear. Tus datos siguen aquí; vuelve a intentarlo.")}</p>}
+        <div className="flex justify-end gap-2 pt-2"><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button type="submit" disabled={createMutation.isPending || !formData.name.trim() || !formData.client_id}>{createMutation.isPending ? "Creando…" : "Crear proyecto"}</Button></div>
       </form>
+      <details className="border-t mt-4 pt-3">
+        <summary className="cursor-pointer py-2 text-sm">Partir de una plantilla o un documento</summary>
+        <div className="flex flex-wrap gap-2 pt-2">
+          <Button type="button" variant="outline" onClick={onTemplate}><FolderKanban className="h-4 w-4 mr-2" />Usar plantilla</Button>
+          <Button type="button" variant="outline" onClick={onPdf}><FileUp className="h-4 w-4 mr-2" />Importar PDF</Button>
+          <Button type="button" variant="outline" onClick={onText}><FileText className="h-4 w-4 mr-2" />Importar TXT/MD</Button>
+        </div>
+      </details>
     </Dialog>
   )
 }
@@ -599,6 +446,7 @@ function TemplateDialog({
   templates: Record<string, { name: string; description?: string | null; phase_count: number; task_count: number; pricing_model?: string | null; monthly_fee?: number | null; is_recurring?: boolean }>
 }) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [clientId, setClientId] = useState("")
   const [templateKey, setTemplateKey] = useState("")
   const [startDate, setStartDate] = useState("")
@@ -606,9 +454,10 @@ function TemplateDialog({
   const createMutation = useMutation({
     mutationFn: () =>
       projectsApi.createFromTemplate(parseInt(clientId), templateKey, startDate || undefined),
-    onSuccess: () => {
+    onSuccess: (project) => {
       queryClient.invalidateQueries({ queryKey: ["projects"] })
       toast.success("Proyecto creado desde plantilla")
+      navigate(`/projects/${project.id}?created=1`)
       onOpenChange(false)
       setClientId("")
       setTemplateKey("")
@@ -632,8 +481,8 @@ function TemplateDialog({
         className="space-y-4 mt-4"
       >
         <div className="space-y-2">
-          <Label>Cliente *</Label>
-          <Select value={clientId} onChange={(e) => setClientId(e.target.value)} required>
+          <Label htmlFor="projects-page-field-1">Cliente *</Label>
+          <Select id="projects-page-field-1" value={clientId} onChange={(e) => setClientId(e.target.value)} required>
             <option value="">Seleccionar cliente</option>
             {clients.map((c) => (
               <option key={c.id} value={c.id}>
@@ -644,8 +493,8 @@ function TemplateDialog({
         </div>
 
         <div className="space-y-2">
-          <Label>Plantilla *</Label>
-          <Select value={templateKey} onChange={(e) => setTemplateKey(e.target.value)} required>
+          <Label htmlFor="projects-page-field-2">Plantilla *</Label>
+          <Select id="projects-page-field-2" value={templateKey} onChange={(e) => setTemplateKey(e.target.value)} required>
             <option value="">Seleccionar plantilla</option>
             {Object.entries(templates).map(([key, t]) => (
               <option key={key} value={key}>
@@ -687,8 +536,8 @@ function TemplateDialog({
         )}
 
         <div className="space-y-2">
-          <Label>Fecha de inicio</Label>
-          <Input
+          <Label htmlFor="projects-page-field-3">Fecha de inicio</Label>
+          <Input id="projects-page-field-3"
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
@@ -719,6 +568,7 @@ function ImportFromPdfDialog({
   clients: { id: number; name: string }[]
 }) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [step, setStep] = useState<"upload" | "review">("upload")
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [clientId, setClientId] = useState("")
@@ -739,9 +589,10 @@ function ImportFromPdfDialog({
   const createMutation = useMutation({
     mutationFn: () =>
       projectsApi.create(projectCreateFromDraft(formData, parseInt(clientId))),
-    onSuccess: () => {
+    onSuccess: (project) => {
       queryClient.invalidateQueries({ queryKey: ["projects"] })
       toast.success("Proyecto creado")
+      navigate(`/projects/${project.id}?created=1`)
       handleClose()
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al crear proyecto")),
@@ -766,16 +617,16 @@ function ImportFromPdfDialog({
       {step === "upload" ? (
         <div className="space-y-4 mt-4">
           <div className="space-y-2">
-            <Label>Propuesta PDF *</Label>
-            <Input
+            <Label htmlFor="projects-page-field-4">Propuesta PDF *</Label>
+            <Input id="projects-page-field-4"
               type="file"
               accept=".pdf"
               onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)}
             />
           </div>
           <div className="space-y-2">
-            <Label>Cliente *</Label>
-            <Select value={clientId} onChange={(e) => setClientId(e.target.value)} required>
+            <Label htmlFor="projects-page-field-5">Cliente *</Label>
+            <Select id="projects-page-field-5" value={clientId} onChange={(e) => setClientId(e.target.value)} required>
               <option value="">Seleccionar cliente</option>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -797,24 +648,24 @@ function ImportFromPdfDialog({
       ) : (
         <div className="space-y-4 mt-4">
           <div className="space-y-2">
-            <Label>Nombre del proyecto *</Label>
-            <Input
+            <Label htmlFor="projects-page-field-6">Nombre del proyecto *</Label>
+            <Input id="projects-page-field-6"
               value={formData.name ?? ""}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label>Descripción</Label>
-            <Input
+            <Label htmlFor="projects-page-field-7">Descripción</Label>
+            <Input id="projects-page-field-7"
               value={formData.description ?? ""}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Tipo</Label>
-              <Select
+              <Label htmlFor="projects-page-field-8">Tipo</Label>
+              <Select id="projects-page-field-8"
                 value={formData.project_type ?? ""}
                 onChange={(e) => setFormData({ ...formData, project_type: e.target.value })}
               >
@@ -827,8 +678,8 @@ function ImportFromPdfDialog({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Presupuesto total (EUR)</Label>
-              <Input
+              <Label htmlFor="projects-page-field-9">Presupuesto total (EUR)</Label>
+              <Input id="projects-page-field-9"
                 type="number"
                 value={formData.budget_amount ?? ""}
                 onChange={(e) => setFormData({ ...formData, budget_amount: e.target.value ? parseFloat(e.target.value) : undefined })}
@@ -836,8 +687,8 @@ function ImportFromPdfDialog({
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Tarifa mensual (EUR)</Label>
-            <Input
+            <Label htmlFor="projects-page-field-10">Tarifa mensual (EUR)</Label>
+            <Input id="projects-page-field-10"
               type="number"
               step="0.01"
               value={formData.monthly_fee ?? ""}
@@ -846,16 +697,16 @@ function ImportFromPdfDialog({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Fecha inicio</Label>
-              <Input
+              <Label htmlFor="projects-page-field-11">Fecha inicio</Label>
+              <Input id="projects-page-field-11"
                 type="date"
                 value={formData.start_date ?? ""}
                 onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
               />
             </div>
             <div className="space-y-2">
-              <Label>Fecha fin objetivo</Label>
-              <Input
+              <Label htmlFor="projects-page-field-12">Fecha fin objetivo</Label>
+              <Input id="projects-page-field-12"
                 type="date"
                 value={formData.target_end_date ?? ""}
                 onChange={(e) => setFormData({ ...formData, target_end_date: e.target.value })}
@@ -874,8 +725,8 @@ function ImportFromPdfDialog({
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label>Modelo de precio</Label>
-              <Select
+              <Label htmlFor="projects-page-field-13">Modelo de precio</Label>
+              <Select id="projects-page-field-13"
                 value={formData.pricing_model ?? ""}
                 onChange={(e) => setFormData({ ...formData, pricing_model: e.target.value || undefined })}
               >
@@ -887,8 +738,8 @@ function ImportFromPdfDialog({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Precio unitario (EUR)</Label>
-              <Input
+              <Label htmlFor="projects-page-field-14">Precio unitario (EUR)</Label>
+              <Input id="projects-page-field-14"
                 type="number"
                 step="0.01"
                 value={formData.unit_price ?? ""}
@@ -896,8 +747,8 @@ function ImportFromPdfDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label>Unidad</Label>
-              <Input
+              <Label htmlFor="projects-page-field-15">Unidad</Label>
+              <Input id="projects-page-field-15"
                 value={formData.unit_label ?? ""}
                 onChange={(e) => setFormData({ ...formData, unit_label: e.target.value || undefined })}
                 placeholder="pieza, hora, mes..."
@@ -906,8 +757,8 @@ function ImportFromPdfDialog({
           </div>
           {formData.scope && (
             <div className="space-y-2">
-              <Label>Scope / Alcance</Label>
-              <textarea
+              <Label htmlFor="projects-page-field-16">Scope / Alcance</Label>
+              <textarea id="projects-page-field-16"
                 className="w-full min-h-[60px] text-sm bg-background border border-input rounded-md p-3 resize-y focus:outline-none focus:ring-2 focus:ring-ring"
                 value={formData.scope ?? ""}
                 onChange={(e) => setFormData({ ...formData, scope: e.target.value || undefined })}
@@ -952,6 +803,7 @@ function ImportFromTextDialog({
   clients: { id: number; name: string }[]
 }) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [step, setStep] = useState<"upload" | "review">("upload")
   const [textFile, setTextFile] = useState<File | null>(null)
   const [clientId, setClientId] = useState("")
@@ -972,9 +824,10 @@ function ImportFromTextDialog({
   const createMutation = useMutation({
     mutationFn: () =>
       projectsApi.create(projectCreateFromDraft(formData, parseInt(clientId))),
-    onSuccess: () => {
+    onSuccess: (project) => {
       queryClient.invalidateQueries({ queryKey: ["projects"] })
       toast.success("Proyecto creado")
+      navigate(`/projects/${project.id}?created=1`)
       handleClose()
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al crear proyecto")),
@@ -999,16 +852,16 @@ function ImportFromTextDialog({
       {step === "upload" ? (
         <div className="space-y-4 mt-4">
           <div className="space-y-2">
-            <Label>Archivo de contexto (.txt o .md) *</Label>
-            <Input
+            <Label htmlFor="projects-page-field-17">Archivo de contexto (.txt o .md) *</Label>
+            <Input id="projects-page-field-17"
               type="file"
               accept=".txt,.md"
               onChange={(e) => setTextFile(e.target.files?.[0] ?? null)}
             />
           </div>
           <div className="space-y-2">
-            <Label>Cliente *</Label>
-            <Select value={clientId} onChange={(e) => setClientId(e.target.value)} required>
+            <Label htmlFor="projects-page-field-18">Cliente *</Label>
+            <Select id="projects-page-field-18" value={clientId} onChange={(e) => setClientId(e.target.value)} required>
               <option value="">Seleccionar cliente</option>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -1030,24 +883,24 @@ function ImportFromTextDialog({
       ) : (
         <div className="space-y-4 mt-4">
           <div className="space-y-2">
-            <Label>Nombre del proyecto *</Label>
-            <Input
+            <Label htmlFor="projects-page-field-19">Nombre del proyecto *</Label>
+            <Input id="projects-page-field-19"
               value={formData.name ?? ""}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label>Descripción</Label>
-            <Input
+            <Label htmlFor="projects-page-field-20">Descripción</Label>
+            <Input id="projects-page-field-20"
               value={formData.description ?? ""}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Tipo</Label>
-              <Select
+              <Label htmlFor="projects-page-field-21">Tipo</Label>
+              <Select id="projects-page-field-21"
                 value={formData.project_type ?? ""}
                 onChange={(e) => setFormData({ ...formData, project_type: e.target.value })}
               >
@@ -1060,8 +913,8 @@ function ImportFromTextDialog({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Presupuesto total (EUR)</Label>
-              <Input
+              <Label htmlFor="projects-page-field-22">Presupuesto total (EUR)</Label>
+              <Input id="projects-page-field-22"
                 type="number"
                 value={formData.budget_amount ?? ""}
                 onChange={(e) => setFormData({ ...formData, budget_amount: e.target.value ? parseFloat(e.target.value) : undefined })}
@@ -1069,8 +922,8 @@ function ImportFromTextDialog({
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Tarifa mensual (EUR)</Label>
-            <Input
+            <Label htmlFor="projects-page-field-23">Tarifa mensual (EUR)</Label>
+            <Input id="projects-page-field-23"
               type="number"
               step="0.01"
               value={formData.monthly_fee ?? ""}
@@ -1079,16 +932,16 @@ function ImportFromTextDialog({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Fecha inicio</Label>
-              <Input
+              <Label htmlFor="projects-page-field-24">Fecha inicio</Label>
+              <Input id="projects-page-field-24"
                 type="date"
                 value={formData.start_date ?? ""}
                 onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
               />
             </div>
             <div className="space-y-2">
-              <Label>Fecha fin objetivo</Label>
-              <Input
+              <Label htmlFor="projects-page-field-25">Fecha fin objetivo</Label>
+              <Input id="projects-page-field-25"
                 type="date"
                 value={formData.target_end_date ?? ""}
                 onChange={(e) => setFormData({ ...formData, target_end_date: e.target.value })}
@@ -1107,8 +960,8 @@ function ImportFromTextDialog({
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label>Modelo de precio</Label>
-              <Select
+              <Label htmlFor="projects-page-field-26">Modelo de precio</Label>
+              <Select id="projects-page-field-26"
                 value={formData.pricing_model ?? ""}
                 onChange={(e) => setFormData({ ...formData, pricing_model: e.target.value || undefined })}
               >
@@ -1120,8 +973,8 @@ function ImportFromTextDialog({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Precio unitario (EUR)</Label>
-              <Input
+              <Label htmlFor="projects-page-field-27">Precio unitario (EUR)</Label>
+              <Input id="projects-page-field-27"
                 type="number"
                 step="0.01"
                 value={formData.unit_price ?? ""}
@@ -1129,8 +982,8 @@ function ImportFromTextDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label>Unidad</Label>
-              <Input
+              <Label htmlFor="projects-page-field-28">Unidad</Label>
+              <Input id="projects-page-field-28"
                 value={formData.unit_label ?? ""}
                 onChange={(e) => setFormData({ ...formData, unit_label: e.target.value || undefined })}
                 placeholder="pieza, hora, mes..."
@@ -1138,8 +991,8 @@ function ImportFromTextDialog({
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Scope / Alcance</Label>
-            <textarea
+            <Label htmlFor="projects-page-field-29">Scope / Alcance</Label>
+            <textarea id="projects-page-field-29"
               className="w-full min-h-[80px] text-sm bg-background border border-input rounded-md p-3 resize-y focus:outline-none focus:ring-2 focus:ring-ring"
               value={formData.scope ?? ""}
               onChange={(e) => setFormData({ ...formData, scope: e.target.value || undefined })}
