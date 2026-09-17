@@ -174,6 +174,10 @@ function withSessionAbortSignal(requestSignal?: GenericAbortSignal) {
 
   const combined = new AbortController()
   const abort = () => combined.abort()
+  if (requestSignal.aborted || sessionAbortController.signal.aborted) {
+    abort()
+    return combined.signal
+  }
   sessionAbortController.signal.addEventListener("abort", abort, { once: true })
   requestSignal.addEventListener?.("abort", abort, { once: true })
   return combined.signal

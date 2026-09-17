@@ -321,15 +321,15 @@ function ProjectCard({
               )}
             </div>
             <span className="text-sm text-muted-foreground">
-              {project.completed_task_count}/{project.task_count} tareas · {project.progress_percent}%
+              {project.progress_percent}% completado
             </span>
           </div>
 
           {/* Progress bar */}
-          <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+          <div role="progressbar" aria-label="Tareas completadas" aria-valuenow={project.progress_percent} aria-valuemin={0} aria-valuemax={100} className="h-1.5 bg-secondary rounded-full overflow-hidden">
             <div
               className="h-full bg-brand transition-all"
-              style={{ width: `${project.completed_task_count}/{project.task_count} tareas · {project.progress_percent}%` }}
+              style={{ width: `${project.progress_percent}%` }}
             />
           </div>
 

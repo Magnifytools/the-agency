@@ -27,6 +27,7 @@ describe("API Client", () => {
     clearCsrfCookie()
     api.defaults.adapter = originalAdapter
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it("creates an axios instance with /api baseURL", async () => {
@@ -149,6 +150,17 @@ describe("API Client", () => {
     expect(ownController.signal.aborted).toBe(false)
     expect(axios.isCancel(error)).toBe(true)
     expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it("keeps an already cancelled caller signal cancelled without AbortSignal.any", async () => {
+    vi.stubGlobal("AbortSignal", { any: undefined })
+    const caller = new AbortController()
+    caller.abort()
+    const adapter = vi.fn()
+    api.defaults.adapter = adapter
+    const error = await api.get("/tasks", { signal: caller.signal }).catch((err) => err)
+    expect(axios.isCancel(error)).toBe(true)
+    expect(adapter).not.toHaveBeenCalled()
   })
 
   it("ignores an old 401 after a new session begins", async () => {
