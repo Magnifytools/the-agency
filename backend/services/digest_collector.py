@@ -28,7 +28,7 @@ async def collect_digest_data(
     """Collect all relevant data for a client digest within the given period."""
 
     start_dt = datetime.combine(period_start, datetime.min.time())
-    end_dt = datetime.combine(period_end, datetime.max.time())
+    end_dt = datetime.combine(period_end + timedelta(days=1), datetime.min.time())
 
     # --- Client info ---
     client_result = await db.execute(select(Client).where(Client.id == client_id))
@@ -46,9 +46,9 @@ async def collect_digest_data(
         select(Task).where(
             Task.client_id == client_id,
             Task.status == TaskStatus.completed,
-            Task.updated_at >= start_dt,
-            Task.updated_at <= end_dt,
-        ).order_by(Task.updated_at.desc())
+            Task.completed_at >= start_dt,
+            Task.completed_at < end_dt,
+        ).order_by(Task.completed_at.desc())
     )
     completed_tasks = [
         {

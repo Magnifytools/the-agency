@@ -5,7 +5,7 @@ from __future__ import annotations
 import calendar
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import httpx
 from sqlalchemy import select, func
@@ -42,7 +42,8 @@ async def generate_client_monthly_report(
     from_date = f"{year}-{month:02d}-01"
     to_date = f"{year}-{month:02d}-{last_day}"
     period_start = datetime(year, month, 1)
-    period_end = datetime(year, month, last_day, 23, 59, 59)
+    period_exclusive_end = datetime(year, month, last_day) + timedelta(days=1)
+    period_end = period_exclusive_end - timedelta(microseconds=1)
 
     # 3. Fetch report data from Engine
     engine_data = {}
@@ -73,7 +74,7 @@ async def generate_client_monthly_report(
         .where(
             Task.client_id == client_id,
             TimeEntry.date >= period_start,
-            TimeEntry.date <= period_end,
+            TimeEntry.date < period_exclusive_end,
         )
         .group_by(TimeEntry.user_id)
     )
@@ -84,8 +85,8 @@ async def generate_client_monthly_report(
         select(func.count(Task.id)).where(
             Task.client_id == client_id,
             Task.status == TaskStatus.completed,
-            Task.updated_at >= period_start,
-            Task.updated_at <= period_end,
+            Task.completed_at >= period_start,
+            Task.completed_at < period_exclusive_end,
         )
     )
     completed_tasks = completed_tasks_result.scalar() or 0
@@ -94,7 +95,7 @@ async def generate_client_monthly_report(
         select(func.count(CommunicationLog.id)).where(
             CommunicationLog.client_id == client_id,
             CommunicationLog.occurred_at >= period_start,
-            CommunicationLog.occurred_at <= period_end,
+            CommunicationLog.occurred_at < period_exclusive_end,
         )
     )
     communications_count = comms_result.scalar() or 0

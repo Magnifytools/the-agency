@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select, and_, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,7 @@ import re
 from backend.services.discord import send_to_discord
 
 logger = logging.getLogger(__name__)
+MADRID_TZ = ZoneInfo("Europe/Madrid")
 
 # Strip monetary amounts from task titles shown in shared channels
 _MONEY_RE = re.compile(r"\s*\(?\s*[\d.,]+\s*€\s*\)?|\s*\(?\s*€\s*[\d.,]+\s*\)?", re.IGNORECASE)
@@ -133,16 +135,16 @@ async def generate_evening_recap(db: AsyncSession, user: User, day: date) -> str
     """Build the evening recap for a user."""
     name = user.short_name or user.full_name
 
-    day_start = f"{day.isoformat()} 00:00:00"
-    day_end = f"{day.isoformat()} 23:59:59"
+    day_start = datetime.combine(day, time.min, MADRID_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+    day_end = datetime.combine(day + timedelta(days=1), time.min, MADRID_TZ).astimezone(timezone.utc).replace(tzinfo=None)
 
     # Completed today
     completed_result = await db.execute(
         select(Task).where(
             Task.assigned_to == user.id,
             Task.status == TaskStatus.completed,
-            Task.updated_at >= day_start,
-            Task.updated_at <= day_end,
+            Task.completed_at >= day_start,
+            Task.completed_at < day_end,
         )
     )
     completed_tasks = completed_result.scalars().all()

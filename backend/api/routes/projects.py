@@ -707,7 +707,7 @@ async def project_burndown(
 
     # Get all tasks for the project
     r_tasks = await db.execute(
-        select(Task.id, Task.status, Task.updated_at)
+        select(Task.id, Task.status, Task.completed_at)
         .where(Task.project_id == project_id)
     )
     all_tasks = r_tasks.all()
@@ -719,8 +719,8 @@ async def project_burndown(
     from collections import defaultdict
     completed_by_date: dict = defaultdict(int)
     for t in all_tasks:
-        if t.status == TaskStatus.completed and t.updated_at:
-            day = t.updated_at.date() if hasattr(t.updated_at, 'date') else t.updated_at
+        if t.status == TaskStatus.completed and t.completed_at:
+            day = t.completed_at.date() if hasattr(t.completed_at, 'date') else t.completed_at
             if hasattr(day, 'date'):
                 day = day.date()
             completed_by_date[day.isoformat()] += 1
@@ -1083,7 +1083,7 @@ async def get_billing_summary(
             "completed": is_completed,
             "invoiced": t.invoiced_at is not None,
             "invoiced_at": t.invoiced_at.isoformat() if t.invoiced_at else None,
-            "completed_at": t.updated_at.isoformat() if is_completed and t.updated_at else None,
+            "completed_at": t.completed_at.isoformat() if is_completed and t.completed_at else None,
         })
 
     completed = [t for t in billable_tasks if t["completed"]]

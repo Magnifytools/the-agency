@@ -177,7 +177,7 @@ async def prefill_daily(
         .where(
             Task.assigned_to == current_user.id,
             Task.status == TaskStatus.completed,
-            func.date(Task.updated_at) == today,
+            func.date(Task.completed_at) == today,
         )
     )
     completed = completed_result.scalars().all()

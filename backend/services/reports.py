@@ -40,15 +40,25 @@ async def generate_client_status_report(
     if not client:
         raise ValueError(f"Client {client_id} not found")
 
-    # Fetch tasks for period
+    # Completion belongs to a period only through its explicit completion time.
+    completed_result = await db.execute(
+        select(Task)
+        .where(Task.client_id == client_id)
+        .where(Task.status == TaskStatus.completed)
+        .where(Task.completed_at >= period_start)
+        .where(Task.completed_at < now)
+    )
+    completed_tasks = list(completed_result.scalars().all())
+
+    # Active task edits remain useful as current-period operational context.
     tasks_result = await db.execute(
         select(Task)
         .where(Task.client_id == client_id)
         .where(Task.updated_at >= period_start)
+        .where(Task.status != TaskStatus.completed)
     )
     tasks = list(tasks_result.scalars().all())
 
-    completed_tasks = [t for t in tasks if t.status == TaskStatus.completed]
     pending_tasks = [t for t in tasks if t.status == TaskStatus.pending]
     in_progress_tasks = [t for t in tasks if t.status in IN_PROGRESS_TASK_STATUSES]
 
@@ -170,7 +180,8 @@ async def generate_weekly_summary_report(
     # Fetch all completed tasks this week
     tasks_result = await db.execute(
         select(Task)
-        .where(Task.updated_at >= week_start)
+        .where(Task.completed_at >= week_start)
+        .where(Task.completed_at < now)
         .where(Task.status == TaskStatus.completed)
     )
     completed_tasks = list(tasks_result.scalars().all())
