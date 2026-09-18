@@ -16,5 +16,7 @@ async def ensure_command_schema(engine) -> None:
         "CREATE INDEX IF NOT EXISTS ix_command_receipts_user_created ON command_receipts(user_id, created_at DESC)",
     )
     async with engine.begin() as conn:
+        # IF NOT EXISTS alone does not serialize concurrent first deployments.
+        await conn.execute(text("SELECT pg_advisory_xact_lock(76241313)"))
         for statement in statements:
             await conn.execute(text(statement))
