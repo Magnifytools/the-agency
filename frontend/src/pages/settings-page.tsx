@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { useAuth } from "@/context/auth-context"
@@ -44,9 +45,18 @@ interface EditingState {
 }
 
 export default function SettingsPage() {
+  const { hash } = useLocation()
   const queryClient = useQueryClient()
   const { user, refreshUser, isAdmin, hasPermission } = useAuth()
   const canManageCategories = isAdmin || hasPermission("tasks", true)
+  useEffect(() => {
+    // This page is lazy-loaded: the browser may have handled the fragment
+    // before its target existed. Scroll the actual nested container on mount.
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(hash.slice(1))?.scrollIntoView({ block: "start" })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [hash])
   const [confirmDelete, setConfirmDelete] = useState<
     { kind: "category" | "holiday"; id: number; name: string } | null
   >(null)
