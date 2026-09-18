@@ -1,4 +1,5 @@
 """Real PostgreSQL contracts for commit-free shared domain writers."""
+from datetime import date, datetime, timezone
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import delete, func, select
@@ -8,6 +9,13 @@ from backend.db.models import Client, GrowthIdea, Project, Task, TaskPriority, T
 from backend.api.routes.growth import convert_to_project as convert_growth_to_project
 from backend.services.domain_writes import create_project, create_task, lock_task, update_task
 from backend.services.time_writes import create_manual_time_entry
+from backend.services.temporal import business_today
+
+
+def test_business_date_is_madrid_day_across_utc_midnight_boundary(monkeypatch):
+    from backend.config import settings
+    monkeypatch.setattr(settings, "AGENCY_TIMEZONE", "Europe/Madrid")
+    assert business_today(now=datetime(2026, 9, 17, 22, 30, tzinfo=timezone.utc)) == date(2026, 9, 18)
 
 
 @pytest.mark.asyncio

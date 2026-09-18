@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy import select, func
 from backend.api.routes import automations
+from backend.services.temporal import business_today
 from backend.db.models import AutomationRule, AutomationLog, Task, TaskStatus, Client, Project, ProjectPhase
 
 
@@ -80,7 +81,7 @@ async def test_automated_task_lifecycle_preserves_completion_and_advanced_dates(
     assert task.completed_at == completed_at
     r.action_config = {"task_id": task.id, "new_status": "advanced"}
     await automations.execute_automations("task_completed", {}, db_session)
-    assert task.completed_at is None and task.advanced_at == date.today()
+    assert task.completed_at is None and task.advanced_at == business_today()
     r.action_config = {"task_id": task.id, "new_status": "in_progress"}
     await automations.execute_automations("task_completed", {}, db_session)
     assert task.advanced_at is None

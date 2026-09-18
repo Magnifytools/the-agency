@@ -419,7 +419,7 @@ async def _execute_action(
     elif action_type == "change_project_status":
         return await _action_change_project_status(action_config, trigger_data, db)
     elif action_type == "assign_user":
-        return await _action_assign_user(action_config, trigger_data, db)
+        return await _action_assign_user(action_config, trigger_data, db, actor=actor)
     elif action_type == "send_notification":
         return await _action_send_notification(action_config, trigger_data, db)
     elif action_type == "send_discord":
@@ -491,18 +491,22 @@ async def _require_active_user(db: AsyncSession, user_id: int) -> None:
         raise ValueError("The target user does not exist or is inactive")
 
 
-async def _action_assign_user(config: dict, data: dict, db: AsyncSession) -> dict:
+async def _action_assign_user(config: dict, data: dict, db: AsyncSession, *, actor: User | None = None) -> dict:
     """Assign user to a task."""
     task_id = config.get("task_id") or data.get("task_id")
     user_id = config.get("user_id")
     if not task_id or not user_id:
         return {"skipped": True, "reason": "Missing task_id or user_id"}
 
-    result = await db.execute(select(Task).where(Task.id == task_id).with_for_update().execution_options(populate_existing=True))
-    task = result.scalar_one_or_none()
+    try:
+        task = await lock_task(db, task_id)
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+        task = None
     if task:
         await _require_active_user(db, user_id)
-        task.assigned_to = user_id
+        await update_task_write(db, task, {"assigned_to": user_id}, actor=actor)
         return {"task_id": task_id, "assigned_to": user_id}
     return {"skipped": True, "reason": f"Task {task_id} not found"}
 
