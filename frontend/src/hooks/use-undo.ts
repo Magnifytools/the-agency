@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { changesApi } from "@/lib/api"
 import type { ChangeEntry } from "@/lib/types"
+import { showUndoResult } from "@/lib/undo-feedback"
 
 export const undoKeys = {
   recent: () => ["changes", "recent"] as const,
@@ -28,14 +29,7 @@ export function useUndo() {
   const mutation = useMutation({
     mutationFn: (id: number) => changesApi.undo(id),
     onSuccess: (result) => {
-      if (result.warnings.length > 0) {
-        toast.warning(`Deshecho: ${result.label}`, {
-          description: result.warnings.join(" "),
-          duration: 8000,
-        })
-      } else {
-        toast.success(`Deshecho: ${result.label}`)
-      }
+      showUndoResult(result)
       void queryClient.invalidateQueries()
     },
     onError: (error: unknown) => {
