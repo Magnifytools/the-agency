@@ -725,7 +725,7 @@ export function CalendarSection() {
   const [params] = useState(() => new URLSearchParams(window.location.search))
   const calendarParam = params.get("calendar")
 
-  const { data: status, isLoading } = useQuery({
+  const { data: status, isLoading, isError, refetch } = useQuery({
     queryKey: ["calendar-status"],
     queryFn: calendarApi.getStatus,
     refetchInterval: 30_000,
@@ -773,8 +773,6 @@ export function CalendarSection() {
     },
   })
 
-  if (isLoading) return null
-
   return (
     <div id="calendar" className="bg-card border border-border rounded-2xl p-6 scroll-mt-8">
       <div className="flex items-center gap-2 mb-4">
@@ -785,7 +783,9 @@ export function CalendarSection() {
         Conecta tu calendario para ver reuniones en el morning update y recibir alertas
       </p>
 
-      {status?.connected ? (
+      {isLoading ? <p role="status" className="text-sm text-muted-foreground">Cargando estado del calendario…</p> : isError ? (
+        <p role="alert" className="text-sm">No se pudo consultar el calendario. <button className="underline" onClick={() => refetch()}>Reintentar</button></p>
+      ) : status?.connected ? (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">

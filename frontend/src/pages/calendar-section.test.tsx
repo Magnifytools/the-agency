@@ -50,3 +50,17 @@ it("distinguishes an intentional disconnect from expired authorization", async (
   expect(await screen.findByRole("button", { name: "Conectar Google Calendar" })).toBeInTheDocument()
   expect(screen.queryByText("Necesita reconectar")).not.toBeInTheDocument()
 })
+
+it("keeps the calendar anchor available while its status is loading", () => {
+  mocks.status.mockReturnValue(new Promise(() => {}))
+  show()
+  expect(screen.getByText("Cargando estado del calendario…").closest("#calendar")).not.toBeNull()
+})
+
+it("offers retry after a status error instead of assuming disconnection", async () => {
+  mocks.status.mockRejectedValueOnce(new Error("offline")).mockResolvedValue(revoked)
+  show()
+  fireEvent.click(await screen.findByRole("button", { name: "Reintentar" }))
+  expect(await screen.findByRole("button", { name: "Reconectar Google Calendar" })).toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Conectar Google Calendar" })).not.toBeInTheDocument()
+})
