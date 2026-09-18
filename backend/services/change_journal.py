@@ -16,12 +16,11 @@ Ciclo de vida
                   nuevo), leídas del historial de atributos, que en este punto
                   todavía está intacto.
 ``after_flush``   rellena los PK de los INSERT, que hasta aquí no existen.
-``after_commit``  colapsa lo acumulado en UNA entrada y la escribe desde una
-                  sesión aparte.
+``before_commit`` construye y guarda UNA entrada en la misma transacción.
+``after_commit``  limpia la captura provisional; no hay escritura asíncrona.
 
-La escritura es best-effort y fuera del camino crítico: si falla se pierde la
-entrada del journal, nunca la respuesta al usuario (mismo criterio que
-UsageTrackerMiddleware).
+Si la entrada no puede guardarse, tampoco se confirma el cambio operativo.
+``prepare_entry`` permite obtener su ID antes del commit para enlazar un recibo.
 
 Sólo se registra si hay ACTOR — lo pone ``get_current_user``. Los barridos
 nocturnos, el seed y los scripts corren sin actor y no ensucian el historial
@@ -36,12 +35,12 @@ Lo que NO se captura, a propósito:
 """
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import contextvars
 import enum
 import logging
-from dataclasses import dataclass, field
+from copy import deepcopy
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any, Optional
@@ -50,6 +49,7 @@ from sqlalchemy import Date, DateTime, Enum as SAEnum, Float, Numeric, event, in
 from sqlalchemy.orm import Session
 
 from backend.db.models import (
+    ChangeLog,
     Client,
     GrowthIdea,
     Lead,
@@ -66,6 +66,8 @@ logger = logging.getLogger(__name__)
 _INFO_KEY = "_change_journal_pending"
 _MANUAL_TIME_KEY = "_change_journal_manual_time"
 _SAVEPOINTS_KEY = "_change_journal_savepoints"
+_ACTOR_KEY = "_change_journal_actor"
+_ENTRY_KEY = "_change_journal_entry"
 
 #: Tope de filas por entrada. Una importación masiva no debe generar un JSON
 #: gigante ni una entrada de historial que nadie va a querer deshacer entera.
@@ -256,51 +258,55 @@ def _checkpoint_savepoint(session: Session, transaction) -> None:
 
 @event.listens_for(Session, "before_flush")
 def _capture(session: Session, flush_context, instances) -> None:
-    if _actor.get() is None or _paused.get():
+    if _paused.get():
         return
-    try:
-        ops = _pending(session)
-        for obj in session.new:
-            if isinstance(obj, TimeEntry) and not session.info.get(_MANUAL_TIME_KEY):
-                continue
-            spec = _spec_for(obj)
-            if spec is None:
-                continue
-            after = _snapshot(obj)
-            ops.append(_Op(spec=spec, action="create", obj=obj, after=after,
-                           name=_label_of(spec, after)))
-        for obj in session.dirty:
-            if isinstance(obj, TimeEntry) and not session.info.get(_MANUAL_TIME_KEY):
-                continue
-            spec = _spec_for(obj)
-            if spec is None:
-                continue
-            before, after = _diff(obj)
-            # Task.actual_minutes is a cache derived from TimeEntry outside an
-            # explicit manual-total edit. Journaling that cache alone would let
-            # Undo restore a total that disagrees with the source entries.
-            if isinstance(obj, Task) and not session.info.get(_MANUAL_TIME_KEY):
-                before.pop("actual_minutes", None)
-                after.pop("actual_minutes", None)
-            if not after:
-                continue
-            ops.append(_Op(spec=spec, action="update", obj=obj,
-                           entity_id=getattr(obj, "id", None),
-                           before=before, after=after,
-                           name=_label_of(spec, _snapshot(obj))))
-        for obj in session.deleted:
-            if isinstance(obj, TimeEntry) and not session.info.get(_MANUAL_TIME_KEY):
-                continue
-            spec = _spec_for(obj)
-            if spec is None:
-                continue
-            before = _snapshot(obj)
-            ops.append(_Op(spec=spec, action="delete", obj=obj,
-                           entity_id=getattr(obj, "id", None),
-                           before=before, name=_label_of(spec, before)))
-    except Exception as exc:  # nunca romper el flush del usuario
-        logger.debug("change_journal: fallo capturando cambios: %s", exc)
-        session.info.pop(_INFO_KEY, None)
+    bound_actor = session.info.get(_ACTOR_KEY)
+    context_actor = _actor.get()
+    if bound_actor is not None and context_actor is not None and bound_actor != context_actor:
+        raise RuntimeError("Una transacción no puede mezclar autores del journal")
+    actor = bound_actor if bound_actor is not None else context_actor
+    if actor is None:
+        return
+    session.info[_ACTOR_KEY] = actor
+    ops = _pending(session)
+    for obj in session.new:
+        if isinstance(obj, TimeEntry) and not session.info.get(_MANUAL_TIME_KEY):
+            continue
+        spec = _spec_for(obj)
+        if spec is None:
+            continue
+        after = _snapshot(obj)
+        ops.append(_Op(spec=spec, action="create", obj=obj, after=after,
+                       name=_label_of(spec, after)))
+    for obj in session.dirty:
+        if isinstance(obj, TimeEntry) and not session.info.get(_MANUAL_TIME_KEY):
+            continue
+        spec = _spec_for(obj)
+        if spec is None:
+            continue
+        before, after = _diff(obj)
+        # Task.actual_minutes is a cache derived from TimeEntry outside an
+        # explicit manual-total edit. Journaling that cache alone would let
+        # Undo restore a total that disagrees with the source entries.
+        if isinstance(obj, Task) and not session.info.get(_MANUAL_TIME_KEY):
+            before.pop("actual_minutes", None)
+            after.pop("actual_minutes", None)
+        if not after:
+            continue
+        ops.append(_Op(spec=spec, action="update", obj=obj,
+                       entity_id=getattr(obj, "id", None),
+                       before=before, after=after,
+                       name=_label_of(spec, _snapshot(obj))))
+    for obj in session.deleted:
+        if isinstance(obj, TimeEntry) and not session.info.get(_MANUAL_TIME_KEY):
+            continue
+        spec = _spec_for(obj)
+        if spec is None:
+            continue
+        before = _snapshot(obj)
+        ops.append(_Op(spec=spec, action="delete", obj=obj,
+                       entity_id=getattr(obj, "id", None),
+                       before=before, name=_label_of(spec, before)))
 
 
 @event.listens_for(Session, "after_flush")
@@ -316,39 +322,45 @@ def _resolve_ids(session: Session, flush_context) -> None:
                 op.after["id"] = op.entity_id
 
 
-@event.listens_for(Session, "after_commit")
-def _dispatch(session: Session) -> None:
-    # after_commit also fires when a SAVEPOINT is released. Its writes remain
-    # provisional until the outer transaction commits.
-    if session.in_nested_transaction():
-        return
-    session.info.pop(_SAVEPOINTS_KEY, None)
-    ops = session.info.pop(_INFO_KEY, None)
-    session.info.pop(_MANUAL_TIME_KEY, None)
-    if not ops:
-        return
-    try:
-        entry = build_entry(ops, actor_id=_actor.get())
-    except Exception as exc:
-        logger.debug("change_journal: fallo construyendo la entrada: %s", exc)
-        return
-    if entry is None:
-        return
-    _sink(entry)
+def prepare_entry(session: Session) -> ChangeLog | None:
+    """Persist the current capture without committing; safe to call repeatedly.
 
-
-def _sink(entry: dict[str, Any]) -> None:
-    """Saca la entrada del camino crítico.
-
-    Función aparte y llamada por nombre para poder sustituirla en los tests: así
-    se puede comprobar QUÉ se registra sin depender de una tarea en segundo plano.
+    The caller may link this row to a command receipt in the same transaction.
+    A subsequent outer commit refreshes it with any later captured operations.
+    SAVEPOINTs remain provisional and cannot publish a separate journal entry.
     """
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        logger.debug("change_journal: sin event loop, entrada descartada")
-        return
-    loop.create_task(_write(entry))
+    if session.in_nested_transaction():
+        raise RuntimeError("El journal se prepara en la transacción exterior")
+    session.flush()
+    entry = build_entry(session.info.get(_INFO_KEY, []), actor_id=session.info.get(_ACTOR_KEY))
+    row = session.info.get(_ENTRY_KEY)
+    if entry is None:
+        if row is not None:
+            session.delete(row)
+            session.info.pop(_ENTRY_KEY, None)
+            session.flush()
+        return None
+    if row is None:
+        row = ChangeLog(**entry)
+        session.add(row)
+        session.info[_ENTRY_KEY] = row
+    else:
+        for name, value in entry.items():
+            setattr(row, name, value)
+    session.flush()
+    return row
+
+
+@event.listens_for(Session, "before_commit")
+def _persist_before_commit(session: Session) -> None:
+    if not session.in_nested_transaction():
+        prepare_entry(session)
+
+
+@event.listens_for(Session, "after_commit")
+def _committed(session: Session) -> None:
+    if not session.in_nested_transaction():
+        _clear_pending(session)
 
 
 @event.listens_for(Session, "after_soft_rollback")
@@ -373,6 +385,8 @@ def _clear_pending(session: Session) -> None:
     session.info.pop(_INFO_KEY, None)
     session.info.pop(_MANUAL_TIME_KEY, None)
     session.info.pop(_SAVEPOINTS_KEY, None)
+    session.info.pop(_ACTOR_KEY, None)
+    session.info.pop(_ENTRY_KEY, None)
 
 
 @event.listens_for(Session, "after_transaction_end")
@@ -422,7 +436,9 @@ def _collapse(ops: list[_Op]) -> list[_Op]:
 
 def build_entry(ops: list[_Op], actor_id: Optional[int]) -> Optional[dict[str, Any]]:
     """Colapsa las operaciones de una transacción en la fila de ``change_logs``."""
-    ops = [op for op in _collapse(ops) if op.entity_id is not None]
+    # Collapse copies: preparing a receipt must not mutate SAVEPOINT checkpoints.
+    copies = [replace(op, before=deepcopy(op.before), after=deepcopy(op.after)) for op in ops]
+    ops = [op for op in _collapse(copies) if op.entity_id is not None]
     if not ops:
         return None
     if len(ops) > MAX_OPERATIONS:
@@ -459,16 +475,3 @@ def build_entry(ops: list[_Op], actor_id: Optional[int]) -> Optional[dict[str, A
             for op in ops
         ],
     }
-
-
-async def _write(entry: dict[str, Any]) -> None:
-    """Escribe la entrada en su propia sesión. Best-effort."""
-    try:
-        from backend.db.database import async_session
-        from backend.db.models import ChangeLog
-
-        async with async_session() as db:
-            db.add(ChangeLog(**entry))
-            await db.commit()
-    except Exception as exc:
-        logger.debug("change_journal: no se pudo escribir la entrada: %s", exc)

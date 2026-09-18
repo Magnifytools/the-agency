@@ -5,10 +5,8 @@ eventos ORM del journal no llegan a dispararse: la captura sólo se puede
 demostrar aquí. Se cubre el ciclo completo — hacer el cambio por HTTP, ver la
 entrada del journal, deshacerla y comprobar el estado de la fila.
 
-La escritura de la entrada es fire-and-forget en producción (una tarea suelta
-con su propia sesión). Aquí se sustituye ``_sink`` para persistirla en la misma
-transacción del test; lo que se prueba es el CONTENIDO que produce la captura,
-que es lo que luego sabe deshacer la ruta.
+La entrada se persiste en la misma transacción real que el cambio. Estas
+pruebas leen change_logs; no sustituyen el escritor ni reconstruyen filas.
 """
 from __future__ import annotations
 
@@ -34,24 +32,24 @@ pytestmark = pytest.mark.asyncio
 
 
 @pytest_asyncio.fixture
-async def journal(db_session, monkeypatch):
-    """Recoge lo que el journal registraría y lo persiste bajo demanda."""
-    captured: list[dict] = []
+async def journal(db_session, admin_user):
+    from backend.db.models import ChangeLog
     cj.set_actor(None)
-    monkeypatch.setattr(cj, "_sink", captured.append)
+    seen = set((await db_session.scalars(select(ChangeLog.id))).all())
 
     class _Journal:
-        raw = captured
+        actor_id = admin_user.id
+
+        async def rows(self):
+            rows = (await db_session.scalars(select(ChangeLog).order_by(ChangeLog.id))).all()
+            return [row for row in rows if row.id not in seen]
+
+        async def peek(self):
+            return [{"operations": row.operations} for row in await self.rows()]
 
         async def entries(self):
-            """Vuelca lo capturado a ``change_logs`` y devuelve las filas."""
-            from backend.db.models import ChangeLog
-
-            rows = [ChangeLog(**entry) for entry in captured]
-            captured.clear()
-            for row in rows:
-                db_session.add(row)
-            await db_session.commit()
+            rows = await self.rows()
+            seen.update(row.id for row in rows)
             return rows
 
         async def only(self):
@@ -95,7 +93,7 @@ async def test_un_cambio_sin_actor_no_entra_en_el_journal(db_session, base_clien
     task.status = TaskStatus.completed
     await db_session.commit()
 
-    assert journal.raw == []
+    assert (await journal.peek()) == []
 
 
 async def test_crear_una_tarea_por_http_deja_una_entrada(admin_client, base_client, journal):
@@ -386,7 +384,7 @@ async def test_deshacer_no_se_registra_como_cambio_nuevo(
     entry = await journal.only()
 
     await admin_client.post(f"/api/changes/{entry.id}/undo")
-    assert journal.raw == []
+    assert (await journal.peek()) == []
 
 
 async def test_no_se_puede_deshacer_dos_veces(admin_client, base_client, journal):
@@ -435,17 +433,17 @@ async def test_lo_deshecho_desaparece_del_listado(admin_client, base_client, jou
 
 # Savepoints are provisional: only the outer session commit is journalable.
 async def test_savepoint_commit_then_outer_rollback_emits_nothing(db_session, journal):
-    cj.set_actor(1)
+    cj.set_actor(journal.actor_id)
     async with db_session.begin_nested():
         db_session.add(Task(title="Rolled back outside", status=TaskStatus.pending))
         await db_session.flush()
-    assert journal.raw == []
+    assert (await journal.peek()) == []
     await db_session.rollback()
-    assert journal.raw == []
+    assert (await journal.peek()) == []
 
 
 async def test_savepoint_rollback_preserves_outer_operations(db_session, journal):
-    cj.set_actor(1)
+    cj.set_actor(journal.actor_id)
     outer = Task(title="Kept", status=TaskStatus.pending)
     db_session.add(outer)
     await db_session.flush()
@@ -453,14 +451,14 @@ async def test_savepoint_rollback_preserves_outer_operations(db_session, journal
     db_session.add(Task(title="Discarded", status=TaskStatus.pending))
     await db_session.flush()
     await nested.rollback()
-    assert journal.raw == []
+    assert (await journal.peek()) == []
     await db_session.commit()
-    assert len(journal.raw) == 1
-    assert [op["after"]["title"] for op in journal.raw[0]["operations"]] == ["Kept"]
+    assert len((await journal.peek())) == 1
+    assert [op["after"]["title"] for op in (await journal.peek())[0]["operations"]] == ["Kept"]
 
 
 async def test_deep_savepoint_rollback_discards_committed_descendants(db_session, journal):
-    cj.set_actor(1)
+    cj.set_actor(journal.actor_id)
     db_session.add(Task(title="Outer", status=TaskStatus.pending))
     await db_session.flush()
     nested = await db_session.begin_nested()
@@ -471,12 +469,12 @@ async def test_deep_savepoint_rollback_discards_committed_descendants(db_session
         await db_session.flush()
     await nested.rollback()
     await db_session.commit()
-    assert len(journal.raw) == 1
-    assert [op["after"]["title"] for op in journal.raw[0]["operations"]] == ["Outer"]
+    assert len((await journal.peek())) == 1
+    assert [op["after"]["title"] for op in (await journal.peek())[0]["operations"]] == ["Outer"]
 
 
 async def test_successful_savepoints_collapse_into_one_outer_entry(db_session, journal):
-    cj.set_actor(1)
+    cj.set_actor(journal.actor_id)
     task = Task(title="A", status=TaskStatus.pending)
     db_session.add(task)
     await db_session.flush()
@@ -484,16 +482,16 @@ async def test_successful_savepoints_collapse_into_one_outer_entry(db_session, j
         async with db_session.begin_nested():
             task.title = title
             await db_session.flush()
-        assert journal.raw == []
+        assert (await journal.peek()) == []
     await db_session.commit()
-    assert len(journal.raw) == 1
-    assert len(journal.raw[0]["operations"]) == 1
-    assert journal.raw[0]["operations"][0]["after"]["title"] == "C"
+    assert len((await journal.peek())) == 1
+    assert len((await journal.peek())[0]["operations"]) == 1
+    assert (await journal.peek())[0]["operations"][0]["after"]["title"] == "C"
 
 
 async def test_failed_flush_savepoint_preserves_outer_journal(db_session, journal):
     from sqlalchemy.exc import IntegrityError
-    cj.set_actor(1)
+    cj.set_actor(journal.actor_id)
     db_session.add(Task(title="Valid", status=TaskStatus.pending))
     await db_session.flush()
     with pytest.raises(IntegrityError):
@@ -501,8 +499,8 @@ async def test_failed_flush_savepoint_preserves_outer_journal(db_session, journa
             db_session.add(Task(title="Invalid", client_id=987654321, status=TaskStatus.pending))
             await db_session.flush()
     await db_session.commit()
-    assert len(journal.raw) == 1
-    assert [op["after"]["title"] for op in journal.raw[0]["operations"]] == ["Valid"]
+    assert len((await journal.peek())) == 1
+    assert [op["after"]["title"] for op in (await journal.peek())[0]["operations"]] == ["Valid"]
 
 
 async def test_bulk_status_update_is_one_undo_action(admin_client, db_session, base_client, journal):
@@ -525,7 +523,7 @@ async def test_bulk_status_update_is_one_undo_action(admin_client, db_session, b
 
 
 async def test_nested_rollback_restores_manual_time_capture_flag(db_session, journal):
-    cj.set_actor(1)
+    cj.set_actor(journal.actor_id)
     nested = await db_session.begin_nested()
     cj.capture_manual_time(db_session.sync_session)
     await nested.rollback()
@@ -541,18 +539,25 @@ async def test_nested_rollback_restores_manual_time_capture_flag(db_session, jou
 async def test_journal_matches_committed_database_across_independent_sessions(engine, journal):
     from sqlalchemy.ext.asyncio import AsyncSession
     from sqlalchemy import delete
+    from backend.db.models import User, ChangeLog
+    from uuid import uuid4
     task_id = None
+    user_id = None
     try:
         async with AsyncSession(engine, expire_on_commit=False) as writer:
+            actor = User(email=f"journal-{uuid4()}@test.local", full_name="Journal", hashed_password="unused")
+            writer.add(actor)
+            await writer.commit()
+            user_id = actor.id
             task = Task(title="Original", status=TaskStatus.pending)
             writer.add(task)
             await writer.commit()
             task_id = task.id
-            cj.set_actor(1)
+            cj.set_actor(user_id)
             async with writer.begin_nested():
                 task.title = "Provisional"
                 await writer.flush()
-            assert journal.raw == []
+            assert (await journal.peek()) == []
             await writer.rollback()
             async with AsyncSession(engine) as reader:
                 assert await reader.scalar(select(Task.title).where(Task.id == task_id)) == "Original"
@@ -561,14 +566,16 @@ async def test_journal_matches_committed_database_across_independent_sessions(en
                 task.title = "Committed"
                 await writer.flush()
             await writer.commit()
-            assert len(journal.raw) == 1
+            assert len((await journal.peek())) == 1
             async with AsyncSession(engine) as reader:
                 assert await reader.scalar(select(Task.title).where(Task.id == task_id)) == "Committed"
     finally:
         cj.set_actor(None)
         if task_id is not None:
             async with AsyncSession(engine) as cleanup:
+                await cleanup.execute(delete(ChangeLog).where(ChangeLog.user_id == user_id))
                 await cleanup.execute(delete(Task).where(Task.id == task_id))
+                await cleanup.execute(delete(User).where(User.id == user_id))
                 await cleanup.commit()
 
 
@@ -576,14 +583,14 @@ async def test_closing_session_discards_pending_journal_before_reuse(engine, jou
     from sqlalchemy.ext.asyncio import AsyncSession
     writer = AsyncSession(engine)
     try:
-        cj.set_actor(1)
+        cj.set_actor(journal.actor_id)
         writer.add(Task(title="Abandoned", status=TaskStatus.pending))
         await writer.flush()
         await writer.close()
         assert not writer.info.get(cj._INFO_KEY)
         assert not writer.info.get(cj._SAVEPOINTS_KEY)
         await writer.commit()
-        assert journal.raw == []
+        assert (await journal.peek()) == []
     finally:
         await writer.close()
 
@@ -609,3 +616,101 @@ async def test_automation_batch_journals_only_successful_actions_once(admin_clie
     assert response.status_code == 200, response.text
     for op in entry.operations:
         assert await db_session.get(Task, op["entity_id"]) is None
+
+
+async def test_journal_write_failure_rolls_back_domain_change(db_session, admin_user, journal):
+    from sqlalchemy import event
+    from backend.db.models import ChangeLog
+    await db_session.commit()
+    cj.set_actor(admin_user.id)
+    task = Task(title="Must not survive journal failure", status=TaskStatus.pending)
+    db_session.add(task)
+
+    def reject_insert(mapper, connection, target):
+        raise RuntimeError("simulated journal storage failure")
+
+    event.listen(ChangeLog, "before_insert", reject_insert)
+    try:
+        with pytest.raises(RuntimeError, match="simulated journal storage failure"):
+            await db_session.commit()
+    finally:
+        event.remove(ChangeLog, "before_insert", reject_insert)
+    task_id = task.id
+    await db_session.rollback()
+    assert await db_session.get(Task, task_id) is None
+    assert await journal.peek() == []
+
+
+async def test_prepared_receipt_id_is_stable_and_rollback_is_atomic(db_session, admin_user, journal):
+    from backend.db.models import ChangeLog
+    await db_session.commit()
+    cj.set_actor(admin_user.id)
+    task = Task(title="Receipt before commit", status=TaskStatus.pending)
+    db_session.add(task)
+    row = await db_session.run_sync(cj.prepare_entry)
+    assert row.id is not None
+    task.title = "Last edit before commit"
+    again = await db_session.run_sync(cj.prepare_entry)
+    assert again.id == row.id
+    assert again.operations[0]["after"]["title"] == task.title
+    row_id, task_id = row.id, task.id
+    await db_session.rollback()
+    assert await db_session.get(Task, task_id) is None
+    assert await db_session.get(ChangeLog, row_id) is None
+    assert not db_session.info.get(cj._ENTRY_KEY)
+
+
+async def test_preparing_then_savepoint_rollback_keeps_original_snapshot(db_session, admin_user, journal):
+    cj.set_actor(admin_user.id)
+    task = Task(title="Keep outer", status=TaskStatus.pending)
+    db_session.add(task)
+    row = await db_session.run_sync(cj.prepare_entry)
+    row_id = row.id
+    nested = await db_session.begin_nested()
+    task.title = "Discard inner"
+    await db_session.flush()
+    await nested.rollback()
+    await db_session.commit()
+    entry = await journal.only()
+    assert entry.id == row_id
+    assert entry.operations[0]["after"]["title"] == "Keep outer"
+
+
+async def test_actor_is_bound_to_the_change_not_commit_context(db_session, admin_user, journal):
+    cj.set_actor(admin_user.id)
+    db_session.add(Task(title="Actor retained", status=TaskStatus.pending))
+    await db_session.flush()
+    cj.set_actor(None)
+    await db_session.commit()
+    entry = await journal.only()
+    assert entry.user_id == admin_user.id
+
+
+async def test_prepared_receipt_captures_later_edits_after_context_clear(db_session, admin_user, journal):
+    cj.set_actor(admin_user.id)
+    task = Task(title="Initial", status=TaskStatus.pending)
+    db_session.add(task)
+    provisional = await db_session.run_sync(cj.prepare_entry)
+    cj.set_actor(None)
+    task.title = "Final after clearing request context"
+    await db_session.commit()
+    entry = await journal.only()
+    assert entry.id == provisional.id
+    assert entry.user_id == admin_user.id
+    assert entry.operations[0]["after"]["title"] == task.title
+
+
+async def test_mixed_actors_cannot_confirm_one_transaction(db_session, admin_user, member_user, journal):
+    cj.set_actor(admin_user.id)
+    task = Task(title="First actor", status=TaskStatus.pending)
+    db_session.add(task)
+    await db_session.run_sync(cj.prepare_entry)
+    cj.set_actor(member_user.id)
+    task.title = "Second actor"
+    with pytest.raises(RuntimeError, match="mezclar autores"):
+        await db_session.commit()
+    task_id = task.id
+    await db_session.rollback()
+    cj.set_actor(None)
+    assert await db_session.get(Task, task_id) is None
+    assert await journal.peek() == []

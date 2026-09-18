@@ -112,3 +112,15 @@ async def test_web_startup_preserves_business_rows(engine, monkeypatch):
             await conn.execute(text("DELETE FROM projects WHERE id=:id"), {"id": ids[4]})
             await conn.execute(text("DELETE FROM clients WHERE id IN (:a,:b,:c)"), dict(zip(("a","b","c"), ids[1:4])))
             await conn.execute(text("DELETE FROM users WHERE id=:id"), {"id": ids[0]})
+
+
+async def test_readiness_requires_atomic_journal_schema(engine):
+    from sqlalchemy.exc import DBAPIError
+    async with engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE change_logs RENAME COLUMN operations TO operations_unavailable"))
+    try:
+        with pytest.raises(DBAPIError):
+            await check_database_ready(engine)
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE change_logs RENAME COLUMN operations_unavailable TO operations"))

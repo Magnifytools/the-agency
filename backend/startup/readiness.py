@@ -11,6 +11,7 @@ async def check_database_ready(engine) -> None:
             await conn.execute(text("SELECT completed_at FROM tasks LIMIT 0"))
             await conn.execute(text("SELECT dedupe_key FROM notifications LIMIT 0"))
             await conn.execute(text("SELECT paused_at, accumulated_seconds FROM time_entries LIMIT 0"))
+            await conn.execute(text("SELECT id, user_id, entity_type, entity_id, action, label, operations, undone_at, undone_by, created_at, updated_at FROM change_logs LIMIT 0"))
             await conn.execute(text("SELECT owner_id FROM projects LIMIT 0"))
             owner_fk = await conn.scalar(text("""
                 SELECT EXISTS (
