@@ -57,7 +57,7 @@ async def test_digest_uses_completion_time_and_half_open_period(db_session, repo
 
     data = await collect_digest_data(db_session, reporting_client.id, start, end)
 
-    assert {task["title"] for task in data["completed_tasks"]} == {
+    assert {task["title"] for task in data["unassigned"]["completed_tasks"]} == {
         "Dentro aunque se editó después",
         "Último instante incluido",
     }
