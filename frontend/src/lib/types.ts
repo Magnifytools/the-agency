@@ -28,3 +28,52 @@ export interface UndoResult {
   // Lo que el undo NO ha tocado porque otra persona lo cambió después.
   warnings: string[]
 }
+
+export interface CommandContext {
+  url?: string
+  title?: string
+  selection?: string
+}
+
+export interface CommandChoice {
+  id: string
+  label: string
+  subtitle?: string | null
+}
+
+export interface CommandQuestion {
+  field: string
+  label: string
+  kind: "choice" | "notice"
+  choices: CommandChoice[]
+}
+
+export interface CommandEntity {
+  type: "task" | "project" | "client" | "time_entry"
+  id: number
+  label: string
+  project_id?: number | null
+  client_id?: number | null
+}
+
+export interface CommandReceipt {
+  id: string
+  request_key: string
+  raw_text: string
+  channel: "app" | "extension"
+  context: CommandContext | null
+  status: "needs_input" | "needs_review" | "executed" | "failed"
+  intent: { kind?: string; [key: string]: unknown } | null
+  prompt: { questions: CommandQuestion[] } | null
+  result: {
+    message: string
+    entities: CommandEntity[]
+    query?: { kind: string; items: CommandEntity[]; total: number; page: number; page_size: number; has_more: boolean }
+    undo_available: boolean
+  } | null
+  change_log_id: number | null
+  error: { code: string; detail?: string | null } | null
+  revision: number
+  created_at: string
+  updated_at: string
+}

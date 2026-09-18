@@ -61,6 +61,8 @@ import type {
   GrowthIdeaCreate,
   ChangeEntry,
   UndoResult,
+  CommandContext,
+  CommandReceipt,
   GrowthIdeaUpdate,
   Invitation,
   InvitationCreateResult,
@@ -1008,6 +1010,17 @@ export const changesApi = {
     api.get<ChangeEntry[]>("/changes/recent", { params: { limit } }).then((r) => r.data),
   undo: (id: number) =>
     api.post<UndoResult>(`/changes/${id}/undo`).then((r) => r.data),
+}
+
+export const commandsApi = {
+  create: (data: { request_key: string; text: string; channel: "app" | "extension"; context?: CommandContext }) =>
+    api.post<CommandReceipt>("/commands", data).then((r) => r.data),
+  resolve: (id: string, data: { request_key: string; revision: number; answers: Array<{ field: string; choice_id?: string; value?: string | number }> }) =>
+    api.post<CommandReceipt>(`/commands/${id}/resolve`, data).then((r) => r.data),
+  execute: (id: string, data: { request_key: string; revision: number }) =>
+    api.post<CommandReceipt>(`/commands/${id}/execute`, data).then((r) => r.data),
+  query: (id: string, page: number, pageSize = 25) =>
+    api.get<NonNullable<NonNullable<CommandReceipt["result"]>["query"]>>(`/commands/${id}/query`, { params: { page, page_size: pageSize } }).then((r) => r.data),
 }
 
 // --- Project Evidence ---

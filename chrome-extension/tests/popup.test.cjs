@@ -15,7 +15,7 @@ async function setup(t) {
   const dom = new JSDOM(fs.readFileSync(path.join(extension, 'popup.html'), 'utf8'), { runScripts: 'outside-only', url: 'https://extension.invalid/popup.html' });
   t.after(() => dom.window.close());
   const requests = [];
-  const state = { failPath: null, failPage: 2, status: 503, posted: null };
+  const state = { failPath: null, failPage: 2, status: 503, posted: null, commandRequests: [], scheduleRevision: 3 };
   dom.window.chrome = {
     storage: { local: { get: async () => ({}), set: async () => {}, remove: async () => {} } },
     runtime: { sendMessage: () => {} }, tabs: { create: () => {} },
@@ -30,6 +30,16 @@ async function setup(t) {
       state.posted = JSON.parse(options.body);
       status = state.captureStatus || 201;
       data = { id: 1, detail: 'Captura no disponible' };
+    } else if (options.method === 'POST' && u.pathname === '/api/commands') {
+      const body = JSON.parse(options.body); state.commandRequests.push(body);
+      status = state.commandStatus || 200;
+      data = state.commandResponse || { id: 'cmd-1', request_key: body.request_key, raw_text: body.text, channel: 'extension', context: null, status: 'executed', intent: { kind: 'create_task' }, prompt: null, result: { message: 'Tarea creada', entities: [{ type: 'task', id: 7, label: 'Nueva tarea' }], undo_available: true }, change_log_id: 4, error: null, revision: 1 };
+    } else if (u.pathname === '/api/communication-schedules' && !options.method) {
+      data = { user_id: 2, policies: [{ kind: 'meeting', revision: state.scheduleRevision, enabled: true, channels: ['in_app'], minutes_before: 10, quiet_start: null, quiet_end: null, state: 'ready', reason: null }] };
+    } else if (u.pathname === '/api/communication-schedules/meeting' && options.method === 'PUT') {
+      const body = JSON.parse(options.body); state.schedulePosted = body;
+      status = state.scheduleStatus || 200;
+      data = { kind: 'meeting', ...body, revision: body.revision + 1, state: 'ready', reason: null };
     } else if (u.pathname === state.failPath && page === state.failPage) {
       status = state.status; data = { detail: 'No disponible temporalmente' };
     } else if (['/api/clients', '/api/projects', '/api/tasks'].includes(u.pathname)) {
@@ -436,4 +446,54 @@ test('reconnected task drafts cannot submit unavailable assignments before selec
   assert.equal(h.requests.some(r => r.url.pathname === '/api/tasks' && r.options.method === 'POST'), false);
   assert.equal(h.get('task-create-btn').disabled, true);
   assert.equal(h.get('task-title').value, 'Task draft');
+});
+
+test('command mode sends through shared endpoint and renders a linked receipt', async t => {
+  const { run, get, state, dom } = await setup(t);
+  run('showMainView()');
+  get('command-text').value = 'Crea una tarea Nueva tarea';
+  get('command-text').dispatchEvent(new dom.window.Event('input'));
+  get('command-submit').click(); await tick();
+  assert.equal(state.commandRequests.length, 1);
+  assert.equal(state.commandRequests[0].channel, 'extension');
+  assert.equal(state.commandRequests[0].text, 'Crea una tarea Nueva tarea');
+  assert.equal(get('command-receipt').classList.contains('hidden'), false);
+  assert.equal(get('command-receipt').textContent.includes('Tarea creada'), true);
+});
+
+test('command network retry keeps the same idempotency key', async t => {
+  const { run, get, state, dom } = await setup(t);
+  run('showMainView()'); state.commandStatus = 503;
+  get('command-text').value = 'Consulta bloqueos';
+  get('command-text').dispatchEvent(new dom.window.Event('input'));
+  get('command-submit').click(); await tick();
+  const firstKey = state.commandRequests[0].request_key;
+  state.commandStatus = 200; get('command-submit').click(); await tick();
+  assert.equal(state.commandRequests[1].request_key, firstKey);
+});
+
+test('meeting preferences preserve unedited channels when enabling extension alerts', async t => {
+  const { run, get, state } = await setup(t);
+  run('showMainView()'); await tick();
+  get('meeting-extension-enabled').checked = true;
+  get('meeting-minutes-before').value = '15';
+  get('meeting-settings-save').click(); await tick();
+  assert.deepEqual(state.schedulePosted.channels.sort(), ['extension', 'in_app']);
+  assert.equal(state.schedulePosted.minutes_before, 15);
+  assert.equal(state.schedulePosted.revision, 3);
+});
+
+test('meeting settings conflict reloads revision without losing the local draft', async t => {
+  const { run, get, state } = await setup(t);
+  run('showMainView()'); await tick();
+  get('meeting-extension-enabled').checked = true;
+  get('meeting-minutes-before').value = '30';
+  state.scheduleStatus = 409; state.scheduleRevision = 4;
+  get('meeting-settings-save').click();
+  for (let n = 0; n < 5; n++) await tick();
+  assert.equal(get('meeting-extension-enabled').checked, true);
+  assert.equal(get('meeting-minutes-before').value, '30');
+  assert.equal(get('meeting-settings-error').classList.contains('hidden'), false);
+  assert.equal(get('meeting-settings-error').textContent.includes('otro dispositivo'), true);
+  assert.equal(run('meetingPolicy.revision'), 4);
 });

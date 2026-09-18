@@ -46,7 +46,7 @@
     <div class="tab-bar">
       <button class="tab active" data-tab="capture">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-        Captura
+        Hacer
       </button>
       <button class="tab" data-tab="timer">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -60,14 +60,27 @@
 
     <!-- ═══ CAPTURE TAB ═══ -->
     <div id="tab-capture" class="tab-content">
-      <!-- Mode toggle: Nota vs Tarea -->
-      <div class="capture-mode-toggle">
-        <button class="mode-btn active" data-mode="note">Nota</button>
-        <button class="mode-btn" data-mode="task">Tarea directa</button>
+      <h2 class="command-heading">¿Qué necesitas hacer?</h2>
+      <!-- Command first; explicit forms remain available. -->
+      <div class="capture-mode-toggle" role="tablist" aria-label="Tipo de entrada">
+        <button class="mode-btn active" data-mode="command" role="tab" aria-selected="true">Pedir</button>
+        <button class="mode-btn" data-mode="note" role="tab" aria-selected="false">Aclarar</button>
+        <button class="mode-btn" data-mode="task" role="tab" aria-selected="false">Tarea directa</button>
+      </div>
+
+      <div id="capture-command-mode" class="capture-area">
+        <textarea id="command-text" placeholder="Ej. Completa la tarea Revisar portada o consulta bloqueos" rows="4" autofocus></textarea>
+        <p id="command-error" class="error hidden" role="alert"></p>
+        <div id="command-prompt" class="command-result hidden" role="status"></div>
+        <div id="command-receipt" class="command-result hidden" role="status"></div>
+        <div class="actions">
+          <span class="hint">Cmd+Enter</span>
+          <button id="command-submit" class="primary-btn" disabled>Hacer</button>
+        </div>
       </div>
 
       <!-- NOTE mode (inbox) -->
-      <div id="capture-note-mode" class="capture-area">
+      <div id="capture-note-mode" class="capture-area hidden">
         <textarea id="note-text" placeholder="Escribe tu nota rapida... (Cmd+Enter para enviar)" rows="4" autofocus></textarea>
         <p id="capture-error" class="error hidden"></p>
         <div class="field-row">
@@ -124,6 +137,23 @@
         <span>Inbox: <strong id="inbox-count">0</strong> pendientes</span>
         <a id="open-inbox" href="#" class="link">Abrir inbox</a>
       </div>
+      <details id="meeting-settings" class="timer-section">
+        <summary>Avisos de reuniones</summary>
+        <p id="meeting-settings-state" class="hint">Cargando configuración…</p>
+        <label class="checkbox-row">
+          <input type="checkbox" id="meeting-extension-enabled">
+          <span>Avisarme en esta extensión</span>
+        </label>
+        <label class="field-row">
+          <span class="section-label">Antelación</span>
+          <select id="meeting-minutes-before" class="field-select">
+            <option value="5">5 minutos</option><option value="10">10 minutos</option>
+            <option value="15">15 minutos</option><option value="30">30 minutos</option>
+          </select>
+        </label>
+        <p id="meeting-settings-error" class="error hidden" role="alert"></p>
+        <button id="meeting-settings-save" type="button" class="secondary-btn full-width">Guardar avisos</button>
+      </details>
     </div>
 
     <!-- ═══ TIMER TAB ═══ -->

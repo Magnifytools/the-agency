@@ -105,6 +105,19 @@ const inboxBar = document.getElementById("inbox-bar");
 const inboxCount = document.getElementById("inbox-count");
 const openInbox = document.getElementById("open-inbox");
 
+// Natural-language command mode
+const captureCommandMode = document.getElementById("capture-command-mode");
+const commandText = document.getElementById("command-text");
+const commandSubmit = document.getElementById("command-submit");
+const commandError = document.getElementById("command-error");
+const commandPrompt = document.getElementById("command-prompt");
+const commandReceipt = document.getElementById("command-receipt");
+const meetingExtensionEnabled = document.getElementById("meeting-extension-enabled");
+const meetingMinutesBefore = document.getElementById("meeting-minutes-before");
+const meetingSettingsState = document.getElementById("meeting-settings-state");
+const meetingSettingsError = document.getElementById("meeting-settings-error");
+const meetingSettingsSave = document.getElementById("meeting-settings-save");
+
 // Capture — Task mode
 const captureNoteMode = document.getElementById("capture-note-mode");
 const captureTaskMode = document.getElementById("capture-task-mode");
@@ -179,6 +192,11 @@ const sessionTimeouts = new Set();
 const accountDrafts = new Map();
 let taskCreateInFlight = false;
 let captureInFlight = false;
+let commandInFlight = false;
+let currentCommand = null;
+let commandRequestKey = newRequestKey();
+let commandStepKey = newRequestKey();
+let meetingPolicy = null;
 let timerInterval = null;
 let activeTimerStart = null;
 let timerIsPaused = false;
@@ -194,6 +212,12 @@ const assignmentRetry = document.getElementById("assignment-retry");
 const timerTasksRetry = document.getElementById("timer-tasks-retry");
 assignmentRetry.addEventListener("click", loadProjectsAndClients);
 timerTasksRetry.addEventListener("click", loadTimerTasks);
+meetingSettingsSave.addEventListener("click", saveMeetingSettings);
+
+function newRequestKey() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `extension-${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
 
 // ── Init ──────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
@@ -227,6 +251,10 @@ function resetSessionUi() {
   }
   sessionEpoch++;
   captureInFlight = false;
+  commandInFlight = false;
+  currentCommand = null;
+  commandRequestKey = newRequestKey();
+  commandStepKey = newRequestKey();
   taskCreateInFlight = false;
   sessionTimeouts.forEach(clearTimeout);
   sessionTimeouts.clear();
@@ -236,11 +264,11 @@ function resetSessionUi() {
   timerIsPaused = false;
   timerAccumulatedSeconds = 0;
   draftFields.forEach(element => { element.value = element.type === "number" ? "0" : ""; });
-  [successMsg, captureError, taskCaptureError, timerError, timerSuccess, inboxBar,
+  [successMsg, captureError, taskCaptureError, commandError, commandPrompt, commandReceipt, timerError, timerSuccess, inboxBar,
    headerTimer, timerActive, timerBudget, qcTimerForm, qcManualForm].forEach(el => el.classList.add("hidden"));
   [timerIdle, qcTimerLink, qcManualLink, btnText, taskBtnText].forEach(el => el.classList.remove("hidden"));
   [btnLoading, taskBtnLoading].forEach(el => el.classList.add("hidden"));
-  captureBtn.disabled = taskCreateBtn.disabled = timerStartBtn.disabled = true;
+  commandSubmit.disabled = captureBtn.disabled = taskCreateBtn.disabled = timerStartBtn.disabled = true;
   for (const [button, html] of sessionButtonMarkup) {
     button.innerHTML = html;
     button.disabled = button === timerStartBtn;
@@ -248,7 +276,7 @@ function resetSessionUi() {
   assignmentRetry.disabled = timerTasksRetry.disabled = false;
   timerTasksRetry.classList.add("hidden");
 }
-const draftFields = [noteText, linkUrl, taskTitle, qcTimerTitle, qcManualTitle,
+const draftFields = [commandText, noteText, linkUrl, taskTitle, qcTimerTitle, qcManualTitle,
   manualHours, manualMins, manualNotes, assignSelect, taskClientSelect,
   taskProjectSelect, qcTimerClient, qcManualClient, timerTaskSelect, manualTaskSelect];
 const sessionButtonMarkup = [timerStartBtn, timerStopBtn, timerPauseBtn, timerResumeBtn,
@@ -315,6 +343,7 @@ function showMainView() {
     if (isCurrentSession(session) && activeTimerStart) switchToTab("timer");
   });
   loadTasks();
+  loadMeetingSettings();
 }
 
 function switchToTab(target) {
@@ -623,19 +652,314 @@ async function captureNote() {
   }
 }
 
-// ── Capture Mode Toggle (Note vs Task) ───────────────────
+// ── Natural-language commands ────────────────────────────
+commandText.addEventListener("input", () => {
+  commandSubmit.disabled = commandInFlight || !commandText.value.trim();
+});
+commandText.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+    event.preventDefault();
+    if (commandText.value.trim()) submitCommand();
+  }
+});
+commandSubmit.addEventListener("click", () => submitCommand());
+
+function commandEntityUrl(entity) {
+  if (entity.type === "task") return `${API_URL}/tasks?id=${entity.id}`;
+  if (entity.type === "project") return `${API_URL}/projects/${entity.id}`;
+  if (entity.type === "client") return `${API_URL}/clients/${entity.id}`;
+  return `${API_URL}/timesheet`;
+}
+
+function commandButton(label, handler, variant = "secondary-btn small") {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = variant;
+  button.textContent = label;
+  button.addEventListener("click", handler);
+  return button;
+}
+
+function renderCommand(data) {
+  currentCommand = data;
+  commandPrompt.replaceChildren();
+  commandReceipt.replaceChildren();
+  commandPrompt.classList.add("hidden");
+  commandReceipt.classList.add("hidden");
+  commandError.classList.add("hidden");
+
+  if (data.status === "needs_input") {
+    commandPrompt.classList.remove("hidden");
+    const answers = new Map();
+    for (const question of data.prompt?.questions || []) {
+      const label = document.createElement("p");
+      label.textContent = question.label;
+      commandPrompt.append(label);
+      for (const choice of question.choices || []) {
+        const choiceButton = commandButton(choice.label, () => {
+          answers.set(question.field, choice.id);
+          commandPrompt.querySelectorAll(`[data-field="${question.field}"]`).forEach(node => node.classList.remove("selected"));
+          choiceButton.classList.add("selected");
+        }, "command-choice");
+        choiceButton.dataset.field = question.field;
+        if (choice.subtitle) choiceButton.title = choice.subtitle;
+        commandPrompt.append(choiceButton);
+      }
+    }
+    const actionable = (data.prompt?.questions || []).filter(question => question.kind !== "notice");
+    if (actionable.length) {
+      const actions = document.createElement("div");
+      actions.className = "command-actions";
+      actions.append(commandButton("Continuar", () => {
+        if (!actionable.every(question => answers.has(question.field))) return;
+        resolveCommand([...answers].map(([field, choice_id]) => ({ field, choice_id })));
+      }, "primary-btn small"));
+      commandPrompt.append(actions);
+    }
+    return;
+  }
+
+  if (data.status === "failed") {
+    commandError.textContent = data.error?.detail || "No se ha podido realizar la petición.";
+    commandError.classList.remove("hidden");
+    commandReceipt.classList.remove("hidden");
+    commandReceipt.append(commandButton("Editar petición", editCommand));
+    return;
+  }
+
+  commandReceipt.classList.remove("hidden");
+  const message = document.createElement("p");
+  message.textContent = data.result?.message || "Petición preparada";
+  commandReceipt.append(message);
+  const entities = data.result?.query?.items || data.result?.entities || [];
+  for (const entity of entities) {
+    const link = document.createElement("a");
+    link.href = commandEntityUrl(entity);
+    link.className = "command-entity";
+    link.textContent = entity.label;
+    link.addEventListener("click", (event) => { event.preventDefault(); chrome.tabs.create({ url: link.href }); });
+    commandReceipt.append(link);
+  }
+  if (data.result?.query?.has_more) {
+    const more = commandButton(`Cargar más (${entities.length} de ${data.result.query.total})`, () => loadMoreCommandQuery(), "secondary-btn small");
+    commandReceipt.append(more);
+  }
+  const actions = document.createElement("div");
+  actions.className = "command-actions";
+  if (data.status === "needs_review") actions.append(commandButton("Ejecutar", () => executeCommand(), "primary-btn small"));
+  if (data.status === "executed" && data.result?.undo_available && data.change_log_id) actions.append(commandButton("Deshacer", () => undoCommand(data.change_log_id)));
+  actions.append(commandButton("Hacer otra cosa", resetCommand));
+  commandReceipt.append(actions);
+}
+
+function resetCommand() {
+  currentCommand = null;
+  commandRequestKey = newRequestKey();
+  commandStepKey = newRequestKey();
+  commandText.value = "";
+  commandText.disabled = false;
+  commandSubmit.disabled = true;
+  commandSubmit.textContent = "Hacer";
+  commandPrompt.classList.add("hidden");
+  commandReceipt.classList.add("hidden");
+  commandError.classList.add("hidden");
+  commandText.focus();
+}
+
+function editCommand() {
+  currentCommand = null;
+  commandRequestKey = newRequestKey();
+  commandStepKey = newRequestKey();
+  commandText.disabled = false;
+  commandSubmit.disabled = !commandText.value.trim();
+  commandSubmit.textContent = "Hacer";
+  commandReceipt.classList.add("hidden");
+  commandError.classList.add("hidden");
+  commandText.focus();
+}
+
+async function commandRequest(path, body, session) {
+  const response = await sessionFetch(session, `${API_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(getDetail(data, `Error ${response.status}`));
+  return data;
+}
+
+async function submitCommand() {
+  const session = captureSession();
+  const text = commandText.value.trim();
+  if (!text || commandInFlight) return;
+  commandInFlight = true;
+  commandSubmit.disabled = true;
+  commandSubmit.textContent = "Procesando…";
+  commandError.classList.add("hidden");
+  try {
+    const data = await commandRequest("/api/commands", { request_key: commandRequestKey, text, channel: "extension" }, session);
+    if (!isCurrentSession(session)) return;
+    renderCommand(data);
+    commandText.disabled = true;
+  } catch (error) {
+    if (!isCurrentSession(session)) return;
+    commandError.textContent = error.message || "No se ha podido conectar.";
+    commandError.classList.remove("hidden");
+  } finally {
+    if (!isCurrentSession(session)) return;
+    commandInFlight = false;
+    commandSubmit.textContent = "Reintentar";
+    commandSubmit.disabled = !commandText.value.trim();
+  }
+}
+
+async function resolveCommand(answers) {
+  const session = captureSession();
+  if (!currentCommand || commandInFlight) return;
+  commandInFlight = true;
+  try {
+    const data = await commandRequest(`/api/commands/${currentCommand.id}/resolve`, { request_key: commandStepKey, revision: currentCommand.revision, answers }, session);
+    if (!isCurrentSession(session)) return;
+    commandStepKey = newRequestKey();
+    renderCommand(data);
+  } catch (error) {
+    if (isCurrentSession(session)) { commandError.textContent = error.message; commandError.classList.remove("hidden"); }
+  } finally { if (isCurrentSession(session)) commandInFlight = false; }
+}
+
+async function executeCommand() {
+  const session = captureSession();
+  if (!currentCommand || commandInFlight) return;
+  commandInFlight = true;
+  try {
+    const data = await commandRequest(`/api/commands/${currentCommand.id}/execute`, { request_key: commandStepKey, revision: currentCommand.revision }, session);
+    if (!isCurrentSession(session)) return;
+    commandStepKey = newRequestKey();
+    renderCommand(data);
+  } catch (error) {
+    if (isCurrentSession(session)) { commandError.textContent = error.message; commandError.classList.remove("hidden"); }
+  } finally { if (isCurrentSession(session)) commandInFlight = false; }
+}
+
+async function loadMoreCommandQuery() {
+  const session = captureSession();
+  const query = currentCommand?.result?.query;
+  if (!currentCommand || !query || commandInFlight) return;
+  commandInFlight = true;
+  try {
+    const page = (query.page || 1) + 1;
+    const response = await sessionFetch(session, `${API_URL}/api/commands/${currentCommand.id}/query?page=${page}&page_size=${query.page_size || 25}`, {
+      headers: { Authorization: `Bearer ${session.token}` },
+    });
+    const next = await response.json();
+    if (!response.ok) throw new Error(getDetail(next, `Error ${response.status}`));
+    if (!isCurrentSession(session)) return;
+    currentCommand = { ...currentCommand, result: { ...currentCommand.result, query: { ...next, items: [...query.items, ...next.items] } } };
+    renderCommand(currentCommand);
+  } catch (error) {
+    if (isCurrentSession(session)) { commandError.textContent = error.message; commandError.classList.remove("hidden"); }
+  } finally { if (isCurrentSession(session)) commandInFlight = false; }
+}
+
+async function undoCommand(changeId) {
+  const session = captureSession();
+  try {
+    await commandRequest(`/api/changes/${changeId}/undo`, {}, session);
+    if (!isCurrentSession(session)) return;
+    resetCommand();
+    successText.textContent = "Cambio deshecho";
+    successMsg.classList.remove("hidden");
+  } catch (error) {
+    if (isCurrentSession(session)) { commandError.textContent = error.message; commandError.classList.remove("hidden"); }
+  }
+}
+
+// ── Meeting notification preferences ─────────────────────
+async function loadMeetingSettings({ preserveDraft = false } = {}) {
+  const session = captureSession();
+  const draft = preserveDraft ? { enabled: meetingExtensionEnabled.checked, minutes: meetingMinutesBefore.value } : null;
+  try {
+    const response = await sessionFetch(session, `${API_URL}/api/communication-schedules`, {
+      headers: { Authorization: `Bearer ${session.token}` },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(getDetail(data, `Error ${response.status}`));
+    if (!isCurrentSession(session)) return;
+    meetingPolicy = (data.policies || []).find(policy => policy.kind === "meeting") || null;
+    if (draft) {
+      meetingExtensionEnabled.checked = draft.enabled;
+      meetingMinutesBefore.value = draft.minutes;
+    } else if (meetingPolicy) {
+      meetingExtensionEnabled.checked = meetingPolicy.channels.includes("extension");
+      meetingMinutesBefore.value = String(meetingPolicy.minutes_before || 10);
+    }
+    meetingSettingsState.textContent = data.scheduler_enabled === false
+      ? "Avisos pausados en la configuración general"
+      : meetingPolicy?.reason || (meetingPolicy?.state === "ready" ? "Configurado" : "Revisa esta preferencia");
+    meetingSettingsError.classList.add("hidden");
+  } catch (error) {
+    if (!isCurrentSession(session)) return;
+    meetingSettingsError.textContent = error.message || "No se pudo cargar la configuración.";
+    meetingSettingsError.classList.remove("hidden");
+  }
+}
+
+async function saveMeetingSettings() {
+  const session = captureSession();
+  if (!meetingPolicy) return;
+  meetingSettingsSave.disabled = true;
+  meetingSettingsError.classList.add("hidden");
+  const channels = new Set(meetingPolicy.channels || []);
+  if (meetingExtensionEnabled.checked) channels.add("extension");
+  else channels.delete("extension");
+  try {
+    const response = await sessionFetch(session, `${API_URL}/api/communication-schedules/meeting`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({
+        revision: meetingPolicy.revision,
+        enabled: meetingPolicy.enabled,
+        channels: [...channels],
+        minutes_before: Number(meetingMinutesBefore.value),
+        quiet_start: meetingPolicy.quiet_start,
+        quiet_end: meetingPolicy.quiet_end,
+        time: null,
+      }),
+    });
+    if (response.status === 409) {
+      await loadMeetingSettings({ preserveDraft: true });
+      throw new Error("La configuración cambió en otro dispositivo. Revísala y vuelve a guardar.");
+    }
+    const policy = await response.json();
+    if (!response.ok) throw new Error(getDetail(policy, `Error ${response.status}`));
+    if (!isCurrentSession(session)) return;
+    meetingPolicy = policy;
+    meetingSettingsState.textContent = "Configuración guardada";
+  } catch (error) {
+    if (!isCurrentSession(session)) return;
+    meetingSettingsError.textContent = error.message || "No se pudo guardar la configuración.";
+    meetingSettingsError.classList.remove("hidden");
+  } finally {
+    if (isCurrentSession(session)) meetingSettingsSave.disabled = false;
+  }
+}
+
+// ── Capture Mode Toggle ───────────────────────────────────
 modeBtns.forEach((btn) => {
   btn.addEventListener("click", () => {
     modeBtns.forEach((b) => b.classList.remove("active"));
+    modeBtns.forEach((b) => b.setAttribute("aria-selected", String(b === btn)));
     btn.classList.add("active");
     const mode = btn.dataset.mode;
-    if (mode === "note") {
-      captureNoteMode.classList.remove("hidden");
-      captureTaskMode.classList.add("hidden");
+    captureCommandMode.classList.toggle("hidden", mode !== "command");
+    captureNoteMode.classList.toggle("hidden", mode !== "note");
+    captureTaskMode.classList.toggle("hidden", mode !== "task");
+    if (mode === "command") {
+      commandText.focus();
+    } else if (mode === "note") {
       noteText.focus();
     } else {
-      captureNoteMode.classList.add("hidden");
-      captureTaskMode.classList.remove("hidden");
       taskTitle.focus();
     }
     // Hide any previous success/error

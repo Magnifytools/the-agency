@@ -5,6 +5,7 @@ const API_URL = "https://agency.magnifytools.com";
 
 const STORAGE_KEYS = {
   token: "am_token",
+  meetingNotifications: "am_meeting_notifications_v2",
 };
 
 // Do not let a response sent for an old account affect the new one.
@@ -152,40 +153,52 @@ chrome.runtime.onStartup.addListener(async () => {
 });
 
 // ── Meeting check ────────────────────────────────────────
-async function _getNotifiedMeetings() {
-  const data = await chrome.storage.session.get("notifiedMeetings");
-  return new Set(data.notifiedMeetings || []);
+async function _getMeetingNotificationStates() {
+  const data = await chrome.storage.local.get(STORAGE_KEYS.meetingNotifications);
+  return data[STORAGE_KEYS.meetingNotifications] || {};
 }
 
-async function _addNotifiedMeeting(id, token) {
-  const notified = await _getNotifiedMeetings();
-  if (!await ownsSession(token)) return;
-  notified.add(id);
-  await chrome.storage.session.set({ notifiedMeetings: [...notified] });
+async function _reserveMeetingNotification(key, token) {
+  const states = await _getMeetingNotificationStates();
+  if (!await ownsSession(token) || states[key]) return false;
+  states[key] = "pending";
+  const keys = Object.keys(states);
+  for (const oldKey of keys.slice(0, Math.max(0, keys.length - 499))) delete states[oldKey];
+  await chrome.storage.local.set({ [STORAGE_KEYS.meetingNotifications]: states });
+  return await ownsSession(token);
+}
+
+async function _confirmMeetingNotification(key, token) {
+  const states = await _getMeetingNotificationStates();
+  if (!await ownsSession(token) || states[key] !== "pending") return;
+  states[key] = "confirmed";
+  await chrome.storage.local.set({ [STORAGE_KEYS.meetingNotifications]: states });
 }
 
 async function checkUpcomingMeetings(token) {
   try {
-    const res = await fetch(`${API_URL}/api/calendar/upcoming?minutes=35`, {
+    const res = await fetch(`${API_URL}/api/communication-schedules/extension-upcoming`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return;
-    const meetings = await res.json();
-    const notified = await _getNotifiedMeetings();
+    const data = await res.json();
     if (!await ownsSession(token)) return;
-    for (const m of meetings) {
+    for (const occurrence of data.occurrences || []) {
       if (!await ownsSession(token)) return;
-      if (notified.has(m.id)) continue;
-      if (m.minutes_until <= 30) {
-        showNotification(
-          `📅 Reunión en ${m.minutes_until} min`,
-          m.title
-        );
-        await _addNotifiedMeeting(m.id, token);
-      }
+      const key = `${data.user_id}:${occurrence.occurrence_id}`;
+      if (!await _reserveMeetingNotification(key, token)) continue;
+      const notificationId = `agency-meeting:${key}`;
+      chrome.notifications.create(notificationId, {
+        type: "basic",
+        iconUrl: "icons/icon48.png",
+        title: occurrence.title,
+        message: occurrence.content,
+        priority: 2,
+      }, () => { void _confirmMeetingNotification(key, token); });
     }
   } catch {
-    // silently ignore
+    // A pending reservation is deliberately not replayed: notification
+    // creation may have succeeded even if its callback was interrupted.
   }
 }
 
