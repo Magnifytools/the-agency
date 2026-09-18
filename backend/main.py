@@ -19,7 +19,7 @@ from backend.api.routes import (
     dashboard, discord, billing, projects, communications, pm,
     reports, proposals, growth, invitations, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
-    service_templates, dailys, contacts, activity, notifications, resources, deliveries,
+    service_templates, dailys, contacts, activity, notifications, resources, deliveries, communication_schedules,
     changes,
     billing_events, client_dashboard, engine_integration, investments,
     evidence, search, agency_vault, core_updates, balance,
@@ -339,7 +339,7 @@ _HIDDEN = hidden_modules()
 # Núcleo: siempre registrado.
 _CORE_ROUTERS = [
     auth, clients, tasks, task_categories, time_entries, users, dashboard,
-    projects, pm, digests, sync, dailys, contacts, activity, notifications, deliveries,
+    projects, pm, digests, sync, dailys, contacts, activity, notifications, deliveries, communication_schedules,
     client_dashboard, engine_integration, inbox, extension, google_calendar,
     usage_stats,
     # changes: el Undo del shell. No es una pantalla, es la red de seguridad

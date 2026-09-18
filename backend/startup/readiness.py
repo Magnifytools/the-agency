@@ -30,6 +30,10 @@ async def check_database_ready(engine) -> None:
             await conn.execute(text("SELECT id, request_key, owner_id, kind, scope, period_start, period_end, title, content, destination_kind, created_at, updated_at FROM communication_requests LIMIT 0"))
             await conn.execute(text("SELECT id, dedupe_key, actor_id, source_kind, source_id, source_version, destination_key, payload, status, available_at, expires_at, sent_at, error_code, message, resend_of, created_at, updated_at FROM deliveries LIMIT 0"))
             await conn.execute(text("SELECT id, delivery_id, number, steps, lease_until, status, created_at, updated_at FROM delivery_attempts LIMIT 0"))
+            await conn.execute(text("SELECT google_calendar_synced_at FROM users LIMIT 0"))
+            await conn.execute(text("SELECT source_calendar_id FROM events LIMIT 0"))
+            await conn.execute(text("SELECT policy_key, destination_id, kind, approved_by, recipient_id, enabled, channels, time, minutes_before, quiet_start, quiet_end, revision, effective_from FROM communication_schedules LIMIT 0"))
+            await conn.execute(text("SELECT occurrence_key, schedule_id, recipient_id, kind, channel, period_start, period_end, event_id, event_start, due_at, expires_at, state, reason, request_id, notification_id FROM communication_occurrences LIMIT 0"))
             # These source types enforce financial visibility in persisted PM
             # insights; do not serve a revision whose enum upgrade was skipped.
             await conn.execute(text("SELECT 'financial'::insighttype, 'operational_suggestion'::insighttype"))
@@ -41,6 +45,11 @@ async def check_database_ready(engine) -> None:
                 ("time_entries", ["user_id"], "(minutes IS NULL)"),
                 ("deliveries", ["dedupe_key"], ""),
                 ("communication_requests", ["request_key"], ""),
+                ("communication_schedules", ["policy_key"], ""),
+                ("events", ["user_id", "source_calendar_id", "google_event_id"], ""),
+                ("communication_occurrences", ["occurrence_key"], ""),
+                ("communication_occurrences", ["request_id"], ""),
+                ("communication_occurrences", ["notification_id"], ""),
                 ("delivery_attempts", ["delivery_id", "number"], ""),
             ):
                 valid = await conn.scalar(text("""

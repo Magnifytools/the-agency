@@ -129,7 +129,7 @@ export function OnboardingModal() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ob_morning">Reminder manana</Label>
+              <Label htmlFor="ob_morning">Hora sugerida de mañana (sin activar avisos)</Label>
               <Input
                 id="ob_morning"
                 type="time"
@@ -138,7 +138,7 @@ export function OnboardingModal() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ob_evening">Recap noche</Label>
+              <Label htmlFor="ob_evening">Hora sugerida de recap (sin activar avisos)</Label>
               <Input
                 id="ob_evening"
                 type="time"

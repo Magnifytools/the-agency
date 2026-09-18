@@ -354,6 +354,7 @@ class User(TimestampMixin, Base):
     # Google Calendar integration
     google_refresh_token = Column(String(500), nullable=True)   # encrypted v1:
     google_calendar_id = Column(String(200), nullable=True)     # "primary" or specific
+    google_calendar_synced_at = Column(DateTime, nullable=True)  # last complete committed calendar reconciliation (UTC)
     google_calendar_connected = Column(Boolean, nullable=False, default=False, server_default="false")
 
     tasks = relationship("Task", back_populates="assigned_user", lazy="selectin", foreign_keys="[Task.assigned_to]")
@@ -605,6 +606,7 @@ class Proposal(TimestampMixin, Base):
 
 class Event(TimestampMixin, Base):
     __tablename__ = "events"
+    __table_args__ = (Index("uq_events_google_scope", "user_id", "source_calendar_id", "google_event_id", unique=True),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     title = Column(String(200), nullable=False)
@@ -618,7 +620,8 @@ class Event(TimestampMixin, Base):
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     # Google Calendar sync
-    google_event_id = Column(String(300), nullable=True, unique=True)
+    google_event_id = Column(String(300), nullable=True)
+    source_calendar_id = Column(String(200), nullable=True)
     source = Column(String(20), nullable=False, default="manual", server_default="manual")
     alert_sent_at = Column(DateTime, nullable=True)
 
@@ -1509,6 +1512,51 @@ class CommunicationRequest(TimestampMixin, Base):
     title = Column(String(200), nullable=False)
     content = Column(Text, nullable=False)
     destination_kind = Column(String(20), nullable=False)
+
+
+class CommunicationSchedule(TimestampMixin, Base):
+    __tablename__ = "communication_schedules"
+    __table_args__ = (Index("uq_communication_policy_key", "policy_key", unique=True),)
+    id = Column(Integer, primary_key=True)
+    policy_key = Column(String(100), nullable=False)
+    destination_id = Column(String(30), nullable=True)  # explicit technical weekly recipient, never User identity
+    kind = Column(String(20), nullable=False)
+    approved_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    recipient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    enabled = Column(Boolean, nullable=False, default=False)
+    channels = Column(JSONB, nullable=False)
+    time = Column(String(5), nullable=True)
+    minutes_before = Column(Integer, nullable=True)
+    quiet_start = Column(String(5), nullable=True)
+    quiet_end = Column(String(5), nullable=True)
+    revision = Column(Integer, nullable=False, default=1)
+    effective_from = Column(DateTime, nullable=False)
+
+
+class CommunicationOccurrence(TimestampMixin, Base):
+    __tablename__ = "communication_occurrences"
+    __table_args__ = (
+        Index("uq_communication_occurrence_key", "occurrence_key", unique=True),
+        Index("uq_communication_occurrence_request", "request_id", unique=True),
+        Index("uq_communication_occurrence_notification", "notification_id", unique=True),
+        Index("ix_communication_occurrence_due", "state", "due_at"),
+    )
+    id = Column(Integer, primary_key=True)
+    occurrence_key = Column(String(64), nullable=False)
+    schedule_id = Column(Integer, ForeignKey("communication_schedules.id"), nullable=False)
+    recipient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    kind = Column(String(20), nullable=False)
+    channel = Column(String(20), nullable=False)
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="SET NULL"), nullable=True)
+    event_start = Column(DateTime, nullable=True)  # revision: business civil time
+    due_at = Column(DateTime, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    state = Column(String(20), nullable=False, default="planned")
+    reason = Column(Text, nullable=True)
+    request_id = Column(Integer, ForeignKey("communication_requests.id"), nullable=True)
+    notification_id = Column(Integer, ForeignKey("notifications.id", ondelete="SET NULL"), nullable=True)
 
 
 class Delivery(TimestampMixin, Base):

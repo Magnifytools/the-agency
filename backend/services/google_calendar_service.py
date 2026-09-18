@@ -94,53 +94,44 @@ def fetch_events(
     time_max: datetime | None = None,
 ) -> list[dict]:
     """Fetch events from Google Calendar. Returns list of simplified event dicts."""
+    from backend.services.temporal import business_zone
     creds = _get_credentials(encrypted_refresh_token)
     if not creds:
-        return []
-
-    if not time_min:
-        time_min = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    if not time_max:
-        time_max = time_min + timedelta(days=2)
-
-    try:
-        service = build("calendar", "v3", credentials=creds)
+        raise ValueError("Calendar credentials unavailable")
+    time_min = time_min or datetime.now(business_zone()).replace(hour=0, minute=0, second=0, microsecond=0)
+    time_max = time_max or time_min + timedelta(days=2)
+    if time_min.tzinfo is None:
+        time_min = time_min.replace(tzinfo=business_zone())
+    if time_max.tzinfo is None:
+        time_max = time_max.replace(tzinfo=business_zone())
+    service = build("calendar", "v3", credentials=creds)
+    events, token, seen_tokens = [], None, set()
+    while True:
         result = service.events().list(
-            calendarId=calendar_id,
-            timeMin=time_min.isoformat() + "Z",
-            timeMax=time_max.isoformat() + "Z",
-            singleEvents=True,
-            orderBy="startTime",
-            maxResults=50,
+            calendarId=calendar_id, timeMin=time_min.isoformat(), timeMax=time_max.isoformat(),
+            singleEvents=True, showDeleted=True, orderBy="startTime", maxResults=250,
+            **({"pageToken": token} if token else {}),
         ).execute()
-
-        events = []
+        if not isinstance(result, dict) or not isinstance(result.get("items"), list):
+            raise ValueError("Incomplete calendar response")
         for item in result.get("items", []):
             if item.get("status") == "cancelled":
+                events.append({"google_event_id": item["id"], "cancelled": True})
                 continue
-            start = item.get("start", {})
-            end = item.get("end", {})
-            is_all_day = "date" in start and "dateTime" not in start
-
+            start, end = item.get("start", {}), item.get("end", {})
+            if not item.get("id") or not (start.get("dateTime") or start.get("date")):
+                raise ValueError("Incomplete calendar event")
             events.append({
-                "google_event_id": item["id"],
-                "title": item.get("summary", "(Sin título)"),
-                "description": item.get("description", ""),
-                "start_time": start.get("dateTime") or start.get("date"),
-                "end_time": end.get("dateTime") or end.get("date"),
-                "is_all_day": is_all_day,
-                "location": item.get("location", ""),
-                "attendees": [
-                    a.get("email", "") for a in item.get("attendees", [])
-                    if not a.get("self", False)
-                ],
+                "google_event_id": item["id"], "title": item.get("summary", "(Sin título)"),
+                "description": item.get("description", ""), "start_time": start.get("dateTime") or start.get("date"),
+                "end_time": end.get("dateTime") or end.get("date"), "is_all_day": "date" in start and "dateTime" not in start,
             })
-
-        return events
-
-    except Exception as e:
-        logger.error("Google Calendar fetch failed: %s", e)
-        return []
+        token = result.get("nextPageToken")
+        if not token:
+            return events
+        if token in seen_tokens:
+            raise ValueError("Calendar pagination repeated a token")
+        seen_tokens.add(token)
 
 
 def encrypt_refresh_token(token: str) -> str:

@@ -23,7 +23,7 @@ export function deliveryToast(receipt: DeliveryReceipt) {
 type ManualKind = "pm_briefing" | "weekly_report" | "daily_summary" | "custom" | "connection_test"
 
 type ReceiptSource =
-  | { sourceKind: "daily" | "digest"; sourceId: number; manualKind?: never; scope?: never }
+  | { sourceKind: "daily" | "digest" | "communication"; sourceId: number; manualKind?: never; scope?: never }
   | { manualKind: ManualKind; scope?: "mine" | "team"; sourceKind?: never; sourceId?: never }
 
 function ReceiptHistory(props: ReceiptSource) {
@@ -102,7 +102,7 @@ function ReceiptHistory(props: ReceiptSource) {
   </section>
 }
 
-export function DeliveryReceipts(props: { sourceKind: "daily" | "digest"; sourceId: number }) {
+export function DeliveryReceipts(props: { sourceKind: "daily" | "digest" | "communication"; sourceId: number }) {
   return <ReceiptHistory {...props} />
 }
 

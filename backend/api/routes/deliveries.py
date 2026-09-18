@@ -11,20 +11,19 @@ from backend.services import deliveries as service
 router = APIRouter(prefix="/api/deliveries", tags=["deliveries"])
 
 
-def writable(actor, kind):
-    if kind not in service.SOURCE_MODELS:
-        return False
-    if kind == "daily" or actor.role == UserRole.admin:
+async def writable(db, actor, kind, source):
+    try:
+        await service.authorize_source(db, kind, source.id, actor, write=True)
         return True
-    module = "pm" if kind == "communication" else "digests"
-    return any(p.module == module and p.can_write for p in actor.permissions)
+    except HTTPException:
+        return False
 
 
 @router.get("", response_model=list[DeliveryReceipt])
 async def list_deliveries(source_kind: str, source_id: int, limit: int = Query(10, ge=1, le=50), db: AsyncSession = Depends(get_db), actor: User = Depends(get_current_user)):
     source = await service.authorize_source(db, source_kind, source_id, actor, write=False)
     rows = (await db.execute(select(Delivery).where(Delivery.source_kind == source_kind, Delivery.source_id == source_id).order_by(Delivery.created_at.desc(), Delivery.id).limit(limit))).scalars().all()
-    return [await service.receipt(db, row, source, writable=writable(actor, source_kind)) for row in rows]
+    return [await service.receipt(db, row, source, writable=await writable(db, actor, source_kind, source)) for row in rows]
 
 
 @router.get("/manual", response_model=list[DeliveryReceipt])
@@ -42,13 +41,13 @@ async def list_manual_deliveries(kind: str, scope: str | None = None, limit: int
     if scope is not None:
         query = query.where(CommunicationRequest.scope == scope)
     rows = (await db.execute(query.order_by(Delivery.created_at.desc(), Delivery.id).limit(limit))).all()
-    return [await service.receipt(db, row, source, writable=writable(actor, "communication")) for row, source in rows]
+    return [await service.receipt(db, row, source, writable=await writable(db, actor, "communication", source)) for row, source in rows]
 
 
 @router.get("/{delivery_id}", response_model=DeliveryReceipt)
 async def get_delivery(delivery_id: str, db: AsyncSession = Depends(get_db), actor: User = Depends(get_current_user)):
     row, source = await service.load_delivery(db, delivery_id, actor)
-    return await service.receipt(db, row, source, writable=writable(actor, row.source_kind))
+    return await service.receipt(db, row, source, writable=await writable(db, actor, row.source_kind, source))
 
 
 @router.post("/{delivery_id}/retry", response_model=DeliveryReceipt, status_code=202)
