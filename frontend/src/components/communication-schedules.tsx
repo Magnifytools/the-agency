@@ -27,20 +27,22 @@ function PolicyEditor({ policy, refresh }: { policy: Policy; refresh: () => void
     onSuccess: (saved) => { setDraft(saved); setError(""); refresh() },
     onError: (e) => setError(getErrorMessage(e, "No se pudo guardar. Tu selección se conserva.")),
   })
-  return <form onSubmit={e => { e.preventDefault(); mutation.mutate() }} className="rounded-xl border p-4 space-y-3">
-    <h3 className="font-medium">{titles[policy.kind]}</h3>
-    <p role="status" className="text-sm">{states[policy.state] || policy.state}{policy.reason ? ` · ${policy.reason}` : ""}</p>
-    {policy.kind === "weekly" && <p className="text-sm text-muted-foreground">Sábado a las 08:00: informe del lunes al viernes cerrados. Caduca el lunes a las 08:00. Guardar asume la responsabilidad de esta política de equipo.</p>}
+  return <details className="rounded-xl border p-4" open={policy.state === "blocked" ? true : undefined}>
+    <summary className="cursor-pointer min-h-11 py-2"><span className="font-medium">{titles[policy.kind]}</span><span role="status" className="block mt-1 text-sm text-muted-foreground">{states[policy.state] || policy.state}</span></summary>
+    <form onSubmit={e => { e.preventDefault(); mutation.mutate() }} className="space-y-3 pt-3">
+    {policy.reason && policy.state !== "needs_review" && <p className="text-sm">{policy.reason}</p>}
+    {policy.kind === "weekly" && <p className="text-sm text-muted-foreground">Se envía el sábado a las 08:00 con el trabajo del lunes al viernes. Al guardarlo, te encargas de este aviso del equipo.</p>}
     {policy.kind === "weekly" && <label className="block text-sm">ID Discord del destinatario técnico<input className="block rounded border p-2 bg-background w-full" inputMode="numeric" pattern="[0-9]{5,30}" value={draft.destination_id ?? ""} onChange={e => setDraft({ ...draft, destination_id: e.target.value || null })} /><span className="text-xs text-muted-foreground">Se enviará a este ID. No vincula la cuenta de ninguna persona de Agency.</span></label>}
     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.enabled} onChange={e => setDraft({ ...draft, enabled: e.target.checked })} /> Activar {titles[policy.kind].toLowerCase()}</label>
-    <fieldset className="space-y-2"><legend className="text-sm mb-2">Canales autorizados</legend>{channels[policy.kind].map(channel => <label key={channel} className="flex items-start gap-2 text-sm"><input type="checkbox" checked={draft.channels.includes(channel)} onChange={e => setDraft({ ...draft, channels: e.target.checked ? [...draft.channels, channel] : draft.channels.filter(c => c !== channel) })} />{channelLabels[channel]}</label>)}</fieldset>
+    <fieldset className="space-y-2"><legend className="text-sm mb-2">Dónde recibirlo</legend>{channels[policy.kind].map(channel => <label key={channel} className="flex items-start gap-2 text-sm"><input type="checkbox" checked={draft.channels.includes(channel)} onChange={e => setDraft({ ...draft, channels: e.target.checked ? [...draft.channels, channel] : draft.channels.filter(c => c !== channel) })} />{channelLabels[channel]}</label>)}</fieldset>
     {policy.kind === "meeting" ? <label className="block text-sm">Antelación (minutos)<input className="block rounded border p-2 w-28 bg-background" type="number" min={5} max={120} value={draft.minutes_before ?? 30} onChange={e => setDraft({ ...draft, minutes_before: Number(e.target.value) })} /></label> : <label className="block text-sm">Hora<input className="block rounded border p-2 bg-background" type="time" required disabled={policy.kind === "weekly"} value={draft.time ?? "08:00"} onChange={e => setDraft({ ...draft, time: e.target.value })} /></label>}
-    <div className="flex flex-wrap gap-3">{(["quiet_start", "quiet_end"] as const).map(field => <label key={field} className="text-sm">{field === "quiet_start" ? "Silencio desde" : "Silencio hasta"}<input type="time" className="block rounded border p-2 bg-background" value={draft[field] ?? ""} onChange={e => setDraft({ ...draft, [field]: e.target.value || null })} /></label>)}</div>
-    <p className="text-xs text-muted-foreground">Sin horas de silencio: no se aplaza. Si el silencio termina después de la ventana del aviso, caduca sin enviarse.</p>
-    {policy.kind === "meeting" && <p className="text-sm">El DM personal de Discord no está disponible: aún no existe un vínculo de identidad verificado. Puedes usar la app o la extensión. <a className="underline" href="#calendar">Configurar Google Calendar</a>.</p>}
+    <details className="rounded-lg bg-muted/30 p-3"><summary className="cursor-pointer text-sm">Horario de silencio (opcional)</summary><div className="mt-3 flex flex-wrap gap-3">{(["quiet_start", "quiet_end"] as const).map(field => <label key={field} className="text-sm">{field === "quiet_start" ? "Silencio desde" : "Silencio hasta"}<input type="time" className="block rounded border p-2 bg-background" value={draft[field] ?? ""} onChange={e => setDraft({ ...draft, [field]: e.target.value || null })} /></label>)}</div>
+    <p className="text-xs text-muted-foreground">Los avisos se aplazan durante este horario. Si dejan de ser útiles antes de que termine, no se envían.</p></details>
+    {policy.kind === "meeting" && <p className="text-sm">Recibe un aviso antes de cada reunión. <a className="underline" href="#calendar">Configurar Google Calendar</a>.</p>}
     {error && <p role="alert" className="text-sm text-red-600">{error} <button type="button" className="underline" onClick={async () => { try { const fresh = await api.get<Catalog>("/communication-schedules"); const current = fresh.data.policies.find(p => p.kind === policy.kind); if (current) setDraft(current); setError(""); refresh() } catch { setError("No se pudo recargar; tu borrador se conserva") } }}>Descartar borrador y recargar</button></p>}
     <Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? "Guardando…" : `Guardar ${titles[policy.kind].toLowerCase()}`}</Button>
-  </form>
+    </form>
+  </details>
 }
 
 export function CommunicationSchedules() {
@@ -53,18 +55,18 @@ export function CommunicationSchedules() {
   const refresh = () => { client.invalidateQueries({ queryKey: key }); client.invalidateQueries({ queryKey: ["deliveries"] }) }
   return <section id="notifications" className="bg-card border border-border rounded-2xl p-6 space-y-4 scroll-mt-8">
     <h2 className="text-base font-semibold">Avisos</h2>
-    <p className="text-sm text-muted-foreground">Elige qué recibir y dónde. Las preferencias antiguas de email, Discord y horarios se conservan como historial; no autorizan estos envíos.</p>
+    <p className="text-sm text-muted-foreground">Elige un aviso para configurar dónde y cuándo recibirlo. Solo se activa cuando lo guardas.</p>
     {catalog.isPending && <p>Cargando configuración…</p>}
     {catalog.isError && <p role="alert">No se pudo cargar la configuración. <button className="underline" onClick={() => catalog.refetch()}>Reintentar</button></p>}
     {catalog.data && <>
-      <p className="text-sm">Zona: {catalog.data.timezone}. {!catalog.data.scheduler_enabled && "El planificador está pausado; puedes guardar tu configuración sin que se envíe nada."}</p>
-      <p className="text-sm">Los avisos de escritorio requieren la extensión {catalog.data.extension_min_version} o posterior. <a className="underline" href={catalog.data.extension_download_url}>Descargar actualización</a>. En chrome://extensions puedes actualizarla; las versiones anteriores no reciben avisos. Cada instalación muestra sus propios avisos.</p>
+      <p className="text-sm">Zona: {catalog.data.timezone}. {!catalog.data.scheduler_enabled && "Los envíos están pausados; puedes guardar tus preferencias para cuando se reanuden."}</p>
+      <details className="text-sm"><summary className="cursor-pointer">Avisos en Chrome</summary><p className="mt-2">Los avisos de escritorio requieren la extensión {catalog.data.extension_min_version} o posterior. <a className="underline" href={catalog.data.extension_download_url}>Descargar actualización</a>. En chrome://extensions puedes actualizarla; las versiones anteriores no reciben avisos. Cada instalación muestra sus propios avisos.</p></details>
       <div className="grid gap-4 lg:grid-cols-2">{catalog.data.policies.map(policy => <PolicyEditor key={`${user?.id}:${policy.kind}`} policy={policy} refresh={refresh} />)}</div>
     </>}
     {isAdmin && <DiscordConfiguration refresh={refresh} />}
     <h3 className="font-medium">Próximos y últimos avisos</h3>
     {history.isError && <p role="alert">No se pudo cargar el historial. <button className="underline" onClick={() => history.refetch()}>Reintentar</button></p>}
-    {!history.isPending && !history.data?.length && <p className="text-sm text-muted-foreground">Todavía no hay ocurrencias en esta página. Activar una política no reconstruye avisos anteriores.</p>}
+    {!history.isPending && !history.data?.length && <p className="text-sm text-muted-foreground">Todavía no hay avisos en esta página. Aquí verás los próximos avisos y qué ocurrió con los anteriores.</p>}
     {history.data?.map(row => <article key={row.id} className="border rounded-xl p-4 space-y-2 text-sm"><h4 className="font-medium">{titles[row.kind]} · {row.period_start}</h4><p>{channelLabels[row.channel]} · {states[row.state] || row.state}</p><p>{row.reason}</p>{row.receipt && <DeliveryReceipts sourceKind="communication" sourceId={row.receipt.source_id} />}</article>)}
     <div className="flex gap-2">{before && <Button variant="outline" onClick={() => setBefore(null)}>Más recientes</Button>}{history.data?.length === 20 && <Button variant="outline" onClick={() => setBefore(history.data![history.data!.length - 1].id)}>Anteriores</Button>}</div>
   </section>
