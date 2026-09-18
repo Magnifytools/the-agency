@@ -150,3 +150,70 @@ def test_digest_prompt_keeps_historical_flat_context_readable():
 
     assert "PROYECTO: Proyecto antiguo" in prompt
     assert "Hecho histórico" in prompt
+
+
+async def test_digest_excludes_recurring_templates_and_separates_unresolved_projects(
+    db_session, admin_user
+):
+    client = Client(name="Cliente destino", status=ClientStatus.active)
+    other_client = Client(name="Cliente ajeno", status=ClientStatus.active)
+    db_session.add_all([client, other_client])
+    await db_session.flush()
+    project = Project(name="Proyecto correcto", client_id=client.id)
+    foreign_project = Project(name="Proyecto ajeno", client_id=other_client.id)
+    db_session.add_all([project, foreign_project])
+    await db_session.flush()
+    completed = Task(
+        title="Trabajo real",
+        client_id=client.id,
+        project_id=project.id,
+        status=TaskStatus.completed,
+        completed_at=datetime(2026, 9, 3, 10),
+        is_recurring=False,
+    )
+    template = Task(
+        title="Plantilla semanal",
+        client_id=client.id,
+        project_id=project.id,
+        status=TaskStatus.pending,
+        is_recurring=True,
+    )
+    legacy_cross_client = Task(
+        title="Referencia histórica ambigua",
+        client_id=client.id,
+        project_id=foreign_project.id,
+        status=TaskStatus.pending,
+        is_recurring=False,
+    )
+    db_session.add_all([completed, template, legacy_cross_client])
+    await db_session.flush()
+    db_session.add(TimeEntry(
+        task_id=template.id,
+        user_id=admin_user.id,
+        minutes=120,
+        date=datetime(2026, 9, 3),
+    ))
+    await db_session.flush()
+
+    data = await collect_digest_data(
+        db_session, client.id, date(2026, 9, 1), date(2026, 9, 7)
+    )
+
+    correct = data["projects"][0]
+    assert correct["progress_percent"] == 100
+    assert correct["pending_total"] == 0
+    assert correct["total_minutes"] == 0
+    assert "Plantilla semanal" not in {task["title"] for task in data["pending_tasks"]}
+    assert data["unassigned"]["task_total"] == 0
+    assert len(data["unresolved_projects"]) == 1
+    unresolved = data["unresolved_projects"][0]
+    assert unresolved["project_id"] == foreign_project.id
+    assert unresolved["resolution"] == "unresolved"
+    assert unresolved["project_name"] == (
+        f"Proyecto no resuelto (ID {foreign_project.id})"
+    )
+    assert unresolved["pending_tasks"][0]["title"] == "Referencia histórica ambigua"
+
+    prompt = _build_user_prompt(data, DigestTone.formal)
+    assert "Proyecto no resuelto" in prompt
+    assert "### Sin proyecto" not in prompt

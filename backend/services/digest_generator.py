@@ -95,6 +95,7 @@ TONO: {tone_instruction}
 
 --- TOTALES DEL CLIENTE ---
 Proyectos: {project_count}
+Referencias de proyecto no resueltas: {unresolved_project_count}
 Tareas completadas en el periodo: {completed_total}
 Tareas en curso: {in_progress_total}
 Tareas pendientes: {pending_total}
@@ -187,6 +188,7 @@ def _build_user_prompt(raw_data: dict, tone: DigestTone) -> str:
     """Build the user prompt from collector data."""
     if raw_data.get("context_version") == 2 and "projects" in raw_data:
         groups = list(raw_data.get("projects", []))
+        groups.extend(raw_data.get("unresolved_projects", []))
         unassigned = raw_data.get("unassigned")
         if unassigned and any(
             unassigned.get(key, 0)
@@ -200,6 +202,10 @@ def _build_user_prompt(raw_data: dict, tone: DigestTone) -> str:
             period_end=raw_data.get("period_end", ""),
             tone_instruction=TONE_INSTRUCTIONS[tone],
             project_count=totals.get("project_count", len(raw_data.get("projects", []))),
+            unresolved_project_count=totals.get(
+                "unresolved_project_count",
+                len(raw_data.get("unresolved_projects", [])),
+            ),
             completed_total=totals.get("completed_total", 0),
             in_progress_total=totals.get("in_progress_total", 0),
             pending_total=totals.get("pending_total", 0),
