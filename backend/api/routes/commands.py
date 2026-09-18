@@ -150,7 +150,8 @@ async def get_command_query(receipt_id: str, page: int = Query(1, ge=1),
     if row.status != STATUS_EXECUTED or (row.intent or {}).get("kind") != "query_work":
         raise HTTPException(409, "El recibo no contiene una consulta")
     require_permission(actor, "tasks", write=False)
-    return await query_work(db, row.intent["query"], page=page, page_size=page_size)
+    return await query_work(db, row.intent["query"], actor=actor,
+                            scope=row.intent.get("scope", "mine"), page=page, page_size=page_size)
 
 
 @router.get("", response_model=CommandListResponse)

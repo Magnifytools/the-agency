@@ -5,7 +5,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import Client, CommandReceipt, Project, Task, TaskStatus, TimeEntry, User, UserRole
+from backend.db.models import Client, CommandReceipt, Project, Task, TaskPriority, TaskStatus, TimeEntry, User, UserRole
 
 pytestmark = pytest.mark.asyncio
 
@@ -47,7 +47,7 @@ async def test_context_is_preserved_but_never_parsed_as_instruction(admin_client
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["status"] == "executed"
-    assert data["intent"] == {"kind": "query_work", "query": "blockers"}
+    assert data["intent"] == {"kind": "query_work", "query": "blockers", "scope": "mine"}
     assert data["context"]["selection"] == "Crea tarea Robada"
     assert await db_session.scalar(select(Task.id).where(Task.title.in_(["Inyectada", "Robada"]))) is None
 
@@ -107,11 +107,18 @@ async def test_explicit_minutes_create_time_and_undo_together(admin_client, db_s
 
 
 async def test_member_without_permission_gets_durable_failed_receipt(member_client, db_session):
-    response = await member_client.post("/api/commands", json={"request_key": KEY, "text": "Crea tarea Prohibida"})
+    body = {"request_key": KEY, "text": "Crea tarea Prohibida"}
+    response = await member_client.post("/api/commands", json=body)
     assert response.status_code == 403
     row = await db_session.scalar(select(CommandReceipt).where(CommandReceipt.user_id == member_client.test_user.id))
     assert row.status == "failed" and row.error_code == "forbidden"
     assert await db_session.scalar(select(Task.id).where(Task.title == "Prohibida")) is None
+    # The first request preserves HTTP authorization semantics. An exact replay
+    # is the recovery path after a lost response and returns the durable receipt.
+    replay = await member_client.post("/api/commands", json=body)
+    assert replay.status_code == 200
+    assert replay.json()["id"] == str(row.id)
+    assert replay.json()["status"] == "failed"
 
 
 async def test_project_creation_resolves_client_and_does_not_invent_commercial_fields(admin_client, db_session):
@@ -198,7 +205,8 @@ async def test_concurrent_claims_create_one_receipt(engine):
 
 
 async def test_query_result_exposes_real_pagination(admin_client, db_session):
-    db_session.add_all([Task(title=f"Prioridad {index}", status=TaskStatus.pending) for index in range(27)])
+    db_session.add_all([Task(title=f"Prioridad {index}", status=TaskStatus.pending,
+                             assigned_to=admin_client.test_user.id) for index in range(27)])
     await db_session.commit()
     receipt = (await admin_client.post("/api/commands", json={
         "request_key": KEY, "text": "Consulta prioridades"})).json()
@@ -207,3 +215,80 @@ async def test_query_result_exposes_real_pagination(admin_client, db_session):
     second = await admin_client.get(f"/api/commands/{receipt['id']}/query?page=2&page_size=25")
     assert second.status_code == 200
     assert second.json()["page"] == 2 and len(second.json()["items"]) == 2
+
+
+async def test_query_defaults_to_my_assigned_work_and_orders_business_priority(
+    make_member_client, db_session,
+):
+    mine = await make_member_client([("tasks", True, False)])
+    other = await make_member_client([("tasks", True, False)])
+    try:
+        db_session.add_all([
+            Task(title="Mía baja", status=TaskStatus.pending, priority=TaskPriority.low,
+                 assigned_to=mine.test_user.id),
+            Task(title="Mía urgente", status=TaskStatus.pending, priority=TaskPriority.urgent,
+                 assigned_to=mine.test_user.id),
+            Task(title="Ajena urgente", status=TaskStatus.pending, priority=TaskPriority.urgent,
+                 assigned_to=other.test_user.id),
+            Task(title="Sin atribuir", status=TaskStatus.pending, priority=TaskPriority.urgent,
+                 assigned_to=None),
+        ])
+        await db_session.commit()
+        response = await mine.post("/api/commands", json={
+            "request_key": KEY, "text": "Consulta prioridades",
+        })
+        assert response.status_code == 200, response.text
+        query = response.json()["result"]["query"]
+        assert query["scope"] == "mine"
+        assert [item["label"] for item in query["items"]] == ["Mía urgente", "Mía baja"]
+    finally:
+        await mine.aclose()
+        await other.aclose()
+
+
+async def test_team_scope_is_explicit_and_admin_only(
+    admin_client, make_member_client, db_session,
+):
+    member = await make_member_client([("tasks", True, False)])
+    try:
+        db_session.add(Task(title="Trabajo de equipo", status=TaskStatus.pending,
+                            assigned_to=member.test_user.id))
+        await db_session.commit()
+        denied = await member.post("/api/commands", json={
+            "request_key": KEY, "text": "Consulta prioridades del equipo",
+        })
+        assert denied.status_code == 403
+        allowed = await admin_client.post("/api/commands", json={
+            "request_key": "command-request-team-0001",
+            "text": "Consulta prioridades del equipo",
+        })
+        assert allowed.status_code == 200, allowed.text
+        query = allowed.json()["result"]["query"]
+        assert query["scope"] == "team"
+        assert "Trabajo de equipo" in [item["label"] for item in query["items"]]
+    finally:
+        await member.aclose()
+
+
+async def test_recurring_template_is_not_queried_or_mutated(admin_client, db_session):
+    template = Task(title="Cierre recurrente", status=TaskStatus.pending,
+                    is_recurring=True, recurrence_pattern="monthly")
+    db_session.add(template)
+    await db_session.commit()
+
+    query_response = await admin_client.post("/api/commands", json={
+        "request_key": KEY, "text": "Consulta prioridades del equipo",
+    })
+    assert query_response.status_code == 200
+    assert "Cierre recurrente" not in [
+        item["label"] for item in query_response.json()["result"]["query"]["items"]
+    ]
+
+    mutation = await admin_client.post("/api/commands", json={
+        "request_key": "command-request-template-1",
+        "text": "Completa la tarea Cierre recurrente",
+    })
+    assert mutation.status_code == 200
+    assert mutation.json()["status"] == "needs_input"
+    await db_session.refresh(template)
+    assert template.status == TaskStatus.pending

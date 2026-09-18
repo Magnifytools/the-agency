@@ -8,7 +8,7 @@ from datetime import date
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import (
@@ -80,10 +80,11 @@ def parse_command(raw: str) -> dict[str, Any]:
         if kind == "log_time":
             return {"kind": kind, "minutes": int(groups[0]), "task_name": groups[1]}
     lowered = text.casefold()
+    scope = "team" if "equipo" in lowered else "mine"
     if any(word in lowered for word in ("prioridades", "prioridad")) and lowered.startswith(("qué", "que", "muestra", "consulta")):
-        return {"kind": "query_work", "query": "priorities"}
+        return {"kind": "query_work", "query": "priorities", "scope": scope}
     if any(word in lowered for word in ("bloqueos", "bloqueadas", "esperando")):
-        return {"kind": "query_work", "query": "blockers"}
+        return {"kind": "query_work", "query": "blockers", "scope": scope}
     return {"kind": "unsupported"}
 
 
@@ -92,8 +93,10 @@ def _choice(entity: str, row, label: str, subtitle: str | None = None) -> dict:
 
 
 async def _resolve_named(db: AsyncSession, model, name_column, name: str, entity: str):
-    rows = list((await db.execute(select(model).where(func.lower(name_column) == name.casefold())
-                                  .order_by(model.id))).scalars().all())
+    query = select(model).where(func.lower(name_column) == name.casefold())
+    if entity == "task":
+        query = query.where(Task.is_recurring.is_(False))
+    rows = list((await db.execute(query.order_by(model.id))).scalars().all())
     if len(rows) == 1:
         return rows[0], None
     if not rows:
@@ -173,7 +176,8 @@ async def execute_or_prompt(db: AsyncSession, receipt: CommandReceipt, actor: Us
         entities = [_entity_result("task", task)]
     elif kind == "query_work":
         require_permission(actor, "tasks", write=False)
-        page = await query_work(db, intent["query"], page=1, page_size=25)
+        page = await query_work(db, intent["query"], actor=actor,
+                                scope=intent.get("scope", "mine"), page=1, page_size=25)
         receipt.status = STATUS_EXECUTED
         receipt.result = {"message": f"{page['total']} tareas", "entities": [], "query": page,
                           "undo_available": False}
@@ -184,18 +188,36 @@ async def execute_or_prompt(db: AsyncSession, receipt: CommandReceipt, actor: Us
     receipt.result = {"message": message, "entities": entities, "undo_available": False}
 
 
-async def query_work(db: AsyncSession, kind: str, *, page: int, page_size: int) -> dict:
-    query = select(Task).where(Task.status.in_(ACTIVE_TASK_STATUSES))
+async def query_work(db: AsyncSession, kind: str, *, actor: User, scope: str,
+                     page: int, page_size: int) -> dict:
+    if scope not in {"mine", "team"}:
+        raise HTTPException(422, "Ámbito de consulta no válido")
+    if scope == "team" and actor.role != UserRole.admin:
+        raise HTTPException(403, "Solo un administrador puede consultar el trabajo del equipo")
+    query = select(Task).where(
+        Task.status.in_(ACTIVE_TASK_STATUSES),
+        Task.is_recurring.is_(False),
+    )
+    if scope == "mine":
+        query = query.where(Task.assigned_to == actor.id)
     if kind == "blockers":
         query = query.where(or_(Task.status == TaskStatus.waiting, Task.waiting_for.isnot(None)))
         query = query.order_by(Task.due_date.asc().nullslast(), Task.id)
     elif kind == "priorities":
-        query = query.order_by(Task.priority, Task.due_date.asc().nullslast(), Task.id)
+        priority_order = case(
+            (Task.priority == TaskPriority.urgent, 0),
+            (Task.priority == TaskPriority.high, 1),
+            (Task.priority == TaskPriority.medium, 2),
+            (Task.priority == TaskPriority.low, 3),
+            else_=4,
+        )
+        query = query.order_by(priority_order, Task.due_date.asc().nullslast(), Task.id)
     else:
         raise HTTPException(422, "Consulta de trabajo no válida")
     total = await db.scalar(select(func.count()).select_from(query.order_by(None).subquery())) or 0
     rows = list((await db.execute(query.offset((page - 1) * page_size).limit(page_size))).scalars().all())
-    return {"kind": kind, "items": [_entity_result("task", task) for task in rows],
+    return {"kind": kind, "scope": scope,
+            "items": [_entity_result("task", task) for task in rows],
             "total": total, "page": page, "page_size": page_size,
             "has_more": page * page_size < total}
 
