@@ -288,6 +288,14 @@ async def test_digest_collector_has_fixed_query_budget_bounded_context_and_relev
             completed_at=datetime(2026, 9, 4, 10),
         )
     )
+    db_session.add(
+        Task(
+            title="Pendiente histórica sin hechos",
+            client_id=client.id,
+            project_id=empty_history.id,
+            status=TaskStatus.pending,
+        )
+    )
     await db_session.flush()
 
     statements = []
@@ -311,5 +319,76 @@ async def test_digest_collector_has_fixed_query_budget_bounded_context_and_relev
     assert by_name["Histórico con hecho"]["completed_total"] == 1
     assert data["totals"]["pending_total"] == 60
     assert not {"completed_tasks", "in_progress_tasks", "pending_tasks"} & data.keys()
+    prompt = _build_user_prompt(data, DigestTone.formal)
+    assert "TOTALES DEL CONTEXTO INCLUIDO" in prompt
+    assert "omiten proyectos históricos sin hechos" in prompt
     assert len(statements) <= 8
     assert not any("task_checklists" in statement for statement in statements)
+
+
+async def test_digest_hours_include_closed_project_samples_after_cohort_is_known(
+    db_session, admin_user
+):
+    client = Client(name="Cliente histórico con horas", status=ClientStatus.active)
+    db_session.add(client)
+    await db_session.flush()
+    project = Project(
+        name="Proyecto cerrado con horas",
+        client_id=client.id,
+        status=ProjectStatus.cancelled,
+    )
+    db_session.add(project)
+    await db_session.flush()
+    completed_outside = Task(
+        title="Completada antes del periodo",
+        client_id=client.id,
+        project_id=project.id,
+        status=TaskStatus.completed,
+        completed_at=datetime(2026, 8, 20, 10),
+    )
+    pending = Task(
+        title="Pendiente histórica visible",
+        client_id=client.id,
+        project_id=project.id,
+        status=TaskStatus.pending,
+    )
+    in_progress = Task(
+        title="En curso histórica visible",
+        client_id=client.id,
+        project_id=project.id,
+        status=TaskStatus.in_progress,
+    )
+    db_session.add_all([completed_outside, pending, in_progress])
+    await db_session.flush()
+    db_session.add(
+        TimeEntry(
+            task_id=completed_outside.id,
+            user_id=admin_user.id,
+            minutes=45,
+            date=datetime(2026, 9, 3),
+        )
+    )
+    await db_session.flush()
+
+    data = await collect_digest_data(
+        db_session, client.id, date(2026, 9, 1), date(2026, 9, 7)
+    )
+
+    assert len(data["projects"]) == 1
+    group = data["projects"][0]
+    assert group["project_name"] == "Proyecto cerrado con horas"
+    assert group["task_total"] == 3
+    assert group["completed_total"] == 0
+    assert group["pending_total"] == 1
+    assert group["in_progress_total"] == 1
+    assert group["total_minutes"] == 45
+    assert [task["title"] for task in group["pending_tasks"]] == [
+        "Pendiente histórica visible"
+    ]
+    assert [task["title"] for task in group["in_progress_tasks"]] == [
+        "En curso histórica visible"
+    ]
+    assert group["completed_tasks"] == []
+    assert data["totals"]["task_total"] == 3
+    assert data["totals"]["pending_total"] == 1
+    assert data["totals"]["in_progress_total"] == 1

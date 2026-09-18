@@ -93,7 +93,9 @@ CLIENTE: {client_name}
 PERIODO: {period_start} al {period_end}
 TONO: {tone_instruction}
 
---- TOTALES DEL CLIENTE ---
+--- TOTALES DEL CONTEXTO INCLUIDO ---
+Incluyen proyectos actuales y proyectos históricos con hechos en el periodo;
+omiten proyectos históricos sin hechos en el periodo.
 Proyectos: {project_count}
 Referencias de proyecto no resueltas: {unresolved_project_count}
 Tareas completadas en el periodo: {completed_total}

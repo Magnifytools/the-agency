@@ -171,7 +171,34 @@ async def collect_digest_data(
             .group_by(Task.project_id)
         )
     ).all()
-    task_totals = {row.project_id: row for row in task_totals_rows}
+    # Establish the complete included-project cohort before selecting samples.
+    # A closed project with period hours remains relevant even when its task was
+    # completed outside the period.
+    time_rows = (
+        await db.execute(
+            select(
+                Task.project_id,
+                Task.is_recurring,
+                func.coalesce(func.sum(TimeEntry.minutes), 0).label("minutes"),
+            )
+            .join(Task, TimeEntry.task_id == Task.id)
+            .where(
+                Task.client_id == client_id,
+                TimeEntry.minutes.isnot(None),
+                time_entry_civil_period(period_start, period_end + timedelta(days=1)),
+            )
+            .group_by(Task.project_id, Task.is_recurring)
+        )
+    ).all()
+    historical_template_minutes = 0
+    for row in time_rows:
+        group = group_for(row.project_id, historical_fact=True)
+        assert group is not None
+        minutes = int(row.minutes or 0)
+        group["total_minutes"] += minutes
+        if row.is_recurring:
+            group["historical_template_minutes"] += minutes
+            historical_template_minutes += minutes
 
     for row in task_totals_rows:
         group = group_for(row.project_id, historical_fact=bool(row.completed_total))
@@ -217,49 +244,6 @@ async def collect_digest_data(
             group = group_for(row.project_id, historical_fact=historical_fact)
             if group is not None:
                 group[target].append(_task_fact(row, group["project_name"]))
-
-    time_rows = (
-        await db.execute(
-            select(
-                Task.project_id,
-                Task.is_recurring,
-                func.coalesce(func.sum(TimeEntry.minutes), 0).label("minutes"),
-            )
-            .join(Task, TimeEntry.task_id == Task.id)
-            .where(
-                Task.client_id == client_id,
-                TimeEntry.minutes.isnot(None),
-                time_entry_civil_period(period_start, period_end + timedelta(days=1)),
-            )
-            .group_by(Task.project_id, Task.is_recurring)
-        )
-    ).all()
-    historical_template_minutes = 0
-    for row in time_rows:
-        group = group_for(row.project_id, historical_fact=True)
-        assert group is not None
-        minutes = int(row.minutes or 0)
-        group["total_minutes"] += minutes
-        if row.is_recurring:
-            group["historical_template_minutes"] += minutes
-            historical_template_minutes += minutes
-
-    # A historical project may have entered through hours only; attach its current
-    # aggregate for context without making an empty historical project visible.
-    for project_id, group in groups.items():
-        if project_id is None or group["task_total"]:
-            continue
-        row = task_totals.get(project_id)
-        if row is None:
-            continue
-        group["task_total"] = row.task_total
-        group["completed_total"] = row.completed_total
-        group["in_progress_total"] = row.in_progress_total
-        group["pending_total"] = row.pending_total
-        if row.task_total:
-            group["progress_percent"] = int(
-                row.completed_all_time * 100 / row.task_total
-            )
 
     all_groups = [*groups.values(), *unresolved_groups.values()]
     for group in all_groups:
