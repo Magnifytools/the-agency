@@ -33,7 +33,7 @@ from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 from backend.services.time_budget import effective_budgets, build_closing_status, is_recurring_project
 from backend.services.task_scope import validate_client_exists
 from backend.services.project_owner import validate_project_owner
-from backend.services.domain_writes import create_project as create_project_write
+from backend.services.domain_writes import create_project as create_project_write, create_task as create_task_write
 from backend.services.temporal import as_utc_instant, business_today, business_zone
 from backend.services.time_entry_dates import time_entry_civil_period
 from backend.api.utils.db_helpers import safe_refresh
@@ -628,15 +628,14 @@ async def create_project_from_template(
 
     for task_def in template_tasks:
         phase = phase_map.get(task_def.get("phase", 0))
-        task = Task(
-            title=task_def["title"],
-            estimated_minutes=task_def.get("minutes", 60),
-            client_id=client_id,
-            project_id=project.id,
-            phase_id=phase.id if phase else None,
-            due_date=phase.due_date if phase else None,
-        )
-        db.add(task)
+        await create_task_write(db, {
+            "title": task_def["title"],
+            "estimated_minutes": task_def.get("minutes", 60),
+            "client_id": client_id,
+            "project_id": project.id,
+            "phase_id": phase.id if phase else None,
+            "due_date": phase.due_date if phase else None,
+        }, actor=_user)
 
     await db.commit()
 

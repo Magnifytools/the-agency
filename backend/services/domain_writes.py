@@ -29,14 +29,14 @@ async def create_project(db: AsyncSession, data: dict) -> Project:
     return project
 
 
-def _can_write_time(actor: User) -> bool:
-    return actor.role.value == "admin" or any(
+def _can_write_time(actor: User | None) -> bool:
+    return actor is not None and (actor.role.value == "admin" or any(
         p.module == "timesheet" and p.can_write for p in (actor.permissions or [])
-    )
+    ))
 
 
 async def create_task(
-    db: AsyncSession, data: dict, *, actor: User, manual_entry_date=None,
+    db: AsyncSession, data: dict, *, actor: User | None, manual_entry_date=None,
 ) -> Task:
     data = dict(data)
     await validate_task_scope(db, data)
@@ -45,7 +45,7 @@ async def create_task(
         raise HTTPException(403, "Crear horas reales requiere permiso de escritura en timesheet")
     if actual:
         capture_manual_time(db.sync_session)
-    task = Task(**data, created_by=actor.id)
+    task = Task(**data, created_by=actor.id if actor else None)
     stamp_task_status(task)
     db.add(task)
     await db.flush()
@@ -65,7 +65,7 @@ async def lock_task(db: AsyncSession, task_id: int) -> Task:
 
 
 async def update_task(
-    db: AsyncSession, task: Task, data: dict, *, actor: User, manual_entry_date=None,
+    db: AsyncSession, task: Task, data: dict, *, actor: User | None, manual_entry_date=None,
 ) -> Task:
     """Apply a validated task patch; caller owns transaction and response effects."""
     data = dict(data)
