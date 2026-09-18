@@ -49,6 +49,9 @@ describe("DailyBriefingDialog manual delivery", () => {
     )
 
     await screen.findByText("Buenos días")
+    expect(screen.getByText("Resumen del 17/9/2026")).toBeInTheDocument()
+    await userEvent.click(screen.getByText("Texto para Discord"))
+    expect(screen.getByText("Snapshot exacto mostrado")).toBeVisible()
     await userEvent.selectOptions(screen.getByLabelText("Ámbito del resumen"), "team")
     await userEvent.click(screen.getByRole("button", { name: "Compartir en Discord" }))
 

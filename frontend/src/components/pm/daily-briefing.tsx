@@ -10,6 +10,7 @@ import { toast } from "sonner"
 import { Select } from "@/components/ui/select"
 import { useAuth } from "@/context/auth-context"
 import { getErrorMessage } from "@/lib/utils"
+import { formatCivilDate } from "@/lib/dates"
 import { deliveryToast, ManualDeliveryReceipts } from "@/components/delivery-receipts"
 
 export function DailyBriefingDialog({
@@ -51,6 +52,7 @@ export function DailyBriefingDialog({
         <div className="py-8 text-center text-muted-foreground">Cargando briefing...</div>
       ) : briefing ? (
         <div className="space-y-6 mt-4">
+          <p className="text-sm text-muted-foreground">Resumen del {formatCivilDate(briefing.date)}</p>
           {/* Priorities */}
           {briefing.priorities.length > 0 && (
             <section>
@@ -165,6 +167,10 @@ export function DailyBriefingDialog({
         </div>
       ) : null}
 
+      {briefing?.discord_content && <details className="mt-4 text-sm">
+        <summary className="cursor-pointer">Texto para Discord</summary>
+        <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">{briefing.discord_content}</pre>
+      </details>}
       <div className="flex justify-between items-center mt-6">
         {hasPermission("pm", true) && <Button
           variant="outline"
@@ -172,7 +178,7 @@ export function DailyBriefingDialog({
           disabled={shareMutation.isPending || isLoading || !briefing}
         >
           <Send className="w-4 h-4 mr-2" />
-          {shareMutation.isPending ? "Enviando..." : "Compartir en Discord"}
+          {shareMutation.isPending ? "Guardando envío..." : "Compartir en Discord"}
         </Button>}
         <Button onClick={() => onOpenChange(false)}>Cerrar</Button>
       </div>

@@ -690,7 +690,7 @@ export default function ClientDetailPage() {
                     <TableCell>{p.project_type || "-"}</TableCell>
                     <TableCell>
                       <Badge variant={p.status === "active" ? "success" : p.status === "completed" ? "secondary" : "warning"}>
-                        {p.status}
+                        {{ planning: "Planificación", active: "Activo", on_hold: "Pausado", completed: "Completado", cancelled: "Cancelado" }[p.status]}
                       </Badge>
                     </TableCell>
                     <TableCell>
