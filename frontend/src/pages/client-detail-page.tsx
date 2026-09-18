@@ -236,6 +236,7 @@ export default function ClientDetailPage() {
   // están registrados, así que la pestaña no puede renderizarse ni aunque
   // llegue en la URL (un enlace guardado con ?tab=comunicaciones, por ejemplo).
   const TAB_MODULE: Partial<Record<Tab, string>> = {
+    resumenes: "digests",
     comunicaciones: "communications",
     facturacion: "billing",
     facturas: "holded",

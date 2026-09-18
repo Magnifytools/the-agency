@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import ClientDetailPage from "./client-detail-page"
 
 const mocks = vi.hoisted(() => ({
-  enabled: new Set(["communications", "reports", "resources", "billing"]),
+  enabled: new Set(["digests", "communications", "reports", "resources", "billing"]),
   permissions: new Set(["tasks", "projects", "digests", "communications", "reports", "billing"]),
   summary: vi.fn(),
   projects: vi.fn(),
@@ -61,7 +61,7 @@ function show(tab: string) {
 describe("client detail areas", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.enabled = new Set(["communications", "reports", "resources", "billing"])
+    mocks.enabled = new Set(["digests", "communications", "reports", "resources", "billing"])
     mocks.permissions = new Set(["tasks", "projects", "digests", "communications", "reports", "billing"])
     mocks.summary.mockResolvedValue(summary)
     mocks.projects.mockResolvedValue([])
@@ -105,11 +105,21 @@ describe("client detail areas", () => {
   })
 
   it("keeps summaries useful when optional output modules are hidden", async () => {
-    mocks.enabled.clear()
+    mocks.enabled = new Set(["digests"])
     show("resumenes")
 
     const link = await screen.findByRole("link", { name: "Abrir resúmenes de Acme" })
     expect(link).toHaveAttribute("href", "/digests?client_id=5")
     expect(screen.getByLabelText("Área del cliente")).toHaveValue("outputs")
+  })
+
+  it("falls back without a link when a saved summaries URL targets a hidden module", async () => {
+    mocks.enabled.delete("digests")
+    show("resumenes")
+
+    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: /Abrir resúmenes/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("option", { name: "Resúmenes" })).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Área del cliente")).toHaveValue("resumen")
   })
 })
