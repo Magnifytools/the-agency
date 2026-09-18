@@ -29,6 +29,7 @@ import {
   projectKeys,
 } from "@/lib/query-keys";
 import type { CommandEntity, CommandReceipt } from "@/lib/types";
+import { showUndoResult } from "@/lib/undo-feedback";
 import { getErrorMessage } from "@/lib/utils";
 
 interface Props {
@@ -54,6 +55,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   const [text, setText] = useState("");
   const [receipt, setReceipt] = useState<CommandReceipt | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [networkUncertain, setNetworkUncertain] = useState(false);
+  const [undoneChangeId, setUndoneChangeId] = useState<number | null>(null);
   const commandKey = useRef(requestKey());
   const stepKey = useRef(requestKey());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -76,8 +79,16 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     staleTime: 60_000,
     enabled: open && mode === "capture",
   });
+  const { data: recentCommands } = useQuery({
+    queryKey: ["commands", "recent"],
+    queryFn: () => commandsApi.list(1, 5),
+    enabled: open && mode === "command" && !receipt,
+    staleTime: 15_000,
+  });
 
   async function refreshReceipt(result: CommandReceipt) {
+    setNetworkUncertain(false);
+    setUndoneChangeId(null);
     setReceipt(result);
     setAnswers({});
     if (result.status !== "executed") return;
@@ -93,6 +104,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     else if (entities.some((entity) => entity.type === "task"))
       await invalidateTaskChange(queryClient, impact);
     await queryClient.invalidateQueries({ queryKey: ["changes", "recent"] });
+    await queryClient.invalidateQueries({ queryKey: ["commands", "recent"] });
   }
 
   const commandMutation = useMutation({
@@ -103,10 +115,19 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
         channel: "app",
       }),
     onSuccess: refreshReceipt,
-    onError: (error) =>
+    onError: (error) => {
+      const status = (error as { response?: { status?: number } }).response
+        ?.status;
+      if (status != null && status < 500) {
+        commandKey.current = requestKey();
+        setNetworkUncertain(false);
+      } else {
+        setNetworkUncertain(true);
+      }
       toast.error(
         getErrorMessage(error, "No se ha podido procesar la petición"),
-      ),
+      );
+    },
   });
   const resolveMutation = useMutation({
     mutationFn: () =>
@@ -143,7 +164,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   const undoMutation = useMutation({
     mutationFn: (id: number) => changesApi.undo(id),
     onSuccess: (result) => {
-      toast.success(`Deshecho: ${result.label}`);
+      setUndoneChangeId(result.id);
+      showUndoResult(result);
       void queryClient.invalidateQueries();
     },
     onError: (error) =>
@@ -210,6 +232,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     setText("");
     setReceipt(null);
     setAnswers({});
+    setNetworkUncertain(false);
+    setUndoneChangeId(null);
     commandKey.current = requestKey();
     stepKey.current = requestKey();
     window.setTimeout(() => textareaRef.current?.focus(), 0);
@@ -217,6 +241,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   const editCommand = () => {
     setReceipt(null);
     setAnswers({});
+    setNetworkUncertain(false);
+    setUndoneChangeId(null);
     commandKey.current = requestKey();
     stepKey.current = requestKey();
     window.setTimeout(() => textareaRef.current?.focus(), 0);
@@ -277,9 +303,32 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                   }}
                   placeholder="Ej. Completa la tarea Revisar portada, crea una tarea o consulta bloqueos"
                   className="min-h-28 resize-none"
-                  disabled={isPending}
+                  disabled={isPending || networkUncertain}
                   aria-label="Petición"
                 />
+                {networkUncertain && (
+                  <div
+                    role="alert"
+                    className="space-y-2 rounded-lg border border-amber-500/40 p-3 text-sm"
+                  >
+                    <p>
+                      No hemos recibido respuesta. La petición puede haberse
+                      completado.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => commandMutation.mutate()}
+                        disabled={isPending}
+                      >
+                        Reintentar la misma petición
+                      </Button>
+                      <Button variant="outline" onClick={editCommand}>
+                        Editar como petición nueva
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs text-muted-foreground">
                     Las acciones reversibles se ejecutan directamente y muestran
@@ -287,7 +336,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                   </p>
                   <Button
                     onClick={() => commandMutation.mutate()}
-                    disabled={!text.trim() || isPending}
+                    disabled={!text.trim() || isPending || networkUncertain}
                   >
                     {isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -297,6 +346,34 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                     Hacer
                   </Button>
                 </div>
+                {(recentCommands?.items.length ?? 0) > 0 && (
+                  <details className="rounded-lg border border-border p-3">
+                    <summary className="cursor-pointer text-sm font-medium">
+                      Peticiones recientes
+                    </summary>
+                    <div className="mt-2 space-y-1">
+                      {recentCommands!.items.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="block w-full rounded-md px-2 py-2 text-left text-sm hover:bg-muted"
+                          onClick={() => setReceipt(item)}
+                        >
+                          <span className="block truncate">
+                            {item.result?.message ?? item.raw_text}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {item.status === "executed"
+                              ? "Completada"
+                              : item.status === "failed"
+                                ? "No realizada"
+                                : "Pendiente"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </details>
+                )}
               </>
             )}
 
@@ -455,10 +532,15 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                       onClick={() =>
                         undoMutation.mutate(receipt.change_log_id!)
                       }
-                      disabled={undoMutation.isPending}
+                      disabled={
+                        undoMutation.isPending ||
+                        undoneChangeId === receipt.change_log_id
+                      }
                     >
                       <Undo2 className="h-4 w-4" />
-                      Deshacer
+                      {undoneChangeId === receipt.change_log_id
+                        ? "Deshecho"
+                        : "Deshacer"}
                     </Button>
                   )}
                   <Button onClick={resetCommand}>Hacer otra cosa</Button>

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   resolveCommand: vi.fn(),
   executeCommand: vi.fn(),
   queryCommand: vi.fn(),
+  listCommands: vi.fn(),
   undo: vi.fn(),
   createInbox: vi.fn(),
 }));
@@ -20,6 +21,7 @@ vi.mock("@/lib/api", () => ({
     resolve: mocks.resolveCommand,
     execute: mocks.executeCommand,
     query: mocks.queryCommand,
+    list: mocks.listCommands,
   },
   changesApi: { undo: mocks.undo },
   inboxApi: { create: mocks.createInbox },
@@ -54,7 +56,16 @@ function show() {
 }
 
 describe("command entry", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.listCommands.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 5,
+      has_more: false,
+    });
+  });
 
   it("shows a linked receipt and allows undo", async () => {
     mocks.createCommand.mockResolvedValue({
@@ -86,6 +97,7 @@ describe("command entry", () => {
     ).toHaveAttribute("href", "/tasks?id=4");
     await userEvent.click(screen.getByRole("button", { name: "Deshacer" }));
     await waitFor(() => expect(mocks.undo).toHaveBeenCalledWith(9));
+    expect(screen.getByRole("button", { name: "Deshecho" })).toBeDisabled();
   });
 
   it("resolves ambiguity with the selected server choice", async () => {
@@ -152,7 +164,10 @@ describe("command entry", () => {
     await userEvent.type(screen.getByLabelText("Petición"), "Haz algo");
     await userEvent.click(screen.getByRole("button", { name: "Hacer" }));
     await waitFor(() => expect(mocks.createCommand).toHaveBeenCalledTimes(1));
-    await userEvent.click(screen.getByRole("button", { name: "Hacer" }));
+    expect(screen.getByLabelText("Petición")).toBeDisabled();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Reintentar la misma petición" }),
+    );
     await waitFor(() => expect(mocks.createCommand).toHaveBeenCalledTimes(2));
     expect(mocks.createCommand.mock.calls[1][0].request_key).toBe(
       mocks.createCommand.mock.calls[0][0].request_key,
@@ -160,6 +175,33 @@ describe("command entry", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "No reconozco esa orden",
     );
+  });
+
+  it("rehydrates a recent receipt after reopening", async () => {
+    mocks.listCommands.mockResolvedValue({
+      items: [
+        {
+          ...baseReceipt,
+          status: "executed",
+          change_log_id: null,
+          result: {
+            message: "Consulta recuperada",
+            entities: [],
+            undo_available: false,
+          },
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 5,
+      has_more: false,
+    });
+    show();
+    await userEvent.click(await screen.findByText("Peticiones recientes"));
+    await userEvent.click(
+      screen.getByRole("button", { name: /Consulta recuperada/ }),
+    );
+    expect(await screen.findByText("Consulta recuperada")).toBeInTheDocument();
   });
 
   it("keeps the explicit capture form available", async () => {

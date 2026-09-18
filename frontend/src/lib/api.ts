@@ -1021,6 +1021,8 @@ export const commandsApi = {
     api.post<CommandReceipt>(`/commands/${id}/execute`, data).then((r) => r.data),
   query: (id: string, page: number, pageSize = 25) =>
     api.get<NonNullable<NonNullable<CommandReceipt["result"]>["query"]>>(`/commands/${id}/query`, { params: { page, page_size: pageSize } }).then((r) => r.data),
+  list: (page = 1, pageSize = 5) =>
+    api.get<{ items: CommandReceipt[]; total: number; page: number; page_size: number; has_more: boolean }>("/commands", { params: { page, page_size: pageSize } }).then((r) => r.data),
 }
 
 // --- Project Evidence ---

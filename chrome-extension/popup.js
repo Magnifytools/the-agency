@@ -785,7 +785,11 @@ async function commandRequest(path, body, session) {
     body: JSON.stringify(body),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(getDetail(data, `Error ${response.status}`));
+  if (!response.ok) {
+    const error = new Error(getDetail(data, `Error ${response.status}`));
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
@@ -804,13 +808,22 @@ async function submitCommand() {
     commandText.disabled = true;
   } catch (error) {
     if (!isCurrentSession(session)) return;
-    commandError.textContent = error.message || "No se ha podido conectar.";
+    const uncertain = !error.status || error.status >= 500;
+    commandText.disabled = uncertain;
+    if (!uncertain) commandRequestKey = newRequestKey();
+    commandError.textContent = uncertain
+      ? `No hemos recibido respuesta; la petición puede haberse completado. ${error.message || "No se ha podido conectar."}`
+      : error.message;
     commandError.classList.remove("hidden");
+    if (uncertain) {
+      commandReceipt.replaceChildren(commandButton("Editar como petición nueva", editCommand));
+      commandReceipt.classList.remove("hidden");
+    }
   } finally {
     if (!isCurrentSession(session)) return;
     commandInFlight = false;
     commandSubmit.textContent = "Reintentar";
-    commandSubmit.disabled = !commandText.value.trim();
+    commandSubmit.disabled = Boolean(currentCommand) || !commandText.value.trim();
   }
 }
 
@@ -865,10 +878,12 @@ async function loadMoreCommandQuery() {
 async function undoCommand(changeId) {
   const session = captureSession();
   try {
-    await commandRequest(`/api/changes/${changeId}/undo`, {}, session);
+    const result = await commandRequest(`/api/changes/${changeId}/undo`, {}, session);
     if (!isCurrentSession(session)) return;
     resetCommand();
-    successText.textContent = "Cambio deshecho";
+    successText.textContent = result.warnings?.length || result.restored === 0
+      ? `Deshecho con avisos: ${result.warnings?.join(" ") || "no había cambios que restaurar"}`
+      : "Cambio deshecho";
     successMsg.classList.remove("hidden");
   } catch (error) {
     if (isCurrentSession(session)) { commandError.textContent = error.message; commandError.classList.remove("hidden"); }
