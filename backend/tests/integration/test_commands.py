@@ -565,3 +565,28 @@ async def test_all_quoted_entity_references_protect_clause_words(monkeypatch):
         assert intent["kind"] in {"create_task", "create_project"}, (text, intent)
         assert all(intent.get(key) == value for key, value in expected.items()), (text, intent)
         assert "scheduled_date" not in intent and "target_date" not in intent
+
+
+async def test_oversized_command_values_fail_durably_before_domain_writers(
+    admin_client, db_session,
+):
+    client = Client(name="Cliente límites", status="active")
+    task = Task(title="Tarea límites", status=TaskStatus.pending)
+    db_session.add_all([client, task])
+    await db_session.commit()
+    cases = [
+        ("command-limit-task-001", f'Crea tarea "{"T" * 256}"'),
+        ("command-limit-project1", f'Crea proyecto "{"P" * 201}" para cliente "Cliente límites"'),
+        ("command-limit-minutes1", 'Registra 1441 minutos en tarea "Tarea límites"'),
+    ]
+    for key, text in cases:
+        response = await admin_client.post("/api/commands", json={"request_key": key, "text": text})
+        assert response.status_code == 200, response.text
+        receipt = response.json()
+        assert receipt["status"] == "failed"
+        assert receipt["error"]["code"] == "invalid_command"
+        stored = await db_session.scalar(select(CommandReceipt).where(CommandReceipt.id == receipt["id"]))
+        assert stored is not None and stored.status == "failed"
+    assert await db_session.scalar(select(Task.id).where(Task.title == "T" * 256)) is None
+    assert await db_session.scalar(select(Project.id).where(Project.name == "P" * 201)) is None
+    assert await db_session.scalar(select(TimeEntry.id).where(TimeEntry.task_id == task.id)) is None

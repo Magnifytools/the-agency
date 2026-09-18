@@ -24,6 +24,7 @@ STATUS_INPUT = "needs_input"
 STATUS_REVIEW = "needs_review"
 STATUS_EXECUTED = "executed"
 STATUS_FAILED = "failed"
+MAX_COMMAND_MINUTES = 24 * 60
 
 
 def canonical_hash(value: Any) -> str:
@@ -305,6 +306,18 @@ async def execute_or_prompt(db: AsyncSession, receipt: CommandReceipt, actor: Us
         receipt.status = STATUS_FAILED
         receipt.error_code = "invalid_command"
         receipt.error_detail = intent.get("error") or "La orden no es válida"
+        return
+    semantic_error = None
+    if kind == "create_task" and len(intent.get("title") or "") > 255:
+        semantic_error = "El título de la tarea no puede superar 255 caracteres"
+    elif kind == "create_project" and len(intent.get("project_name") or "") > 200:
+        semantic_error = "El nombre del proyecto no puede superar 200 caracteres"
+    elif kind == "log_time" and not 1 <= int(intent.get("minutes") or 0) <= MAX_COMMAND_MINUTES:
+        semantic_error = f"Los minutos deben estar entre 1 y {MAX_COMMAND_MINUTES}"
+    if semantic_error:
+        receipt.status = STATUS_FAILED
+        receipt.error_code = "invalid_command"
+        receipt.error_detail = semantic_error
         return
     if kind == "ambiguous_create":
         receipt.status = STATUS_INPUT
