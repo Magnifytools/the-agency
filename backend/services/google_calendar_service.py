@@ -4,6 +4,9 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, date
 from typing import Optional
+from collections.abc import Mapping
+
+from google.auth.exceptions import RefreshError
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
@@ -15,6 +18,25 @@ from backend.core.security import encrypt_vault_secret, decrypt_vault_secret
 logger = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+
+
+def authorization_needs_reconnect(error: Exception) -> bool:
+    """Only Google's structured refresh error can invalidate a stored grant.
+
+    google-auth raises RefreshError(message, response_data). Never inspect the
+    free-form message, which can contain credentials or misleading text.
+    """
+    return isinstance(error, RefreshError) and any(
+        isinstance(argument, Mapping) and argument.get("error") == "invalid_grant"
+        for argument in error.args
+    )
+
+
+def connection_status(user) -> str:
+    """Retained unusable credentials distinguish revocation from disconnect."""
+    if user.google_calendar_connected and user.google_refresh_token:
+        return "connected"
+    return "reconnect_required" if user.google_refresh_token else "disconnected"
 
 
 def _client_config() -> dict:
@@ -60,7 +82,7 @@ def exchange_code(code: str) -> dict:
         timeout=15,
     )
     if resp.status_code != 200:
-        logger.error("Google token exchange failed: %s", resp.text)
+        logger.error("Google token exchange failed (HTTP %s)", resp.status_code)
         raise ValueError(f"Token exchange failed: {resp.status_code}")
     data = resp.json()
     return {

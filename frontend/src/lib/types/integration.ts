@@ -41,6 +41,7 @@ export interface DigestSections {
   done: DigestItem[]
   need: DigestItem[]
   next: DigestItem[]
+  metrics?: DigestItem[]
 }
 
 export interface DigestContent {

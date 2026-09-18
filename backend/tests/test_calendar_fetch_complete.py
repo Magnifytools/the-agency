@@ -34,3 +34,13 @@ def test_malformed_empty_object_is_not_an_authoritative_empty_calendar(monkeypat
     monkeypatch.setattr(service, "_get_credentials", lambda _: object())
     monkeypatch.setattr(service, "build", lambda *a, **k: api)
     with pytest.raises(ValueError): service.fetch_events("synthetic")
+
+
+def test_token_exchange_failure_never_logs_provider_body(monkeypatch, caplog):
+    import httpx
+    from types import SimpleNamespace
+    secret = "sentinel-private-provider-response"
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: SimpleNamespace(status_code=400, text=secret))
+    with pytest.raises(ValueError): service.exchange_code("synthetic-code")
+    assert secret not in caplog.text
+    assert "HTTP 400" in caplog.text

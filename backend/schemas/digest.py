@@ -1,8 +1,9 @@
 from __future__ import annotations
-from typing import Optional
-from datetime import date, datetime, timezone
 
-from pydantic import BaseModel, field_serializer
+from datetime import date, datetime, timezone
+from typing import Optional
+
+from pydantic import BaseModel, field_serializer, model_validator
 
 from backend.db.models import DigestStatus, DigestTone
 
@@ -44,6 +45,18 @@ class DigestGenerateRequest(BaseModel):
     period_start: Optional[date] = None
     period_end: Optional[date] = None
     tone: DigestTone = DigestTone.cercano
+
+    @model_validator(mode="after")
+    def validate_period(self):
+        if (self.period_start is None) != (self.period_end is None):
+            raise ValueError("Debes indicar period_start y period_end juntos")
+        if (
+            self.period_start is not None
+            and self.period_end is not None
+            and self.period_end < self.period_start
+        ):
+            raise ValueError("period_end no puede ser anterior a period_start")
+        return self
 
 
 class DigestUpdateRequest(BaseModel):

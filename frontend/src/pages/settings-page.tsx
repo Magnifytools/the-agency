@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { useAuth } from "@/context/auth-context"
@@ -44,9 +45,18 @@ interface EditingState {
 }
 
 export default function SettingsPage() {
+  const { hash } = useLocation()
   const queryClient = useQueryClient()
   const { user, refreshUser, isAdmin, hasPermission } = useAuth()
   const canManageCategories = isAdmin || hasPermission("tasks", true)
+  useEffect(() => {
+    // This page is lazy-loaded: the browser may have handled the fragment
+    // before its target existed. Scroll the actual nested container on mount.
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(hash.slice(1))?.scrollIntoView({ block: "start" })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [hash])
   const [confirmDelete, setConfirmDelete] = useState<
     { kind: "category" | "holiday"; id: number; name: string } | null
   >(null)
@@ -710,14 +720,16 @@ export default function SettingsPage() {
 }
 
 
-function CalendarSection() {
+export function CalendarSection() {
   const queryClient = useQueryClient()
   const [params] = useState(() => new URLSearchParams(window.location.search))
   const calendarParam = params.get("calendar")
 
-  const { data: status, isLoading } = useQuery({
+  const { data: status, isLoading, isError, refetch } = useQuery({
     queryKey: ["calendar-status"],
     queryFn: calendarApi.getStatus,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   })
 
 
@@ -755,10 +767,11 @@ function CalendarSection() {
       queryClient.invalidateQueries({ queryKey: ["calendar-status"] })
       toast.success(`Sincronizados ${data.events_synced} eventos`)
     },
-    onError: () => toast.error("Error al sincronizar"),
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ["calendar-status"] })
+      toast.error("No se pudo sincronizar. Revisa el estado del calendario.")
+    },
   })
-
-  if (isLoading) return null
 
   return (
     <div id="calendar" className="bg-card border border-border rounded-2xl p-6 scroll-mt-8">
@@ -770,7 +783,9 @@ function CalendarSection() {
         Conecta tu calendario para ver reuniones en el morning update y recibir alertas
       </p>
 
-      {status?.connected ? (
+      {isLoading ? <p role="status" className="text-sm text-muted-foreground">Cargando estado del calendario…</p> : isError ? (
+        <p role="alert" className="text-sm">No se pudo consultar el calendario. <button className="underline" onClick={() => refetch()}>Reintentar</button></p>
+      ) : status?.connected ? (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -797,6 +812,27 @@ function CalendarSection() {
 
           <p className="text-sm text-muted-foreground">Última sincronización completa: {status?.last_synced_at ? new Date(status.last_synced_at).toLocaleString("es-ES", { timeZone: "Europe/Madrid" }) : "Pendiente"}. Los avisos de Google esperan una sincronización reciente.</p>
           <p className="text-sm"><a href="#notifications" className="underline">Configurar Avisos</a>: conectar el calendario no activa ningún envío.</p>
+        </div>
+      ) : status?.connection_status === "reconnect_required" ? (
+        <div className="space-y-3">
+          <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm">
+            <p className="font-medium">Necesita reconectar</p>
+            <p className="mt-1 text-muted-foreground">Google ha rechazado la autorización guardada. Reconecta tu calendario para volver a sincronizar y recibir avisos de sus reuniones. Las reuniones guardadas se conservan.</p>
+          </div>
+          <button
+            onClick={() => connectMut.mutate()}
+            disabled={connectMut.isPending}
+            className="px-4 py-2 bg-brand text-black text-sm font-semibold rounded-xl hover:bg-brand/90 transition-colors disabled:opacity-50"
+          >
+            {connectMut.isPending ? "Redirigiendo…" : "Reconectar Google Calendar"}
+          </button>
+          <button
+            onClick={() => disconnectMut.mutate()}
+            disabled={disconnectMut.isPending}
+            className="ml-3 px-3 py-2 text-sm border border-border rounded-xl hover:bg-muted/50 disabled:opacity-50"
+          >
+            Desconectar
+          </button>
         </div>
       ) : (
         <button

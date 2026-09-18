@@ -149,6 +149,10 @@ export default function DigestsPage() {
 
   const handleGenerate = () => {
     if (!selectedClientId) return
+    if (Boolean(genPeriodStart) !== Boolean(genPeriodEnd) || (genPeriodStart && genPeriodEnd < genPeriodStart)) {
+      toast.error("Indica las dos fechas en orden, o deja ambas vacías para usar la última semana cerrada.")
+      return
+    }
     generateMutation.mutate({
       client_id: selectedClientId as number,
       tone: selectedTone,
@@ -284,7 +288,7 @@ export default function DigestsPage() {
                     <TableCell className="font-medium">{digest.client_name || "—"}</TableCell>
                     <TableCell>
                       {digest.period_start && digest.period_end
-                        ? `${format(new Date(digest.period_start + "T12:00:00"), "d MMM", { locale: es })} — ${format(new Date(digest.period_end + "T12:00:00"), "d MMM", { locale: es })}`
+                        ? `${format(new Date(digest.period_start + "T12:00:00"), "d MMM yyyy", { locale: es })} — ${format(new Date(digest.period_end + "T12:00:00"), "d MMM yyyy", { locale: es })}`
                         : "—"}
                     </TableCell>
                     <TableCell>{toneLabels[digest.tone]}</TableCell>
@@ -411,13 +415,14 @@ export default function DigestsPage() {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Periodo (opcional — por defecto semana actual)</Label>
+            <Label>Período (opcional; por defecto, última semana cerrada)</Label>
             <div className="flex items-center gap-2">
               <Input
                 type="date"
                 value={genPeriodStart}
                 onChange={(e) => setGenPeriodStart(e.target.value)}
                 className="flex-1"
+                aria-label="Inicio del período"
                 placeholder="Desde"
               />
               <span className="text-muted-foreground text-sm">—</span>
@@ -426,6 +431,7 @@ export default function DigestsPage() {
                 value={genPeriodEnd}
                 onChange={(e) => setGenPeriodEnd(e.target.value)}
                 className="flex-1"
+                aria-label="Fin del período"
                 placeholder="Hasta"
               />
             </div>

@@ -152,3 +152,27 @@ an installation that already handled that identity. In-app delivered rows are
 never reset. First consent can cover a still-upcoming meeting whose nominal
 lead time has passed; past meetings are not backfilled. The extension start time
 is derived from the event's civil start, separately from the expiry field.
+
+## Expired Google authorization
+
+A structured `google.auth.exceptions.RefreshError` whose provider response has
+`error=invalid_grant` marks the current credential unusable. The update locks and
+rechecks the same user, encrypted token and calendar identity, so a delayed
+failure cannot disable a newer OAuth connection. Events, retained credentials
+and the last successful synchronization timestamp are preserved. Other errors,
+including timeouts and unstructured error strings, do not disconnect the user.
+
+No migration or additional stored field is required. Existing
+`google_calendar_connected=false` plus a retained refresh token means
+`connection_status=reconnect_required`; an explicit disconnect removes the
+credentials and produces `disconnected`. Connected authorization produces
+`connected`. These API states drive Calendar settings, which offers reconnection
+and refreshes after sync failures. A successful signed callback for an active
+user restores the connected flag and clears synchronization freshness until a
+new full sync succeeds. The scheduler skips disconnected grants; Google meeting
+occurrences explain that reconnection is needed, while manual meetings remain
+independent. Provider response bodies and OAuth exception messages are not logged.
+
+The state change occurs on the next attempted sync; deployment does not inspect,
+refresh or remove credentials. A missing last-sync timestamp alone is never
+classified as expired authorization.
