@@ -23,6 +23,7 @@ from backend.schemas.inbox import (
 )
 from backend.core.rate_limiter import ai_limiter
 from backend.services.task_scope import validate_task_scope
+from backend.services.domain_writes import create_task as create_task_write
 
 logger = logging.getLogger(__name__)
 
@@ -391,26 +392,23 @@ async def convert_to_task(
     from datetime import date as _date
     today = _date.today()
 
-    task = Task(
-        title=title,
-        description=note.raw_text,
-        status=TaskStatus.pending,
-        priority=priority,
-        client_id=client_id,
-        project_id=project_id,
-        assigned_to=body.assigned_to or user.id,
-        due_date=body.due_date,
-        scheduled_date=today,
-        link_url=note.link_url,
-        created_by=user.id,
-    )
-    db.add(task)
-
-    note.status = InboxNoteStatus.processed
-    note.resolved_as = "task"
-
     try:
-        await db.flush()
+        # Inbox owns these adapter defaults; the shared writer only enforces
+        # domain invariants and attribution.
+        task = await create_task_write(db, {
+            "title": title,
+            "description": note.raw_text,
+            "status": TaskStatus.pending,
+            "priority": priority,
+            "client_id": client_id,
+            "project_id": project_id,
+            "assigned_to": body.assigned_to or user.id,
+            "due_date": body.due_date,
+            "scheduled_date": today,
+            "link_url": note.link_url,
+        }, actor=user)
+        note.status = InboxNoteStatus.processed
+        note.resolved_as = "task"
         note.resolved_entity_id = task.id
         await db.commit()
     except IntegrityError as e:

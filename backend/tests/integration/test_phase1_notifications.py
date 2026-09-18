@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.services.temporal import business_today
 from backend.db.models import Notification, Task, TaskStatus, User, UserRole
 from backend.services.notification_checks import NotificationChecks
 
@@ -26,7 +27,7 @@ async def emit(db, user_id, cycle):
 
 
 async def test_read_does_not_recreate_check_but_new_cycle_can(db_session, admin_user):
-    today = date.today()
+    today = business_today()
     await emit(db_session, admin_user.id, today)
     notification = (await db_session.execute(select(Notification))).scalars().one()
     notification.is_read = True
@@ -43,7 +44,7 @@ async def test_existing_read_legacy_check_is_adopted(db_session, admin_user):
                           created_at=datetime.now())
     db_session.add(legacy)
     await db_session.commit()
-    await emit(db_session, admin_user.id, date.today())
+    await emit(db_session, admin_user.id, business_today())
     assert legacy.dedupe_key is not None
     assert legacy.is_read is True
     assert (await db_session.execute(select(func.count(Notification.id)))).scalar() == 1
@@ -87,7 +88,7 @@ async def test_concurrent_generators_produce_one_notification(engine):
         user_id = user.id
     async def producer():
         async with AsyncSession(engine, expire_on_commit=False) as db:
-            await emit(db, user_id, date.today())
+            await emit(db, user_id, business_today())
     try:
         await asyncio.gather(producer(), producer())
         async with AsyncSession(engine) as db:
@@ -109,7 +110,7 @@ async def test_billing_job_respects_module_and_deduplicates_cycle(db_session, ad
     db_session.add(client)
     await db_session.flush()
     project = Project(name="Completed but billing outstanding", client_id=client.id,
-                      status=ProjectStatus.completed, next_billing_date=date.today())
+                      status=ProjectStatus.completed, next_billing_date=business_today())
     db_session.add(project)
     await db_session.commit()
     use_session(monkeypatch, db_session)
@@ -123,7 +124,7 @@ async def test_billing_job_respects_module_and_deduplicates_cycle(db_session, ad
     await db_session.commit()
     await _check_project_billing()
     assert (await db_session.execute(select(func.count(Notification.id)))).scalar() == 1
-    project.next_billing_date = date.today() + timedelta(days=2)
+    project.next_billing_date = business_today() + timedelta(days=2)
     await db_session.commit()
     await _check_project_billing()
     assert (await db_session.execute(select(func.count(Notification.id)))).scalar() == 2
@@ -144,7 +145,7 @@ async def test_recurrences_keep_project_and_pause_after_close(db_session, admin_
     template = Task(title="Recurring task", client_id=client.id, project_id=project.id,
                     phase_id=phase.id, estimated_minutes=45, created_by=admin_user.id,
                     assigned_to=admin_user.id, is_recurring=True,
-                    recurrence_pattern="monthly", recurrence_day=date.today().day)
+                    recurrence_pattern="monthly", recurrence_day=business_today().day)
     db_session.add(template)
     await db_session.commit()
     use_session(monkeypatch, db_session)

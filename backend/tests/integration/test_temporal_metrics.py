@@ -1,5 +1,5 @@
 """Business-period boundaries used by active project and dashboard metrics."""
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
 
@@ -7,6 +7,16 @@ from backend.db.models import Client, Project, ProjectStatus, Task, TaskStatus, 
 
 
 pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def september_business_date(monkeypatch):
+    # The dataset exercises a specific month and a deadline due today. Keep
+    # those semantics independent of the host's date, timezone and test time.
+    from backend.api.routes import client_dashboard, dashboard, projects, time_entries
+    from backend.services import client_health
+    for module in (client_dashboard, dashboard, projects, time_entries, client_health):
+        monkeypatch.setattr(module, "business_today", lambda: date(2026, 9, 17))
 
 
 async def _project(db, *, recurring=True):

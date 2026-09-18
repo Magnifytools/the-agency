@@ -68,14 +68,16 @@ async def test_briefing_defaults_to_mine_and_team_requires_admin(
     member = await make_member_client([("pm", True, False)])
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     due = now.replace(hour=12, minute=0, second=0, microsecond=0)
+    from backend.services.temporal import business_today
+    planned = business_today()
     mine = Task(
         title="Admin own briefing", status=TaskStatus.pending,
         assigned_to=admin_client.test_user.id, created_by=admin_client.test_user.id,
-        due_date=due,
+        due_date=due, scheduled_date=planned,
     )
     theirs = Task(
         title="Member own briefing", status=TaskStatus.pending,
-        assigned_to=member.test_user.id, created_by=member.test_user.id, due_date=due,
+        assigned_to=member.test_user.id, created_by=member.test_user.id, due_date=due, scheduled_date=planned,
     )
     db_session.add_all([mine, theirs])
     await db_session.flush()
@@ -346,7 +348,7 @@ async def test_share_uses_requested_authorized_scope(admin_client, monkeypatch):
     from backend.api.routes import pm as route
     from backend.config import settings
     scopes = []
-    async def briefing(_db, user_id, team=False):
+    async def briefing(_db, user_id, team=False, include_ai=False):
         scopes.append((user_id, team))
         return {"greeting": "Prueba", "date": "2026-09-17", "priorities": [], "alerts": [], "followups": []}
     original_client = httpx.AsyncClient
@@ -355,9 +357,10 @@ async def test_share_uses_requested_authorized_scope(admin_client, monkeypatch):
         requests.append(request)
         return httpx.Response(204)
     monkeypatch.setattr(route, "get_daily_briefing", briefing)
-    monkeypatch.setattr(settings, "DISCORD_WEBHOOK_URL", "https://delivery.invalid/test")
+    monkeypatch.setattr(settings, "DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/123/fake-test-token")
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original_client(transport=httpx.MockTransport(send), **kwargs))
     response = await admin_client.post("/api/pm/briefing/discord", params={"scope": "team"})
-    assert response.status_code == 200, response.text
+    assert response.status_code == 202, response.text
+    assert response.json()["success"] is False
     assert scopes == [(admin_client.test_user.id, True)]
-    assert len(requests) == 1  # Transport stub: no real delivery.
+    assert len(requests) == 0  # Request durably queued, no provider HTTP.

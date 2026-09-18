@@ -21,7 +21,7 @@ from sqlalchemy.orm import noload, selectinload
 from backend.config import settings
 from backend.core.security import decrypt_vault_secret
 from backend.db.models import (
-    DailyUpdate, DailyUpdateStatus, Delivery, DeliveryAttempt, DiscordSettings,
+    CommunicationRequest, DailyUpdate, DailyUpdateStatus, Delivery, DeliveryAttempt, DiscordSettings,
     User, UserRole, WeeklyDigest,
 )
 from backend.schemas.digest import DigestContent
@@ -32,6 +32,7 @@ from backend.services.temporal import utc_now_naive, utc_isoformat
 
 logger = logging.getLogger(__name__)
 LEASE_SECONDS = 90
+SOURCE_MODELS = {"daily": DailyUpdate, "digest": WeeklyDigest, "communication": CommunicationRequest}
 WEBHOOK_RE = re.compile(r"^https://(?:discord\.com|discordapp\.com)/api/webhooks/\d+/[^/?#]+$")
 
 
@@ -56,18 +57,22 @@ def fingerprint(value):
 async def authorize_source(db, kind, source_id, actor, *, write=True, lock=False):
     if actor is None or not actor.is_active:
         raise HTTPException(403, "Usuario desactivado o no disponible")
-    if kind not in ("daily", "digest"):
+    if kind not in SOURCE_MODELS:
         raise HTTPException(404, "Fuente no encontrada")
     if kind == "digest" and actor.role != UserRole.admin:
         if not any(p.module == "digests" and (p.can_write if write else p.can_read) for p in actor.permissions):
             raise HTTPException(403, "Sin permiso para este resumen")
-    model = DailyUpdate if kind == "daily" else WeeklyDigest
+    model = SOURCE_MODELS[kind]
     stmt = select(model).where(model.id == source_id)
     if lock:
         stmt = stmt.with_for_update().execution_options(populate_existing=True)
     source = (await db.execute(stmt)).scalar_one_or_none()
     if not source:
         raise HTTPException(404, "El borrador ya no existe")
+    if kind == "communication":
+        from backend.services.manual_communications import authorize_request
+        authorize_request(source, actor, write=write)
+        return source
     owner = source.user_id if kind == "daily" else source.created_by
     if actor.role != UserRole.admin and owner != actor.id:
         raise HTTPException(403, "No tienes acceso a este borrador")
@@ -75,6 +80,9 @@ async def authorize_source(db, kind, source_id, actor, *, write=True, lock=False
 
 
 def source_version(kind, source):
+    if kind == "communication":
+        return fingerprint([source.owner_id, source.kind, source.scope, source.period_start,
+                            source.period_end, source.title, source.content, source.destination_kind])
     if kind == "daily":
         data = [source.user_id, source.date, source.raw_text, source.parsed_data]
     else:
@@ -96,7 +104,24 @@ async def discord_config(db):
     return url, bot, fingerprint([url, bool(bot)])
 
 
+async def destination_config(db, kind, source):
+    if kind == "communication" and source.destination_kind == "owner_dm":
+        ds = (await db.execute(select(DiscordSettings).limit(1))).scalar_one_or_none()
+        try:
+            raw = ds.bot_token if ds else None
+            bot = decrypt_vault_secret(raw) if raw and raw.startswith("v1:") else raw
+        except Exception:
+            raise HTTPException(400, "No se puede leer la configuración de Discord") from None
+        recipient = settings.DISCORD_OWNER_USER_ID
+        if not bot or not recipient or not recipient.isdigit():
+            raise HTTPException(400, "Configura el bot y su destinatario Discord antes de enviar")
+        return recipient, bot, fingerprint(["owner_dm", recipient])
+    return await discord_config(db)
+
+
 def render_snapshot(kind, source, custom_content=None):
+    if kind == "communication":
+        return source.title, source.content
     if kind == "daily":
         name = source.user.full_name
         header = f"{name} — {source.date.isoformat()}"
@@ -151,8 +176,15 @@ def plan_steps(kind, header, text, *, threaded):
 
 
 async def enqueue(db, kind, source_id, actor, *, custom_content=None):
+    delivery = await stage_delivery(db, kind, source_id, actor, custom_content=custom_content)
+    await db.commit()
+    return delivery
+
+
+async def stage_delivery(db, kind, source_id, actor, *, custom_content=None):
+    """Stage only; caller owns the transaction. No provider effects or commit."""
     source = await authorize_source(db, kind, source_id, actor, lock=True)
-    _, bot, destination = await discord_config(db)
+    target, bot, destination = await destination_config(db, kind, source)
     version = source_version(kind, source)
     header, text = render_snapshot(kind, source, custom_content)
     key = fingerprint([kind, source_id, version, destination, text])
@@ -164,7 +196,6 @@ async def enqueue(db, kind, source_id, actor, *, custom_content=None):
             existing.available_at = utc_now_naive()
             existing.expires_at = utc_now_naive() + timedelta(days=1)
             existing.message = "En cola tras revisar de nuevo el borrador"
-        await db.commit()
         return existing
     prior = (await db.execute(select(Delivery).where(
         Delivery.source_kind == kind, Delivery.source_id == source_id,
@@ -180,15 +211,21 @@ async def enqueue(db, kind, source_id, actor, *, custom_content=None):
             if not reviewed:
                 raise HTTPException(409, "Hay un envío incierto. Revisa su recibo antes de reenviar")
     now = utc_now_naive()
+    steps = plan_steps("daily" if kind == "communication" and source.kind == "daily_summary" else kind,
+                       header, text, threaded=bool(bot))
+    if kind == "communication" and source.destination_kind == "owner_dm":
+        steps = [{"kind": "dm_channel", "label": "Canal privado", "content": "", "status": "pending"}] + [
+            dict(step, kind="dm_body") for step in steps]
     delivery = Delivery(
         id=str(uuid4()), dedupe_key=key, actor_id=actor.id, source_kind=kind,
         source_id=source_id, source_version=version, destination_key=destination,
-        payload={"text": text, "steps": plan_steps(kind, header, text, threaded=bool(bot))},
+        payload={"text": text, "steps": steps,
+                 "destination_label": f"DM Discord · {target}" if kind == "communication" and source.destination_kind == "owner_dm" else "Canal de Discord del equipo"},
         status="pending", available_at=now, expires_at=now + timedelta(days=1),
         message="En cola para Discord. El borrador está guardado.",
     )
     db.add(delivery)
-    await db.commit()
+    await db.flush()
     return delivery
 
 
@@ -222,6 +259,10 @@ async def receipt(db, row, source, *, writable=True):
         can_retry=writable and row.status == "failed" and (not changed or bool(row.resend_of)) and row.error_code in ("rejected", "rate_limit", "not_connected"),
         can_resend=writable and row.status == "uncertain", can_cancel=writable and row.status == "pending",
         worker_enabled=settings.DELIVERY_WORKER_ENABLED,
+        **({"title": source.title, "scope": source.scope,
+            "period_start": source.period_start.isoformat(), "period_end": source.period_end.isoformat(),
+            "destination_label": row.payload.get("destination_label", "Canal de Discord del equipo")}
+           if row.source_kind == "communication" else {}),
     )
 
 
@@ -289,7 +330,7 @@ async def claim(db):
         source = await authorize_source(db, row.source_kind, row.source_id, actor)
         if not row.resend_of and source_version(row.source_kind, source) != row.source_version:
             raise HTTPException(409, "El borrador cambió antes de enviar. Revisa la versión actual")
-        url, bot, destination = await discord_config(db)
+        url, bot, destination = await destination_config(db, row.source_kind, source)
         if destination != row.destination_key:
             raise HTTPException(409, "El destino cambió. Revisa la configuración antes de enviar")
     except HTTPException as exc:
@@ -318,7 +359,16 @@ class SendFailure(Exception):
 
 
 async def send_step(http, url, bot, step, steps):
-    if step["kind"] == "thread":
+    if step["kind"] == "dm_channel":
+        target = "https://discord.com/api/v10/users/@me/channels"
+        body, headers = {"recipient_id": url}, {"Authorization": f"Bot {bot}"}
+    elif step["kind"] == "dm_body":
+        channel = next(s for s in steps if s["kind"] == "dm_channel").get("channel_id")
+        if not channel:
+            raise SendFailure("missing_receipt", "El canal privado no tiene confirmación", uncertain=True)
+        target = f"https://discord.com/api/v10/channels/{channel}/messages"
+        body, headers = {"content": step["content"], "allowed_mentions": {"parse": []}}, {"Authorization": f"Bot {bot}"}
+    elif step["kind"] == "thread":
         header = next(s for s in steps if s["kind"] == "header")
         channel, message = header.get("channel_id"), header.get("message_id")
         if not channel or not message:
@@ -355,6 +405,8 @@ async def send_step(http, url, bot, step, steps):
         channel_id = str(data.get("channel_id", ""))
     except Exception:
         raise SendFailure("missing_receipt", "Discord respondió sin un ID de confirmación válido", uncertain=True) from None
+    if step["kind"] == "dm_channel":
+        return {"channel_id": message_id}  # A channel is not a sent message.
     return {"message_id": message_id, "channel_id": channel_id if channel_id.isdigit() else None}
 
 
@@ -364,7 +416,9 @@ async def _locked_attempt(db, delivery_id, attempt_id):
     known = await db.get(Delivery, delivery_id)
     if not known:
         return None, None
-    model = DailyUpdate if known.source_kind == "daily" else WeeklyDigest
+    model = SOURCE_MODELS.get(known.source_kind)
+    if model is None:
+        return None, None
     await db.execute(select(model.id).where(model.id == known.source_id).with_for_update())
     row = await db.scalar(select(Delivery).where(Delivery.id == delivery_id).with_for_update().execution_options(populate_existing=True))
     attempt = await latest_attempt(db, delivery_id, lock=True)
@@ -399,7 +453,7 @@ async def dispatch_claim(session_factory, claimed, *, transport=None):
                     source = await authorize_source(db, row.source_kind, row.source_id, actor)
                     if not row.resend_of and source_version(row.source_kind, source) != row.source_version:
                         raise HTTPException(409, "El borrador cambió; no se enviarán más partes")
-                    _, _, destination = await discord_config(db)
+                    url, bot, destination = await destination_config(db, row.source_kind, source)
                     if destination != row.destination_key:
                         raise HTTPException(409, "El destino cambió; no se enviarán más partes")
                 except HTTPException as exc:

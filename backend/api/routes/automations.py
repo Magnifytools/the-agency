@@ -23,8 +23,7 @@ from backend.api.deps import get_current_user, require_admin
 from backend.api.utils.db_helpers import safe_refresh
 from backend.core.modules import is_enabled
 from backend.schemas.task import TaskCreate
-from backend.services.task_scope import validate_task_scope
-from backend.services.task_lifecycle import stamp_task_status
+from backend.services.domain_writes import create_task as create_task_write, lock_task, update_task as update_task_write
 from backend.services.notification_service import create_notification
 
 router = APIRouter(prefix="/api/automations", tags=["automations"])
@@ -350,7 +349,10 @@ async def execute_automations(
             # A broken FK/enum/action must not poison the caller's session or
             # prevent subsequent rules from recording their actual outcome.
             async with db.begin_nested():
-                action_result = await _execute_action(rule.action_type, rule.action_config or {}, trigger_data, db)
+                action_result = await _execute_action(
+                    rule.action_type, rule.action_config or {}, trigger_data, db,
+                    actor=rule.creator,
+                )
                 await db.flush()
             outcome = _action_outcome(action_result)
             if outcome == "error":
@@ -406,17 +408,18 @@ async def _execute_action(
     action_config: dict,
     trigger_data: dict,
     db: AsyncSession,
+    actor: User | None = None,
 ) -> dict:
     """Execute a single automation action. Returns result dict."""
 
     if action_type == "create_task":
-        return await _action_create_task(action_config, trigger_data, db)
+        return await _action_create_task(action_config, trigger_data, db, actor=actor)
     elif action_type == "change_task_status":
-        return await _action_change_task_status(action_config, trigger_data, db)
+        return await _action_change_task_status(action_config, trigger_data, db, actor=actor)
     elif action_type == "change_project_status":
         return await _action_change_project_status(action_config, trigger_data, db)
     elif action_type == "assign_user":
-        return await _action_assign_user(action_config, trigger_data, db)
+        return await _action_assign_user(action_config, trigger_data, db, actor=actor)
     elif action_type == "send_notification":
         return await _action_send_notification(action_config, trigger_data, db)
     elif action_type == "send_discord":
@@ -427,7 +430,7 @@ async def _execute_action(
         return {"skipped": True, "reason": f"Unknown action: {action_type}"}
 
 
-async def _action_create_task(config: dict, data: dict, db: AsyncSession) -> dict:
+async def _action_create_task(config: dict, data: dict, db: AsyncSession, *, actor: User | None = None) -> dict:
     """Create a task from automation config."""
     task_data = TaskCreate(
         title=config.get("title", "Tarea automática"),
@@ -440,29 +443,28 @@ async def _action_create_task(config: dict, data: dict, db: AsyncSession) -> dic
         priority=config.get("priority", "medium"),
         estimated_minutes=config.get("estimated_minutes"),
     ).model_dump()
-    await validate_task_scope(db, task_data)
     if task_data.get("assigned_to"):
         await _require_active_user(db, task_data["assigned_to"])
-    task = Task(**task_data)
-    stamp_task_status(task)
-    db.add(task)
-    await db.flush()
+    task = await create_task_write(db, task_data, actor=actor)
     return {"task_id": task.id, "title": task.title}
 
 
-async def _action_change_task_status(config: dict, data: dict, db: AsyncSession) -> dict:
+async def _action_change_task_status(config: dict, data: dict, db: AsyncSession, *, actor: User | None = None) -> dict:
     """Change status of a task (from trigger or config)."""
     task_id = config.get("task_id") or data.get("task_id")
     new_status = TaskStatus(config.get("new_status", "pending"))
     if not task_id:
         return {"skipped": True, "reason": "No task_id"}
 
-    result = await db.execute(select(Task).where(Task.id == task_id).with_for_update().execution_options(populate_existing=True))
-    task = result.scalar_one_or_none()
+    try:
+        task = await lock_task(db, task_id)
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+        task = None
     if task:
         old = task.status
-        task.status = new_status
-        stamp_task_status(task, old)
+        await update_task_write(db, task, {"status": new_status}, actor=actor)
         return {"task_id": task_id, "old_status": old, "new_status": new_status}
     return {"skipped": True, "reason": f"Task {task_id} not found"}
 
@@ -489,18 +491,22 @@ async def _require_active_user(db: AsyncSession, user_id: int) -> None:
         raise ValueError("The target user does not exist or is inactive")
 
 
-async def _action_assign_user(config: dict, data: dict, db: AsyncSession) -> dict:
+async def _action_assign_user(config: dict, data: dict, db: AsyncSession, *, actor: User | None = None) -> dict:
     """Assign user to a task."""
     task_id = config.get("task_id") or data.get("task_id")
     user_id = config.get("user_id")
     if not task_id or not user_id:
         return {"skipped": True, "reason": "Missing task_id or user_id"}
 
-    result = await db.execute(select(Task).where(Task.id == task_id).with_for_update().execution_options(populate_existing=True))
-    task = result.scalar_one_or_none()
+    try:
+        task = await lock_task(db, task_id)
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+        task = None
     if task:
         await _require_active_user(db, user_id)
-        task.assigned_to = user_id
+        await update_task_write(db, task, {"assigned_to": user_id}, actor=actor)
         return {"task_id": task_id, "assigned_to": user_id}
     return {"skipped": True, "reason": f"Task {task_id} not found"}
 

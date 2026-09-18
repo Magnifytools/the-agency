@@ -6,12 +6,11 @@ from sqlalchemy import desc
 from typing import List, Optional
 
 from backend.db.database import get_db
-from backend.db.models import GrowthIdea, User, Project, Task
+from backend.db.models import GrowthIdea, User
 from backend.schemas.growth import GrowthIdeaCreate, GrowthIdeaUpdate, GrowthIdeaResponse
 from backend.api.deps import get_current_user, require_module
 from backend.api.utils.db_helpers import safe_refresh
-from backend.services.task_scope import validate_client_exists, validate_task_scope
-from backend.services.project_owner import validate_project_owner
+from backend.services.domain_writes import create_project as create_project_write, create_task as create_task_write
 
 router = APIRouter(tags=["growth"])
 
@@ -142,25 +141,15 @@ async def convert_to_project(
     if not idea:
         raise HTTPException(status_code=404, detail="Idea no encontrada")
 
-    await validate_client_exists(db, client_id)
-    await validate_project_owner(db, owner_id)
-
     desc_parts = [idea.description] if idea.description else []
     desc_parts.append(f"Origen: Buffer de Ideas (ICE: {idea.ice_score})")
     if idea.results_notes:
         desc_parts.append(f"Resultados: {idea.results_notes}")
 
-    project = Project(
-        name=f"[Buffer] {idea.title}",
-        description="\n\n".join(desc_parts),
-        client_id=client_id,
-        status="planning",
-        owner_id=owner_id,
-    )
-    db.add(project)
-    await db.commit()
-    await safe_refresh(db, project, log_context="growth")
-
+    project = await create_project_write(db, {
+        "name": f"[Buffer] {idea.title}", "description": "\n\n".join(desc_parts),
+        "client_id": client_id, "status": "planning", "owner_id": owner_id,
+    })
     idea.project_id = project.id
     idea.status = "completed"
     await db.commit()
@@ -181,26 +170,15 @@ async def create_task_from_idea(
     if not idea:
         raise HTTPException(status_code=404, detail="Idea no encontrada")
 
-    scope = {"client_id": client_id}
-    await validate_task_scope(db, scope)
-
     desc_parts = [idea.description] if idea.description else []
     desc_parts.append(f"Origen: Buffer de Ideas (ICE: {idea.ice_score})")
     if idea.results_notes:
         desc_parts.append(f"Resultados: {idea.results_notes}")
 
-    task = Task(
-        title=f"[Buffer] {idea.title}",
-        description="\n\n".join(desc_parts),
-        client_id=scope["client_id"],
-        status="pending",
-        priority="medium",
-        created_by=current_user.id,
-    )
-    db.add(task)
-    await db.commit()
-    await safe_refresh(db, task, log_context="growth")
-
+    task = await create_task_write(db, {
+        "title": f"[Buffer] {idea.title}", "description": "\n\n".join(desc_parts),
+        "client_id": client_id, "status": "pending", "priority": "medium",
+    }, actor=current_user)
     idea.task_id = task.id
     idea.status = "completed"
     await db.commit()

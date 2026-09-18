@@ -16,6 +16,7 @@ from backend.db.models import (
     User, UserDayStatus, DayStatusType, CompanyHoliday,
 )
 from backend.api.deps import get_current_user, require_admin
+from backend.services.domain_writes import lock_task, update_task as update_task_write
 from backend.api.utils.db_helpers import safe_refresh
 from backend.schemas.my_week import (
     DayStatusUpdate, DayStatusResponse,
@@ -522,15 +523,11 @@ async def schedule_task(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    q = select(Task).where(Task.id == task_id)
-    result = await db.execute(q)
-    task = result.scalar_one_or_none()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+    task = await lock_task(db, task_id)
     if task.assigned_to != user.id and user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    task.scheduled_date = scheduled_date
+    await update_task_write(db, task, {"scheduled_date": scheduled_date}, actor=user)
     await db.commit()
     return {"ok": True, "scheduled_date": str(scheduled_date) if scheduled_date else None}
 

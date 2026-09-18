@@ -20,6 +20,7 @@ from datetime import date
 import pytest
 from sqlalchemy import select
 
+from backend.services.temporal import business_today
 from backend.db.models import DailyUpdate
 
 
@@ -118,7 +119,7 @@ async def test_el_daily_duplicado_sigue_devolviendo_409(admin_client, monkeypatc
 
     segundo = await admin_client.post("/api/dailys", json={"raw_text": "dos"})
     assert segundo.status_code == 409
-    assert date.today().isoformat() in segundo.json()["detail"]
+    assert business_today().isoformat() in segundo.json()["detail"]
 
 
 @pytest.mark.asyncio

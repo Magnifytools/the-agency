@@ -10,7 +10,7 @@ to generate actionable insights for the PM.
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, func
+from sqlalchemy import Date, cast, or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import (
@@ -528,20 +528,22 @@ async def generate_insights(
 
 
 async def get_daily_briefing(
-    db: AsyncSession, user_id: Optional[int] = None, *, team: bool = False,
+    db: AsyncSession, user_id: Optional[int] = None, *, team: bool = False, include_ai: bool = True,
 ) -> dict:
     """
     Generate a daily briefing summary.
     """
-    now = datetime.now(timezone.utc).replace(tzinfo=None)  # naive UTC — matches DB DateTime columns (no tz)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_end = today_start + timedelta(days=1)
+    from backend.services.temporal import business_today, business_zone
+    now = datetime.now(business_zone())
+    today = business_today(now=now)
+    today_end = datetime.combine(today + timedelta(days=1), datetime.min.time())
 
-    # Tasks due today
+    # Match /tasks/day-agenda planned: due today, or planned today with no overdue deadline.
+    due_day = cast(Task.due_date, Date)
     today_query = (
         select(Task)
-        .where(Task.due_date >= today_start)
-        .where(Task.due_date < today_end)
+        .where(Task.is_recurring.is_(False))
+        .where(or_(due_day == today, (Task.scheduled_date == today) & or_(Task.due_date.is_(None), due_day > today)))
         .where(Task.status != TaskStatus.completed)
         .order_by(Task.due_date.asc())
     )
@@ -561,8 +563,9 @@ async def get_daily_briefing(
     # Overdue tasks
     overdue_query = (
         select(Task)
-        .where(Task.due_date < today_start)
-        .where(Task.status != TaskStatus.completed)
+        .where(cast(Task.due_date, Date) < today)
+        .where(Task.status != TaskStatus.completed, Task.is_recurring.is_(False))
+        .order_by(Task.due_date.asc(), Task.id)
         .limit(5)
     )
     if not team and user_id is not None:
@@ -573,7 +576,7 @@ async def get_daily_briefing(
             "id": t.id,
             "title": t.title,
             "client": t.client.name if t.client else None,
-            "days_overdue": (now - t.due_date).days,
+            "days_overdue": (today - t.due_date.date()).days,
         }
         for t in overdue_tasks.scalars().all()
     ]
@@ -582,7 +585,7 @@ async def get_daily_briefing(
     communications_query = (
         select(CommunicationLog)
         .where(CommunicationLog.requires_followup.is_(True))
-        .where(CommunicationLog.followup_date <= today_end)
+        .where(CommunicationLog.followup_date < today_end)
         .limit(5)
     )
     if not team and user_id is not None:
@@ -607,7 +610,7 @@ async def get_daily_briefing(
         greeting = "Buenas noches 👋"
 
     # Try AI-powered suggestion first, fall back to rule-based
-    suggestion = await _generate_ai_briefing_suggestion(priorities, alerts, followups)
+    suggestion = await _generate_ai_briefing_suggestion(priorities, alerts, followups) if include_ai else None
 
     if suggestion is None:
         # Rule-based fallback
@@ -619,7 +622,7 @@ async def get_daily_briefing(
             suggestion = "Recuerda hacer seguimiento de tus comunicaciones pendientes."
 
     return {
-        "date": now.strftime("%Y-%m-%d"),
+        "date": today.isoformat(),
         "greeting": greeting,
         "priorities": priorities,
         "alerts": alerts,

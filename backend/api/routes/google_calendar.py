@@ -228,6 +228,8 @@ async def upcoming_meetings(
     current_user: User = Depends(get_current_user),
 ):
     """Get meetings starting in the next X minutes. Used by Chrome extension."""
+    if not settings.LEGACY_SCHEDULED_COMMUNICATIONS_ENABLED:
+        return []  # Pause old desktop producers during the same controlled drain.
     now = datetime.now(MADRID_TZ).replace(tzinfo=None)
     cutoff = now + timedelta(minutes=minutes)
 
@@ -269,6 +271,8 @@ async def trigger_sync(
 
 async def sync_user_events(db: AsyncSession, user: User) -> int:
     """Sync events from Google Calendar for a single user. Returns count of upserted events."""
+    if not settings.LEGACY_SCHEDULED_COMMUNICATIONS_ENABLED:
+        raise HTTPException(409, "La sincronización está pausada durante una actualización; tu conexión de Google se conserva")
     if not user.google_refresh_token:
         return 0
 

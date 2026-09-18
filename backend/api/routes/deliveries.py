@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_current_user
 from backend.db.database import get_db
-from backend.db.models import Delivery, User, UserRole
+from backend.db.models import CommunicationRequest, Delivery, User, UserRole
 from backend.schemas.delivery import DeliveryReceipt, ResendRequest
 from backend.services import deliveries as service
 
@@ -12,7 +12,12 @@ router = APIRouter(prefix="/api/deliveries", tags=["deliveries"])
 
 
 def writable(actor, kind):
-    return kind == "daily" or actor.role == UserRole.admin or any(p.module == "digests" and p.can_write for p in actor.permissions)
+    if kind not in service.SOURCE_MODELS:
+        return False
+    if kind == "daily" or actor.role == UserRole.admin:
+        return True
+    module = "pm" if kind == "communication" else "digests"
+    return any(p.module == module and p.can_write for p in actor.permissions)
 
 
 @router.get("", response_model=list[DeliveryReceipt])
@@ -20,6 +25,24 @@ async def list_deliveries(source_kind: str, source_id: int, limit: int = Query(1
     source = await service.authorize_source(db, source_kind, source_id, actor, write=False)
     rows = (await db.execute(select(Delivery).where(Delivery.source_kind == source_kind, Delivery.source_id == source_id).order_by(Delivery.created_at.desc(), Delivery.id).limit(limit))).scalars().all()
     return [await service.receipt(db, row, source, writable=writable(actor, source_kind)) for row in rows]
+
+
+@router.get("/manual", response_model=list[DeliveryReceipt])
+async def list_manual_deliveries(kind: str, scope: str | None = None, limit: int = Query(10, ge=1, le=50),
+                                 db: AsyncSession = Depends(get_db), actor: User = Depends(get_current_user)):
+    from backend.services.manual_communications import KINDS, authorize_request
+    from types import SimpleNamespace
+    authorize_request(SimpleNamespace(kind=kind, scope=scope or ("mine" if kind == "pm_briefing" else "team"),
+                      owner_id=actor.id, destination_kind="owner_dm" if kind == "weekly_report" else "team_webhook"), actor, write=False)
+    if kind not in KINDS:
+        raise HTTPException(404, "Fuente no encontrada")
+    query = select(Delivery, CommunicationRequest).join(CommunicationRequest,
+        (Delivery.source_kind == "communication") & (Delivery.source_id == CommunicationRequest.id)
+    ).where(CommunicationRequest.owner_id == actor.id, CommunicationRequest.kind == kind)
+    if scope is not None:
+        query = query.where(CommunicationRequest.scope == scope)
+    rows = (await db.execute(query.order_by(Delivery.created_at.desc(), Delivery.id).limit(limit))).all()
+    return [await service.receipt(db, row, source, writable=writable(actor, "communication")) for row, source in rows]
 
 
 @router.get("/{delivery_id}", response_model=DeliveryReceipt)

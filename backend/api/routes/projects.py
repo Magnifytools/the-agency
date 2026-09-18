@@ -33,6 +33,7 @@ from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 from backend.services.time_budget import effective_budgets, build_closing_status, is_recurring_project
 from backend.services.task_scope import validate_client_exists
 from backend.services.project_owner import validate_project_owner
+from backend.services.domain_writes import create_project as create_project_write, create_task as create_task_write
 from backend.services.temporal import as_utc_instant, business_today, business_zone
 from backend.services.time_entry_dates import time_entry_civil_period
 from backend.api.utils.db_helpers import safe_refresh
@@ -367,28 +368,15 @@ async def create_project(
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_module("projects", write=True)),
 ):
-    await validate_client_exists(db, body.client_id)
-    await validate_project_owner(db, body.owner_id)
-    project = Project(
-        name=body.name,
-        description=body.description,
-        project_type=body.project_type,
-        is_recurring=body.is_recurring,
-        start_date=body.start_date,
-        target_end_date=body.target_end_date,
-        budget_hours=body.budget_hours,
-        weekly_hours_budget=body.weekly_hours_budget,
-        monthly_hours_budget=body.monthly_hours_budget,
-        budget_amount=body.budget_amount,
-        pricing_model=body.pricing_model,
-        monthly_fee=body.monthly_fee,
-        unit_price=body.unit_price,
-        unit_label=body.unit_label,
-        scope=body.scope,
-        client_id=body.client_id,
-        owner_id=body.owner_id,
-    )
-    db.add(project)
+    project = await create_project_write(db, {
+        key: value for key, value in body.model_dump().items()
+        if key in {
+            "name", "description", "project_type", "is_recurring", "start_date",
+            "target_end_date", "budget_hours", "weekly_hours_budget",
+            "monthly_hours_budget", "budget_amount", "pricing_model", "monthly_fee",
+            "unit_price", "unit_label", "scope", "client_id", "owner_id",
+        }
+    })
     await db.commit()
 
     result = await db.execute(
@@ -593,6 +581,8 @@ async def create_project_from_template(
     _user=Depends(require_module("projects", write=True)),
 ):
     """Create a project from a DB template with phases and tasks pre-populated."""
+    # Preserve the endpoint's validation order; the shared writer revalidates
+    # immediately before mutation so non-HTTP adapters get the same invariant.
     await validate_client_exists(db, client_id)
     await validate_project_owner(db, owner_id)
     result = await db.execute(
@@ -608,20 +598,18 @@ async def create_project_from_template(
 
     total_days = sum(p.get("default_days", 7) for p in template_phases)
 
-    project = Project(
-        name=tpl.name,
-        project_type=tpl.project_type or tpl.key,
-        start_date=base_date,
-        target_end_date=base_date + timedelta(days=total_days),
-        client_id=client_id,
-        status=ProjectStatus.planning,
-        is_recurring=tpl.is_recurring,
-        pricing_model=tpl.pricing_model,
-        monthly_fee=tpl.monthly_fee,
-        owner_id=owner_id,
-    )
-    db.add(project)
-    await db.flush()
+    project = await create_project_write(db, {
+        "name": tpl.name,
+        "project_type": tpl.project_type or tpl.key,
+        "start_date": base_date,
+        "target_end_date": base_date + timedelta(days=total_days),
+        "client_id": client_id,
+        "status": ProjectStatus.planning,
+        "is_recurring": tpl.is_recurring,
+        "pricing_model": tpl.pricing_model,
+        "monthly_fee": tpl.monthly_fee,
+        "owner_id": owner_id,
+    })
 
     phase_map = {}
     current_date = base_date
@@ -640,15 +628,14 @@ async def create_project_from_template(
 
     for task_def in template_tasks:
         phase = phase_map.get(task_def.get("phase", 0))
-        task = Task(
-            title=task_def["title"],
-            estimated_minutes=task_def.get("minutes", 60),
-            client_id=client_id,
-            project_id=project.id,
-            phase_id=phase.id if phase else None,
-            due_date=phase.due_date if phase else None,
-        )
-        db.add(task)
+        await create_task_write(db, {
+            "title": task_def["title"],
+            "estimated_minutes": task_def.get("minutes", 60),
+            "client_id": client_id,
+            "project_id": project.id,
+            "phase_id": phase.id if phase else None,
+            "due_date": phase.due_date if phase else None,
+        }, actor=_user)
 
     await db.commit()
 

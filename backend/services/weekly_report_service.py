@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
-from sqlalchemy import select, func
+from sqlalchemy import Date, cast, select, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,15 +25,16 @@ def _fmt_h(minutes: float) -> str:
     return f"{int(h)}h" if h == int(h) else f"{h:.1f}h"
 
 
-async def generate_weekly_report(db: AsyncSession) -> str:
+async def generate_weekly_report(db: AsyncSession, *, period_start: date | None = None, period_end: date | None = None) -> str:
     """Generate the full weekly report text. Returns Discord-formatted string."""
     now = datetime.now(business_zone())
     today = now.date()
-    ws = today - timedelta(days=5)  # Monday (Saturday - 5)
-    we_fri = ws + timedelta(days=4)
-    we_sun = ws + timedelta(days=6)
+    ws = period_start or today - timedelta(days=today.weekday())
+    we = period_end or ws + timedelta(days=6)
+    if we < ws:
+        raise ValueError("Invalid report period")
     start_dt, _ = civil_day_utc_bounds(ws)
-    end_dt, _ = civil_day_utc_bounds(we_sun + timedelta(days=1))
+    end_dt, _ = civil_day_utc_bounds(we + timedelta(days=1))
 
     # Users
     users_result = await db.execute(
@@ -46,7 +47,7 @@ async def generate_weekly_report(db: AsyncSession) -> str:
     entries_result = await db.execute(
         select(TimeEntry).where(
             TimeEntry.minutes.isnot(None),
-            time_entry_civil_period(ws, we_sun + timedelta(days=1)),
+            time_entry_civil_period(ws, we + timedelta(days=1)),
         )
     )
     entries = entries_result.scalars().all()
@@ -75,7 +76,7 @@ async def generate_weekly_report(db: AsyncSession) -> str:
 
     overdue_filter = (
         Task.status.notin_([TaskStatus.completed])
-        & (Task.due_date < start_dt)
+        & (cast(Task.due_date, Date) < ws)
         & Task.due_date.isnot(None)
     )
     overdue_total = (await db.execute(select(func.count(Task.id)).where(overdue_filter))).scalar() or 0
@@ -119,7 +120,7 @@ async def generate_weekly_report(db: AsyncSession) -> str:
     total_capacity_mins = sum((u.weekly_hours or 40) * 60 for u in users)
     lines: list[str] = []
 
-    lines.append(f"\U0001f4ca **Repaso Semanal \u2014 {ws.strftime('%d/%m')} al {we_fri.strftime('%d/%m/%Y')}**")
+    lines.append(f"\U0001f4ca **Repaso Semanal \u2014 {ws.strftime('%d/%m')} al {we.strftime('%d/%m/%Y')}**")
     lines.append("")
 
     if total_capacity_mins:

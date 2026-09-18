@@ -20,7 +20,6 @@ from backend.db.models import (
     TaskChecklist,
     TaskComment,
     TaskAttachment,
-    TimeEntry,
 )
 from backend.schemas.task import TaskCreate, TaskUpdate, TaskResponse
 from backend.schemas.task_checklist import ChecklistItemCreate, ChecklistItemUpdate, ChecklistItemResponse
@@ -30,10 +29,9 @@ from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module
 from backend.api.utils.db_helpers import safe_refresh
 from backend.api.middleware.audit_log import log_audit
-from backend.services.task_scope import validate_task_scope
 from backend.services.temporal import civil_day_utc_bounds
 from backend.services.time_entry_dates import manual_time_entry_date
-from backend.services.task_lifecycle import stamp_task_status
+from backend.services.domain_writes import create_task as create_task_write, lock_task, update_task as update_task_write
 
 logger = logging.getLogger(__name__)
 
@@ -334,30 +332,10 @@ async def create_task(
     current_user: User = Depends(require_module("tasks", write=True)),
 ):
     data = body.model_dump()
-    await validate_task_scope(db, data)
-    if data.get("actual_minutes") and current_user.role.value != "admin":
-        can_write_time = any(
-            permission.module == "timesheet" and permission.can_write
-            for permission in (current_user.permissions or [])
-        )
-        if not can_write_time:
-            raise HTTPException(403, "Crear horas reales requiere permiso de escritura en timesheet")
-    if data.get("actual_minutes"):
-        from backend.services.change_journal import capture_manual_time
-        capture_manual_time(db.sync_session)
-    task = Task(**data, created_by=current_user.id)
-    stamp_task_status(task)
-    db.add(task)
     try:
-        await db.flush()
-        if task.actual_minutes:
-            db.add(TimeEntry(
-                task_id=task.id,
-                user_id=current_user.id,
-                minutes=task.actual_minutes,
-                date=manual_time_entry_date(),
-                notes="[manual]",
-            ))
+        task = await create_task_write(
+            db, data, actor=current_user, manual_entry_date=manual_time_entry_date(),
+        )
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -366,6 +344,8 @@ async def create_task(
         await db.rollback()
         logger.warning("DataError creando tarea: %s", e)
         raise HTTPException(status_code=422, detail="Datos inválidos: uno o más campos exceden la longitud máxima")
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error("Error creando tarea: %s", e)
@@ -427,110 +407,15 @@ async def update_task(
     # Serialize all task edits before comparing or deriving actual_minutes.
     # Without this lock, two concurrent explicit total edits can both observe
     # the old total and each create the same manual adjustment.
-    result = await db.execute(
-        select(Task).where(Task.id == task_id).with_for_update().execution_options(populate_existing=True)
-    )
-    task = result.scalar_one_or_none()
-    if task is None:
-        raise HTTPException(status_code=404, detail="Task not found")
+    task = await lock_task(db, task_id)
     old_assigned_to = task.assigned_to
     old_status = task.status.value if hasattr(task.status, "value") else str(task.status)
-    _UPDATABLE_TASK_FIELDS = {
-        "title", "description", "status", "priority",
-        "estimated_minutes", "actual_minutes",
-        "start_date", "due_date", "client_id", "category_id",
-        "assigned_to", "project_id", "phase_id", "depends_on",
-        "scheduled_date", "waiting_for", "follow_up_date",
-        "is_recurring", "recurrence_pattern", "recurrence_day",
-        "recurrence_end_date", "recurring_parent_id",
-        "unit_cost", "link_url",
-    }
     update_data = body.model_dump(exclude_unset=True)
-    manual_minutes_changed = (
-        "actual_minutes" in update_data
-        and update_data["actual_minutes"] != task.actual_minutes
-    )
-    if manual_minutes_changed and current_user.role.value != "admin":
-        can_write_time = any(
-            permission.module == "timesheet" and permission.can_write
-            for permission in (current_user.permissions or [])
-        )
-        if not can_write_time:
-            raise HTTPException(
-                status_code=403,
-                detail="Editar horas reales requiere permiso de escritura en timesheet",
-            )
-    if manual_minutes_changed:
-        from backend.services.change_journal import capture_manual_time
-        capture_manual_time(db.sync_session)
-    new_actual = update_data.get("actual_minutes")
-    await validate_task_scope(db, update_data, existing=task)
-    for field, value in update_data.items():
-        if field in _UPDATABLE_TASK_FIELDS:
-            setattr(task, field, value)
-
-    if "status" in update_data:
-        stamp_task_status(task, old_status)
-
-    # Only an explicit total edit may change manual time. Other users' manual
-    # entries and all timer entries are immutable here, preserving attribution.
-    if manual_minutes_changed:
-        fixed_sum_result = await db.execute(
-            select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
-                TimeEntry.task_id == task_id,
-                TimeEntry.minutes.isnot(None),
-                or_(
-                    TimeEntry.notes.is_(None),
-                    TimeEntry.notes != "[manual]",
-                    TimeEntry.user_id != current_user.id,
-                ),
-            )
-        )
-        fixed_sum = fixed_sum_result.scalar() or 0
-        target_actual = fixed_sum if new_actual is None else new_actual
-        if target_actual < fixed_sum:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Las horas reales no pueden ser menores que los {fixed_sum} minutos ya registrados",
-            )
-        manual_diff = target_actual - fixed_sum
-        task.actual_minutes = target_actual or None
-
-        # Find the current actor's manual adjustment. Never reattribute or
-        # redatate another person's historical manual entry.
-        manual_result = await db.execute(
-            select(TimeEntry).where(
-                TimeEntry.task_id == task_id,
-                TimeEntry.user_id == current_user.id,
-                TimeEntry.notes == "[manual]",
-            ).order_by(TimeEntry.date.desc(), TimeEntry.id.desc())
-        )
-        manual_entries = list(manual_result.scalars().all())
-        current_manual = sum(entry.minutes or 0 for entry in manual_entries)
-        if manual_diff > current_manual:
-            increase = manual_diff - current_manual
-            if manual_entries:
-                manual_entries[0].minutes = (manual_entries[0].minutes or 0) + increase
-            else:
-                db.add(TimeEntry(
-                    task_id=task_id,
-                    user_id=current_user.id,
-                    minutes=increase,
-                    date=manual_time_entry_date(),
-                    notes="[manual]",
-                ))
-        elif manual_diff < current_manual:
-            remaining_reduction = current_manual - manual_diff
-            for manual_entry in manual_entries:
-                current_minutes = manual_entry.minutes or 0
-                if remaining_reduction >= current_minutes:
-                    remaining_reduction -= current_minutes
-                    await db.delete(manual_entry)
-                else:
-                    manual_entry.minutes = current_minutes - remaining_reduction
-                    break
-
     try:
+        task = await update_task_write(
+            db, task, update_data, actor=current_user,
+            manual_entry_date=manual_time_entry_date(),
+        )
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -539,6 +424,8 @@ async def update_task(
         await db.rollback()
         logger.warning("DataError actualizando tarea %d: %s", task_id, e)
         raise HTTPException(status_code=422, detail="Datos inválidos: uno o más campos exceden la longitud máxima")
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error("Error actualizando tarea %d: %s", task_id, e)
@@ -628,7 +515,7 @@ class BulkDeleteBody(BaseModel):
 async def bulk_update_tasks(
     body: BulkUpdateBody,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("tasks", write=True)),
+    current_user: User = Depends(require_module("tasks", write=True)),
 ):
     if not body.ids or len(body.ids) > 100:
         raise HTTPException(400, "Provide 1-100 task IDs")
@@ -637,7 +524,10 @@ async def bulk_update_tasks(
     if not updates:
         raise HTTPException(400, "No valid fields to update")
 
-    result = await db.execute(select(Task).where(Task.id.in_(body.ids)))
+    result = await db.execute(
+        select(Task).where(Task.id.in_(body.ids)).order_by(Task.id).with_for_update()
+        .execution_options(populate_existing=True)
+    )
     tasks = result.scalars().all()
     updated = 0
     failed = 0
@@ -645,17 +535,11 @@ async def bulk_update_tasks(
         try:
             async with db.begin_nested():
                 scoped_updates = dict(updates)
-                await validate_task_scope(db, scoped_updates, existing=task)
-                old_task_status = task.status
-                for field, value in scoped_updates.items():
-                    if field == "status" and value:
-                        value = TaskStatus(value)
-                    if field == "priority" and value:
-                        value = TaskPriority(value)
-                    setattr(task, field, value)
-                if "status" in updates:
-                    stamp_task_status(task, old_task_status)
-                await db.flush()
+                if "status" in scoped_updates and scoped_updates["status"]:
+                    scoped_updates["status"] = TaskStatus(scoped_updates["status"])
+                if "priority" in scoped_updates and scoped_updates["priority"]:
+                    scoped_updates["priority"] = TaskPriority(scoped_updates["priority"])
+                await update_task_write(db, task, scoped_updates, actor=current_user)
             updated += 1
         except Exception as e:
             failed += 1

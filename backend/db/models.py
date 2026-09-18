@@ -1495,6 +1495,22 @@ class DailyUpdate(TimestampMixin, Base):
     user = relationship("User", lazy="selectin")
 
 
+class CommunicationRequest(TimestampMixin, Base):
+    """Reviewed manual snapshot: a real source for deliveries without a draft model."""
+    __tablename__ = "communication_requests"
+    __table_args__ = (Index("uq_communication_request_key", "request_key", unique=True),)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    request_key = Column(String(64), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    kind = Column(String(30), nullable=False)
+    scope = Column(String(10), nullable=False)
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+    title = Column(String(200), nullable=False)
+    content = Column(Text, nullable=False)
+    destination_kind = Column(String(20), nullable=False)
+
+
 class Delivery(TimestampMixin, Base):
     """Immutable message intent; source edits never replace its snapshot."""
     __tablename__ = "deliveries"

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { discordApi } from "@/lib/api"
 import type { DiscordSettings } from "@/lib/types"
@@ -11,6 +11,7 @@ import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Loader2, Send, CheckCircle, Bell, Bot, Eye, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { deliveryToast, ManualDeliveryReceipts } from "@/components/delivery-receipts"
 
 export default function DiscordSettingsPage() {
   const queryClient = useQueryClient()
@@ -20,6 +21,7 @@ export default function DiscordSettingsPage() {
   const [autoSendInput, setAutoSendInput] = useState(false)
   const [includeAiInput, setIncludeAiInput] = useState(true)
   const [initialized, setInitialized] = useState(false)
+  const pendingTestRequestKey = useRef<string | null>(null)
 
   // Preview/edit state for daily summary
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -50,13 +52,11 @@ export default function DiscordSettingsPage() {
   })
 
   const testMutation = useMutation({
-    mutationFn: () => discordApi.testWebhook(),
+    mutationFn: (requestKey: string) => discordApi.testWebhook(requestKey),
     onSuccess: (data) => {
-      if (data.success) {
-        toast.success(data.message)
-      } else {
-        toast.error(data.message)
-      }
+      pendingTestRequestKey.current = null
+      deliveryToast(data)
+      queryClient.invalidateQueries({ queryKey: ["deliveries", "manual"] })
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al probar webhook")),
   })
@@ -75,12 +75,8 @@ export default function DiscordSettingsPage() {
     mutationFn: (content: string) => discordApi.sendCustom(content),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["discord-settings"] })
-      if (data.success) {
-        toast.success(data.message)
-        setPreviewOpen(false)
-      } else {
-        toast.error(data.message)
-      }
+      queryClient.invalidateQueries({ queryKey: ["deliveries", "manual"] })
+      deliveryToast(data)
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al enviar resumen")),
   })
@@ -179,7 +175,10 @@ export default function DiscordSettingsPage() {
               />
               <Button
                 variant="outline"
-                onClick={() => testMutation.mutate()}
+                onClick={() => {
+                  pendingTestRequestKey.current ??= crypto.randomUUID()
+                  testMutation.mutate(pendingTestRequestKey.current)
+                }}
                 disabled={testMutation.isPending || (!webhookInput.trim() && !settings?.webhook_configured)}
               >
                 {testMutation.isPending ? (
@@ -333,8 +332,10 @@ export default function DiscordSettingsPage() {
               Enviar a Discord
             </Button>
           </div>
+          <ManualDeliveryReceipts kind="custom" />
         </div>
       </Dialog>
+      <ManualDeliveryReceipts kind="connection_test" />
     </div>
   )
 }

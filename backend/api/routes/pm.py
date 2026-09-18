@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import date
 import logging
 from typing import Literal, Optional
 
@@ -14,6 +15,10 @@ from backend.core.modules import is_enabled
 from backend.schemas.insight import InsightResponse, DailyBriefingResponse
 from backend.schemas.alert_settings import AlertSettingsResponse, AlertSettingsUpdate
 from backend.services.insights import generate_insights, get_daily_briefing
+from backend.schemas.delivery import ManualDeliveryReceipt, ManualSendRequest
+from backend.services.manual_communications import enqueue_request, format_briefing
+from backend.services.temporal import business_today
+
 from backend.api.deps import get_current_user, require_module
 from backend.core.rate_limiter import ai_limiter
 from backend.db.models import UserRole
@@ -246,90 +251,29 @@ async def get_briefing(
     briefing = await get_daily_briefing(
         db, user_id=current_user.id, team=scope == "team"
     )
-    return DailyBriefingResponse(**briefing)
+    return DailyBriefingResponse(**briefing, discord_content=format_briefing(briefing))
 
 
-@router.post("/briefing/discord")
+@router.post("/briefing/discord", response_model=ManualDeliveryReceipt, status_code=202)
 async def share_briefing_to_discord(
     scope: Literal["mine", "team"] = "mine",
+    body: ManualSendRequest | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("pm", write=True)),
 ):
-    """Generate the daily briefing and share it to Discord via Webhook."""
-    from backend.config import settings
-    from backend.db.models import DiscordSettings
-    import httpx
-
     if scope == "team" and current_user.role != UserRole.admin:
-        raise HTTPException(status_code=403, detail="La vista de equipo requiere rol administrador")
-
-    # Resolve webhook URL: DB settings first, then env var fallback
-    ds_result = await db.execute(select(DiscordSettings).limit(1))
-    ds = ds_result.scalar_one_or_none()
-    from backend.core.security import decrypt_vault_secret
-    raw_url = ds.webhook_url if ds else None
-    if raw_url and raw_url.startswith("v1:"):
-        try:
-            raw_url = decrypt_vault_secret(raw_url)
-        except Exception:
-            raw_url = None
-    webhook_url = raw_url or settings.DISCORD_WEBHOOK_URL
-
-    if not webhook_url:
-        raise HTTPException(
-            status_code=400,
-            detail="No hay webhook de Discord configurado. Ve a Ajustes > Discord para configurarlo.",
-        )
-
-    briefing = await get_daily_briefing(db, user_id=current_user.id, team=scope == "team")
-
-    # Format the message for Discord
-    lines = [f"# {briefing['greeting']}"]
-    lines.append(f"**Briefing del {briefing['date']}**")
-
-    if briefing.get('suggestion'):
-        lines.append(f"> *{briefing['suggestion']}*")
-
-    if briefing['priorities']:
-        lines.append("\n**Tareas de hoy:**")
-        for p in briefing['priorities']:
-            client_prefix = f"[{p['client']}] " if p.get('client') else ""
-            lines.append(f"- {client_prefix}{p['title']}")
-
-    if briefing['alerts']:
-        lines.append("\n**Tareas vencidas:**")
-        for a in briefing['alerts']:
-            client_prefix = f"[{a['client']}] " if a.get('client') else ""
-            lines.append(f"- {client_prefix}{a['title']} ({a['days_overdue']} dias)")
-
-    if briefing['followups']:
-        lines.append("\n**Seguimientos pendientes:**")
-        for f_ in briefing['followups']:
-            client_prefix = f"[{f_['client']}] " if f_.get('client') else ""
-            lines.append(f"- {client_prefix}{f_['subject']}")
-
-    if not briefing['priorities'] and not briefing['alerts'] and not briefing['followups']:
-        lines.append("\n*No hay tareas pendientes para hoy.*")
-
-    content = "\n".join(lines)
-    # Discord enforces 2000 char limit
-    if len(content) > 1950:
-        content = content[:1950] + "\n...(truncado)"
-
-    discord_payload = {
-        "content": content,
-        "username": "The Agency Bot",
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=10) as http_client:
-            resp = await http_client.post(webhook_url, json=discord_payload)
-            resp.raise_for_status()
-    except Exception:
-        logger.exception("Failed to push PM briefing to Discord for user_id=%s", current_user.id)
-        raise HTTPException(status_code=500, detail="No se pudo enviar el briefing a Discord")
-
-    return {"status": "ok", "message": "Briefing shared to Discord."}
+        raise HTTPException(403, "La vista de equipo requiere rol administrador")
+    day = body.date if body and body.date else business_today()
+    if body and body.content is not None:
+        content = body.content
+    else:
+        # Legacy callers have no reviewed preview: deterministic fallback, no new
+        # AI generation on each click. Current UI sends its displayed snapshot.
+        briefing = await get_daily_briefing(db, user_id=current_user.id, team=scope == "team", include_ai=False)
+        content = format_briefing(briefing)
+        day = date.fromisoformat(briefing["date"])
+    return await enqueue_request(db, current_user, kind="pm_briefing", scope=scope, period_start=day,
+                                 period_end=day, title=f"Briefing del {day.isoformat()}", content=content)
 
 
 @router.get("/insights/count")

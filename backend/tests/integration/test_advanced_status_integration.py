@@ -20,6 +20,7 @@ from datetime import date, timedelta
 import pytest
 from sqlalchemy import select, text
 
+from backend.services.temporal import business_today
 from backend.db.models import Client, Task, TaskStatus
 
 
@@ -150,7 +151,7 @@ async def test_marcar_avanzada_sella_la_fecha(admin_client, db_session):
     assert resp.json()["status"] == "advanced"
 
     await db_session.refresh(task)
-    assert task.advanced_at == date.today()
+    assert task.advanced_at == business_today()
 
 
 @pytest.mark.asyncio
@@ -165,14 +166,14 @@ async def test_crear_la_tarea_ya_en_avanzada_sella_la_fecha(admin_client, db_ses
     task = (await db_session.execute(
         select(Task).where(Task.id == resp.json()["id"])
     )).scalar_one()
-    assert task.advanced_at == date.today()
+    assert task.advanced_at == business_today()
 
 
 @pytest.mark.asyncio
 async def test_volver_a_otro_estado_limpia_la_fecha(admin_client, db_session):
     task = await _crear_tarea(
         db_session, admin_client.test_user.id,
-        status=TaskStatus.advanced, advanced_at=date.today(),
+        status=TaskStatus.advanced, advanced_at=business_today(),
     )
 
     resp = await admin_client.put(f"/api/tasks/{task.id}", json={"status": "completed"})
@@ -188,11 +189,11 @@ async def test_la_barrida_devuelve_a_en_curso_las_de_ayer(db_session, admin_user
 
     ayer = await _crear_tarea(
         db_session, admin_user.id,
-        status=TaskStatus.advanced, advanced_at=date.today() - timedelta(days=1),
+        status=TaskStatus.advanced, advanced_at=business_today() - timedelta(days=1),
     )
     hoy = await _crear_tarea(
         db_session, admin_user.id,
-        status=TaskStatus.advanced, advanced_at=date.today(),
+        status=TaskStatus.advanced, advanced_at=business_today(),
     )
 
     _sesion_de_prueba(monkeypatch, db_session)
@@ -227,7 +228,7 @@ async def test_el_prefill_del_daily_incluye_las_avanzadas_de_hoy(admin_client, d
     """Sin fichar tiempo: el gesto de marcar Avanzada basta para salir en el daily."""
     task = await _crear_tarea(
         db_session, admin_client.test_user.id,
-        status=TaskStatus.advanced, advanced_at=date.today(),
+        status=TaskStatus.advanced, advanced_at=business_today(),
     )
 
     resp = await admin_client.get("/api/dailys/prefill")
@@ -243,7 +244,7 @@ async def test_el_prefill_del_daily_incluye_las_avanzadas_de_hoy(admin_client, d
 async def test_el_prefill_no_incluye_las_avanzadas_de_ayer(admin_client, db_session):
     task = await _crear_tarea(
         db_session, admin_client.test_user.id,
-        status=TaskStatus.advanced, advanced_at=date.today() - timedelta(days=1),
+        status=TaskStatus.advanced, advanced_at=business_today() - timedelta(days=1),
     )
 
     resp = await admin_client.get("/api/dailys/prefill")
@@ -256,7 +257,7 @@ async def test_arrancar_el_timer_devuelve_la_tarea_a_en_curso(admin_client, db_s
     """Si sigue trabajando en ella, deja de estar "cerrada por hoy"."""
     task = await _crear_tarea(
         db_session, admin_client.test_user.id,
-        status=TaskStatus.advanced, advanced_at=date.today(),
+        status=TaskStatus.advanced, advanced_at=business_today(),
     )
 
     resp = await admin_client.post("/api/timer/start", json={"task_id": task.id})

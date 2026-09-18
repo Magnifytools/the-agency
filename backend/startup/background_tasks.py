@@ -641,25 +641,26 @@ def start_background_tasks() -> list[asyncio.Task]:
         t.add_done_callback(_log_task_error)
         tasks.append(t)
 
-    t = asyncio.create_task(_daily_reminders_loop(), name="daily-reminders")
-    t.add_done_callback(_log_task_error)
-    tasks.append(t)
-
-    if settings.DISCORD_OWNER_USER_ID:
-        t = asyncio.create_task(_weekly_report_loop(), name="weekly-report")
-        t.add_done_callback(_log_task_error)
-        tasks.append(t)
-        logging.info("Weekly report DM enabled (Saturday 08:00 Madrid)")
-
-    if settings.GOOGLE_CLIENT_ID:
-        t = asyncio.create_task(_calendar_sync_loop(), name="calendar-sync")
+    if settings.LEGACY_SCHEDULED_COMMUNICATIONS_ENABLED:
+        t = asyncio.create_task(_daily_reminders_loop(), name="daily-reminders")
         t.add_done_callback(_log_task_error)
         tasks.append(t)
 
-        t = asyncio.create_task(_meeting_alert_loop(), name="meeting-alerts")
-        t.add_done_callback(_log_task_error)
-        tasks.append(t)
-        logging.info("Google Calendar sync + meeting alerts enabled")
+        if settings.DISCORD_OWNER_USER_ID:
+            t = asyncio.create_task(_weekly_report_loop(), name="weekly-report")
+            t.add_done_callback(_log_task_error)
+            tasks.append(t)
+            logging.info("Weekly report DM enabled (Saturday 08:00 Madrid)")
+
+        if settings.GOOGLE_CLIENT_ID:
+            t = asyncio.create_task(_calendar_sync_loop(), name="calendar-sync")
+            t.add_done_callback(_log_task_error)
+            tasks.append(t)
+
+            t = asyncio.create_task(_meeting_alert_loop(), name="meeting-alerts")
+            t.add_done_callback(_log_task_error)
+            tasks.append(t)
+            logging.info("Google Calendar sync + meeting alerts enabled")
 
     t = asyncio.create_task(_retention_cleanup_loop(), name="retention-cleanup")
     t.add_done_callback(_log_task_error)

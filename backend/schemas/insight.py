@@ -31,6 +31,7 @@ class InsightResponse(BaseModel):
 
 
 class DailyBriefingResponse(BaseModel):
+    discord_content: str = ""
     date: str
     greeting: str
     priorities: list[dict]

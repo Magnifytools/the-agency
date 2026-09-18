@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useQuery, useMutation } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
 import { Target, AlertTriangle, Phone, Lightbulb, Calendar, Send } from "lucide-react"
 import { pmApi } from "@/lib/api"
@@ -10,6 +10,8 @@ import { toast } from "sonner"
 import { Select } from "@/components/ui/select"
 import { useAuth } from "@/context/auth-context"
 import { getErrorMessage } from "@/lib/utils"
+import { formatCivilDate } from "@/lib/dates"
+import { deliveryToast, ManualDeliveryReceipts } from "@/components/delivery-receipts"
 
 export function DailyBriefingDialog({
   open,
@@ -19,6 +21,7 @@ export function DailyBriefingDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const { user, hasPermission } = useAuth()
+  const queryClient = useQueryClient()
   const [chosenScope, setChosenScope] = useState<"mine" | "team">("mine")
   const scope = user?.role === "admin" ? chosenScope : "mine"
   const { data: briefing, isLoading, isError, refetch } = useQuery({
@@ -28,9 +31,10 @@ export function DailyBriefingDialog({
   })
 
   const shareMutation = useMutation({
-    mutationFn: () => pmApi.shareBriefingToDiscord(scope),
-    onSuccess: () => {
-      toast.success("Briefing compartido en Discord")
+    mutationFn: () => pmApi.shareBriefingToDiscord(scope, briefing?.discord_content, briefing?.date),
+    onSuccess: (receipt) => {
+      deliveryToast(receipt)
+      queryClient.invalidateQueries({ queryKey: ["deliveries", "manual"] })
     },
     onError: (err) => {
       toast.error(getErrorMessage(err, "Error al compartir en Discord"))
@@ -48,6 +52,7 @@ export function DailyBriefingDialog({
         <div className="py-8 text-center text-muted-foreground">Cargando briefing...</div>
       ) : briefing ? (
         <div className="space-y-6 mt-4">
+          <p className="text-sm text-muted-foreground">Resumen del {formatCivilDate(briefing.date)}</p>
           {/* Priorities */}
           {briefing.priorities.length > 0 && (
             <section>
@@ -162,6 +167,10 @@ export function DailyBriefingDialog({
         </div>
       ) : null}
 
+      {briefing?.discord_content && <details className="mt-4 text-sm">
+        <summary className="cursor-pointer">Texto para Discord</summary>
+        <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">{briefing.discord_content}</pre>
+      </details>}
       <div className="flex justify-between items-center mt-6">
         {hasPermission("pm", true) && <Button
           variant="outline"
@@ -169,10 +178,11 @@ export function DailyBriefingDialog({
           disabled={shareMutation.isPending || isLoading || !briefing}
         >
           <Send className="w-4 h-4 mr-2" />
-          {shareMutation.isPending ? "Enviando..." : "Compartir en Discord"}
+          {shareMutation.isPending ? "Guardando envío..." : "Compartir en Discord"}
         </Button>}
         <Button onClick={() => onOpenChange(false)}>Cerrar</Button>
       </div>
+      {open && <ManualDeliveryReceipts kind="pm_briefing" scope={scope} />}
     </Dialog>
   )
 }

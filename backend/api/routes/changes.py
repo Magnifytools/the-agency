@@ -24,14 +24,16 @@ from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 from sqlalchemy import desc, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 
 from backend.api.deps import get_current_user
 from backend.db.database import get_db
 from backend.db.models import ChangeLog, Task, TimeEntry, User, UserRole
+from backend.services.temporal import utc_isoformat, utc_now_naive
 from backend.services import change_journal
 from backend.services.change_journal import (
     MODELS_BY_TYPE,
@@ -57,6 +59,10 @@ class ChangeEntry(BaseModel):
     entity_id: Optional[int]
     created_at: datetime
     operation_count: int
+
+    @field_serializer("created_at", when_used="json")
+    def serialize_created_at(self, value: datetime) -> str:
+        return utc_isoformat(value)
 
 
 class UndoResult(BaseModel):
@@ -157,11 +163,152 @@ async def _manual_time_conflict(db: AsyncSession, operations: list[dict]) -> str
     return None
 
 
-async def _undo_delete(db: AsyncSession, op: dict, warnings: list[str]) -> int:
+async def _lock_operation_rows(db: AsyncSession, operations: list[dict]) -> dict[tuple[str, int], Any]:
+    """Lock every existing journal target in one deterministic order.
+
+    Conflict checks and their inverse writes must observe the same version.  A
+    ChangeLog lock serializes two Undo clicks, but it does not serialize an
+    ordinary edit to the affected Project/Client/etc.
+    """
+    locked: dict[tuple[str, int], Any] = {}
+    grouped: dict[str, set[int]] = {}
+    for op in operations:
+        entity_type, entity_id = op.get("entity_type"), op.get("entity_id")
+        if entity_type in MODELS_BY_TYPE and entity_id is not None:
+            grouped.setdefault(entity_type, set()).add(entity_id)
+    time_ops = [op for op in operations if op.get("entity_type") == "time_entry"]
+    time_ids = [op["entity_id"] for op in time_ops if op.get("entity_id") is not None]
+    anticipated_task_ids = {
+        task_id
+        for op in time_ops
+        for task_id in ((op.get("before") or {}).get("task_id"), (op.get("after") or {}).get("task_id"))
+        if task_id is not None
+    }
+    if time_ids:
+        anticipated_task_ids.update(task_id for task_id in (await db.execute(
+            select(TimeEntry.task_id).where(TimeEntry.id.in_(time_ids))
+        )).scalars().all() if task_id is not None)
+    if anticipated_task_ids:
+        grouped.setdefault("task", set()).update(anticipated_task_ids)
+    # Alphabetical order is stable and keeps task before time_entry, matching
+    # the time writer's lock protocol.
+    for entity_type in sorted(grouped):
+        model = MODELS_BY_TYPE[entity_type]
+        rows = (await db.execute(
+            select(model).where(model.id.in_(sorted(grouped[entity_type])))
+            .order_by(model.id).options(noload("*")).with_for_update()
+            .execution_options(populate_existing=True)
+        )).scalars().all()
+        locked.update({(entity_type, row.id): row for row in rows})
+    # A TimeEntry may have moved after the preliminary scalar read. Tasks are
+    # already locked at this point; never continue with an unprotected task.
+    for op in time_ops:
+        row = locked.get(("time_entry", op.get("entity_id")))
+        if row is not None and row.task_id is not None and row.task_id not in anticipated_task_ids:
+            raise HTTPException(409, "El registro de tiempo cambió de tarea; vuelve a intentarlo")
+    return locked
+
+
+def _created_children(operations: list[dict]) -> dict[str, set[int]]:
+    out: dict[str, set[int]] = {}
+    for op in operations:
+        if op.get("action") == "create" and op.get("entity_id") is not None:
+            model = MODELS_BY_TYPE.get(op.get("entity_type"))
+            if model is not None:
+                out.setdefault(model.__table__.name, set()).add(op["entity_id"])
+    return out
+
+
+async def _unexpected_dependents(db: AsyncSession, model: type, entity_ids: set[int],
+                                 allowed_created: dict[str, set[int]]) -> dict[int, list[str]]:
+    """Return referencing rows that this Undo did not create and must preserve."""
+    conflicts: dict[int, list[str]] = {entity_id: [] for entity_id in entity_ids}
+    target_table = model.__table__
+    # Metadata includes non-journal children too (comments, attachments,
+    # evidence...). Those are precisely the rows a parent-only snapshot misses.
+    for table in sorted(target_table.metadata.tables.values(), key=lambda item: item.name):
+        pk_columns = list(table.primary_key.columns)
+        for column in table.columns:
+            if not any(fk.column.table is target_table for fk in column.foreign_keys):
+                continue
+            if len(pk_columns) == 1:
+                rows = (await db.execute(
+                    select(column, pk_columns[0]).where(column.in_(sorted(entity_ids)))
+                )).all()
+            else:
+                # Composite identities cannot be matched to journal child IDs;
+                # conservatively treat every reference as later work.
+                rows = (await db.execute(
+                    select(column, func.count()).where(column.in_(sorted(entity_ids))).group_by(column)
+                )).all()
+            by_parent: dict[int, int] = {}
+            for parent_id, child_id in rows:
+                if len(pk_columns) != 1:
+                    by_parent[parent_id] = int(child_id)
+                elif child_id not in allowed_created.get(table.name, set()):
+                    by_parent[parent_id] = by_parent.get(parent_id, 0) + 1
+            for parent_id, child_count in by_parent.items():
+                conflicts[parent_id].append(f"{table.name} ({child_count})")
+    return conflicts
+
+
+async def _preflight_create_removals(db: AsyncSession, removals: list[dict],
+                                     locked: dict[tuple[str, int], Any],
+                                     operations: list[dict]) -> None:
+    """Refuse the whole Undo before it can delete later work."""
+    allowed_created = _created_children(operations)
+    by_type: dict[str, list[dict]] = {}
+    for op in removals:
+        row = locked.get((op["entity_type"], op["entity_id"]))
+        if row is None:
+            continue
+        by_type.setdefault(op["entity_type"], []).append(op)
+        after = op.get("after") or {}
+        columns = _columns(type(row))
+        changed = []
+        for key, value in after.items():
+            if key == "id" or key not in columns or serialize(getattr(row, key, None)) == value:
+                continue
+            column = columns[key]
+            # Legacy INSERT snapshots were taken before SQLAlchemy applied
+            # defaults. Only accept an exact static default; new snapshots store
+            # the actual post-flush value and therefore never need this fallback.
+            if value is None:
+                if key == "created_at":
+                    continue  # immutable legacy INSERT timestamp
+                default = column.default
+                if default is not None and default.is_scalar and serialize(default.arg) == serialize(getattr(row, key, None)):
+                    continue
+            changed.append(key)
+        if changed:
+            raise HTTPException(
+                status_code=409,
+                detail=(f"«{op.get('name') or op['entity_id']}» cambió después "
+                        f"({', '.join(changed[:3])}); no se ha eliminado."),
+            )
+    for entity_type in sorted(by_type):
+        dependent_map = await _unexpected_dependents(
+            db, MODELS_BY_TYPE[entity_type], {op["entity_id"] for op in by_type[entity_type]}, allowed_created,
+        )
+        for op in by_type[entity_type]:
+            dependents = dependent_map[op["entity_id"]]
+            if dependents:
+                logger.info(
+                    "Undo rechazado para %s %s por dependencias posteriores: %s",
+                    entity_type, op["entity_id"], ", ".join(dependents),
+                )
+                raise HTTPException(
+                    status_code=409,
+                    detail=(f"«{op.get('name') or op['entity_id']}» tiene trabajo añadido después; "
+                            "no se ha eliminado."),
+                )
+
+
+async def _undo_delete(db: AsyncSession, op: dict, warnings: list[str], row: Any = None) -> int:
     """Reinsertar la fila borrada, con su id original."""
     model = MODELS_BY_TYPE[op["entity_type"]]
     before = op.get("before") or {}
-    existing = await db.get(model, op["entity_id"])
+    existing = row
     if existing is not None:
         warnings.append(f"«{op.get('name') or op['entity_id']}» ya existía: no se ha vuelto a crear.")
         return 0
@@ -171,28 +318,18 @@ async def _undo_delete(db: AsyncSession, op: dict, warnings: list[str]) -> int:
     return 1
 
 
-async def _undo_create(db: AsyncSession, op: dict, warnings: list[str]) -> int:
+async def _undo_create(db: AsyncSession, op: dict, warnings: list[str], row: Any = None) -> int:
     """Borrar lo que se había creado."""
-    model = MODELS_BY_TYPE[op["entity_type"]]
-    row = await db.get(model, op["entity_id"])
     if row is None:
         warnings.append(f"«{op.get('name') or op['entity_id']}» ya no existe: nada que deshacer.")
         return 0
-    after = op.get("after") or {}
-    changed = [k for k, v in after.items() if k != "id" and serialize(getattr(row, k, None)) != v]
-    if changed:
-        warnings.append(
-            f"«{op.get('name') or op['entity_id']}» se había editado después ({', '.join(changed[:3])}); "
-            "se ha eliminado igualmente."
-        )
     await db.delete(row)
     return 1
 
 
-async def _undo_update(db: AsyncSession, op: dict, warnings: list[str]) -> int:
+async def _undo_update(db: AsyncSession, op: dict, warnings: list[str], row: Any = None) -> int:
     """Devolver las columnas a su valor anterior, respetando cambios de terceros."""
     model = MODELS_BY_TYPE[op["entity_type"]]
-    row = await db.get(model, op["entity_id"])
     if row is None:
         warnings.append(f"«{op.get('name') or op['entity_id']}» ya no existe: no se ha restaurado.")
         return 0
@@ -251,6 +388,8 @@ async def undo_change(
     restored = 0
     try:
         with change_journal.paused():
+            locked_rows = await _lock_operation_rows(db, operations)
+            await _preflight_create_removals(db, removals, locked_rows, operations)
             manual_ops = [op for op in operations if op.get("entity_type") == "time_entry"]
             manual_ids = [op["entity_id"] for op in manual_ops if op.get("entity_id") is not None]
             current_manual_tasks = {
@@ -299,12 +438,18 @@ async def undo_change(
                     detail=f"{conflict}; el ajuste no se ha marcado como deshecho.",
                 )
             for op in reinserts:
-                restored += await _undo_delete(db, op, warnings)
+                restored += await _undo_delete(
+                    db, op, warnings, locked_rows.get((op["entity_type"], op["entity_id"])),
+                )
             await db.flush()
             for op in updates:
-                restored += await _undo_update(db, op, warnings)
+                restored += await _undo_update(
+                    db, op, warnings, locked_rows.get((op["entity_type"], op["entity_id"])),
+                )
             for op in removals:
-                restored += await _undo_create(db, op, warnings)
+                restored += await _undo_create(
+                    db, op, warnings, locked_rows.get((op["entity_type"], op["entity_id"])),
+                )
             await db.flush()
             if manual_ops:
                 from backend.api.routes.time_entries import _sync_task_actual_minutes
@@ -313,9 +458,7 @@ async def undo_change(
                     if task is not None:
                         await _sync_task_actual_minutes(db, task_id, task=task)
 
-            # func.now(): mismo reloj que created_at (el del servidor), o las dos
-            # marcas de la misma fila saldrían de husos distintos.
-            entry.undone_at = func.now()
+            entry.undone_at = utc_now_naive()
             entry.undone_by = current_user.id
             await db.commit()
     except IntegrityError as exc:

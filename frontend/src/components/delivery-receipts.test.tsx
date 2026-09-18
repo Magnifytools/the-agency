@@ -1,13 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { DeliveryReceipts, deliveryToast } from "./delivery-receipts"
+import { DeliveryReceipts, ManualDeliveryReceipts, deliveryToast } from "./delivery-receipts"
 import type { DeliveryReceipt } from "@/lib/types"
 import DailysPage from "@/pages/dailys-page"
 import DigestsPage from "@/pages/digests-page"
 import { MemoryRouter } from "react-router-dom"
 
-const mock = vi.hoisted(() => ({ list: vi.fn(), retry: vi.fn(), resend: vi.fn(), cancel: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() }))
+const mock = vi.hoisted(() => ({ list: vi.fn(), listManual: vi.fn(), retry: vi.fn(), resend: vi.fn(), cancel: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() }))
 const daily = vi.hoisted(() => ({ list: vi.fn(), sendDiscord: vi.fn() }))
 const digest = vi.hoisted(() => ({ list: vi.fn(), render: vi.fn(), sendDigest: vi.fn(), sendCustom: vi.fn(), listAll: vi.fn() }))
 vi.mock("@/lib/api", () => ({ deliveriesApi: mock, dailysApi: daily, digestsApi: digest, discordApi: digest, clientsApi: digest }))
@@ -63,6 +63,38 @@ describe("Delivery receipts", () => {
     deliveryToast(queued)
     expect(mock.info).toHaveBeenCalledWith(queued.message)
     expect(mock.success).not.toHaveBeenCalled()
+  })
+
+  it("loads actor-scoped manual history and shows its destination and period", async () => {
+    mock.listManual.mockResolvedValue([receipt({
+      source_kind: "communication",
+      source_id: 42,
+      title: "Briefing del día",
+      scope: "team",
+      destination_label: "#operaciones",
+      period_start: "2026-09-17",
+    })])
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><ManualDeliveryReceipts kind="pm_briefing" scope="team" /></QueryClientProvider>)
+
+    expect(await screen.findByText(/Briefing del día · #operaciones · 2026-09-17/)).toBeInTheDocument()
+    expect(mock.listManual).toHaveBeenCalledWith("pm_briefing", "team")
+    expect(mock.list).not.toHaveBeenCalled()
+  })
+
+  it("keeps a pending daily summary receipt visible after the submitter closes", async () => {
+    mock.listManual.mockResolvedValue([receipt({
+      source_kind: "communication",
+      source_id: 43,
+      title: "Resumen diario",
+      destination_label: "#equipo",
+    })])
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><ManualDeliveryReceipts kind="daily_summary" /></QueryClientProvider>)
+
+    expect(await screen.findByRole("status")).toHaveTextContent("En cola")
+    expect(screen.getByText(/Resumen diario · #equipo/)).toBeInTheDocument()
+    expect(mock.listManual).toHaveBeenCalledWith("daily_summary", undefined)
   })
 
   it("keeps the previous version and each real provider receipt visible", async () => {

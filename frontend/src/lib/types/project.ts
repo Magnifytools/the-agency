@@ -300,6 +300,7 @@ export interface DailyBriefing {
   alerts: { id: number; title: string; client: string | null; days_overdue: number }[]
   followups: { client: string | null; subject: string; followup_date: string | null }[]
   suggestion: string | null
+  discord_content: string
 }
 
 // Alert Settings

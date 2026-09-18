@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-17T09:29:53.567128+00:00",
-  "estado_general": "produccion_tercera_mejora_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-17T12:31:59.423984+00:00",
+  "estado_general": "produccion_cuarta_mejora_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -205,7 +205,7 @@
   ],
   "notas_tecnicas": [
     "Stack: React 19 + FastAPI + PostgreSQL + Railway",
-    "Tests tercera entrega17sep:681backend (2omitidos),98frontend,31extensión; CI PostgreSQL17, auditoría dependencias y build Linux obligatorios",
+    "Tests cuarta entrega: 718 backend (2 omitidos), 130 frontend y 31 extensión; CI PostgreSQL, auditoría de dependencias e imagen Linux correctos.",
     "CUIDADO: lazy='selectin' esta en ~80 relaciones de models.py. Quitar un selectinload() de .options() NO evita la carga; hace falta noload() explicito",
     "La suite unitaria mockea get_db: cualquier cambio de SQL debe verificarse en tests/integration/",
     "Los estados de rentabilidad viven en services/profitability.py (backend) y lib/profitability.ts (frontend), un unico mapa cada uno",
@@ -213,7 +213,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "Completar operaciones compartidas, UX de tareas/proyectos/clientes, alertas y resúmenes fiables, instrucciones naturales; matriz de cobertura interna mantiene alcance pendiente.",
+  "proximos_pasos": "Completar recibos del resto de envíos, alertas y resúmenes fiables, operaciones comunes e instrucciones naturales; continuar simplificación de clientes y matriz de cobertura.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
@@ -223,7 +223,7 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "8b4757b1b079ea0585def3a5ffdb8176830637bf",
+    "revision": "f61e437ad9ad90bf99cf72fe61108b16026bfb05",
     "healthcheck": "/api/ready"
   },
   "pendiente_david": "Sin bloqueo actual; se prepararán propuestas concretas para datos históricos ambiguos cuando corresponda."
