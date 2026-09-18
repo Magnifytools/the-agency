@@ -893,7 +893,7 @@ async function submitCommand() {
   } finally {
     if (!isCurrentSession(session)) return;
     commandInFlight = false;
-    commandSubmit.textContent = "Reintentar";
+    commandSubmit.textContent = currentCommand ? "Petición recibida" : "Reintentar";
     commandSubmit.disabled = Boolean(currentCommand) || !commandText.value.trim();
   }
 }

@@ -478,6 +478,8 @@ test('command mode sends through shared endpoint and renders a linked receipt', 
   get('command-text').dispatchEvent(new dom.window.Event('input'));
   get('command-submit').click(); await tick();
   assert.equal(state.commandRequests.length, 1);
+  assert.equal(get('command-submit').textContent, 'Petición recibida');
+  assert.equal(get('command-submit').disabled, true);
   assert.equal(state.commandRequests[0].channel, 'extension');
   assert.equal(state.commandRequests[0].text, 'Crea una tarea Nueva tarea');
   assert.equal(get('command-receipt').classList.contains('hidden'), false);
