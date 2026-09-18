@@ -609,8 +609,8 @@ export default function ClientDetailPage() {
             <div className="flex items-center justify-between"><CardTitle>Tareas</CardTitle>{hasPermission("tasks", true) && <Button size="sm" onClick={() => setCreatingTask(true)}>Nueva tarea</Button>}</div>
           </CardHeader>
           <CardContent className="pt-4">
-            <Table>
-              <TableHeader>
+            <Table role="table" className="block md:table">
+              <TableHeader className="sr-only md:not-sr-only md:table-header-group">
                 <TableRow>
                   <TableHead>Título</TableHead>
                   <TableHead>Estado</TableHead>
@@ -619,15 +619,15 @@ export default function ClientDetailPage() {
                   <TableHead>Timer</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody role="rowgroup" className="block md:table-row-group">
                 {tasks.map((t) => (
-                  <TableRow key={t.id}>
-                    <TableCell><button type="button" className="font-medium text-left hover:text-brand hover:underline" onClick={() => setTaskPanelId(t.id)}>{t.title}</button></TableCell>
-                    <TableCell>{taskStatusBadge(t.status)}</TableCell>
-                    <TableCell className="mono">{t.estimated_minutes ? formatMinutes(t.estimated_minutes) : "-"}</TableCell>
-                    <TableCell className="mono">{t.actual_minutes ? formatMinutes(t.actual_minutes) : "-"}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
+                  <TableRow key={t.id} role="row" className="grid grid-cols-2 items-center gap-x-2 py-3 md:table-row md:py-0">
+                    <TableCell role="cell" className="col-span-2 block px-0 py-1 md:table-cell md:px-4 md:py-3"><button type="button" className="font-medium text-left hover:text-brand hover:underline" onClick={() => setTaskPanelId(t.id)}>{t.title}</button></TableCell>
+                    <TableCell role="cell" className="block px-0 py-1 md:table-cell md:px-4 md:py-3">{taskStatusBadge(t.status)}</TableCell>
+                    <TableCell role="cell" className="mono row-start-3 block px-0 py-1 text-xs md:table-cell md:px-4 md:py-3 md:text-sm"><span className="md:hidden">Estimado: </span>{t.estimated_minutes ? formatMinutes(t.estimated_minutes) : "-"}</TableCell>
+                    <TableCell role="cell" className="mono row-start-3 block px-0 py-1 text-xs md:table-cell md:px-4 md:py-3 md:text-sm"><span className="md:hidden">Registrado: </span>{t.actual_minutes ? formatMinutes(t.actual_minutes) : "-"}</TableCell>
+                    <TableCell role="cell" className="col-start-2 row-start-2 block px-0 py-1 md:table-cell md:px-4 md:py-3">
+                      <div className="flex justify-end gap-1 md:justify-start">
                         <TimerButton taskId={t.id} />
                         <Button
                           variant="ghost"

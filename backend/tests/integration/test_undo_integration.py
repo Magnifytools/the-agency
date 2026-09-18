@@ -714,3 +714,17 @@ async def test_mixed_actors_cannot_confirm_one_transaction(db_session, admin_use
     cj.set_actor(None)
     assert await db_session.get(Task, task_id) is None
     assert await journal.peek() == []
+
+
+async def test_journal_timestamp_is_utc_even_with_non_utc_database_session(db_session, admin_client, journal):
+    from sqlalchemy import text
+    from backend.services.temporal import utc_now_naive
+    await db_session.execute(text("SET LOCAL TIME ZONE 'Asia/Shanghai'"))
+    before = utc_now_naive()
+    response = await admin_client.post("/api/tasks", json={"title": "UTC journal receipt"})
+    assert response.status_code == 201, response.text
+    entry = await journal.only()
+    assert before <= entry.created_at <= utc_now_naive()
+    recent = await admin_client.get("/api/changes/recent")
+    row = next(row for row in recent.json() if row["id"] == entry.id)
+    assert row["created_at"].endswith("Z")

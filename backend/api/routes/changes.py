@@ -24,7 +24,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 from sqlalchemy import desc, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.api.deps import get_current_user
 from backend.db.database import get_db
 from backend.db.models import ChangeLog, Task, TimeEntry, User, UserRole
+from backend.services.temporal import utc_isoformat
 from backend.services import change_journal
 from backend.services.change_journal import (
     MODELS_BY_TYPE,
@@ -57,6 +58,10 @@ class ChangeEntry(BaseModel):
     entity_id: Optional[int]
     created_at: datetime
     operation_count: int
+
+    @field_serializer("created_at", when_used="json")
+    def serialize_created_at(self, value: datetime) -> str:
+        return utc_isoformat(value)
 
 
 class UndoResult(BaseModel):

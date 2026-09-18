@@ -61,6 +61,8 @@ from backend.db.models import (
     TimeEntry,
 )
 
+from backend.services.temporal import utc_now_naive
+
 logger = logging.getLogger(__name__)
 
 _INFO_KEY = "_change_journal_pending"
@@ -341,12 +343,13 @@ def prepare_entry(session: Session) -> ChangeLog | None:
             session.flush()
         return None
     if row is None:
-        row = ChangeLog(**entry)
+        row = ChangeLog(**entry, created_at=utc_now_naive(), updated_at=utc_now_naive())
         session.add(row)
         session.info[_ENTRY_KEY] = row
     else:
         for name, value in entry.items():
             setattr(row, name, value)
+        row.updated_at = utc_now_naive()
     session.flush()
     return row
 
