@@ -79,7 +79,10 @@ def _to_response(digest: WeeklyDigest) -> DigestResponse:
     content = None
     if digest.content:
         try:
-            content = DigestContent(**digest.content)
+            parsed = DigestContent(**digest.content)
+            content = DigestContent(**canonicalize_digest_content(
+                parsed.model_dump(), digest.period_start, digest.period_end
+            ))
         except Exception:
             content = None
 
@@ -366,7 +369,15 @@ async def update_digest(
         if request.content is not None
         else digest.content
     )
-    content_changed = request.content is not None and next_content != digest.content
+    try:
+        current_content = canonicalize_digest_content(
+            DigestContent(**(digest.content or {})).model_dump(),
+            digest.period_start,
+            digest.period_end,
+        )
+    except Exception:
+        current_content = digest.content
+    content_changed = request.content is not None and next_content != current_content
 
     if not tone_changed and not content_changed:
         return _to_response(digest)

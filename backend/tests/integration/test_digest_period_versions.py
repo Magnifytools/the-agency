@@ -169,7 +169,14 @@ async def test_put_is_idempotent_or_creates_new_source_version(
         period_end=date(2026, 9, 13),
         status=DigestStatus.reviewed,
         tone=DigestTone.cercano,
-        content=_content(date_text="Período del 7 al 13 de septiembre de 2026"),
+        content={
+            "date": "FECHA IA HISTÓRICA",
+            "sections": {
+                "done": [{"title": "Hecho", "description": "Detalle"}],
+                "need": [],
+                "next": [],
+            },
+        },
         raw_context={"client_name": client.name},
         generated_at=datetime(2026, 9, 14, 8),
         created_by=admin_user.id,
@@ -177,9 +184,19 @@ async def test_put_is_idempotent_or_creates_new_source_version(
     db_session.add(original)
     await db_session.flush()
 
+    fetched = await admin_client.get(f"/api/digests/{original.id}")
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["content"]["date"] == (
+        "Período del 7 al 13 de septiembre de 2026"
+    )
+    assert fetched.json()["content"]["greeting"] == ""
+    assert fetched.json()["content"]["sections"]["metrics"] == []
+    await db_session.refresh(original)
+    assert original.content["date"] == "FECHA IA HISTÓRICA"
+
     identical = await admin_client.put(
         f"/api/digests/{original.id}",
-        json={"content": original.content, "tone": "cercano"},
+        json={"content": fetched.json()["content"], "tone": "cercano"},
     )
     assert identical.status_code == 200, identical.text
     assert identical.json()["id"] == original.id
@@ -199,6 +216,7 @@ async def test_put_is_idempotent_or_creates_new_source_version(
     await db_session.refresh(original)
     assert original.status == DigestStatus.reviewed
     assert original.content["sections"]["done"][0]["title"] == "Hecho"
+    assert original.content["date"] == "FECHA IA HISTÓRICA"
     assert await db_session.scalar(select(func.count(WeeklyDigest.id)).where(
         WeeklyDigest.client_id == client.id
     )) == 2
@@ -285,3 +303,5 @@ def test_all_renderers_ignore_generated_date_when_period_is_available():
     ]
     assert all(expected in value for value in rendered)
     assert all("FECHA INVENTADA" not in value for value in rendered)
+    assert "Resumen diario" not in rendered[1]
+    assert "**📊 Resumen — Magnify" in rendered[1]

@@ -65,7 +65,7 @@ def render_discord(
 
     # Header
     date_str = _date_text(content, period_start, period_end) or "—"
-    lines.append(f"**📊 Resumen diario — Magnify — {date_str}**")
+    lines.append(f"**📊 Resumen — Magnify — {date_str}**")
     lines.append("")
 
     # Done section
