@@ -491,3 +491,77 @@ async def test_unquoted_preposition_requires_explicit_literal_confirmation(admin
     assert resolved.status_code == 200, resolved.text
     assert (await db_session.scalar(select(Task.title).where(
         Task.title == "Informe con SEO"))) == "Informe con SEO"
+
+
+async def test_quoted_project_reference_keeps_date_words_inside_its_name(admin_client, db_session):
+    client = Client(name="Cliente quoted ref", status="active")
+    db_session.add(client)
+    await db_session.flush()
+    project = Project(name="Web para mañana", client_id=client.id)
+    db_session.add(project)
+    await db_session.commit()
+    response = await admin_client.post("/api/commands", json={
+        "request_key": "command-quoted-project-ref",
+        "text": 'Crea tarea "El informe" en proyecto "Web para mañana"',
+    })
+    assert response.status_code == 200, response.text
+    receipt = response.json()
+    assert receipt["status"] == "executed"
+    assert receipt["intent"]["project_name"] == "Web para mañana"
+    assert "scheduled_date" not in receipt["intent"]
+    task = await db_session.scalar(select(Task).where(Task.title == "El informe"))
+    assert task.project_id == project.id and task.scheduled_date is None
+
+
+async def test_log_time_current_friday_requires_date_choice_before_writing(
+    admin_client, db_session, monkeypatch,
+):
+    from backend.services import commands
+    from datetime import date
+    monkeypatch.setattr(commands, "business_today", lambda: date(2026, 9, 18))
+    task = Task(title="Auditoría viernes", status=TaskStatus.pending)
+    db_session.add(task)
+    await db_session.commit()
+    pending = (await admin_client.post("/api/commands", json={
+        "request_key": "command-log-friday-choice",
+        "text": 'Registra 20 minutos en tarea "Auditoría viernes" el viernes',
+    })).json()
+    assert pending["status"] == "needs_input"
+    assert "entry_date" not in pending["intent"]
+    assert await db_session.scalar(select(TimeEntry.id).where(TimeEntry.task_id == task.id)) is None
+    choices = pending["prompt"]["questions"][0]["choices"]
+    assert [choice["label"] for choice in choices] == ["2026-09-18", "2026-09-25"]
+
+
+async def test_quoted_task_without_date_executes_with_explicit_null_schedule(admin_client, db_session):
+    response = await admin_client.post("/api/commands", json={
+        "request_key": "command-quoted-no-date",
+        "text": 'Crea tarea "Auditoría" sin fecha',
+    })
+    assert response.status_code == 200, response.text
+    receipt = response.json()
+    assert receipt["status"] == "executed"
+    assert receipt["intent"]["schedule_mode"] == "none"
+    task = await db_session.scalar(select(Task).where(Task.title == "Auditoría"))
+    assert task is not None and task.scheduled_date is None
+
+
+async def test_all_quoted_entity_references_protect_clause_words(monkeypatch):
+    from backend.services import commands
+    from datetime import date
+    monkeypatch.setattr(commands, "business_today", lambda: date(2026, 9, 17))
+    cases = [
+        ('Crea tarea "Informe" para cliente "Acme para mañana"',
+         {"client_name": "Acme para mañana"}),
+        ('Crea tarea "Informe" en proyecto "Web para cliente Acme"',
+         {"project_name": "Web para cliente Acme"}),
+        ('Crea proyecto "Web" para cliente "Acme responsable Nacho"',
+         {"client_name": "Acme responsable Nacho"}),
+        ('Crea proyecto "Web" para cliente "Acme fecha objetivo mañana"',
+         {"client_name": "Acme fecha objetivo mañana"}),
+    ]
+    for text, expected in cases:
+        intent = parse_command(text)
+        assert intent["kind"] in {"create_task", "create_project"}, (text, intent)
+        assert all(intent.get(key) == value for key, value in expected.items()), (text, intent)
+        assert "scheduled_date" not in intent and "target_date" not in intent

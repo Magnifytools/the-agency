@@ -85,7 +85,10 @@ def _quoted_head(value: str) -> tuple[str | None, str]:
 
 
 def _peel_clause(text: str, marker: str) -> tuple[str, str | None]:
-    matches = list(re.finditer(rf"(?:^|\s+){marker}\s+", text, flags=re.IGNORECASE))
+    matches = [
+        match for match in re.finditer(rf"(?:^|\s+){marker}\s+", text, flags=re.IGNORECASE)
+        if text[:match.start()].count('"') % 2 == 0
+    ]
     if not matches:
         return text, None
     match = matches[-1]
@@ -146,9 +149,9 @@ def parse_command(raw: str) -> dict[str, Any]:
         remainder = task_match.group(1).strip()
         quoted, clauses = _quoted_head(remainder)
         title = quoted
-        no_date = bool(re.search(r"\s+sin fecha$", clauses, re.I))
+        no_date = bool(re.search(r"(?:^|\s+)sin fecha$", clauses, re.I))
         if no_date:
-            clauses = re.sub(r"\s+sin fecha$", "", clauses, flags=re.I).strip()
+            clauses = re.sub(r"(?:^|\s+)sin fecha$", "", clauses, flags=re.I).strip()
         clauses, date_label = _peel_clause(clauses, r"(?:para|el)")
         # Only treat the generic para/el suffix as a date when it really is one.
         if date_label:
@@ -214,7 +217,8 @@ def parse_command(raw: str) -> dict[str, Any]:
             if error:
                 return {"kind": "invalid", "error": "No se admite actor o fecha no reconocidos; usa comillas en la tarea"}
             intent = {"kind": "log_time", "minutes": int(match.group(1)), "task_name": task_name, "date_label": date_label}
-            intent["entry_date"] = resolved
+            if resolved:
+                intent["entry_date"] = resolved
             if choices:
                 intent["date_options"] = choices
             return intent
@@ -310,7 +314,7 @@ async def execute_or_prompt(db: AsyncSession, receipt: CommandReceipt, actor: Us
         }]}
         return
     date_field = "entry_date" if kind == "log_time" else "scheduled_date"
-    if intent.get("date_options") and date_field not in intent:
+    if intent.get("date_options") and not intent.get(date_field):
         receipt.status = STATUS_INPUT
         receipt.prompt = {"questions": [{
             "field": date_field, "label": f"¿Qué fecha significa «{intent.get('date_label')}»?", "kind": "choice",
