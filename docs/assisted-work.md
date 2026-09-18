@@ -55,11 +55,12 @@ Reprogramar modifica `scheduled_date`. No cambia el deadline `due_date`. `sin fe
 
 ```text
 Registra 45 minutos en la tarea "Revisar propuesta"
+Registra 45 minutos en la tarea "Revisar propuesta" hoy
 Registra 45 minutos en la tarea "Revisar propuesta" el 2026-09-18
 Registra 45 minutos en la tarea "Revisar propuesta" el viernes
 ```
 
-La duración debe estar entre 1 y 1440 minutos. Se atribuye al usuario autenticado; el comando no permite registrar tiempo en nombre de otra persona. Una fecha explícita es una fecha civil del calendario operativo. Si se omite, se usa el día de negocio actual.
+La fecha puede escribirse directamente después de la tarea o precedida por `el`/`para`. La duración debe estar entre 1 y 1440 minutos. Se atribuye al usuario autenticado; el comando no permite registrar tiempo en nombre de otra persona. Una fecha explícita es una fecha civil del calendario operativo. Si se omite, se usa el día de negocio actual.
 
 ### Consultar trabajo
 
@@ -128,4 +129,3 @@ Endpoints:
 Los recibos viven en `command_receipts`. La tabla contiene actor, clave y hash de petición, canal, contexto, texto original, intención, prompt, resultado, error, revisión, replays de pasos y el enlace opcional al `ChangeLog`. El índice único `(user_id, request_key)` aplica la idempotencia también bajo concurrencia.
 
 El arranque ejecuta `ensure_command_schema` antes de servir peticiones. La actualización de esquema debe terminar correctamente antes de habilitar las rutas o los consumidores de comandos; un fallo de preparación bloquea el arranque en lugar de dejar una aplicación parcialmente compatible. Esta preparación crea estructura, índices y claves, pero no modifica recibos históricos ni datos de dominio.
-

@@ -111,6 +111,17 @@ def _date_intent(kind: str, task_name: str, label: str, **extra) -> dict[str, An
     return intent
 
 
+def _peel_direct_date(text: str) -> tuple[str, str | None]:
+    """Peel a bare date suffix, never one contained inside quotes."""
+    pattern = (r"(?:^|\s+)((?:(?:próximo|proximo|este)\s+)?"
+               r"(?:hoy|mañana|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo)"
+               r"|\d{4}-\d{2}-\d{2})$")
+    match = re.search(pattern, text, re.I)
+    if match is None or text[:match.start()].count('"') % 2:
+        return text, None
+    return text[:match.start()].strip(), match.group(1)
+
+
 def parse_command(raw: str) -> dict[str, Any]:
     """Parse a small Spanish allowlist. Page context is deliberately absent."""
     text = " ".join(raw.strip().split())
@@ -208,15 +219,19 @@ def parse_command(raw: str) -> dict[str, Any]:
         quoted, suffix = _quoted_head(task_name)
         if quoted is not None:
             task_name = quoted
-            suffix, date_label = _peel_clause(f" {suffix}" if suffix else "", r"(?:el|para)")
+            suffix, date_label = _peel_clause(suffix, r"(?:el|para)")
+            if date_label is None:
+                suffix, date_label = _peel_direct_date(suffix)
             if suffix:
-                return {"kind": "invalid", "error": "No se admite registrar tiempo para otra persona"}
+                return {"kind": "invalid", "error": "No se reconoce ese calificador; usa una fecha admitida"}
         else:
             task_name, date_label = _peel_clause(task_name, r"(?:el|para)")
+            if date_label is None:
+                task_name, date_label = _peel_direct_date(task_name)
         if date_label:
             resolved, choices, error = _civil_date(date_label)
             if error:
-                return {"kind": "invalid", "error": "No se admite actor o fecha no reconocidos; usa comillas en la tarea"}
+                return {"kind": "invalid", "error": "No se reconoce ese calificador; usa una fecha admitida"}
             intent = {"kind": "log_time", "minutes": int(match.group(1)), "task_name": task_name, "date_label": date_label}
             if resolved:
                 intent["entry_date"] = resolved

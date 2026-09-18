@@ -590,3 +590,55 @@ async def test_oversized_command_values_fail_durably_before_domain_writers(
     assert await db_session.scalar(select(Task.id).where(Task.title == "T" * 256)) is None
     assert await db_session.scalar(select(Project.id).where(Project.name == "P" * 201)) is None
     assert await db_session.scalar(select(TimeEntry.id).where(TimeEntry.task_id == task.id)) is None
+
+
+async def test_manual_time_accepts_direct_and_prepositional_date_suffixes(
+    admin_client, db_session, monkeypatch,
+):
+    from backend.services import commands
+    from datetime import date
+    monkeypatch.setattr(commands, "business_today", lambda: date(2026, 9, 18))
+    direct = Task(title="Revisión asistida F6", status=TaskStatus.pending)
+    prepositional = Task(title="Revisión con preposición", status=TaskStatus.pending)
+    db_session.add_all([direct, prepositional])
+    await db_session.commit()
+    first = await admin_client.post("/api/commands", json={
+        "request_key": "command-direct-date-one",
+        "text": 'Registra 15 minutos en tarea "Revisión asistida F6" hoy',
+    })
+    second = await admin_client.post("/api/commands", json={
+        "request_key": "command-direct-date-two",
+        "text": 'Registra 20 minutos en tarea "Revisión con preposición" el hoy',
+    })
+    assert first.status_code == second.status_code == 200
+    assert first.json()["status"] == second.json()["status"] == "executed"
+    assert first.json()["result"]["applied"]["entry_date"] == "2026-09-18"
+    assert second.json()["result"]["applied"]["entry_date"] == "2026-09-18"
+    entries = list((await db_session.scalars(select(TimeEntry).where(
+        TimeEntry.task_id.in_([direct.id, prepositional.id])
+    ))).all())
+    assert {(entry.task_id, entry.minutes, entry.date.date().isoformat()) for entry in entries} == {
+        (direct.id, 15, "2026-09-18"), (prepositional.id, 20, "2026-09-18"),
+    }
+
+
+async def test_manual_time_keeps_date_words_inside_quotes_and_rejects_actor_suffix(
+    admin_client, db_session,
+):
+    task = Task(title="Informe hoy", status=TaskStatus.pending)
+    db_session.add(task)
+    await db_session.commit()
+    accepted = await admin_client.post("/api/commands", json={
+        "request_key": "command-quoted-today-name",
+        "text": 'Registra 10 minutos en tarea "Informe hoy"',
+    })
+    assert accepted.status_code == 200 and accepted.json()["status"] == "executed"
+    assert accepted.json()["intent"]["task_name"] == "Informe hoy"
+    rejected = await admin_client.post("/api/commands", json={
+        "request_key": "command-forbidden-time-actor",
+        "text": 'Registra 10 minutos en tarea "Informe hoy" para Ana',
+    })
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "failed"
+    assert "calificador" in rejected.json()["error"]["detail"]
+    assert len((await db_session.scalars(select(TimeEntry.id).where(TimeEntry.task_id == task.id))).all()) == 1
