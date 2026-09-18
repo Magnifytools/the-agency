@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   permissions: new Set(["tasks", "projects", "digests", "communications", "reports", "billing"]),
   summary: vi.fn(),
   projects: vi.fn(),
+  time: vi.fn(),
 }))
 
 vi.mock("@/lib/hidden-modules", () => ({ isEnabled: (module: string) => mocks.enabled.has(module) }))
@@ -18,7 +19,7 @@ vi.mock("@/context/auth-context", () => ({
   useAuth: () => ({ isAdmin: false, hasPermission: (module: string) => mocks.permissions.has(module) }),
 }))
 vi.mock("@/lib/api", () => ({
-  clientsApi: { summary: mocks.summary, recentTimeEntries: vi.fn().mockResolvedValue([]), whatIf: vi.fn() },
+  clientsApi: { summary: mocks.summary, recentTimeEntries: mocks.time, whatIf: vi.fn() },
   projectsApi: { listAll: mocks.projects },
   holdedApi: { config: vi.fn(), clientInvoices: vi.fn() },
   clientHealthApi: { get: vi.fn().mockResolvedValue(null) },
@@ -65,6 +66,7 @@ describe("client detail areas", () => {
     mocks.permissions = new Set(["tasks", "projects", "digests", "communications", "reports", "billing"])
     mocks.summary.mockResolvedValue(summary)
     mocks.projects.mockResolvedValue([])
+    mocks.time.mockResolvedValue([])
   })
 
   it("keeps a legacy activity URL inside the four-area navigation", async () => {
@@ -122,4 +124,36 @@ describe("client detail areas", () => {
     expect(screen.queryByRole("option", { name: "Resúmenes" })).not.toBeInTheDocument()
     expect(screen.getByLabelText("Área del cliente")).toHaveValue("resumen")
   })
+  it("shows task rows without depending on inactive project or time queries", async () => {
+    mocks.summary.mockResolvedValue({ ...summary, tasks: [{ id: 8, title: "Trabajo visible", status: "pending" }] })
+    show("tareas")
+    expect(await screen.findByRole("button", { name: "Trabajo visible" })).toBeInTheDocument()
+    expect(mocks.projects).not.toHaveBeenCalled()
+    expect(mocks.time).not.toHaveBeenCalled()
+    expect(screen.queryByText("Total tareas")).not.toBeInTheDocument()
+  })
+
+  it("loads and retries projects independently from the inactive time query", async () => {
+    mocks.projects.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce([
+      { id: 3, name: "Proyecto visible", status: "active", task_count: 1, completed_task_count: 0, progress_percent: 0 },
+    ])
+    show("proyectos")
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudieron cargar los proyectos")
+    await userEvent.click(screen.getByRole("button", { name: "Reintentar" }))
+    expect(await screen.findByRole("link", { name: "Proyecto visible" })).toHaveAttribute("href", "/projects/3")
+    expect(mocks.time).not.toHaveBeenCalled()
+  })
+
+  it("shows time failure instead of a false empty history and retries", async () => {
+    mocks.time.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce([
+      { id: 4, date: "2026-09-17T00:00:00", started_at: null, minutes: 45, task_title: "Tiempo visible", notes: "manual" },
+    ])
+    show("tiempo")
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo cargar el tiempo")
+    expect(screen.queryByText("No hay entradas de tiempo")).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Reintentar" }))
+    expect(await screen.findByText("Tiempo visible")).toBeInTheDocument()
+    expect(mocks.projects).not.toHaveBeenCalled()
+  })
+
 })

@@ -370,86 +370,9 @@ export default function ClientDetailPage() {
           </div>
           {client.company && <p className="text-muted-foreground">{client.company}</p>}
         </div>
-        <Button variant="outline" size="sm" onClick={() => setWhatIfOpen(true)}>
+        {(activeTab === "ficha" || activeTab === "panel") && <Button variant="outline" size="sm" onClick={() => setWhatIfOpen(true)}>
           ¿Y si pierdo este cliente?
-        </Button>
-      </div>
-
-      {/* Summary Cards — Tracked es la métrica canónica.
-          Estimado/Real quedan como subtexto secundario (datos declarados vs fichados). */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total tareas</p>
-            <p className="kpi-value mt-1">{summary.total_tasks}</p>
-          </CardContent>
-        </Card>
-        <Card
-          className="lg:col-span-2"
-          title="Tiempo tracked: suma del timer real del equipo. Estimado: lo previsto al crear la tarea. Declarado: lo que el responsable apuntó al cerrarla."
-        >
-          <CardContent className="p-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-              Tiempo tracked
-              <span className="text-muted-foreground/60 cursor-help">ⓘ</span>
-            </p>
-            <p className="kpi-value mt-1">{formatMinutes(summary.total_tracked_minutes)}</p>
-            <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
-              <span>
-                Estimado: <span className="mono">{formatMinutes(summary.total_estimated_minutes)}</span>
-              </span>
-              <span className="text-muted-foreground/40">·</span>
-              <span>
-                Declarado: <span className="mono">{formatMinutes(summary.total_actual_minutes)}</span>
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-        {health && (
-          <Card className={health.risk_level === "at_risk" ? "border-red-300 bg-red-50/50" : health.risk_level === "warning" ? "border-amber-300 bg-amber-50/50" : ""}>
-            <CardContent className="p-4">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                <Heart className="h-3 w-3 flex-shrink-0" /> <span className="truncate">Salud</span>
-              </p>
-              <p className={`kpi-value mt-1 ${health.risk_level === "healthy" ? "text-green-600" : health.risk_level === "warning" ? "text-amber-500" : health.risk_level === "no_data" ? "text-muted-foreground" : "text-red-500"}`}>
-                {health.score == null ? (health.risk_signals.length ? "Riesgo observado" : "Sin información suficiente") : `${health.score}/100`}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {health.enough_information ? `Basado en ${health.available_source_count} fuentes observables (${health.available_weight}/100 puntos).` : health.risk_signals.length ? "Hay una señal comprobada, pero faltan fuentes para valorar la salud global." : "Faltan fuentes suficientes para clasificar este cliente."}
-              </p>
-              <div className="mt-2 grid grid-cols-5 gap-1">
-                {[
-                  { key: "communication", label: "Com", val: health.factors.communication, max: 25 },
-                  { key: "tasks", label: "Tar", val: health.factors.tasks, max: 25 },
-                  { key: "digests", label: "Dig", val: health.factors.digests, max: 15 },
-                  { key: "profitability", label: "Ren", val: health.factors.profitability, max: 20 },
-                  { key: "followups", label: "Fup", val: health.factors.followups, max: 15 },
-                ].map((f) => (
-                  <div key={f.label} className="text-center" title={health.observations[f.key as keyof typeof health.observations]}>
-                    <div className="text-[9px] text-muted-foreground">{f.label}</div>
-                    <div className="h-1 bg-muted rounded-full overflow-hidden mt-0.5">
-                      <div className="h-full bg-brand rounded-full" style={{ width: `${f.val == null ? 0 : (f.val / f.max) * 100}%` }} />
-                    </div>
-                    <div className="text-[9px] text-muted-foreground mt-0.5">{f.val ?? "—"}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                {(Object.keys(health.factors) as Array<keyof typeof health.factors>)
-                  .filter((factor) => health.factors[factor] != null)
-                  .map((factor) => (
-                    <p key={factor}>
-                      {health.observations[factor]}
-                      {factor === "tasks" && <> · <Link className="text-brand hover:underline" to={`/clients/${clientId}?tab=tareas`}>Ver tareas</Link></>}
-                      {factor === "profitability" && <> · <Link className="text-brand hover:underline" to={`/clients/${clientId}?tab=panel`}>Ver consumo</Link></>}
-                    </p>
-                  ))}
-                {health.risk_signals.map((signal) => <p key={signal} className="text-red-600">{signal}</p>)}
-                {!health.enough_information && <p>Activa o registra fuentes reales antes de usar esta señal para decidir.</p>}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        </Button>}
       </div>
 
       {/* Cuatro áreas estables; las URLs ?tab= heredadas siguen seleccionando
@@ -581,6 +504,83 @@ export default function ClientDetailPage() {
         )
       })()}
 
+      {/* Summary Cards — Tracked es la métrica canónica.
+          Estimado/Real quedan como subtexto secundario (datos declarados vs fichados). */}
+      {(activeTab === "ficha" || activeTab === "panel") && <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total tareas</p>
+            <p className="kpi-value mt-1">{summary.total_tasks}</p>
+          </CardContent>
+        </Card>
+        <Card
+          className="lg:col-span-2"
+          title="Tiempo tracked: suma del timer real del equipo. Estimado: lo previsto al crear la tarea. Declarado: lo que el responsable apuntó al cerrarla."
+        >
+          <CardContent className="p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+              Tiempo tracked
+              <span className="text-muted-foreground/60 cursor-help">ⓘ</span>
+            </p>
+            <p className="kpi-value mt-1">{formatMinutes(summary.total_tracked_minutes)}</p>
+            <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
+              <span>
+                Estimado: <span className="mono">{formatMinutes(summary.total_estimated_minutes)}</span>
+              </span>
+              <span className="text-muted-foreground/40">·</span>
+              <span>
+                Declarado: <span className="mono">{formatMinutes(summary.total_actual_minutes)}</span>
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+        {health && (
+          <Card className={health.risk_level === "at_risk" ? "border-red-500/40" : health.risk_level === "warning" ? "border-amber-500/40" : ""}>
+            <CardContent className="p-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                <Heart className="h-3 w-3 flex-shrink-0" /> <span className="truncate">Salud</span>
+              </p>
+              <p className={`kpi-value mt-1 ${health.risk_level === "healthy" ? "text-green-600" : health.risk_level === "warning" ? "text-amber-500" : health.risk_level === "no_data" ? "text-muted-foreground" : "text-red-500"}`}>
+                {health.score == null ? (health.risk_signals.length ? "Riesgo observado" : "Sin información suficiente") : `${health.score}/100`}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {health.enough_information ? `Basado en ${health.available_source_count} fuentes observables (${health.available_weight}/100 puntos).` : health.risk_signals.length ? "Hay una señal comprobada, pero faltan fuentes para valorar la salud global." : "Faltan fuentes suficientes para clasificar este cliente."}
+              </p>
+              <div className="mt-2 grid grid-cols-5 gap-1">
+                {[
+                  { key: "communication", label: "Com", val: health.factors.communication, max: 25 },
+                  { key: "tasks", label: "Tar", val: health.factors.tasks, max: 25 },
+                  { key: "digests", label: "Dig", val: health.factors.digests, max: 15 },
+                  { key: "profitability", label: "Ren", val: health.factors.profitability, max: 20 },
+                  { key: "followups", label: "Fup", val: health.factors.followups, max: 15 },
+                ].map((f) => (
+                  <div key={f.label} className="text-center" title={health.observations[f.key as keyof typeof health.observations]}>
+                    <div className="text-[9px] text-muted-foreground">{f.label}</div>
+                    <div className="h-1 bg-muted rounded-full overflow-hidden mt-0.5">
+                      <div className="h-full bg-brand rounded-full" style={{ width: `${f.val == null ? 0 : (f.val / f.max) * 100}%` }} />
+                    </div>
+                    <div className="text-[9px] text-muted-foreground mt-0.5">{f.val ?? "—"}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                {(Object.keys(health.factors) as Array<keyof typeof health.factors>)
+                  .filter((factor) => health.factors[factor] != null)
+                  .map((factor) => (
+                    <p key={factor}>
+                      {health.observations[factor]}
+                      {factor === "tasks" && <> · <Link className="text-brand hover:underline" to={`/clients/${clientId}?tab=tareas`}>Ver tareas</Link></>}
+                      {factor === "profitability" && <> · <Link className="text-brand hover:underline" to={`/clients/${clientId}?tab=panel`}>Ver consumo</Link></>}
+                    </p>
+                  ))}
+                {health.risk_signals.map((signal) => <p key={signal} className="text-red-600">{signal}</p>)}
+                {!health.enough_information && <p>Activa o registra fuentes reales antes de usar esta señal para decidir.</p>}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>}
+
       {/* Tab: Ficha */}
       {activeTab === "ficha" && (
         <FichaTab client={client} onNavigateToContacts={() => setActiveTab("contactos")} />
@@ -609,14 +609,6 @@ export default function ClientDetailPage() {
             <div className="flex items-center justify-between"><CardTitle>Tareas</CardTitle>{hasPermission("tasks", true) && <Button size="sm" onClick={() => setCreatingTask(true)}>Nueva tarea</Button>}</div>
           </CardHeader>
           <CardContent className="pt-4">
-            {projectsQuery.isPending ? (
-              <p role="status" className="py-8 text-center text-sm text-muted-foreground">Cargando proyectos…</p>
-            ) : projectsQuery.isError ? (
-              <div role="alert" className="flex items-center justify-between gap-3 py-4 text-sm">
-                <span>No se pudieron cargar los proyectos.</span>
-                <Button size="sm" variant="outline" onClick={() => projectsQuery.refetch()}>Reintentar</Button>
-              </div>
-            ) : (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -640,6 +632,7 @@ export default function ClientDetailPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          aria-label={`Ver horas de ${t.title}`}
                           onClick={() => setTimeLogTaskId({ id: t.id, title: t.title })}
                         >
                           <Clock className="h-4 w-4" />
@@ -657,7 +650,6 @@ export default function ClientDetailPage() {
                 )}
               </TableBody>
             </Table>
-            )}
           </CardContent>
         </Card>
       )}
@@ -669,12 +661,12 @@ export default function ClientDetailPage() {
             <CardTitle>Proyectos</CardTitle>
           </CardHeader>
           <CardContent className="pt-4">
-            {recentEntriesQuery.isPending ? (
-              <p role="status" className="py-8 text-center text-sm text-muted-foreground">Cargando tiempo…</p>
-            ) : recentEntriesQuery.isError ? (
+            {projectsQuery.isPending ? (
+              <p role="status" className="py-8 text-center text-sm text-muted-foreground">Cargando proyectos…</p>
+            ) : projectsQuery.isError ? (
               <div role="alert" className="flex items-center justify-between gap-3 py-4 text-sm">
-                <span>No se pudo cargar el tiempo registrado.</span>
-                <Button size="sm" variant="outline" onClick={() => recentEntriesQuery.refetch()}>Reintentar</Button>
+                <span>No se pudieron cargar los proyectos.</span>
+                <Button size="sm" variant="outline" onClick={() => projectsQuery.refetch()}>Reintentar</Button>
               </div>
             ) : (
             <Table>
@@ -780,6 +772,14 @@ export default function ClientDetailPage() {
             <CardTitle>Entradas de tiempo recientes</CardTitle>
           </CardHeader>
           <CardContent className="pt-4">
+            {recentEntriesQuery.isPending ? (
+              <p role="status" className="py-8 text-center text-sm text-muted-foreground">Cargando tiempo…</p>
+            ) : recentEntriesQuery.isError ? (
+              <div role="alert" className="flex items-center justify-between gap-3 py-4 text-sm">
+                <span>No se pudo cargar el tiempo registrado.</span>
+                <Button size="sm" variant="outline" onClick={() => recentEntriesQuery.refetch()}>Reintentar</Button>
+              </div>
+            ) : (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -807,6 +807,7 @@ export default function ClientDetailPage() {
                 )}
               </TableBody>
             </Table>
+            )}
           </CardContent>
         </Card>
       )}
