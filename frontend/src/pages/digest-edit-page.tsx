@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useLayoutEffect, useRef } from "react"
 import DOMPurify from "dompurify"
 import { useParams, useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
@@ -29,8 +29,8 @@ export default function DigestEditPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { key: routeKey } = useLocation()
-  const liveRoute = useRef(routeKey)
-  useEffect(() => { liveRoute.current = routeKey }, [routeKey])
+  const viewEpoch = useRef(0)
+  useLayoutEffect(() => { viewEpoch.current += 1 }, [routeKey])
   const queryClient = useQueryClient()
 
   const [greeting, setGreeting] = useState("")
@@ -46,7 +46,6 @@ export default function DigestEditPage() {
   const liveId = useRef(id)
   const previousId = useRef(id)
   useEffect(() => { liveId.current = id }, [id])
-  const isCurrent = () => active.current && liveId.current === id && liveRoute.current === routeKey
   useEffect(() => { active.current = true; return () => { active.current = false } }, [])
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewFormat, setPreviewFormat] = useState<"slack" | "email">("slack")
@@ -87,8 +86,8 @@ export default function DigestEditPage() {
   }, [id, previewId])
 
   const draftContent = (): DigestContent => ({ greeting, date: dateStr, sections, closing })
-  const acceptVersion = (saved: Digest, sourceId: number, sourceRoute: string) => {
-    if (!active.current || Number(liveId.current) !== sourceId || liveRoute.current !== sourceRoute) return
+  const acceptVersion = (saved: Digest, sourceId: number, sourceEpoch: number) => {
+    if (!active.current || Number(liveId.current) !== sourceId || viewEpoch.current !== sourceEpoch) return
     queryClient.setQueryData(["digest", String(saved.id)], saved)
     queryClient.invalidateQueries({ queryKey: ["digests"] })
     if (saved.id !== Number(id)) {
@@ -97,29 +96,29 @@ export default function DigestEditPage() {
     }
   }
   const updateMutation = useMutation({
-    mutationFn: (request: { sourceId: number; routeKey: string; content: DigestContent; tone: DigestTone }) => digestsApi.update(request.sourceId, { content: request.content, tone: request.tone }),
+    mutationFn: (request: { sourceId: number; epoch: number; content: DigestContent; tone: DigestTone }) => digestsApi.update(request.sourceId, { content: request.content, tone: request.tone }),
     onSuccess: (saved, request) => {
-      acceptVersion(saved, request.sourceId, request.routeKey)
+      acceptVersion(saved, request.sourceId, request.epoch)
       if (active.current) toast.success("Versión guardada; las anteriores se conservan")
     },
     onError: (err) => toast.error(getErrorMessage(err, "No se pudo guardar. Tu borrador se conserva.")),
   })
 
   const toneChangeMutation = useMutation({
-    mutationFn: async (request: { sourceId: number; routeKey: string; newTone: DigestTone; content: DigestContent; tone: DigestTone }) => {
+    mutationFn: async (request: { sourceId: number; epoch: number; newTone: DigestTone; content: DigestContent; tone: DigestTone }) => {
       // Preserve manual edits before asking the model for another version.
       const saved = await digestsApi.update(request.sourceId, { content: request.content, tone: request.tone })
-      if (!active.current || Number(liveId.current) !== request.sourceId || liveRoute.current !== request.routeKey) return null
+      if (!active.current || Number(liveId.current) !== request.sourceId || viewEpoch.current !== request.epoch) return null
       try {
         return await digestsApi.update(saved.id, { tone: request.newTone })
       } catch (error) {
-        acceptVersion(saved, request.sourceId, request.routeKey)
+        acceptVersion(saved, request.sourceId, request.epoch)
         throw error
       }
     },
     onSuccess: (saved, request) => {
-      if (!saved || !active.current || Number(liveId.current) !== request.sourceId || liveRoute.current !== request.routeKey) return
-      acceptVersion(saved, request.sourceId, request.routeKey)
+      if (!saved || !active.current || Number(liveId.current) !== request.sourceId || viewEpoch.current !== request.epoch) return
+      acceptVersion(saved, request.sourceId, request.epoch)
       toast.success("Nueva versión generada; el borrador anterior se conserva")
     },
     onError: (err) => toast.error(getErrorMessage(err, "No se pudo regenerar. Tu borrador se conserva.")),
@@ -133,11 +132,12 @@ export default function DigestEditPage() {
   })
 
   const handlePreview = async (fmt: "slack" | "email") => {
+    const sourceEpoch = viewEpoch.current
     setPreviewSaving(true)
     try {
       const saved = await digestsApi.update(Number(id), { content: draftContent(), tone })
-      if (!isCurrent()) return
-      acceptVersion(saved, Number(id), routeKey)
+      if (!active.current || Number(liveId.current) !== Number(id) || viewEpoch.current !== sourceEpoch) return
+      acceptVersion(saved, Number(id), sourceEpoch)
       setPreviewId(saved.id)
       setPreviewFormat(fmt)
       setPreviewOpen(true)
@@ -223,7 +223,7 @@ export default function DigestEditPage() {
             <Eye className="w-4 h-4 mr-2" />
             Vista previa
           </Button>
-          <Button onClick={() => updateMutation.mutate({ sourceId: Number(id), routeKey, content: draftContent(), tone })} disabled={updateMutation.isPending}>
+          <Button onClick={() => updateMutation.mutate({ sourceId: Number(id), epoch: viewEpoch.current, content: draftContent(), tone })} disabled={updateMutation.isPending}>
             {updateMutation.isPending ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
@@ -350,7 +350,7 @@ export default function DigestEditPage() {
 
       </fieldset>
       <p className="text-sm text-muted-foreground">Versión #{digest.id} · Guardar crea una versión si hay cambios. Las anteriores siguen disponibles en Resúmenes.</p>
-      <ConfirmDialog open={pendingTone !== null} onOpenChange={(open) => { if (!open) setPendingTone(null) }} title="Crear una versión con otro tono" description="Se guardará tu borrador actual y se generará otra versión. Podrás volver a la anterior desde Resúmenes." confirmLabel="Guardar y generar" onConfirm={() => { if (pendingTone) toneChangeMutation.mutate({ sourceId: Number(id), routeKey, newTone: pendingTone, content: draftContent(), tone }) }} />
+      <ConfirmDialog open={pendingTone !== null} onOpenChange={(open) => { if (!open) setPendingTone(null) }} title="Crear una versión con otro tono" description="Se guardará tu borrador actual y se generará otra versión. Podrás volver a la anterior desde Resúmenes." confirmLabel="Guardar y generar" onConfirm={() => { if (pendingTone) toneChangeMutation.mutate({ sourceId: Number(id), epoch: viewEpoch.current, newTone: pendingTone, content: draftContent(), tone }) }} />
 
       {/* Raw context sidebar (collapsible) */}
       {digest.raw_context && (

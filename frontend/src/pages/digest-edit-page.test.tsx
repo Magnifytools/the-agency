@@ -122,7 +122,7 @@ it("navigation to contentless digest does not reuse another client text", async 
   await waitFor(() => expect(api.update).toHaveBeenCalledWith(20, expect.objectContaining({content: expect.objectContaining({greeting: ""})})))
 })
 
-it("an old save cannot replace a new visit to the same digest", async () => {
+it.each(["new visit", "browser back"])("an old save cannot replace a %s to the same digest", async (mode) => {
   let resolve!: (value: unknown) => void
   api.update.mockReturnValue(new Promise(done => { resolve = done }))
   api.get.mockImplementation(async id => ({ ...source, id }))
@@ -130,7 +130,7 @@ it("an old save cannot replace a new visit to the same digest", async () => {
   await screen.findByLabelText("Saludo")
   fireEvent.click(screen.getByRole("button", {name: "Guardar"}))
   await act(async () => { await router.navigate("/digests/20/edit") })
-  await act(async () => { await router.navigate("/digests/10/edit") })
+  await act(async () => { if (mode === "browser back") await router.navigate(-1); else await router.navigate("/digests/10/edit") })
   await act(async () => { resolve({...source, id: 11}) })
   expect(screen.getByTestId("location")).toHaveTextContent("/digests/10/edit")
 })
