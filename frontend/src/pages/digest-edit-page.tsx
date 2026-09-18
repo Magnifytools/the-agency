@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import DOMPurify from "dompurify"
-import { useParams, useNavigate } from "react-router-dom"
+import { useParams, useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, Save, Eye, Copy, Loader2, Plus, Trash2 } from "lucide-react"
 import { digestsApi } from "@/lib/api"
@@ -28,6 +28,9 @@ const sectionLabels: Record<keyof DigestSections, { title: string; color: string
 export default function DigestEditPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { key: routeKey } = useLocation()
+  const liveRoute = useRef(routeKey)
+  useEffect(() => { liveRoute.current = routeKey }, [routeKey])
   const queryClient = useQueryClient()
 
   const [greeting, setGreeting] = useState("")
@@ -41,8 +44,9 @@ export default function DigestEditPage() {
   const loadedId = useRef<number | null>(null)
   const active = useRef(true)
   const liveId = useRef(id)
+  const previousId = useRef(id)
   useEffect(() => { liveId.current = id }, [id])
-  const isCurrent = () => active.current && liveId.current === id
+  const isCurrent = () => active.current && liveId.current === id && liveRoute.current === routeKey
   useEffect(() => { active.current = true; return () => { active.current = false } }, [])
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewFormat, setPreviewFormat] = useState<"slack" | "email">("slack")
@@ -59,23 +63,32 @@ export default function DigestEditPage() {
     if (digest && loadedId.current !== digest.id) {
       loadedId.current = digest.id
       setTone(digest.tone)
-      if (digest.content) {
-        setGreeting(digest.content.greeting || "")
-        setDateStr(digest.content.date || "")
-        setClosing(digest.content.closing || "")
-        setSections({
-          done: digest.content.sections?.done || [],
-          need: digest.content.sections?.need || [],
-          next: digest.content.sections?.next || [],
-          metrics: digest.content.sections?.metrics || [],
-        })
-      }
+      setGreeting(digest.content?.greeting || "")
+      setDateStr(digest.content?.date || "")
+      setClosing(digest.content?.closing || "")
+      setSections({
+        done: digest.content?.sections?.done || [],
+        need: digest.content?.sections?.need || [],
+        next: digest.content?.sections?.next || [],
+        metrics: digest.content?.sections?.metrics || [],
+      })
     }
   }, [digest])
 
+  useEffect(() => {
+    if (previousId.current !== id) {
+      previousId.current = id
+      if (previewId !== Number(id)) {
+        setPreviewOpen(false)
+        setPreviewId(null)
+        setPreviewContent("")
+      }
+    }
+  }, [id, previewId])
+
   const draftContent = (): DigestContent => ({ greeting, date: dateStr, sections, closing })
-  const acceptVersion = (saved: Digest) => {
-    if (!isCurrent()) return
+  const acceptVersion = (saved: Digest, sourceId: number, sourceRoute: string) => {
+    if (!active.current || Number(liveId.current) !== sourceId || liveRoute.current !== sourceRoute) return
     queryClient.setQueryData(["digest", String(saved.id)], saved)
     queryClient.invalidateQueries({ queryKey: ["digests"] })
     if (saved.id !== Number(id)) {
@@ -84,29 +97,29 @@ export default function DigestEditPage() {
     }
   }
   const updateMutation = useMutation({
-    mutationFn: () => digestsApi.update(Number(id), { content: draftContent(), tone }),
-    onSuccess: (saved) => {
-      acceptVersion(saved)
+    mutationFn: (request: { sourceId: number; routeKey: string; content: DigestContent; tone: DigestTone }) => digestsApi.update(request.sourceId, { content: request.content, tone: request.tone }),
+    onSuccess: (saved, request) => {
+      acceptVersion(saved, request.sourceId, request.routeKey)
       if (active.current) toast.success("Versión guardada; las anteriores se conservan")
     },
     onError: (err) => toast.error(getErrorMessage(err, "No se pudo guardar. Tu borrador se conserva.")),
   })
 
   const toneChangeMutation = useMutation({
-    mutationFn: async (newTone: DigestTone) => {
+    mutationFn: async (request: { sourceId: number; routeKey: string; newTone: DigestTone; content: DigestContent; tone: DigestTone }) => {
       // Preserve manual edits before asking the model for another version.
-      const saved = await digestsApi.update(Number(id), { content: draftContent(), tone })
-      if (!isCurrent()) return null
+      const saved = await digestsApi.update(request.sourceId, { content: request.content, tone: request.tone })
+      if (!active.current || Number(liveId.current) !== request.sourceId || liveRoute.current !== request.routeKey) return null
       try {
-        return await digestsApi.update(saved.id, { tone: newTone })
+        return await digestsApi.update(saved.id, { tone: request.newTone })
       } catch (error) {
-        acceptVersion(saved)
+        acceptVersion(saved, request.sourceId, request.routeKey)
         throw error
       }
     },
-    onSuccess: (saved) => {
-      if (!saved || !isCurrent()) return
-      acceptVersion(saved)
+    onSuccess: (saved, request) => {
+      if (!saved || !active.current || Number(liveId.current) !== request.sourceId || liveRoute.current !== request.routeKey) return
+      acceptVersion(saved, request.sourceId, request.routeKey)
       toast.success("Nueva versión generada; el borrador anterior se conserva")
     },
     onError: (err) => toast.error(getErrorMessage(err, "No se pudo regenerar. Tu borrador se conserva.")),
@@ -124,7 +137,7 @@ export default function DigestEditPage() {
     try {
       const saved = await digestsApi.update(Number(id), { content: draftContent(), tone })
       if (!isCurrent()) return
-      acceptVersion(saved)
+      acceptVersion(saved, Number(id), routeKey)
       setPreviewId(saved.id)
       setPreviewFormat(fmt)
       setPreviewOpen(true)
@@ -208,9 +221,9 @@ export default function DigestEditPage() {
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => handlePreview("slack")}>
             <Eye className="w-4 h-4 mr-2" />
-            Preview
+            Vista previa
           </Button>
-          <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}>
+          <Button onClick={() => updateMutation.mutate({ sourceId: Number(id), routeKey, content: draftContent(), tone })} disabled={updateMutation.isPending}>
             {updateMutation.isPending ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
@@ -241,7 +254,7 @@ export default function DigestEditPage() {
             Regenerando con nuevo tono...
           </div>
         )}
-        <Badge variant="secondary">{digest.status}</Badge>
+        <Badge variant="secondary">{{ draft: "Borrador", reviewed: "Revisado", sent: "Marcado como enviado" }[digest.status]}</Badge>
       </div>
 
       {/* Greeting + Date */}
@@ -269,7 +282,7 @@ export default function DigestEditPage() {
                   {sectionLabels[sectionKey].title}
                 </Badge>
                 <span className="text-sm text-muted-foreground">
-                  {sections[sectionKey].length} items
+                  {sections[sectionKey].length} elementos
                 </span>
               </div>
               <Button variant="outline" size="sm" onClick={() => addItem(sectionKey)}>
@@ -310,7 +323,7 @@ export default function DigestEditPage() {
               ))}
               {sections[sectionKey].length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-4">
-                  Sin items. Haz clic en "Añadir" para crear uno.
+                  Sin elementos. Haz clic en "Añadir" para crear uno.
                 </p>
               )}
             </div>
@@ -337,7 +350,7 @@ export default function DigestEditPage() {
 
       </fieldset>
       <p className="text-sm text-muted-foreground">Versión #{digest.id} · Guardar crea una versión si hay cambios. Las anteriores siguen disponibles en Resúmenes.</p>
-      <ConfirmDialog open={pendingTone !== null} onOpenChange={(open) => { if (!open) setPendingTone(null) }} title="Crear una versión con otro tono" description="Se guardará tu borrador actual y se generará otra versión. Podrás volver a la anterior desde Resúmenes." confirmLabel="Guardar y generar" onConfirm={() => { if (pendingTone) toneChangeMutation.mutate(pendingTone) }} />
+      <ConfirmDialog open={pendingTone !== null} onOpenChange={(open) => { if (!open) setPendingTone(null) }} title="Crear una versión con otro tono" description="Se guardará tu borrador actual y se generará otra versión. Podrás volver a la anterior desde Resúmenes." confirmLabel="Guardar y generar" onConfirm={() => { if (pendingTone) toneChangeMutation.mutate({ sourceId: Number(id), routeKey, newTone: pendingTone, content: draftContent(), tone }) }} />
 
       {/* Raw context sidebar (collapsible) */}
       {digest.raw_context && (
@@ -352,9 +365,9 @@ export default function DigestEditPage() {
       )}
 
       {/* Preview Dialog */}
-      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+      <Dialog open={previewOpen && previewId === Number(id)} onOpenChange={setPreviewOpen}>
         <DialogHeader>
-          <DialogTitle>Preview — {digest.client_name}</DialogTitle>
+          <DialogTitle>Vista previa — {digest.client_name}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-4">
           <div className="flex gap-2">

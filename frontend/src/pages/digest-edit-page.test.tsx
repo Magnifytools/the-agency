@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { MemoryRouter, Route, Routes, useLocation, createMemoryRouter, RouterProvider } from "react-router-dom"
 import { beforeEach, expect, it, vi } from "vitest"
 import DigestEditPage from "./digest-edit-page"
 
@@ -37,7 +37,7 @@ it("saves metrics and navigates to the returned version without changing the rep
 it("renders the saved ID, including when switching the preview format", async () => {
   setup()
   await screen.findByLabelText("Saludo")
-  fireEvent.click(screen.getByRole("button", { name: "Preview" }))
+  fireEvent.click(screen.getByRole("button", { name: "Vista previa" }))
   await screen.findByText("Versión nueva")
   expect(api.render).toHaveBeenCalledWith(11, "slack")
   fireEvent.click(screen.getByRole("button", { name: "Email" }))
@@ -73,10 +73,64 @@ it("retains unsaved edits after save failure and prevents overlapping operations
   await waitFor(() => expect(greeting).toHaveValue("Hola Acme"))
   fireEvent.change(greeting, { target: { value: "Borrador sin perder" } })
   fireEvent.click(screen.getByRole("button", { name: "Guardar" }))
-  await waitFor(() => expect(screen.getByRole("button", { name: "Preview" })).toBeDisabled())
+  await waitFor(() => expect(screen.getByRole("button", { name: "Vista previa" })).toBeDisabled())
   expect(greeting).toBeDisabled()
   reject(new Error("Sin conexión"))
   await waitFor(() => expect(greeting).not.toBeDisabled())
   expect(greeting).toHaveValue("Borrador sin perder")
+  expect(screen.getByTestId("location")).toHaveTextContent("/digests/10/edit")
+})
+
+function navigableSetup() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 }, mutations: { retry: false } } })
+  const router = createMemoryRouter([{ path: "/digests/:id/edit", element: <><DigestEditPage /><Location /></> }], { initialEntries: ["/digests/10/edit"] })
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>)
+  return { router, client }
+}
+it("old save completion cannot navigate away from another digest", async () => {
+  let resolve!: (value: unknown) => void
+  api.update.mockReturnValue(new Promise(done => { resolve = done }))
+  api.get.mockImplementation(async id => ({ ...source, id, client_name: id === 20 ? "Other" : "Acme", content: {...source.content, greeting: id === 20 ? "Other draft" : "Hola Acme"} }))
+  const { router } = navigableSetup()
+  await screen.findByLabelText("Saludo")
+  fireEvent.click(screen.getByRole("button", {name: "Guardar"}))
+  await act(async () => { await router.navigate("/digests/20/edit") })
+  await waitFor(() => expect(screen.getByLabelText("Saludo")).toHaveValue("Other draft"))
+  await act(async () => { resolve({...source, id: 11}) })
+  expect(screen.getByTestId("location")).toHaveTextContent("/digests/20/edit")
+  expect(screen.getByLabelText("Saludo")).toHaveValue("Other draft")
+})
+it("navigation to another digest clears previous preview", async () => {
+  api.update.mockResolvedValue(source)
+  api.get.mockImplementation(async id => ({...source, id, client_name: id === 20 ? "Other" : "Acme"}))
+  const {router} = navigableSetup()
+  await screen.findByLabelText("Saludo")
+  fireEvent.click(screen.getByRole("button", {name: "Vista previa"}))
+  await screen.findByText("Versión nueva")
+  await act(async () => { await router.navigate("/digests/20/edit") })
+  await screen.findByRole("heading", {name: "Other"})
+  expect(screen.queryByText("Versión nueva")).not.toBeInTheDocument()
+})
+it("navigation to contentless digest does not reuse another client text", async () => {
+  api.get.mockImplementation(async id => id === 20 ? {...source, id, client_name: "Other", content: null} : source)
+  const {router} = navigableSetup()
+  await waitFor(() => expect(screen.getByLabelText("Saludo")).toHaveValue("Hola Acme"))
+  await act(async () => { await router.navigate("/digests/20/edit") })
+  await screen.findByRole("heading", {name: "Other"})
+  expect(screen.getByLabelText("Saludo")).toHaveValue("")
+  fireEvent.click(screen.getByRole("button", {name: "Guardar"}))
+  await waitFor(() => expect(api.update).toHaveBeenCalledWith(20, expect.objectContaining({content: expect.objectContaining({greeting: ""})})))
+})
+
+it("an old save cannot replace a new visit to the same digest", async () => {
+  let resolve!: (value: unknown) => void
+  api.update.mockReturnValue(new Promise(done => { resolve = done }))
+  api.get.mockImplementation(async id => ({ ...source, id }))
+  const {router} = navigableSetup()
+  await screen.findByLabelText("Saludo")
+  fireEvent.click(screen.getByRole("button", {name: "Guardar"}))
+  await act(async () => { await router.navigate("/digests/20/edit") })
+  await act(async () => { await router.navigate("/digests/10/edit") })
+  await act(async () => { resolve({...source, id: 11}) })
   expect(screen.getByTestId("location")).toHaveTextContent("/digests/10/edit")
 })
