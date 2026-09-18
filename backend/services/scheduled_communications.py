@@ -169,6 +169,8 @@ async def occurrence_problem(db, occurrence, policy, actor):
         if not event or event.user_id != actor.id or event.event_type != EventType.meeting or event.start_time != occurrence.event_start:
             return "La reunión se canceló o cambió de fecha"
         if event.source == "google":
+            if not actor.google_calendar_connected and actor.google_refresh_token:
+                return "La autorización de Google Calendar necesita reconectarse en Ajustes"
             if not actor.google_calendar_connected or event.source_calendar_id != (actor.google_calendar_id or "primary"):
                 return "Evento legado o de otro calendario: sincroniza el calendario actual para verificarlo"
             synced = actor.google_calendar_synced_at

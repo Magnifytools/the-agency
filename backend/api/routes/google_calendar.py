@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, Literal
 from zoneinfo import ZoneInfo
 
 import base64
@@ -24,6 +24,7 @@ from backend.api.deps import get_current_user
 from backend.config import settings
 from backend.services.google_calendar_service import (
     get_auth_url, exchange_code, fetch_events, encrypt_refresh_token,
+    authorization_needs_reconnect, connection_status,
 )
 
 from backend.services.temporal import utc_now_naive, utc_isoformat
@@ -38,6 +39,7 @@ MADRID_TZ = ZoneInfo("Europe/Madrid")
 
 class CalendarStatus(BaseModel):
     connected: bool
+    connection_status: Literal["connected", "disconnected", "reconnect_required"] = "disconnected"
     calendar_id: str | None = None
     meeting_alerts: dict | None = None
     last_synced_at: str | None = None
@@ -115,16 +117,16 @@ async def calendar_callback(
     try:
         tokens = await anyio.to_thread.run_sync(exchange_code, code)
     except Exception as e:
-        logger.error("Google OAuth2 exchange failed: %s", e)
+        logger.error("Google OAuth2 exchange failed (%s)", type(e).__name__)
         return RedirectResponse(url="/settings?calendar=error")
 
     refresh_token = tokens.get("refresh_token")
     if not refresh_token:
         return RedirectResponse(url="/settings?calendar=error&reason=no_refresh_token")
 
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(select(User).where(User.id == user_id).with_for_update().execution_options(populate_existing=True))
     user = result.scalar_one_or_none()
-    if not user:
+    if not user or not user.is_active:
         return RedirectResponse(url="/settings?calendar=error")
 
     # Store encrypted refresh token
@@ -147,6 +149,7 @@ async def calendar_status(
     """Check if user has Google Calendar connected."""
     return CalendarStatus(
         connected=current_user.google_calendar_connected or False,
+        connection_status=connection_status(current_user),
         calendar_id=current_user.google_calendar_id,
         last_synced_at=utc_isoformat(current_user.google_calendar_synced_at),
         meeting_alerts=None,  # legacy preferences are history; effective policy lives in Avisos
@@ -226,6 +229,8 @@ async def trigger_sync(
     current_user: User = Depends(get_current_user),
 ):
     """Manually trigger a calendar sync for the current user."""
+    if connection_status(current_user) == "reconnect_required":
+        raise HTTPException(409, "La autorización de Google Calendar ha caducado o se ha revocado. Reconecta el calendario en Ajustes")
     if not current_user.google_calendar_connected or not current_user.google_refresh_token:
         raise HTTPException(status_code=400, detail="Google Calendar no conectado")
 
@@ -256,7 +261,17 @@ async def sync_user_events(db: AsyncSession, user: User) -> int:
         # Validate ALL pages before any reconciliation. Malformed != empty.
         parsed_events = [(ev, None if ev.get("cancelled") else civil(ev["start_time"]),
                           civil(ev["end_time"]) if ev.get("end_time") else None) for ev in events]
-    except Exception:
+    except Exception as error:
+        if authorization_needs_reconnect(error):
+            current = await db.scalar(select(User).where(User.id == user.id).with_for_update().execution_options(populate_existing=True))
+            # A delayed failure must never disable freshly reconnected credentials.
+            if (current and current.is_active and current.google_calendar_connected
+                and current.google_refresh_token == refresh_token
+                and (current.google_calendar_id or "primary") == calendar_id):
+                current.google_calendar_connected = False
+                await db.commit()
+                raise HTTPException(409, "La autorización de Google Calendar ha caducado o se ha revocado. Reconecta el calendario en Ajustes") from None
+            raise HTTPException(409, "La conexión de calendario cambió durante la sincronización") from None
         raise HTTPException(502, "No se pudo completar la consulta al calendario; los eventos guardados se conservan") from None
     current = await db.scalar(select(User).where(User.id == user.id).with_for_update().execution_options(populate_existing=True))
     if not current.is_active or not current.google_calendar_connected or current.google_refresh_token != refresh_token or (current.google_calendar_id or "primary") != calendar_id:

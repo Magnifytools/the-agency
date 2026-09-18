@@ -42,7 +42,7 @@ async def test_paused_sync_does_not_query_provider_and_old_extension_always_stop
 async def test_oauth_preserves_connection_without_enabling_reminders(monkeypatch):
     monkeypatch.setattr(settings, "SCHEDULED_COMMUNICATIONS_ENABLED", False)
     monkeypatch.setattr(google_calendar, "exchange_code", lambda _: {"refresh_token": "synthetic"})
-    user = SimpleNamespace(id=77, preferences={})
+    user = SimpleNamespace(id=77, preferences={}, is_active=True)
     result = MagicMock(); result.scalar_one_or_none.return_value = user
     db = AsyncMock(); db.execute.return_value = result
     response = await google_calendar.calendar_callback("code", google_calendar._sign_oauth_state(77), db)
