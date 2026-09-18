@@ -3,7 +3,7 @@ from typing import Optional
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import date as date_type, datetime, time, timedelta, timezone
 
 import httpx
 
@@ -13,15 +13,17 @@ DISCORD_WEBHOOK_RE = re.compile(
     r"^https://(discord\.com|discordapp\.com)/api/webhooks/\d+/.+$"
 )
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from sqlalchemy import Date, cast, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import User, DiscordSettings
 from backend.api.deps import require_admin, require_module
-from backend.services.discord import generate_daily_summary, send_to_discord
-from backend.api.routes.dailys import _resolve_channel_id, _send_daily_as_thread
-from backend.schemas.delivery import DeliveryReceipt, DigestDeliveryRequest
+from backend.services.discord import generate_daily_summary
+from backend.schemas.delivery import DeliveryReceipt, DigestDeliveryRequest, ManualDeliveryReceipt
+from backend.services.manual_communications import enqueue_request
+from backend.services.temporal import business_today
+from backend.services.weekly_report_service import generate_weekly_report
 from backend.core.security import encrypt_vault_secret, decrypt_vault_secret
 from backend.api.middleware.audit_log import log_audit
 from backend.schemas.discord import (
@@ -114,25 +116,18 @@ async def preview_summary(
     return {"summary": summary, "date": d.strftime("%Y-%m-%d")}
 
 
-@router.post("/send")
-async def send_summary(
-    date: Optional[str] = Query(None, description="YYYY-MM-DD"),
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
-):
-    if not settings.DISCORD_WEBHOOK_URL:
-        raise HTTPException(status_code=400, detail="DISCORD_WEBHOOK_URL no configurada")
+async def _queue_daily_summary(db, actor, day):
+    day = day or business_today()
+    summary = await generate_daily_summary(db, datetime.combine(day, time.min))
+    receipt = await enqueue_request(db, actor, kind="daily_summary", scope="team", period_start=day,
+                                   period_end=day, title=f"Resumen del día — {day.isoformat()}", content=summary)
+    return dict(receipt, ok=receipt["success"], date=day.isoformat())
 
-    if date:
-        d = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    else:
-        d = datetime.now(timezone.utc).replace(tzinfo=None)
 
-    summary = await generate_daily_summary(db, d)
-    success = await send_to_discord(summary)
-    if not success:
-        raise HTTPException(status_code=500, detail="Error al enviar a Discord")
-    return {"ok": True, "date": d.strftime("%Y-%m-%d")}
+@router.post("/send", response_model=ManualDeliveryReceipt, status_code=202)
+async def send_summary(date: date_type | None = Query(None), db: AsyncSession = Depends(get_db),
+                       current_user: User = Depends(require_admin)):
+    return await _queue_daily_summary(db, current_user, date)
 
 
 # ── Settings ──────────────────────────────────────────────
@@ -184,138 +179,37 @@ async def update_discord_settings(
 # ── Test webhook ──────────────────────────────────────────
 
 
-@router.post("/test-webhook", response_model=DiscordTestResponse)
-async def test_webhook(
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
-):
-    """Send a test message to the configured Discord webhook."""
-    ds = await _get_or_create_settings(db)
-    url = _decrypt_field(ds.webhook_url) or settings.DISCORD_WEBHOOK_URL or ""
-
-    if not url.strip():
-        raise HTTPException(status_code=400, detail="No hay webhook configurado")
-
-    test_msg = "🧪 **Test de conexión** — Agency Manager está conectado correctamente a este canal."
-    success = await _send_discord_message(url, test_msg)
-
-    if not success:
-        return DiscordTestResponse(success=False, message="Error al enviar al webhook. Verifica la URL.")
-    return DiscordTestResponse(success=True, message="Mensaje de test enviado correctamente")
+@router.post("/test-webhook", response_model=ManualDeliveryReceipt, status_code=202)
+async def test_webhook(db: AsyncSession = Depends(get_db), current_user: User = Depends(require_admin),
+                       request_key: str | None = Header(None, alias="X-Agency-Request-Key", min_length=16, max_length=80)):
+    day = business_today()
+    return await enqueue_request(db, current_user, kind="connection_test", scope="team", period_start=day,
+                                 period_end=day, title="Prueba manual de Discord",
+                                 content="The Agency: prueba de conexión solicitada desde Ajustes.", intent_key=request_key)
 
 
-# ── Send daily summary ────────────────────────────────────
-
-
-@router.post("/send-daily-summary", response_model=DiscordSendResponse)
-async def send_daily_summary(
-    date: Optional[str] = Query(None, description="YYYY-MM-DD"),
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
-):
-    """Generate and send the daily summary to Discord."""
-    ds = await _get_or_create_settings(db)
-    url = _decrypt_field(ds.webhook_url) or settings.DISCORD_WEBHOOK_URL or ""
-
-    if not url.strip():
-        raise HTTPException(status_code=400, detail="No hay webhook configurado")
-
-    if date:
-        d = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    else:
-        d = datetime.now(timezone.utc).replace(tzinfo=None)
-
-    try:
-        summary = await generate_daily_summary(db, d)
-    except Exception as exc:
-        logger.error("Error generating daily summary: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail="Error al generar el resumen diario")
-
-    success = False
-    bot_token = _decrypt_field(ds.bot_token) if ds else None
-
-    if bot_token:
-        try:
-            async with httpx.AsyncClient(timeout=15) as http:
-                channel_id = await _resolve_channel_id(ds, url, http)
-                if channel_id:
-                    date_str = d.strftime("%d/%m/%Y")
-                    header = f"📋 **Resumen del dia — {date_str}**"
-                    # Strip the first line (header) from summary to avoid duplication
-                    body_lines = summary.split("\n")
-                    body = "\n".join(body_lines[1:]).strip() or summary
-                    success = await _send_daily_as_thread(
-                        url, bot_token, channel_id, header, body, http
-                    )
-                    if success and ds.channel_id:
-                        await db.commit()
-        except Exception as exc:
-            logger.warning("Thread mode failed for summary: %s", exc)
-            success = False
-
-    if not success:
-        success = await _send_discord_message(url, summary)
-
-    if success:
-        try:
-            ds.last_sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
-            await db.commit()
-        except Exception:
-            logger.warning("Discord message sent but failed to update last_sent_at")
-        return DiscordSendResponse(
-            success=True,
-            message="Resumen diario enviado a Discord",
-            date=d.strftime("%Y-%m-%d"),
-        )
-
-    return DiscordSendResponse(
-        success=False,
-        message="Error al enviar a Discord. Verifica el webhook.",
-        date=d.strftime("%Y-%m-%d"),
-    )
+@router.post("/send-daily-summary", response_model=ManualDeliveryReceipt, status_code=202)
+async def send_daily_summary(date: date_type | None = Query(None), db: AsyncSession = Depends(get_db),
+                             current_user: User = Depends(require_admin)):
+    return await _queue_daily_summary(db, current_user, date)
 
 
 # ── Send custom content to Discord ─────────────────────────
 
 
-@router.post("/send-custom", response_model=DiscordSendResponse)
+@router.post("/send-custom", response_model=ManualDeliveryReceipt, status_code=202)
 async def send_custom_to_discord(
     body: DiscordSendCustomRequest,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
     send_intent: str | None = Header(None, alias="X-Agency-Send-Intent"),
 ):
-    """Send an explicit custom message; old digest clients must use their source route."""
-    # Protocol version, not authorization: require_admin still applies. Cached
-    # digest previews used this route before durable source-linked deliveries.
+    # Protocol version, not authorization: cached digest clients used this route.
     if send_intent != "custom-v1":
         raise HTTPException(409, "Recarga la aplicación antes de enviar. Los resúmenes se envían desde su propio editor.")
-    ds = await _get_or_create_settings(db)
-    url = _decrypt_field(ds.webhook_url) or settings.DISCORD_WEBHOOK_URL or ""
-
-    if not url.strip():
-        raise HTTPException(status_code=400, detail="No hay webhook configurado")
-
-    if not body.content.strip():
-        raise HTTPException(status_code=400, detail="El contenido no puede estar vacío")
-
-    success = await _send_discord_message(url, body.content.strip())
-
-    if success:
-        try:
-            ds.last_sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
-            await db.commit()
-        except Exception:
-            logger.warning("Discord message sent but failed to update last_sent_at")
-        return DiscordSendResponse(
-            success=True,
-            message="Mensaje enviado a Discord",
-        )
-
-    return DiscordSendResponse(
-        success=False,
-        message="Error al enviar a Discord. Verifica el webhook.",
-    )
+    day = business_today()
+    return await enqueue_request(db, current_user, kind="custom", scope="team", period_start=day,
+                                 period_end=day, title="Mensaje personalizado", content=body.content)
 
 
 # ── Send digest to Discord ────────────────────────────────
@@ -370,162 +264,14 @@ async def _send_discord_dm(bot_token: str, user_id: str, message: str) -> bool:
         return False
 
 
-@router.post("/send-weekly-report", response_model=DiscordSendResponse)
-async def send_weekly_report(
-    week_start: Optional[str] = Query(None, description="YYYY-MM-DD (Monday)"),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin),
-):
-    """Generate and send a weekly timesheet report via Discord DM to the owner."""
-    from datetime import date as date_type, timedelta
-    from sqlalchemy.orm import selectinload
-
-    ds = await _get_or_create_settings(db)
-    bot_token = _decrypt_field(ds.bot_token) if ds else None
-    owner_id = settings.DISCORD_OWNER_USER_ID
-
-    if not bot_token:
-        raise HTTPException(status_code=400, detail="Bot token no configurado en Discord settings")
-    if not owner_id:
-        raise HTTPException(status_code=400, detail="DISCORD_OWNER_USER_ID no configurado en variables de entorno")
-
-    # Calculate week range
-    from backend.services.temporal import business_today
-    from backend.services.time_entry_dates import time_entry_civil_period
+@router.post("/send-weekly-report", response_model=ManualDeliveryReceipt, status_code=202)
+async def send_weekly_report(week_start: date_type | None = Query(None), db: AsyncSession = Depends(get_db),
+                             current_user: User = Depends(require_admin)):
     today = business_today()
-    if week_start:
-        ws = datetime.strptime(week_start, "%Y-%m-%d").date()
-    else:
-        # If Sat/Sun, show the week that just ended (Mon-Fri)
-        # If Mon-Fri, show the current week (Mon-today)
-        if today.weekday() >= 5:  # Saturday or Sunday
-            ws = today - timedelta(days=today.weekday())  # This week's Monday (just ended)
-        else:
-            ws = today - timedelta(days=today.weekday())  # This week's Monday (in progress)
-
-    we = ws + timedelta(days=6)  # Sunday
-
-    # Load all users (excluding QA/test)
-    from backend.db.models import TimeEntry, Task, Client, Project
-    from backend.startup.background_tasks import _is_qa_user
-
-    users_result = await db.execute(select(User).where(User.is_active.is_(True)).order_by(User.full_name))
-    users = [u for u in users_result.scalars().all() if not _is_qa_user(u)]
-    user_map = {u.id: u for u in users}
-
-    # Load time entries for the week
-    entries_result = await db.execute(
-        select(TimeEntry).where(
-            TimeEntry.minutes.isnot(None),
-            time_entry_civil_period(ws, we + timedelta(days=1)),
-        )
-    )
-    entries = entries_result.scalars().all()
-
-    # Aggregate by user and client
-    user_hours: dict[int, float] = {}
-    client_hours: dict[str, float] = {}
-    client_cost: dict[str, float] = {}
-
-    task_ids = {e.task_id for e in entries if e.task_id}
-    tasks_map: dict[int, dict] = {}
-    if task_ids:
-        task_result = await db.execute(
-            select(Task, Client.name.label("client_name"), Project.monthly_fee)
-            .outerjoin(Client, Task.client_id == Client.id)
-            .outerjoin(Project, Task.project_id == Project.id)
-            .where(Task.id.in_(task_ids))
-        )
-        for row in task_result.all():
-            tasks_map[row[0].id] = {
-                "client_name": row[1] or "Sin cliente",
-                "monthly_fee": row[2] or 0,
-            }
-
-    for entry in entries:
-        mins = entry.minutes or 0
-        uid = entry.user_id
-        user_hours[uid] = user_hours.get(uid, 0) + mins / 60.0
-
-        client_name = "Sin cliente"
-        if entry.task_id and entry.task_id in tasks_map:
-            client_name = tasks_map[entry.task_id]["client_name"]
-
-        client_hours[client_name] = client_hours.get(client_name, 0) + mins / 60.0
-        rate = float(user_map[uid].hourly_rate) if uid in user_map and user_map[uid].hourly_rate else float(settings.DEFAULT_HOURLY_RATE)
-        client_cost[client_name] = client_cost.get(client_name, 0) + (mins / 60.0) * rate
-
-    # Get overdue tasks
-    from backend.db.models import TaskStatus
-    overdue_result = await db.execute(
-        select(Task)
-        .outerjoin(Client, Task.client_id == Client.id)
-        .where(
-            Task.status.notin_([TaskStatus.completed]),
-            cast(Task.due_date, Date) < ws,
-            Task.due_date.isnot(None),
-        )
-        .options(selectinload(Task.client))
-        .limit(10)
-    )
-    overdue_tasks = overdue_result.scalars().all()
-
-    # Build report
-    total_hours = sum(user_hours.values())
-    total_capacity = sum((u.weekly_hours or 40) for u in users)
-
-    lines = [
-        f"📊 **Informe Semanal — {ws.strftime('%d/%m')} al {we.strftime('%d/%m/%Y')}**",
-        "",
-        f"**Horas totales equipo:** {total_hours:.1f}h / {total_capacity}h ({total_hours/total_capacity*100:.0f}%)" if total_capacity else f"**Horas totales:** {total_hours:.1f}h",
-        "",
-    ]
-
-    # Per-user breakdown
-    lines.append("👥 **Por persona:**")
-    for u in users:
-        h = user_hours.get(u.id, 0)
-        cap = u.weekly_hours or 40
-        lines.append(f"  • {u.full_name}: {h:.1f}h / {cap}h ({h/cap*100:.0f}%)" if cap else f"  • {u.full_name}: {h:.1f}h")
-    lines.append("")
-
-    # Per-client breakdown
-    lines.append("🏢 **Por cliente:**")
-    sorted_clients = sorted(client_hours.items(), key=lambda x: x[1], reverse=True)
-    for name, hours in sorted_clients:
-        cost = client_cost.get(name, 0)
-        pct = (hours / total_hours * 100) if total_hours else 0
-        alert = " ⚠️" if pct > 40 else ""
-        lines.append(f"  • {name}: {hours:.1f}h ({pct:.0f}%) — {cost:.0f}€{alert}")
-
-    # Zero-activity clients
-    active_clients_result = await db.execute(
-        select(Client.name).where(Client.status == "active")
-    )
-    active_names = {r[0] for r in active_clients_result.all()}
-    inactive = active_names - set(client_hours.keys())
-    if inactive:
-        lines.append("")
-        lines.append("💤 **Sin actividad esta semana:**")
-        for name in sorted(inactive):
-            lines.append(f"  • {name}")
-
-    # Overdue tasks
-    if overdue_tasks:
-        lines.append("")
-        lines.append(f"⚠️ **{len(overdue_tasks)} tareas vencidas:**")
-        for t in overdue_tasks[:5]:
-            client_label = t.client.name if t.client else "Sin cliente"
-            due = t.due_date.strftime("%d/%m") if t.due_date else "?"
-            lines.append(f"  • [{client_label}] {t.title} (vencía {due})")
-        if len(overdue_tasks) > 5:
-            lines.append(f"  ... y {len(overdue_tasks) - 5} más")
-
-    report = "\n".join(lines)
-
-    # Send via Discord DM
-    success = await _send_discord_dm(bot_token, owner_id, report)
-
-    if success:
-        return DiscordSendResponse(success=True, message="Informe semanal enviado por DM")
-    return DiscordSendResponse(success=False, message="Error al enviar DM. Verifica bot_token y DISCORD_OWNER_USER_ID.")
+    ws = week_start or today - timedelta(days=today.weekday())
+    if ws.weekday() != 0:
+        raise HTTPException(422, "El inicio de semana debe ser un lunes")
+    we = ws + timedelta(days=6)
+    report = await generate_weekly_report(db, period_start=ws, period_end=we)
+    return await enqueue_request(db, current_user, kind="weekly_report", scope="team", period_start=ws,
+                                 period_end=we, title=f"Informe semanal — {ws} a {we}", content=report)

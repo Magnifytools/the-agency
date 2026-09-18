@@ -374,7 +374,7 @@ export interface DeliveryReceipt {
   created_at: string
   sent_at: string | null
   error_code: string | null
-  steps: { label: string; kind: string; status: string; message_id?: string; error?: string }[]
+  steps: { label: string; kind: string; status: string; message_id?: string; channel_id?: string; error?: string }[]
   can_retry: boolean
   can_resend: boolean
   can_cancel: boolean

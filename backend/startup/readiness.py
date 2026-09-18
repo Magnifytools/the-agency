@@ -27,6 +27,7 @@ async def check_database_ready(engine) -> None:
             """))
             if owner_fk is not True:
                 raise RuntimeError("Required project owner foreign key is missing")
+            await conn.execute(text("SELECT id, request_key, owner_id, kind, scope, period_start, period_end, title, content, destination_kind, created_at, updated_at FROM communication_requests LIMIT 0"))
             await conn.execute(text("SELECT id, dedupe_key, actor_id, source_kind, source_id, source_version, destination_key, payload, status, available_at, expires_at, sent_at, error_code, message, resend_of, created_at, updated_at FROM deliveries LIMIT 0"))
             await conn.execute(text("SELECT id, delivery_id, number, steps, lease_until, status, created_at, updated_at FROM delivery_attempts LIMIT 0"))
             # These source types enforce financial visibility in persisted PM
@@ -39,6 +40,7 @@ async def check_database_ready(engine) -> None:
                 ("notifications", ["user_id", "dedupe_key"], ""),
                 ("time_entries", ["user_id"], "(minutes IS NULL)"),
                 ("deliveries", ["dedupe_key"], ""),
+                ("communication_requests", ["request_key"], ""),
                 ("delivery_attempts", ["delivery_id", "number"], ""),
             ):
                 valid = await conn.scalar(text("""

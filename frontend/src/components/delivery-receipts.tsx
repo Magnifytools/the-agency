@@ -80,7 +80,7 @@ function ReceiptHistory(props: ReceiptSource) {
       {receipt.source_changed && <p className="text-amber-600">Este recibo corresponde a una versión anterior. Tu borrador actual se conserva.</p>}
       <ul className="space-y-1 text-xs text-muted-foreground">
         {receipt.steps.map((step, index) => <li key={index}>
-          {step.label}: {labels[step.status] || step.status}{step.message_id ? ` · ID Discord ${step.message_id}` : ""}{step.error ? ` · ${step.error}` : ""}
+          {step.label}: {labels[step.status] || step.status}{step.message_id ? ` · ID Discord ${step.message_id}` : step.channel_id ? ` · Canal Discord ${step.channel_id}` : ""}{step.error ? ` · ${step.error}` : ""}
         </li>)}
       </ul>
       <details><summary className="cursor-pointer">Ver el texto de esta versión</summary><pre className="whitespace-pre-wrap break-words mt-2 text-xs max-h-64 overflow-auto">{receipt.content}</pre></details>

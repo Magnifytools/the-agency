@@ -57,7 +57,7 @@ known IDs; uncertainty without an ID requires checking Discord before resending.
    `X-Agency-Send-Intent: custom-v1` contract supplied only by the current custom
    message client; this version marker is not an authorization boundary, and
    admin permission remains required. No global tab reload is a rollout prerequisite.
-   The current generic admin sender remains outside the ledger scope.
+   The current generic admin sender also uses the ledger; see the B1 rollout requirements in manual-communications.md.
    Old server-side direct senders do not understand the new
    dedupe key. Do not run them alongside an enabled new worker. Do not enqueue
    duplicate operational test messages to verify rollout.

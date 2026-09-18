@@ -14,31 +14,20 @@ from backend.main import app
 
 
 @pytest.mark.asyncio
-async def test_weekly_sender_builds_civil_overdue_query_without_real_transport(monkeypatch, admin_user):
+async def test_weekly_sender_passes_explicit_civil_period_to_shared_reader(monkeypatch, admin_user):
     from datetime import date
-    from types import SimpleNamespace
-    from unittest.mock import AsyncMock, MagicMock
+    from unittest.mock import AsyncMock
     from backend.api.routes import discord
 
-    result = MagicMock()
-    result.scalars.return_value.all.return_value = []
-    result.all.return_value = []
     db = AsyncMock()
-    db.execute.return_value = result
-    monkeypatch.setattr(discord, "_get_or_create_settings", AsyncMock(return_value=SimpleNamespace(bot_token="synthetic")))
-    monkeypatch.setattr(discord, "_decrypt_field", lambda _: "synthetic-token")
-    monkeypatch.setattr(discord.settings, "DISCORD_OWNER_USER_ID", "synthetic-recipient")
-    transport = AsyncMock(return_value=True)
-    monkeypatch.setattr(discord, "_send_discord_dm", transport)
-
-    response = await discord.send_weekly_report(week_start="2026-09-14", db=db, current_user=admin_user)
-
-    assert response.success is True
-    transport.assert_awaited_once()
-    assert "14/09 al 20/09/2026" in transport.await_args.args[2]
-    overdue_query = db.execute.await_args_list[2].args[0]
-    assert "CAST(tasks.due_date AS DATE)" in str(overdue_query)
-    assert date(2026, 9, 14) in overdue_query.compile().params.values()
+    generator = AsyncMock(return_value="Reviewed weekly report")
+    enqueue = AsyncMock(return_value={"success": False, "status": "pending"})
+    monkeypatch.setattr(discord, "generate_weekly_report", generator)
+    monkeypatch.setattr(discord, "enqueue_request", enqueue)
+    response = await discord.send_weekly_report(week_start=date(2026, 9, 14), db=db, current_user=admin_user)
+    assert response["status"] == "pending" and response["success"] is False
+    generator.assert_awaited_once_with(db, period_start=date(2026, 9, 14), period_end=date(2026, 9, 20))
+    assert enqueue.await_args.kwargs["content"] == "Reviewed weekly report"
 
 
 @pytest.mark.asyncio
@@ -98,22 +87,18 @@ class TestCustomContract:
         settings_lookup.assert_not_awaited()
         provider.assert_not_awaited()
 
-    async def test_current_custom_contract_preserves_explicit_send(self, admin_client, monkeypatch):
-        from types import SimpleNamespace
+    async def test_current_custom_contract_stages_explicit_send(self, admin_client, monkeypatch):
         from unittest.mock import AsyncMock
         from backend.api.routes import discord
-
-        destination = SimpleNamespace(webhook_url="https://discord.com/api/webhooks/123/test", last_sent_at=None)
-        monkeypatch.setattr(discord, "_get_or_create_settings", AsyncMock(return_value=destination))
-        provider = AsyncMock(return_value=True)
-        monkeypatch.setattr(discord, "_send_discord_message", provider)
-        response = await admin_client.post(
-            "/api/discord/send-custom", json={"content": "  Explicit custom text  "},
-            headers={"X-Agency-Send-Intent": "custom-v1"},
-        )
-        assert response.status_code == 200 and response.json()["success"] is True
-        provider.assert_awaited_once_with(destination.webhook_url, "Explicit custom text")
-        assert destination.last_sent_at is not None
+        receipt = dict(delivery_id="test", success=False, status="pending", message="En cola", source_kind="communication", source_id=1,
+                       source_version="hash", source_changed=False, content="Explicit custom text", created_at="2026-09-17T00:00:00Z",
+                       sent_at=None, error_code=None, steps=[], can_retry=False, can_resend=False, can_cancel=True, worker_enabled=False)
+        enqueue = AsyncMock(return_value=receipt)
+        monkeypatch.setattr(discord, "enqueue_request", enqueue)
+        response = await admin_client.post("/api/discord/send-custom", json={"content": "Explicit custom text"},
+                                           headers={"X-Agency-Send-Intent": "custom-v1"})
+        assert response.status_code == 202 and response.json()["success"] is False
+        assert enqueue.await_args.kwargs["content"] == "Explicit custom text"
 
     async def test_contract_header_does_not_grant_admin(self, member_client, monkeypatch):
         from unittest.mock import AsyncMock
