@@ -52,6 +52,7 @@ def _make_admin():
     user.google_calendar_connected = False
     user.google_refresh_token = None
     user.google_calendar_id = None
+    user.google_calendar_synced_at = None
     user.permissions = []
     return user
 
