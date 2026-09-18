@@ -5,12 +5,12 @@ attempt is therefore uncertain and requires human review, not automatic resend.
 """
 from __future__ import annotations
 
-from copy import deepcopy
-from datetime import timedelta
 import hashlib
 import json
 import logging
 import re
+from copy import deepcopy
+from datetime import timedelta
 from uuid import uuid4
 
 import httpx
@@ -21,14 +21,21 @@ from sqlalchemy.orm import noload, selectinload
 from backend.config import settings
 from backend.core.security import decrypt_vault_secret
 from backend.db.models import (
-    CommunicationRequest, DailyUpdate, DailyUpdateStatus, Delivery, DeliveryAttempt, DiscordSettings,
-    User, UserRole, WeeklyDigest,
+    CommunicationRequest,
+    DailyUpdate,
+    DailyUpdateStatus,
+    Delivery,
+    DeliveryAttempt,
+    DiscordSettings,
+    User,
+    UserRole,
+    WeeklyDigest,
 )
-from backend.schemas.digest import DigestContent
 from backend.schemas.daily import ParsedDailyData
+from backend.schemas.digest import DigestContent
 from backend.services.daily_parser import format_daily_for_discord
 from backend.services.digest_renderer import render_discord
-from backend.services.temporal import utc_now_naive, utc_isoformat
+from backend.services.temporal import utc_isoformat, utc_now_naive
 
 logger = logging.getLogger(__name__)
 LEASE_SECONDS = 90
@@ -149,7 +156,12 @@ def render_snapshot(kind, source, custom_content=None):
         if not source.content:
             raise HTTPException(400, "El digest no tiene contenido")
         try:
-            text = custom_content if custom_content is not None else render_discord(DigestContent(**source.content), source.tone)
+            text = custom_content if custom_content is not None else render_discord(
+                DigestContent(**source.content),
+                source.tone,
+                period_start=source.period_start,
+                period_end=source.period_end,
+            )
         except Exception:
             raise HTTPException(400, "Contenido del digest malformado") from None
         header = f"Resumen — {source.period_start} a {source.period_end}"
@@ -532,6 +544,7 @@ async def run_once(session_factory, *, transport=None):
 
 async def delivery_loop():
     import asyncio
+
     from backend.db.database import async_session
     while True:
         try:

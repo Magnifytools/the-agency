@@ -11,7 +11,7 @@ from datetime import date
 
 from backend.db.models import DigestTone
 from backend.schemas.digest import DigestContent, DigestItem
-
+from backend.services.digest_periods import format_digest_period
 
 # ---------------------------------------------------------------------------
 # Section titles by person (singular vs plural)
@@ -43,13 +43,28 @@ def _section_titles(tone: DigestTone | None = None) -> dict[str, str]:
 # Discord renderer
 # ---------------------------------------------------------------------------
 
-def render_discord(content: DigestContent, tone: DigestTone | None = None) -> str:
+def _date_text(
+    content: DigestContent,
+    period_start: date | None,
+    period_end: date | None,
+) -> str:
+    if period_start is not None and period_end is not None:
+        return format_digest_period(period_start, period_end)
+    return content.date
+
+
+def render_discord(
+    content: DigestContent,
+    tone: DigestTone | None = None,
+    period_start: date | None = None,
+    period_end: date | None = None,
+) -> str:
     """Render digest content as Discord-formatted Markdown message."""
     titles = _section_titles(tone)
     lines: list[str] = []
 
     # Header
-    date_str = content.date or "—"
+    date_str = _date_text(content, period_start, period_end) or "—"
     lines.append(f"**📊 Resumen diario — Magnify — {date_str}**")
     lines.append("")
 
@@ -99,18 +114,24 @@ def render_slack(
     """
     if slack_template:
         return _render_slack_custom(content, slack_template, period_start, period_end)
-    return _render_slack_default(content, tone)
+    return _render_slack_default(content, tone, period_start, period_end)
 
 
-def _render_slack_default(content: DigestContent, tone: DigestTone | None = None) -> str:
+def _render_slack_default(
+    content: DigestContent,
+    tone: DigestTone | None = None,
+    period_start: date | None = None,
+    period_end: date | None = None,
+) -> str:
     """Default Slack format — Magnify standard."""
     titles = _section_titles(tone)
     lines: list[str] = []
 
     if content.greeting:
         lines.append(content.greeting)
-    if content.date:
-        lines.append(f"*{content.date}*")
+    date_text = _date_text(content, period_start, period_end)
+    if date_text:
+        lines.append(f"*{date_text}*")
     lines.append("")
 
     sections = content.sections
@@ -155,9 +176,10 @@ def _render_slack_custom(
     # Greeting + date — incluir siempre salvo que el template lo desactive
     if template.get("show_greeting", True) and content.greeting:
         lines.append(content.greeting)
-    if template.get("show_date", True) and content.date:
-        lines.append(f"*{content.date}*")
-    if (template.get("show_greeting", True) and content.greeting) or (template.get("show_date", True) and content.date):
+    date_text = _date_text(content, period_start, period_end)
+    if template.get("show_date", True) and date_text:
+        lines.append(f"*{date_text}*")
+    if (template.get("show_greeting", True) and content.greeting) or (template.get("show_date", True) and date_text):
         lines.append("")
 
     # Sections in template order
@@ -231,17 +253,6 @@ def _esc(text: str) -> str:
     )
 
 
-def _format_period(period_start: date | None, period_end: date | None) -> str:
-    """Format period as 'Semana del {Monday}' — only the start (Monday) date."""
-    if not period_start:
-        return ""
-    months = [
-        "", "enero", "febrero", "marzo", "abril", "mayo", "junio",
-        "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-    ]
-    return f"Semana del {period_start.day} de {months[period_start.month]} de {period_start.year}"
-
-
 def _render_item_email(item: DigestItem) -> str:
     """Render a single item as a clean row."""
     return f"""\
@@ -287,8 +298,8 @@ def render_email(
     titles = _section_titles(tone)
 
     greeting_text = _esc(content.greeting).replace("\n", "<br>") if content.greeting else ""
-    # Use real dates from the digest period, falling back to AI-generated text
-    date_text = _format_period(period_start, period_end) or _esc(content.date) if content.date else _format_period(period_start, period_end)
+    # Persisted bounds are authoritative; legacy rows fall back to stored text.
+    date_text = _esc(_date_text(content, period_start, period_end))
     # Closing supports HTML (for links like Google Sheets trackers)
     closing_text = content.closing.replace("\n", "<br>") if content.closing else ""
     logo = logo_url or LOGO_URL
@@ -367,15 +378,21 @@ def render_email(
 </html>"""
 
 
-def render_email_plain(content: DigestContent, tone: DigestTone | None = None) -> str:
+def render_email_plain(
+    content: DigestContent,
+    tone: DigestTone | None = None,
+    period_start: date | None = None,
+    period_end: date | None = None,
+) -> str:
     """Render digest content as plain text for email (no HTML)."""
     titles = _section_titles(tone)
     lines: list[str] = []
 
     if content.greeting:
         lines.append(content.greeting)
-    if content.date:
-        lines.append(content.date)
+    date_text = _date_text(content, period_start, period_end)
+    if date_text:
+        lines.append(date_text)
     lines.append("")
 
     if content.sections.done:
