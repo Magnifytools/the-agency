@@ -14,33 +14,48 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.api.deps import require_module
+from backend.api.middleware.audit_log import log_audit
+from backend.api.utils.db_helpers import safe_refresh
+from backend.core.rate_limiter import ai_limiter
 from backend.db.database import get_db
 from backend.db.models import (
-    WeeklyDigest, DigestStatus, DigestTone, Client, ClientStatus, User, UserRole,
+    Client,
+    ClientStatus,
+    DigestStatus,
+    DigestTone,
+    User,
+    UserRole,
+    WeeklyDigest,
 )
 from backend.schemas.digest import (
-    DigestGenerateRequest,
-    DigestUpdateRequest,
-    DigestStatusUpdate,
-    DigestResponse,
     DigestContent,
+    DigestGenerateRequest,
     DigestRenderResponse,
+    DigestResponse,
+    DigestStatusUpdate,
+    DigestUpdateRequest,
 )
 from backend.services.digest_collector import collect_digest_data
 from backend.services.digest_generator import generate_digest_content
-from backend.services.digest_renderer import render_slack, render_email, render_email_plain, render_discord
-from backend.api.deps import require_module
-from backend.core.rate_limiter import ai_limiter
-from backend.api.utils.db_helpers import safe_refresh
-from backend.api.middleware.audit_log import log_audit
+from backend.services.digest_periods import (
+    canonicalize_digest_content,
+    resolve_digest_period,
+)
+from backend.services.digest_renderer import (
+    render_discord,
+    render_email,
+    render_email_plain,
+    render_slack,
+)
 
 router = APIRouter(prefix="/api/digests", tags=["digests"])
 logger = logging.getLogger(__name__)
@@ -50,13 +65,13 @@ logger = logging.getLogger(__name__)
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _default_period() -> tuple[date, date]:
-    """Return (Monday, Sunday) of the current week — the digest reports on
-    what's happening this week, not the previous one."""
-    today = date.today()
-    monday = today - timedelta(days=today.weekday())
-    sunday = monday + timedelta(days=6)
-    return monday, sunday
+def _resolve_period_or_422(
+    period_start: date | None, period_end: date | None
+) -> tuple[date, date]:
+    try:
+        return resolve_digest_period(period_start, period_end)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _to_response(digest: WeeklyDigest) -> DigestResponse:
@@ -100,11 +115,9 @@ async def generate_digest(
     """Generate a weekly digest for a single client."""
     ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
 
-    period_start = request.period_start
-    period_end = request.period_end
-
-    if not period_start or not period_end:
-        period_start, period_end = _default_period()
+    period_start, period_end = _resolve_period_or_422(
+        request.period_start, request.period_end
+    )
 
     # Validate client exists
     client_result = await db.execute(select(Client).where(Client.id == request.client_id))
@@ -112,30 +125,15 @@ async def generate_digest(
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    # Auto-delete previous draft digests for this client
-    prev_drafts_result = await db.execute(
-        select(WeeklyDigest).where(
-            and_(
-                WeeklyDigest.client_id == request.client_id,
-                WeeklyDigest.status == DigestStatus.draft,
-            )
-        )
-    )
-    prev_drafts = prev_drafts_result.scalars().all()
-    for old_draft in prev_drafts:
-        logger.info(
-            "Auto-deleting previous draft digest id=%s for client_id=%s",
-            old_draft.id,
-            request.client_id,
-        )
-        await db.delete(old_draft)
-
     # Collect raw data
     raw_data = await collect_digest_data(db, request.client_id, period_start, period_end)
 
     # Generate content via Claude API
     try:
-        content = await generate_digest_content(raw_data, request.tone)
+        generated_content = await generate_digest_content(raw_data, request.tone)
+        content = canonicalize_digest_content(
+            generated_content, period_start, period_end
+        )
     except ValueError:
         raise HTTPException(status_code=400, detail="No se pudo generar el digest con los datos proporcionados")
     except Exception:
@@ -182,8 +180,7 @@ async def generate_batch(
     """Generate digests for all active clients at once."""
     ai_limiter.check(current_user.id, max_requests=3, window_seconds=60)
 
-    if not period_start or not period_end:
-        period_start, period_end = _default_period()
+    period_start, period_end = _resolve_period_or_422(period_start, period_end)
 
     # Get all active clients
     result = await db.execute(
@@ -193,25 +190,6 @@ async def generate_batch(
 
     if not clients:
         raise HTTPException(status_code=404, detail="No active clients found")
-
-    # Auto-delete previous draft digests for all active clients
-    for client in clients:
-        prev_drafts_result = await db.execute(
-            select(WeeklyDigest).where(
-                and_(
-                    WeeklyDigest.client_id == client.id,
-                    WeeklyDigest.status == DigestStatus.draft,
-                )
-            )
-        )
-        prev_drafts = prev_drafts_result.scalars().all()
-        for old_draft in prev_drafts:
-            logger.info(
-                "Auto-deleting previous draft digest id=%s for client_id=%s (batch)",
-                old_draft.id,
-                client.id,
-            )
-            await db.delete(old_draft)
 
     # Collect data sequentially (shares DB session), then generate AI content concurrently
     client_data: list[tuple] = []
@@ -244,7 +222,7 @@ async def generate_batch(
             period_end=period_end,
             status=DigestStatus.draft,
             tone=tone,
-            content=result,
+            content=canonicalize_digest_content(result, period_start, period_end),
             raw_context=raw_data,
             generated_at=datetime.now(timezone.utc).replace(tzinfo=None),
             created_by=current_user.id,
@@ -259,7 +237,10 @@ async def generate_batch(
 
         # Notify creator that batch is done
         try:
-            from backend.services.notification_service import create_notification, DIGEST_GENERATED
+            from backend.services.notification_service import (
+                DIGEST_GENERATED,
+                create_notification,
+            )
             await create_notification(
                 db,
                 user_id=current_user.id,
@@ -360,10 +341,10 @@ async def update_digest(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("digests", write=True)),
 ):
-    """Update a digest's content and/or tone.
+    """Create a new digest version when content or tone changes.
 
     If only the tone changes (no content update), auto-regenerate
-    the digest content using the new tone and the stored raw_context.
+    content using stored raw_context. Identical payloads return the same ID.
     """
     result = await db.execute(
         select(WeeklyDigest).where(WeeklyDigest.id == digest_id)
@@ -376,14 +357,19 @@ async def update_digest(
     if current_user.role != UserRole.admin and digest.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="Not your digest")
 
-    tone_changed = request.tone is not None and request.tone != digest.tone
+    next_tone = request.tone if request.tone is not None else digest.tone
+    tone_changed = next_tone != digest.tone
+    next_content = (
+        canonicalize_digest_content(
+            request.content.model_dump(), digest.period_start, digest.period_end
+        )
+        if request.content is not None
+        else digest.content
+    )
+    content_changed = request.content is not None and next_content != digest.content
 
-    if request.content is not None:
-        digest.content = request.content.model_dump()
-        digest.edited_at = datetime.now(timezone.utc).replace(tzinfo=None)
-
-    if request.tone is not None:
-        digest.tone = request.tone
+    if not tone_changed and not content_changed:
+        return _to_response(digest)
 
     # If tone changed without an explicit content update, regenerate content
     if tone_changed and request.content is None:
@@ -394,22 +380,47 @@ async def update_digest(
             )
         ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
         try:
-            new_content = await generate_digest_content(digest.raw_context, request.tone)
+            new_content = await generate_digest_content(digest.raw_context, next_tone)
         except ValueError:
             raise HTTPException(
                 status_code=400,
                 detail="No se pudo regenerar el digest con el nuevo tono",
             )
         except Exception:
-            logger.exception("Error regenerating digest id=%s with new tone=%s", digest_id, request.tone)
+            logger.exception("Error regenerating digest id=%s with new tone=%s", digest_id, next_tone)
             raise HTTPException(status_code=502, detail="Error regenerando digest con nuevo tono")
-        digest.content = new_content
-        digest.generated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        next_content = canonicalize_digest_content(
+            new_content, digest.period_start, digest.period_end
+        )
+        generated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        edited_at = None
+    else:
+        generated_at = digest.generated_at
+        edited_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
+    # An edit/regeneration is a new durable source version. The original ID and
+    # any Delivery receipts remain tied to the exact content they represented.
+    version = WeeklyDigest(
+        client_id=digest.client_id,
+        period_start=digest.period_start,
+        period_end=digest.period_end,
+        status=DigestStatus.draft,
+        tone=next_tone,
+        content=next_content,
+        raw_context=digest.raw_context,
+        generated_at=generated_at,
+        edited_at=edited_at,
+        created_by=current_user.id,
+    )
+    db.add(version)
     await db.commit()
-    await safe_refresh(db, digest, log_context="digests")
-
-    return _to_response(digest)
+    await safe_refresh(db, version, log_context="digests")
+    version_result = await db.execute(
+        select(WeeklyDigest)
+        .where(WeeklyDigest.id == version.id)
+        .options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
+    )
+    return _to_response(version_result.scalar_one())
 
 
 # ---------------------------------------------------------------------------
@@ -485,9 +496,17 @@ async def render_digest(
             period_end=digest.period_end,
         )
     elif format == "discord":
-        rendered = render_discord(content, tone=tone)
+        rendered = render_discord(
+            content, tone=tone,
+            period_start=digest.period_start,
+            period_end=digest.period_end,
+        )
     elif format == "email_plain":
-        rendered = render_email_plain(content, tone=tone)
+        rendered = render_email_plain(
+            content, tone=tone,
+            period_start=digest.period_start,
+            period_end=digest.period_end,
+        )
     else:
         rendered = render_email(
             content, tone=tone,
