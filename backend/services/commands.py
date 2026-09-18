@@ -265,6 +265,28 @@ def _entity_result(kind: str, row, *, task: Task | None = None) -> dict:
             "project_id": getattr(target, "project_id", None), "client_id": getattr(target, "client_id", None)}
 
 
+async def _applied_labels(db: AsyncSession, applied: dict[str, Any]) -> dict[str, str]:
+    """Snapshot human labels for related IDs in the same receipt transaction."""
+    labels: dict[str, str] = {}
+    specs = {
+        "project_id": (Project, Project.name),
+        "client_id": (Client, Client.name),
+    }
+    for field, (model, column) in specs.items():
+        entity_id = applied.get(field)
+        if entity_id is not None:
+            label = await db.scalar(select(column).where(model.id == entity_id))
+            if label is not None:
+                labels[field] = label
+    for field in ("owner_id", "assigned_to", "user_id"):
+        user_id = applied.get(field)
+        if user_id is not None:
+            row = (await db.execute(select(User.short_name, User.full_name).where(User.id == user_id))).one_or_none()
+            if row is not None:
+                labels[field] = row.short_name or row.full_name
+    return labels
+
+
 async def execute_or_prompt(db: AsyncSession, receipt: CommandReceipt, actor: User) -> None:
     intent = dict(receipt.intent or {})
     kind = intent.get("kind")
@@ -389,6 +411,8 @@ async def execute_or_prompt(db: AsyncSession, receipt: CommandReceipt, actor: Us
             message = f"Registrados {intent['minutes']} minutos en «{task.title}»"
         entities = [_entity_result("task", task)]
         applied = {"status": task.status.value, "priority": task.priority.value,
+                   "project_id": task.project_id, "client_id": task.client_id,
+                   "assigned_to": task.assigned_to,
                    "scheduled_date": task.scheduled_date.isoformat() if task.scheduled_date else None}
         if kind == "log_time":
             applied.update({"minutes": int(intent["minutes"]), "user_id": actor.id,
@@ -405,6 +429,7 @@ async def execute_or_prompt(db: AsyncSession, receipt: CommandReceipt, actor: Us
         raise HTTPException(422, "Tipo de orden no permitido")
     receipt.status = STATUS_EXECUTED
     receipt.result = {"message": message, "entities": entities, "applied": applied,
+                      "applied_labels": await _applied_labels(db, applied),
                       "undo_available": False}
 
 

@@ -322,6 +322,9 @@ async def test_quoted_title_preserves_prepositions_and_applies_project_and_relat
         "project_id": project.id, "client_id": client.id, "assigned_to": None,
         "scheduled_date": "2026-09-18",
     }
+    assert receipt["result"]["applied_labels"] == {
+        "project_id": "Web nueva", "client_id": "Acme Natural",
+    }
 
 
 async def test_project_command_resolves_exact_active_short_name_and_reports_applied_values(
@@ -332,10 +335,11 @@ async def test_project_command_resolves_exact_active_short_name_and_reports_appl
                  hashed_password="unused", is_active=True)
     db_session.add_all([client, owner])
     await db_session.commit()
-    response = await admin_client.post("/api/commands", json={
+    body = {
         "request_key": "command-natural-project-1",
         "text": 'Crea proyecto "Web con SEO" para cliente "Cliente owner" responsable Mery fecha objetivo 2026-10-02',
-    })
+    }
+    response = await admin_client.post("/api/commands", json=body)
     assert response.status_code == 200, response.text
     receipt = response.json()
     project = await db_session.scalar(select(Project).where(Project.name == "Web con SEO"))
@@ -343,6 +347,15 @@ async def test_project_command_resolves_exact_active_short_name_and_reports_appl
     assert receipt["result"]["applied"] == {
         "client_id": client.id, "owner_id": owner.id, "target_date": "2026-10-02",
     }
+    assert receipt["result"]["applied_labels"] == {
+        "client_id": "Cliente owner", "owner_id": "Mery",
+    }
+    client.name = "Cliente renombrado"
+    owner.short_name = "Nuevo alias"
+    await db_session.commit()
+    replay = await admin_client.post("/api/commands", json=body)
+    assert replay.status_code == 200
+    assert replay.json()["result"]["applied_labels"] == receipt["result"]["applied_labels"]
 
 
 async def test_reschedule_without_date_keeps_deadline_and_receipt_is_explicit(admin_client, db_session):
@@ -403,6 +416,9 @@ async def test_explicit_manual_date_and_actor_are_visible_without_actor_inferenc
     applied = response.json()["result"]["applied"]
     assert applied["minutes"] == 45 and applied["user_id"] == admin_client.test_user.id
     assert applied["entry_date"] == "2026-09-10"
+    assert response.json()["result"]["applied_labels"]["user_id"] == (
+        admin_client.test_user.short_name or admin_client.test_user.full_name
+    )
     entry = await db_session.scalar(select(TimeEntry).where(TimeEntry.task_id == task.id))
     assert entry.minutes == 45 and entry.date.date().isoformat() == "2026-09-10"
     rejected = await admin_client.post("/api/commands", json={
