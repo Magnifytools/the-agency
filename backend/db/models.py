@@ -991,6 +991,32 @@ class ChangeLog(TimestampMixin, Base):
     undone_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
+class CommandReceipt(TimestampMixin, Base):
+    """Durable, user-owned receipt for one natural-language command."""
+    __tablename__ = "command_receipts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "request_key", name="uq_command_receipts_user_key"),
+        Index("ix_command_receipts_user_created", "user_id", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    request_key = Column(String(64), nullable=False)
+    request_hash = Column(String(64), nullable=False)
+    channel = Column(String(12), nullable=False)
+    context = Column(JSONB, nullable=True)
+    raw_text = Column(Text, nullable=False)
+    status = Column(String(20), nullable=False)
+    intent = Column(JSONB, nullable=True)
+    prompt = Column(JSONB, nullable=True)
+    result = Column(JSONB, nullable=True)
+    change_log_id = Column(Integer, ForeignKey("change_logs.id", ondelete="SET NULL"), nullable=True)
+    error_code = Column(String(50), nullable=True)
+    error_detail = Column(Text, nullable=True)
+    revision = Column(Integer, nullable=False, default=1)
+    step_replays = Column(JSONB, nullable=False, default=dict)
+
+
 class MonthlyClose(TimestampMixin, Base):
     __tablename__ = "monthly_closes"
     __table_args__ = (

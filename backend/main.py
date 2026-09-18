@@ -20,7 +20,7 @@ from backend.api.routes import (
     reports, proposals, growth, invitations, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
     service_templates, dailys, contacts, activity, notifications, resources, deliveries, communication_schedules,
-    changes,
+    changes, commands,
     billing_events, client_dashboard, engine_integration, investments,
     evidence, search, agency_vault, core_updates, balance,
     inbox,
@@ -193,6 +193,8 @@ async def lifespan(app: FastAPI):
     await ensure_project_owner_schema(engine)
     from backend.startup.delivery_schema import ensure_delivery_schema
     await ensure_delivery_schema(engine)
+    from backend.startup.command_schema import ensure_command_schema
+    await ensure_command_schema(engine)
     bg_tasks = start_background_tasks()
     logging.info("Startup ready.")
     yield
@@ -344,7 +346,7 @@ _CORE_ROUTERS = [
     usage_stats,
     # changes: el Undo del shell. No es una pantalla, es la red de seguridad
     # de todas las demás — se registra siempre.
-    changes,
+    changes, commands,
     # search: 0 llamadas, pero es la paleta ⌘K del shell, no una pantalla.
     search,
     # discord: su PANTALLA está oculta (13 visitas), pero la API se queda. El
