@@ -17,9 +17,6 @@ export default function DiscordSettingsPage() {
   const queryClient = useQueryClient()
   const [webhookInput, setWebhookInput] = useState("")
   const [botTokenInput, setBotTokenInput] = useState("")
-  const [summaryTimeInput, setSummaryTimeInput] = useState("18:00")
-  const [autoSendInput, setAutoSendInput] = useState(false)
-  const [includeAiInput, setIncludeAiInput] = useState(true)
   const [initialized, setInitialized] = useState(false)
   const pendingTestRequestKey = useRef<string | null>(null)
 
@@ -36,9 +33,6 @@ export default function DiscordSettingsPage() {
   // Initialize form when settings load
   if (settings && !initialized) {
     setWebhookInput("")
-    setSummaryTimeInput(settings.summary_time || "18:00")
-    setAutoSendInput(settings.auto_daily_summary)
-    setIncludeAiInput(settings.include_ai_note)
     setInitialized(true)
   }
 
@@ -84,9 +78,6 @@ export default function DiscordSettingsPage() {
   const handleSave = () => {
     const data: Record<string, unknown> = {
       webhook_url: webhookInput,
-      auto_daily_summary: autoSendInput,
-      summary_time: summaryTimeInput,
-      include_ai_note: includeAiInput,
     }
     // Only send bot_token if user typed something (avoid clearing existing token)
     if (botTokenInput.trim()) {
@@ -230,47 +221,7 @@ export default function DiscordSettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Auto-send settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Resumen diario automatico</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="auto-send"
-              checked={autoSendInput}
-              onChange={(e) => setAutoSendInput(e.target.checked)}
-              className="h-4 w-4 rounded border-border"
-            />
-            <Label htmlFor="auto-send">Enviar resumen diario automáticamente</Label>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="summary-time">Hora de envío</Label>
-            <Input
-              id="summary-time"
-              type="time"
-              value={summaryTimeInput}
-              onChange={(e) => setSummaryTimeInput(e.target.value)}
-              className="w-32"
-              disabled={!autoSendInput}
-            />
-          </div>
-
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="ai-note"
-              checked={includeAiInput}
-              onChange={(e) => setIncludeAiInput(e.target.checked)}
-              className="h-4 w-4 rounded border-border"
-            />
-            <Label htmlFor="ai-note">Incluir nota generada por IA</Label>
-          </div>
-        </CardContent>
-      </Card>
+      <p className="text-sm text-muted-foreground">Los antiguos controles de autoenvío se conservan como historial. Configura los avisos efectivos en <a className="underline" href="/settings#notifications">Ajustes → Avisos</a>.</p>
 
       {/* Save button */}
       <div className="flex justify-end">

@@ -41,8 +41,7 @@ class Settings(BaseSettings):
     DISCORD_OWNER_USER_ID: Optional[str] = None
     # Enable only after older direct-sender instances have drained.
     DELIVERY_WORKER_ENABLED: bool = False
-    # Rollout bridge: restart/drain all legacy instances with this false before B2.
-    LEGACY_SCHEDULED_COMMUNICATIONS_ENABLED: bool = True
+    SCHEDULED_COMMUNICATIONS_ENABLED: bool = False
     ANTHROPIC_API_KEY: Optional[str] = None
     HOLDED_API_KEY: Optional[str] = None
     DEFAULT_HOURLY_RATE: float = 40.0

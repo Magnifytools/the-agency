@@ -61,6 +61,8 @@ import type {
   GrowthIdeaCreate,
   ChangeEntry,
   UndoResult,
+  CommandContext,
+  CommandReceipt,
   GrowthIdeaUpdate,
   Invitation,
   InvitationCreateResult,
@@ -1010,6 +1012,21 @@ export const changesApi = {
     api.post<UndoResult>(`/changes/${id}/undo`).then((r) => r.data),
 }
 
+export const commandsApi = {
+  get: (id: string) =>
+    api.get<CommandReceipt>(`/commands/${id}`).then((r) => r.data),
+  create: (data: { request_key: string; text: string; channel: "app" | "extension"; context?: CommandContext }) =>
+    api.post<CommandReceipt>("/commands", data).then((r) => r.data),
+  resolve: (id: string, data: { request_key: string; revision: number; answers: Array<{ field: string; choice_id?: string; value?: string | number }> }) =>
+    api.post<CommandReceipt>(`/commands/${id}/resolve`, data).then((r) => r.data),
+  execute: (id: string, data: { request_key: string; revision: number }) =>
+    api.post<CommandReceipt>(`/commands/${id}/execute`, data).then((r) => r.data),
+  query: (id: string, page: number, pageSize = 25) =>
+    api.get<NonNullable<NonNullable<CommandReceipt["result"]>["query"]>>(`/commands/${id}/query`, { params: { page, page_size: pageSize } }).then((r) => r.data),
+  list: (page = 1, pageSize = 5) =>
+    api.get<{ items: CommandReceipt[]; total: number; page: number; page_size: number; has_more: boolean }>("/commands", { params: { page, page_size: pageSize } }).then((r) => r.data),
+}
+
 // --- Project Evidence ---
 export const evidenceApi = {
   list: (projectId: number) =>
@@ -1134,7 +1151,7 @@ export const calendarApi = {
   getAuthUrl: () =>
     api.get<{ url: string }>("/calendar/auth-url").then((r) => r.data),
   getStatus: () =>
-    api.get<{ connected: boolean; calendar_id: string | null; meeting_alerts: { minutes_before: number; discord_dm: boolean; extension: boolean } | null }>("/calendar/status").then((r) => r.data),
+    api.get<{ connected: boolean; calendar_id: string | null; last_synced_at: string | null; meeting_alerts: { minutes_before: number; discord_dm: boolean; extension: boolean } | null }>("/calendar/status").then((r) => r.data),
   disconnect: () =>
     api.post("/calendar/disconnect").then((r) => r.data),
   updateAlerts: (data: { minutes_before: number; discord_dm: boolean; extension: boolean }) =>

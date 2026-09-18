@@ -70,8 +70,12 @@ async def authorize_source(db, kind, source_id, actor, *, write=True, lock=False
     if not source:
         raise HTTPException(404, "El borrador ya no existe")
     if kind == "communication":
-        from backend.services.manual_communications import authorize_request
-        authorize_request(source, actor, write=write)
+        if source.kind.startswith("scheduled_"):
+            from backend.services.scheduled_communications import authorize_scheduled
+            await authorize_scheduled(db, source, actor, write=write)
+        else:
+            from backend.services.manual_communications import authorize_request
+            authorize_request(source, actor, write=write)
         return source
     owner = source.user_id if kind == "daily" else source.created_by
     if actor.role != UserRole.admin and owner != actor.id:
@@ -113,6 +117,12 @@ async def destination_config(db, kind, source):
         except Exception:
             raise HTTPException(400, "No se puede leer la configuración de Discord") from None
         recipient = settings.DISCORD_OWNER_USER_ID
+        if hasattr(source, "destination_id"):
+            recipient = source.destination_id
+        elif getattr(source, "kind", "") == "scheduled_weekly":
+            from backend.db.models import CommunicationOccurrence, CommunicationSchedule
+            recipient = await db.scalar(select(CommunicationSchedule.destination_id).join(CommunicationOccurrence,
+                CommunicationOccurrence.schedule_id == CommunicationSchedule.id).where(CommunicationOccurrence.request_id == source.id))
         if not bot or not recipient or not recipient.isdigit():
             raise HTTPException(400, "Configura el bot y su destinatario Discord antes de enviar")
         return recipient, bot, fingerprint(["owner_dm", recipient])
@@ -337,6 +347,9 @@ async def claim(db):
         row.status, row.error_code, row.message = "cancelled", "preflight", str(exc.detail)
         await db.commit()
         return None
+    from backend.services.scheduled_communications import defer_delivery
+    if await defer_delivery(db, row, source):
+        return None
     previous = await latest_attempt(db, row.id)
     steps = deepcopy(previous.steps if previous else row.payload["steps"])
     for step in steps:
@@ -460,6 +473,9 @@ async def dispatch_claim(session_factory, claimed, *, transport=None):
                     row.status, row.error_code, row.message = "cancelled", "preflight", str(exc.detail)
                     attempt.status = "cancelled"
                     await db.commit()
+                    return
+                from backend.services.scheduled_communications import defer_delivery
+                if await defer_delivery(db, row, source, attempt):
                     return
                 steps[index]["status"] = "sending"
                 steps[index]["started_at"] = utc_isoformat(utc_now_naive())

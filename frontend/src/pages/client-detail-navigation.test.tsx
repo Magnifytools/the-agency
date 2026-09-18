@@ -40,7 +40,9 @@ vi.mock("@/components/clients/engine-seo-tab", () => ({ EngineSeoTab: () => <div
 vi.mock("@/components/communications/communication-list", () => ({ CommunicationList: () => <div>Communications</div> }))
 vi.mock("@/components/timer/timer-button", () => ({ TimerButton: () => null }))
 vi.mock("@/components/timer/time-log-dialog", () => ({ TimeLogDialog: () => null }))
-vi.mock("@/components/tasks/task-panel", () => ({ TaskPanel: () => null }))
+vi.mock("@/components/tasks/task-panel", () => ({
+  TaskPanel: ({ open, taskId }: { open: boolean; taskId: number | null }) => open ? <div role="dialog">Tarea abierta {taskId}</div> : null,
+}))
 
 const summary = {
   client: { id: 5, name: "Acme", status: "active", engine_project_id: null },
@@ -131,6 +133,34 @@ describe("client detail areas", () => {
     expect(mocks.projects).not.toHaveBeenCalled()
     expect(mocks.time).not.toHaveBeenCalled()
     expect(screen.queryByText("Total tareas")).not.toBeInTheDocument()
+  })
+
+  it("puts active work first and keeps the complete history keyboard-accessible", async () => {
+    mocks.summary.mockResolvedValue({
+      ...summary,
+      tasks: [
+        { id: 57, title: "Terminada antigua", status: "completed", estimated_minutes: 30, actual_minutes: 40 },
+        { id: 12, title: "Esperando material", status: "waiting", estimated_minutes: 15, actual_minutes: 5 },
+        { id: 31, title: "Terminada reciente", status: "completed", estimated_minutes: null, actual_minutes: null },
+        { id: 8, title: "Trabajo activo", status: "in_progress", estimated_minutes: 60, actual_minutes: 20 },
+      ],
+    })
+    show("tareas")
+
+    expect(await screen.findByRole("table", { name: "Trabajo activo" })).toHaveTextContent("Esperando material")
+    expect(screen.getByRole("table", { name: "Trabajo activo" })).toHaveTextContent("Trabajo activo")
+    expect(screen.getByRole("button", { name: "Terminada antigua", hidden: true })).not.toBeVisible()
+
+    const completedToggle = screen.getByText("Completadas (2)")
+    completedToggle.focus()
+    await userEvent.keyboard("{Enter}")
+
+    const history = screen.getByRole("table", { name: "Tareas completadas" })
+    expect(history).toHaveTextContent("Terminada antigua")
+    expect(history).toHaveTextContent("30m")
+    expect(history).toHaveTextContent("40m")
+    await userEvent.click(screen.getByRole("button", { name: "Terminada antigua" }))
+    expect(screen.getByRole("dialog")).toHaveTextContent("Tarea abierta 57")
   })
 
   it("loads and retries projects independently from the inactive time query", async () => {

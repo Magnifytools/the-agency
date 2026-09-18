@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
-from sqlalchemy import select, and_, func, case
+from sqlalchemy import select, and_, func, case, cast, Date, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import (
@@ -48,9 +48,10 @@ async def is_working_day(db: AsyncSession, day: date, region: str | None) -> boo
     return True
 
 
-async def generate_morning_plan(db: AsyncSession, user: User) -> str:
+async def generate_morning_plan(db: AsyncSession, user: User, *, day: date | None = None) -> str:
     """Build the morning task list for a user."""
     name = user.short_name or user.full_name
+    today = day or business_today()
 
     # Fetch active tasks ordered by priority then due_date
     priority_sort = case(
@@ -69,22 +70,20 @@ async def generate_morning_plan(db: AsyncSession, user: User) -> str:
             Task.assigned_to == user.id,
             Task.status.in_([TaskStatus.pending, *IN_PROGRESS_TASK_STATUSES]),
             Task.is_recurring.is_(False),
+            or_(cast(Task.due_date, Date) <= today,
+                (Task.scheduled_date == today) & or_(Task.due_date.is_(None), cast(Task.due_date, Date) > today)),
         )
-        .order_by(priority_sort, Task.due_date.asc().nulls_last())
+        .order_by(priority_sort, Task.due_date.asc().nulls_last(), Task.id).limit(31)
     )
     result = await db.execute(stmt)
     tasks = result.scalars().all()
 
-    if not tasks:
-        return f"\u2600\ufe0f Buenos d\u00edas, {name}\n\n\u2705 No tienes tareas pendientes. \u00a1Buen d\u00eda!"
-
-    today = business_today()
     lines = [
         f"\u2600\ufe0f Buenos d\u00edas, {name}",
         f"\U0001f4cb Tus tareas para hoy:\n",
     ]
 
-    for t in tasks:
+    for t in tasks[:30]:
         order, emoji = _PRIORITY_ORDER.get(t.priority, (4, "\u26aa"))
         client_name = t.client.name if t.client else None
 
@@ -107,6 +106,11 @@ async def generate_morning_plan(db: AsyncSession, user: User) -> str:
                 parts.append(f"(vence {due_day.strftime('%d/%m')})")
 
         lines.append(" ".join(parts))
+
+    if not tasks:
+        lines.append("No hay tareas planificadas ni vencidas para hoy.")
+    elif len(tasks) > 30:
+        lines.append("Hay más tareas en la vista Hoy de la app.")
 
     # Meetings today (from Google Calendar sync)
     from datetime import datetime as dt_type
@@ -201,7 +205,7 @@ async def generate_evening_recap(db: AsyncSession, user: User, day: date) -> str
     if pending_tasks:
         lines.append("\u23f3 Pendiente:")
         for t in pending_tasks:
-            lines.append(f"- {t.title} (no tocada)")
+            lines.append(f"- {t.title} (pendiente)")
     else:
         lines.append("\u23f3 Pendiente: todo al d\u00eda \U0001f389")
 
@@ -214,7 +218,7 @@ async def generate_evening_recap(db: AsyncSession, user: User, day: date) -> str
     if daily_update:
         lines.append(f"\n\U0001f4dd Daily update: {daily_update.raw_text[:200]}")
     else:
-        lines.append(f"\n\U0001f4dd Daily update: \u26a0\ufe0f No has enviado tu daily")
+        lines.append(f"\n\U0001f4dd Daily update: \u26a0\ufe0f No hay un daily guardado para este día")
 
     return "\n".join(lines)
 

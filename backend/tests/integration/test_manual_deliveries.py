@@ -282,7 +282,11 @@ async def test_pm_midnight_uses_business_day_and_scheduled_work(fixture, monkeyp
 async def test_schema_upgrade_adds_only_request_table_and_readiness_checks_key(fixture, engine):
     from backend.startup.delivery_schema import ensure_delivery_schema
     from backend.startup.readiness import check_database_ready
+    from backend.db.models import CommunicationOccurrence, CommunicationSchedule
     async with engine.begin() as conn:
+        # Reconstruct the real A schema, including absence of later B2 tables.
+        await conn.run_sync(CommunicationOccurrence.__table__.drop)
+        await conn.run_sync(CommunicationSchedule.__table__.drop)
         await conn.run_sync(CommunicationRequest.__table__.drop)
     await asyncio.gather(ensure_delivery_schema(engine), ensure_delivery_schema(engine))
     await check_database_ready(engine)

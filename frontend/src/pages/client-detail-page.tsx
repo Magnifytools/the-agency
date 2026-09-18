@@ -341,6 +341,47 @@ export default function ClientDetailPage() {
   if (!summary) return <p className="text-muted-foreground">Cliente no encontrado</p>
 
   const { client, tasks } = summary
+  const activeTasks = tasks.filter((task) => task.status !== "completed")
+  const completedTasks = tasks.filter((task) => task.status === "completed")
+
+  const taskRows = (rows: typeof tasks) => rows.map((t) => (
+    <TableRow key={t.id} role="row" className="grid grid-cols-2 items-center gap-x-2 py-3 md:table-row md:py-0">
+      <TableCell role="cell" className="col-span-2 block px-0 py-1 md:table-cell md:px-4 md:py-3"><button type="button" className="font-medium text-left rounded hover:text-brand hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand" onClick={() => setTaskPanelId(t.id)}>{t.title}</button></TableCell>
+      <TableCell role="cell" className="block px-0 py-1 md:table-cell md:px-4 md:py-3">{taskStatusBadge(t.status)}</TableCell>
+      <TableCell role="cell" className="mono row-start-3 block px-0 py-1 text-xs md:table-cell md:px-4 md:py-3 md:text-sm"><span className="md:hidden">Estimado: </span>{t.estimated_minutes ? formatMinutes(t.estimated_minutes) : "-"}</TableCell>
+      <TableCell role="cell" className="mono row-start-3 block px-0 py-1 text-xs md:table-cell md:px-4 md:py-3 md:text-sm"><span className="md:hidden">Registrado: </span>{t.actual_minutes ? formatMinutes(t.actual_minutes) : "-"}</TableCell>
+      <TableCell role="cell" className="col-start-2 row-start-2 block px-0 py-1 md:table-cell md:px-4 md:py-3">
+        <div className="flex justify-end gap-1 md:justify-start">
+          <TimerButton taskId={t.id} />
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Ver horas de ${t.title}`}
+            onClick={() => setTimeLogTaskId({ id: t.id, title: t.title })}
+          >
+            <Clock className="h-4 w-4" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  ))
+
+  const taskTable = (rows: typeof tasks, label: string) => (
+    <Table role="table" aria-label={label} className="block md:table">
+      <TableHeader className="sr-only md:not-sr-only md:table-header-group">
+        <TableRow>
+          <TableHead>Título</TableHead>
+          <TableHead>Estado</TableHead>
+          <TableHead>Est.</TableHead>
+          <TableHead>Real</TableHead>
+          <TableHead>Timer</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody role="rowgroup" className="block md:table-row-group">
+        {taskRows(rows)}
+      </TableBody>
+    </Table>
+  )
 
   return (
     <div className="space-y-6">
@@ -608,48 +649,22 @@ export default function ClientDetailPage() {
           <CardHeader>
             <div className="flex items-center justify-between"><CardTitle>Tareas</CardTitle>{hasPermission("tasks", true) && <Button size="sm" onClick={() => setCreatingTask(true)}>Nueva tarea</Button>}</div>
           </CardHeader>
-          <CardContent className="pt-4">
-            <Table role="table" className="block md:table">
-              <TableHeader className="sr-only md:not-sr-only md:table-header-group">
-                <TableRow>
-                  <TableHead>Título</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Est.</TableHead>
-                  <TableHead>Real</TableHead>
-                  <TableHead>Timer</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody role="rowgroup" className="block md:table-row-group">
-                {tasks.map((t) => (
-                  <TableRow key={t.id} role="row" className="grid grid-cols-2 items-center gap-x-2 py-3 md:table-row md:py-0">
-                    <TableCell role="cell" className="col-span-2 block px-0 py-1 md:table-cell md:px-4 md:py-3"><button type="button" className="font-medium text-left hover:text-brand hover:underline" onClick={() => setTaskPanelId(t.id)}>{t.title}</button></TableCell>
-                    <TableCell role="cell" className="block px-0 py-1 md:table-cell md:px-4 md:py-3">{taskStatusBadge(t.status)}</TableCell>
-                    <TableCell role="cell" className="mono row-start-3 block px-0 py-1 text-xs md:table-cell md:px-4 md:py-3 md:text-sm"><span className="md:hidden">Estimado: </span>{t.estimated_minutes ? formatMinutes(t.estimated_minutes) : "-"}</TableCell>
-                    <TableCell role="cell" className="mono row-start-3 block px-0 py-1 text-xs md:table-cell md:px-4 md:py-3 md:text-sm"><span className="md:hidden">Registrado: </span>{t.actual_minutes ? formatMinutes(t.actual_minutes) : "-"}</TableCell>
-                    <TableCell role="cell" className="col-start-2 row-start-2 block px-0 py-1 md:table-cell md:px-4 md:py-3">
-                      <div className="flex justify-end gap-1 md:justify-start">
-                        <TimerButton taskId={t.id} />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Ver horas de ${t.title}`}
-                          onClick={() => setTimeLogTaskId({ id: t.id, title: t.title })}
-                        >
-                          <Clock className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {tasks.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                      No hay tareas
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+          <CardContent className="space-y-3 pt-4">
+            {activeTasks.length > 0 ? taskTable(activeTasks, "Trabajo activo") : (
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                {tasks.length === 0 ? "No hay tareas" : "No hay trabajo activo"}
+              </p>
+            )}
+            {completedTasks.length > 0 && (
+              <details className="border-t border-border pt-2">
+                <summary className="min-h-10 cursor-pointer rounded py-2 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand">
+                  Completadas ({completedTasks.length})
+                </summary>
+                <div className="mt-1">
+                  {taskTable(completedTasks, "Tareas completadas")}
+                </div>
+              </details>
+            )}
           </CardContent>
         </Card>
       )}

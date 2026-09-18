@@ -338,7 +338,8 @@ textarea::placeholder {
   padding: 12px 16px;
 }
 
-#note-text {
+#note-text,
+#command-text {
   width: 100%;
   padding: 10px 12px;
   background: #18181b;
@@ -774,3 +775,15 @@ textarea::placeholder {
 }
 .selector-load-error span { display: block; }
 .selector-load-error button { margin-top: 8px; }
+
+.command-heading { margin: 0; padding: 12px 16px 0; font-size: 15px; font-weight: 700; }
+.command-result { margin-top: 10px; padding: 10px; border: 1px solid var(--border, #333); border-radius: 8px; font-size: 12px; }
+.command-result button, .command-result a { min-height: 36px; }
+.command-choice { display: flex; width: 100%; gap: 8px; align-items: flex-start; margin-top: 6px; padding: 8px; text-align: left; border: 1px solid #444; border-radius: 7px; background: transparent; color: inherit; }
+.command-choice.selected { border-color: #ffd600; background: rgba(255, 214, 0, .08); }
+.command-entity { display: block; margin-top: 6px; color: #ffd600; overflow-wrap: anywhere; }
+.command-applied { margin-top: 8px; padding: 8px; border-radius: 8px; background: rgba(255,255,255,.05); }
+.command-applied div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 8px; padding: 2px 0; }
+.command-applied dt { color: #aaa; }
+.command-applied dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.command-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }

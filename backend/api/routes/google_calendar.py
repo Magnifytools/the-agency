@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -15,7 +15,7 @@ import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_, delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
@@ -25,6 +25,8 @@ from backend.config import settings
 from backend.services.google_calendar_service import (
     get_auth_url, exchange_code, fetch_events, encrypt_refresh_token,
 )
+
+from backend.services.temporal import utc_now_naive, utc_isoformat
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
@@ -38,6 +40,7 @@ class CalendarStatus(BaseModel):
     connected: bool
     calendar_id: str | None = None
     meeting_alerts: dict | None = None
+    last_synced_at: str | None = None
 
 
 class MeetingAlertSettings(BaseModel):
@@ -128,16 +131,7 @@ async def calendar_callback(
     user.google_refresh_token = encrypt_refresh_token(refresh_token)
     user.google_calendar_id = "primary"
     user.google_calendar_connected = True
-
-    # Set default meeting alert preferences if not set
-    prefs = user.preferences or {}
-    if "meeting_alerts" not in prefs:
-        prefs["meeting_alerts"] = {
-            "minutes_before": 30,
-            "discord_dm": True,
-            "extension": True,
-        }
-        user.preferences = prefs
+    user.google_calendar_synced_at = None
 
     await db.commit()
     logger.info("Google Calendar connected for user_id=%s", user_id)
@@ -151,11 +145,11 @@ async def calendar_status(
     current_user: User = Depends(get_current_user),
 ):
     """Check if user has Google Calendar connected."""
-    prefs = current_user.preferences or {}
     return CalendarStatus(
         connected=current_user.google_calendar_connected or False,
         calendar_id=current_user.google_calendar_id,
-        meeting_alerts=prefs.get("meeting_alerts"),
+        last_synced_at=utc_isoformat(current_user.google_calendar_synced_at),
+        meeting_alerts=None,  # legacy preferences are history; effective policy lives in Avisos
     )
 
 
@@ -170,6 +164,7 @@ async def calendar_disconnect(
     user.google_refresh_token = None
     user.google_calendar_id = None
     user.google_calendar_connected = False
+    user.google_calendar_synced_at = None
     await db.commit()
     return {"ok": True}
 
@@ -183,17 +178,7 @@ async def update_alert_settings(
     current_user: User = Depends(get_current_user),
 ):
     """Update meeting alert preferences."""
-    result = await db.execute(select(User).where(User.id == current_user.id))
-    user = result.scalar_one()
-    prefs = user.preferences or {}
-    prefs["meeting_alerts"] = body.model_dump()
-    user.preferences = prefs
-    await db.commit()
-    return CalendarStatus(
-        connected=user.google_calendar_connected or False,
-        calendar_id=user.google_calendar_id,
-        meeting_alerts=prefs["meeting_alerts"],
-    )
+    raise HTTPException(409, "Los avisos se configuran en Ajustes → Avisos; recarga la aplicación")
 
 
 # ── Events ──────────────────────────────────────────────────
@@ -228,30 +213,9 @@ async def upcoming_meetings(
     current_user: User = Depends(get_current_user),
 ):
     """Get meetings starting in the next X minutes. Used by Chrome extension."""
-    if not settings.LEGACY_SCHEDULED_COMMUNICATIONS_ENABLED:
-        return []  # Pause old desktop producers during the same controlled drain.
-    now = datetime.now(MADRID_TZ).replace(tzinfo=None)
-    cutoff = now + timedelta(minutes=minutes)
-
-    result = await db.execute(
-        select(Event).where(
-            Event.user_id == current_user.id,
-            Event.event_type == EventType.meeting,
-            Event.start_time >= now,
-            Event.start_time <= cutoff,
-        ).order_by(Event.start_time.asc())
-    )
-    events = result.scalars().all()
-    return [
-        {
-            "id": e.id,
-            "title": e.title,
-            "start_time": e.start_time.isoformat(),
-            "end_time": e.end_time.isoformat() if e.end_time else None,
-            "minutes_until": int((e.start_time - now).total_seconds() / 60),
-        }
-        for e in events
-    ]
+    # Old extensions ignore consent, quiet hours and user-specific dedupe.
+    # Current extension uses communication-schedules/extension-upcoming.
+    return []
 
 
 # ── Manual Sync Trigger ────────────────────────────────────
@@ -270,67 +234,53 @@ async def trigger_sync(
 
 
 async def sync_user_events(db: AsyncSession, user: User) -> int:
-    """Sync events from Google Calendar for a single user. Returns count of upserted events."""
-    if not settings.LEGACY_SCHEDULED_COMMUNICATIONS_ENABLED:
-        raise HTTPException(409, "La sincronización está pausada durante una actualización; tu conexión de Google se conserva")
-    if not user.google_refresh_token:
+    """Reconcile only a complete successful window for this user/calendar."""
+    from backend.services.temporal import business_zone
+    if not settings.SCHEDULED_COMMUNICATIONS_ENABLED:
+        raise HTTPException(409, "La sincronización está pausada durante la actualización de avisos")
+    if not user.is_active or not user.google_calendar_connected or not user.google_refresh_token:
         return 0
-
-    now = datetime.now(MADRID_TZ).replace(tzinfo=None)
+    # One full sync per user; a delayed older fetch cannot overwrite a newer one.
+    # Advisory transaction lock does not lock the User row during provider IO.
+    if not await db.scalar(text("SELECT pg_try_advisory_xact_lock(76241312, :user_id)"), {"user_id": user.id}):
+        raise HTTPException(409, "Ya hay una sincronización de este calendario en curso")
+    refresh_token, calendar_id = user.google_refresh_token, user.google_calendar_id or "primary"
+    now = utc_now_naive().replace(tzinfo=timezone.utc).astimezone(business_zone())
     time_min = now.replace(hour=0, minute=0, second=0, microsecond=0)
     time_max = time_min + timedelta(days=7)
-
-    events = await anyio.to_thread.run_sync(
-        lambda: fetch_events(
-            user.google_refresh_token,
-            calendar_id=user.google_calendar_id or "primary",
-            time_min=time_min,
-            time_max=time_max,
-        )
-    )
-
-    synced = 0
-    seen_google_ids = set()
-
-    for ev in events:
+    try:
+        events = await anyio.to_thread.run_sync(lambda: fetch_events(refresh_token, calendar_id=calendar_id, time_min=time_min, time_max=time_max))
+        def civil(value):
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return parsed.astimezone(business_zone()).replace(tzinfo=None) if parsed.tzinfo else parsed
+        # Validate ALL pages before any reconciliation. Malformed != empty.
+        parsed_events = [(ev, None if ev.get("cancelled") else civil(ev["start_time"]),
+                          civil(ev["end_time"]) if ev.get("end_time") else None) for ev in events]
+    except Exception:
+        raise HTTPException(502, "No se pudo completar la consulta al calendario; los eventos guardados se conservan") from None
+    current = await db.scalar(select(User).where(User.id == user.id).with_for_update().execution_options(populate_existing=True))
+    if not current.is_active or not current.google_calendar_connected or current.google_refresh_token != refresh_token or (current.google_calendar_id or "primary") != calendar_id:
+        raise HTTPException(409, "La conexión de calendario cambió durante la sincronización")
+    seen, synced = set(), 0
+    for ev, start_dt, end_dt in parsed_events:
         gid = ev["google_event_id"]
-        seen_google_ids.add(gid)
-
-        # Parse datetime
-        start_str = ev["start_time"]
-        end_str = ev.get("end_time")
-        try:
-            start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00")).replace(tzinfo=None)
-            end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00")).replace(tzinfo=None) if end_str and "T" in end_str else None
-        except (ValueError, AttributeError):
-            continue
-
-        # Upsert by google_event_id
-        result = await db.execute(
-            select(Event).where(Event.google_event_id == gid)
-        )
-        existing = result.scalar_one_or_none()
-
-        if existing:
-            existing.title = ev["title"]
-            existing.description = ev.get("description", "")
-            existing.start_time = start_dt
-            existing.end_time = end_dt
-            existing.is_all_day = ev.get("is_all_day", False)
-        else:
-            new_event = Event(
-                title=ev["title"],
-                description=ev.get("description", ""),
-                event_type=EventType.meeting,
-                start_time=start_dt,
-                end_time=end_dt,
-                is_all_day=ev.get("is_all_day", False),
-                user_id=user.id,
-                google_event_id=gid,
-                source="google",
-            )
-            db.add(new_event)
+        if ev.get("cancelled"):
+            continue  # absence from the live set reconciles only the selected window
+        seen.add(gid)
+        existing = await db.scalar(select(Event).where(Event.user_id == user.id, Event.source == "google",
+            Event.google_event_id == gid, or_(Event.source_calendar_id == calendar_id, Event.source_calendar_id.is_(None)))
+            .order_by(Event.source_calendar_id.nulls_last()).limit(1))
+        if existing is None:
+            existing = Event(user_id=user.id, source="google", google_event_id=gid, event_type=EventType.meeting)
+            db.add(existing)
+        existing.source_calendar_id = calendar_id
+        existing.title, existing.description = ev["title"], ev.get("description", "")
+        existing.start_time, existing.end_time = start_dt, end_dt
+        existing.is_all_day = ev.get("is_all_day", False)
         synced += 1
-
+    await db.flush()
+    await db.execute(delete(Event).where(Event.user_id == user.id, Event.source == "google", Event.source_calendar_id == calendar_id,
+        Event.start_time >= time_min.replace(tzinfo=None), Event.start_time < time_max.replace(tzinfo=None), Event.google_event_id.notin_(seen)))
+    current.google_calendar_synced_at = utc_now_naive()
     await db.commit()
     return synced

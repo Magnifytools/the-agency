@@ -320,11 +320,11 @@ export default function UsersPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="morning_reminder_time">Reminder manana</Label>
+                <Label htmlFor="morning_reminder_time">Hora sugerida de mañana (no activa avisos)</Label>
                 <Input id="morning_reminder_time" name="morning_reminder_time" type="time" defaultValue={editing?.morning_reminder_time ?? "09:00"} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="evening_reminder_time">Recap noche</Label>
+                <Label htmlFor="evening_reminder_time">Hora sugerida de recap (no activa avisos)</Label>
                 <Input id="evening_reminder_time" name="evening_reminder_time" type="time" defaultValue={editing?.evening_reminder_time ?? "18:00"} />
               </div>
             </div>

@@ -154,7 +154,7 @@ export function AppLayout() {
       </BottomDrawer>
 
       <SearchPalette open={searchOpen} onOpenChange={setSearchOpen} />
-      <QuickCaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
+      <QuickCaptureDialog key={user?.id ?? "anonymous"} open={captureOpen} onOpenChange={setCaptureOpen} />
       <ShortcutsHelpModal open={isHelpOpen} onOpenChange={setIsHelpOpen} shortcuts={shortcuts} />
       {user?.onboarding_completed === false && <OnboardingModal />}
     </div>

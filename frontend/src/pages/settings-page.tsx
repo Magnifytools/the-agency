@@ -4,7 +4,8 @@ import { toast } from "sonner"
 import { useAuth } from "@/context/auth-context"
 import { usersApi, categoriesApi, myWeekApi, calendarApi } from "@/lib/api"
 import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS } from "@/hooks/use-keyboard-shortcuts"
-import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar, FileText, Bell } from "lucide-react"
+import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar, FileText } from "lucide-react"
+import { CommunicationSchedules } from "@/components/communication-schedules"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 const SPAIN_REGIONS: { code: string; name: string }[] = [
@@ -81,11 +82,6 @@ export default function SettingsPage() {
   const [digestAutoSend, setDigestAutoSend] = useState(user?.preferences?.digest_auto_send ?? "manual")
   const [savingDigest, setSavingDigest] = useState(false)
 
-  // Notification preferences state
-  const [notifEmail, setNotifEmail] = useState(user?.preferences?.notifications_email ?? true)
-  const [notifDiscord, setNotifDiscord] = useState(user?.preferences?.notifications_discord ?? true)
-  const [savingNotif, setSavingNotif] = useState(false)
-
   // Sync with user preferences when they load
   useEffect(() => {
     setBindings({ ...DEFAULT_SHORTCUTS, ...(user?.preferences?.shortcuts ?? {}) })
@@ -95,8 +91,6 @@ export default function SettingsPage() {
     setDigestTone(user?.preferences?.digest_default_tone ?? "cercano")
     setDigestRecipients(user?.preferences?.digest_default_recipients ?? "")
     setDigestAutoSend(user?.preferences?.digest_auto_send ?? "manual")
-    setNotifEmail(user?.preferences?.notifications_email ?? true)
-    setNotifDiscord(user?.preferences?.notifications_discord ?? true)
   }, [user?.preferences])
 
   useEffect(() => {
@@ -227,26 +221,6 @@ export default function SettingsPage() {
     }
   }
 
-  const handleSaveNotifSettings = async () => {
-    if (!user) return
-    setSavingNotif(true)
-    try {
-      await usersApi.update(user.id, {
-        preferences: {
-          ...(user.preferences ?? {}),
-          notifications_email: notifEmail,
-          notifications_discord: notifDiscord,
-        },
-      })
-      await refreshUser()
-      toast.success("Preferencias de notificación guardadas")
-    } catch {
-      toast.error("Error al guardar preferencias de notificación")
-    } finally {
-      setSavingNotif(false)
-    }
-  }
-
   // Categories queries & mutations
   const { data: categories = [] } = useQuery({
     queryKey: ["task-categories"],
@@ -292,7 +266,7 @@ export default function SettingsPage() {
     ...(canManageCategories ? [{ id: "categories", label: "Categorías de tareas" }] : []),
     { id: "location", label: "Ubicación" },
     { id: "digest", label: "Preferencias de digest" },
-    { id: "notifications", label: "Notificaciones" },
+    { id: "notifications", label: "Avisos" },
     { id: "calendar", label: "Google Calendar" },
     ...(isAdmin ? [{ id: "holidays", label: "Festivos" }] : []),
   ]
@@ -604,62 +578,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Notification preferences */}
-      <div id="notifications" className="bg-card border border-border rounded-2xl p-6 scroll-mt-8">
-        <div className="flex items-center gap-2 mb-4">
-          <Bell className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-base font-semibold text-foreground">Notificaciones</h2>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">
-          Controla cómo y dónde recibes notificaciones
-        </p>
-
-        <div className="space-y-4">
-          <div className="flex items-center justify-between py-2">
-            <div>
-              <span className="text-sm text-foreground font-medium">Notificaciones por email</span>
-              <p className="text-xs text-muted-foreground mt-0.5">Recibe alertas y resúmenes por correo electrónico</p>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={notifEmail}
-                onChange={(e) => setNotifEmail(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-muted rounded-full peer peer-checked:bg-brand transition-colors after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" />
-            </label>
-          </div>
-
-          <div className="border-t border-border" />
-
-          <div className="flex items-center justify-between py-2">
-            <div>
-              <span className="text-sm text-foreground font-medium">Notificaciones por Discord</span>
-              <p className="text-xs text-muted-foreground mt-0.5">Recibe alertas en el canal de Discord configurado</p>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={notifDiscord}
-                onChange={(e) => setNotifDiscord(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-muted rounded-full peer peer-checked:bg-brand transition-colors after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" />
-            </label>
-          </div>
-        </div>
-
-        <div className="mt-4 flex justify-end">
-          <button
-            onClick={handleSaveNotifSettings}
-            disabled={savingNotif}
-            className="px-4 py-2 bg-brand text-black text-sm font-semibold rounded-xl hover:bg-brand/90 transition-colors disabled:opacity-50"
-          >
-            {savingNotif ? "Guardando…" : "Guardar notificaciones"}
-          </button>
-        </div>
-      </div>
+      <CommunicationSchedules />
 
       {/* Google Calendar */}
       <CalendarSection />
@@ -801,17 +720,6 @@ function CalendarSection() {
     queryFn: calendarApi.getStatus,
   })
 
-  const [minutesBefore, setMinutesBefore] = useState(30)
-  const [discordDm, setDiscordDm] = useState(true)
-  const [extensionAlert, setExtensionAlert] = useState(true)
-
-  useEffect(() => {
-    if (status?.meeting_alerts) {
-      setMinutesBefore(status.meeting_alerts.minutes_before)
-      setDiscordDm(status.meeting_alerts.discord_dm)
-      setExtensionAlert(status.meeting_alerts.extension)
-    }
-  }, [status])
 
   useEffect(() => {
     if (calendarParam === "connected") {
@@ -843,17 +751,11 @@ function CalendarSection() {
 
   const syncMut = useMutation({
     mutationFn: calendarApi.sync,
-    onSuccess: (data) => toast.success(`Sincronizados ${data.events_synced} eventos`),
-    onError: () => toast.error("Error al sincronizar"),
-  })
-
-  const alertsMut = useMutation({
-    mutationFn: () => calendarApi.updateAlerts({ minutes_before: minutesBefore, discord_dm: discordDm, extension: extensionAlert }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["calendar-status"] })
-      toast.success("Alertas actualizadas")
+      toast.success(`Sincronizados ${data.events_synced} eventos`)
     },
-    onError: () => toast.error("Error al guardar alertas"),
+    onError: () => toast.error("Error al sincronizar"),
   })
 
   if (isLoading) return null
@@ -893,50 +795,8 @@ function CalendarSection() {
             </div>
           </div>
 
-          <div className="border-t border-border pt-4">
-            <h3 className="text-sm font-medium text-foreground mb-3">Alertas de reuniones</h3>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <label className="text-sm text-muted-foreground w-32">Avisar antes</label>
-                <select
-                  value={minutesBefore}
-                  onChange={(e) => setMinutesBefore(Number(e.target.value))}
-                  className="rounded-md border border-border bg-background px-3 py-1.5 text-sm"
-                >
-                  <option value={10}>10 minutos</option>
-                  <option value={15}>15 minutos</option>
-                  <option value={30}>30 minutos</option>
-                  <option value={60}>1 hora</option>
-                </select>
-              </div>
-
-              <div className="flex items-center justify-between py-1">
-                <span className="text-sm text-muted-foreground">DM por Discord</span>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" checked={discordDm} onChange={(e) => setDiscordDm(e.target.checked)} className="sr-only peer" />
-                  <div className="w-9 h-5 bg-muted rounded-full peer peer-checked:bg-brand transition-colors after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" />
-                </label>
-              </div>
-
-              <div className="flex items-center justify-between py-1">
-                <span className="text-sm text-muted-foreground">Notificación extensión</span>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" checked={extensionAlert} onChange={(e) => setExtensionAlert(e.target.checked)} className="sr-only peer" />
-                  <div className="w-9 h-5 bg-muted rounded-full peer peer-checked:bg-brand transition-colors after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" />
-                </label>
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  onClick={() => alertsMut.mutate()}
-                  disabled={alertsMut.isPending}
-                  className="px-4 py-2 bg-brand text-black text-sm font-semibold rounded-xl hover:bg-brand/90 transition-colors disabled:opacity-50"
-                >
-                  {alertsMut.isPending ? "Guardando…" : "Guardar alertas"}
-                </button>
-              </div>
-            </div>
-          </div>
+          <p className="text-sm text-muted-foreground">Última sincronización completa: {status?.last_synced_at ? new Date(status.last_synced_at).toLocaleString("es-ES", { timeZone: "Europe/Madrid" }) : "Pendiente"}. Los avisos de Google esperan una sincronización reciente.</p>
+          <p className="text-sm"><a href="#notifications" className="underline">Configurar Avisos</a>: conectar el calendario no activa ningún envío.</p>
         </div>
       ) : (
         <button

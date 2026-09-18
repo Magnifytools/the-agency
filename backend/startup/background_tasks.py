@@ -337,106 +337,6 @@ def _time_in_window(current_time: str, target: str, window_minutes: int = 5) -> 
     return 0 <= (current_total - target_total) < window_minutes
 
 
-async def _daily_reminders_loop():
-    """Check every 5 minutes if any user needs morning/evening reminder."""
-    from datetime import datetime
-    from sqlalchemy import select
-    from backend.db.database import async_session
-    from backend.db.models import User
-    from backend.services.daily_reminders import (
-        is_working_day, generate_morning_plan, generate_evening_recap, send_reminder,
-    )
-
-    sent_today: set[tuple[int, str]] = set()
-    current_date = None
-
-    while True:
-        await asyncio.sleep(300)  # 5 min interval
-        try:
-            now = datetime.now(BUSINESS_TZ)
-            today = now.date()
-            if current_date != today:
-                sent_today.clear()
-                current_date = today
-
-            current_time = now.strftime("%H:%M")
-
-            async with async_session() as db:
-                result = await db.execute(
-                    select(User).where(User.is_active.is_(True))
-                )
-                users = result.scalars().all()
-
-                for user in users:
-                    if _is_qa_user(user):
-                        continue
-
-                    if not await is_working_day(db, today, user.region):
-                        continue
-
-                    # Morning reminder (window: target to target+5min)
-                    if (user.id, "morning") not in sent_today:
-                        target = user.morning_reminder_time or "08:00"
-                        if _time_in_window(current_time, target):
-                            msg = await generate_morning_plan(db, user)
-                            if await send_reminder(msg, db=db):
-                                sent_today.add((user.id, "morning"))
-
-                    # Evening recap
-                    if (user.id, "evening") not in sent_today:
-                        target = user.evening_reminder_time or "18:00"
-                        if _time_in_window(current_time, target):
-                            msg = await generate_evening_recap(db, user, today)
-                            if await send_reminder(msg, db=db):
-                                sent_today.add((user.id, "evening"))
-        except Exception as e:
-            logging.error("Daily reminders error: %s", e)
-
-
-# ── Weekly report via Discord DM (Saturday 08:00 Madrid) ────
-
-async def _weekly_report_loop():
-    """Send the weekly report DM every Saturday at 08:00 Europe/Madrid."""
-    from datetime import datetime
-    from backend.db.database import async_session
-    from backend.core.discord_utils import get_bot_token
-    from backend.api.routes.discord import _send_discord_dm
-    from backend.services.weekly_report_service import generate_weekly_report
-
-    sent_this_week: str | None = None
-
-    while True:
-        await asyncio.sleep(300)
-        try:
-            now = datetime.now(BUSINESS_TZ)
-            week_key = now.strftime("%G-W%V")
-
-            if now.weekday() != 5 or now.hour < 8:
-                continue
-            if sent_this_week == week_key:
-                continue
-
-            owner_id = settings.DISCORD_OWNER_USER_ID
-            if not owner_id:
-                continue
-
-            async with async_session() as db:
-                bot_token = await get_bot_token(db)
-                if not bot_token:
-                    continue
-
-                report = await generate_weekly_report(db)
-                success = await _send_discord_dm(bot_token, owner_id, report)
-                if success:
-                    sent_this_week = week_key
-                    logging.info("Weekly report DM sent for %s", week_key)
-                else:
-                    logging.warning("Weekly report DM failed for %s", week_key)
-
-        except Exception as e:
-            logging.error("Weekly report loop error: %s", e)
-
-
 # ── Google Calendar sync + meeting alerts ───────────────────
 
 async def _calendar_sync_loop():
@@ -448,107 +348,26 @@ async def _calendar_sync_loop():
     from backend.api.routes.google_calendar import sync_user_events
 
     while True:
-        await asyncio.sleep(900)  # 15 min
         try:
             async with async_session() as db:
-                result = await db.execute(
-                    select(User).where(
-                        User.is_active.is_(True),
-                        User.google_calendar_connected.is_(True),
-                    )
-                )
-                users = result.scalars().all()
-                for user in users:
-                    if _is_qa_user(user):
-                        continue
-                    try:
+                user_ids = (await db.scalars(select(User.id).where(
+                    User.is_active.is_(True), User.google_calendar_connected.is_(True),
+                ))).all()
+            for user_id in user_ids:
+                try:
+                    # A failed provider/transaction must not poison the next user's sync.
+                    async with async_session() as db:
+                        user = await db.get(User, user_id)
+                        if user is None or _is_qa_user(user):
+                            continue
                         count = await sync_user_events(db, user)
                         if count:
-                            logging.debug("Calendar sync: %d events for user %s", count, user.id)
-                    except Exception as e:
-                        logging.warning("Calendar sync failed for user %s: %s", user.id, e)
+                            logging.debug("Calendar sync: %d events for user %s", count, user_id)
+                except Exception as e:
+                    logging.warning("Calendar sync failed for user %s: %s", user_id, e)
         except Exception as e:
             logging.error("Calendar sync loop error: %s", e)
-
-
-async def _meeting_alert_loop():
-    """Check every minute for upcoming meetings and send alerts."""
-    from datetime import datetime, timedelta
-    from sqlalchemy import select, and_
-    from backend.db.database import async_session
-    from backend.db.models import User, Event, EventType
-    from backend.api.routes.discord import _send_discord_dm
-
-    sent_alerts: set[int] = set()  # event IDs already alerted
-
-    while True:
-        await asyncio.sleep(60)  # every minute
-        try:
-            local_now = datetime.now(BUSINESS_TZ).replace(tzinfo=None)
-
-            async with async_session() as db:
-                # Get users with calendar connected
-                users_result = await db.execute(
-                    select(User).where(
-                        User.is_active.is_(True),
-                        User.google_calendar_connected.is_(True),
-                    )
-                )
-                users = users_result.scalars().all()
-
-                for user in users:
-                    if _is_qa_user(user):
-                        continue
-
-                    prefs = (user.preferences or {}).get("meeting_alerts", {})
-                    minutes_before = prefs.get("minutes_before", 30)
-                    send_discord = prefs.get("discord_dm", True)
-
-                    # Find events starting in [now, now + minutes_before]
-                    cutoff = local_now + timedelta(minutes=minutes_before)
-                    events_result = await db.execute(
-                        select(Event).where(
-                            Event.user_id == user.id,
-                            Event.event_type == EventType.meeting,
-                            Event.start_time > local_now,
-                            Event.start_time <= cutoff,
-                            Event.alert_sent_at.is_(None),
-                        )
-                    )
-                    events = events_result.scalars().all()
-
-                    for event in events:
-                        if event.id in sent_alerts:
-                            continue
-
-                        mins = int((event.start_time - local_now).total_seconds() / 60)
-                        time_str = event.start_time.strftime("%H:%M")
-                        name = user.short_name or user.full_name
-
-                        # Discord DM
-                        if send_discord and settings.DISCORD_OWNER_USER_ID:
-                            try:
-                                from backend.db.models import DiscordSettings
-                                from backend.core.security import decrypt_vault_secret
-
-                                ds_result = await db.execute(select(DiscordSettings).limit(1))
-                                ds = ds_result.scalar_one_or_none()
-                                if ds and ds.bot_token:
-                                    bot_token = decrypt_vault_secret(ds.bot_token) if ds.bot_token.startswith("v1:") else ds.bot_token
-                                    # Send DM to this user's Discord (use owner_id for now)
-                                    msg = f"📅 **Reunión en {mins} min** ({time_str})\n{event.title}"
-                                    await _send_discord_dm(bot_token, settings.DISCORD_OWNER_USER_ID, msg)
-                            except Exception as e:
-                                logging.warning("Meeting alert DM failed for event %s: %s", event.id, e)
-
-                        # Mark as alerted
-                        event.alert_sent_at = utc_now_naive()
-                        sent_alerts.add(event.id)
-
-                    await db.commit()
-
-        except Exception as e:
-            logging.error("Meeting alert loop error: %s", e)
+        await asyncio.sleep(900)  # First full reconciliation runs immediately.
 
 
 # ── Retention cleanup ───────────────────────────────────────
@@ -641,26 +460,16 @@ def start_background_tasks() -> list[asyncio.Task]:
         t.add_done_callback(_log_task_error)
         tasks.append(t)
 
-    if settings.LEGACY_SCHEDULED_COMMUNICATIONS_ENABLED:
-        t = asyncio.create_task(_daily_reminders_loop(), name="daily-reminders")
+    if settings.SCHEDULED_COMMUNICATIONS_ENABLED:
+        from backend.services.scheduled_communications import scheduler_loop
+        t = asyncio.create_task(scheduler_loop(), name="scheduled-communications")
         t.add_done_callback(_log_task_error)
         tasks.append(t)
 
-        if settings.DISCORD_OWNER_USER_ID:
-            t = asyncio.create_task(_weekly_report_loop(), name="weekly-report")
-            t.add_done_callback(_log_task_error)
-            tasks.append(t)
-            logging.info("Weekly report DM enabled (Saturday 08:00 Madrid)")
-
-        if settings.GOOGLE_CLIENT_ID:
-            t = asyncio.create_task(_calendar_sync_loop(), name="calendar-sync")
-            t.add_done_callback(_log_task_error)
-            tasks.append(t)
-
-            t = asyncio.create_task(_meeting_alert_loop(), name="meeting-alerts")
-            t.add_done_callback(_log_task_error)
-            tasks.append(t)
-            logging.info("Google Calendar sync + meeting alerts enabled")
+    if settings.GOOGLE_CLIENT_ID and settings.SCHEDULED_COMMUNICATIONS_ENABLED:
+        t = asyncio.create_task(_calendar_sync_loop(), name="calendar-sync")
+        t.add_done_callback(_log_task_error)
+        tasks.append(t)
 
     t = asyncio.create_task(_retention_cleanup_loop(), name="retention-cleanup")
     t.add_done_callback(_log_task_error)

@@ -15,7 +15,7 @@ async function setup(t) {
   const dom = new JSDOM(fs.readFileSync(path.join(extension, 'popup.html'), 'utf8'), { runScripts: 'outside-only', url: 'https://extension.invalid/popup.html' });
   t.after(() => dom.window.close());
   const requests = [];
-  const state = { failPath: null, failPage: 2, status: 503, posted: null };
+  const state = { failPath: null, failPage: 2, status: 503, posted: null, commandRequests: [], commandStepRequests: [], scheduleRevision: 3 };
   dom.window.chrome = {
     storage: { local: { get: async () => ({}), set: async () => {}, remove: async () => {} } },
     runtime: { sendMessage: () => {} }, tabs: { create: () => {} },
@@ -30,6 +30,27 @@ async function setup(t) {
       state.posted = JSON.parse(options.body);
       status = state.captureStatus || 201;
       data = { id: 1, detail: 'Captura no disponible' };
+    } else if (options.method === 'POST' && u.pathname === '/api/commands') {
+      const body = JSON.parse(options.body); state.commandRequests.push(body);
+      status = state.commandStatus || 200;
+      data = state.commandResponse || { id: 'cmd-1', request_key: body.request_key, raw_text: body.text, channel: 'extension', context: null, status: 'executed', intent: { kind: 'create_task' }, prompt: null, result: { message: 'Tarea creada', entities: [{ type: 'task', id: 7, label: 'Nueva tarea' }], undo_available: true }, change_log_id: 4, error: null, revision: 1 };
+    } else if (options.method === 'POST' && /^\/api\/commands\/[^/]+\/(?:resolve|execute)$/.test(u.pathname)) {
+      const body = JSON.parse(options.body); state.commandStepRequests.push({ path: u.pathname, body });
+      status = state.commandStepStatuses?.shift() || 200;
+      data = status >= 400
+        ? { detail: status === 409 ? 'El recibo ha cambiado' : 'No disponible temporalmente' }
+        : state.commandStepResponse || { ...state.commandResponse, status: 'executed', prompt: null, result: { message: 'Tarea creada', entities: [], undo_available: false }, revision: 2 };
+    } else if (!options.method && /^\/api\/commands\/[^/]+$/.test(u.pathname)) {
+      data = state.commandGetResponse;
+    } else if (options.method === 'POST' && /^\/api\/changes\/[^/]+\/undo$/.test(u.pathname)) {
+      if (state.undoGate) await state.undoGate;
+      data = state.undoResponse || { id: 4, restored: 1, warnings: [] };
+    } else if (u.pathname === '/api/communication-schedules' && !options.method) {
+      data = { user_id: 2, policies: [{ kind: 'meeting', revision: state.scheduleRevision, enabled: true, channels: ['in_app'], minutes_before: 10, quiet_start: null, quiet_end: null, state: 'ready', reason: null }] };
+    } else if (u.pathname === '/api/communication-schedules/meeting' && options.method === 'PUT') {
+      const body = JSON.parse(options.body); state.schedulePosted = body;
+      status = state.scheduleStatus || 200;
+      data = { kind: 'meeting', ...body, revision: body.revision + 1, state: 'ready', reason: null };
     } else if (u.pathname === state.failPath && page === state.failPage) {
       status = state.status; data = { detail: 'No disponible temporalmente' };
     } else if (['/api/clients', '/api/projects', '/api/tasks'].includes(u.pathname)) {
@@ -340,6 +361,8 @@ test('late timer JSON from previous login cannot replace the new active timer', 
   const pending = h.run('loadActiveTimer()'); await reached.promise;
   h.get('settings-btn').click();
   await loginAs(h, 'session-b', 'b@example.test');
+  assert.equal(h.get('command-text').disabled, false);
+  assert.equal(h.get('command-submit').textContent, 'Hacer');
   await h.run('loadActiveTimer()');
   body.resolve(); await pending;
   assert.equal(h.get('timer-task-name').textContent, 'New timer');
@@ -436,4 +459,182 @@ test('reconnected task drafts cannot submit unavailable assignments before selec
   assert.equal(h.requests.some(r => r.url.pathname === '/api/tasks' && r.options.method === 'POST'), false);
   assert.equal(h.get('task-create-btn').disabled, true);
   assert.equal(h.get('task-title').value, 'Task draft');
+});
+
+test('command mode sends through shared endpoint and renders a linked receipt', async t => {
+  const { run, get, state, dom } = await setup(t);
+  run('showMainView()');
+  state.commandResponse = {
+    id: 'cmd-1', request_key: 'request-command-1234', raw_text: 'Crea una tarea Nueva tarea', channel: 'extension', context: null,
+    status: 'executed', intent: { kind: 'create_task' }, prompt: null,
+    result: {
+      message: 'Tarea creada', entities: [{ type: 'task', id: 7, label: 'Nueva tarea' }], undo_available: true,
+      applied: { project_id: 31, assigned_to: 8, scheduled_date: '2026-09-25', minutes: 45 },
+      applied_labels: { project_id: 'Web nueva', assigned_to: 'María' },
+    },
+    change_log_id: 4, error: null, revision: 1,
+  };
+  get('command-text').value = 'Crea una tarea Nueva tarea';
+  get('command-text').dispatchEvent(new dom.window.Event('input'));
+  get('command-submit').click(); await tick();
+  assert.equal(state.commandRequests.length, 1);
+  assert.equal(get('command-submit').textContent, 'Petición recibida');
+  assert.equal(get('command-submit').disabled, true);
+  assert.equal(state.commandRequests[0].channel, 'extension');
+  assert.equal(state.commandRequests[0].text, 'Crea una tarea Nueva tarea');
+  assert.equal(get('command-receipt').classList.contains('hidden'), false);
+  assert.equal(get('command-receipt').textContent.includes('Tarea creada'), true);
+  assert.equal(get('command-receipt').textContent.includes('Web nueva'), true);
+  assert.equal(get('command-receipt').textContent.includes('María'), true);
+  assert.equal(get('command-receipt').textContent.includes('25 de septiembre de 2026'), true);
+  assert.equal(get('command-receipt').textContent.includes('45 min'), true);
+  assert.equal(get('command-receipt').textContent.includes('31'), false);
+});
+
+test('command choices preserve semantic date, literal title and user fields', async t => {
+  const { run, get, state, dom } = await setup(t);
+  run('showMainView()');
+  state.commandResponse = {
+    id: 'cmd-choice', request_key: 'request-command-choice', raw_text: 'Crea tarea', channel: 'extension', context: null,
+    status: 'needs_input', intent: { kind: 'create_task' }, result: null, change_log_id: null, error: null, revision: 1,
+    prompt: { questions: [
+      { field: 'scheduled_date', label: '¿Qué viernes?', kind: 'choice', choices: [{ id: 'date:2026-09-25', label: '25 de septiembre' }] },
+      { field: 'literal_title', label: '¿Conservar?', kind: 'choice', choices: [{ id: 'literal_title:confirm', label: 'Sí' }] },
+      { field: 'assigned_to', label: '¿Quién?', kind: 'choice', choices: [{ id: 'user:8', label: 'María' }] },
+    ] },
+  };
+  get('command-text').value = 'Crea tarea';
+  get('command-text').dispatchEvent(new dom.window.Event('input'));
+  get('command-submit').click(); await tick();
+  for (const button of get('command-prompt').querySelectorAll('.command-choice')) button.click();
+  get('command-prompt').querySelector('.primary-btn').click(); await tick();
+  const resolve = state.commandStepRequests.find(request => request.path.endsWith('/resolve'));
+  assert.deepEqual(resolve?.body?.answers, [
+    { field: 'scheduled_date', choice_id: 'date:2026-09-25' },
+    { field: 'literal_title', choice_id: 'literal_title:confirm' },
+    { field: 'assigned_to', choice_id: 'user:8' },
+  ]);
+});
+
+test('command network retry keeps the same idempotency key', async t => {
+  const { run, get, state, dom } = await setup(t);
+  run('showMainView()'); state.commandStatus = 503;
+  get('command-text').value = 'Consulta bloqueos';
+  get('command-text').dispatchEvent(new dom.window.Event('input'));
+  get('command-submit').click(); await tick();
+  const firstKey = state.commandRequests[0].request_key;
+  state.commandStatus = 200; get('command-submit').click(); await tick();
+  assert.equal(state.commandRequests[1].request_key, firstKey);
+});
+
+test('uncertain command resolution freezes its payload and recovers the durable receipt', async t => {
+  const { run, get, state, dom } = await setup(t);
+  run('showMainView()');
+  state.commandResponse = {
+    id: 'cmd-choice', request_key: 'request-command-choice', raw_text: 'Reprograma tarea', channel: 'extension', context: null,
+    status: 'needs_input', intent: { kind: 'reschedule_task' }, result: null, change_log_id: null, error: null, revision: 1,
+    prompt: { questions: [{ field: 'scheduled_date', label: '¿Qué fecha?', kind: 'choice', choices: [
+      { id: 'date:2026-09-18', label: '18 de septiembre' },
+      { id: 'date:2026-09-25', label: '25 de septiembre' },
+    ] }] },
+  };
+  state.commandStepStatuses = [503, 409];
+  state.commandGetResponse = {
+    ...state.commandResponse, status: 'executed', prompt: null, revision: 2,
+    result: { message: 'Aplicada una vez', entities: [], undo_available: false },
+  };
+  get('command-text').value = 'Reprograma tarea';
+  get('command-text').dispatchEvent(new dom.window.Event('input'));
+  get('command-submit').click(); await tick();
+  get('command-prompt').querySelector('.command-choice').click();
+  get('command-prompt').querySelector('.primary-btn').click(); await tick(); await tick();
+  assert.equal(get('command-prompt').querySelectorAll('.command-choice')[1].disabled, true);
+  assert.equal(get('command-prompt').querySelector('.primary-btn').textContent, 'Reintentar la misma respuesta');
+  get('command-prompt').querySelector('.primary-btn').click();
+  for (let n = 0; n < 5 && !get('command-receipt').textContent.includes('Aplicada una vez'); n++) await tick();
+  assert.deepEqual(state.commandStepRequests[1].body, state.commandStepRequests[0].body);
+  assert.equal(get('command-receipt').textContent.includes('Aplicada una vez'), true);
+});
+
+test('changing account clears an uncertain resolution before the next account command', async t => {
+  const h = await setup(t);
+  await loginAs(h, 'session-a', 'a@example.test');
+  h.state.commandResponse = {
+    id: 'cmd-a', request_key: 'request-command-a', raw_text: 'Orden A', channel: 'extension', context: null,
+    status: 'needs_input', intent: { kind: 'reschedule_task' }, result: null, change_log_id: null, error: null, revision: 1,
+    prompt: { questions: [{ field: 'scheduled_date', label: '¿Qué fecha?', kind: 'choice', choices: [{ id: 'date:2026-09-18', label: '18 de septiembre' }] }] },
+  };
+  h.state.commandStepStatuses = [503];
+  h.get('command-text').value = 'Orden A';
+  h.get('command-text').dispatchEvent(new h.dom.window.Event('input'));
+  h.get('command-submit').click(); await tick();
+  h.get('command-prompt').querySelector('.command-choice').click();
+  h.get('command-prompt').querySelector('.primary-btn').click(); await tick(); await tick();
+  assert.equal(h.run('commandStepUncertain'), true);
+
+  h.get('settings-btn').click();
+  await loginAs(h, 'session-b', 'b@example.test');
+  h.state.commandResponse = {
+    id: 'cmd-b', request_key: 'request-command-b', raw_text: 'Orden B', channel: 'extension', context: null,
+    status: 'needs_input', intent: { kind: 'reschedule_task' }, result: null, change_log_id: null, error: null, revision: 7,
+    prompt: { questions: [{ field: 'scheduled_date', label: '¿Qué fecha?', kind: 'choice', choices: [{ id: 'date:2026-09-25', label: '25 de septiembre' }] }] },
+  };
+  h.get('command-text').value = 'Orden B';
+  h.get('command-text').dispatchEvent(new h.dom.window.Event('input'));
+  h.get('command-submit').click(); await tick();
+  const choice = h.get('command-prompt').querySelector('.command-choice');
+  assert.equal(choice.disabled, false);
+  choice.click();
+  h.get('command-prompt').querySelector('.primary-btn').click(); await tick();
+  const requestB = h.state.commandStepRequests.at(-1);
+  assert.equal(requestB.path, '/api/commands/cmd-b/resolve');
+  assert.equal(requestB.body.revision, 7);
+  assert.deepEqual(requestB.body.answers, [{ field: 'scheduled_date', choice_id: 'date:2026-09-25' }]);
+});
+
+test('a late undo response never erases a newer command draft', async t => {
+  const { run, get, state, dom } = await setup(t);
+  run('showMainView()');
+  let releaseUndo;
+  state.undoGate = new Promise(resolve => { releaseUndo = resolve; });
+  state.commandResponse = {
+    id: 'cmd-undo', request_key: 'request-command-undo', raw_text: 'Completa tarea', channel: 'extension', context: null,
+    status: 'executed', intent: { kind: 'complete_task' }, prompt: null,
+    result: { message: 'Tarea completada', entities: [], undo_available: true }, change_log_id: 4, error: null, revision: 1,
+  };
+  get('command-text').value = 'Completa tarea';
+  get('command-text').dispatchEvent(new dom.window.Event('input'));
+  get('command-submit').click(); await tick();
+  [...get('command-receipt').querySelectorAll('button')].find(button => button.textContent === 'Deshacer').click();
+  [...get('command-receipt').querySelectorAll('button')].find(button => button.textContent === 'Hacer otra cosa').click();
+  get('command-text').value = 'Petición nueva que debe conservarse';
+  get('command-text').dispatchEvent(new dom.window.Event('input'));
+  releaseUndo(); await tick(); await tick();
+  assert.equal(get('command-text').value, 'Petición nueva que debe conservarse');
+});
+
+test('meeting preferences preserve unedited channels when enabling extension alerts', async t => {
+  const { run, get, state } = await setup(t);
+  run('showMainView()'); await tick();
+  get('meeting-extension-enabled').checked = true;
+  get('meeting-minutes-before').value = '15';
+  get('meeting-settings-save').click(); await tick();
+  assert.deepEqual(state.schedulePosted.channels.sort(), ['extension', 'in_app']);
+  assert.equal(state.schedulePosted.minutes_before, 15);
+  assert.equal(state.schedulePosted.revision, 3);
+});
+
+test('meeting settings conflict reloads revision without losing the local draft', async t => {
+  const { run, get, state } = await setup(t);
+  run('showMainView()'); await tick();
+  get('meeting-extension-enabled').checked = true;
+  get('meeting-minutes-before').value = '30';
+  state.scheduleStatus = 409; state.scheduleRevision = 4;
+  get('meeting-settings-save').click();
+  for (let n = 0; n < 5; n++) await tick();
+  assert.equal(get('meeting-extension-enabled').checked, true);
+  assert.equal(get('meeting-minutes-before').value, '30');
+  assert.equal(get('meeting-settings-error').classList.contains('hidden'), false);
+  assert.equal(get('meeting-settings-error').textContent.includes('otro dispositivo'), true);
+  assert.equal(run('meetingPolicy.revision'), 4);
 });
