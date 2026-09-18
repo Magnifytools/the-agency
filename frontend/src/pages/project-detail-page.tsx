@@ -4,7 +4,7 @@ import { useBusinessDate } from "@/hooks/use-business-date"
 import { useMemo, useState } from "react"
 import { useAuth } from "@/context/auth-context"
 import { ProjectTaskList } from "@/components/projects/project-task-list"
-import { useParams, Link, useSearchParams } from "react-router-dom"
+import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 import {
@@ -67,8 +67,13 @@ const PHASE_STATUS_ICONS: Record<PhaseStatus, typeof Circle> = {
   completed: CheckCircle2,
 }
 
+function errorStatus(error: unknown) {
+  return (error as { response?: { status?: number } })?.response?.status
+}
+
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { hasPermission } = useAuth()
   const [showEditDialog, setShowEditDialog] = useState(false)
@@ -171,6 +176,26 @@ export default function ProjectDetailPage() {
           {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
         <Skeleton className="h-64 w-full" />
+      </div>
+    )
+  }
+
+  const projectErrorStatus = errorStatus(projectLoadError)
+  if (projectError && (projectErrorStatus === 403 || projectErrorStatus === 404 || projectErrorStatus === 410)) {
+    const inaccessible = projectErrorStatus === 403
+    return (
+      <div role="alert" className="mx-auto max-w-xl space-y-4 rounded-lg border border-border p-6">
+        <div className="space-y-1">
+          <h1 className="text-xl font-semibold">
+            {inaccessible ? "Ya no tienes acceso a este proyecto" : "Este proyecto ya no existe"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {inaccessible
+              ? "Tus permisos han cambiado. Vuelve al listado para continuar con los proyectos disponibles."
+              : "Puede haberse eliminado o haberse deshecho su creación."}
+          </p>
+        </div>
+        <Button onClick={() => navigate("/projects")}>Volver a proyectos</Button>
       </div>
     )
   }
