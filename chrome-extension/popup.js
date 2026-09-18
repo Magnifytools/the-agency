@@ -257,6 +257,8 @@ function resetSessionUi() {
   currentCommand = null;
   commandRequestKey = newRequestKey();
   commandStepKey = newRequestKey();
+  commandStepPayload = null;
+  commandStepUncertain = false;
   taskCreateInFlight = false;
   sessionTimeouts.forEach(clearTimeout);
   sessionTimeouts.clear();
@@ -266,6 +268,8 @@ function resetSessionUi() {
   timerIsPaused = false;
   timerAccumulatedSeconds = 0;
   draftFields.forEach(element => { element.value = element.type === "number" ? "0" : ""; });
+  commandText.disabled = false;
+  commandSubmit.textContent = "Hacer";
   [successMsg, captureError, taskCaptureError, commandError, commandPrompt, commandReceipt, timerError, timerSuccess, inboxBar,
    headerTimer, timerActive, timerBudget, qcTimerForm, qcManualForm].forEach(el => el.classList.add("hidden"));
   [timerIdle, qcTimerLink, qcManualLink, btnText, taskBtnText].forEach(el => el.classList.remove("hidden"));

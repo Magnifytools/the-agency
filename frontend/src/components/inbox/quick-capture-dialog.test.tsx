@@ -265,6 +265,8 @@ describe("command entry", () => {
       ...baseReceipt,
       request_key: "historical-request-key",
       raw_text: "Orden histórica exacta",
+      channel: "extension" as const,
+      context: { url: "https://example.test/tarea", title: "Contexto original" },
       status: "failed",
       change_log_id: null,
       result: null,
@@ -279,9 +281,19 @@ describe("command entry", () => {
     await waitFor(() => expect(mocks.createCommand).toHaveBeenCalledWith(expect.objectContaining({
       request_key: "historical-request-key",
       text: "Orden histórica exacta",
+      channel: "extension",
+      context: { url: "https://example.test/tarea", title: "Contexto original" },
     })));
     await userEvent.click(screen.getByRole("button", { name: "Editar petición" }));
     expect(screen.getByLabelText("Petición")).toHaveValue("Orden histórica exacta");
+    await userEvent.click(screen.getByRole("button", { name: "Hacer" }));
+    await waitFor(() => expect(mocks.createCommand).toHaveBeenCalledTimes(2));
+    expect(mocks.createCommand.mock.calls[1][0]).toEqual(expect.objectContaining({
+      text: "Orden histórica exacta",
+      channel: "app",
+    }));
+    expect(mocks.createCommand.mock.calls[1][0].request_key).not.toBe("historical-request-key");
+    expect(mocks.createCommand.mock.calls[1][0].context).toBeUndefined();
   });
 
   it("freezes an uncertain resolution payload and recovers the durable receipt on conflict", async () => {

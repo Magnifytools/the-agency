@@ -28,7 +28,7 @@ import {
   invalidateTimeChange,
   projectKeys,
 } from "@/lib/query-keys";
-import type { CommandEntity, CommandReceipt } from "@/lib/types";
+import type { CommandContext, CommandEntity, CommandReceipt } from "@/lib/types";
 import { showUndoResult } from "@/lib/undo-feedback";
 import { getErrorMessage } from "@/lib/utils";
 import { formatCivilDate } from "@/lib/dates";
@@ -111,6 +111,10 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   const [stepUncertain, setStepUncertain] = useState(false);
   const [undoneChangeId, setUndoneChangeId] = useState<number | null>(null);
   const commandKey = useRef<string>(requestKey());
+  const commandReplayPayload = useRef<{
+    channel: "app" | "extension";
+    context?: CommandContext;
+  } | null>(null);
   const stepKey = useRef<string>(requestKey());
   const stepPayload = useRef<{
     receiptId: string;
@@ -172,7 +176,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
       commandsApi.create({
         request_key: commandKey.current,
         text: text.trim(),
-        channel: "app",
+        channel: commandReplayPayload.current?.channel ?? "app",
+        context: commandReplayPayload.current?.context,
       }),
     onSuccess: refreshReceipt,
     onError: (error) => {
@@ -318,6 +323,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     stepPayload.current = null;
     setUndoneChangeId(null);
     commandKey.current = requestKey();
+    commandReplayPayload.current = null;
     stepKey.current = requestKey();
     window.setTimeout(() => textareaRef.current?.focus(), 0);
   };
@@ -329,6 +335,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     stepPayload.current = null;
     setUndoneChangeId(null);
     commandKey.current = requestKey();
+    commandReplayPayload.current = null;
     stepKey.current = requestKey();
     window.setTimeout(() => textareaRef.current?.focus(), 0);
   };
@@ -343,6 +350,10 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   const openRecentReceipt = (item: CommandReceipt) => {
     setText(item.raw_text);
     commandKey.current = item.request_key;
+    commandReplayPayload.current = {
+      channel: item.channel,
+      context: item.context ?? undefined,
+    };
     stepKey.current = requestKey();
     stepPayload.current = null;
     setNetworkUncertain(false);

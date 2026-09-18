@@ -361,6 +361,8 @@ test('late timer JSON from previous login cannot replace the new active timer', 
   const pending = h.run('loadActiveTimer()'); await reached.promise;
   h.get('settings-btn').click();
   await loginAs(h, 'session-b', 'b@example.test');
+  assert.equal(h.get('command-text').disabled, false);
+  assert.equal(h.get('command-submit').textContent, 'Hacer');
   await h.run('loadActiveTimer()');
   body.resolve(); await pending;
   assert.equal(h.get('timer-task-name').textContent, 'New timer');
@@ -550,6 +552,42 @@ test('uncertain command resolution freezes its payload and recovers the durable 
   for (let n = 0; n < 5 && !get('command-receipt').textContent.includes('Aplicada una vez'); n++) await tick();
   assert.deepEqual(state.commandStepRequests[1].body, state.commandStepRequests[0].body);
   assert.equal(get('command-receipt').textContent.includes('Aplicada una vez'), true);
+});
+
+test('changing account clears an uncertain resolution before the next account command', async t => {
+  const h = await setup(t);
+  await loginAs(h, 'session-a', 'a@example.test');
+  h.state.commandResponse = {
+    id: 'cmd-a', request_key: 'request-command-a', raw_text: 'Orden A', channel: 'extension', context: null,
+    status: 'needs_input', intent: { kind: 'reschedule_task' }, result: null, change_log_id: null, error: null, revision: 1,
+    prompt: { questions: [{ field: 'scheduled_date', label: '¿Qué fecha?', kind: 'choice', choices: [{ id: 'date:2026-09-18', label: '18 de septiembre' }] }] },
+  };
+  h.state.commandStepStatuses = [503];
+  h.get('command-text').value = 'Orden A';
+  h.get('command-text').dispatchEvent(new h.dom.window.Event('input'));
+  h.get('command-submit').click(); await tick();
+  h.get('command-prompt').querySelector('.command-choice').click();
+  h.get('command-prompt').querySelector('.primary-btn').click(); await tick(); await tick();
+  assert.equal(h.run('commandStepUncertain'), true);
+
+  h.get('settings-btn').click();
+  await loginAs(h, 'session-b', 'b@example.test');
+  h.state.commandResponse = {
+    id: 'cmd-b', request_key: 'request-command-b', raw_text: 'Orden B', channel: 'extension', context: null,
+    status: 'needs_input', intent: { kind: 'reschedule_task' }, result: null, change_log_id: null, error: null, revision: 7,
+    prompt: { questions: [{ field: 'scheduled_date', label: '¿Qué fecha?', kind: 'choice', choices: [{ id: 'date:2026-09-25', label: '25 de septiembre' }] }] },
+  };
+  h.get('command-text').value = 'Orden B';
+  h.get('command-text').dispatchEvent(new h.dom.window.Event('input'));
+  h.get('command-submit').click(); await tick();
+  const choice = h.get('command-prompt').querySelector('.command-choice');
+  assert.equal(choice.disabled, false);
+  choice.click();
+  h.get('command-prompt').querySelector('.primary-btn').click(); await tick();
+  const requestB = h.state.commandStepRequests.at(-1);
+  assert.equal(requestB.path, '/api/commands/cmd-b/resolve');
+  assert.equal(requestB.body.revision, 7);
+  assert.deepEqual(requestB.body.answers, [{ field: 'scheduled_date', choice_id: 'date:2026-09-25' }]);
 });
 
 test('a late undo response never erases a newer command draft', async t => {
