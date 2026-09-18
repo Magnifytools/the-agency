@@ -6,10 +6,9 @@ structured JSON content ready for the WeeklyDigest model.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 
-from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 from backend.db.models import DigestTone
+from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +42,7 @@ REGLAS:
 6. "metrics" = métricas clave de la semana (horas invertidas, progreso, KPIs si hay datos). Máximo 2-3 items.
 7. NO inventes datos. Solo usa la información proporcionada.
 8. Si no hay items para una sección, déjala vacía ([]).
-8. El greeting DEBE tener este formato exacto: "Hola [nombre del contacto/cliente] 👋,\nAquí tienes el resumen de esta semana para [nombre del proyecto]". Incluye salto de línea.
+8. El greeting DEBE tener este formato exacto: "Hola [nombre del contacto/cliente] 👋,\nAquí tienes el resumen de esta semana para [nombre del proyecto, los proyectos o el cliente]". Incluye salto de línea y refleja todos los proyectos presentes en los datos.
 9. La date DEBE tener este formato exacto: "Te enviamos el informe semanal del [día inicio] al [día final] de [mes] [año]". Ejemplo: "Te enviamos el informe semanal del 10 al 17 de marzo 2026".
 10. El closing debe ser breve y motivador, acorde al tono.
 11. Responde SOLO con el JSON, sin markdown ni explicaciones."""
@@ -72,6 +71,43 @@ Total: {total_hours}h ({total_minutes} minutos)
 
 --- SEGUIMIENTOS PENDIENTES ({followup_count}) ---
 {followups}
+
+Responde con un JSON con esta estructura exacta:
+{{
+  "greeting": "...",
+  "date": "Semana del ... al ... de ... ...",
+  "sections": {{
+    "done": [{{"title": "...", "description": "..."}}],
+    "need": [{{"title": "...", "description": "..."}}],
+    "next": [{{"title": "...", "description": "..."}}],
+    "metrics": [{{"title": "...", "description": "..."}}]
+  }},
+  "closing": "..."
+}}"""
+
+GROUPED_USER_PROMPT_TEMPLATE = """\
+Genera el digest semanal con estos datos. Los totales son completos; las listas
+marcadas como muestra pueden contener solo los primeros elementos.
+
+CLIENTE: {client_name}
+PERIODO: {period_start} al {period_end}
+TONO: {tone_instruction}
+
+--- TOTALES DEL CLIENTE ---
+Proyectos: {project_count}
+Tareas completadas en el periodo: {completed_total}
+Tareas en curso: {in_progress_total}
+Tareas pendientes: {pending_total}
+Horas invertidas: {total_hours}h ({total_minutes} minutos)
+
+--- HECHOS POR PROYECTO ---
+{project_sections}
+
+--- SEGUIMIENTOS PENDIENTES ({followup_count}) ---
+{followups}
+
+No atribuyas un hecho de un proyecto a otro. Los hechos bajo "Sin proyecto"
+son del cliente, pero no pertenecen a ningún proyecto.
 
 Responde con un JSON con esta estructura exacta:
 {{
@@ -123,8 +159,57 @@ def _format_followups(followups: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _format_project_group(group: dict) -> str:
+    name = group.get("project_name") or "Sin proyecto"
+    project_id = group.get("project_id")
+    identity = f"{name} (ID {project_id})" if project_id is not None else name
+    progress = group.get("progress_percent")
+    progress_line = f"Progreso actual: {progress}%\n" if progress is not None else ""
+    return (
+        f"### {identity}\n"
+        f"{progress_line}"
+        f"Tareas totales actuales: {group.get('task_total', 0)}\n"
+        f"Completadas en el periodo: {group.get('completed_total', 0)} "
+        f"(muestra {len(group.get('completed_tasks', []))})\n"
+        f"{_format_task_list(group.get('completed_tasks', []))}\n"
+        f"En curso: {group.get('in_progress_total', 0)} "
+        f"(muestra {len(group.get('in_progress_tasks', []))})\n"
+        f"{_format_task_list(group.get('in_progress_tasks', []))}\n"
+        f"Pendientes: {group.get('pending_total', 0)} "
+        f"(muestra {len(group.get('pending_tasks', []))})\n"
+        f"{_format_task_list(group.get('pending_tasks', []))}\n"
+        f"Tiempo del periodo: {group.get('total_hours', 0)}h "
+        f"({group.get('total_minutes', 0)} minutos)"
+    )
+
+
 def _build_user_prompt(raw_data: dict, tone: DigestTone) -> str:
     """Build the user prompt from collector data."""
+    if raw_data.get("context_version") == 2 and "projects" in raw_data:
+        groups = list(raw_data.get("projects", []))
+        unassigned = raw_data.get("unassigned")
+        if unassigned and any(
+            unassigned.get(key, 0)
+            for key in ("task_total", "completed_total", "in_progress_total", "pending_total", "total_minutes")
+        ):
+            groups.append(unassigned)
+        totals = raw_data.get("totals", {})
+        return GROUPED_USER_PROMPT_TEMPLATE.format(
+            client_name=raw_data.get("client_name", "Cliente"),
+            period_start=raw_data.get("period_start", ""),
+            period_end=raw_data.get("period_end", ""),
+            tone_instruction=TONE_INSTRUCTIONS[tone],
+            project_count=totals.get("project_count", len(raw_data.get("projects", []))),
+            completed_total=totals.get("completed_total", 0),
+            in_progress_total=totals.get("in_progress_total", 0),
+            pending_total=totals.get("pending_total", 0),
+            total_hours=totals.get("total_hours", raw_data.get("total_hours", 0)),
+            total_minutes=totals.get("total_minutes", raw_data.get("total_minutes", 0)),
+            project_sections="\n\n".join(_format_project_group(group) for group in groups)
+            or "(sin proyectos ni tareas)",
+            followup_count=len(raw_data.get("pending_followups", [])),
+            followups=_format_followups(raw_data.get("pending_followups", [])),
+        )
     return USER_PROMPT_TEMPLATE.format(
         client_name=raw_data.get("client_name", "Cliente"),
         project_name=raw_data.get("project_name") or "Sin proyecto",
