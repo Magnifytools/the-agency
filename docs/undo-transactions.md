@@ -4,6 +4,10 @@ Los cambios operativos capturados y su entrada de `change_logs` se guardan en la
 
 La captura sigue usando el historial ORM existente: una acción agrupa sus operaciones, conserva el valor original al editar varias veces y respeta los SAVEPOINT. Deshacer vuelve a comprobar permisos, propiedad del cambio y conflictos con ediciones posteriores. Un rollback o el cierre de la sesión descarta tanto el cambio como su entrada provisional.
 
+Antes de aplicar la inversa se bloquean todas las filas afectadas en un orden estable, incluidas las tareas relacionadas con registros de tiempo. Si un alta se editó después o recibió hijos/dependencias fuera de esa misma acción, se rechaza todo el Deshacer con 409 y se conserva el historial sin marcarlo deshecho. Los cambios de columnas posteriores se conservan al restaurar una edición y el resultado distingue restauración parcial, completa o ninguna.
+
+Los snapshots de nuevas altas incluyen los defaults efectivos después del INSERT. Un snapshot antiguo con valor desconocido no permite ignorar una modificación actual arbitraria; solo se toleran defaults escalares que siguen coincidiendo y la fecha de creación inmutable. Las marcas nuevas del journal y de Deshacer se escriben en UTC y la API indica su zona; no se reinterpreta historial anterior.
+
 `change_journal.prepare_entry(session)` permite obtener el ID provisional para asociarlo a un recibo dentro de la misma transacción. Es idempotente; el commit exterior actualiza el contenido si hubo más cambios. No confirma la transacción y no puede invocarse dentro de un SAVEPOINT. Un adaptador que prometa Deshacer debe exigir una entrada válida antes de confirmar su operación.
 
 Se conserva el alcance anterior: entidades operativas del journal, exclusión de SQL masivo y módulos financieros, y límite de 300 operaciones por entrada. Los temporizadores no generan por sí solos una restauración del total derivado; las ediciones explícitas de tiempo que se agrupan deben activar la captura correspondiente. No se reconstruye historial ausente ni se atribuyen acciones pasadas.
