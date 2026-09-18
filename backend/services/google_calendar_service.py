@@ -34,7 +34,7 @@ def authorization_needs_reconnect(error: Exception) -> bool:
 
 def connection_status(user) -> str:
     """Retained unusable credentials distinguish revocation from disconnect."""
-    if user.google_calendar_connected:
+    if user.google_calendar_connected and user.google_refresh_token:
         return "connected"
     return "reconnect_required" if user.google_refresh_token else "disconnected"
 

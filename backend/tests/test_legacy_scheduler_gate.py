@@ -57,7 +57,11 @@ async def test_first_calendar_sync_precedes_initial_sleep(monkeypatch):
     calls = []
     user = SimpleNamespace(id=7, full_name="Person", short_name="Person", email="person@example.test")
     result = MagicMock(); result.all.return_value = [user.id]
-    db = AsyncMock(); db.scalars.return_value = result; db.get.return_value = user
+    statements = []
+    async def scalars(statement):
+        statements.append(statement)
+        return result
+    db = AsyncMock(); db.scalars.side_effect = scalars; db.get.return_value = user
     @asynccontextmanager
     async def session(): yield db
     async def sync(*args): calls.append("sync"); return 1
@@ -69,3 +73,4 @@ async def test_first_calendar_sync_precedes_initial_sleep(monkeypatch):
     monkeypatch.setattr(background_tasks.asyncio, "sleep", sleep)
     with pytest.raises(KeyboardInterrupt): await background_tasks._calendar_sync_loop()
     assert calls == ["sync", "sleep"]
+    assert "users.google_refresh_token IS NOT NULL" in str(statements[0])

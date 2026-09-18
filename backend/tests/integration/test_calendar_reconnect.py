@@ -135,6 +135,30 @@ async def test_disconnect_distinguishes_removed_credentials_and_preserves_events
         assert await db.get(Event, event_id) is not None
 
 
+async def test_connected_flag_without_credential_is_effectively_disconnected(
+    fixture, monkeypatch
+):
+    maker, ids, _ = fixture
+    async with maker() as db:
+        user = await db.get(User, ids["member"])
+        user.google_calendar_connected = True
+        user.google_refresh_token = None
+        await db.commit()
+    monkeypatch.setattr(
+        route,
+        "fetch_events",
+        lambda *args, **kwargs: pytest.fail("missing credential reached provider"),
+    )
+
+    async with client(fixture) as http:
+        status = (await http.get("/api/calendar/status")).json()
+        assert status["connected"] is False
+        assert status["connection_status"] == "disconnected"
+        response = await http.post("/api/calendar/sync")
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Google Calendar no conectado"
+
+
 async def test_callback_requires_valid_state_and_active_user(fixture, monkeypatch):
     maker, ids, _ = fixture
     await connected(fixture)

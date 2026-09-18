@@ -351,7 +351,9 @@ async def _calendar_sync_loop():
         try:
             async with async_session() as db:
                 user_ids = (await db.scalars(select(User.id).where(
-                    User.is_active.is_(True), User.google_calendar_connected.is_(True),
+                    User.is_active.is_(True),
+                    User.google_calendar_connected.is_(True),
+                    User.google_refresh_token.isnot(None),
                 ))).all()
             for user_id in user_ids:
                 try:

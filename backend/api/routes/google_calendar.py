@@ -147,9 +147,10 @@ async def calendar_status(
     current_user: User = Depends(get_current_user),
 ):
     """Check if user has Google Calendar connected."""
+    effective_status = connection_status(current_user)
     return CalendarStatus(
-        connected=current_user.google_calendar_connected or False,
-        connection_status=connection_status(current_user),
+        connected=effective_status == "connected",
+        connection_status=effective_status,
         calendar_id=current_user.google_calendar_id,
         last_synced_at=utc_isoformat(current_user.google_calendar_synced_at),
         meeting_alerts=None,  # legacy preferences are history; effective policy lives in Avisos
