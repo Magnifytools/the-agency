@@ -1013,6 +1013,8 @@ export const changesApi = {
 }
 
 export const commandsApi = {
+  get: (id: string) =>
+    api.get<CommandReceipt>(`/commands/${id}`).then((r) => r.data),
   create: (data: { request_key: string; text: string; channel: "app" | "extension"; context?: CommandContext }) =>
     api.post<CommandReceipt>("/commands", data).then((r) => r.data),
   resolve: (id: string, data: { request_key: string; revision: number; answers: Array<{ field: string; choice_id?: string; value?: string | number }> }) =>

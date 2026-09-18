@@ -36,7 +36,15 @@ async function setup(t) {
       data = state.commandResponse || { id: 'cmd-1', request_key: body.request_key, raw_text: body.text, channel: 'extension', context: null, status: 'executed', intent: { kind: 'create_task' }, prompt: null, result: { message: 'Tarea creada', entities: [{ type: 'task', id: 7, label: 'Nueva tarea' }], undo_available: true }, change_log_id: 4, error: null, revision: 1 };
     } else if (options.method === 'POST' && /^\/api\/commands\/[^/]+\/(?:resolve|execute)$/.test(u.pathname)) {
       const body = JSON.parse(options.body); state.commandStepRequests.push({ path: u.pathname, body });
-      data = state.commandStepResponse || { ...state.commandResponse, status: 'executed', prompt: null, result: { message: 'Tarea creada', entities: [], undo_available: false }, revision: 2 };
+      status = state.commandStepStatuses?.shift() || 200;
+      data = status >= 400
+        ? { detail: status === 409 ? 'El recibo ha cambiado' : 'No disponible temporalmente' }
+        : state.commandStepResponse || { ...state.commandResponse, status: 'executed', prompt: null, result: { message: 'Tarea creada', entities: [], undo_available: false }, revision: 2 };
+    } else if (!options.method && /^\/api\/commands\/[^/]+$/.test(u.pathname)) {
+      data = state.commandGetResponse;
+    } else if (options.method === 'POST' && /^\/api\/changes\/[^/]+\/undo$/.test(u.pathname)) {
+      if (state.undoGate) await state.undoGate;
+      data = state.undoResponse || { id: 4, restored: 1, warnings: [] };
     } else if (u.pathname === '/api/communication-schedules' && !options.method) {
       data = { user_id: 2, policies: [{ kind: 'meeting', revision: state.scheduleRevision, enabled: true, channels: ['in_app'], minutes_before: 10, quiet_start: null, quiet_end: null, state: 'ready', reason: null }] };
     } else if (u.pathname === '/api/communication-schedules/meeting' && options.method === 'PUT') {
@@ -513,6 +521,56 @@ test('command network retry keeps the same idempotency key', async t => {
   const firstKey = state.commandRequests[0].request_key;
   state.commandStatus = 200; get('command-submit').click(); await tick();
   assert.equal(state.commandRequests[1].request_key, firstKey);
+});
+
+test('uncertain command resolution freezes its payload and recovers the durable receipt', async t => {
+  const { run, get, state, dom } = await setup(t);
+  run('showMainView()');
+  state.commandResponse = {
+    id: 'cmd-choice', request_key: 'request-command-choice', raw_text: 'Reprograma tarea', channel: 'extension', context: null,
+    status: 'needs_input', intent: { kind: 'reschedule_task' }, result: null, change_log_id: null, error: null, revision: 1,
+    prompt: { questions: [{ field: 'scheduled_date', label: '¿Qué fecha?', kind: 'choice', choices: [
+      { id: 'date:2026-09-18', label: '18 de septiembre' },
+      { id: 'date:2026-09-25', label: '25 de septiembre' },
+    ] }] },
+  };
+  state.commandStepStatuses = [503, 409];
+  state.commandGetResponse = {
+    ...state.commandResponse, status: 'executed', prompt: null, revision: 2,
+    result: { message: 'Aplicada una vez', entities: [], undo_available: false },
+  };
+  get('command-text').value = 'Reprograma tarea';
+  get('command-text').dispatchEvent(new dom.window.Event('input'));
+  get('command-submit').click(); await tick();
+  get('command-prompt').querySelector('.command-choice').click();
+  get('command-prompt').querySelector('.primary-btn').click(); await tick(); await tick();
+  assert.equal(get('command-prompt').querySelectorAll('.command-choice')[1].disabled, true);
+  assert.equal(get('command-prompt').querySelector('.primary-btn').textContent, 'Reintentar la misma respuesta');
+  get('command-prompt').querySelector('.primary-btn').click();
+  for (let n = 0; n < 5 && !get('command-receipt').textContent.includes('Aplicada una vez'); n++) await tick();
+  assert.deepEqual(state.commandStepRequests[1].body, state.commandStepRequests[0].body);
+  assert.equal(get('command-receipt').textContent.includes('Aplicada una vez'), true);
+});
+
+test('a late undo response never erases a newer command draft', async t => {
+  const { run, get, state, dom } = await setup(t);
+  run('showMainView()');
+  let releaseUndo;
+  state.undoGate = new Promise(resolve => { releaseUndo = resolve; });
+  state.commandResponse = {
+    id: 'cmd-undo', request_key: 'request-command-undo', raw_text: 'Completa tarea', channel: 'extension', context: null,
+    status: 'executed', intent: { kind: 'complete_task' }, prompt: null,
+    result: { message: 'Tarea completada', entities: [], undo_available: true }, change_log_id: 4, error: null, revision: 1,
+  };
+  get('command-text').value = 'Completa tarea';
+  get('command-text').dispatchEvent(new dom.window.Event('input'));
+  get('command-submit').click(); await tick();
+  [...get('command-receipt').querySelectorAll('button')].find(button => button.textContent === 'Deshacer').click();
+  [...get('command-receipt').querySelectorAll('button')].find(button => button.textContent === 'Hacer otra cosa').click();
+  get('command-text').value = 'Petición nueva que debe conservarse';
+  get('command-text').dispatchEvent(new dom.window.Event('input'));
+  releaseUndo(); await tick(); await tick();
+  assert.equal(get('command-text').value, 'Petición nueva que debe conservarse');
 });
 
 test('meeting preferences preserve unedited channels when enabling extension alerts', async t => {

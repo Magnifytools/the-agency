@@ -108,9 +108,15 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   const [receipt, setReceipt] = useState<CommandReceipt | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [networkUncertain, setNetworkUncertain] = useState(false);
+  const [stepUncertain, setStepUncertain] = useState(false);
   const [undoneChangeId, setUndoneChangeId] = useState<number | null>(null);
-  const commandKey = useRef(requestKey());
-  const stepKey = useRef(requestKey());
+  const commandKey = useRef<string>(requestKey());
+  const stepKey = useRef<string>(requestKey());
+  const stepPayload = useRef<{
+    receiptId: string;
+    revision: number;
+    answers: Array<{ field: string; choice_id: string }>;
+  } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const queryClient = useQueryClient();
 
@@ -140,6 +146,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
 
   async function refreshReceipt(result: CommandReceipt) {
     setNetworkUncertain(false);
+    setStepUncertain(false);
+    stepPayload.current = null;
     setUndoneChangeId(null);
     setReceipt(result);
     setAnswers({});
@@ -182,23 +190,44 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     },
   });
   const resolveMutation = useMutation({
-    mutationFn: () =>
-      commandsApi.resolve(receipt!.id, {
-        request_key: stepKey.current,
+    mutationFn: () => {
+      const payload = stepPayload.current ?? {
+        receiptId: receipt!.id,
         revision: receipt!.revision,
-        answers: Object.entries(answers).map(([field, choice_id]) => ({
-          field,
-          choice_id,
-        })),
-      }),
+        answers: Object.entries(answers).map(([field, choice_id]) => ({ field, choice_id })),
+      };
+      stepPayload.current = payload;
+      return commandsApi.resolve(payload.receiptId, {
+        request_key: stepKey.current,
+        revision: payload.revision,
+        answers: payload.answers,
+      });
+    },
     onSuccess: (result) => {
       stepKey.current = requestKey();
       void refreshReceipt(result);
     },
-    onError: (error) =>
+    onError: async (error) => {
+      const status = (error as { response?: { status?: number } }).response?.status;
+      if ((status === 403 || status === 409) && receipt) {
+        try {
+          const durable = await commandsApi.get(receipt.id);
+          stepKey.current = requestKey();
+          await refreshReceipt(durable);
+          return;
+        } catch (recoveryError) {
+          toast.error(getErrorMessage(recoveryError, "No se pudo recuperar el recibo actual"));
+        }
+      }
+      if (status == null || status >= 500) setStepUncertain(true);
+      else {
+        stepPayload.current = null;
+        stepKey.current = requestKey();
+      }
       toast.error(
         getErrorMessage(error, "No se ha podido aplicar la respuesta"),
-      ),
+      );
+    },
   });
   const executeMutation = useMutation({
     mutationFn: () =>
@@ -285,6 +314,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     setReceipt(null);
     setAnswers({});
     setNetworkUncertain(false);
+    setStepUncertain(false);
+    stepPayload.current = null;
     setUndoneChangeId(null);
     commandKey.current = requestKey();
     stepKey.current = requestKey();
@@ -294,6 +325,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     setReceipt(null);
     setAnswers({});
     setNetworkUncertain(false);
+    setStepUncertain(false);
+    stepPayload.current = null;
     setUndoneChangeId(null);
     commandKey.current = requestKey();
     stepKey.current = requestKey();
@@ -307,6 +340,16 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   const allAnswered = questions.every(
     (question) => question.kind === "notice" || answers[question.field],
   );
+  const openRecentReceipt = (item: CommandReceipt) => {
+    setText(item.raw_text);
+    commandKey.current = item.request_key;
+    stepKey.current = requestKey();
+    stepPayload.current = null;
+    setNetworkUncertain(false);
+    setStepUncertain(false);
+    setAnswers({});
+    setReceipt(item);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -409,7 +452,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                           key={item.id}
                           type="button"
                           className="block w-full rounded-md px-2 py-2 text-left text-sm hover:bg-muted"
-                          onClick={() => setReceipt(item)}
+                          onClick={() => openRecentReceipt(item)}
                         >
                           <span className="block truncate">
                             {item.result?.message ?? item.raw_text}
@@ -447,6 +490,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                             name={question.field}
                             value={choice.id}
                             checked={answers[question.field] === choice.id}
+                            disabled={isPending || stepUncertain}
                             onChange={() =>
                               setAnswers((current) => ({
                                 ...current,
@@ -473,13 +517,18 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                     Escribir otra petición
                   </Button>
                 ) : (
-                  <Button
-                    onClick={() => resolveMutation.mutate()}
-                    disabled={!allAnswered || isPending}
-                  >
-                    {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-                    Continuar
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      onClick={() => resolveMutation.mutate()}
+                      disabled={!allAnswered || isPending}
+                    >
+                      {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {stepUncertain ? "Reintentar la misma respuesta" : "Continuar"}
+                    </Button>
+                    <Button variant="outline" onClick={resetCommand} disabled={isPending}>
+                      Escribir otra petición
+                    </Button>
+                  </div>
                 )}
               </div>
             )}

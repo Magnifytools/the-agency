@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   executeCommand: vi.fn(),
   queryCommand: vi.fn(),
   listCommands: vi.fn(),
+  getCommand: vi.fn(),
   undo: vi.fn(),
   createInbox: vi.fn(),
 }));
@@ -22,6 +23,7 @@ vi.mock("@/lib/api", () => ({
     execute: mocks.executeCommand,
     query: mocks.queryCommand,
     list: mocks.listCommands,
+    get: mocks.getCommand,
   },
   changesApi: { undo: mocks.undo },
   inboxApi: { create: mocks.createInbox },
@@ -65,6 +67,7 @@ describe("command entry", () => {
       page_size: 5,
       has_more: false,
     });
+    mocks.getCommand.mockReset();
   });
 
   it("shows a linked receipt and allows undo", async () => {
@@ -255,6 +258,59 @@ describe("command entry", () => {
       screen.getByRole("button", { name: /Consulta recuperada/ }),
     );
     expect(await screen.findByText("Consulta recuperada")).toBeInTheDocument();
+  });
+
+  it("rehydrates the exact historical payload before retrying or editing", async () => {
+    const historical = {
+      ...baseReceipt,
+      request_key: "historical-request-key",
+      raw_text: "Orden histórica exacta",
+      status: "failed",
+      change_log_id: null,
+      result: null,
+      error: { code: "forbidden", detail: "Sin permiso" },
+    };
+    mocks.listCommands.mockResolvedValue({ items: [historical], total: 1, page: 1, page_size: 5, has_more: false });
+    mocks.createCommand.mockResolvedValue(historical);
+    show();
+    await userEvent.type(screen.getByLabelText("Petición"), "Borrador distinto");
+    await userEvent.click(await screen.findByRole("button", { name: /Orden histórica exacta/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    await waitFor(() => expect(mocks.createCommand).toHaveBeenCalledWith(expect.objectContaining({
+      request_key: "historical-request-key",
+      text: "Orden histórica exacta",
+    })));
+    await userEvent.click(screen.getByRole("button", { name: "Editar petición" }));
+    expect(screen.getByLabelText("Petición")).toHaveValue("Orden histórica exacta");
+  });
+
+  it("freezes an uncertain resolution payload and recovers the durable receipt on conflict", async () => {
+    const pending = {
+      ...baseReceipt,
+      status: "needs_input",
+      result: null,
+      change_log_id: null,
+      prompt: { questions: [{ field: "scheduled_date", label: "¿Qué fecha?", kind: "choice", choices: [
+        { id: "date:2026-09-18", label: "18 de septiembre" },
+        { id: "date:2026-09-25", label: "25 de septiembre" },
+      ] }] },
+    };
+    const durable = { ...baseReceipt, revision: 2, status: "executed", result: { message: "Aplicada una vez", entities: [], undo_available: false }, change_log_id: null };
+    mocks.createCommand.mockResolvedValue(pending);
+    mocks.resolveCommand.mockRejectedValueOnce(new Error("timeout")).mockRejectedValueOnce({ response: { status: 409 }, message: "conflict" });
+    mocks.getCommand.mockResolvedValue(durable);
+    show();
+    await userEvent.type(screen.getByLabelText("Petición"), "Reprograma tarea");
+    await userEvent.click(screen.getByRole("button", { name: "Hacer" }));
+    await userEvent.click(await screen.findByLabelText("18 de septiembre"));
+    await userEvent.click(screen.getByRole("button", { name: "Continuar" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Reintentar la misma respuesta" })).toBeInTheDocument());
+    expect(screen.getByLabelText("25 de septiembre")).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Reintentar la misma respuesta" }));
+    await waitFor(() => expect(mocks.getCommand).toHaveBeenCalledWith("receipt-1"));
+    expect(await screen.findByText("Aplicada una vez")).toBeInTheDocument();
+    expect(mocks.resolveCommand.mock.calls[1][1].answers).toEqual([{ field: "scheduled_date", choice_id: "date:2026-09-18" }]);
+    expect(mocks.resolveCommand.mock.calls[1][1].request_key).toBe(mocks.resolveCommand.mock.calls[0][1].request_key);
   });
 
   it("keeps the explicit capture form available", async () => {

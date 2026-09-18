@@ -196,6 +196,8 @@ let commandInFlight = false;
 let currentCommand = null;
 let commandRequestKey = newRequestKey();
 let commandStepKey = newRequestKey();
+let commandStepPayload = null;
+let commandStepUncertain = false;
 let meetingPolicy = null;
 let timerInterval = null;
 let activeTimerStart = null;
@@ -746,6 +748,7 @@ function renderCommand(data) {
           choiceButton.classList.add("selected");
         }, "command-choice");
         choiceButton.dataset.field = question.field;
+        choiceButton.disabled = commandStepUncertain;
         if (choice.subtitle) choiceButton.title = choice.subtitle;
         commandPrompt.append(choiceButton);
       }
@@ -754,10 +757,15 @@ function renderCommand(data) {
     if (actionable.length) {
       const actions = document.createElement("div");
       actions.className = "command-actions";
-      actions.append(commandButton("Continuar", () => {
+      actions.append(commandButton(commandStepUncertain ? "Reintentar la misma respuesta" : "Continuar", () => {
+        if (commandStepUncertain) {
+          resolveCommand(null);
+          return;
+        }
         if (!actionable.every(question => answers.has(question.field))) return;
         resolveCommand([...answers].map(([field, choice_id]) => ({ field, choice_id })));
       }, "primary-btn small"));
+      actions.append(commandButton("Escribir otra petición", resetCommand));
       commandPrompt.append(actions);
     }
     return;
@@ -802,6 +810,8 @@ function resetCommand() {
   currentCommand = null;
   commandRequestKey = newRequestKey();
   commandStepKey = newRequestKey();
+  commandStepPayload = null;
+  commandStepUncertain = false;
   commandText.value = "";
   commandText.disabled = false;
   commandSubmit.disabled = true;
@@ -816,6 +826,8 @@ function editCommand() {
   currentCommand = null;
   commandRequestKey = newRequestKey();
   commandStepKey = newRequestKey();
+  commandStepPayload = null;
+  commandStepUncertain = false;
   commandText.disabled = false;
   commandSubmit.disabled = !commandText.value.trim();
   commandSubmit.textContent = "Hacer";
@@ -836,6 +848,15 @@ async function commandRequest(path, body, session) {
     error.status = response.status;
     throw error;
   }
+  return data;
+}
+
+async function getCommandReceipt(id, session) {
+  const response = await sessionFetch(session, `${API_URL}/api/commands/${id}`, {
+    headers: { Authorization: `Bearer ${session.token}` },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(getDetail(data, `Error ${response.status}`));
   return data;
 }
 
@@ -877,13 +898,42 @@ async function resolveCommand(answers) {
   const session = captureSession();
   if (!currentCommand || commandInFlight) return;
   commandInFlight = true;
+  const payload = commandStepPayload || {
+    receiptId: currentCommand.id,
+    revision: currentCommand.revision,
+    answers,
+  };
+  commandStepPayload = payload;
   try {
-    const data = await commandRequest(`/api/commands/${currentCommand.id}/resolve`, { request_key: commandStepKey, revision: currentCommand.revision, answers }, session);
+    const data = await commandRequest(`/api/commands/${payload.receiptId}/resolve`, { request_key: commandStepKey, revision: payload.revision, answers: payload.answers }, session);
     if (!isCurrentSession(session)) return;
     commandStepKey = newRequestKey();
+    commandStepPayload = null;
+    commandStepUncertain = false;
     renderCommand(data);
   } catch (error) {
-    if (isCurrentSession(session)) { commandError.textContent = error.message; commandError.classList.remove("hidden"); }
+    if (!isCurrentSession(session)) return;
+    if (error.status === 403 || error.status === 409) {
+      try {
+        const durable = await getCommandReceipt(payload.receiptId, session);
+        if (!isCurrentSession(session)) return;
+        commandStepKey = newRequestKey();
+        commandStepPayload = null;
+        commandStepUncertain = false;
+        renderCommand(durable);
+        return;
+      } catch (recoveryError) {
+        commandError.textContent = recoveryError.message;
+      }
+    } else {
+      commandError.textContent = error.message;
+    }
+    if (!error.status || error.status >= 500) {
+      commandStepUncertain = true;
+      renderCommand(currentCommand);
+      commandError.textContent = "No hemos recibido respuesta. Reintenta la misma respuesta o recupera el recibo antes de cambiarla.";
+    }
+    commandError.classList.remove("hidden");
   } finally { if (isCurrentSession(session)) commandInFlight = false; }
 }
 
@@ -923,10 +973,11 @@ async function loadMoreCommandQuery() {
 
 async function undoCommand(changeId) {
   const session = captureSession();
+  const commandId = currentCommand?.id;
   try {
     const result = await commandRequest(`/api/changes/${changeId}/undo`, {}, session);
     if (!isCurrentSession(session)) return;
-    resetCommand();
+    if (currentCommand?.id === commandId) resetCommand();
     successText.textContent = result.warnings?.length || result.restored === 0
       ? `Deshecho con avisos: ${result.warnings?.join(" ") || "no había cambios que restaurar"}`
       : "Cambio deshecho";
