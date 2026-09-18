@@ -88,3 +88,37 @@ test('uncertain notification creation stays pending and is not replayed', async 
   assert.equal(h.state.notifications.length, 1);
   assert.equal(h.state.meetingStates['7:99'], 'pending');
 });
+
+test('reenabling keeps confirmed dedupe and formats unseen meetings for the device timezone', async () => {
+  const previousTimezone = process.env.TZ;
+  process.env.TZ = 'Asia/Shanghai';
+  try {
+    const h = setup();
+    const meeting = id => ({
+      occurrence_id: id,
+      title: `Reunión ${id}`,
+      content: 'Contexto privado sin interpretar',
+      start_time: '2026-09-14T08:25:00Z',
+    });
+    const responses = [
+      { user_id: 7, timezone: 'Europe/Madrid', occurrences: [meeting(42)] },
+      { user_id: 7, timezone: 'Europe/Madrid', occurrences: [] },
+      { user_id: 7, timezone: 'Europe/Madrid', occurrences: [meeting(42), meeting(43)] },
+    ];
+    h.context.fetch = async () => ({ ok: true, json: async () => responses.shift() });
+
+    await h.run('checkUpcomingMeetings("session-a")');
+    await h.run('checkUpcomingMeetings("session-a")');
+    await h.run('checkUpcomingMeetings("session-a")');
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(h.state.notifications.length, 2);
+    assert.equal(h.state.notifications[1].id, 'agency-meeting:7:43');
+    assert.equal(h.state.notifications[1].message, 'Hora local: 16:25 · Agencia (Europe/Madrid): 10:25\nContexto privado sin interpretar');
+    assert.equal(h.state.meetingStates['7:42'], 'confirmed');
+    assert.equal(h.state.meetingStates['7:43'], 'confirmed');
+  } finally {
+    if (previousTimezone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTimezone;
+  }
+});

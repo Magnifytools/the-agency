@@ -68,6 +68,8 @@ export interface CommandReceipt {
   result: {
     message: string
     entities: CommandEntity[]
+    applied?: Record<string, string | number | null>
+    applied_labels?: Record<string, string>
     query?: { kind: string; items: CommandEntity[]; total: number; page: number; page_size: number; has_more: boolean }
     undo_available: boolean
   } | null

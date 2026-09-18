@@ -31,6 +31,7 @@ import {
 import type { CommandEntity, CommandReceipt } from "@/lib/types";
 import { showUndoResult } from "@/lib/undo-feedback";
 import { getErrorMessage } from "@/lib/utils";
+import { formatCivilDate } from "@/lib/dates";
 
 interface Props {
   open: boolean;
@@ -48,6 +49,57 @@ function entityHref(entity: CommandEntity) {
   if (entity.type === "project") return `/projects/${entity.id}`;
   if (entity.type === "client") return `/clients/${entity.id}`;
   return "/timesheet";
+}
+
+const appliedFieldLabels: Record<string, string> = {
+  project_id: "Proyecto",
+  client_id: "Cliente",
+  owner_id: "Responsable del proyecto",
+  assigned_to: "Responsable de la tarea",
+  scheduled_date: "Fecha planificada",
+  target_date: "Fecha objetivo",
+  entry_date: "Fecha del registro",
+  minutes: "Tiempo registrado",
+  user_id: "Persona",
+  status: "Estado",
+  priority: "Prioridad",
+};
+
+const statusLabels: Record<string, string> = {
+  backlog: "Backlog",
+  pending: "Pendiente",
+  in_progress: "En curso",
+  waiting: "En espera",
+  in_review: "En revisión",
+  advanced: "Avanzada",
+  completed: "Completada",
+};
+
+const priorityLabels: Record<string, string> = {
+  low: "Baja",
+  medium: "Media",
+  high: "Alta",
+  urgent: "Urgente",
+};
+
+function appliedValue(
+  field: string,
+  value: string | number | null,
+  labels: Record<string, string>,
+) {
+  if (["project_id", "client_id", "owner_id", "assigned_to", "user_id"].includes(field)) {
+    if (value == null) return field === "project_id" || field === "client_id" ? "Sin vincular" : "Sin asignar";
+    return labels[field] ?? "Vinculado";
+  }
+  if (["scheduled_date", "target_date", "entry_date"].includes(field)) {
+    return typeof value === "string"
+      ? formatCivilDate(value, { day: "numeric", month: "long", year: "numeric" })
+      : "Sin fecha";
+  }
+  if (field === "minutes") return `${value} min`;
+  if (field === "status" && typeof value === "string") return statusLabels[value] ?? value;
+  if (field === "priority" && typeof value === "string") return priorityLabels[value] ?? value;
+  return String(value ?? "Sin valor");
 }
 
 export function QuickCaptureDialog({ open, onOpenChange }: Props) {
@@ -482,6 +534,16 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                 aria-live="polite"
               >
                 <p className="font-medium">{receipt.result.message}</p>
+                {receipt.result.applied && (
+                  <dl className="grid gap-x-4 gap-y-1 rounded-md bg-background/70 p-3 text-sm sm:grid-cols-[max-content_1fr]">
+                    {Object.entries(receipt.result.applied).map(([field, value]) => (
+                      <div className="contents" key={field}>
+                        <dt className="text-muted-foreground">{appliedFieldLabels[field] ?? field}</dt>
+                        <dd className="font-medium">{appliedValue(field, value, receipt.result?.applied_labels ?? {})}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
                 {receipt.result.query ? (
                   <div className="space-y-2">
                     {receipt.result.query.items.map((entity) => (

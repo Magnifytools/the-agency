@@ -77,6 +77,16 @@ describe("command entry", () => {
         entities: [
           { type: "task", id: 4, label: "Revisar portada", client_id: 2 },
         ],
+        applied: {
+          project_id: 31,
+          assigned_to: 8,
+          scheduled_date: "2026-09-25",
+          minutes: 45,
+        },
+        applied_labels: {
+          project_id: "Web nueva",
+          assigned_to: "María",
+        },
         undo_available: true,
       },
     });
@@ -95,6 +105,11 @@ describe("command entry", () => {
     expect(
       screen.getByRole("link", { name: "Revisar portada" }),
     ).toHaveAttribute("href", "/tasks?id=4");
+    expect(screen.getByText("Web nueva")).toBeInTheDocument();
+    expect(screen.getByText("María")).toBeInTheDocument();
+    expect(screen.getByText("25 de septiembre de 2026")).toBeInTheDocument();
+    expect(screen.getByText("45 min")).toBeInTheDocument();
+    expect(screen.queryByText("31")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Deshacer" }));
     await waitFor(() => expect(mocks.undo).toHaveBeenCalledWith(9));
     expect(screen.getByRole("button", { name: "Deshecho" })).toBeDisabled();
@@ -148,6 +163,44 @@ describe("command entry", () => {
         }),
       ),
     );
+  });
+
+  it("returns the semantic fields for date, literal title and user choices", async () => {
+    mocks.createCommand.mockResolvedValue({
+      ...baseReceipt,
+      status: "needs_input",
+      change_log_id: null,
+      result: null,
+      prompt: {
+        questions: [
+          { field: "scheduled_date", label: "¿Qué viernes?", kind: "choice", choices: [{ id: "date:2026-09-25", label: "25 de septiembre" }] },
+          { field: "literal_title", label: "¿Conservar el título?", kind: "choice", choices: [{ id: "literal_title:confirm", label: "Sí, conservarlo" }] },
+          { field: "assigned_to", label: "¿Quién?", kind: "choice", choices: [{ id: "user:8", label: "María" }] },
+        ],
+      },
+    });
+    mocks.resolveCommand.mockResolvedValue({
+      ...baseReceipt,
+      revision: 2,
+      status: "executed",
+      change_log_id: null,
+      result: { message: "Tarea creada", entities: [], undo_available: false },
+    });
+    show();
+    await userEvent.type(screen.getByLabelText("Petición"), "Crea la tarea");
+    await userEvent.click(screen.getByRole("button", { name: "Hacer" }));
+    await userEvent.click(await screen.findByLabelText("25 de septiembre"));
+    await userEvent.click(screen.getByLabelText("Sí, conservarlo"));
+    await userEvent.click(screen.getByLabelText("María"));
+    await userEvent.click(screen.getByRole("button", { name: "Continuar" }));
+    await waitFor(() => expect(mocks.resolveCommand).toHaveBeenCalledWith(
+      "receipt-1",
+      expect.objectContaining({ answers: [
+        { field: "scheduled_date", choice_id: "date:2026-09-25" },
+        { field: "literal_title", choice_id: "literal_title:confirm" },
+        { field: "assigned_to", choice_id: "user:8" },
+      ] }),
+    ));
   });
 
   it("keeps the request key across a network retry", async () => {

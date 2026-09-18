@@ -175,6 +175,23 @@ async function _confirmMeetingNotification(key, token) {
   await chrome.storage.local.set({ [STORAGE_KEYS.meetingNotifications]: states });
 }
 
+function _meetingMessage(occurrence, agencyTimeZone) {
+  const instant = new Date(occurrence.start_time);
+  if (!occurrence.start_time || Number.isNaN(instant.getTime())) return occurrence.content;
+  const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const format = timeZone => new Intl.DateTimeFormat("es-ES", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone,
+  }).format(instant);
+  const local = format(localTimeZone);
+  const agency = agencyTimeZone && agencyTimeZone !== localTimeZone
+    ? ` · Agencia (${agencyTimeZone}): ${format(agencyTimeZone)}`
+    : "";
+  return `Hora local: ${local}${agency}\n${occurrence.content}`;
+}
+
 async function checkUpcomingMeetings(token) {
   try {
     const res = await fetch(`${API_URL}/api/communication-schedules/extension-upcoming`, {
@@ -192,7 +209,7 @@ async function checkUpcomingMeetings(token) {
         type: "basic",
         iconUrl: "icons/icon48.png",
         title: occurrence.title,
-        message: occurrence.content,
+        message: _meetingMessage(occurrence, data.timezone),
         priority: 2,
       }, () => { void _confirmMeetingNotification(key, token); });
     }

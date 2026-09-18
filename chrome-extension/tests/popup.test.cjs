@@ -15,7 +15,7 @@ async function setup(t) {
   const dom = new JSDOM(fs.readFileSync(path.join(extension, 'popup.html'), 'utf8'), { runScripts: 'outside-only', url: 'https://extension.invalid/popup.html' });
   t.after(() => dom.window.close());
   const requests = [];
-  const state = { failPath: null, failPage: 2, status: 503, posted: null, commandRequests: [], scheduleRevision: 3 };
+  const state = { failPath: null, failPage: 2, status: 503, posted: null, commandRequests: [], commandStepRequests: [], scheduleRevision: 3 };
   dom.window.chrome = {
     storage: { local: { get: async () => ({}), set: async () => {}, remove: async () => {} } },
     runtime: { sendMessage: () => {} }, tabs: { create: () => {} },
@@ -34,6 +34,9 @@ async function setup(t) {
       const body = JSON.parse(options.body); state.commandRequests.push(body);
       status = state.commandStatus || 200;
       data = state.commandResponse || { id: 'cmd-1', request_key: body.request_key, raw_text: body.text, channel: 'extension', context: null, status: 'executed', intent: { kind: 'create_task' }, prompt: null, result: { message: 'Tarea creada', entities: [{ type: 'task', id: 7, label: 'Nueva tarea' }], undo_available: true }, change_log_id: 4, error: null, revision: 1 };
+    } else if (options.method === 'POST' && /^\/api\/commands\/[^/]+\/(?:resolve|execute)$/.test(u.pathname)) {
+      const body = JSON.parse(options.body); state.commandStepRequests.push({ path: u.pathname, body });
+      data = state.commandStepResponse || { ...state.commandResponse, status: 'executed', prompt: null, result: { message: 'Tarea creada', entities: [], undo_available: false }, revision: 2 };
     } else if (u.pathname === '/api/communication-schedules' && !options.method) {
       data = { user_id: 2, policies: [{ kind: 'meeting', revision: state.scheduleRevision, enabled: true, channels: ['in_app'], minutes_before: 10, quiet_start: null, quiet_end: null, state: 'ready', reason: null }] };
     } else if (u.pathname === '/api/communication-schedules/meeting' && options.method === 'PUT') {
@@ -451,6 +454,16 @@ test('reconnected task drafts cannot submit unavailable assignments before selec
 test('command mode sends through shared endpoint and renders a linked receipt', async t => {
   const { run, get, state, dom } = await setup(t);
   run('showMainView()');
+  state.commandResponse = {
+    id: 'cmd-1', request_key: 'request-command-1234', raw_text: 'Crea una tarea Nueva tarea', channel: 'extension', context: null,
+    status: 'executed', intent: { kind: 'create_task' }, prompt: null,
+    result: {
+      message: 'Tarea creada', entities: [{ type: 'task', id: 7, label: 'Nueva tarea' }], undo_available: true,
+      applied: { project_id: 31, assigned_to: 8, scheduled_date: '2026-09-25', minutes: 45 },
+      applied_labels: { project_id: 'Web nueva', assigned_to: 'María' },
+    },
+    change_log_id: 4, error: null, revision: 1,
+  };
   get('command-text').value = 'Crea una tarea Nueva tarea';
   get('command-text').dispatchEvent(new dom.window.Event('input'));
   get('command-submit').click(); await tick();
@@ -459,6 +472,36 @@ test('command mode sends through shared endpoint and renders a linked receipt', 
   assert.equal(state.commandRequests[0].text, 'Crea una tarea Nueva tarea');
   assert.equal(get('command-receipt').classList.contains('hidden'), false);
   assert.equal(get('command-receipt').textContent.includes('Tarea creada'), true);
+  assert.equal(get('command-receipt').textContent.includes('Web nueva'), true);
+  assert.equal(get('command-receipt').textContent.includes('María'), true);
+  assert.equal(get('command-receipt').textContent.includes('25 de septiembre de 2026'), true);
+  assert.equal(get('command-receipt').textContent.includes('45 min'), true);
+  assert.equal(get('command-receipt').textContent.includes('31'), false);
+});
+
+test('command choices preserve semantic date, literal title and user fields', async t => {
+  const { run, get, state, dom } = await setup(t);
+  run('showMainView()');
+  state.commandResponse = {
+    id: 'cmd-choice', request_key: 'request-command-choice', raw_text: 'Crea tarea', channel: 'extension', context: null,
+    status: 'needs_input', intent: { kind: 'create_task' }, result: null, change_log_id: null, error: null, revision: 1,
+    prompt: { questions: [
+      { field: 'scheduled_date', label: '¿Qué viernes?', kind: 'choice', choices: [{ id: 'date:2026-09-25', label: '25 de septiembre' }] },
+      { field: 'literal_title', label: '¿Conservar?', kind: 'choice', choices: [{ id: 'literal_title:confirm', label: 'Sí' }] },
+      { field: 'assigned_to', label: '¿Quién?', kind: 'choice', choices: [{ id: 'user:8', label: 'María' }] },
+    ] },
+  };
+  get('command-text').value = 'Crea tarea';
+  get('command-text').dispatchEvent(new dom.window.Event('input'));
+  get('command-submit').click(); await tick();
+  for (const button of get('command-prompt').querySelectorAll('.command-choice')) button.click();
+  get('command-prompt').querySelector('.primary-btn').click(); await tick();
+  const resolve = state.commandStepRequests.find(request => request.path.endsWith('/resolve'));
+  assert.deepEqual(resolve?.body?.answers, [
+    { field: 'scheduled_date', choice_id: 'date:2026-09-25' },
+    { field: 'literal_title', choice_id: 'literal_title:confirm' },
+    { field: 'assigned_to', choice_id: 'user:8' },
+  ]);
 });
 
 test('command network retry keeps the same idempotency key', async t => {

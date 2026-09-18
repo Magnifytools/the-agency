@@ -680,6 +680,50 @@ function commandButton(label, handler, variant = "secondary-btn small") {
   return button;
 }
 
+const appliedFieldLabels = {
+  project_id: "Proyecto", client_id: "Cliente", owner_id: "Responsable del proyecto",
+  assigned_to: "Responsable de la tarea", scheduled_date: "Fecha planificada",
+  target_date: "Fecha objetivo", entry_date: "Fecha del registro",
+  minutes: "Tiempo registrado", user_id: "Persona", status: "Estado", priority: "Prioridad",
+};
+const appliedStatusLabels = {
+  backlog: "Backlog", pending: "Pendiente", in_progress: "En curso", waiting: "En espera",
+  in_review: "En revisión", advanced: "Avanzada", completed: "Completada",
+};
+const appliedPriorityLabels = { low: "Baja", medium: "Media", high: "Alta", urgent: "Urgente" };
+
+function formatAppliedValue(field, value, labels) {
+  if (["project_id", "client_id", "owner_id", "assigned_to", "user_id"].includes(field)) {
+    if (value == null) return ["project_id", "client_id"].includes(field) ? "Sin vincular" : "Sin asignar";
+    return labels[field] || "Vinculado";
+  }
+  if (["scheduled_date", "target_date", "entry_date"].includes(field)) {
+    if (!value) return "Sin fecha";
+    const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+    return new Date(year, month - 1, day, 12).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
+  }
+  if (field === "minutes") return `${value} min`;
+  if (field === "status") return appliedStatusLabels[value] || value;
+  if (field === "priority") return appliedPriorityLabels[value] || value;
+  return String(value ?? "Sin valor");
+}
+
+function renderApplied(result) {
+  if (!result?.applied) return null;
+  const list = document.createElement("dl");
+  list.className = "command-applied";
+  for (const [field, value] of Object.entries(result.applied)) {
+    const row = document.createElement("div");
+    const term = document.createElement("dt");
+    const description = document.createElement("dd");
+    term.textContent = appliedFieldLabels[field] || field;
+    description.textContent = formatAppliedValue(field, value, result.applied_labels || {});
+    row.append(term, description);
+    list.append(row);
+  }
+  return list;
+}
+
 function renderCommand(data) {
   currentCommand = data;
   commandPrompt.replaceChildren();
@@ -731,6 +775,8 @@ function renderCommand(data) {
   const message = document.createElement("p");
   message.textContent = data.result?.message || "Petición preparada";
   commandReceipt.append(message);
+  const applied = renderApplied(data.result);
+  if (applied) commandReceipt.append(applied);
   const entities = data.result?.query?.items || data.result?.entities || [];
   for (const entity of entities) {
     const link = document.createElement("a");
