@@ -202,7 +202,12 @@ async def test_digest_excludes_recurring_templates_and_separates_unresolved_proj
     correct = data["projects"][0]
     assert correct["progress_percent"] == 100
     assert correct["pending_total"] == 0
-    assert correct["total_minutes"] == 0
+    assert correct["total_minutes"] == 120
+    assert correct["total_hours"] == 2.0
+    assert correct["historical_template_minutes"] == 120
+    assert data["totals"]["total_minutes"] == 120
+    assert data["totals"]["total_hours"] == 2.0
+    assert data["totals"]["historical_template_minutes"] == 120
     assert "Plantilla semanal" not in {task["title"] for task in data["pending_tasks"]}
     assert data["unassigned"]["task_total"] == 0
     assert len(data["unresolved_projects"]) == 1
@@ -217,3 +222,4 @@ async def test_digest_excludes_recurring_templates_and_separates_unresolved_proj
     prompt = _build_user_prompt(data, DigestTone.formal)
     assert "Proyecto no resuelto" in prompt
     assert "### Sin proyecto" not in prompt
+    assert "120 minutos reales registrados sobre plantillas históricas" in prompt

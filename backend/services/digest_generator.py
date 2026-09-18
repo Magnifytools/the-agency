@@ -181,6 +181,12 @@ def _format_project_group(group: dict) -> str:
         f"{_format_task_list(group.get('pending_tasks', []))}\n"
         f"Tiempo del periodo: {group.get('total_hours', 0)}h "
         f"({group.get('total_minutes', 0)} minutos)"
+        + (
+            f" [incluye {group.get('historical_template_minutes')} minutos reales "
+            "registrados sobre plantillas históricas]"
+            if group.get("historical_template_minutes")
+            else ""
+        )
     )
 
 

@@ -63,6 +63,7 @@ def _new_group(
         "pending_tasks": [],
         "total_minutes": 0,
         "total_hours": 0,
+        "historical_template_minutes": 0,
     }
 
 
@@ -186,22 +187,24 @@ async def collect_digest_data(
 
     # --- Time entries in period ---
     time_result = await db.execute(
-        select(TimeEntry).where(
+        select(TimeEntry, Task.project_id, Task.is_recurring).where(
             TimeEntry.minutes.isnot(None),
             time_entry_civil_period(period_start, period_end + timedelta(days=1)),
         ).join(Task, TimeEntry.task_id == Task.id).where(
             Task.client_id == client_id,
-            Task.is_recurring.is_(False),
         )
     )
-    entries = time_result.scalars().all()
-    task_projects = {task.id: task.project_id for task in all_tasks}
+    entries = time_result.all()
     total_minutes = 0
-    for entry in entries:
+    historical_template_minutes = 0
+    for entry, project_id, is_recurring in entries:
         minutes = entry.minutes or 0
         total_minutes += minutes
-        project_id = task_projects.get(entry.task_id)
-        group_for(project_id)["total_minutes"] += minutes
+        group = group_for(project_id)
+        group["total_minutes"] += minutes
+        if is_recurring:
+            group["historical_template_minutes"] += minutes
+            historical_template_minutes += minutes
     total_hours = round(total_minutes / 60, 1)
     for group in [*groups.values(), *unresolved_groups.values()]:
         group["total_hours"] = round(group["total_minutes"] / 60, 1)
@@ -253,6 +256,7 @@ async def collect_digest_data(
             "pending_total": len(pending_tasks),
             "total_minutes": total_minutes,
             "total_hours": total_hours,
+            "historical_template_minutes": historical_template_minutes,
         },
         "pending_followups": followups,
     }
