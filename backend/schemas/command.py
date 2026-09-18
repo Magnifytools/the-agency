@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+from backend.services.temporal import utc_isoformat
 
 
 class CommandContext(BaseModel):
@@ -49,6 +50,10 @@ class CommandReceiptResponse(BaseModel):
     revision: int
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer("created_at", "updated_at", when_used="json")
+    def serialize_instants(self, value: datetime) -> str:
+        return utc_isoformat(value)
 
 
 class CommandListResponse(BaseModel):

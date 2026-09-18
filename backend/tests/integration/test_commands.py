@@ -5,7 +5,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import Client, CommandReceipt, Project, Task, TaskPriority, TaskStatus, TimeEntry, User, UserRole
+from backend.db.models import Client, CommandReceipt, Project, Task, TaskPriority, TaskStatus, TimeEntry, User, UserPermission, UserRole
+from backend.services.commands import parse_command
 
 pytestmark = pytest.mark.asyncio
 
@@ -292,3 +293,185 @@ async def test_recurring_template_is_not_queried_or_mutated(admin_client, db_ses
     assert mutation.json()["status"] == "needs_input"
     await db_session.refresh(template)
     assert template.status == TaskStatus.pending
+
+
+async def test_quoted_title_preserves_prepositions_and_applies_project_and_relative_date(
+    admin_client, db_session, monkeypatch,
+):
+    from backend.services import commands
+    from datetime import date
+    client = Client(name="Acme Natural", status="active")
+    db_session.add(client)
+    await db_session.flush()
+    project = Project(name="Web nueva", client_id=client.id)
+    db_session.add(project)
+    await db_session.commit()
+    monkeypatch.setattr(commands, "business_today", lambda: date(2026, 9, 17))
+
+    response = await admin_client.post("/api/commands", json={
+        "request_key": "command-natural-task-001",
+        "text": 'Crea tarea "Hablar con Ana para el lanzamiento" en proyecto "Web nueva" para mañana',
+    })
+    assert response.status_code == 200, response.text
+    receipt = response.json()
+    assert receipt["status"] == "executed"
+    task = await db_session.scalar(select(Task).where(Task.title == "Hablar con Ana para el lanzamiento"))
+    assert task.project_id == project.id and task.client_id == client.id
+    assert task.scheduled_date.isoformat() == "2026-09-18"
+    assert receipt["result"]["applied"] == {
+        "project_id": project.id, "client_id": client.id, "assigned_to": None,
+        "scheduled_date": "2026-09-18",
+    }
+
+
+async def test_project_command_resolves_exact_active_short_name_and_reports_applied_values(
+    admin_client, db_session,
+):
+    client = Client(name="Cliente owner", status="active")
+    owner = User(email="owner-cmd@test.local", full_name="María Propietaria", short_name="Mery",
+                 hashed_password="unused", is_active=True)
+    db_session.add_all([client, owner])
+    await db_session.commit()
+    response = await admin_client.post("/api/commands", json={
+        "request_key": "command-natural-project-1",
+        "text": 'Crea proyecto "Web con SEO" para cliente "Cliente owner" responsable Mery fecha objetivo 2026-10-02',
+    })
+    assert response.status_code == 200, response.text
+    receipt = response.json()
+    project = await db_session.scalar(select(Project).where(Project.name == "Web con SEO"))
+    assert project.owner_id == owner.id and project.target_end_date.date().isoformat() == "2026-10-02"
+    assert receipt["result"]["applied"] == {
+        "client_id": client.id, "owner_id": owner.id, "target_date": "2026-10-02",
+    }
+
+
+async def test_reschedule_without_date_keeps_deadline_and_receipt_is_explicit(admin_client, db_session):
+    from datetime import date, datetime
+    task = Task(title="Quitar plan", status=TaskStatus.pending,
+                scheduled_date=date(2026, 9, 20), due_date=datetime(2026, 10, 20))
+    db_session.add(task)
+    await db_session.commit()
+    response = await admin_client.post("/api/commands", json={
+        "request_key": "command-natural-unschedule",
+        "text": 'Reprograma la tarea "Quitar plan" sin fecha',
+    })
+    assert response.status_code == 200, response.text
+    await db_session.refresh(task)
+    assert task.scheduled_date is None and task.due_date == datetime(2026, 10, 20)
+    assert response.json()["result"]["applied"]["scheduled_date"] is None
+
+
+async def test_ambiguous_friday_is_resolved_once_and_receipt_timestamps_are_utc_z(
+    admin_client, db_session, monkeypatch,
+):
+    from backend.services import commands
+    from datetime import date
+    monkeypatch.setattr(commands, "business_today", lambda: date(2026, 9, 18))  # Friday
+    task = Task(title="Viernes ambiguo", status=TaskStatus.pending)
+    db_session.add(task)
+    await db_session.commit()
+    pending = (await admin_client.post("/api/commands", json={
+        "request_key": "command-natural-friday-1",
+        "text": 'Reprograma la tarea "Viernes ambiguo" para viernes',
+    })).json()
+    assert pending["status"] == "needs_input"
+    assert pending["created_at"].endswith("Z") and pending["updated_at"].endswith("Z")
+    choices = pending["prompt"]["questions"][0]["choices"]
+    assert [choice["label"] for choice in choices] == ["2026-09-18", "2026-09-25"]
+    resolved = await admin_client.post(f"/api/commands/{pending['id']}/resolve", json={
+        "request_key": "command-natural-friday-step",
+        "revision": pending["revision"],
+        "answers": [{"field": "scheduled_date", "choice_id": choices[1]["id"]}],
+    })
+    assert resolved.status_code == 200, resolved.text
+    await db_session.refresh(task)
+    assert task.scheduled_date.isoformat() == "2026-09-25"
+    assert resolved.json()["intent"]["scheduled_date"] == "2026-09-25"
+
+
+async def test_explicit_manual_date_and_actor_are_visible_without_actor_inference(
+    admin_client, db_session,
+):
+    task = Task(title="Tiempo fechado", status=TaskStatus.pending)
+    db_session.add(task)
+    await db_session.commit()
+    response = await admin_client.post("/api/commands", json={
+        "request_key": "command-natural-time-001",
+        "text": 'Registra 45 minutos en la tarea "Tiempo fechado" el 2026-09-10',
+    })
+    assert response.status_code == 200, response.text
+    applied = response.json()["result"]["applied"]
+    assert applied["minutes"] == 45 and applied["user_id"] == admin_client.test_user.id
+    assert applied["entry_date"] == "2026-09-10"
+    entry = await db_session.scalar(select(TimeEntry).where(TimeEntry.task_id == task.id))
+    assert entry.minutes == 45 and entry.date.date().isoformat() == "2026-09-10"
+    rejected = await admin_client.post("/api/commands", json={
+        "request_key": "command-natural-time-002",
+        "text": 'Registra 45 minutos en la tarea "Tiempo fechado" para Ana',
+    })
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "failed"
+
+
+async def test_resolve_permission_loss_is_persisted_as_durable_failure(make_member_client, db_session):
+    member = await make_member_client([("tasks", True, True)])
+    try:
+        db_session.add_all([
+            Task(title="Permiso volátil", status=TaskStatus.pending),
+            Task(title="Permiso volátil", status=TaskStatus.pending),
+        ])
+        await db_session.commit()
+        pending = (await member.post("/api/commands", json={
+            "request_key": "command-natural-permission",
+            "text": "Completa la tarea Permiso volátil",
+        })).json()
+        choice = pending["prompt"]["questions"][0]["choices"][0]
+        await db_session.execute(delete(UserPermission).where(UserPermission.user_id == member.test_user.id))
+        await db_session.commit()
+        # The test dependency holds the authenticated object for this client;
+        # mirror the freshly committed permission state on that request actor.
+        member.test_user.permissions = []
+        response = await member.post(f"/api/commands/{pending['id']}/resolve", json={
+            "request_key": "command-natural-perm-step",
+            "revision": pending["revision"],
+            "answers": [{"field": "task_id", "choice_id": choice["id"]}],
+        })
+        assert response.status_code == 403
+        durable = (await member.get(f"/api/commands/{pending['id']}")).json()
+        assert durable["status"] == "failed" and durable["error"]["code"] == "forbidden"
+        assert all(status == TaskStatus.pending for status in
+                   (await db_session.scalars(select(Task.status).where(Task.title == "Permiso volátil"))).all())
+    finally:
+        await member.aclose()
+
+
+async def test_parser_never_absorbs_supported_qualifiers_into_quoted_title(monkeypatch):
+    from backend.services import commands
+    from datetime import date
+    monkeypatch.setattr(commands, "business_today", lambda: date(2026, 9, 17))
+    intent = parse_command(
+        'Crea tarea "Informe para cliente con SEO" en proyecto "Web" para mañana'
+    )
+    assert intent == {
+        "kind": "create_task", "title": "Informe para cliente con SEO",
+        "schedule_mode": "omitted", "project_name": "Web",
+        "date_label": "mañana", "scheduled_date": "2026-09-18",
+    }
+
+
+async def test_unquoted_preposition_requires_explicit_literal_confirmation(admin_client, db_session):
+    pending = (await admin_client.post("/api/commands", json={
+        "request_key": "command-natural-ambiguous",
+        "text": "Crea tarea Informe con SEO",
+    })).json()
+    assert pending["status"] == "needs_input"
+    assert await db_session.scalar(select(Task.id).where(Task.title == "Informe con SEO")) is None
+    choice = pending["prompt"]["questions"][0]["choices"][0]
+    resolved = await admin_client.post(f"/api/commands/{pending['id']}/resolve", json={
+        "request_key": "command-natural-ambiguous-step",
+        "revision": pending["revision"],
+        "answers": [{"field": "literal_title", "choice_id": choice["id"]}],
+    })
+    assert resolved.status_code == 200, resolved.text
+    assert (await db_session.scalar(select(Task.title).where(
+        Task.title == "Informe con SEO"))) == "Informe con SEO"

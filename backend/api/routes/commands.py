@@ -12,6 +12,7 @@ from backend.schemas.command import (
     CommandCreate, CommandExecute, CommandListResponse, CommandReceiptResponse, CommandResolve,
 )
 from backend.services.change_journal import prepare_entry
+from backend.services.temporal import utc_now_naive
 from backend.services.commands import (
     STATUS_EXECUTED, STATUS_FAILED, STATUS_INPUT, STATUS_REVIEW, apply_answers,
     check_step_replay, execute_or_prompt, parse_command, record_step, request_hash,
@@ -47,6 +48,19 @@ async def _execute_atomically(db: AsyncSession, row: CommandReceipt, actor: User
         row.result = result
 
 
+async def _persist_failed_step(db: AsyncSession, receipt_id: str, user_id: int,
+                               exc: HTTPException) -> None:
+    """Keep a rejected resolve/execute visible without retaining its mutations."""
+    await db.rollback()
+    row = await _owned_locked(db, receipt_id, user_id)
+    row.status = STATUS_FAILED
+    row.error_code = "forbidden" if exc.status_code == 403 else "invalid_command"
+    row.error_detail = str(exc.detail)
+    row.revision += 1
+    row.updated_at = utc_now_naive()
+    await db.commit()
+
+
 @router.post("", response_model=CommandReceiptResponse)
 async def create_command(payload: CommandCreate, db: AsyncSession = Depends(get_db),
                          actor: User = Depends(get_current_user)):
@@ -58,6 +72,7 @@ async def create_command(payload: CommandCreate, db: AsyncSession = Depends(get_
         request_hash=digest, channel=payload.channel, context=context,
         raw_text=payload.text.strip(), status=STATUS_INPUT,
         intent=parse_command(payload.text), revision=1, step_replays={},
+        created_at=utc_now_naive(), updated_at=utc_now_naive(),
     ).on_conflict_do_nothing(index_elements=["user_id", "request_key"]).returning(CommandReceipt.id))
     if inserted is None:
         row = await db.scalar(select(CommandReceipt).where(
@@ -68,6 +83,7 @@ async def create_command(payload: CommandCreate, db: AsyncSession = Depends(get_
     row = await _owned_locked(db, receipt_id, actor.id)
     try:
         await _execute_atomically(db, row, actor)
+        row.updated_at = utc_now_naive()
         await db.commit()
     except HTTPException as exc:
         await db.refresh(row)
@@ -75,6 +91,7 @@ async def create_command(payload: CommandCreate, db: AsyncSession = Depends(get_
         row.error_code = "forbidden" if exc.status_code == 403 else "invalid_command"
         row.error_detail = str(exc.detail)
         row.revision += 1
+        row.updated_at = utc_now_naive()
         await db.commit()
         raise
     await db.refresh(row)
@@ -98,9 +115,13 @@ async def resolve_command(receipt_id: str, payload: CommandResolve,
         row.revision += 1
         await _execute_atomically(db, row, actor)
         record_step(row, payload.request_key, digest)
+        row.updated_at = utc_now_naive()
         await db.commit()
-    except HTTPException:
-        await db.rollback()
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            await _persist_failed_step(db, receipt_id, actor.id, exc)
+        else:
+            await db.rollback()
         raise
     await db.refresh(row)
     return response_dict(row)
@@ -121,9 +142,13 @@ async def execute_reviewed_command(receipt_id: str, payload: CommandExecute,
         row.revision += 1
         await _execute_atomically(db, row, actor)
         record_step(row, payload.request_key, digest)
+        row.updated_at = utc_now_naive()
         await db.commit()
-    except HTTPException:
-        await db.rollback()
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            await _persist_failed_step(db, receipt_id, actor.id, exc)
+        else:
+            await db.rollback()
         raise
     await db.refresh(row)
     return response_dict(row)
