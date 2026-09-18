@@ -10,11 +10,14 @@ pruebas leen change_logs; no sustituyen el escritor ni reconstruyen filas.
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import (
     Client,
@@ -25,6 +28,8 @@ from backend.db.models import (
     TaskPriority,
     TaskStatus,
     TimeEntry,
+    User,
+    UserRole,
 )
 from backend.services import change_journal as cj
 
@@ -374,6 +379,196 @@ async def test_no_pisa_una_columna_que_otro_cambio_despues(
     await db_session.refresh(task)
     assert task.title == "Lo cambió otra persona"   # respetado
     assert task.status == TaskStatus.pending        # restaurado
+
+
+async def test_undo_create_rejects_later_edit_instead_of_deleting_it(
+    admin_client, make_member_client, db_session, base_client, journal
+):
+    task_id = (await admin_client.post("/api/tasks", json={
+        "title": "Creada por A", "client_id": base_client.id,
+    })).json()["id"]
+    entry = await journal.only()
+
+    # A distinct actor B edits after A's creation. The inverse must preserve it.
+    other = await make_member_client([("tasks", True, True)])
+    try:
+        edited = await other.put(f"/api/tasks/{task_id}", json={"title": "Editada por B"})
+        assert edited.status_code == 200, edited.text
+    finally:
+        await other.aclose()
+    task = await db_session.get(Task, task_id)
+
+    response = await admin_client.post(f"/api/changes/{entry.id}/undo")
+    assert response.status_code == 409, response.text
+    assert "cambió después" in response.json()["detail"]
+    await db_session.refresh(task)
+    assert task.title == "Editada por B"
+    await db_session.refresh(entry)
+    assert entry.undone_at is None
+
+
+async def test_undo_create_rejects_child_added_later_even_if_parent_is_unchanged(
+    admin_client, db_session, base_client, journal
+):
+    task_id = (await admin_client.post("/api/tasks", json={
+        "title": "Padre intacto", "client_id": base_client.id,
+    })).json()["id"]
+    entry = await journal.only()
+    cj.set_actor(None)
+    child = TaskChecklist(task_id=task_id, text="Trabajo posterior", order_index=0)
+    db_session.add(child)
+    await db_session.commit()
+
+    response = await admin_client.post(f"/api/changes/{entry.id}/undo")
+    assert response.status_code == 409, response.text
+    assert "trabajo añadido después" in response.json()["detail"]
+    assert await db_session.get(Task, task_id) is not None
+    assert await db_session.get(TaskChecklist, child.id) is not None
+
+
+async def test_undo_create_detects_later_change_from_a_column_default(
+    admin_client, db_session, base_client, journal
+):
+    task_id = (await admin_client.post("/api/tasks", json={
+        "title": "Default real", "client_id": base_client.id,
+    })).json()["id"]
+    entry = await journal.only()
+    assert entry.operations[0]["after"]["is_inbox"] is False
+    cj.set_actor(None)
+    task = await db_session.get(Task, task_id)
+    task.is_inbox = True
+    await db_session.commit()
+
+    response = await admin_client.post(f"/api/changes/{entry.id}/undo")
+    assert response.status_code == 409, response.text
+    assert "is_inbox" in response.json()["detail"]
+    await db_session.refresh(task)
+    assert task.is_inbox is True
+
+
+async def test_time_entry_only_undo_locks_task_before_time_entry(
+    admin_client, db_session, engine, base_client
+):
+    """Even a notes-only entry journal follows the shared Task→TimeEntry order."""
+    from sqlalchemy import event
+    from backend.db.models import ChangeLog
+
+    task = await _make_task(db_session, base_client, actual_minutes=15)
+    time_entry = TimeEntry(
+        task_id=task.id,
+        user_id=admin_client.test_user.id,
+        minutes=15,
+        date=datetime(2026, 9, 17, 9, 0),
+        notes="después",
+    )
+    db_session.add(time_entry)
+    await db_session.flush()
+    change = ChangeLog(
+        user_id=admin_client.test_user.id,
+        entity_type="time_entry",
+        entity_id=time_entry.id,
+        action="update",
+        label="Tiempo editado",
+        operations=[{
+            "entity_type": "time_entry",
+            "entity_id": time_entry.id,
+            "action": "update",
+            "name": "Tiempo editado",
+            "before": {"notes": "antes"},
+            "after": {"notes": "después"},
+        }],
+    )
+    db_session.add(change)
+    await db_session.commit()
+
+    locked_tables: list[str] = []
+
+    def record_lock(conn, cursor, statement, parameters, context, executemany):
+        sql = statement.lower()
+        if "for update" in sql:
+            if "from tasks" in sql:
+                locked_tables.append("task")
+            elif "from time_entries" in sql:
+                locked_tables.append("time_entry")
+
+    event.listen(engine.sync_engine, "before_cursor_execute", record_lock)
+    try:
+        response = await admin_client.post(f"/api/changes/{change.id}/undo")
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", record_lock)
+
+    assert response.status_code == 200, response.text
+    assert "task" in locked_tables and "time_entry" in locked_tables, locked_tables
+    assert locked_tables.index("task") < locked_tables.index("time_entry"), locked_tables
+    await db_session.refresh(time_entry)
+    assert time_entry.notes == "antes"
+
+
+async def test_project_edit_started_during_undo_wins_after_locked_conflict_check(
+    engine, monkeypatch
+):
+    """A concurrent writer waits for Undo's row lock, then commits last."""
+    from backend.api.routes import changes as changes_route
+    from backend.core.security import hash_password
+    from backend.db.models import ChangeLog
+    from uuid import uuid4
+
+    ids = {}
+    try:
+        async with AsyncSession(engine, expire_on_commit=False) as setup:
+            actor = User(email=f"undo-lock-{uuid4()}@test.local", full_name="Undo Lock",
+                         hashed_password=hash_password("unused"), role=UserRole.admin, is_active=True)
+            client = Client(name="Undo Lock Client", status=ClientStatus.active)
+            setup.add_all([actor, client])
+            await setup.commit()
+            project = Project(name="Original", client_id=client.id)
+            setup.add(project)
+            await setup.commit()
+            cj.set_actor(actor.id)
+            project.name = "Editado por A"
+            await setup.commit()
+            change = await setup.scalar(select(ChangeLog).where(
+                ChangeLog.user_id == actor.id, ChangeLog.entity_type == "project",
+            ).order_by(ChangeLog.id.desc()))
+            ids.update(user=actor.id, client=client.id, project=project.id, change=change.id)
+
+        locked = asyncio.Event()
+        release = asyncio.Event()
+        original_undo_update = changes_route._undo_update
+
+        async def paused_undo_update(*args, **kwargs):
+            locked.set()
+            await release.wait()
+            return await original_undo_update(*args, **kwargs)
+
+        monkeypatch.setattr(changes_route, "_undo_update", paused_undo_update)
+        actor_view = SimpleNamespace(id=ids["user"], role=UserRole.admin, permissions=[])
+
+        async with AsyncSession(engine, expire_on_commit=False) as undo_db, AsyncSession(engine) as edit_db:
+            undo_task = asyncio.create_task(changes_route.undo_change(
+                ids["change"], db=undo_db, current_user=actor_view,
+            ))
+            await asyncio.wait_for(locked.wait(), timeout=2)
+            other_project = await edit_db.get(Project, ids["project"])
+            other_project.name = "Editado por B"
+            edit_task = asyncio.create_task(edit_db.commit())
+            await asyncio.sleep(0.1)
+            assert not edit_task.done(), "el editor concurrente no esperó el bloqueo de Undo"
+            release.set()
+            await undo_task
+            await asyncio.wait_for(edit_task, timeout=2)
+
+        async with AsyncSession(engine) as reader:
+            assert await reader.scalar(select(Project.name).where(Project.id == ids["project"])) == "Editado por B"
+    finally:
+        cj.set_actor(None)
+        if ids:
+            async with AsyncSession(engine) as cleanup:
+                await cleanup.execute(delete(ChangeLog).where(ChangeLog.user_id == ids["user"]))
+                await cleanup.execute(delete(Project).where(Project.id == ids["project"]))
+                await cleanup.execute(delete(Client).where(Client.id == ids["client"]))
+                await cleanup.execute(delete(User).where(User.id == ids["user"]))
+                await cleanup.commit()
 
 
 async def test_deshacer_no_se_registra_como_cambio_nuevo(

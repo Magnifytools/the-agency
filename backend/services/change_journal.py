@@ -321,7 +321,10 @@ def _resolve_ids(session: Session, flush_context) -> None:
         if op.entity_id is None and op.obj is not None:
             op.entity_id = getattr(op.obj, "id", None)
             if op.action == "create":
-                op.after["id"] = op.entity_id
+                # INSERT defaults (Python and server-side) exist only after the
+                # flush. Store the real committed creation snapshot so Undo can
+                # distinguish defaults from later edits without guessing.
+                op.after = _snapshot(op.obj)
 
 
 def prepare_entry(session: Session) -> ChangeLog | None:
