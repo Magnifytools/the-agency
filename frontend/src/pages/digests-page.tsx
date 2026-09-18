@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 
 const toneLabels: Record<DigestTone, string> = {
   formal: "Formal",
@@ -27,6 +27,7 @@ const toneLabels: Record<DigestTone, string> = {
 }
 
 export default function DigestsPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [generateOpen, setGenerateOpen] = useState(false)
@@ -35,7 +36,14 @@ export default function DigestsPage() {
   const [genPeriodStart, setGenPeriodStart] = useState("")
   const [genPeriodEnd, setGenPeriodEnd] = useState("")
   const [filterStatus, setFilterStatus] = useState<DigestStatus | "">("")
-  const [filterClient, setFilterClient] = useState<number | "">("")
+  const filterClientId = Number(searchParams.get("client_id"))
+  const filterClient: number | "" = Number.isInteger(filterClientId) && filterClientId > 0 ? filterClientId : ""
+  const setFilterClient = (value: number | "") => {
+    const next = new URLSearchParams(searchParams)
+    if (value) next.set("client_id", String(value))
+    else next.delete("client_id")
+    setSearchParams(next, { replace: true })
+  }
   const [filterPeriodFrom, setFilterPeriodFrom] = useState("")
   const [filterPeriodTo, setFilterPeriodTo] = useState("")
   const [previewDigest, setPreviewDigest] = useState<Digest | null>(null)

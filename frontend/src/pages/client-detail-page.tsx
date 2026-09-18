@@ -229,7 +229,7 @@ export default function ClientDetailPage() {
   const [creatingTask, setCreatingTask] = useState(false)
   const [whatIfOpen, setWhatIfOpen] = useState(false)
 
-  const validTabs = ["ficha", "actividad", "tareas", "proyectos", "comunicaciones", "contactos", "panel", "tiempo", "facturacion", "recursos", "seo", "informes", "ajustes", "facturas"] as const
+  const validTabs = ["ficha", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "facturacion", "recursos", "seo", "informes", "ajustes", "facturas"] as const
   type Tab = (typeof validTabs)[number]
 
   // Pestaña -> módulo que la sirve. Si el módulo está oculto, sus endpoints no
@@ -242,9 +242,19 @@ export default function ClientDetailPage() {
     informes: "reports",
     recursos: "resources",
   }
+  const TAB_PERMISSION: Partial<Record<Tab, string>> = {
+    tareas: "tasks",
+    proyectos: "projects",
+    resumenes: "digests",
+    comunicaciones: "communications",
+    facturacion: "billing",
+    facturas: "billing",
+    informes: "reports",
+  }
   const isTabVisible = (tab: Tab) => {
     const mod = TAB_MODULE[tab]
-    return !mod || isEnabled(mod)
+    const permission = TAB_PERMISSION[tab]
+    return (!mod || isEnabled(mod)) && (!permission || hasPermission(permission))
   }
 
   const tabParam = searchParams.get("tab") as Tab
@@ -252,17 +262,19 @@ export default function ClientDetailPage() {
     validTabs.includes(tabParam) && isTabVisible(tabParam) ? tabParam : "ficha"
   const setActiveTab = (tab: Tab) => setSearchParams({ tab }, { replace: true })
 
-  const { data: summary, isLoading } = useQuery({
+  const summaryQuery = useQuery({
     queryKey: clientKeys.summary(clientId),
     queryFn: () => clientsApi.summary(clientId),
     enabled: !!clientId,
   })
+  const { data: summary, isLoading } = summaryQuery
 
-  const { data: projects = [] } = useQuery({
+  const projectsQuery = useQuery({
     queryKey: projectKeys.client(clientId),
     queryFn: () => projectsApi.listAll({ client_id: clientId }),
-    enabled: !!clientId,
+    enabled: !!clientId && activeTab === "proyectos" && hasPermission("projects"),
   })
+  const projects = projectsQuery.data ?? []
 
   const { data: holdedConfig } = useQuery({
     queryKey: holdedKeys.config(),
@@ -294,11 +306,12 @@ export default function ClientDetailPage() {
     staleTime: 60_000,
   })
 
-  const { data: recentEntries = [] } = useQuery({
+  const recentEntriesQuery = useQuery({
     queryKey: timeKeys.client(clientId),
     queryFn: () => clientsApi.recentTimeEntries(clientId),
-    enabled: !!clientId,
+    enabled: !!clientId && activeTab === "tiempo",
   })
+  const recentEntries = recentEntriesQuery.data ?? []
 
   const { data: whatIfData, isLoading: whatIfLoading } = useQuery({
     queryKey: ["client-what-if", clientId],
@@ -316,6 +329,12 @@ export default function ClientDetailPage() {
       <div className="grid grid-cols-4 gap-4">
         {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
       </div>
+    </div>
+  )
+  if (summaryQuery.isError) return (
+    <div role="alert" className="space-y-3">
+      <p>No se pudo cargar la ficha del cliente.</p>
+      <Button variant="outline" onClick={() => summaryQuery.refetch()}>Reintentar</Button>
     </div>
   )
   if (!summary) return <p className="text-muted-foreground">Cliente no encontrado</p>
@@ -432,88 +451,132 @@ export default function ClientDetailPage() {
         )}
       </div>
 
-      {/* Tabs — agrupadas en 8 grupos para reducir sobrecarga cognitiva.
-          Los nombres internos de `tab` (URL ?tab=xxx) NO cambian: solo el menú visual. */}
+      {/* Cuatro áreas estables; las URLs ?tab= heredadas siguen seleccionando
+          su vista concreta dentro del área correspondiente. */}
       {(() => {
         type TabKey = Tab
-        type GroupDef = { key: string; label: string; tabs: TabKey[] }
-        // Las pestañas de módulos ocultos se caen aquí: sus endpoints ya no
-        // están registrados en el backend, así que renderizarlas daría 404.
-        // Un grupo que se queda sin pestañas desaparece entero.
-        const groups: GroupDef[] = (
-          [
-            { key: "ficha", label: "Ficha", tabs: ["ficha"] },
-            { key: "actividad", label: "Actividad", tabs: ["actividad"] },
-            { key: "tareas", label: "Tareas", tabs: ["tareas"] },
-            { key: "proyectos", label: "Proyectos", tabs: ["proyectos"] },
-            { key: "panel", label: "Panel", tabs: ["panel"] },
-            {
-              key: "relacion",
-              label: "Relación",
-              tabs: [
-                ...(isEnabled("communications") ? (["comunicaciones"] as TabKey[]) : []),
-                "contactos",
-              ],
-            },
-            {
-              key: "outputs",
-              label: "Outputs",
-              tabs: [
-                ...(client.engine_project_id ? (["seo"] as TabKey[]) : []),
-                ...(isEnabled("reports") ? (["informes"] as TabKey[]) : []),
-              ],
-            },
-            {
-              key: "tiempo-dinero",
-              label: "Tiempo y dinero",
-              tabs: [
-                "tiempo",
-                ...(isEnabled("billing") ? (["facturacion"] as TabKey[]) : []),
-                ...(holdedEnabled && isEnabled("holded") ? (["facturas"] as TabKey[]) : []),
-              ],
-            },
-            ...(isEnabled("resources")
-              ? [{ key: "recursos", label: "Recursos", tabs: ["recursos"] as TabKey[] }]
-              : []),
-            { key: "ajustes", label: "Ajustes", tabs: ["ajustes"] },
-          ] as GroupDef[]
-        ).filter((g) => g.tabs.length > 0)
-        const activeGroup =
-          groups.find((g) => g.tabs.includes(activeTab as TabKey)) ?? groups[0]
-        const goToGroup = (g: GroupDef) => setActiveTab(g.tabs[0])
+        type AreaDef = { key: string; label: string; tabs: TabKey[] }
+        const areas = ([
+          {
+            key: "resumen",
+            label: "Resumen",
+            tabs: ["ficha", "actividad", "panel"],
+          },
+          {
+            key: "trabajo",
+            label: "Trabajo",
+            tabs: [
+              ...(isTabVisible("tareas") ? (["tareas"] as TabKey[]) : []),
+              ...(isTabVisible("proyectos") ? (["proyectos"] as TabKey[]) : []),
+              "tiempo",
+            ],
+          },
+          {
+            key: "outputs",
+            label: "Resúmenes y archivos",
+            tabs: [
+              ...(isTabVisible("resumenes") ? (["resumenes"] as TabKey[]) : []),
+              ...(isTabVisible("informes") ? (["informes"] as TabKey[]) : []),
+              ...(isTabVisible("comunicaciones")
+                ? (["comunicaciones"] as TabKey[])
+                : []),
+              ...(isTabVisible("recursos") ? (["recursos"] as TabKey[]) : []),
+              ...(client.engine_project_id ? (["seo"] as TabKey[]) : []),
+            ],
+          },
+          {
+            key: "ajustes",
+            label: "Ajustes",
+            tabs: [
+              "contactos",
+              ...(isTabVisible("facturacion") ? (["facturacion"] as TabKey[]) : []),
+              ...(holdedEnabled && isTabVisible("facturas")
+                ? (["facturas"] as TabKey[])
+                : []),
+              "ajustes",
+            ],
+          },
+        ] satisfies AreaDef[]).filter((area) => area.tabs.length > 0)
+        const activeArea =
+          areas.find((area) => area.tabs.includes(activeTab)) ?? areas[0]
+        const tabLabels: Record<TabKey, string> = {
+          ficha: "Ficha",
+          actividad: "Actividad",
+          panel: "Panel",
+          tareas: "Tareas",
+          proyectos: "Proyectos",
+          tiempo: "Tiempo",
+          resumenes: "Resúmenes",
+          informes: "Informes",
+          comunicaciones: "Comunicaciones",
+          recursos: "Archivos",
+          seo: "SEO",
+          contactos: "Contactos",
+          facturacion: "Comercial",
+          facturas: "Facturas",
+          ajustes: "Configuración",
+        }
         return (
-          <div className="space-y-2">
-            <div className="flex items-center space-x-1 bg-muted/30 p-1 w-fit rounded-lg border border-border overflow-x-auto">
-              {groups
-                .filter((g) => g.tabs.length > 0)
-                .map((g) => (
-                  <Button
-                    key={g.key}
-                    variant={activeGroup.key === g.key ? "default" : "ghost"}
-                    size="sm"
-                    className="whitespace-nowrap"
-                    onClick={() => goToGroup(g)}
-                  >
-                    {g.label}
-                  </Button>
-                ))}
+          <nav className="space-y-2" aria-label="Áreas del cliente">
+            <Select
+              className="md:hidden"
+              aria-label="Área del cliente"
+              value={activeArea.key}
+              onChange={(event) => {
+                const area = areas.find(
+                  (item) => item.key === event.target.value,
+                )
+                if (area?.tabs[0]) setActiveTab(area.tabs[0])
+              }}
+            >
+              {areas.map((area) => (
+                <option key={area.key} value={area.key}>
+                  {area.label}
+                </option>
+              ))}
+            </Select>
+            <div className="hidden md:flex items-center gap-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
+              {areas.map((area) => (
+                <Button
+                  key={area.key}
+                  variant={activeArea.key === area.key ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setActiveTab(area.tabs[0])}
+                >
+                  {area.label}
+                </Button>
+              ))}
             </div>
-            {activeGroup.tabs.length > 1 && (
-              <div className="flex items-center gap-1 pl-2 overflow-x-auto">
-                {activeGroup.tabs.map((t) => (
+            {activeArea.tabs.length > 1 && (
+              <Select
+                className="md:hidden"
+                aria-label="Sección del área"
+                value={activeTab}
+                onChange={(event) => setActiveTab(event.target.value as Tab)}
+              >
+                {activeArea.tabs.map((tab) => (
+                  <option key={tab} value={tab}>
+                    {tabLabels[tab]}
+                  </option>
+                ))}
+              </Select>
+            )}
+            {activeArea.tabs.length > 1 && (
+              <div className="hidden md:flex items-center gap-1 pl-2 flex-wrap">
+                {activeArea.tabs.map((tab) => (
                   <Button
-                    key={t}
-                    variant={activeTab === t ? "secondary" : "ghost"}
+                    key={tab}
+                    variant={activeTab === tab ? "secondary" : "ghost"}
                     size="sm"
-                    className="capitalize text-xs h-7 whitespace-nowrap"
-                    onClick={() => setActiveTab(t as Tab)}
+                    className="text-xs h-7"
+                    onClick={() => setActiveTab(tab)}
                   >
-                    {t}
+                    {tabLabels[tab]}
                   </Button>
                 ))}
               </div>
             )}
-          </div>
+          </nav>
         )
       })()}
 
@@ -545,6 +608,14 @@ export default function ClientDetailPage() {
             <div className="flex items-center justify-between"><CardTitle>Tareas</CardTitle>{hasPermission("tasks", true) && <Button size="sm" onClick={() => setCreatingTask(true)}>Nueva tarea</Button>}</div>
           </CardHeader>
           <CardContent className="pt-4">
+            {projectsQuery.isPending ? (
+              <p role="status" className="py-8 text-center text-sm text-muted-foreground">Cargando proyectos…</p>
+            ) : projectsQuery.isError ? (
+              <div role="alert" className="flex items-center justify-between gap-3 py-4 text-sm">
+                <span>No se pudieron cargar los proyectos.</span>
+                <Button size="sm" variant="outline" onClick={() => projectsQuery.refetch()}>Reintentar</Button>
+              </div>
+            ) : (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -585,6 +656,7 @@ export default function ClientDetailPage() {
                 )}
               </TableBody>
             </Table>
+            )}
           </CardContent>
         </Card>
       )}
@@ -596,6 +668,14 @@ export default function ClientDetailPage() {
             <CardTitle>Proyectos</CardTitle>
           </CardHeader>
           <CardContent className="pt-4">
+            {recentEntriesQuery.isPending ? (
+              <p role="status" className="py-8 text-center text-sm text-muted-foreground">Cargando tiempo…</p>
+            ) : recentEntriesQuery.isError ? (
+              <div role="alert" className="flex items-center justify-between gap-3 py-4 text-sm">
+                <span>No se pudo cargar el tiempo registrado.</span>
+                <Button size="sm" variant="outline" onClick={() => recentEntriesQuery.refetch()}>Reintentar</Button>
+              </div>
+            ) : (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -643,6 +723,7 @@ export default function ClientDetailPage() {
                 )}
               </TableBody>
             </Table>
+            )}
           </CardContent>
         </Card>
       )}
@@ -654,6 +735,23 @@ export default function ClientDetailPage() {
           <RevenueIntelligenceCard client={client} />
           <ClientDashboardTab client={client} />
         </div>
+      )}
+
+      {/* Tab: Resúmenes */}
+      {activeTab === "resumenes" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Resúmenes del cliente</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col items-start gap-3 pt-4">
+            <p className="text-sm text-muted-foreground">
+              Consulta y prepara los resúmenes semanales de {client.name}.
+            </p>
+            <Link to={`/digests?client_id=${clientId}`}>
+              <Button variant="outline">Abrir resúmenes de {client.name}</Button>
+            </Link>
+          </CardContent>
+        </Card>
       )}
 
       {/* Tab: Comunicaciones */}
