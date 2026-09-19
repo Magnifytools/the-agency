@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
+import { useAuth } from "@/context/auth-context"
 
 const sectionLabels: Record<keyof DigestSections, { title: string; color: string }> = {
   done: { title: "Hecho", color: "bg-green-100 text-green-800" },
@@ -28,6 +29,8 @@ const sectionLabels: Record<keyof DigestSections, { title: string; color: string
 }
 
 export default function DigestEditPage() {
+  const { hasPermission } = useAuth()
+  const canWrite = hasPermission("digests", true)
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { key: routeKey } = useLocation()
@@ -53,7 +56,7 @@ export default function DigestEditPage() {
   const [previewFormat, setPreviewFormat] = useState<"slack" | "email">("slack")
   const [previewContent, setPreviewContent] = useState("")
 
-  const { data: digest, isLoading } = useQuery({
+  const { data: digest, isLoading, isError, refetch } = useQuery({
     queryKey: ["digest", id],
     queryFn: () => digestsApi.get(Number(id)),
     enabled: !!id,
@@ -92,6 +95,8 @@ export default function DigestEditPage() {
     if (!active.current || Number(liveId.current) !== sourceId || viewEpoch.current !== sourceEpoch) return
     queryClient.setQueryData(["digest", String(saved.id)], saved)
     queryClient.invalidateQueries({ queryKey: ["digests"] })
+    queryClient.invalidateQueries({ queryKey: ["digest-generation-preview"] })
+    queryClient.invalidateQueries({ queryKey: ["digest-external-delivery"] })
     if (saved.id !== Number(id)) {
       liveId.current = String(saved.id)
       navigate(`/digests/${saved.id}/edit`, { replace: true })
@@ -194,10 +199,11 @@ export default function DigestEditPage() {
     )
   }
 
-  if (!digest) {
+  if (isError || !digest) {
     return (
       <div className="text-center py-20">
-        <p className="text-muted-foreground">Digest no encontrado</p>
+        <p role={isError ? "alert" : undefined} className="text-muted-foreground">{isError ? "No se pudo cargar el resumen. Comprueba la conexión y que tengas acceso." : "Resumen no encontrado"}</p>
+        {isError && <Button variant="outline" className="mt-4 mr-2" onClick={() => void refetch()}>Reintentar</Button>}
         <Button variant="outline" className="mt-4" onClick={() => navigate("/digests")}>
           Volver
         </Button>
@@ -207,14 +213,14 @@ export default function DigestEditPage() {
 
   return (
     <div className="space-y-6">
-      <fieldset disabled={busy} className="space-y-6 min-w-0">
+      <Button variant="ghost" size="sm" onClick={() => navigate("/digests")}>
+        <ArrowLeft className="w-4 h-4 mr-1" />Volver
+      </Button>
+      {!canWrite && <p className="text-sm text-muted-foreground">Puedes consultar esta versión. Necesitas permiso de edición para modificarla o preparar su envío.</p>}
+      <fieldset disabled={busy || !canWrite} className="space-y-6 min-w-0">
       {/* Header */}
       <div className="flex flex-wrap gap-4 items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/digests")}>
-            <ArrowLeft className="w-4 h-4 mr-1" />
-            Volver
-          </Button>
           <div>
             <h1 className="text-2xl font-bold">{digest.client_name}</h1>
             <p className="text-muted-foreground text-sm">
@@ -354,7 +360,7 @@ export default function DigestEditPage() {
 
       </fieldset>
       <p className="text-sm text-muted-foreground">Versión #{digest.id} · Guardar crea una versión si hay cambios. Las anteriores siguen disponibles en Resúmenes.</p>
-      <ConfirmDialog open={pendingTone !== null} onOpenChange={(open) => { if (!open) setPendingTone(null) }} title="Crear una versión con otro tono" description="Se guardará tu borrador actual y se generará otra versión. Podrás volver a la anterior desde Resúmenes." confirmLabel="Guardar y generar" onConfirm={() => { if (pendingTone) toneChangeMutation.mutate({ sourceId: Number(id), epoch: viewEpoch.current, newTone: pendingTone, content: draftContent(), tone }) }} />
+      <ConfirmDialog open={pendingTone !== null && canWrite} onOpenChange={(open) => { if (!open) setPendingTone(null) }} title="Crear una versión con otro tono" description="Se guardará tu borrador actual y se generará otra versión. Podrás volver a la anterior desde Resúmenes." confirmLabel="Guardar y generar" onConfirm={() => { if (pendingTone && canWrite) toneChangeMutation.mutate({ sourceId: Number(id), epoch: viewEpoch.current, newTone: pendingTone, content: draftContent(), tone }) }} />
 
       {digest.raw_context && <DigestFacts context={digest.raw_context} />}
       <DigestExternalDelivery digestId={digest.id} unsaved={unsaved} busy={busy} />
