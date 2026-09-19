@@ -1,10 +1,13 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import DOMPurify from "dompurify"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle, Trash2, ClipboardCopy, CheckCircle2 } from "lucide-react"
 import { DeliveryReceipts, deliveryToast } from "@/components/delivery-receipts"
+import { useAuth } from "@/context/auth-context"
+import { DigestCohort } from "@/components/digests/digest-cohort"
+import { reportPolicyKeys } from "@/lib/report-policy-api"
 import { digestsApi, clientsApi, discordApi } from "@/lib/api"
 import type { Digest, DigestStatus, DigestTone } from "@/lib/types"
 
@@ -27,6 +30,25 @@ const toneLabels: Record<DigestTone, string> = {
 }
 
 export default function DigestsPage() {
+  const { user, hasPermission } = useAuth()
+  if (!user || !hasPermission("digests")) return null
+  return <DigestList key={`${user.id}:${hasPermission("digests", true)}`} />
+}
+
+function DigestList() {
+  const { user, hasPermission } = useAuth()
+  const canWrite = hasPermission("digests", true)
+  const canViewClients = hasPermission("clients")
+  const active = useRef(true)
+  useEffect(() => { active.current = true; return () => { active.current = false } }, [])
+  const previewRequest = useRef({ id: 0, epoch: 0 })
+  const discordRequest = useRef({ id: 0, epoch: 0 })
+  const copyEpoch = useRef(0)
+  const [previewReady, setPreviewReady] = useState(false)
+  const [previewError, setPreviewError] = useState("")
+  const [discordReady, setDiscordReady] = useState(false)
+  const [discordError, setDiscordError] = useState("")
+  const isLivePreview = (request: { id: number; epoch: number }, ref: typeof previewRequest) => active.current && request.id === ref.current.id && request.epoch === ref.current.epoch
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -55,18 +77,24 @@ export default function DigestsPage() {
   const [discordIsEditing, setDiscordIsEditing] = useState(false)
   const [digestToDelete, setDigestToDelete] = useState<Digest | null>(null)
 
-  const { data: digests = [], isLoading } = useQuery({
-    queryKey: ["digests", filterStatus, filterClient, filterPeriodFrom, filterPeriodTo],
-    queryFn: () => digestsApi.list({
+  const { data: digestPages, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } = useInfiniteQuery({
+    queryKey: ["digests", user?.id, filterStatus, filterClient, filterPeriodFrom, filterPeriodTo],
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) => lastPage.length === 20 ? pages.length * 20 : undefined,
+    queryFn: ({ pageParam }) => digestsApi.list({
+      limit: 20,
+      offset: pageParam,
       status: filterStatus || undefined,
       client_id: filterClient || undefined,
       period_from: filterPeriodFrom || undefined,
       period_to: filterPeriodTo || undefined,
     }),
   })
+  const digests = Array.from(new Map((digestPages?.pages.flat() ?? []).map(digest => [digest.id, digest])).values())
 
   const { data: clients = [] } = useQuery({
-    queryKey: ["clients-all-active"],
+    queryKey: ["clients-all-active", user?.id],
+    enabled: canViewClients,
     queryFn: () => clientsApi.listAll("active"),
   })
 
@@ -74,26 +102,23 @@ export default function DigestsPage() {
     mutationFn: (data: { client_id: number; tone: DigestTone; period_start?: string; period_end?: string }) =>
       digestsApi.generate({ client_id: data.client_id, tone: data.tone, period_start: data.period_start, period_end: data.period_end }),
     onSuccess: () => {
+      if (!active.current) return
+      queryClient.invalidateQueries({ queryKey: reportPolicyKeys.preview })
+      queryClient.invalidateQueries({ queryKey: reportPolicyKeys.external })
       queryClient.invalidateQueries({ queryKey: ["digests"] })
       setGenerateOpen(false)
-      toast.success("Digest generado correctamente")
+      toast.success("Resumen generado. Revisa su nueva versión.")
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al generar digest")),
-  })
-
-  const batchMutation = useMutation({
-    mutationFn: (tone: DigestTone) => digestsApi.generateBatch({ tone }),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["digests"] })
-      toast.success(`${data.length} digests generados`)
-    },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al generar batch")),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al generar el resumen")),
   })
 
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: DigestStatus }) =>
       digestsApi.updateStatus(id, status),
     onSuccess: () => {
+      if (!active.current) return
+      queryClient.invalidateQueries({ queryKey: reportPolicyKeys.preview })
+      queryClient.invalidateQueries({ queryKey: reportPolicyKeys.external })
       queryClient.invalidateQueries({ queryKey: ["digests"] })
       toast.success("Estado actualizado")
     },
@@ -101,46 +126,71 @@ export default function DigestsPage() {
   })
 
   const renderMutation = useMutation({
-    mutationFn: ({ id, format }: { id: number; format: "slack" | "email" }) =>
-      digestsApi.render(id, format),
-    onSuccess: (data) => {
+    mutationFn: ({ id, format }: { id: number; epoch: number; format: "slack" | "email" }) => digestsApi.render(id, format),
+    onSuccess: (data, request) => {
+      if (!isLivePreview(request, previewRequest)) return
       setPreviewContent(data.rendered)
+      setPreviewReady(true)
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al renderizar")),
+    onError: (error, request) => { if (isLivePreview(request, previewRequest)) setPreviewError(getErrorMessage(error, "No se pudo cargar esta versión. Vuelve a intentarlo.")) },
   })
 
   const discordPreviewMutation = useMutation({
-    mutationFn: (digestId: number) => digestsApi.render(digestId, "slack"),
-    onSuccess: (data) => {
+    mutationFn: ({ id }: { id: number; epoch: number }) => digestsApi.render(id, "slack"),
+    onSuccess: (data, request) => {
+      if (!isLivePreview(request, discordRequest)) return
       setDiscordPreviewContent(data.rendered)
       setDiscordIsEditing(false)
+      setDiscordReady(true)
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al renderizar para Discord")),
+    onError: (error, request) => { if (isLivePreview(request, discordRequest)) setDiscordError(getErrorMessage(error, "No se pudo cargar esta versión para Discord.")) },
   })
 
   const discordSendCustomMutation = useMutation({
-    mutationFn: ({ id, content }: { id: number; content: string }) => discordApi.sendDigest(id, content),
-    onSuccess: (data) => {
-      deliveryToast(data)
+    mutationFn: ({ id, content }: { id: number; epoch: number; content: string }) => discordApi.sendDigest(id, content),
+    onSuccess: (data, request) => {
+      if (!active.current) return
       queryClient.invalidateQueries({ queryKey: ["deliveries"] })
+      queryClient.invalidateQueries({ queryKey: reportPolicyKeys.preview })
+      queryClient.invalidateQueries({ queryKey: reportPolicyKeys.external })
+      if (isLivePreview(request, discordRequest)) deliveryToast(data)
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al enviar a Discord")),
+    onError: (error, request) => { if (isLivePreview(request, discordRequest)) toast.error(getErrorMessage(error, "No se pudo confirmar el envío. Comprueba los recibos antes de reintentarlo.")) },
   })
 
   const handleDiscordPreview = (digest: Digest) => {
+    const request = { id: digest.id, epoch: discordRequest.current.epoch + 1 }
+    discordRequest.current = request
     setDiscordPreviewDigest(digest)
     setDiscordPreviewContent("")
     setDiscordIsEditing(false)
-    discordPreviewMutation.mutate(digest.id)
+    setDiscordReady(false)
+    setDiscordError("")
+    discordPreviewMutation.mutate(request)
+  }
+  const closeDiscordPreview = () => {
+    discordRequest.current = { id: 0, epoch: discordRequest.current.epoch + 1 }
+    setDiscordPreviewDigest(null)
+    setDiscordPreviewContent("")
+    setDiscordReady(false)
+  }
+  const closePreview = () => {
+    previewRequest.current = { id: 0, epoch: previewRequest.current.epoch + 1 }
+    setPreviewDigest(null)
+    setPreviewContent("")
+    setPreviewReady(false)
   }
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => digestsApi.delete(id),
     onSuccess: () => {
+      if (!active.current) return
+      queryClient.invalidateQueries({ queryKey: reportPolicyKeys.preview })
+      queryClient.invalidateQueries({ queryKey: reportPolicyKeys.external })
       queryClient.invalidateQueries({ queryKey: ["digests"] })
-      toast.success("Digest eliminado")
+      toast.success("Resumen eliminado")
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar digest")),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar el resumen")),
   })
 
   const handleDelete = (digest: Digest) => {
@@ -148,7 +198,7 @@ export default function DigestsPage() {
   }
 
   const handleGenerate = () => {
-    if (!selectedClientId) return
+    if (!selectedClientId || !canWrite || generateMutation.isPending) return
     if (Boolean(genPeriodStart) !== Boolean(genPeriodEnd) || (genPeriodStart && genPeriodEnd < genPeriodStart)) {
       toast.error("Indica las dos fechas en orden, o deja ambas vacías para usar la última semana cerrada.")
       return
@@ -161,16 +211,20 @@ export default function DigestsPage() {
     })
   }
 
-  const handlePreview = async (digest: Digest, fmt: "slack" | "email") => {
+  const handlePreview = (digest: Digest, fmt: "slack" | "email") => {
+    const request = { id: digest.id, epoch: previewRequest.current.epoch + 1, format: fmt }
+    previewRequest.current = request
+    setPreviewReady(false)
+    setPreviewError("")
     setPreviewDigest(digest)
     setPreviewFormat(fmt)
     setPreviewContent("")
-    renderMutation.mutate({ id: digest.id, format: fmt })
+    renderMutation.mutate(request)
   }
 
   const handleCopyToClipboard = async () => {
     const content = previewContent
-    if (!content) return
+    if (!content || !previewReady || !previewDigest || previewRequest.current.id !== previewDigest.id) return
     try {
       await navigator.clipboard.writeText(content)
       toast.success("Copiado al portapapeles")
@@ -180,13 +234,15 @@ export default function DigestsPage() {
   }
 
   const handleQuickCopy = async (digest: Digest, format: "slack" | "email" | "email_plain") => {
+    const epoch = ++copyEpoch.current
     try {
       const data = await digestsApi.render(digest.id, format)
+      if (!active.current || copyEpoch.current !== epoch) return
       await navigator.clipboard.writeText(data.rendered)
       const labels: Record<string, string> = { slack: "Slack", email: "Email HTML", email_plain: "Texto plano" }
       toast.success(`${labels[format] || format} copiado`)
     } catch (err) {
-      toast.error(getErrorMessage(err, "Error al copiar"))
+      if (active.current && copyEpoch.current === epoch) toast.error(getErrorMessage(err, "Error al copiar"))
     }
   }
 
@@ -195,29 +251,21 @@ export default function DigestsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Digests Semanales</h1>
-          <p className="text-muted-foreground">{digests.length} digests · Resúmenes semanales con IA para clientes</p>
+          <h1 className="text-2xl font-bold">Resúmenes de clientes</h1>
+          <p className="text-muted-foreground">Resúmenes semanales o mensuales según cada cliente</p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => batchMutation.mutate(selectedTone)}
-            disabled={batchMutation.isPending}
-          >
-            {batchMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-            Generar todos
-          </Button>
-          <Button onClick={() => setGenerateOpen(true)}>
-            <Sparkles className="w-4 h-4 mr-2" />
-            Generar digest
-          </Button>
-        </div>
+        {canWrite && <Button onClick={() => setGenerateOpen(true)} disabled={!canViewClients} title={!canViewClients ? "Necesitas acceso a clientes para elegir una generación individual" : undefined}>
+          <Sparkles className="w-4 h-4 mr-2" />Preparar uno
+        </Button>}
       </div>
 
+      <DigestCohort clientId={filterClient || undefined} />
+
+      <div><h2 className="text-lg font-semibold">Historial de versiones</h2><p className="text-sm text-muted-foreground">Revisa, edita o copia una versión. Discord es distribución interna; no confirma una entrega al cliente.</p></div>
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <div className="w-48">
-          <Select value={String(filterClient)} onChange={(e) => setFilterClient(e.target.value ? Number(e.target.value) : "")}>
+          <Select aria-label="Filtrar por cliente" value={String(filterClient)} onChange={(e) => setFilterClient(e.target.value ? Number(e.target.value) : "")}>
             <option value="">Todos los clientes</option>
             {clients.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
@@ -225,11 +273,11 @@ export default function DigestsPage() {
           </Select>
         </div>
         <div className="w-40">
-          <Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as DigestStatus | "")}>
+          <Select aria-label="Filtrar por estado" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as DigestStatus | "")}>
             <option value="">Todos los estados</option>
             <option value="draft">Borrador</option>
             <option value="reviewed">Revisado</option>
-            <option value="sent">Enviado</option>
+            <option value="sent">Marcado como enviado (histórico)</option>
           </Select>
         </div>
         <div className="flex items-center gap-1.5">
@@ -272,13 +320,15 @@ export default function DigestsPage() {
                     <Loader2 className="w-6 h-6 mx-auto animate-spin opacity-40" />
                   </TableCell>
                 </TableRow>
+              ) : isError && !digestPages ? (
+                <TableRow><TableCell colSpan={6}><div role="alert" className="py-4 text-center">No se pudo cargar el historial. <Button variant="outline" size="sm" onClick={() => void refetch()}>Reintentar historial</Button></div></TableCell></TableRow>
               ) : digests.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={6} className="py-12">
                     <div className="flex flex-col items-center">
                       <FileText className="h-8 w-8 text-muted-foreground/30 mb-3" />
-                      <p className="text-sm font-medium text-foreground mb-1">Sin digests</p>
-                      <p className="text-xs text-muted-foreground">Genera resúmenes semanales con IA para tus clientes.</p>
+                      <p className="text-sm font-medium text-foreground mb-1">Sin resúmenes</p>
+                      <p className="text-xs text-muted-foreground">Prepara una selección de clientes o un resumen individual.</p>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -295,12 +345,14 @@ export default function DigestsPage() {
                     <TableCell>
                       <Select
                         value={digest.status}
+                        aria-label={`Estado histórico de versión #${digest.id}`}
+                        disabled={!canWrite || statusMutation.isPending}
                         onChange={(e) => statusMutation.mutate({ id: digest.id, status: e.target.value as DigestStatus })}
-                        className="w-32 h-8 text-sm"
+                        className="w-48 h-8 text-sm"
                       >
                         <option value="draft">Borrador</option>
                         <option value="reviewed">Revisado</option>
-                        <option value="sent">Enviado</option>
+                        <option value="sent">Marcado como enviado (histórico)</option>
                       </Select>
                     </TableCell>
                     <TableCell>
@@ -315,6 +367,7 @@ export default function DigestsPage() {
                           variant="ghost"
                           size="sm"
                           title="Editar"
+                          disabled={!canWrite}
                           onClick={() => navigate(`/digests/${digest.id}/edit`)}
                         >
                           <Pencil className="w-4 h-4" />
@@ -322,7 +375,7 @@ export default function DigestsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          title="Preview"
+                          title="Vista previa"
                           onClick={() => handlePreview(digest, "slack")}
                         >
                           <Eye className="w-4 h-4" />
@@ -352,17 +405,17 @@ export default function DigestsPage() {
                           size="sm"
                           title="Discord (interno)"
                           onClick={() => handleDiscordPreview(digest)}
-                          disabled={discordPreviewMutation.isPending}
+                          disabled={!canWrite}
                         >
                           <MessageCircle className="w-4 h-4" />
                         </Button>
-                        {digest.status !== "sent" && (
+                        {canWrite && digest.status !== "sent" && (
                           <>
                             <span className="w-px h-5 bg-border mx-0.5" />
                             <Button
                               variant="ghost"
                               size="sm"
-                              title="Marcar como enviado"
+                              title="Marcar como enviado (histórico)"
                               className="text-green-600 hover:text-green-500"
                               onClick={() => statusMutation.mutate({ id: digest.id, status: "sent" as DigestStatus })}
                               disabled={statusMutation.isPending}
@@ -391,15 +444,21 @@ export default function DigestsPage() {
         </CardContent>
       </Card>
 
+      {digestPages && <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">Mostrando {digests.length} {digests.length === 1 ? "versión" : "versiones"}.</p>
+        {isFetchNextPageError && <p role="alert" className="text-sm">No se pudieron cargar las versiones anteriores. Las que ya ves se conservan.</p>}
+        {hasNextPage && <Button variant="outline" disabled={isFetchingNextPage} onClick={() => void fetchNextPage()}>{isFetchingNextPage ? <><Loader2 className="size-4 mr-2 animate-spin" />Cargando versiones…</> : isFetchNextPageError ? "Reintentar versiones anteriores" : "Cargar versiones anteriores"}</Button>}
+      </div>}
+
       {/* Generate Dialog */}
       <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>
         <DialogHeader>
-          <DialogTitle>Generar Digest</DialogTitle>
+          <DialogTitle>Preparar un resumen</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-4">
           <div className="space-y-2">
-            <Label>Cliente</Label>
-            <Select value={String(selectedClientId)} onChange={(e) => setSelectedClientId(e.target.value ? Number(e.target.value) : "")}>
+            <Label htmlFor="individual-client">Cliente</Label>
+            <Select id="individual-client" disabled={generateMutation.isPending} value={String(selectedClientId)} onChange={(e) => setSelectedClientId(e.target.value ? Number(e.target.value) : "")}>
               <option value="">Selecciona cliente...</option>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -407,8 +466,8 @@ export default function DigestsPage() {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Tono</Label>
-            <Select value={selectedTone} onChange={(e) => setSelectedTone(e.target.value as DigestTone)}>
+            <Label htmlFor="individual-tone">Tono</Label>
+            <Select id="individual-tone" disabled={generateMutation.isPending} value={selectedTone} onChange={(e) => setSelectedTone(e.target.value as DigestTone)}>
               <option value="cercano">Cercano</option>
               <option value="formal">Formal</option>
               <option value="equipo">Equipo</option>
@@ -450,10 +509,10 @@ export default function DigestsPage() {
       </Dialog>
 
       {/* Preview Dialog */}
-      <Dialog open={!!previewDigest} onOpenChange={() => setPreviewDigest(null)}>
+      <Dialog open={!!previewDigest} onOpenChange={(open) => { if (!open) closePreview() }}>
         <DialogHeader>
           <DialogTitle>
-            Preview — {previewDigest?.client_name} ({previewFormat === "slack" ? "Slack" : "Email"})
+            Vista previa — {previewDigest?.client_name} · Versión #{previewDigest?.id} ({previewFormat === "slack" ? "Slack" : "Email"})
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-4">
@@ -474,7 +533,7 @@ export default function DigestsPage() {
             </Button>
           </div>
 
-          {renderMutation.isPending ? (
+          {previewError ? <div role="alert" className="text-sm">{previewError} <Button variant="outline" size="sm" onClick={() => previewDigest && handlePreview(previewDigest, previewFormat)}>Reintentar vista previa</Button></div> : !previewReady ? (
             <div className="flex justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin opacity-40" />
             </div>
@@ -490,8 +549,8 @@ export default function DigestsPage() {
           )}
 
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setPreviewDigest(null)}>Cerrar</Button>
-            <Button onClick={handleCopyToClipboard} disabled={!previewContent}>
+            <Button variant="outline" onClick={closePreview}>Cerrar</Button>
+            <Button onClick={handleCopyToClipboard} disabled={!previewReady || !previewContent}>
               <Copy className="w-4 h-4 mr-2" />
               Copiar
             </Button>
@@ -500,13 +559,14 @@ export default function DigestsPage() {
       </Dialog>
 
       {/* Discord preview/edit dialog */}
-      <Dialog open={!!discordPreviewDigest} onOpenChange={(open) => { if (!open) setDiscordPreviewDigest(null) }}>
+      <Dialog open={!!discordPreviewDigest} onOpenChange={(open) => { if (!open) closeDiscordPreview() }}>
         <DialogHeader>
           <DialogTitle>
-            Enviar a Discord — {discordPreviewDigest?.client_name}
+            Compartir en Discord interno — {discordPreviewDigest?.client_name} · Versión #{discordPreviewDigest?.id}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-4">
+          <p className="text-sm text-muted-foreground">Compartir aquí no envía el resumen al cliente ni confirma su recepción.</p>
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               {discordIsEditing ? "Edita el contenido antes de enviar" : "Revisa el contenido antes de enviar a Discord"}
@@ -515,20 +575,22 @@ export default function DigestsPage() {
               variant="ghost"
               size="sm"
               onClick={() => setDiscordIsEditing(!discordIsEditing)}
-              disabled={discordPreviewMutation.isPending}
+              disabled={!discordReady || discordSendCustomMutation.isPending}
             >
               <Pencil className="w-4 h-4 mr-1" />
               {discordIsEditing ? "Vista previa" : "Editar"}
             </Button>
           </div>
 
-          {discordPreviewMutation.isPending ? (
+          {discordError ? <div role="alert" className="text-sm">{discordError} <Button variant="outline" size="sm" onClick={() => discordPreviewDigest && handleDiscordPreview(discordPreviewDigest)}>Reintentar vista previa de Discord</Button></div> : !discordReady ? (
             <div className="flex justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin opacity-40" />
             </div>
           ) : discordIsEditing ? (
             <textarea
               className="w-full min-h-[300px] rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono"
+              aria-label="Texto para Discord interno"
+              disabled={discordSendCustomMutation.isPending}
               value={discordPreviewContent}
               onChange={(e) => setDiscordPreviewContent(e.target.value)}
             />
@@ -541,19 +603,19 @@ export default function DigestsPage() {
           {discordPreviewDigest && <DeliveryReceipts sourceKind="digest" sourceId={discordPreviewDigest.id} />}
 
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setDiscordPreviewDigest(null)}>
+            <Button variant="outline" onClick={closeDiscordPreview}>
               Cancelar
             </Button>
             <Button
-              onClick={() => discordPreviewDigest && discordSendCustomMutation.mutate({ id: discordPreviewDigest.id, content: discordPreviewContent })}
-              disabled={!discordPreviewContent.trim() || discordSendCustomMutation.isPending}
+              onClick={() => { if (discordPreviewDigest && canWrite && discordReady && discordRequest.current.id === discordPreviewDigest.id && !discordSendCustomMutation.isPending) discordSendCustomMutation.mutate({ ...discordRequest.current, content: discordPreviewContent }) }}
+              disabled={!discordPreviewDigest || !canWrite || !discordReady || !discordPreviewContent.trim() || discordSendCustomMutation.isPending}
             >
               {discordSendCustomMutation.isPending ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
                 <Send className="w-4 h-4 mr-2" />
               )}
-              Enviar a Discord
+              Compartir en Discord interno
             </Button>
           </div>
         </div>
@@ -562,8 +624,8 @@ export default function DigestsPage() {
       <ConfirmDialog
         open={digestToDelete !== null}
         onOpenChange={(open) => !open && setDigestToDelete(null)}
-        title="Eliminar digest"
-        description={`¿Eliminar el digest de ${digestToDelete?.client_name || "este cliente"}? Esta acción no se puede deshacer.`}
+        title="Eliminar resumen"
+        description={`¿Eliminar el resumen de ${digestToDelete?.client_name || "este cliente"}? Esta acción no se puede deshacer.`}
         confirmLabel="Eliminar"
         onConfirm={() => {
           if (digestToDelete) deleteMutation.mutate(digestToDelete.id)

@@ -11,7 +11,8 @@ const mock = vi.hoisted(() => ({ list: vi.fn(), listManual: vi.fn(), retry: vi.f
 const daily = vi.hoisted(() => ({ list: vi.fn(), sendDiscord: vi.fn() }))
 const digest = vi.hoisted(() => ({ list: vi.fn(), render: vi.fn(), sendDigest: vi.fn(), sendCustom: vi.fn(), listAll: vi.fn() }))
 vi.mock("@/lib/api", () => ({ deliveriesApi: mock, dailysApi: daily, digestsApi: digest, discordApi: digest, clientsApi: digest }))
-vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: { id: 7 } }) }))
+vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: { id: 7 }, isAdmin: true, hasPermission: () => true }) }))
+vi.mock("@/components/digests/digest-cohort", () => ({ DigestCohort: () => null }))
 vi.mock("sonner", () => ({ toast: mock }))
 
 function receipt(partial: Partial<DeliveryReceipt> = {}): DeliveryReceipt {
@@ -48,7 +49,7 @@ describe("Delivery receipts", () => {
     render(<QueryClientProvider client={client}><MemoryRouter><DigestsPage /></MemoryRouter></QueryClientProvider>)
     fireEvent.click(await screen.findByTitle("Discord (interno)"))
     await screen.findByText("Texto revisado del digest")
-    fireEvent.click(screen.getByRole("button", { name: "Enviar a Discord" }))
+    fireEvent.click(screen.getByRole("button", { name: "Compartir en Discord interno" }))
     await waitFor(() => expect(digest.sendDigest).toHaveBeenCalledWith(8, "Texto revisado del digest"))
     expect(digest.sendCustom).not.toHaveBeenCalled()
   })
