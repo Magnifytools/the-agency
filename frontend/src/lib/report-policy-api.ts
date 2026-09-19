@@ -37,6 +37,7 @@ export interface ExternalDeliveryEvent {
   created_at: string
 }
 export interface ExternalDeliveryHistory {
+  can_record: boolean
   events: ExternalDeliveryEvent[]
   external_delivery: ExternalDeliverySummary
   has_newer_version: boolean

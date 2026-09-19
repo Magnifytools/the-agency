@@ -6,6 +6,7 @@ import DigestEditPage from "./digest-edit-page"
 
 const api = vi.hoisted(() => ({ get: vi.fn(), update: vi.fn(), render: vi.fn() }))
 vi.mock("@/lib/api", () => ({ digestsApi: api }))
+vi.mock("@/components/digests/digest-external-delivery", () => ({ DigestExternalDelivery: ({ unsaved }: { unsaved: boolean }) => <output data-testid="delivery-unsaved">{String(unsaved)}</output> }))
 const source = {
   id: 10, client_id: 1, client_name: "Acme", status: "draft", tone: "cercano",
   period_start: "2026-09-07", period_end: "2026-09-13", raw_context: null,
@@ -29,6 +30,7 @@ it("saves metrics and navigates to the returned version without changing the rep
   const greeting = await screen.findByLabelText("Saludo")
   await waitFor(() => expect(greeting).toHaveValue("Hola Acme"))
   fireEvent.change(greeting, { target: { value: "Hola, equipo" } })
+  expect(screen.getByTestId("delivery-unsaved")).toHaveTextContent("true")
   expect(screen.getByLabelText("Período del informe")).toHaveAttribute("readonly")
   fireEvent.click(screen.getByRole("button", { name: "Guardar" }))
   await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/digests/11/edit"))

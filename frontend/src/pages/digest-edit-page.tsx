@@ -14,6 +14,7 @@ import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { DigestFacts } from "@/components/digests/digest-facts"
+import { DigestExternalDelivery } from "@/components/digests/digest-external-delivery"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
@@ -151,6 +152,8 @@ export default function DigestEditPage() {
     }
   }
   const busy = updateMutation.isPending || toneChangeMutation.isPending || previewSaving
+  const unsaved = !!digest && (tone !== digest.tone || greeting !== (digest.content?.greeting || "") || closing !== (digest.content?.closing || "") ||
+    (["done", "need", "next", "metrics"] as const).some(section => JSON.stringify(sections[section]) !== JSON.stringify(digest.content?.sections?.[section] || [])))
 
   const handleCopy = async () => {
     try {
@@ -354,6 +357,7 @@ export default function DigestEditPage() {
       <ConfirmDialog open={pendingTone !== null} onOpenChange={(open) => { if (!open) setPendingTone(null) }} title="Crear una versión con otro tono" description="Se guardará tu borrador actual y se generará otra versión. Podrás volver a la anterior desde Resúmenes." confirmLabel="Guardar y generar" onConfirm={() => { if (pendingTone) toneChangeMutation.mutate({ sourceId: Number(id), epoch: viewEpoch.current, newTone: pendingTone, content: draftContent(), tone }) }} />
 
       {digest.raw_context && <DigestFacts context={digest.raw_context} />}
+      <DigestExternalDelivery digestId={digest.id} unsaved={unsaved} busy={busy} />
 
       {/* Preview Dialog */}
       <Dialog open={previewOpen && previewId === Number(id)} onOpenChange={setPreviewOpen}>

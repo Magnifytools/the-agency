@@ -27,6 +27,7 @@ import { BillingTab } from "@/components/clients/billing-tab"
 import { ClientDashboardTab } from "@/components/clients/client-dashboard-tab"
 import { ClientAiAdvisor } from "@/components/clients/client-ai-advisor"
 import { ClientReportsTab } from "@/components/clients/client-reports-tab"
+import { ClientReportPolicy } from "@/components/clients/client-report-policy"
 import { ClientSettingsTab } from "@/components/clients/client-settings-tab"
 import { EngineMetricsWidget } from "@/components/clients/engine-metrics-widget"
 import { EngineSeoTab } from "@/components/clients/engine-seo-tab"
@@ -747,19 +748,7 @@ export default function ClientDetailPage() {
 
       {/* Tab: Resúmenes */}
       {activeTab === "resumenes" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Resúmenes del cliente</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col items-start gap-3 pt-4">
-            <p className="text-sm text-muted-foreground">
-              Consulta y prepara los resúmenes semanales de {client.name}.
-            </p>
-            <Link to={`/digests?client_id=${clientId}`}>
-              <Button variant="outline">Abrir resúmenes de {client.name}</Button>
-            </Link>
-          </CardContent>
-        </Card>
+        <ClientReportPolicy clientId={clientId} clientName={client.name} />
       )}
 
       {/* Tab: Comunicaciones */}
