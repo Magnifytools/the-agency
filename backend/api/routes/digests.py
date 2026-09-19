@@ -12,13 +12,12 @@ Endpoints:
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import exists, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -29,7 +28,10 @@ from backend.core.rate_limiter import ai_limiter
 from backend.db.database import get_db
 from backend.db.models import (
     Client,
+    ClientReportPolicy,
     ClientStatus,
+    Delivery,
+    DigestExternalDeliveryEvent,
     DigestStatus,
     DigestTone,
     User,
@@ -45,7 +47,9 @@ from backend.schemas.digest import (
     DigestUpdateRequest,
 )
 from backend.services.digest_collector import collect_digest_data
+from backend.services.digest_access import authorize_digest, digest_visibility_clause
 from backend.services.digest_generator import generate_digest_content
+from backend.services.digest_generation import DigestGenerationRejected, generate_locked_digest
 from backend.services.digest_periods import (
     canonicalize_digest_content,
     resolve_digest_period,
@@ -122,40 +126,30 @@ async def generate_digest(
         request.period_start, request.period_end
     )
 
-    # Validate client exists
-    client_result = await db.execute(select(Client).where(Client.id == request.client_id))
-    client = client_result.scalar_one_or_none()
-    if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
-
-    # Collect raw data
-    raw_data = await collect_digest_data(db, request.client_id, period_start, period_end)
-
-    # Generate content via Claude API
     try:
-        generated_content = await generate_digest_content(raw_data, request.tone)
-        content = canonicalize_digest_content(
-            generated_content, period_start, period_end
+        digest = await generate_locked_digest(
+            db,
+            actor_id=current_user.id,
+            client_id=request.client_id,
+            period_start=period_start,
+            period_end=period_end,
+            tone=request.tone,
+            expected_revision=None,
+            require_enabled=False,
+            reject_existing=False,
+            collector=collect_digest_data,
+            generator=generate_digest_content,
         )
+    except DigestGenerationRejected as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail={"code": exc.reason}) from exc
     except ValueError:
+        await db.rollback()
         raise HTTPException(status_code=400, detail="No se pudo generar el digest con los datos proporcionados")
     except Exception:
+        await db.rollback()
         logger.exception("Unexpected error generating digest for client_id=%s", request.client_id)
         raise HTTPException(status_code=502, detail="Error generando digest")
-
-    # Create digest record
-    digest = WeeklyDigest(
-        client_id=request.client_id,
-        period_start=period_start,
-        period_end=period_end,
-        status=DigestStatus.draft,
-        tone=request.tone,
-        content=content,
-        raw_context=raw_data,
-        generated_at=datetime.now(timezone.utc).replace(tzinfo=None),
-        created_by=current_user.id,
-    )
-    db.add(digest)
     await db.commit()
     await safe_refresh(db, digest, log_context="digests")
 
@@ -172,102 +166,15 @@ async def generate_digest(
 # POST /generate-batch — Generate digests for all active clients
 # ---------------------------------------------------------------------------
 
-@router.post("/generate-batch", response_model=list[DigestResponse])
-async def generate_batch(
-    period_start: Optional[date] = None,
-    period_end: Optional[date] = None,
-    tone: DigestTone = DigestTone.cercano,
-    db: AsyncSession = Depends(get_db),
+@router.post("/generate-batch")
+async def generate_batch_retired(
     current_user: User = Depends(require_module("digests", write=True)),
 ):
-    """Generate digests for all active clients at once."""
-    ai_limiter.check(current_user.id, max_requests=3, window_seconds=60)
-
-    period_start, period_end = _resolve_period_or_422(period_start, period_end)
-
-    # Get all active clients
-    result = await db.execute(
-        select(Client).where(Client.status == ClientStatus.active)
+    """Retired with the policy cohort UI; never bypass preview/revalidation."""
+    raise HTTPException(
+        status_code=410,
+        detail={"code": "legacy_batch_retired", "message": "Usa la vista previa de cohorte"},
     )
-    clients = result.scalars().all()
-
-    if not clients:
-        raise HTTPException(status_code=404, detail="No active clients found")
-
-    # Collect data sequentially (shares DB session), then generate AI content concurrently
-    client_data: list[tuple] = []
-    for client in clients:
-        try:
-            raw_data = await collect_digest_data(db, client.id, period_start, period_end)
-            client_data.append((client, raw_data))
-        except Exception:
-            logger.exception("Batch data collection failed for client_id=%s", client.id)
-
-    sem = asyncio.Semaphore(5)
-
-    async def _generate(raw_data: dict) -> dict:
-        async with sem:
-            return await generate_digest_content(raw_data, tone)
-
-    ai_results = await asyncio.gather(
-        *[_generate(raw_data) for _, raw_data in client_data],
-        return_exceptions=True,
-    )
-
-    digests = []
-    for (client, raw_data), result in zip(client_data, ai_results):
-        if isinstance(result, Exception):
-            logger.exception("Batch digest generation failed for client_id=%s: %s", client.id, result)
-            continue
-        digest = WeeklyDigest(
-            client_id=client.id,
-            period_start=period_start,
-            period_end=period_end,
-            status=DigestStatus.draft,
-            tone=tone,
-            content=canonicalize_digest_content(result, period_start, period_end),
-            raw_context=raw_data,
-            generated_at=datetime.now(timezone.utc).replace(tzinfo=None),
-            created_by=current_user.id,
-        )
-        db.add(digest)
-        digests.append(digest)
-
-    if digests:
-        await db.commit()
-        for d in digests:
-            await safe_refresh(db, d, log_context="digests")
-
-        # Notify creator that batch is done
-        try:
-            from backend.services.notification_service import (
-                DIGEST_GENERATED,
-                create_notification,
-            )
-            await create_notification(
-                db,
-                user_id=current_user.id,
-                type=DIGEST_GENERATED,
-                title=f"Batch de digests generado",
-                message=f"{len(digests)} digests creados para {period_start} — {period_end}",
-                link_url="/digests",
-                entity_type="digest",
-                entity_id=None,
-            )
-            await db.commit()
-        except Exception as e:
-            logger.debug("Notification for batch digest generation failed (never break digest generation): %s", e)
-            pass  # Notification failure should never break digest generation
-
-    # Reload with relationships for response
-    if digests:
-        digest_ids = [d.id for d in digests]
-        reload_result = await db.execute(
-            select(WeeklyDigest).where(WeeklyDigest.id.in_(digest_ids))
-            .options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
-        )
-        digests = reload_result.scalars().all()
-    return [_to_response(d) for d in digests]
 
 
 # ---------------------------------------------------------------------------
@@ -296,9 +203,9 @@ async def list_digests(
         query = query.where(WeeklyDigest.period_start >= period_from)
     if period_to:
         query = query.where(WeeklyDigest.period_end <= period_to)
-    # Members only see their own digests
-    if current_user.role != UserRole.admin:
-        query = query.where(WeeklyDigest.created_by == current_user.id)
+    visibility = digest_visibility_clause(current_user)
+    if visibility is not None:
+        query = query.where(visibility)
 
     query = query.options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
     query = query.order_by(WeeklyDigest.created_at.desc()).limit(limit).offset(offset)
@@ -318,17 +225,7 @@ async def get_digest(
     current_user: User = Depends(require_module("digests")),
 ):
     """Get a specific digest by ID."""
-    result = await db.execute(
-        select(WeeklyDigest)
-        .where(WeeklyDigest.id == digest_id)
-        .options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
-    )
-    digest = result.scalar_one_or_none()
-
-    if not digest:
-        raise HTTPException(status_code=404, detail="Digest not found")
-    if current_user.role != UserRole.admin and digest.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="Not your digest")
+    digest = await authorize_digest(db, digest_id, current_user, write=False)
 
     return _to_response(digest)
 
@@ -349,16 +246,7 @@ async def update_digest(
     If only the tone changes (no content update), auto-regenerate
     content using stored raw_context. Identical payloads return the same ID.
     """
-    result = await db.execute(
-        select(WeeklyDigest).where(WeeklyDigest.id == digest_id)
-        .options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
-    )
-    digest = result.scalar_one_or_none()
-
-    if not digest:
-        raise HTTPException(status_code=404, detail="Digest not found")
-    if current_user.role != UserRole.admin and digest.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="Not your digest")
+    digest = await authorize_digest(db, digest_id, current_user, write=True)
 
     next_tone = request.tone if request.tone is not None else digest.tone
     tone_changed = next_tone != digest.tone
@@ -446,16 +334,7 @@ async def update_digest_status(
     current_user: User = Depends(require_module("digests", write=True)),
 ):
     """Update a digest's status (draft → reviewed → sent)."""
-    result = await db.execute(
-        select(WeeklyDigest).where(WeeklyDigest.id == digest_id)
-        .options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
-    )
-    digest = result.scalar_one_or_none()
-
-    if not digest:
-        raise HTTPException(status_code=404, detail="Digest not found")
-    if current_user.role != UserRole.admin and digest.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="Not your digest")
+    digest = await authorize_digest(db, digest_id, current_user, write=True)
 
     digest.status = request.status
     await db.commit()
@@ -476,13 +355,7 @@ async def render_digest(
     current_user: User = Depends(require_module("digests")),
 ):
     """Render a digest in the specified format (slack or email)."""
-    result = await db.execute(select(WeeklyDigest).where(WeeklyDigest.id == digest_id))
-    digest = result.scalar_one_or_none()
-
-    if not digest:
-        raise HTTPException(status_code=404, detail="Digest not found")
-    if current_user.role != UserRole.admin and digest.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="Not your digest")
+    digest = await authorize_digest(db, digest_id, current_user, write=False)
 
     if not digest.content:
         raise HTTPException(status_code=400, detail="Digest has no content to render")
@@ -546,20 +419,19 @@ async def delete_digest(
     current_user: User = Depends(require_module("digests", write=True)),
 ):
     """Delete a digest. Admins can delete any; users can only delete their drafts."""
-    result = await db.execute(select(WeeklyDigest).where(WeeklyDigest.id == digest_id))
-    digest = result.scalar_one_or_none()
-
-    if not digest:
-        raise HTTPException(status_code=404, detail="Digest no encontrado")
+    digest = await authorize_digest(db, digest_id, current_user, write=True, lock=True)
 
     is_admin = current_user.role == UserRole.admin
-    is_owner = digest.created_by == current_user.id
-
-    if not is_admin and not is_owner:
-        raise HTTPException(status_code=403, detail="No tienes permiso para eliminar este digest")
 
     if not is_admin and digest.status == DigestStatus.sent:
         raise HTTPException(status_code=409, detail="No puedes eliminar digests ya enviados")
+
+    has_evidence = await db.scalar(select(or_(
+        exists().where(Delivery.source_kind == "digest", Delivery.source_id == digest_id),
+        exists().where(DigestExternalDeliveryEvent.digest_id == digest_id),
+    )))
+    if has_evidence:
+        raise HTTPException(status_code=409, detail={"code": "traceability_required", "message": "Este resumen tiene evidencia de distribución y no se puede eliminar"})
 
     await db.delete(digest)
     await db.commit()

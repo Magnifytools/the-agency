@@ -253,6 +253,16 @@ class DigestTone(str, enum.Enum):
     equipo = "equipo"
 
 
+class ReportCadence(str, enum.Enum):
+    weekly = "weekly"
+    monthly = "monthly"
+
+
+class ExternalDeliveryAction(str, enum.Enum):
+    confirmed = "confirmed"
+    revoked = "revoked"
+
+
 class LeadStatus(str, enum.Enum):
     new = "new"
     contacted = "contacted"
@@ -1200,6 +1210,32 @@ class WeeklyDigest(TimestampMixin, Base):
 
     client = relationship("Client", lazy="selectin")
     creator = relationship("User", lazy="selectin")
+
+
+class ClientReportPolicy(TimestampMixin, Base):
+    __tablename__ = "client_report_policies"
+
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=False, server_default="false")
+    cadence = Column(Enum(ReportCadence, native_enum=False), nullable=False, default=ReportCadence.weekly, server_default="weekly")
+    responsible_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    revision = Column(Integer, nullable=False, default=1, server_default="1")
+
+
+class DigestExternalDeliveryEvent(Base):
+    __tablename__ = "digest_external_delivery_events"
+    __table_args__ = (
+        Index("uq_digest_external_event_request", "actor_id", "request_key", unique=True),
+        Index("ix_digest_external_event_digest_created", "digest_id", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    digest_id = Column(Integer, ForeignKey("weekly_digests.id", ondelete="RESTRICT"), nullable=False)
+    action = Column(Enum(ExternalDeliveryAction, native_enum=False), nullable=False)
+    actor_id = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    request_key = Column(String(80), nullable=False)
+    request_hash = Column(String(64), nullable=False)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
 
 
 class Lead(TimestampMixin, Base):

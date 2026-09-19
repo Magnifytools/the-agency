@@ -66,9 +66,9 @@ async def authorize_source(db, kind, source_id, actor, *, write=True, lock=False
         raise HTTPException(403, "Usuario desactivado o no disponible")
     if kind not in SOURCE_MODELS:
         raise HTTPException(404, "Fuente no encontrada")
-    if kind == "digest" and actor.role != UserRole.admin:
-        if not any(p.module == "digests" and (p.can_write if write else p.can_read) for p in actor.permissions):
-            raise HTTPException(403, "Sin permiso para este resumen")
+    if kind == "digest":
+        from backend.services.digest_access import authorize_digest
+        return await authorize_digest(db, source_id, actor, write=write, lock=lock)
     model = SOURCE_MODELS[kind]
     stmt = select(model).where(model.id == source_id)
     if lock:

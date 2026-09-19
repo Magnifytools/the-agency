@@ -30,6 +30,22 @@ def last_closed_weekly_period(*, today: date | None = None) -> tuple[date, date]
     return current_monday - timedelta(days=7), current_monday - timedelta(days=1)
 
 
+def last_closed_monthly_period(*, today: date | None = None) -> tuple[date, date]:
+    """Return the previous closed natural month in the business timezone."""
+    civil_today = today or business_today()
+    current_month = civil_today.replace(day=1)
+    period_end = current_month - timedelta(days=1)
+    return period_end.replace(day=1), period_end
+
+
+def policy_digest_period(cadence: str, *, today: date | None = None) -> tuple[date, date]:
+    if cadence == "weekly":
+        return last_closed_weekly_period(today=today)
+    if cadence == "monthly":
+        return last_closed_monthly_period(today=today)
+    raise ValueError("Cadencia de resumen no válida")
+
+
 def resolve_digest_period(
     period_start: date | None,
     period_end: date | None,

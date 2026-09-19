@@ -77,7 +77,7 @@ async def test_period_validation_rejects_partial_reversed_and_invalid(
     assert partial.status_code == 422
     assert reversed_period.status_code == 422
     assert invalid.status_code == 422
-    assert batch_partial.status_code == 422
+    assert batch_partial.status_code == 410
 
 
 async def test_generate_preserves_prior_versions_and_provider_failure(
@@ -86,6 +86,7 @@ async def test_generate_preserves_prior_versions_and_provider_failure(
     client = Client(name="Cliente versiones", status=ClientStatus.active)
     db_session.add(client)
     await db_session.flush()
+    client_id = client.id
     generated = AsyncMock(return_value=_content())
 
     with (
@@ -121,7 +122,7 @@ async def test_generate_preserves_prior_versions_and_provider_failure(
     )
     assert failed.status_code == 502
     count = await db_session.scalar(select(func.count(WeeklyDigest.id)).where(
-        WeeklyDigest.client_id == client.id
+        WeeklyDigest.client_id == client_id
     ))
     assert count == 2
 
@@ -245,7 +246,7 @@ async def test_put_is_idempotent_or_creates_new_source_version(
     )) == 3
 
 
-async def test_batch_keeps_existing_draft(db_session, admin_client, admin_user):
+async def test_retired_batch_keeps_existing_draft(db_session, admin_client, admin_user):
     client = Client(name="Cliente batch", status=ClientStatus.active)
     db_session.add(client)
     await db_session.flush()
@@ -284,9 +285,8 @@ async def test_batch_keeps_existing_draft(db_session, admin_client, admin_user):
             params={"period_start": "2026-09-07", "period_end": "2026-09-13"},
         )
 
-    assert response.status_code == 200, response.text
-    assert len(response.json()) == 1
-    assert response.json()[0]["id"] != existing_id
+    assert response.status_code == 410, response.text
+    assert response.json()["detail"]["code"] == "legacy_batch_retired"
     assert await db_session.get(WeeklyDigest, existing_id) is not None
 
 
