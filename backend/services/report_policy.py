@@ -1,8 +1,7 @@
 """Operational report-policy views; no provider calls or commits."""
 from __future__ import annotations
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import noload
+from sqlalchemy import and_, func, or_, select
 
 from backend.db.models import (
     Client,
@@ -23,7 +22,6 @@ from backend.schemas.digest import (
 )
 from backend.services.digest_access import user_has_digest_permission
 from backend.services.digest_periods import policy_digest_period
-from backend.services.temporal import business_today
 
 
 async def policy_response(db, client_id: int, policy: ClientReportPolicy | None = None) -> ReportPolicyResponse:
@@ -53,13 +51,13 @@ async def policy_response(db, client_id: int, policy: ClientReportPolicy | None 
 
 
 async def external_delivery_state(db, digest: WeeklyDigest) -> tuple[ExternalDeliverySummary, bool]:
-    rows = (await db.execute(
+    latest = (await db.execute(
         select(DigestExternalDeliveryEvent, User.full_name)
         .join(User, User.id == DigestExternalDeliveryEvent.actor_id)
         .where(DigestExternalDeliveryEvent.digest_id == digest.id)
         .order_by(DigestExternalDeliveryEvent.created_at.desc(), DigestExternalDeliveryEvent.id.desc())
-    )).all()
-    latest = rows[0] if rows else None
+        .limit(1)
+    )).one_or_none()
     active = bool(latest and latest[0].action == ExternalDeliveryAction.confirmed)
     summary = ExternalDeliverySummary(
         digest_id=digest.id,
@@ -72,10 +70,48 @@ async def external_delivery_state(db, digest: WeeklyDigest) -> tuple[ExternalDel
             WeeklyDigest.client_id == digest.client_id,
             WeeklyDigest.period_start == digest.period_start,
             WeeklyDigest.period_end == digest.period_end,
-            WeeklyDigest.created_at > digest.created_at,
+            or_(
+                WeeklyDigest.created_at > digest.created_at,
+                and_(WeeklyDigest.created_at == digest.created_at, WeeklyDigest.id > digest.id),
+            ),
         ).exists()
     )))
     return summary, has_newer
+
+
+async def _active_period_delivery(db, client_id, period_start, period_end) -> ExternalDeliverySummary:
+    ranked = select(
+        DigestExternalDeliveryEvent.digest_id.label("digest_id"),
+        DigestExternalDeliveryEvent.action.label("action"),
+        DigestExternalDeliveryEvent.actor_id.label("actor_id"),
+        DigestExternalDeliveryEvent.created_at.label("event_created_at"),
+        func.row_number().over(
+            partition_by=DigestExternalDeliveryEvent.digest_id,
+            order_by=(DigestExternalDeliveryEvent.created_at.desc(), DigestExternalDeliveryEvent.id.desc()),
+        ).label("event_rank"),
+    ).subquery()
+    row = (await db.execute(
+        select(ranked.c.digest_id, User.full_name, ranked.c.event_created_at)
+        .join(WeeklyDigest, WeeklyDigest.id == ranked.c.digest_id)
+        .join(User, User.id == ranked.c.actor_id)
+        .where(
+            ranked.c.event_rank == 1,
+            ranked.c.action == ExternalDeliveryAction.confirmed,
+            WeeklyDigest.client_id == client_id,
+            WeeklyDigest.period_start == period_start,
+            WeeklyDigest.period_end == period_end,
+        )
+        .order_by(WeeklyDigest.created_at.desc(), WeeklyDigest.id.desc())
+        .limit(1)
+    )).one_or_none()
+    if not row:
+        return ExternalDeliverySummary()
+    return ExternalDeliverySummary(
+        digest_id=row.digest_id,
+        state="confirmed",
+        actor_name=row.full_name,
+        confirmed_at=row.event_created_at,
+    )
 
 
 async def preview_item(db, client: Client, policy: ClientReportPolicy | None) -> GenerationPreviewItem:
@@ -90,31 +126,35 @@ async def preview_item(db, client: Client, policy: ClientReportPolicy | None) ->
             )).one_or_none()
             responsible_ok = bool(responsible and await user_has_digest_permission(db, policy.responsible_user_id, write=True))
 
-    digests: list[WeeklyDigest] = []
+    latest = None
+    version_count = 0
     if period_start and period_end:
-        digests = list((await db.execute(
-            select(WeeklyDigest).where(
+        version_count = int(await db.scalar(select(func.count(WeeklyDigest.id)).where(
+            WeeklyDigest.client_id == client.id,
+            WeeklyDigest.period_start == period_start,
+            WeeklyDigest.period_end == period_end,
+        )) or 0)
+        latest = (await db.execute(
+            select(WeeklyDigest.id, WeeklyDigest.status, WeeklyDigest.created_at).where(
                 WeeklyDigest.client_id == client.id,
                 WeeklyDigest.period_start == period_start,
                 WeeklyDigest.period_end == period_end,
-            ).order_by(WeeklyDigest.created_at.desc(), WeeklyDigest.id.desc())
-        )).scalars().all())
-    latest = digests[0] if digests else None
+            ).order_by(WeeklyDigest.created_at.desc(), WeeklyDigest.id.desc()).limit(1)
+        )).one_or_none()
 
     internal = InternalDistributionSummary()
     external = ExternalDeliverySummary()
-    has_newer = False
     if latest:
         delivery = (await db.execute(
-            select(Delivery).where(
+            select(Delivery.id, Delivery.status, Delivery.sent_at).where(
                 Delivery.source_kind == "digest", Delivery.source_id == latest.id
-            ).order_by(Delivery.created_at.desc()).limit(1)
-        )).scalar_one_or_none()
+            ).order_by(Delivery.created_at.desc(), Delivery.id.desc()).limit(1)
+        )).one_or_none()
         if delivery:
             internal = InternalDistributionSummary(
                 digest_id=latest.id, state=delivery.status, delivery_id=delivery.id, sent_at=delivery.sent_at
             )
-        external, has_newer = await external_delivery_state(db, latest)
+        external = await _active_period_delivery(db, client.id, period_start, period_end)
 
     if client.status != ClientStatus.active:
         reason = "client_inactive"
@@ -131,9 +171,15 @@ async def preview_item(db, client: Client, policy: ClientReportPolicy | None) ->
     else:
         reason = "eligible"
 
-    if latest is None:
-        state = "missing" if policy else "not_configured"
-    elif has_newer:
+    if policy is None:
+        state = "not_configured"
+    elif not policy.enabled:
+        state = "disabled"
+    elif not responsible_ok:
+        state = "blocked_responsible"
+    elif latest is None:
+        state = "missing"
+    elif external.state == "confirmed" and external.digest_id != latest.id:
         state = "newer_version_unconfirmed"
     elif external.state == "confirmed":
         state = "externally_delivered"
@@ -154,12 +200,12 @@ async def preview_item(db, client: Client, policy: ClientReportPolicy | None) ->
         eligible=reason == "eligible",
         reason=reason,
         latest_digest_id=latest.id if latest else None,
-        version_count=len(digests),
+        version_count=version_count,
         state=state,
         digest=DigestStateSummary(
             latest_digest_id=latest.id if latest else None,
             latest_status=latest.status if latest else None,
-            version_count=len(digests),
+            version_count=version_count,
         ),
         internal_distribution=internal,
         external_delivery=external,

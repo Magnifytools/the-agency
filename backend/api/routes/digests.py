@@ -146,9 +146,9 @@ async def generate_digest(
     except ValueError:
         await db.rollback()
         raise HTTPException(status_code=400, detail="No se pudo generar el digest con los datos proporcionados")
-    except Exception:
+    except Exception as exc:
         await db.rollback()
-        logger.exception("Unexpected error generating digest for client_id=%s", request.client_id)
+        logger.error("Digest generation failed for client_id=%s type=%s", request.client_id, type(exc).__name__)
         raise HTTPException(status_code=502, detail="Error generando digest")
     await db.commit()
     await safe_refresh(db, digest, log_context="digests")
@@ -185,14 +185,16 @@ async def generate_batch_retired(
 async def list_digests(
     client_id: Optional[int] = Query(None),
     status: Optional[DigestStatus] = Query(None),
-    period_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
-    period_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    period_from: Optional[date] = Query(None, description="YYYY-MM-DD"),
+    period_to: Optional[date] = Query(None, description="YYYY-MM-DD"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("digests")),
 ):
     """List digests with optional filters."""
+    if period_from and period_to and period_to < period_from:
+        raise HTTPException(422, "period_to no puede ser anterior a period_from")
     query = select(WeeklyDigest)
 
     if client_id:
@@ -208,7 +210,7 @@ async def list_digests(
         query = query.where(visibility)
 
     query = query.options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
-    query = query.order_by(WeeklyDigest.created_at.desc()).limit(limit).offset(offset)
+    query = query.order_by(WeeklyDigest.created_at.desc(), WeeklyDigest.id.desc()).limit(limit).offset(offset)
     result = await db.execute(query)
 
     return [_to_response(d) for d in result.scalars().all()]
@@ -285,12 +287,13 @@ async def update_digest(
                 status_code=400,
                 detail="No se pudo regenerar el digest con el nuevo tono",
             )
-        except Exception:
-            logger.exception("Error regenerating digest id=%s with new tone=%s", digest_id, next_tone)
+        except Exception as exc:
+            logger.error("Digest regeneration failed id=%s type=%s", digest_id, type(exc).__name__)
             raise HTTPException(status_code=502, detail="Error regenerando digest con nuevo tono")
         next_content = canonicalize_digest_content(
             new_content, digest.period_start, digest.period_end
         )
+        digest = await authorize_digest(db, digest_id, current_user, write=True, lock=True)
         generated_at = datetime.now(timezone.utc).replace(tzinfo=None)
         edited_at = None
     else:

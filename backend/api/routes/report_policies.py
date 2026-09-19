@@ -7,7 +7,7 @@ import hashlib
 import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from sqlalchemy import or_, select
+from sqlalchemy import exists, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
 
@@ -53,14 +53,20 @@ async def list_policy_responsibles(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    users = list((await db.execute(
-        select(User.id, User.full_name).where(User.is_active.is_(True)).order_by(User.full_name, User.id)
-    )).all())
-    result = []
-    for user in users:
-        if await user_has_digest_permission(db, user.id, write=True):
-            result.append(PolicyResponsibleResponse(id=user.id, full_name=user.full_name))
-    return result
+    users = (await db.execute(
+        select(User.id, User.full_name).where(
+            User.is_active.is_(True),
+            or_(
+                User.role == UserRole.admin,
+                exists().where(
+                    UserPermission.user_id == User.id,
+                    UserPermission.module == "digests",
+                    UserPermission.can_write.is_(True),
+                ),
+            ),
+        ).order_by(User.full_name, User.id)
+    )).all()
+    return [PolicyResponsibleResponse(id=user.id, full_name=user.full_name) for user in users]
 
 
 @router.get("/policies/{client_id}", response_model=ReportPolicyResponse)
@@ -90,6 +96,7 @@ async def put_report_policy(
     client_exists = await db.scalar(select(Client.id).where(Client.id == client_id))
     if client_exists is None:
         raise HTTPException(404, "Client not found")
+    await db.execute(text("SELECT pg_advisory_xact_lock(76241313, :client_id)"), {"client_id": client_id})
     if request.enabled and request.responsible_user_id is None:
         raise HTTPException(422, detail={"code": "responsible_required", "message": "Selecciona una persona responsable"})
     await validate_responsible(db, request.responsible_user_id)
@@ -116,6 +123,7 @@ async def put_report_policy(
         policy.cadence = request.cadence
         policy.responsible_user_id = request.responsible_user_id
         policy.revision += 1
+    await validate_responsible(db, request.responsible_user_id)
     await db.commit()
     await db.refresh(policy)
     return await policy_response(db, client_id, policy)
@@ -186,9 +194,9 @@ async def generate_cohort(
         except DigestGenerationRejected as exc:
             await db.rollback()
             results.append(CohortGenerateResult(client_id=item.client_id, outcome="skipped", reason=exc.reason))
-        except Exception:
+        except Exception as exc:
             await db.rollback()
-            logger.exception("Cohort digest generation failed for client_id=%s", item.client_id)
+            logger.error("Cohort digest generation failed for client_id=%s type=%s", item.client_id, type(exc).__name__)
             results.append(CohortGenerateResult(client_id=item.client_id, outcome="failed", reason="generation_failed"))
     return CohortGenerateResponse(results=results)
 
@@ -239,6 +247,8 @@ async def record_external_delivery_event(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("digests", write=True)),
 ):
+    key_lock = int.from_bytes(hashlib.sha256(f"digest-event:{current_user.id}:{request_key}".encode()).digest()[:8], "big", signed=True)
+    await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key_lock})
     digest = await authorize_digest(db, digest_id, current_user, write=True, lock=True)
     request_hash = hashlib.sha256(f"{digest_id}:{request.action.value}".encode()).hexdigest()
     existing = (await db.execute(select(DigestExternalDeliveryEvent).where(
@@ -268,6 +278,10 @@ async def record_external_delivery_event(
     if request.action == ExternalDeliveryAction.revoked and not active:
         raise HTTPException(409, detail={"code": "not_confirmed"})
 
+    # Responsibility and module capabilities may change while this request was
+    # waiting for the idempotency/digest locks.
+    digest = await authorize_digest(db, digest_id, current_user, write=True, lock=True)
+
     event = DigestExternalDeliveryEvent(
         digest_id=digest_id,
         action=request.action,
@@ -279,7 +293,6 @@ async def record_external_delivery_event(
     await db.flush()
     event_id = event.id
     await db.commit()
-    digest = await authorize_digest(db, digest_id, current_user, write=False)
     response = await _external_events_response(db, digest, current_user)
     created = next(value for value in response.events if value.id == event_id)
     return ExternalDeliveryMutationResponse(

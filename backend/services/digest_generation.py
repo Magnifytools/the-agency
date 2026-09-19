@@ -63,10 +63,12 @@ async def _snapshot(db, *, actor_id: int, client_id: int, expected_revision: int
         ).where(ClientReportPolicy.client_id == client_id)
     )).one_or_none()
     if not policy:
-        if expected_revision == -1:
-            return None
+        if expected_revision not in (None, -1):
+            raise DigestGenerationRejected("policy_changed")
         if actor.role == UserRole.admin and not require_enabled:
             return None
+        if expected_revision == -1:
+            raise DigestGenerationRejected("permission_changed")
         raise DigestGenerationRejected("policy_missing")
     if expected_revision == -1:
         raise DigestGenerationRejected("policy_changed")
