@@ -99,6 +99,12 @@ class TimestampMixin:
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
 
+class UTCTimestampMixin:
+    """Naive UTC storage independent of the PostgreSQL session timezone."""
+    created_at = Column(DateTime, default=func.timezone("UTC", func.clock_timestamp()), nullable=False)
+    updated_at = Column(DateTime, default=func.timezone("UTC", func.clock_timestamp()), onupdate=func.timezone("UTC", func.clock_timestamp()), nullable=False)
+
+
 # ═══════════════════════════════════════════════════════════════
 # ENUMS
 # ═══════════════════════════════════════════════════════════════
@@ -1192,7 +1198,7 @@ class GrowthIdea(TimestampMixin, Base):
 # Income, Expenses, Taxes, Forecasts, Advisor
 # ═══════════════════════════════════════════════════════════════
 
-class WeeklyDigest(TimestampMixin, Base):
+class WeeklyDigest(UTCTimestampMixin, Base):
     __tablename__ = "weekly_digests"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -1212,7 +1218,7 @@ class WeeklyDigest(TimestampMixin, Base):
     creator = relationship("User", lazy="selectin")
 
 
-class ClientReportPolicy(TimestampMixin, Base):
+class ClientReportPolicy(UTCTimestampMixin, Base):
     __tablename__ = "client_report_policies"
 
     client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
@@ -1235,7 +1241,7 @@ class DigestExternalDeliveryEvent(Base):
     actor_id = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
     request_key = Column(String(80), nullable=False)
     request_hash = Column(String(64), nullable=False)
-    created_at = Column(DateTime, default=func.now(), nullable=False)
+    created_at = Column(DateTime, default=func.timezone("UTC", func.clock_timestamp()), nullable=False)
 
 
 class Lead(TimestampMixin, Base):

@@ -11,6 +11,7 @@ from backend.db.models import (
     DigestExternalDeliveryEvent,
     ExternalDeliveryAction,
     User,
+    UserRole,
     WeeklyDigest,
 )
 from backend.schemas.digest import (
@@ -20,7 +21,7 @@ from backend.schemas.digest import (
     InternalDistributionSummary,
     ReportPolicyResponse,
 )
-from backend.services.digest_access import user_has_digest_permission
+from backend.services.digest_access import permission_exists, user_has_digest_permission
 from backend.services.digest_periods import policy_digest_period
 
 
@@ -79,82 +80,117 @@ async def external_delivery_state(db, digest: WeeklyDigest) -> tuple[ExternalDel
     return summary, has_newer
 
 
-async def _active_period_delivery(db, client_id, period_start, period_end) -> ExternalDeliverySummary:
-    ranked = select(
-        DigestExternalDeliveryEvent.digest_id.label("digest_id"),
-        DigestExternalDeliveryEvent.action.label("action"),
-        DigestExternalDeliveryEvent.actor_id.label("actor_id"),
-        DigestExternalDeliveryEvent.created_at.label("event_created_at"),
-        func.row_number().over(
-            partition_by=DigestExternalDeliveryEvent.digest_id,
-            order_by=(DigestExternalDeliveryEvent.created_at.desc(), DigestExternalDeliveryEvent.id.desc()),
-        ).label("event_rank"),
-    ).subquery()
-    row = (await db.execute(
-        select(ranked.c.digest_id, User.full_name, ranked.c.event_created_at)
-        .join(WeeklyDigest, WeeklyDigest.id == ranked.c.digest_id)
-        .join(User, User.id == ranked.c.actor_id)
-        .where(
-            ranked.c.event_rank == 1,
-            ranked.c.action == ExternalDeliveryAction.confirmed,
-            WeeklyDigest.client_id == client_id,
-            WeeklyDigest.period_start == period_start,
-            WeeklyDigest.period_end == period_end,
-        )
-        .order_by(WeeklyDigest.created_at.desc(), WeeklyDigest.id.desc())
-        .limit(1)
-    )).one_or_none()
-    if not row:
-        return ExternalDeliverySummary()
-    return ExternalDeliverySummary(
-        digest_id=row.digest_id,
-        state="confirmed",
-        actor_name=row.full_name,
-        confirmed_at=row.event_created_at,
-    )
+async def preview_items(db, rows) -> list[GenerationPreviewItem]:
+    """Project the cohort in four bounded queries, without loading digest content.
 
+    Rank only reports in the requested coverage and receipts for those reports.
+    Query count does not grow with clients or their historical versions.
+    """
+    if not rows:
+        return []
+    periods = {
+        policy.cadence: policy_digest_period(policy.cadence.value)
+        for _, policy in rows if policy is not None
+    }
+    responsible_ids = {policy.responsible_user_id for _, policy in rows if policy and policy.responsible_user_id}
+    responsible_by_id = {}
+    if responsible_ids:
+        responsible_by_id = {row.id: row for row in (await db.execute(
+            select(
+                User.id, User.full_name,
+                and_(User.is_active.is_(True), or_(
+                    User.role == UserRole.admin,
+                    permission_exists(User.id, write=True),
+                )).label("can_prepare"),
+            ).where(User.id.in_(responsible_ids))
+        )).all()}
 
-async def preview_item(db, client: Client, policy: ClientReportPolicy | None) -> GenerationPreviewItem:
-    period_start = period_end = None
-    responsible = None
-    responsible_ok = False
-    if policy:
-        period_start, period_end = policy_digest_period(policy.cadence.value)
-        if policy.responsible_user_id:
-            responsible = (await db.execute(
-                select(User.full_name, User.is_active).where(User.id == policy.responsible_user_id)
-            )).one_or_none()
-            responsible_ok = bool(responsible and await user_has_digest_permission(db, policy.responsible_user_id, write=True))
-
-    latest = None
-    version_count = 0
-    if period_start and period_end:
-        version_count = int(await db.scalar(select(func.count(WeeklyDigest.id)).where(
-            WeeklyDigest.client_id == client.id,
-            WeeklyDigest.period_start == period_start,
-            WeeklyDigest.period_end == period_end,
-        )) or 0)
-        latest = (await db.execute(
-            select(WeeklyDigest.id, WeeklyDigest.status, WeeklyDigest.created_at).where(
-                WeeklyDigest.client_id == client.id,
+    latest_by_client = {}
+    internal_by_digest = {}
+    external_by_client = {}
+    if periods:
+        coverage = or_(*[
+            and_(
+                WeeklyDigest.client_id.in_([client.id for client, policy in rows if policy and policy.cadence == cadence]),
                 WeeklyDigest.period_start == period_start,
                 WeeklyDigest.period_end == period_end,
-            ).order_by(WeeklyDigest.created_at.desc(), WeeklyDigest.id.desc()).limit(1)
-        )).one_or_none()
+            ) for cadence, (period_start, period_end) in periods.items()
+        ])
+        ranked_digests = select(
+            WeeklyDigest.id, WeeklyDigest.client_id, WeeklyDigest.status,
+            func.count().over(partition_by=WeeklyDigest.client_id).label("version_count"),
+            func.row_number().over(
+                partition_by=WeeklyDigest.client_id,
+                order_by=(WeeklyDigest.created_at.desc(), WeeklyDigest.id.desc()),
+            ).label("version_rank"),
+        ).where(coverage).subquery()
+        latest_by_client = {row.client_id: row for row in (await db.execute(
+            select(ranked_digests).where(ranked_digests.c.version_rank == 1)
+        )).all()}
 
-    internal = InternalDistributionSummary()
-    external = ExternalDeliverySummary()
-    if latest:
-        delivery = (await db.execute(
-            select(Delivery.id, Delivery.status, Delivery.sent_at).where(
-                Delivery.source_kind == "digest", Delivery.source_id == latest.id
-            ).order_by(Delivery.created_at.desc(), Delivery.id.desc()).limit(1)
-        )).one_or_none()
-        if delivery:
-            internal = InternalDistributionSummary(
-                digest_id=latest.id, state=delivery.status, delivery_id=delivery.id, sent_at=delivery.sent_at
-            )
-        external = await _active_period_delivery(db, client.id, period_start, period_end)
+        if latest_by_client:
+            ranked_deliveries = select(
+                Delivery.id, Delivery.source_id, Delivery.status, Delivery.sent_at,
+                func.row_number().over(
+                    partition_by=Delivery.source_id,
+                    order_by=(Delivery.created_at.desc(), Delivery.id.desc()),
+                ).label("delivery_rank"),
+            ).where(
+                Delivery.source_kind == "digest",
+                Delivery.source_id.in_([row.id for row in latest_by_client.values()]),
+            ).subquery()
+            internal_by_digest = {row.source_id: InternalDistributionSummary(
+                digest_id=row.source_id, state=row.status, delivery_id=row.id, sent_at=row.sent_at,
+            ) for row in (await db.execute(
+                select(ranked_deliveries).where(ranked_deliveries.c.delivery_rank == 1)
+            )).all()}
+
+            # Determine latest event per version before choosing a confirmed
+            # version. A revoked version must never inherit an earlier event.
+            ranked_events = select(
+                DigestExternalDeliveryEvent.digest_id,
+                DigestExternalDeliveryEvent.action,
+                DigestExternalDeliveryEvent.actor_id,
+                DigestExternalDeliveryEvent.created_at.label("event_created_at"),
+                WeeklyDigest.client_id,
+                WeeklyDigest.created_at.label("digest_created_at"),
+                func.row_number().over(
+                    partition_by=DigestExternalDeliveryEvent.digest_id,
+                    order_by=(DigestExternalDeliveryEvent.created_at.desc(), DigestExternalDeliveryEvent.id.desc()),
+                ).label("event_rank"),
+            ).join(WeeklyDigest, WeeklyDigest.id == DigestExternalDeliveryEvent.digest_id).where(coverage).subquery()
+            confirmed_versions = select(
+                ranked_events,
+                func.row_number().over(
+                    partition_by=ranked_events.c.client_id,
+                    order_by=(ranked_events.c.digest_created_at.desc(), ranked_events.c.digest_id.desc()),
+                ).label("confirmed_rank"),
+            ).where(
+                ranked_events.c.event_rank == 1,
+                ranked_events.c.action == ExternalDeliveryAction.confirmed,
+            ).subquery()
+            external_by_client = {row.client_id: ExternalDeliverySummary(
+                digest_id=row.digest_id, state="confirmed", actor_name=row.full_name,
+                confirmed_at=row.event_created_at,
+            ) for row in (await db.execute(
+                select(confirmed_versions.c.client_id, confirmed_versions.c.digest_id,
+                       confirmed_versions.c.event_created_at, User.full_name)
+                .join(User, User.id == confirmed_versions.c.actor_id)
+                .where(confirmed_versions.c.confirmed_rank == 1)
+            )).all()}
+
+    return [_preview_item(
+        client, policy, periods.get(policy.cadence) if policy else None,
+        responsible_by_id.get(policy.responsible_user_id) if policy else None,
+        latest_by_client.get(client.id), internal_by_digest, external_by_client,
+    ) for client, policy in rows]
+
+
+def _preview_item(client, policy, period, responsible, latest, internal_by_digest, external_by_client):
+    period_start, period_end = period or (None, None)
+    responsible_ok = bool(responsible and responsible.can_prepare)
+    internal = internal_by_digest.get(latest.id, InternalDistributionSummary()) if latest else InternalDistributionSummary()
+    external = external_by_client.get(client.id, ExternalDeliverySummary())
 
     if client.status != ClientStatus.active:
         reason = "client_inactive"
@@ -200,12 +236,12 @@ async def preview_item(db, client: Client, policy: ClientReportPolicy | None) ->
         eligible=reason == "eligible",
         reason=reason,
         latest_digest_id=latest.id if latest else None,
-        version_count=version_count,
+        version_count=latest.version_count if latest else 0,
         state=state,
         digest=DigestStateSummary(
             latest_digest_id=latest.id if latest else None,
             latest_status=latest.status if latest else None,
-            version_count=version_count,
+            version_count=latest.version_count if latest else 0,
         ),
         internal_distribution=internal,
         external_delivery=external,

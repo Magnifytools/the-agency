@@ -133,7 +133,7 @@ async def test_preview_marks_older_confirmation_and_revocation_with_tied_timesta
     assert item["state"] == "newer_version_unconfirmed"
     assert item["external_delivery"]["digest_id"] == old.id
 
-    db_session.add(DigestExternalDeliveryEvent(digest_id=old.id, action=ExternalDeliveryAction.revoked, actor_id=admin_user.id, request_key="old-revocation-0001", request_hash="b" * 64))
+    db_session.add(DigestExternalDeliveryEvent(digest_id=old.id, action=ExternalDeliveryAction.revoked, actor_id=admin_user.id, request_key="old-revocation-0001", request_hash="b" * 64, created_at=tied))
     await db_session.commit()
     preview = await admin_client.get("/api/digests/generation-preview?scope=team")
     item = next(value for value in preview.json()["items"] if value["client_id"] == client.id)

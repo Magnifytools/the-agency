@@ -41,7 +41,7 @@ from backend.services.digest_access import authorize_digest, user_has_digest_per
 from backend.services.digest_generation import DigestGenerationRejected, generate_locked_digest
 from backend.services.digest_collector import collect_digest_data
 from backend.services.digest_generator import generate_digest_content
-from backend.services.report_policy import external_delivery_state, policy_response, preview_item
+from backend.services.report_policy import external_delivery_state, policy_response, preview_items
 from backend.services.temporal import business_today
 
 router = APIRouter(prefix="/api/digests", tags=["digest-report-policy"])
@@ -154,7 +154,7 @@ async def generation_preview(
             .order_by(Client.name, Client.id)
         )).all()
 
-    items = [await preview_item(db, client, policy) for client, policy in rows]
+    items = await preview_items(db, rows)
     return GenerationPreviewResponse(
         as_of=business_today(),
         scope=scope,

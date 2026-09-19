@@ -143,3 +143,26 @@ async def test_member_deletion_without_evidence_keeps_status_rules(status, db_se
     remaining = await db_session.scalar(select(func.count()).select_from(WeeklyDigest).where(WeeklyDigest.id == digest_id))
     assert remaining == (1 if status == DigestStatus.sent else 0)
     await member.aclose()
+
+
+async def test_report_timestamps_are_utc_with_non_utc_database_session(db_session, admin_user):
+    from datetime import datetime, timezone
+    from backend.schemas.digest import ExternalDeliveryEventResponse
+
+    await db_session.execute(text("SET LOCAL TIME ZONE 'Pacific/Honolulu'"))
+    before = datetime.now(timezone.utc).replace(tzinfo=None)
+    client = Client(name="UTC report timestamps", status=ClientStatus.active)
+    db_session.add(client); await db_session.flush()
+    policy = ClientReportPolicy(client_id=client.id, enabled=True, responsible_user_id=admin_user.id)
+    digest = WeeklyDigest(client_id=client.id, period_start=date(2026, 9, 7), period_end=date(2026, 9, 13), tone=DigestTone.cercano, created_by=admin_user.id)
+    db_session.add_all([policy, digest]); await db_session.flush()
+    evidence = DigestExternalDeliveryEvent(digest_id=digest.id, action="confirmed", actor_id=admin_user.id, request_key=uuid4().hex, request_hash="a" * 64)
+    db_session.add(evidence); await db_session.flush()
+    policy.enabled = False
+    await db_session.flush(); await db_session.refresh(policy)
+    after = datetime.now(timezone.utc).replace(tzinfo=None)
+    for value in (policy.created_at, policy.updated_at, digest.created_at, digest.updated_at, evidence.created_at):
+        assert before <= value <= after
+    serialized = ExternalDeliveryEventResponse(id=evidence.id, digest_id=digest.id, action=evidence.action, actor_id=admin_user.id, actor_name=admin_user.full_name, created_at=evidence.created_at).model_dump(mode="json")
+    assert serialized["created_at"].endswith("Z")
+    assert before <= datetime.fromisoformat(serialized["created_at"]).replace(tzinfo=None) <= after
