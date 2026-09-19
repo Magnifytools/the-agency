@@ -3,8 +3,8 @@ import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { DigestFacts } from "./digest-facts"
-const auth = vi.hoisted(() => ({ canReadTasks: true }))
-vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ hasPermission: (module: string) => module === "tasks" && auth.canReadTasks }) }))
+const auth = vi.hoisted(() => ({ canReadTasks: true, canReadProjects: true }))
+vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ hasPermission: (module: string) => module === "tasks" ? auth.canReadTasks : module === "projects" && auth.canReadProjects }) }))
 const tasks = Array.from({ length: 10 }, (_, index) => ({ id: index + 1, title: `Hecho ${index + 1}` }))
 const v2 = {
   context_version: 2,
@@ -18,12 +18,12 @@ const v2 = {
   pending_followups: [{ id: 8, subject: "Confirmar acceso", summary: "Falta permiso", contact_name: "Ana", followup_date: "2026-09-20" }],
 }
 function renderFacts(context: Record<string, unknown>) { return render(<MemoryRouter><DigestFacts context={context} /></MemoryRouter>) }
-beforeEach(() => { auth.canReadTasks = true })
+beforeEach(() => { auth.canReadTasks = true; auth.canReadProjects = true })
 describe("DigestFacts", () => {
   it("presents V2 totals, bounded samples and separate project buckets", async () => {
     renderFacts(v2); await userEvent.click(screen.getByText("Hechos fuente del resumen"))
     expect(screen.getByText("12 en total · mostrando 10")).toBeInTheDocument()
-    expect(screen.getByText("Progreso actual: 75% · no corresponde solo al período")).toBeInTheDocument()
+    expect(screen.getByText("Progreso al generar: 75% · no corresponde solo al período")).toBeInTheDocument()
     expect(screen.getByText(/30 min reales registrados históricamente sobre plantillas/)).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Web" })).toHaveAttribute("href", "/projects/4")
     expect(screen.getByRole("link", { name: "SEO" })).toHaveAttribute("href", "/projects/5")
@@ -36,11 +36,17 @@ describe("DigestFacts", () => {
     auth.canReadTasks = false; renderFacts(v2); await userEvent.click(screen.getByText("Hechos fuente del resumen"))
     expect(screen.getByText("Hecho 1")).toBeInTheDocument(); expect(screen.queryByRole("link", { name: "Hecho 1" })).not.toBeInTheDocument()
   })
+  it("does not expose project links without projects read permission", async () => {
+    auth.canReadProjects = false; renderFacts(v2); await userEvent.click(screen.getByText("Hechos fuente del resumen"))
+    expect(screen.getByText("Web")).toBeInTheDocument(); expect(screen.queryByRole("link", { name: "Web" })).not.toBeInTheDocument()
+  })
   it("renders legacy facts without inventing project grouping", async () => {
-    renderFacts({ client_name: "Anterior", project_name: "Proyecto antiguo", project_progress: 40, completed_tasks: [{ id: 70, title: "Hecho legado" }], in_progress_tasks: [], pending_tasks: [{ id: 71, title: "Pendiente legado" }], total_minutes: 90, pending_followups: [] })
+    const pending = Array.from({ length: 10 }, (_, index) => ({ id: 71 + index, title: `Pendiente legado ${index + 1}` }))
+    renderFacts({ client_name: "Anterior", project_name: "Proyecto antiguo", project_progress: 40, completed_tasks: [{ id: 70, title: "Hecho legado" }], in_progress_tasks: [], pending_tasks: pending, total_minutes: 90, pending_followups: [] })
     await userEvent.click(screen.getByText("Hechos fuente del resumen"))
-    expect(screen.getByText(/formato anterior/)).toBeInTheDocument(); expect(screen.getByText("Proyecto antiguo")).toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: "Proyecto antiguo" })).not.toBeInTheDocument(); expect(screen.getByRole("link", { name: "Hecho legado" })).toHaveAttribute("href", "/tasks?task=70")
+    expect(screen.getByText(/muestras sin totales conocidos/)).toBeInTheDocument(); expect(screen.getByText("Progreso histórico de Proyecto antiguo")).toBeInTheDocument()
+    expect(screen.getByText("11 tareas en la muestra guardada")).toBeInTheDocument(); expect(screen.queryByText(/en total/)).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Hecho legado" })).toHaveAttribute("href", "/tasks?task=70")
   })
   it("keeps unsupported context available as technical fallback", async () => {
     renderFacts({ future_shape: { preserved: true } }); await userEvent.click(screen.getByText("Hechos fuente del resumen")); await userEvent.click(screen.getByText("Ver datos técnicos no reconocidos"))
