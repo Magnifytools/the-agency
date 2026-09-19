@@ -128,3 +128,18 @@ async def test_history_filters_are_validated_and_timestamp_ties_paginate(admin_c
     assert [row["id"] for row in first.json() + second.json()] == sorted([row.id for row in digests], reverse=True)
     assert (await admin_client.get("/api/digests?period_from=invalid")).status_code == 422
     assert (await admin_client.get("/api/digests?period_from=2026-10-01&period_to=2026-09-01")).status_code == 422
+
+
+@pytest.mark.parametrize("status", [DigestStatus.draft, DigestStatus.reviewed, DigestStatus.sent])
+async def test_member_deletion_without_evidence_keeps_status_rules(status, db_session, make_member_client):
+    member = await make_member_client([("digests", True, True)])
+    client = Client(name="Deletion boundary", status=ClientStatus.active)
+    db_session.add(client); await db_session.flush()
+    digest = WeeklyDigest(client_id=client.id, period_start=date(2026, 9, 7), period_end=date(2026, 9, 13), status=status, tone=DigestTone.cercano, created_by=member.test_user.id)
+    db_session.add(digest); await db_session.commit()
+    digest_id = digest.id
+    response = await member.delete(f"/api/digests/{digest_id}")
+    assert response.status_code == (409 if status == DigestStatus.sent else 204), response.text
+    remaining = await db_session.scalar(select(func.count()).select_from(WeeklyDigest).where(WeeklyDigest.id == digest_id))
+    assert remaining == (1 if status == DigestStatus.sent else 0)
+    await member.aclose()

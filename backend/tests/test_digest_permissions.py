@@ -135,9 +135,10 @@ async def test_member_with_digest_write_can_generate(digest_member_client):
     # 1. client lookup, 2. drafts check, 3. reload with selectinload
     reload_result = MagicMock()
     reload_result.scalar_one.return_value = fake_digest
-    mock_db.execute.side_effect = [client_result, drafts_result, reload_result]
+    mock_db.execute.side_effect = [reload_result]
 
     with (
+        patch("backend.api.routes.digests.generate_locked_digest", new_callable=AsyncMock, return_value=fake_digest),
         patch(
             "backend.api.routes.digests.collect_digest_data",
             new_callable=AsyncMock,
@@ -173,8 +174,9 @@ async def test_member_with_digest_write_can_generate(digest_member_client):
             },
         )
 
-    # Should not be 403 — member has write permission
-    assert response.status_code != 403, "Member with digest write permission should not be blocked"
+    # The route delegates policy/permission checks to the PostgreSQL-tested service.
+    assert response.status_code == 200, response.text
+    assert response.json()["created_by"] == member.id
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +194,9 @@ async def test_member_can_delete_own_draft(digest_member_client):
 
     result = MagicMock()
     result.scalar_one_or_none.return_value = fake_digest
+    result.one_or_none.return_value = member  # fresh role/is_active lookup
     mock_db.execute.return_value = result
+    mock_db.scalar.side_effect = [True, False]  # effective permission; no evidence
 
     response = await client.delete("/api/digests/5")
     assert response.status_code == 204
@@ -213,7 +217,9 @@ async def test_member_can_delete_own_reviewed(digest_member_client):
 
     result = MagicMock()
     result.scalar_one_or_none.return_value = fake_digest
+    result.one_or_none.return_value = member  # fresh role/is_active lookup
     mock_db.execute.return_value = result
+    mock_db.scalar.side_effect = [True, False]  # effective permission; no evidence
 
     response = await client.delete("/api/digests/6")
     assert response.status_code == 204
@@ -234,7 +240,9 @@ async def test_member_cannot_delete_sent_digest(digest_member_client):
 
     result = MagicMock()
     result.scalar_one_or_none.return_value = fake_digest
+    result.one_or_none.return_value = member  # fresh role/is_active lookup
     mock_db.execute.return_value = result
+    mock_db.scalar.side_effect = [True, False]  # effective permission; no evidence
 
     response = await client.delete("/api/digests/7")
     assert response.status_code == 409, f"Expected 409 but got {response.status_code}: {response.text}"
