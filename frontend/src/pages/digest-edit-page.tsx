@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { DigestFacts } from "@/components/digests/digest-facts"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
@@ -352,17 +353,7 @@ export default function DigestEditPage() {
       <p className="text-sm text-muted-foreground">Versión #{digest.id} · Guardar crea una versión si hay cambios. Las anteriores siguen disponibles en Resúmenes.</p>
       <ConfirmDialog open={pendingTone !== null} onOpenChange={(open) => { if (!open) setPendingTone(null) }} title="Crear una versión con otro tono" description="Se guardará tu borrador actual y se generará otra versión. Podrás volver a la anterior desde Resúmenes." confirmLabel="Guardar y generar" onConfirm={() => { if (pendingTone) toneChangeMutation.mutate({ sourceId: Number(id), epoch: viewEpoch.current, newTone: pendingTone, content: draftContent(), tone }) }} />
 
-      {/* Raw context sidebar (collapsible) */}
-      {digest.raw_context && (
-        <details className="border rounded-lg p-4">
-          <summary className="cursor-pointer text-sm font-medium text-muted-foreground">
-            Datos crudos (raw context)
-          </summary>
-          <pre className="mt-4 bg-muted p-4 rounded text-xs overflow-auto max-h-96">
-            {JSON.stringify(digest.raw_context, null, 2)}
-          </pre>
-        </details>
-      )}
+      {digest.raw_context && <DigestFacts context={digest.raw_context} />}
 
       {/* Preview Dialog */}
       <Dialog open={previewOpen && previewId === Number(id)} onOpenChange={setPreviewOpen}>
