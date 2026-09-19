@@ -19,6 +19,7 @@ it("keeps individual generation and removes the unreviewed generate-all action",
   setup()
   await screen.findByRole("cell", {name: "Acme"})
   expect(screen.queryByRole("button", {name: "Generar todos"})).not.toBeInTheDocument()
+  expect(screen.queryByTitle("Marcar como enviado (histórico)")).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole("button", {name: "Preparar uno"}))
   fireEvent.change(screen.getByLabelText("Cliente"), {target: {value: "1"}})
   fireEvent.click(screen.getByRole("button", {name: "Generar"}))
@@ -79,7 +80,7 @@ it("read-only history allows copying but disables writes and internal sharing", 
   mocks.auth.write = false
   setup(); await screen.findByRole("cell", {name: "Acme"})
   expect(screen.queryByRole("button", {name: "Preparar uno"})).not.toBeInTheDocument()
-  expect(screen.getAllByTitle("Editar")[0]).toBeDisabled()
+  expect(screen.getAllByTitle("Consultar versión")[0]).not.toBeDisabled()
   expect(screen.getAllByTitle("Discord (interno)")[0]).toBeDisabled()
   expect(screen.getByLabelText("Estado histórico de versión #10")).toBeDisabled()
   fireEvent.click(screen.getAllByTitle("Vista previa")[0])

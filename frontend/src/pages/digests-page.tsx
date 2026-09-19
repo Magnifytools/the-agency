@@ -3,7 +3,7 @@ import DOMPurify from "dompurify"
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle, Trash2, ClipboardCopy, CheckCircle2 } from "lucide-react"
+import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle, Trash2, ClipboardCopy } from "lucide-react"
 import { DeliveryReceipts, deliveryToast } from "@/components/delivery-receipts"
 import { useAuth } from "@/context/auth-context"
 import { DigestCohort } from "@/components/digests/digest-cohort"
@@ -261,7 +261,7 @@ function DigestList() {
 
       <DigestCohort clientId={filterClient || undefined} />
 
-      <div><h2 className="text-lg font-semibold">Historial de versiones</h2><p className="text-sm text-muted-foreground">Revisa, edita o copia una versión. Discord es distribución interna; no confirma una entrega al cliente.</p></div>
+      <div><h2 className="text-lg font-semibold">Historial de versiones</h2><p className="text-sm text-muted-foreground">Abre una versión para revisar su texto y confirmar la entrega al cliente. Discord es distribución interna.</p></div>
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <div className="w-48">
@@ -352,7 +352,7 @@ function DigestList() {
                       >
                         <option value="draft">Borrador</option>
                         <option value="reviewed">Revisado</option>
-                        <option value="sent">Marcado como enviado (histórico)</option>
+                        <option value="sent" disabled>Marcado como enviado (histórico)</option>
                       </Select>
                     </TableCell>
                     <TableCell>
@@ -366,8 +366,7 @@ function DigestList() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          title="Editar"
-                          disabled={!canWrite}
+                          title={canWrite ? "Editar y revisar entrega" : "Consultar versión"}
                           onClick={() => navigate(`/digests/${digest.id}/edit`)}
                         >
                           <Pencil className="w-4 h-4" />
@@ -412,16 +411,6 @@ function DigestList() {
                         {canWrite && digest.status !== "sent" && (
                           <>
                             <span className="w-px h-5 bg-border mx-0.5" />
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Marcar como enviado (histórico)"
-                              className="text-green-600 hover:text-green-500"
-                              onClick={() => statusMutation.mutate({ id: digest.id, status: "sent" as DigestStatus })}
-                              disabled={statusMutation.isPending}
-                            >
-                              <CheckCircle2 className="w-4 h-4" />
-                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"
