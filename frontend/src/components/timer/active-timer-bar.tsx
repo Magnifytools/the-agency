@@ -11,9 +11,20 @@ import { getErrorMessage } from "@/lib/utils"
 import type { Task, Client, TimeEntry } from "@/lib/types"
 import { invalidateTaskChange, invalidateTimeChange, projectKeys, taskKeys } from "@/lib/query-keys"
 import { elapsedSeconds, formatElapsedSeconds } from "@/lib/timer"
+import { useAuth } from "@/context/auth-context"
 import { useBusinessDate } from "@/hooks/use-business-date"
 
 export function ActiveTimerBar() {
+  const { user, hasPermission } = useAuth()
+  if (!hasPermission("timesheet") || !hasPermission("timesheet", true)) return null
+  return <TimerBar key={user?.id} />
+}
+
+function TimerBar() {
+  const { hasPermission } = useAuth()
+  const canReadTasks = hasPermission("tasks")
+  const canReadClients = hasPermission("clients")
+  const canCreateTask = canReadClients && hasPermission("tasks", true)
   const queryClient = useQueryClient()
   const [elapsed, setElapsed] = useState("")
   const [omniInput, setOmniInput] = useState("")
@@ -52,12 +63,14 @@ export function ActiveTimerBar() {
   // Fetch user's tasks for selector
   const { data: tasks = [] } = useQuery({
     queryKey: taskKeys.assigned("timer", "me", businessToday),
+    enabled: canReadTasks,
     queryFn: () => tasksApi.listAll({ assigned_to: "me", status: "pending,in_progress,advanced,waiting,in_review", scheduled_date: businessToday }),
   })
 
   // Fetch clients for quick create
   const { data: clients = [] } = useQuery<Client[]>({
     queryKey: ["clients-active"],
+    enabled: showQuickCreate && canCreateTask,
     queryFn: () => clientsApi.listAll("active"),
     staleTime: 60_000,
   })
@@ -67,7 +80,7 @@ export function ActiveTimerBar() {
   const { data: qcProjects = [] } = useQuery({
     queryKey: projectKeys.list(["active", "client", qcClientIdNum]),
     queryFn: () => projectsApi.listAll({ client_id: qcClientIdNum, status: "active" }),
-    enabled: !!qcClientIdNum && showQuickCreate,
+    enabled: !!qcClientIdNum && showQuickCreate && hasPermission("projects"),
     staleTime: 30_000,
   })
 
@@ -250,6 +263,7 @@ export function ActiveTimerBar() {
               onClick={() => setShowQuickCreate(true)}
               className="shrink-0 p-1.5 text-muted-foreground hover:text-brand transition-colors rounded"
               title="Crear tarea rápida"
+              disabled={!canCreateTask}
             >
               <Plus className="h-4 w-4" />
             </button>

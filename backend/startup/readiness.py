@@ -33,6 +33,8 @@ async def check_database_ready(engine) -> None:
             await conn.execute(text("SELECT id, delivery_id, number, steps, lease_until, status, created_at, updated_at FROM delivery_attempts LIMIT 0"))
             await conn.execute(text("SELECT google_calendar_synced_at FROM users LIMIT 0"))
             await conn.execute(text("SELECT source_calendar_id FROM events LIMIT 0"))
+            await conn.execute(text("SELECT client_id, enabled, cadence, responsible_user_id, revision, created_at, updated_at FROM client_report_policies LIMIT 0"))
+            await conn.execute(text("SELECT id, digest_id, action, actor_id, request_key, request_hash, created_at FROM digest_external_delivery_events LIMIT 0"))
             await conn.execute(text("SELECT policy_key, destination_id, kind, approved_by, recipient_id, enabled, channels, time, minutes_before, quiet_start, quiet_end, revision, effective_from FROM communication_schedules LIMIT 0"))
             await conn.execute(text("SELECT occurrence_key, schedule_id, recipient_id, kind, channel, period_start, period_end, event_id, event_start, due_at, expires_at, state, reason, request_id, notification_id FROM communication_occurrences LIMIT 0"))
             # These source types enforce financial visibility in persisted PM
@@ -53,6 +55,7 @@ async def check_database_ready(engine) -> None:
                 ("communication_occurrences", ["notification_id"], ""),
                 ("delivery_attempts", ["delivery_id", "number"], ""),
                 ("command_receipts", ["user_id", "request_key"], ""),
+                ("digest_external_delivery_events", ["actor_id", "request_key"], ""),
             ):
                 valid = await conn.scalar(text("""
                     SELECT EXISTS (

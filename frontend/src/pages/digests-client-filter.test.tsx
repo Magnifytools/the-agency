@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, waitFor } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 
@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   listClients: vi.fn().mockResolvedValue([{ id: 5, name: "Acme" }]),
 }))
 
+vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: { id: 7 }, isAdmin: true, hasPermission: () => true }) }))
+vi.mock("@/components/digests/digest-cohort", () => ({ DigestCohort: ({ clientId }: { clientId?: number }) => <div data-testid="cohort-client">{clientId}</div> }))
 vi.mock("@/lib/api", () => ({
   digestsApi: { list: mocks.listDigests },
   clientsApi: { listAll: mocks.listClients },
@@ -32,6 +34,7 @@ describe("digests client filter", () => {
       </QueryClientProvider>,
     )
 
+    expect(screen.getByTestId("cohort-client")).toHaveTextContent("5")
     await waitFor(() => {
       expect(mocks.listDigests).toHaveBeenCalledWith(expect.objectContaining({ client_id: 5 }))
     })

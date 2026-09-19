@@ -5,7 +5,10 @@ import { beforeEach, expect, it, vi } from "vitest"
 import DigestEditPage from "./digest-edit-page"
 
 const api = vi.hoisted(() => ({ get: vi.fn(), update: vi.fn(), render: vi.fn() }))
+const auth = vi.hoisted(() => ({ canWrite: true }))
+vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ hasPermission: () => auth.canWrite }) }))
 vi.mock("@/lib/api", () => ({ digestsApi: api }))
+vi.mock("@/components/digests/digest-external-delivery", () => ({ DigestExternalDelivery: ({ unsaved }: { unsaved: boolean }) => <output data-testid="delivery-unsaved">{String(unsaved)}</output> }))
 const source = {
   id: 10, client_id: 1, client_name: "Acme", status: "draft", tone: "cercano",
   period_start: "2026-09-07", period_end: "2026-09-13", raw_context: null,
@@ -20,15 +23,30 @@ function setup() {
 }
 beforeEach(() => {
   vi.resetAllMocks()
+  auth.canWrite = true
   api.get.mockResolvedValue(source)
   api.update.mockImplementation(async (_id, request) => ({ ...source, id: 11, ...request }))
   api.render.mockResolvedValue({ rendered: "Versión nueva", format: "slack" })
+})
+it("lets a reader consult a version and return without offering writable fields", async () => {
+  auth.canWrite = false; setup()
+  expect(await screen.findByLabelText("Saludo")).toBeDisabled()
+  expect(screen.getByRole("button", { name: "Guardar" })).toBeDisabled()
+  expect(screen.getByRole("button", { name: "Volver" })).not.toBeDisabled()
+  expect(api.update).not.toHaveBeenCalled()
+})
+it("exposes a failed fetch as a retryable error instead of an empty digest", async () => {
+  api.get.mockRejectedValueOnce(new Error("offline")); setup()
+  expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo cargar")
+  fireEvent.click(screen.getByRole("button", { name: "Reintentar" }))
+  expect(await screen.findByLabelText("Saludo")).toBeInTheDocument()
 })
 it("saves metrics and navigates to the returned version without changing the reporting period", async () => {
   setup()
   const greeting = await screen.findByLabelText("Saludo")
   await waitFor(() => expect(greeting).toHaveValue("Hola Acme"))
   fireEvent.change(greeting, { target: { value: "Hola, equipo" } })
+  expect(screen.getByTestId("delivery-unsaved")).toHaveTextContent("true")
   expect(screen.getByLabelText("Período del informe")).toHaveAttribute("readonly")
   fireEvent.click(screen.getByRole("button", { name: "Guardar" }))
   await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/digests/11/edit"))
