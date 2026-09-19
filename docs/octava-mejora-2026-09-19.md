@@ -1,6 +1,6 @@
 # Resúmenes por cliente y confirmación de entrega
 
-Estado: implementación local en revisión; todavía sin publicar.
+Estado: implementación local verificada; pendiente de CI y publicación.
 
 La preparación de resúmenes deja de depender de «Generar todos». Cada cliente puede tener una frecuencia semanal o mensual y una persona responsable. La configuración es explícita: la migración no activa clientes ni deduce compromisos a partir de informes antiguos. Se configura desde Cliente → Resúmenes.
 
@@ -19,6 +19,10 @@ El responsable asignado puede acceder a los informes preparados por un administr
 
 La vista de hechos distingue totales de muestras, progreso en el momento de generar y minutos acumulados. Los datos antiguos se presentan sin inventar totales ni atribuciones de proyecto. Los enlaces dependen de los permisos de lectura.
 
-## Verificación pendiente de cierre
+## Verificación
 
-Las pruebas locales incluyen permisos, cambios durante la generación, selección de períodos distintos, conflictos de edición, confirmaciones concurrentes, claves idempotentes, migración aditiva y paginación. Antes de publicar quedan la revisión final de consultas, el recorrido integrado en navegador, la suite completa, CI y la comprobación de producción. Las escrituras de prueba se realizan exclusivamente con datos sintéticos aislados.
+Las pruebas locales incluyen permisos, cambios durante la generación, selección de períodos distintos, conflictos de edición, confirmaciones concurrentes, claves idempotentes, migración aditiva y paginación. El recorrido integrado en navegador comprueba configuración semanal y mensual, preparación conjunta, edición con nueva versión, confirmación y revocación, acceso de lectura y recuperación de 27 versiones mediante paginación. Se utiliza la API y PostgreSQL reales de un entorno aislado, con un proveedor de redacción sintético. El frontend supera 225 pruebas y el build de producción. Quedan CI y la comprobación del despliegue. Las escrituras de prueba se realizan exclusivamente con datos sintéticos aislados.
+
+La consulta de preparación mantiene cuatro lecturas de proyección, además de la lista inicial, al pasar de uno a treinta clientes con múltiples versiones. No carga los cuerpos completos de los informes. Los nuevos instantes de versiones, configuración y confirmaciones se guardan en UTC aunque PostgreSQL use otra zona horaria; los registros históricos no se reinterpretan.
+
+El historial permite filtrar clientes inactivos, mientras la preparación individual ofrece clientes activos externos. El cronómetro respeta el permiso de registro de tiempo y no consulta tareas o clientes inaccesibles.

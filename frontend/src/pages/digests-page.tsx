@@ -80,7 +80,6 @@ function DigestList() {
   const { data: digestPages, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } = useInfiniteQuery({
     queryKey: ["digests", user?.id, filterStatus, filterClient, filterPeriodFrom, filterPeriodTo],
     initialPageParam: 0,
-    getNextPageParam: (lastPage, pages) => lastPage.length === 20 ? pages.length * 20 : undefined,
     queryFn: ({ pageParam }) => digestsApi.list({
       limit: 20,
       offset: pageParam,
@@ -89,13 +88,14 @@ function DigestList() {
       period_from: filterPeriodFrom || undefined,
       period_to: filterPeriodTo || undefined,
     }),
+    getNextPageParam: (lastPage, pages) => lastPage.length === 20 ? pages.length * 20 : undefined,
   })
   const digests = Array.from(new Map((digestPages?.pages.flat() ?? []).map(digest => [digest.id, digest])).values())
 
   const { data: clients = [] } = useQuery({
-    queryKey: ["clients-all-active", user?.id],
+    queryKey: ["clients-all", user?.id],
     enabled: canViewClients,
-    queryFn: () => clientsApi.listAll("active"),
+    queryFn: () => clientsApi.listAll(),
   })
 
   const generateMutation = useMutation({
@@ -267,6 +267,7 @@ function DigestList() {
         <div className="w-48">
           <Select aria-label="Filtrar por cliente" value={String(filterClient)} onChange={(e) => setFilterClient(e.target.value ? Number(e.target.value) : "")}>
             <option value="">Todos los clientes</option>
+            {filterClient && !clients.some(client => client.id === filterClient) && <option value={filterClient}>Cliente #{filterClient}</option>}
             {clients.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
@@ -449,7 +450,7 @@ function DigestList() {
             <Label htmlFor="individual-client">Cliente</Label>
             <Select id="individual-client" disabled={generateMutation.isPending} value={String(selectedClientId)} onChange={(e) => setSelectedClientId(e.target.value ? Number(e.target.value) : "")}>
               <option value="">Selecciona cliente...</option>
-              {clients.map((c) => (
+              {clients.filter(client => client.status === "active" && !client.is_internal).map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </Select>

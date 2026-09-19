@@ -14,7 +14,7 @@ function setup() {
   const node = () => <QueryClientProvider client={client}><MemoryRouter><DigestsPage /></MemoryRouter></QueryClientProvider>
   return {...render(node()), node}
 }
-beforeEach(() => {vi.resetAllMocks(); mocks.auth = {id: 1, write: true}; mocks.api.list.mockResolvedValue([source, {...source, id: 20, client_id: 2, client_name: "Other"}]); mocks.clients.mockResolvedValue([{id: 1, name: "Acme"}]); mocks.api.render.mockResolvedValue({rendered: "Rendered"}); mocks.api.generate.mockResolvedValue({...source, id: 30}); mocks.send.mockResolvedValue({status: "pending"})})
+beforeEach(() => {vi.resetAllMocks(); mocks.auth = {id: 1, write: true}; mocks.api.list.mockResolvedValue([source, {...source, id: 20, client_id: 2, client_name: "Other"}]); mocks.clients.mockResolvedValue([{id: 1, name: "Acme", status: "active", is_internal: false}]); mocks.api.render.mockResolvedValue({rendered: "Rendered"}); mocks.api.generate.mockResolvedValue({...source, id: 30}); mocks.send.mockResolvedValue({status: "pending"})})
 it("keeps individual generation and removes the unreviewed generate-all action", async () => {
   setup()
   await screen.findByRole("cell", {name: "Acme"})
@@ -104,7 +104,7 @@ it("loads beyond 20 versions without duplicate rows and resets pagination when f
   const first = Array.from({length: 20}, (_,index) => ({...source, id: index+1, client_name: `Version ${index+1}`}))
   mocks.api.list.mockImplementation(async params => params.status === "reviewed" ? [{...source, id: 99, client_name: "Filtered version", status: "reviewed"}] : params.offset === 0 ? first : [{...source, id: 20, client_name: "Version 20"}, {...source, id: 21, client_name: "Version 21"}])
   setup()
-  fireEvent.click(await screen.findByRole("button", {name: "Cargar versiones anteriores"}))
+  fireEvent.click(await screen.findByText("Cargar versiones anteriores", {exact: true}))
   await screen.findByRole("cell", {name: "Version 21"})
   expect(screen.getAllByRole("cell", {name: "Version 20"})).toHaveLength(1)
   expect(screen.getByText("Mostrando 21 versiones.")).toBeInTheDocument()
@@ -119,9 +119,26 @@ it("a failed next page keeps loaded history and offers retry", async () => {
   const first = Array.from({length: 20}, (_,index) => ({...source, id: index+1, client_name: `Version ${index+1}`}))
   mocks.api.list.mockResolvedValueOnce(first).mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce([{...source, id: 21, client_name: "Older version"}])
   setup()
-  fireEvent.click(await screen.findByRole("button", {name: "Cargar versiones anteriores"}))
-  const retry = await screen.findByRole("button", {name: "Reintentar versiones anteriores"})
-  expect(screen.getByRole("cell", {name: "Version 1"})).toBeInTheDocument()
+  fireEvent.click(await screen.findByText("Cargar versiones anteriores", {exact: true}))
+  const retry = await screen.findByText("Reintentar versiones anteriores", {exact: true})
+  expect(screen.getByText("Version 1", {exact: true})).toBeInTheDocument()
   fireEvent.click(retry)
-  await screen.findByRole("cell", {name: "Older version"})
+  await screen.findByText("Older version", {exact: true})
+})
+
+it("keeps inactive clients in history without offering them for new reports", async () => {
+  mocks.clients.mockResolvedValue([
+    {id: 1, name: "Acme", status: "active", is_internal: false},
+    {id: 2, name: "Finished client", status: "finished", is_internal: false},
+    {id: 3, name: "Internal client", status: "active", is_internal: true},
+  ])
+  setup()
+  await screen.findByRole("option", {name: "Finished client"})
+  expect(mocks.clients).toHaveBeenCalledWith()
+  expect(within(screen.getByLabelText("Filtrar por cliente")).getByRole("option", {name: "Finished client"})).toBeInTheDocument()
+  fireEvent.click(screen.getByRole("button", {name: "Preparar uno"}))
+  const choices = within(screen.getByLabelText("Cliente"))
+  expect(choices.getByRole("option", {name: "Acme"})).toBeInTheDocument()
+  expect(choices.queryByRole("option", {name: "Finished client"})).not.toBeInTheDocument()
+  expect(choices.queryByRole("option", {name: "Internal client"})).not.toBeInTheDocument()
 })

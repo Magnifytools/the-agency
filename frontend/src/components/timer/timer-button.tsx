@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useAuth } from "@/context/auth-context"
 import { timerApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Play, Square } from "lucide-react"
@@ -13,6 +14,12 @@ interface TimerButtonProps {
 }
 
 export function TimerButton({ taskId }: TimerButtonProps) {
+  const { user, hasPermission } = useAuth()
+  if (!hasPermission("timesheet") || !hasPermission("timesheet", true)) return null
+  return <PermittedTimerButton key={`${user?.id}:${taskId}`} taskId={taskId} />
+}
+
+function PermittedTimerButton({ taskId }: TimerButtonProps) {
   const queryClient = useQueryClient()
   const [elapsed, setElapsed] = useState("")
 
