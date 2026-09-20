@@ -687,7 +687,20 @@ class Task(TimestampMixin, Base):
     recurrence_pattern = Column(String(20), nullable=True)  # daily|weekly|biweekly|monthly
     recurrence_day = Column(Integer, nullable=True)  # 0-4 for weekly, 1-28 for monthly
     recurrence_end_date = Column(Date, nullable=True)
+    # NULL preserves the historical ISO-even-week calendar. Never backfill it.
+    recurrence_anchor_date = Column(Date, nullable=True)
+    recurrence_paused_at = Column(DateTime, nullable=True)
+    # Stable generation identity; rescheduling never changes this date.
+    # Historical instances stay NULL because their original date is unknown.
+    recurrence_occurrence_date = Column(Date, nullable=True)
     recurring_parent_id = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
+
+    __table_args__ = (
+        Index(
+            "uq_task_recurring_occurrence", "recurring_parent_id", "recurrence_occurrence_date",
+            unique=True, postgresql_where=recurring_parent_id.is_not(None),
+        ),
+    )
 
     client = relationship("Client", back_populates="tasks", lazy="selectin")
     category = relationship("TaskCategory", back_populates="tasks", lazy="selectin")
@@ -699,6 +712,22 @@ class Task(TimestampMixin, Base):
     dependency = relationship("Task", remote_side="Task.id", lazy="selectin", foreign_keys=[depends_on])
     recurring_parent = relationship("Task", remote_side="Task.id", lazy="selectin", foreign_keys=[recurring_parent_id])
     checklist_items = relationship("TaskChecklist", back_populates="task", lazy="selectin", cascade="all, delete-orphan", order_by="TaskChecklist.order_index")
+
+
+class TaskRecurrenceOccurrence(Base):
+    """A consumed calendar date survives deletion of its generated task."""
+    __tablename__ = "task_recurrence_occurrences"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    template_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
+    date = Column(Date, nullable=False)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.timezone("UTC", func.now()))
+
+    __table_args__ = (
+        Index("uq_task_recurrence_consumed", "template_id", "date", unique=True),
+        Index("ix_task_recurrence_generated", "task_id"),
+    )
 
 
 class TaskChecklist(TimestampMixin, Base):

@@ -4,6 +4,8 @@ import {
   Clock,
   Download,
   Paperclip,
+  Pause,
+  Play,
   Plus,
   RotateCcw,
   Trash2,
@@ -16,7 +18,7 @@ import {
   tasksApi,
   usersApi,
 } from "@/lib/api";
-import type { Task, TaskCreate, TaskPriority, TaskStatus } from "@/lib/types";
+import type { RecurrenceSummary, Task, TaskCreate, TaskPriority, TaskStatus } from "@/lib/types";
 import { invalidateTaskChange, projectKeys, taskKeys } from "@/lib/query-keys";
 import { getErrorMessage } from "@/lib/utils";
 import { useAuth } from "@/context/auth-context";
@@ -26,12 +28,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useBusinessDate } from "@/hooks/use-business-date";
 
 type Defaults = {
   clientId?: number | null;
   projectId?: number | null;
   phaseId?: number | null;
 };
+type RecurrencePreview = { key: string; summary: RecurrenceSummary };
+type LegacyComparison = { key: string; sourceKey: string; current: RecurrenceSummary; proposed: RecurrenceSummary; anchor: string };
 
 export interface TaskPanelProps {
   open: boolean;
@@ -62,6 +67,7 @@ const EMPTY: TaskCreate = {
   recurrence_pattern: null,
   recurrence_day: null,
   recurrence_end_date: null,
+  recurrence_anchor_date: null,
 };
 
 function fromTask(task?: Task, defaults?: Defaults): TaskCreate {
@@ -92,6 +98,7 @@ function fromTask(task?: Task, defaults?: Defaults): TaskCreate {
     recurrence_pattern: task.recurrence_pattern,
     recurrence_day: task.recurrence_day,
     recurrence_end_date: task.recurrence_end_date,
+    recurrence_anchor_date: task.recurrence_anchor_date,
   };
 }
 
@@ -127,12 +134,15 @@ export function TaskPanel({
   const { hasPermission } = useAuth();
   const canWrite = hasPermission?.("tasks", true) ?? false;
   const canReadTime = hasPermission?.("timesheet") ?? false;
+  const businessToday = useBusinessDate();
   const [draft, setDraft] = useState<TaskCreate>(() =>
     fromTask(undefined, defaults),
   );
   const [secondaryOpen, setSecondaryOpen] = useState(false);
   const [newChecklist, setNewChecklist] = useState("");
   const [newComment, setNewComment] = useState("");
+  const [recurrencePreview, setRecurrencePreview] = useState<RecurrencePreview | null>(null);
+  const [legacyComparison, setLegacyComparison] = useState<LegacyComparison | null>(null);
   const initializedFor = useRef<string | null>(null);
   const contextKey = `${taskId ?? "new"}:${defaults?.clientId ?? ""}:${defaults?.projectId ?? ""}:${defaults?.phaseId ?? ""}`;
 
@@ -209,8 +219,30 @@ export function TaskPanel({
         : projects,
     [draft.client_id, projects],
   );
-  const change = <K extends keyof TaskCreate>(key: K, value: TaskCreate[K]) =>
+  const change = <K extends keyof TaskCreate>(key: K, value: TaskCreate[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
+  };
+  const recurrencePaused = !!taskQuery.data?.recurrence_paused_at;
+  const recurrenceDraftKey = JSON.stringify({
+    contextKey,
+    open,
+    is_recurring: draft.is_recurring,
+    recurrence_pattern: draft.recurrence_pattern,
+    recurrence_day: draft.recurrence_day,
+    recurrence_anchor_date: draft.recurrence_anchor_date,
+    recurrence_end_date: draft.recurrence_end_date,
+    client_id: draft.client_id,
+    project_id: draft.project_id,
+    phase_id: draft.phase_id,
+    recurrencePaused,
+  });
+  const recurrenceSummary = recurrencePreview?.key === recurrenceDraftKey
+    ? recurrencePreview.summary
+    : taskQuery.data?.recurrence_summary;
+  const legacyAnchorChange = !!taskId && taskQuery.data?.recurrence_pattern === "biweekly"
+    && !taskQuery.data.recurrence_anchor_date && !!draft.recurrence_anchor_date;
+  const comparisonReady = legacyComparison?.key === recurrenceDraftKey;
+  const legacySourceKey = JSON.stringify({ contextKey, open, recurrenceDraftKey, anchor: null });
 
   const save = useMutation({
     mutationFn: () =>
@@ -231,6 +263,92 @@ export function TaskPanel({
       toast.error(
         getErrorMessage(error, "No se pudo guardar. El borrador sigue aquí."),
       ),
+  });
+  const previewRecurrence = useMutation({
+    mutationFn: () => {
+      const request = {
+        is_recurring: !!draft.is_recurring,
+        recurrence_pattern: draft.recurrence_pattern,
+        recurrence_day: draft.recurrence_day,
+        recurrence_end_date: draft.recurrence_end_date,
+        recurrence_paused: recurrencePaused,
+        client_id: draft.client_id,
+        project_id: draft.project_id,
+        phase_id: draft.phase_id,
+      } as Parameters<typeof tasksApi.recurrencePreview>[0];
+      if (taskId || draft.recurrence_anchor_date) {
+        request.recurrence_anchor_date = draft.recurrence_anchor_date;
+      }
+      return tasksApi.recurrencePreview(request);
+    },
+    onMutate: () => ({ recurrenceDraftKey, legacySourceKey }),
+    onSuccess: (summary, _variables, submitted) => {
+      if (submitted.recurrenceDraftKey === recurrenceDraftKey) setRecurrencePreview({ key: submitted.recurrenceDraftKey, summary });
+    },
+    onError: (error) =>
+      toast.error(getErrorMessage(error, "No se pudo calcular la recurrencia")),
+  });
+  const compareLegacyCalendar = useMutation({
+    mutationFn: async () => {
+      const proposedAnchor = draft.recurrence_anchor_date ?? businessToday;
+      const saved = taskQuery.data;
+      const legacy = {
+        is_recurring: true,
+        recurrence_pattern: "biweekly",
+        recurrence_day: saved?.recurrence_day ?? draft.recurrence_day,
+        recurrence_anchor_date: null,
+        recurrence_end_date: saved?.recurrence_end_date ?? draft.recurrence_end_date,
+        recurrence_paused: false,
+        client_id: saved?.client_id ?? draft.client_id,
+        project_id: saved?.project_id ?? draft.project_id,
+        phase_id: saved?.phase_id ?? draft.phase_id,
+      } as Parameters<typeof tasksApi.recurrencePreview>[0];
+      const proposed = {
+        is_recurring: !!draft.is_recurring,
+        recurrence_pattern: draft.recurrence_pattern,
+        recurrence_day: draft.recurrence_day,
+        recurrence_anchor_date: proposedAnchor,
+        recurrence_end_date: draft.recurrence_end_date,
+        recurrence_paused: false,
+        client_id: draft.client_id,
+        project_id: draft.project_id,
+        phase_id: draft.phase_id,
+      } as Parameters<typeof tasksApi.recurrencePreview>[0];
+      const [current, next] = await Promise.all([
+        tasksApi.recurrencePreview(legacy),
+        tasksApi.recurrencePreview(proposed),
+      ]);
+      return { current, proposed: next };
+    },
+    onMutate: () => legacySourceKey,
+    onSuccess: ({ current, proposed }, _variables, sourceKey) => {
+      const proposedKey = JSON.stringify({
+        contextKey,
+        open,
+        is_recurring: draft.is_recurring,
+        recurrence_pattern: draft.recurrence_pattern,
+        recurrence_day: draft.recurrence_day,
+        recurrence_anchor_date: draft.recurrence_anchor_date ?? businessToday,
+        recurrence_end_date: draft.recurrence_end_date,
+        client_id: draft.client_id,
+        project_id: draft.project_id,
+        phase_id: draft.phase_id,
+        recurrencePaused,
+      });
+      if (sourceKey === legacySourceKey) setLegacyComparison({ key: proposedKey, sourceKey, current, proposed, anchor: draft.recurrence_anchor_date ?? businessToday });
+    },
+    onError: (error) => toast.error(getErrorMessage(error, "No se pudo comparar los calendarios")),
+  });
+  const toggleRecurrencePause = useMutation({
+    mutationFn: ({ id, paused }: { id: number; paused: boolean }) =>
+      tasksApi.update(id, { recurrence_paused: paused }),
+    onSuccess: (task) => {
+      queryClient.setQueryData(taskKeys.detail(task.id), task);
+      void queryClient.invalidateQueries({ queryKey: taskKeys.recurring() });
+      toast.success(task.recurrence_paused_at ? "Recurrencia pausada" : "Recurrencia activa. Si corresponde hoy, la tarea se generará en unos minutos.");
+    },
+    onError: (error) =>
+      toast.error(getErrorMessage(error, "No se pudo cambiar la recurrencia")),
   });
   const addChecklist = useMutation({
     mutationFn: () => tasksApi.checklist.create(taskId!, newChecklist.trim()),
@@ -335,7 +453,7 @@ export function TaskPanel({
             className="space-y-4"
             onSubmit={(event) => {
               event.preventDefault();
-              if (canWrite && draft.title.trim()) save.mutate();
+              if (canWrite && draft.title.trim() && !(legacyAnchorChange && !comparisonReady)) save.mutate();
             }}
           >
             {!canWrite && (
@@ -602,7 +720,12 @@ export function TaskPanel({
               <summary className="cursor-pointer text-sm font-medium">
                 Dependencias y recurrencia
               </summary>
-              <div className="mt-2 space-y-3">
+                <div className="mt-2 space-y-3">
+                {taskQuery.data?.recurring_parent_title && taskQuery.data.recurrence_occurrence_date && (
+                  <p className="text-sm text-muted-foreground">
+                    Prevista por {taskQuery.data.recurring_parent_title} para {taskQuery.data.recurrence_occurrence_date}. La fecha programada se puede ajustar sin cambiar esta referencia.
+                  </p>
+                )}
                 <div>
                   <Label htmlFor="task-panel-dependency">Depende de</Label>
                   <Select
@@ -631,57 +754,76 @@ export function TaskPanel({
                     type="checkbox"
                     checked={draft.is_recurring ?? false}
                     onChange={(event) =>
-                      setDraft((current) => ({
+                      { setRecurrencePreview(null); setDraft((current) => ({
                         ...current,
                         is_recurring: event.target.checked,
                         recurrence_pattern: event.target.checked
                           ? (current.recurrence_pattern ?? "weekly")
                           : null,
                         recurrence_day: event.target.checked
-                          ? (current.recurrence_day ?? 0)
+                          ? (current.recurrence_pattern === "monthly"
+                            ? Math.min(Math.max(current.recurrence_day ?? 1, 1), 28)
+                            : Math.min(Math.max(current.recurrence_day ?? 0, 0), 4))
                           : null,
                         recurrence_end_date: event.target.checked
                           ? current.recurrence_end_date
                           : null,
-                      }))
+                        recurrence_anchor_date: event.target.checked
+                          ? current.recurrence_anchor_date
+                          : null,
+                      })); }
                     }
                     disabled={!canWrite}
                   />
                   Repetir tarea
                 </label>
                 {draft.is_recurring && (
+                  <>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <Label htmlFor="task-panel-pattern">Patrón</Label>
                       <Select
                         id="task-panel-pattern"
                         value={draft.recurrence_pattern ?? "weekly"}
-                        onChange={(e) =>
-                          change("recurrence_pattern", e.target.value)
-                        }
+                        onChange={(e) => {
+                          const pattern = e.target.value;
+                          setDraft((current) => ({
+                            ...current,
+                            recurrence_pattern: pattern,
+                            recurrence_day: pattern === "monthly"
+                              ? Math.min(Math.max(current.recurrence_day ?? 1, 1), 28)
+                              : Math.min(Math.max(current.recurrence_day ?? 0, 0), 4),
+                            recurrence_anchor_date: pattern === "biweekly" && !(taskQuery.data?.is_recurring && taskQuery.data.recurrence_pattern === "biweekly" && !taskQuery.data.recurrence_anchor_date) && !current.recurrence_anchor_date
+                              ? businessToday
+                              : current.recurrence_anchor_date,
+                          }));
+                        }}
                         disabled={!canWrite}
                       >
                         <option value="daily">Diaria</option>
                         <option value="weekly">Semanal</option>
-                        <option value="biweekly">Bisemanal</option>
+                        <option value="biweekly">Cada dos semanas</option>
                         <option value="monthly">Mensual</option>
                       </Select>
                     </div>
                     <div>
                       <Label htmlFor="task-panel-recurrence-day">Día</Label>
-                      <Input
+                      {draft.recurrence_pattern === "monthly" ? <Input
                         id="task-panel-recurrence-day"
                         type="number"
-                        min="0"
-                        max={draft.recurrence_pattern === "monthly" ? 28 : 4}
-                        value={draft.recurrence_day ?? 0}
-                        onChange={(e) =>
-                          change("recurrence_day", Number(e.target.value))
-                        }
-                        disabled={
-                          !canWrite || draft.recurrence_pattern === "daily"
-                        }
-                      />
+                        min="1"
+                        max="28"
+                        value={draft.recurrence_day ?? 1}
+                        onChange={(e) => change("recurrence_day", Number(e.target.value))}
+                        disabled={!canWrite}
+                      /> : <Select
+                        id="task-panel-recurrence-day"
+                        value={String(draft.recurrence_day ?? 0)}
+                        onChange={(e) => change("recurrence_day", Number(e.target.value))}
+                        disabled={!canWrite || draft.recurrence_pattern === "daily"}
+                      >
+                        <option value="0">Lunes</option><option value="1">Martes</option><option value="2">Miércoles</option><option value="3">Jueves</option><option value="4">Viernes</option>
+                      </Select>}
                     </div>
                     <div>
                       <Label htmlFor="task-panel-recurrence-end">
@@ -698,6 +840,79 @@ export function TaskPanel({
                       />
                     </div>
                   </div>
+                  {draft.recurrence_pattern === "biweekly" && (
+                    <div>
+                      <Label htmlFor="task-panel-recurrence-anchor">
+                        Repetir cada dos semanas desde
+                      </Label>
+                      <Input
+                        id="task-panel-recurrence-anchor"
+                        type="date"
+                        value={draft.recurrence_anchor_date ?? ""}
+                        onChange={(e) =>
+                          change("recurrence_anchor_date", e.target.value || null)
+                        }
+                        disabled={!canWrite}
+                      />
+                      {!draft.recurrence_anchor_date && taskId && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Plantilla antigua: mantiene el calendario actual. Compara las próximas fechas antes de cambiarlo.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => previewRecurrence.mutate()}
+                      disabled={!canWrite || previewRecurrence.isPending}
+                    >
+                      Ver próximas fechas
+                    </Button>
+                    {draft.recurrence_pattern === "biweekly" && taskId && (!draft.recurrence_anchor_date || legacyAnchorChange) && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => compareLegacyCalendar.mutate()}
+                        disabled={!canWrite || compareLegacyCalendar.isPending}
+                      >
+                        Comparar calendario actual
+                      </Button>
+                    )}
+                    {taskId && taskQuery.data?.is_recurring && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => toggleRecurrencePause.mutate({ id: taskId, paused: !recurrencePaused })}
+                        disabled={!canWrite || toggleRecurrencePause.isPending}
+                      >
+                        {recurrencePaused ? <Play className="mr-1 size-4" /> : <Pause className="mr-1 size-4" />}
+                        {recurrencePaused ? "Reanudar recurrencia" : "Pausar recurrencia"}
+                      </Button>
+                    )}
+                  </div>
+                  {recurrenceSummary && (
+                    <div className="rounded-md border border-border p-3 text-sm">
+                      <p className="font-medium">{recurrenceSummary.label}</p>
+                      {recurrenceSummary.reason && <p className="mt-1 text-muted-foreground">{recurrenceSummary.reason}</p>}
+                      {recurrenceSummary.next_dates.length > 0 && <p className="mt-1 text-muted-foreground">Próximas: {recurrenceSummary.next_dates.join(" · ")}</p>}
+                    </div>
+                  )}
+                  {legacyComparison && (legacyComparison.sourceKey === legacySourceKey || comparisonReady) && (
+                    <div className="space-y-3 rounded-md border border-border p-3 text-sm">
+                      <p className="font-medium">{recurrencePaused ? "Fechas al reanudar" : "Antes de cambiar la recurrencia"}</p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div><p className="font-medium">Calendario actual</p><p className="text-muted-foreground">{legacyComparison.current.next_dates.join(" · ") || "Sin próximas fechas"}</p></div>
+                        <div><p className="font-medium">Con este cambio</p><p className="text-muted-foreground">{legacyComparison.proposed.next_dates.join(" · ") || "Sin próximas fechas"}</p></div>
+                      </div>
+                      {!draft.recurrence_anchor_date && <Button type="button" size="sm" onClick={() => change("recurrence_anchor_date", legacyComparison.anchor)} disabled={!canWrite}>Aplicar este cambio</Button>}
+                    </div>
+                  )}
+                  {legacyAnchorChange && !comparisonReady && <p role="alert" className="text-sm text-muted-foreground">Compara el calendario actual y el nuevo antes de guardar este cambio.</p>}
+                  </>
                 )}
               </div>
             </details>
@@ -974,7 +1189,7 @@ export function TaskPanel({
               {canWrite && (
                 <Button
                   type="submit"
-                  disabled={save.isPending || !draft.title.trim()}
+                  disabled={save.isPending || !draft.title.trim() || (legacyAnchorChange && !comparisonReady)}
                 >
                   {save.isPending ? "Guardando…" : "Guardar"}
                 </Button>

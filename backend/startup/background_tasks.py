@@ -59,92 +59,13 @@ async def _holded_sync_loop():
 
 async def _generate_recurring_instances():
     """Create task instances from recurring templates for today."""
-    from datetime import date as date_type
-    from sqlalchemy import select, or_
     from backend.db.database import async_session
-    from backend.db.models import Client, ClientStatus, Project, ProjectStatus, Task, TaskStatus
-    from backend.services.task_scope import validate_task_scope
-    from fastapi import HTTPException
-
-    today = business_today()
-    weekday = today.weekday()  # 0=Mon ... 4=Fri
-    day_of_month = today.day
+    from backend.services.recurrence import generate_recurring_instances
 
     async with async_session() as session:
-        result = await session.execute(
-            select(Task).where(
-                Task.is_recurring == True,
-                or_(Task.client_id.is_(None), Task.client.has(Client.status == ClientStatus.active)),
-                or_(Task.project_id.is_(None), Task.project.has(Project.status == ProjectStatus.active)),
-                or_(Task.recurrence_end_date == None, Task.recurrence_end_date >= today),
-            )
-        )
-        templates = result.scalars().all()
-
-        created = 0
-        for template in templates:
-            should_create = False
-            if template.recurrence_pattern == "daily":
-                should_create = weekday < 5  # Mon-Fri only
-            elif template.recurrence_pattern == "weekly":
-                should_create = weekday == template.recurrence_day
-            elif template.recurrence_pattern == "biweekly":
-                week_num = today.isocalendar()[1]
-                should_create = weekday == template.recurrence_day and week_num % 2 == 0
-            elif template.recurrence_pattern == "monthly":
-                should_create = day_of_month == template.recurrence_day
-
-            if not should_create:
-                continue
-
-            # Check duplicate: instance with same parent + same scheduled_date
-            dup = await session.execute(
-                select(Task.id).where(
-                    Task.recurring_parent_id == template.id,
-                    Task.scheduled_date == today,
-                )
-            )
-            if dup.scalar_one_or_none() is not None:
-                continue
-
-            scope = {
-                "client_id": template.client_id,
-                "project_id": template.project_id,
-                "phase_id": template.phase_id,
-            }
-            try:
-                await validate_task_scope(session, scope)
-            except HTTPException as exc:
-                logging.warning(
-                    "Recurring task %s skipped because its scope is invalid: %s",
-                    template.id,
-                    exc.detail,
-                )
-                continue
-
-            new_task = Task(
-                title=template.title,
-                description=template.description,
-                client_id=scope.get("client_id"),
-                project_id=scope.get("project_id"),
-                phase_id=scope.get("phase_id"),
-                estimated_minutes=template.estimated_minutes,
-                created_by=template.created_by,
-                category_id=template.category_id,
-                assigned_to=template.assigned_to,
-                priority=template.priority,
-                status=TaskStatus.pending,
-                scheduled_date=today,
-                due_date=today,
-                recurring_parent_id=template.id,
-                is_recurring=False,
-            )
-            session.add(new_task)
-            created += 1
-
+        created = await generate_recurring_instances(session)
         if created:
-            await session.commit()
-            logging.info("Generated %d recurring task instance(s) for %s", created, today)
+            logging.info("Generated %d recurring task instance(s) for %s", created, business_today())
 
 
 async def _check_overdue_tasks():
@@ -234,7 +155,7 @@ async def _reset_advanced_tasks():
 
 async def _recurring_midnight_loop():
     """Background loop that generates recurring task instances and checks overdue tasks at midnight."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     # Catch-up al arrancar: si el proceso estuvo caído a medianoche, las tareas
     # "Avanzada" de ayer siguen bloqueadas hasta la próxima medianoche.
@@ -242,11 +163,12 @@ async def _recurring_midnight_loop():
         await _reset_advanced_tasks()
     except Exception as exc:
         logging.error("Advanced task reset (startup catch-up) failed: %s", exc)
-
     while True:
-        now = datetime.now()
+        now = datetime.now(BUSINESS_TZ)
         tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=1, second=0, microsecond=0)
-        wait_seconds = (tomorrow - now).total_seconds()
+        wait_seconds = (
+            tomorrow.astimezone(timezone.utc) - now.astimezone(timezone.utc)
+        ).total_seconds()
         logging.info("Recurring task loop: next run in %.0f seconds", wait_seconds)
         await asyncio.sleep(wait_seconds)
         try:
@@ -261,6 +183,16 @@ async def _recurring_midnight_loop():
             await _check_overdue_tasks()
         except Exception as exc:
             logging.error("Overdue task check failed: %s", exc)
+
+
+async def _recurring_reconciliation_loop():
+    """Reconcile today's occurrence at startup and periodically after resumes."""
+    while True:
+        try:
+            await _generate_recurring_instances()
+        except Exception as exc:
+            logging.error("Recurring task reconciliation failed: %s", exc)
+        await asyncio.sleep(300)
 
 
 def _is_qa_user(user) -> bool:
@@ -413,6 +345,9 @@ def start_background_tasks() -> list[asyncio.Task]:
         logging.info("Holded auto-sync started (every 24h).")
 
     t = asyncio.create_task(_recurring_midnight_loop(), name="recurring-gen")
+    t.add_done_callback(_log_task_error)
+    tasks.append(t)
+    t = asyncio.create_task(_recurring_reconciliation_loop(), name="recurring-reconcile")
     t.add_done_callback(_log_task_error)
     tasks.append(t)
 

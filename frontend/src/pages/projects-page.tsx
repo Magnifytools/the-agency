@@ -240,7 +240,7 @@ export default function ProjectsPage() {
         open={deleteId !== null}
         onOpenChange={(open) => !open && setDeleteId(null)}
         title="Eliminar proyecto"
-        description="¿Seguro que quieres eliminar este proyecto? Las tareas no se eliminarán, solo se desvincularán."
+        description="¿Seguro que quieres eliminar este proyecto? Las tareas no se eliminarán, solo se desvincularán. Las plantillas recurrentes del proyecto quedarán pausadas."
         onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
       />
     </div>

@@ -9,15 +9,50 @@ from backend.services.project_owner import validate_project_owner
 from backend.services.task_lifecycle import stamp_task_status
 from backend.services.task_scope import validate_client_exists, validate_task_scope
 from backend.services.time_entry_dates import manual_time_entry_date
+from backend.services.temporal import business_today, utc_now_naive
+from backend.services.recurrence import validate_recurrence_rule
 
 UPDATABLE_TASK_FIELDS = {
     "title", "description", "status", "priority", "estimated_minutes",
     "actual_minutes", "start_date", "due_date", "client_id", "category_id",
     "assigned_to", "project_id", "phase_id", "depends_on", "scheduled_date",
     "waiting_for", "follow_up_date", "is_recurring", "recurrence_pattern",
-    "recurrence_day", "recurrence_end_date", "recurring_parent_id", "unit_cost",
-    "link_url",
+    "recurrence_day", "recurrence_end_date", "unit_cost",
+    "link_url", "recurrence_anchor_date", "recurrence_paused",
 }
+
+
+def _prepare_recurrence(data: dict, *, existing: Task | None = None) -> None:
+    preserves_legacy_biweekly = bool(
+        existing and existing.is_recurring and existing.recurrence_pattern == "biweekly"
+        and existing.recurrence_anchor_date is None
+    )
+    is_recurring = data.get("is_recurring", existing.is_recurring if existing else False)
+    pattern = data.get("recurrence_pattern", existing.recurrence_pattern if existing else None)
+    day = data.get("recurrence_day", existing.recurrence_day if existing else None)
+    anchor = data.get("recurrence_anchor_date", existing.recurrence_anchor_date if existing else None)
+    end = data.get("recurrence_end_date", existing.recurrence_end_date if existing else None)
+    if (
+        existing and existing.is_recurring and existing.recurrence_pattern == "biweekly"
+        and existing.recurrence_anchor_date is not None
+        and "recurrence_anchor_date" in data and data["recurrence_anchor_date"] is None
+    ):
+        raise HTTPException(422, "Indica la fecha de inicio de la recurrencia bisemanal")
+    if is_recurring and pattern == "biweekly" and anchor is None and not preserves_legacy_biweekly:
+        anchor = business_today()
+        data["recurrence_anchor_date"] = anchor
+    try:
+        validate_recurrence_rule(
+            is_recurring=is_recurring, pattern=pattern, day=day,
+            anchor_date=anchor, end_date=end,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if "recurrence_paused" in data:
+        paused = data.pop("recurrence_paused")
+        if paused is None:
+            raise HTTPException(422, "Indica si quieres pausar o reanudar la recurrencia")
+        data["recurrence_paused_at"] = utc_now_naive() if paused else None
 
 
 async def create_project(db: AsyncSession, data: dict) -> Project:
@@ -36,16 +71,18 @@ def _can_write_time(actor: User | None) -> bool:
 
 
 async def create_task(
-    db: AsyncSession, data: dict, *, actor: User | None, manual_entry_date=None,
+    db: AsyncSession, data: dict, *, actor: User | None, created_by: int | None = None,
+    manual_entry_date=None,
 ) -> Task:
     data = dict(data)
+    _prepare_recurrence(data)
     await validate_task_scope(db, data)
     actual = data.get("actual_minutes")
     if actual and not _can_write_time(actor):
         raise HTTPException(403, "Crear horas reales requiere permiso de escritura en timesheet")
     if actual:
         capture_manual_time(db.sync_session)
-    task = Task(**data, created_by=actor.id if actor else None)
+    task = Task(**data, created_by=actor.id if actor else created_by)
     stamp_task_status(task)
     db.add(task)
     await db.flush()
@@ -72,6 +109,7 @@ async def update_task(
     unsupported = sorted(set(data) - UPDATABLE_TASK_FIELDS)
     if unsupported:
         raise HTTPException(422, f"Campos de tarea no editables: {', '.join(unsupported)}")
+    _prepare_recurrence(data, existing=task)
     old_status = task.status
     manual_changed = "actual_minutes" in data and data["actual_minutes"] != task.actual_minutes
     if manual_changed and not _can_write_time(actor):

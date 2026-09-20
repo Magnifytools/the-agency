@@ -51,6 +51,10 @@ def test_task_json_keeps_planning_dates_civil_and_completion_explicit_utc():
         created_at=datetime(2026, 9, 1, 8),
         updated_at=datetime(2026, 9, 18, 9),
         completed_at=datetime(2026, 9, 17, 22, 30),
+        recurrence_summary={
+            "state": "inactive", "reason": "La tarea no es recurrente",
+            "label": "Sin recurrencia", "next_dates": [],
+        },
     ).model_dump(mode="json")
 
     assert task["start_date"] == "2026-09-17"

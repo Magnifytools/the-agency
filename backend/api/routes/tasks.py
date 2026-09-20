@@ -22,6 +22,7 @@ from backend.db.models import (
     TaskAttachment,
 )
 from backend.schemas.task import TaskCreate, TaskUpdate, TaskResponse
+from backend.schemas.task import RecurrencePreviewRequest, RecurrenceSummaryResponse
 from backend.schemas.task_checklist import ChecklistItemCreate, ChecklistItemUpdate, ChecklistItemResponse
 from backend.schemas.task_comment import TaskCommentCreate, TaskCommentResponse
 from backend.schemas.task_attachment import TaskAttachmentResponse
@@ -32,6 +33,9 @@ from backend.api.middleware.audit_log import log_audit
 from backend.services.temporal import civil_day_utc_bounds
 from backend.services.time_entry_dates import manual_time_entry_date
 from backend.services.domain_writes import create_task as create_task_write, lock_task, update_task as update_task_write
+from backend.services.recurrence import summarize_recurrence
+from backend.services.task_scope import validate_task_scope
+from backend.services.temporal import business_today
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +64,20 @@ def _safe_attr(obj, rel: str, attr: str) -> str | None:
 
 
 def _task_to_response(task: Task) -> TaskResponse:
+    client_status = _safe_attr(task, "client", "status")
+    project_status = _safe_attr(task, "project", "status")
+    client_active = task.client_id is None or getattr(client_status, "value", client_status) == "active"
+    project_active = task.project_id is None or getattr(project_status, "value", project_status) == "active"
+    recurrence_summary = summarize_recurrence(
+        is_recurring=task.is_recurring,
+        pattern=task.recurrence_pattern,
+        day=task.recurrence_day,
+        anchor_date=task.recurrence_anchor_date,
+        end_date=task.recurrence_end_date,
+        paused=task.recurrence_paused_at is not None,
+        client_active=client_active,
+        project_active=project_active,
+    )
     return TaskResponse(
         id=task.id,
         title=task.title,
@@ -86,7 +104,11 @@ def _task_to_response(task: Task) -> TaskResponse:
         recurrence_pattern=task.recurrence_pattern,
         recurrence_day=task.recurrence_day,
         recurrence_end_date=task.recurrence_end_date,
+        recurrence_anchor_date=task.recurrence_anchor_date,
+        recurrence_paused_at=task.recurrence_paused_at,
+        recurrence_summary=RecurrenceSummaryResponse(**recurrence_summary.__dict__),
         recurring_parent_id=task.recurring_parent_id,
+        recurrence_occurrence_date=task.recurrence_occurrence_date,
         unit_cost=float(task.unit_cost) if task.unit_cost is not None else None,
         invoiced_at=task.invoiced_at,
         link_url=task.link_url,
@@ -109,6 +131,20 @@ async def _load_task_for_response(db: AsyncSession, task_id: int) -> Task | None
         .where(Task.id == task_id)
     )
     return result.scalar_one_or_none()
+
+
+async def _recurrence_delete_blocked(db: AsyncSession, task: Task) -> bool:
+    if not task.is_recurring:
+        return False
+    from backend.db.models import TaskRecurrenceOccurrence
+    child_id = (await db.execute(
+        select(Task.id).where(Task.recurring_parent_id == task.id).limit(1)
+    )).scalar_one_or_none()
+    occurrence_id = (await db.execute(
+        select(TaskRecurrenceOccurrence.id)
+        .where(TaskRecurrenceOccurrence.template_id == task.id).limit(1)
+    )).scalar_one_or_none()
+    return child_id is not None or occurrence_id is not None
 
 
 @router.get("", response_model=PaginatedResponse[TaskResponse])
@@ -380,6 +416,48 @@ async def create_task(
     return _task_to_response(task)
 
 
+@router.post("/recurrence-preview", response_model=RecurrenceSummaryResponse)
+async def preview_recurrence(
+    body: RecurrencePreviewRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("tasks")),
+):
+    """Validate and preview a recurrence without persisting anything."""
+    scope = {
+        "client_id": body.client_id,
+        "project_id": body.project_id,
+        "phase_id": body.phase_id,
+    }
+    await validate_task_scope(db, scope)
+    client_active = True
+    project_active = True
+    if scope.get("client_id") is not None:
+        from backend.db.models import Client, ClientStatus
+        client_status = (await db.execute(select(Client.status).where(Client.id == scope["client_id"]))).scalar_one()
+        client_active = client_status == ClientStatus.active
+    if scope.get("project_id") is not None:
+        from backend.db.models import ProjectStatus
+        project_status = (await db.execute(select(Project.status).where(Project.id == scope["project_id"]))).scalar_one()
+        project_active = project_status == ProjectStatus.active
+    anchor = body.recurrence_anchor_date
+    if (body.is_recurring and body.recurrence_pattern == "biweekly"
+            and "recurrence_anchor_date" not in body.model_fields_set):
+        anchor = business_today()
+    summary = summarize_recurrence(
+        is_recurring=body.is_recurring,
+        pattern=body.recurrence_pattern,
+        day=body.recurrence_day,
+        anchor_date=anchor,
+        end_date=body.recurrence_end_date,
+        paused=body.recurrence_paused,
+        client_active=client_active,
+        project_active=project_active,
+    )
+    if summary.state == "invalid":
+        raise HTTPException(422, summary.reason)
+    return RecurrenceSummaryResponse(**summary.__dict__)
+
+
 @router.get("/{task_id}", response_model=TaskResponse)
 async def get_task(
     task_id: int,
@@ -491,6 +569,12 @@ async def delete_task(
     task = result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
+    if task.is_recurring:
+        if await _recurrence_delete_blocked(db, task):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Esta plantilla ya generó tareas. Páusala o fija una fecha de fin para conservar el historial.",
+            )
     try:
         await db.delete(task)
         await db.commit()
@@ -566,7 +650,12 @@ async def bulk_delete_tasks(
     tasks = result.scalars().all()
     deleted = 0
     skipped_ids: list[int] = []
+    recurrence_skipped_ids: list[int] = []
     for task in tasks:
+        if await _recurrence_delete_blocked(db, task):
+            skipped_ids.append(task.id)
+            recurrence_skipped_ids.append(task.id)
+            continue
         try:
             async with db.begin_nested():
                 await db.delete(task)
@@ -587,7 +676,12 @@ async def bulk_delete_tasks(
                 detail="No se pudo confirmar el borrado; no se ha marcado ninguna tarea como eliminada",
             )
     detail = None
-    if skipped_ids:
+    if recurrence_skipped_ids:
+        detail = (
+            f"No se pudieron eliminar {len(recurrence_skipped_ids)} plantillas porque ya generaron tareas. "
+            "Páusalas o fija una fecha de fin para conservar el historial."
+        )
+    elif skipped_ids:
         detail = f"No se pudieron eliminar {len(skipped_ids)} tareas porque tienen registros de tiempo asociados. Elimínalos primero."
     return {"deleted": deleted, "errors": len(skipped_ids), "requested": len(body.ids), "detail": detail}
 

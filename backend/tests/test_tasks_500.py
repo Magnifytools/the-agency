@@ -40,6 +40,9 @@ class TestTaskToResponse:
         task.recurrence_pattern = None
         task.recurrence_day = None
         task.recurrence_end_date = None
+        task.recurrence_anchor_date = None
+        task.recurrence_paused_at = None
+        task.recurrence_occurrence_date = None
         task.recurring_parent_id = None
         task.link_url = None
         # All relationships are None
@@ -90,6 +93,9 @@ class TestTaskToResponse:
         task.recurrence_pattern = None
         task.recurrence_day = None
         task.recurrence_end_date = None
+        task.recurrence_anchor_date = None
+        task.recurrence_paused_at = None
+        task.recurrence_occurrence_date = None
         task.recurring_parent_id = None
         task.link_url = None
 

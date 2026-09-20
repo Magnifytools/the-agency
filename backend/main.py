@@ -201,6 +201,8 @@ async def lifespan(app: FastAPI):
     await ensure_incident_schema(engine)
     from backend.startup.daily_schema import ensure_daily_schema
     await ensure_daily_schema(engine)
+    from backend.startup.recurrence_schema import ensure_recurrence_schema
+    await ensure_recurrence_schema(engine)
     bg_tasks = start_background_tasks()
     logging.info("Startup ready.")
     yield

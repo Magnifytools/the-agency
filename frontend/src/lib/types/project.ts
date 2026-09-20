@@ -70,6 +70,28 @@ export interface ProjectClosingStatus {
   status: "ok" | "warning" | "over"
 }
 
+export interface ProjectCycleTask {
+  id: number
+  title: string
+  status: string
+  scheduled_date: string | null
+  completed_at: string | null
+}
+
+export interface ProjectMonthlyCycle {
+  project_id: number
+  month: string
+  period_start: string
+  period_end: string
+  planned_count: number
+  completed_in_month_count: number
+  total_minutes: number
+  used_hours: number
+  budget_hours: number | null
+  remaining_hours: number | null
+  tasks: ProjectCycleTask[]
+}
+
 export interface ProjectListItem {
   id: number
   name: string

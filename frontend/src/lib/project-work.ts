@@ -13,6 +13,7 @@ export interface ProjectTaskItem {
   estimated_minutes: number | null
   waiting_for: string | null
   follow_up_date: string | null
+  is_recurring?: boolean
 }
 
 export interface ProjectTaskGroup {

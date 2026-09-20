@@ -178,6 +178,7 @@ class ProjectTaskItemResponse(BaseModel):
     assigned_user_name: Optional[str] = None
     waiting_for: Optional[str] = None
     follow_up_date: Optional[date] = None
+    is_recurring: bool = False
 
 
 class ProjectTaskPhaseSummary(BaseModel):
@@ -200,6 +201,28 @@ class ProjectTasksResponse(BaseModel):
     project_name: str
     phases: list[ProjectTaskGroupResponse]
     unassigned_tasks: list[ProjectTaskItemResponse]
+
+
+class ProjectCycleTaskResponse(BaseModel):
+    id: int
+    title: str
+    status: str
+    scheduled_date: Optional[date] = None
+    completed_at: Optional[datetime] = None
+
+
+class ProjectMonthlyCycleResponse(BaseModel):
+    project_id: int
+    month: str
+    period_start: date
+    period_end: date
+    planned_count: int
+    completed_in_month_count: int
+    total_minutes: int
+    used_hours: float
+    budget_hours: Optional[float] = None
+    remaining_hours: Optional[float] = None
+    tasks: list[ProjectCycleTaskResponse]
 
 
 class ProjectExtract(BaseModel):

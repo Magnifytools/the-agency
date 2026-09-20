@@ -13,6 +13,7 @@ import type {
   ClientSummary,
   Task,
   TaskCreate,
+  RecurrenceSummary,
   TaskCategory,
   ChecklistItem,
   TaskComment,
@@ -36,6 +37,7 @@ import type {
   MonthlyClose,
   FinancialSettings,
   Project,
+  ProjectMonthlyCycle,
   ProjectListItem,
   ProjectCreate,
   ProjectDraft,
@@ -317,6 +319,8 @@ export const tasksApi = {
   create: (data: TaskCreate) => api.post<Task>("/tasks", data).then((r) => r.data),
   update: (id: number, data: Partial<TaskCreate>) =>
     api.put<Task>(`/tasks/${id}`, data).then((r) => r.data),
+  recurrencePreview: (data: Pick<TaskCreate, "is_recurring" | "recurrence_pattern" | "recurrence_day" | "recurrence_anchor_date" | "recurrence_end_date" | "client_id" | "project_id" | "phase_id" | "recurrence_paused">) =>
+    api.post<RecurrenceSummary>("/tasks/recurrence-preview", data).then((r) => r.data),
   delete: (id: number) => api.delete(`/tasks/${id}`).then((r) => r.data),
   bulkUpdate: (ids: number[], updates: Record<string, unknown>) =>
     api.patch<{ updated: number; requested: number }>("/tasks/bulk/update", { ids, updates }).then((r) => r.data),
@@ -565,6 +569,8 @@ export const projectsApi = {
     return api.post<ProjectDraft>("/projects/extract-from-text", form).then((r) => r.data)
   },
   tasks: (id: number) => api.get<ProjectTasksResponse>(`/projects/${id}/tasks`).then((r) => r.data),
+  monthlyCycle: (id: number, month?: string) =>
+    api.get<ProjectMonthlyCycle>(`/projects/${id}/monthly-cycle`, { params: { month } }).then((r) => r.data),
   burndown: (id: number) => api.get(`/projects/${id}/burndown`).then((r) => r.data),
   createPhase: (project_id: number, data: { name: string; order_index: number; start_date?: string; due_date?: string }) =>
     api.post<ProjectPhase>(`/projects/${project_id}/phases`, data).then((r) => r.data),

@@ -7,13 +7,13 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 from fastapi.responses import Response
-from sqlalchemy import select, func, delete, update, or_
+from sqlalchemy import select, func, delete, update, or_, text
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import (
-    Client, ClientStatus, Task, TimeEntry, User, UserRole,
+    Client, ClientStatus, Task, TaskRecurrenceOccurrence, TimeEntry, User, UserRole,
     Project, ProjectPhase, ProjectEvidence,
     ClientContact, ClientResource, BillingEvent,
     CommunicationLog, WeeklyDigest, Invoice, InvoiceItem,
@@ -344,7 +344,13 @@ async def hard_delete_client(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    result = await db.execute(select(Client).where(Client.id == client_id))
+    # Shared first lock with recurrence reconciliation. It closes the window in
+    # which a worker could add a child/receipt after this route inspected them.
+    await db.execute(text("SELECT pg_advisory_xact_lock(76241317)"))
+    result = await db.execute(
+        select(Client).where(Client.id == client_id).with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )
     client = result.scalar_one_or_none()
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -368,11 +374,48 @@ async def hard_delete_client(
         select(Project.id).where(Project.client_id == client_id)
     )).scalars())
     task_ids = list((await db.execute(
-        select(Task.id).where(Task.client_id == client_id)
+        select(Task.id).where(Task.client_id == client_id).order_by(Task.id)
+        .with_for_update().execution_options(populate_existing=True)
     )).scalars())
     invoice_ids = list((await db.execute(
         select(Invoice.id).where(Invoice.client_id == client_id)
     )).scalars())
+
+    # A hard delete is allowed to erase recurrence history only when the whole
+    # occurrence graph belongs to the client being erased.  Refuse inconsistent
+    # cross-client links before any of the cleanup statements mutate data.
+    if task_ids:
+        task_id_set = set(task_ids)
+        external_child = (await db.execute(
+            select(Task.id).where(
+                Task.recurring_parent_id.in_(task_ids),
+                Task.id.not_in(task_ids),
+            ).limit(1)
+        )).scalar_one_or_none()
+        receipts = (await db.execute(
+            select(
+                TaskRecurrenceOccurrence.id,
+                TaskRecurrenceOccurrence.template_id,
+                TaskRecurrenceOccurrence.task_id,
+            ).where(or_(
+                TaskRecurrenceOccurrence.template_id.in_(task_ids),
+                TaskRecurrenceOccurrence.task_id.in_(task_ids),
+            ))
+        )).all()
+        crosses_client = external_child is not None or any(
+            receipt.template_id not in task_id_set
+            or (receipt.task_id is not None and receipt.task_id not in task_id_set)
+            for receipt in receipts
+        )
+        if crosses_client:
+            raise HTTPException(
+                status_code=409,
+                detail=("No se puede eliminar: hay una recurrencia vinculada a tareas de otro "
+                        "cliente. Corrige esa vinculación o archiva el cliente."),
+            )
+        receipt_ids = [receipt.id for receipt in receipts]
+    else:
+        receipt_ids = []
 
     # Step 1: Nullify nullable FKs referencing this client's data
     await db.execute(update(Proposal).where(Proposal.client_id == client_id).values(client_id=None))
@@ -417,6 +460,10 @@ async def hard_delete_client(
     # Step 2: Delete rows that depend on tasks/projects/invoices (children first)
     if task_ids:
         await db.execute(delete(TimeEntry).where(TimeEntry.task_id.in_(task_ids)))
+    if receipt_ids:
+        await db.execute(delete(TaskRecurrenceOccurrence).where(
+            TaskRecurrenceOccurrence.id.in_(receipt_ids)
+        ))
     if invoice_ids:
         await db.execute(delete(InvoiceItem).where(InvoiceItem.invoice_id.in_(invoice_ids)))
     if project_ids:

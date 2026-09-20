@@ -62,7 +62,8 @@ const weekRange = (offset: number, today: string) => {
 }
 
 export default function TasksPage() {
-  const { user } = useAuth()
+  const { user, hasPermission } = useAuth()
+  const canWriteTasks = hasPermission?.("tasks", true) ?? false
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const { page, pageSize, setPage, reset } = usePagination(25)
@@ -261,6 +262,15 @@ export default function TasksPage() {
       toast.success("Tarea actualizada")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar tarea")),
+  })
+  const recurrencePauseMutation = useMutation({
+    mutationFn: ({ id, paused }: { id: number; paused: boolean }) =>
+      tasksApi.update(id, { recurrence_paused: paused }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.recurring() })
+      toast.success("Recurrencia actualizada")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "No se pudo cambiar la recurrencia")),
   })
 
   // Separate mutation for drag & drop schedule changes (no dialog close, optimistic update)
@@ -618,6 +628,11 @@ export default function TasksPage() {
                       {t.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" aria-label="Recurrente" />}
                       {t.title}
                     </span>
+                    {t.recurring_parent_title && t.recurrence_occurrence_date && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Prevista por {t.recurring_parent_title} para {t.recurrence_occurrence_date}
+                      </p>
+                    )}
                     {t.checklist_count > 0 && (
                       <span className="ml-2 text-xs text-muted-foreground">&#9745; {t.checklist_count}</span>
                     )}
@@ -797,14 +812,24 @@ export default function TasksPage() {
                     <TableCell className="text-sm">
                       {t.recurrence_pattern === "daily" && "Diaria (L-V)"}
                       {t.recurrence_pattern === "weekly" && `Semanal · ${["Lun", "Mar", "Mié", "Jue", "Vie"][t.recurrence_day ?? 0]}`}
-                      {t.recurrence_pattern === "biweekly" && `Bisemanal · ${["Lun", "Mar", "Mié", "Jue", "Vie"][t.recurrence_day ?? 0]}`}
+                      {t.recurrence_pattern === "biweekly" && `Cada dos semanas · ${["Lun", "Mar", "Mié", "Jue", "Vie"][t.recurrence_day ?? 0]}`}
                       {t.recurrence_pattern === "monthly" && `Mensual · Día ${t.recurrence_day}`}
+                      {t.recurrence_summary && <><p className="mt-1 text-xs text-muted-foreground">{t.recurrence_summary.label}{t.recurrence_summary.reason ? ` · ${t.recurrence_summary.reason}` : ""}</p>{t.recurrence_summary.next_dates.length > 0 && <p className="mt-1 text-xs text-muted-foreground">Próximas: {t.recurrence_summary.next_dates.join(" · ")}</p>}</>}
                     </TableCell>
                     <TableCell>{t.client_name ?? <span className="text-muted-foreground">Sin cliente</span>}</TableCell>
                     <TableCell>{t.assigned_user_name}</TableCell>
                     <TableCell>{priorityBadge(t.priority)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => recurrencePauseMutation.mutate({ id: t.id, paused: !t.recurrence_paused_at })}
+                          disabled={!canWriteTasks || recurrencePauseMutation.isPending}
+                        >
+                          {t.recurrence_paused_at ? "Reanudar" : "Pausar"}
+                        </Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(t)}>
                           <Pencil className="w-3.5 h-3.5" />
                         </Button>

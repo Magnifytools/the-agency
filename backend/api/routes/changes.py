@@ -318,6 +318,45 @@ async def _undo_delete(db: AsyncSession, op: dict, warnings: list[str], row: Any
     return 1
 
 
+async def _relink_restored_recurrence_receipts(
+    db: AsyncSession, reinserts: list[dict],
+) -> None:
+    """Restore receipt provenance only from an explicit occurrence identity."""
+    from backend.db.models import TaskRecurrenceOccurrence
+
+    task_ops = [op for op in reinserts if op.get("entity_type") == "task"]
+    identities = []
+    for op in task_ops:
+        before = op.get("before") or {}
+        parent_id = before.get("recurring_parent_id")
+        occurrence_date = before.get("recurrence_occurrence_date")
+        if parent_id is not None and occurrence_date is not None:
+            occurrence_date = deserialize(
+                _columns(Task)["recurrence_occurrence_date"], occurrence_date,
+            )
+            identities.append((parent_id, occurrence_date, op["entity_id"]))
+    for parent_id, occurrence_date, task_id in sorted(identities):
+        receipt = (await db.execute(
+            select(TaskRecurrenceOccurrence)
+            .where(
+                TaskRecurrenceOccurrence.template_id == parent_id,
+                TaskRecurrenceOccurrence.date == occurrence_date,
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )).scalar_one_or_none()
+        if receipt is None:
+            continue
+        if receipt.task_id is None:
+            receipt.task_id = task_id
+        elif receipt.task_id != task_id:
+            raise HTTPException(
+                status_code=409,
+                detail=("La ocurrencia restaurada ya está vinculada a otra tarea; "
+                        "el cambio no se ha marcado como deshecho."),
+            )
+
+
 async def _undo_create(db: AsyncSession, op: dict, warnings: list[str], row: Any = None) -> int:
     """Borrar lo que se había creado."""
     if row is None:
@@ -442,6 +481,7 @@ async def undo_change(
                     db, op, warnings, locked_rows.get((op["entity_type"], op["entity_id"])),
                 )
             await db.flush()
+            await _relink_restored_recurrence_receipts(db, reinserts)
             for op in updates:
                 restored += await _undo_update(
                     db, op, warnings, locked_rows.get((op["entity_type"], op["entity_id"])),
