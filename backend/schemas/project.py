@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Literal, Optional
 
 from datetime import date, datetime
 from pydantic import BaseModel
@@ -167,6 +167,69 @@ class ProjectListResponse(BaseModel):
     completed_task_count: int = 0
 
     model_config = {"from_attributes": True}
+
+
+class ProjectLifecycleTaskSample(BaseModel):
+    id: int
+    title: str
+    status: str
+    href: str
+
+
+class ProjectLifecycleTimerSample(BaseModel):
+    id: int
+    task_id: int
+    href: str
+
+
+class ProjectLifecycleCount(BaseModel):
+    total: int
+    sample: list[ProjectLifecycleTaskSample] | list[ProjectLifecycleTimerSample]
+
+
+class ProjectCloseBlockers(BaseModel):
+    active_tasks: ProjectLifecycleCount
+    waiting_count: int
+    in_review_count: int
+    active_timers: ProjectLifecycleCount
+
+
+class ProjectLifecycleRecurrence(BaseModel):
+    templates: int
+    paused: int
+    suppressed_after_close: int
+
+
+class ProjectClosePreview(BaseModel):
+    project_id: int
+    target: Literal["completed", "cancelled"]
+    current_status: str
+    expected_updated_at: datetime
+    preview_revision: str
+    can_close: bool
+    blockers: ProjectCloseBlockers
+    recurrence: ProjectLifecycleRecurrence
+
+
+class ProjectCloseRequest(BaseModel):
+    target: Literal["completed", "cancelled"]
+    expected_updated_at: datetime
+    preview_revision: str
+
+
+class ProjectReopenPreview(BaseModel):
+    project_id: int
+    current_status: str
+    expected_updated_at: datetime
+    preview_revision: str
+    can_reopen: bool
+    recurrence: ProjectLifecycleRecurrence
+    message: str
+
+
+class ProjectReopenRequest(BaseModel):
+    expected_updated_at: datetime
+    preview_revision: str
 
 
 class ProjectTaskItemResponse(BaseModel):

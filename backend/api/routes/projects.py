@@ -28,6 +28,10 @@ from backend.schemas.project import (
     InvoiceTasksInput,
     ProjectTasksResponse,
     ProjectMonthlyCycleResponse,
+    ProjectClosePreview,
+    ProjectCloseRequest,
+    ProjectReopenPreview,
+    ProjectReopenRequest,
 )
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module, require_admin
@@ -41,6 +45,13 @@ from backend.services.domain_writes import create_project as create_project_writ
 from backend.services.temporal import as_utc_instant, business_today, business_zone, utc_now_naive
 from backend.services.time_entry_dates import time_entry_civil_period
 from backend.services.project_cycles import collect_project_monthly_cycle
+from backend.services.project_lifecycle import (
+    close_project as close_project_lifecycle,
+    get_close_preview,
+    get_reopen_preview,
+    reopen_project as reopen_project_lifecycle,
+    transition_project_status,
+)
 from backend.api.utils.db_helpers import safe_refresh
 from backend.api.middleware.audit_log import log_audit
 
@@ -809,6 +820,103 @@ _UPDATABLE_PROJECT_FIELDS = {
 }
 
 
+async def _load_project_response(db: AsyncSession, project_id: int) -> Project:
+    project = (await db.execute(
+        select(Project).options(*_project_load_options()).where(Project.id == project_id)
+        .execution_options(populate_existing=True)
+    )).scalar_one()
+    return project
+
+
+async def _after_project_status_change(
+    db: AsyncSession, project: Project, actor: User, old_status: str,
+) -> None:
+    new_status = project.status.value if hasattr(project.status, "value") else str(project.status)
+    if new_status == old_status:
+        return
+    try:
+        from backend.api.routes.automations import execute_automations
+        await execute_automations("project_status_changed", {
+            "project_id": project.id,
+            "project_name": project.name,
+            "client_id": project.client_id,
+            "old_status": old_status,
+            "new_status": new_status,
+        }, db)
+    except Exception as exc:
+        logger.warning("Automation hook failed for project %d: %s", project.id, exc)
+
+    if new_status == "completed" and project.billing_amount:
+        try:
+            from backend.services.notification_service import create_notification, BILLING_REMINDER
+            await create_notification(
+                db, user_id=actor.id, type=BILLING_REMINDER,
+                title=f"Proyecto completado — facturar {project.name}",
+                message=f"Importe: {float(project.billing_amount)}€",
+                link_url=f"/projects/{project.id}",
+                entity_type="project", entity_id=project.id,
+            )
+            await db.commit()
+        except Exception:
+            pass
+
+
+@router.get("/{project_id}/close-preview", response_model=ProjectClosePreview)
+async def project_close_preview(
+    project_id: int,
+    target: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("projects", write=True)),
+):
+    return await get_close_preview(db, project_id, target, current_user)
+
+
+@router.post("/{project_id}/close", response_model=ProjectResponse)
+async def project_close(
+    project_id: int,
+    body: ProjectCloseRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("projects", write=True)),
+):
+    project = await close_project_lifecycle(
+        db, project_id, target=body.target,
+        expected_updated_at=body.expected_updated_at,
+        preview_revision=body.preview_revision, actor=current_user,
+    )
+    old_status = project.__dict__.get("_lifecycle_previous_status", ProjectStatus.active.value)
+    await db.commit()
+    project = await _load_project_response(db, project.id)
+    await _after_project_status_change(db, project, current_user, old_status)
+    return _build_project_response(project)
+
+
+@router.get("/{project_id}/reopen-preview", response_model=ProjectReopenPreview)
+async def project_reopen_preview(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("projects", write=True)),
+):
+    return await get_reopen_preview(db, project_id, current_user)
+
+
+@router.post("/{project_id}/reopen", response_model=ProjectResponse)
+async def project_reopen(
+    project_id: int,
+    body: ProjectReopenRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("projects", write=True)),
+):
+    project = await reopen_project_lifecycle(
+        db, project_id, expected_updated_at=body.expected_updated_at,
+        preview_revision=body.preview_revision, actor=current_user,
+    )
+    old_status = project.__dict__.get("_lifecycle_previous_status", ProjectStatus.completed.value)
+    await db.commit()
+    project = await _load_project_response(db, project.id)
+    await _after_project_status_change(db, project, current_user, old_status)
+    return _build_project_response(project)
+
+
 @router.put("/{project_id}", response_model=ProjectResponse)
 async def update_project(
     project_id: int,
@@ -816,61 +924,38 @@ async def update_project(
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_module("projects", write=True)),
 ):
-    result = await db.execute(
-        select(Project).options(*_project_load_options()).where(Project.id == project_id).with_for_update()
-    )
-    project = result.scalar_one_or_none()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    old_status = project.status.value if hasattr(project.status, "value") else str(project.status)
-    await require_current_write(db, _user, {"projects"})
     update_data = body.model_dump(exclude_unset=True)
+    if "status" in update_data and update_data["status"] is not None:
+        project = await transition_project_status(db, project_id, update_data["status"], _user)
+        update_data.pop("status")
+    else:
+        result = await db.execute(
+            select(Project).options(*_project_load_options()).where(Project.id == project_id).with_for_update()
+        )
+        project = result.scalar_one_or_none()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        await require_current_write(db, _user, {"projects"})
+
+    old_status = project.__dict__.get(
+        "_lifecycle_previous_status",
+        project.status.value if hasattr(project.status, "value") else str(project.status),
+    )
     await validate_project_review(db, update_data, existing=project)
     if "owner_id" in update_data:
         await validate_project_owner(db, update_data["owner_id"])
     for field, value in update_data.items():
         if field not in _UPDATABLE_PROJECT_FIELDS:
             continue
-        if field == "status" and value:
-            value = ProjectStatus(value)
         setattr(project, field, value)
 
     # Progress is derived from current tasks when reading, never an editable snapshot.
 
     await db.commit()
-    await safe_refresh(db, project, log_context="projects")
+    project = await _load_project_response(db, project.id)
 
     # Automation hook: project_status_changed
-    new_status = project.status.value if hasattr(project.status, "value") else str(project.status)
-    if new_status != old_status:
-        try:
-            from backend.api.routes.automations import execute_automations
-            await execute_automations("project_status_changed", {
-                "project_id": project.id,
-                "project_name": project.name,
-                "client_id": project.client_id,
-                "old_status": old_status,
-                "new_status": new_status,
-            }, db)
-        except Exception as e:
-            import logging
-            logging.warning("Automation hook failed for project %d: %s", project.id, e)
-
-        # Billing reminder on project completion
-        if new_status == "completed" and project.billing_amount:
-            try:
-                from backend.services.notification_service import create_notification, BILLING_REMINDER
-                await create_notification(
-                    db, user_id=_user.id, type=BILLING_REMINDER,
-                    title=f"Proyecto completado — facturar {project.name}",
-                    message=f"Importe: {float(project.billing_amount)}€",
-                    link_url=f"/projects/{project.id}",
-                    entity_type="project", entity_id=project.id,
-                )
-                await db.commit()
-            except Exception:
-                pass
+    await _after_project_status_change(db, project, _user, old_status)
 
     return _build_project_response(project)
 
