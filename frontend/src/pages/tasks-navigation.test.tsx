@@ -5,6 +5,8 @@ import { MemoryRouter, useNavigate } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import TasksPage from "./tasks-page"
 const api = vi.hoisted(() => ({ list: vi.fn(), listAll: vi.fn(), empty: vi.fn(), agenda: vi.fn(), canWrite: true, user: {id: 1, role: "admin"} }))
+const clock = vi.hoisted(() => ({ today: "2026-10-01" }))
+vi.mock("@/hooks/use-business-date", () => ({ useBusinessDate: () => clock.today }))
 vi.mock("@/components/incidents/incident-inbox", () => ({ IncidentInbox: () => <div>Alertas personales</div> }))
 vi.mock("@/components/tasks/next-meeting", () => ({ NextMeeting: () => <div>Próxima reunión personal</div> }))
 vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: api.user, hasPermission: () => api.canWrite }) }))
@@ -83,5 +85,15 @@ describe("tasks URL navigation", () => {
     expect(await screen.findByRole("button", { name: "Pausar" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Editar plantilla Revisión semanal" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Eliminar plantilla Revisión semanal" })).toBeDisabled()
+  })
+  it("opens the business month and keeps manual month navigation", async () => {
+    clock.today = "2026-12-01"
+    showAgenda("/tasks?view=calendar")
+    await waitFor(() => expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ due_date_from: "2026-12-01", due_date_to: "2026-12-31" })))
+    await screen.findByText(/diciembre 2026/i)
+    await userEvent.click(screen.getByRole("button", { name: "Mes siguiente" }))
+    await waitFor(() => expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ due_date_from: "2027-01-01", due_date_to: "2027-01-31" })))
+    clock.today = "2027-02-01"
+    expect(screen.getByText(/enero 2027/i)).toBeInTheDocument()
   })
 })

@@ -231,6 +231,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
             Completadas hoy ({completed.total})
           </p>
+          <p className="mb-2 text-xs text-muted-foreground">Sólo aparecen tareas con fecha de finalización registrada para hoy.</p>
           <div className="space-y-1">
             {completedToday.map((task) => (
               <div key={task.id} className="flex items-center gap-2 py-1.5 px-2 rounded text-muted-foreground group/done">

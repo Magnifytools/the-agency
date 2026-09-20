@@ -10,6 +10,7 @@ import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar, FileText } from "luci
 import { CommunicationSchedules } from "@/components/communication-schedules"
 import { JobRuntimeStatusPanel } from "@/components/job-runtime-status"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { Button } from "@/components/ui/button"
 
 const SPAIN_REGIONS: { code: string; name: string }[] = [
   { code: "AND", name: "Andalucía" },
@@ -110,11 +111,13 @@ export default function SettingsPage() {
     setUserLocality(user?.locality ?? "")
   }, [user?.region, user?.locality])
 
-  const { data: holidays = [], refetch: refetchHolidays } = useQuery({
+  const holidaysQuery = useQuery({
     queryKey: ["holidays", currentYear],
     queryFn: () => myWeekApi.listHolidays(currentYear),
     enabled: isAdmin,
   })
+  const holidays = holidaysQuery.isError ? [] : (holidaysQuery.data ?? [])
+  const refetchHolidays = holidaysQuery.refetch
 
   const saveLocationMut = useMutation({
     mutationFn: () => usersApi.update(user!.id, { region: userRegion || null, locality: userLocality || null }),
@@ -234,11 +237,12 @@ export default function SettingsPage() {
   }
 
   // Categories queries & mutations
-  const { data: categories = [] } = useQuery({
+  const categoriesQuery = useQuery({
     queryKey: ["task-categories"],
     queryFn: () => categoriesApi.list(),
     enabled: canManageCategories,
   })
+  const categories = categoriesQuery.isError ? [] : (categoriesQuery.data ?? [])
 
   const createCatMut = useMutation({
     mutationFn: (data: { name: string; default_minutes: number }) => categoriesApi.create(data),
@@ -390,6 +394,9 @@ export default function SettingsPage() {
           </div>
 
           <div className="divide-y divide-border">
+            {categoriesQuery.isPending && <p role="status" className="py-4 text-sm text-muted-foreground">Cargando categorías…</p>}
+            {categoriesQuery.isError && <div role="alert" className="flex items-center justify-between gap-3 py-4"><p className="text-sm">No se pudieron cargar las categorías.</p><Button variant="outline" size="sm" onClick={() => void categoriesQuery.refetch()}>Reintentar</Button></div>}
+            {categoriesQuery.isSuccess && categories.length === 0 && <p className="py-4 text-center text-sm text-muted-foreground">No hay categorías configuradas</p>}
             {categories.map((cat) => {
               const isEditingThis = editingCatId === cat.id
               return (
@@ -453,7 +460,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Add new category */}
-          <div className="mt-4 flex items-center gap-2">
+          <fieldset disabled={!categoriesQuery.isSuccess} className="mt-4 flex items-center gap-2">
             <input
               className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
               placeholder="Nueva categoría..."
@@ -482,7 +489,7 @@ export default function SettingsPage() {
             >
               <Plus className="h-4 w-4" />
             </button>
-          </div>
+          </fieldset>
         </div>
       )}
 
@@ -610,6 +617,8 @@ export default function SettingsPage() {
           </p>
 
           <div className="divide-y divide-border max-h-80 overflow-y-auto">
+            {holidaysQuery.isPending && <p role="status" className="py-4 text-center text-sm text-muted-foreground">Cargando festivos…</p>}
+            {holidaysQuery.isError && <div role="alert" className="flex items-center justify-between gap-3 py-4"><p className="text-sm">No se pudieron cargar los festivos.</p><Button variant="outline" size="sm" onClick={() => void holidaysQuery.refetch()}>Reintentar</Button></div>}
             {holidays.map((h) => (
               <div key={h.id} className="flex items-center justify-between py-2.5 gap-3">
                 <div className="flex-1 min-w-0">
@@ -642,13 +651,13 @@ export default function SettingsPage() {
                 </button>
               </div>
             ))}
-            {holidays.length === 0 && (
+            {holidaysQuery.isSuccess && holidays.length === 0 && (
               <p className="py-4 text-sm text-muted-foreground text-center">No hay festivos configurados</p>
             )}
           </div>
 
           {/* Add new holiday */}
-          <div className="mt-4 pt-4 border-t border-border space-y-3">
+          <fieldset disabled={!holidaysQuery.isSuccess} className="mt-4 pt-4 border-t border-border space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <input
                 type="date"
@@ -703,7 +712,7 @@ export default function SettingsPage() {
                 <Plus className="h-4 w-4" /> Añadir
               </button>
             </div>
-          </div>
+          </fieldset>
         </div>
       )}
     </div>
