@@ -5,8 +5,8 @@ import { MemoryRouter } from "react-router-dom"
 import { beforeEach, expect, it, vi } from "vitest"
 import { OperationalUsagePanel } from "./operational-usage"
 
-const get = vi.hoisted(() => vi.fn())
-vi.mock("@/lib/api", () => ({ operationalUsageApi: { get } }))
+const { get, origins } = vi.hoisted(() => ({ get: vi.fn(), origins: vi.fn() }))
+vi.mock("@/lib/api", () => ({ operationalUsageApi: { get, origins } }))
 
 const response = {
   as_of: "2026-09-21T12:00:00Z", window: { days: 30, start: "2026-08-22T12:00:00Z", end: "2026-09-21T12:00:00Z" },
@@ -23,7 +23,7 @@ function show(userId = 7) {
   return render(<QueryClientProvider client={client}><MemoryRouter><OperationalUsagePanel userId={userId} /></MemoryRouter></QueryClientProvider>)
 }
 
-beforeEach(() => { get.mockReset(); get.mockResolvedValue(response) })
+beforeEach(() => { get.mockReset(); get.mockResolvedValue(response); origins.mockReset(); origins.mockResolvedValue([{ origin: "extension", hits: 7 }, { origin: "unknown", hits: 20 }]) })
 
 it("shows six bounded signals and never turns missing denominators into zero percent", async () => {
   show()
@@ -32,7 +32,19 @@ it("shows six bounded signals and never turns missing denominators into zero per
   expect(screen.getByText("50 %")).toBeInTheDocument()
   expect(screen.getByText("5 actualizaciones")).toBeInTheDocument()
   expect(screen.queryByText(/cumplimiento/i)).not.toBeInTheDocument()
-  expect(screen.getAllByRole("link", { name: "Abrir fuente" })).toHaveLength(6)
+  expect(screen.getByText(/Fuera del porcentaje: 2 por aclarar y 1 por revisar/)).toBeInTheDocument()
+  expect(screen.getByText(/Fuera del porcentaje: 1 pendientes/)).toBeInTheDocument()
+  expect(screen.getByText(/Web: 0 · Extensión: 7 · Sin identificar: 20/)).toBeInTheDocument()
+  expect(screen.queryByRole("link", { name: "Abrir fuente" })).not.toBeInTheDocument()
+})
+
+it("does not turn a failed origin query into zero requests", async () => {
+  origins.mockRejectedValueOnce(new Error("offline"))
+  show()
+  expect(await screen.findByText("No se pudo cargar el origen de las peticiones.")).toBeInTheDocument()
+  expect(screen.queryByText(/Web:/)).not.toBeInTheDocument()
+  await userEvent.click(screen.getByRole("button", { name: "Reintentar origen" }))
+  expect(await screen.findByText(/Extensión: 7/)).toBeInTheDocument()
 })
 
 it("keeps stale data hidden after an error and retries explicitly", async () => {

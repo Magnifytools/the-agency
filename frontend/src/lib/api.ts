@@ -1067,6 +1067,8 @@ export const commandsApi = {
 export const operationalUsageApi = {
   get: (days = 30) =>
     api.get<OperationalUsage>("/admin/usage/operational", { params: { days } }).then((response) => response.data),
+  origins: (days = 30) =>
+    api.get<Array<{ origin: "web" | "extension" | "unknown"; hits: number }>>("/admin/usage/origins", { params: { days } }).then((response) => response.data),
 }
 
 // --- Project Evidence ---

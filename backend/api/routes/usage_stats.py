@@ -123,7 +123,7 @@ async def by_user(
             func.count().label("hits"),
         )
         .join(User, AuditLog.user_id == User.id, isouter=True)
-        .where(AuditLog.created_at >= since)
+        .where(AuditLog.created_at >= since, AuditLog.route_template.isnot(None))
         .group_by(AuditLog.user_id, User.full_name)
         .order_by(func.count().desc())
     )
@@ -150,7 +150,7 @@ async def daily(
             func.date(AuditLog.created_at).label("day"),
             func.count().label("hits"),
         )
-        .where(AuditLog.created_at >= since)
+        .where(AuditLog.created_at >= since, AuditLog.route_template.isnot(None))
         .group_by(func.date(AuditLog.created_at))
         .order_by(func.date(AuditLog.created_at))
     )
@@ -173,7 +173,7 @@ async def origins(
     label = func.coalesce(AuditLog.client_origin, "unknown")
     result = await db.execute(
         select(label.label("origin"), func.count().label("hits"))
-        .where(AuditLog.created_at >= _window(days))
+        .where(AuditLog.created_at >= _window(days), AuditLog.route_template.isnot(None))
         .group_by(label)
         .order_by(label)
     )

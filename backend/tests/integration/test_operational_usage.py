@@ -112,6 +112,8 @@ async def test_usage_origin_groups_null_history_and_filters_routes(admin_client,
                  status_code=200, duration_ms=20, client_origin="extension", created_at=now),
         AuditLog(user_id=admin_client.test_user.id, method="GET", route_template="/api/tasks",
                  status_code=200, duration_ms=30, client_origin=None, created_at=now),
+        AuditLog(user_id=admin_client.test_user.id, action="legacy_action",
+                 entity_type="task", entity_id=1, created_at=now),
     ])
     await db_session.flush()
     grouped = await admin_client.get("/api/admin/usage/origins")
@@ -124,6 +126,10 @@ async def test_usage_origin_groups_null_history_and_filters_routes(admin_client,
     filtered = await admin_client.get("/api/admin/usage/top-routes?origin=extension")
     assert filtered.status_code == 200
     assert filtered.json()[0]["hits"] == 1
+    users = await admin_client.get("/api/admin/usage/by-user")
+    assert sum(row["hits"] for row in users.json()) == 3
+    days = await admin_client.get("/api/admin/usage/daily")
+    assert sum(row["hits"] for row in days.json()) == 3
     assert (await admin_client.get("/api/admin/usage/top-routes?origin=assistant")).status_code == 422
 
 

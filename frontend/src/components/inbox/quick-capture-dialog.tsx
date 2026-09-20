@@ -735,7 +735,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
               >
                 <p className="font-medium">{receipt.result.message}</p>
                 {receipt.result.kind === "derivation" && receipt.raw_text && (
-                  <blockquote className="rounded-md border-l-2 border-brand bg-background/70 px-3 py-2 text-sm text-muted-foreground">
+                  <blockquote className="rounded-md border border-border bg-background/70 px-3 py-2 text-sm text-muted-foreground">
                     {receipt.raw_text}
                   </blockquote>
                 )}
