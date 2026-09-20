@@ -1,0 +1,40 @@
+{
+  "version": "20260920_client_onboarding_v1",
+  "sql": "CREATE TABLE IF NOT EXISTS client_onboarding_receipts (\n user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n request_key VARCHAR(64) NOT NULL,\n status VARCHAR(16) NOT NULL,\n request_hash VARCHAR(64),\n result JSONB,\n change_log_id INTEGER REFERENCES change_logs(id) ON DELETE SET NULL,\n PRIMARY KEY (user_id, request_key),\n CONSTRAINT ck_client_onboarding_receipts_terminal CHECK (\n (status = 'cancelled' AND request_hash IS NULL AND result IS NULL AND change_log_id IS NULL) OR\n (status = 'confirmed' AND request_hash IS NOT NULL AND request_hash ~ '^[0-9a-f]{64}$' AND result IS NOT NULL AND jsonb_typeof(result) = 'object')),\n CONSTRAINT ck_client_onboarding_receipts_key CHECK (request_key ~ '^[A-Za-z0-9_-]{16,64}$')\n)",
+  "columns": {
+    "user_id": [
+      "int4",
+      false,
+      null
+    ],
+    "request_key": [
+      "varchar",
+      false,
+      64
+    ],
+    "status": [
+      "varchar",
+      false,
+      16
+    ],
+    "request_hash": [
+      "varchar",
+      true,
+      64
+    ],
+    "result": [
+      "jsonb",
+      true,
+      null
+    ],
+    "change_log_id": [
+      "int4",
+      true,
+      null
+    ]
+  },
+  "checks": {
+    "ck_client_onboarding_receipts_key": "((request_key)::text ~ '^[A-Za-z0-9_-]{16,64}$'::text)",
+    "ck_client_onboarding_receipts_terminal": "((((status)::text = 'cancelled'::text) AND (request_hash IS NULL) AND (result IS NULL) AND (change_log_id IS NULL)) OR (((status)::text = 'confirmed'::text) AND (request_hash IS NOT NULL) AND ((request_hash)::text ~ '^[0-9a-f]{64}$'::text) AND (result IS NOT NULL) AND (jsonb_typeof(result) = 'object'::text)))"
+  }
+}

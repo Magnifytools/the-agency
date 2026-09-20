@@ -1,6 +1,6 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-20T20:07:20.875522+00:00",
+  "ultima_actualizacion": "2026-09-20T20:37:10.599133+00:00",
   "estado_general": "produccion_vigesima_mejora_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
@@ -262,6 +262,13 @@
       "estado": "completado",
       "prioridad": "alta",
       "notas": "PR32/551eac8 publicada y verificada.372frontend/62archivos,1204backend(2omitidas), seisgatesCI, UI390/1440. Datos/hashes/ledger conservados, sin migración. P21 sólo plan, objetivo global activo."
+    },
+    {
+      "id": "AUDIT-20260920-P21",
+      "descripcion": "Alta atómica de cliente, contactos y proyecto con recuperación y Deshacer",
+      "estado": "en_validacion",
+      "prioridad": "alta",
+      "notas": "Implementada localmente;1243backend(2omitidas),14pruebas dirigidasUI y build final correctos. Pendientes navegador,CI ypublicación. ProducciónP20sin cambios."
     }
   ],
   "bugs": [

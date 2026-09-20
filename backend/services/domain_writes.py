@@ -4,14 +4,22 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
 
-from backend.db.models import Project, Task, TaskStatus, TimeEntry, User
+from backend.db.models import (
+    Client,
+    ClientContact,
+    Project,
+    Task,
+    TaskStatus,
+    TimeEntry,
+    User,
+)
 from backend.services.change_journal import capture_manual_time
 from backend.services.project_owner import validate_project_owner
+from backend.services.recurrence import validate_recurrence_rule
 from backend.services.task_lifecycle import stamp_task_status
 from backend.services.task_scope import validate_client_exists, validate_task_scope
-from backend.services.time_entry_dates import manual_time_entry_date
 from backend.services.temporal import business_today, utc_now_naive
-from backend.services.recurrence import validate_recurrence_rule
+from backend.services.time_entry_dates import manual_time_entry_date
 
 UPDATABLE_TASK_FIELDS = {
     "title", "description", "status", "priority", "estimated_minutes",
@@ -23,6 +31,36 @@ UPDATABLE_TASK_FIELDS = {
 }
 
 RETIRED_TASK_EDITABLE_FIELDS = {"title", "description", "link_url"}
+
+
+async def create_client(db: AsyncSession, data: dict) -> Client:
+    """Create a client inside the caller's transaction."""
+    client = Client(**data)
+    db.add(client)
+    await db.flush()
+    return client
+
+
+async def create_contact(db: AsyncSession, client_id: int, data: dict) -> ClientContact:
+    """Create a contact while serializing the per-client primary invariant."""
+    client = (await db.execute(
+        select(Client).where(Client.id == client_id).options(noload("*")).with_for_update()
+    )).scalar_one_or_none()
+    if client is None:
+        raise HTTPException(404, "Client not found")
+    if data.get("is_primary"):
+        primaries = (await db.execute(
+            select(ClientContact).where(
+                ClientContact.client_id == client_id,
+                ClientContact.is_primary.is_(True),
+            ).order_by(ClientContact.id).with_for_update()
+        )).scalars().all()
+        for contact in primaries:
+            contact.is_primary = False
+    contact = ClientContact(client_id=client_id, **data)
+    db.add(contact)
+    await db.flush()
+    return contact
 
 
 def _prepare_recurrence(data: dict, *, existing: Task | None = None) -> None:

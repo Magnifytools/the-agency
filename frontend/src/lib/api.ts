@@ -8,6 +8,8 @@ import type {
   PaginatedResponse,
   Client,
   ClientCreate,
+  ClientOnboardingCreate,
+  ClientOnboardingResult,
   ClientExtract,
   ClientDocument,
   ClientSummary,
@@ -278,6 +280,10 @@ export const clientsApi = {
     api.get<PaginatedResponse<Client>>("/clients", { params: { ...(status && { status }), page_size: 1000 } }).then((r) => r.data.items),
   get: (id: number) => api.get<Client>(`/clients/${id}`).then((r) => r.data),
   create: (data: ClientCreate) => api.post<Client>("/clients", data).then((r) => r.data),
+  onboard: (data: ClientOnboardingCreate, requestKey: string) =>
+    api.post<ClientOnboardingResult>("/clients/onboarding", data, { headers: { "X-Agency-Request-Key": requestKey } }).then((r) => r.data),
+  recoverOnboarding: (requestKey: string) =>
+    api.post<ClientOnboardingResult>(`/clients/onboarding-attempts/${encodeURIComponent(requestKey)}/recover`).then((r) => r.data),
   update: (id: number, data: Partial<ClientCreate>) =>
     api.put<Client>(`/clients/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete<Client>(`/clients/${id}`).then((r) => r.data),

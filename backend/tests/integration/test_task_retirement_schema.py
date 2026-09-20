@@ -68,7 +68,7 @@ async def test_upgrade_preserves_all_task_and_time_values(engine, legacy_tz):
         assert (await conn.execute(text("SELECT to_jsonb(t) FROM time_entries t ORDER BY id"))).scalars().all() == before_time
         assert (await conn.execute(text("SELECT retired_at,retired_reason FROM tasks ORDER BY id"))).all() == [(None, None)] * 2
         after_ledger = (await conn.execute(text("SELECT * FROM agency_schema_versions ORDER BY version"))).all()
-        assert len(after_ledger) == len(ledger) + 1
+        assert {row.version for row in after_ledger} == {migration.version for migration in deployment_schema.MIGRATIONS}
         assert set(ledger) <= set(after_ledger)
 
 

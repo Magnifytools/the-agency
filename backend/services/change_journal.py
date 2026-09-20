@@ -45,12 +45,15 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any, Optional
 
-from sqlalchemy import Date, DateTime, Enum as SAEnum, Float, Numeric, event, inspect as sa_inspect
+from sqlalchemy import Date, DateTime, Float, Numeric, event
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from backend.db.models import (
     ChangeLog,
     Client,
+    ClientContact,
     GrowthIdea,
     Lead,
     LeadActivity,
@@ -60,7 +63,6 @@ from backend.db.models import (
     TaskChecklist,
     TimeEntry,
 )
-
 from backend.services.temporal import utc_now_naive
 
 logger = logging.getLogger(__name__)
@@ -131,6 +133,7 @@ _SPECS: dict[type, _Spec] = {
     Task:          _Spec("task",          "title",        "tasks",    "Tarea",     True,  0),
     Project:       _Spec("project",       "name",         "projects", "Proyecto",  False, 0),
     Client:        _Spec("client",        "name",         "clients",  "Cliente",   False, 0),
+    ClientContact: _Spec("client_contact", "name",        "clients",  "Contacto",  False, 1),
     Lead:          _Spec("lead",          "company_name", "growth",   "Lead",      False, 0),
     GrowthIdea:    _Spec("growth_idea",   "title",        "growth",   "Idea",      True,  0),
     ProjectPhase:  _Spec("project_phase", "name",         "projects", "Fase",      True,  1),
