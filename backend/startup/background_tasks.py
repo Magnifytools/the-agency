@@ -198,25 +198,38 @@ async def _reset_advanced_tasks():
     que si el proceso estuvo caído a medianoche la siguiente ejecución (incluido
     el arranque) recupera el retraso sin dejar tareas congeladas en Avanzada.
     """
-    from datetime import date as date_type
-    from sqlalchemy import update
+    from sqlalchemy import select, update
     from backend.db.database import async_session
     from backend.db.models import Task, TaskStatus
 
     today = business_today()
 
     async with async_session() as session:
+        eligible = (
+            Task.status == TaskStatus.advanced,
+            (Task.advanced_at.is_(None)) | (Task.advanced_at < today),
+        )
+        # Use the same ordering as bulk edits, Undo and incident reconciliation.
+        # PostgreSQL rechecks eligibility after waiting for a concurrent writer.
+        ids = list(
+            (
+                await session.execute(
+                    select(Task.id).where(*eligible).order_by(Task.id).with_for_update()
+                )
+            ).scalars()
+        )
+        if not ids:
+            return
         result = await session.execute(
             update(Task)
-            .where(
-                Task.status == TaskStatus.advanced,
-                (Task.advanced_at == None) | (Task.advanced_at < today),  # noqa: E711
-            )
+            .where(Task.id.in_(ids), *eligible)
             .values(status=TaskStatus.in_progress, advanced_at=None)
         )
         if result.rowcount:
             await session.commit()
-            logging.info("Reset %d 'Avanzada' task(s) back to 'En curso'.", result.rowcount)
+            logging.info(
+                "Reset %d 'Avanzada' task(s) back to 'En curso'.", result.rowcount
+            )
 
 
 async def _recurring_midnight_loop():
@@ -249,65 +262,6 @@ async def _recurring_midnight_loop():
         except Exception as exc:
             logging.error("Overdue task check failed: %s", exc)
 
-
-# ── Billing reminders ────────────────────────────────────────
-
-async def _billing_reminder_loop():
-    """Daily check for projects with upcoming billing dates."""
-    from datetime import datetime, timedelta
-    while True:
-        now = datetime.now()
-        target = now.replace(hour=8, minute=1, second=0, microsecond=0)
-        if now >= target:
-            target += timedelta(days=1)
-        await asyncio.sleep((target - now).total_seconds())
-        try:
-            await _check_project_billing()
-        except Exception as e:
-            logging.error("Billing check error: %s", e)
-
-
-async def _check_project_billing():
-    """Notify once per recipient/project/billing date, only when enabled."""
-    from datetime import date, timedelta
-    from sqlalchemy import select
-    from backend.core.modules import is_enabled
-    from backend.db.database import async_session
-    from backend.db.models import Project, ProjectStatus, User, UserRole
-    from backend.services.notification_checks import NotificationChecks
-    from backend.services.notification_service import BILLING_REMINDER
-
-    if not is_enabled("billing"):
-        return
-    async with async_session() as db:
-        today = business_today()
-        result = await db.execute(select(Project).where(
-            Project.status.in_([ProjectStatus.active, ProjectStatus.completed]),
-            Project.next_billing_date <= today + timedelta(days=3),
-            Project.next_billing_date.isnot(None),
-        ))
-        projects = result.scalars().all()
-        if not projects:
-            return
-        admins = await db.execute(select(User.id).where(
-            User.role == UserRole.admin, User.is_active.is_(True),
-        ).order_by(User.id))
-        for admin_id in admins.scalars().all():
-            checks = await NotificationChecks.load(db, admin_id)
-            for project in projects:
-                if checks.has(BILLING_REMINDER, "project", project.id, project.next_billing_date):
-                    continue
-                amount = float(project.billing_amount or 0)
-                await checks.create(
-                    type=BILLING_REMINDER, entity_type="project", entity_id=project.id,
-                    title=f"Facturación: {project.name}",
-                    message=f"Revisar facturación de {project.name} ({amount:g} EUR), prevista el {project.next_billing_date}",
-                    link_url=f"/projects/{project.id}",
-                )
-        await db.commit()
-
-
-# ── Daily reminders ──────────────────────────────────────────
 
 def _is_qa_user(user) -> bool:
     """Return True for test/QA users that should never get notifications."""
@@ -434,6 +388,12 @@ def start_background_tasks() -> list[asyncio.Task]:
     """
     tasks: list[asyncio.Task] = []
 
+    if settings.INCIDENTS_ENABLED:
+        from backend.services.incidents import incident_loop
+        t = asyncio.create_task(incident_loop(), name="operational-incidents")
+        t.add_done_callback(_log_task_error)
+        tasks.append(t)
+
     if settings.DELIVERY_WORKER_ENABLED:
         from backend.services.deliveries import delivery_loop
         t = asyncio.create_task(delivery_loop(), name="manual-deliveries")
@@ -455,12 +415,6 @@ def start_background_tasks() -> list[asyncio.Task]:
     t = asyncio.create_task(_recurring_midnight_loop(), name="recurring-gen")
     t.add_done_callback(_log_task_error)
     tasks.append(t)
-
-    from backend.core.modules import is_enabled
-    if is_enabled("billing"):
-        t = asyncio.create_task(_billing_reminder_loop(), name="billing-check")
-        t.add_done_callback(_log_task_error)
-        tasks.append(t)
 
     if settings.SCHEDULED_COMMUNICATIONS_ENABLED:
         from backend.services.scheduled_communications import scheduler_loop

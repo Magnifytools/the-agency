@@ -25,18 +25,24 @@ type ManualKind = "pm_briefing" | "weekly_report" | "daily_summary" | "custom" |
 type ReceiptSource =
   | { sourceKind: "daily" | "digest" | "communication"; sourceId: number; manualKind?: never; scope?: never }
   | { manualKind: ManualKind; scope?: "mine" | "team"; sourceKind?: never; sourceId?: never }
+  | { deliveryId: string; sourceKind?: never; sourceId?: never; manualKind?: never; scope?: never }
 
 function ReceiptHistory(props: ReceiptSource) {
   const { user } = useAuth()
   const client = useQueryClient()
   const [review, setReview] = useState<{ receipt: DeliveryReceipt; key: string } | null>(null)
   const [acknowledged, setAcknowledged] = useState(false)
-  const key = "manualKind" in props
+  const [replacementId, setReplacementId] = useState<string | null>(null)
+  const key = "deliveryId" in props
+    ? ["deliveries", user?.id, "receipt", props.deliveryId]
+    : "manualKind" in props
     ? ["deliveries", "manual", user?.id, props.manualKind, props.scope]
     : ["deliveries", user?.id, props.sourceKind, props.sourceId]
   const query = useQuery({
     queryKey: key,
-    queryFn: () => "manualKind" in props
+    queryFn: () => "deliveryId" in props
+      ? deliveriesApi.get(props.deliveryId).then((receipt) => [receipt])
+      : "manualKind" in props
       ? deliveriesApi.listManual(props.manualKind!, props.scope)
       : deliveriesApi.list(props.sourceKind!, props.sourceId!),
     enabled: !!user,
@@ -46,11 +52,13 @@ function ReceiptHistory(props: ReceiptSource) {
   const mutation = useMutation({
     mutationFn: ({ action, id, reviewKey }: { action: "retry" | "cancel" | "resend"; id: string; reviewKey?: string }) =>
       action === "resend" ? deliveriesApi.resend(id, reviewKey!) : deliveriesApi[action](id),
-    onSuccess: (receipt) => {
+    onSuccess: (receipt, variables) => {
+      if (receipt.delivery_id !== variables.id) setReplacementId(receipt.delivery_id)
       deliveryToast(receipt)
       setReview(null)
       setAcknowledged(false)
-      client.invalidateQueries({ queryKey: key })
+      client.invalidateQueries({ queryKey: ["deliveries"] })
+      client.invalidateQueries({ queryKey: ["incidents"] })
       client.invalidateQueries({ queryKey: ["dailys"] })
       client.invalidateQueries({ queryKey: ["daily-today"] })
     },
@@ -70,12 +78,14 @@ function ReceiptHistory(props: ReceiptSource) {
 
   return <section className="space-y-3 text-sm" aria-label="Recibos de Discord">
     <h3 className="font-medium">Envíos a Discord</h3>
+    {replacementId && <p><a className="underline" href={`/deliveries/${replacementId}`}>Ver el nuevo envío</a></p>}
     {query.data.map((receipt) => <div key={receipt.delivery_id} className="rounded-md border p-3 space-y-2">
       <p role="status"><strong>{labels[receipt.status]}</strong> · {receipt.message}</p>
       {(receipt.title || receipt.destination_label || receipt.period_start) && <p className="text-xs text-muted-foreground">
         {receipt.title}{receipt.destination_label ? ` · ${receipt.destination_label}` : ""}
         {receipt.period_start ? ` · ${receipt.period_start}${receipt.period_end && receipt.period_end !== receipt.period_start ? ` — ${receipt.period_end}` : ""}` : ""}
       </p>}
+      {"deliveryId" in props && receipt.source_kind === "digest" && <p><a className="underline" href={`/digests/${receipt.source_id}/edit`}>Abrir resumen de origen</a></p>}
       {!receipt.worker_enabled && receipt.status === "pending" && <p>El procesamiento está pausado. El mensaje y el borrador están guardados.</p>}
       {receipt.source_changed && <p className="text-amber-600">Este recibo corresponde a una versión anterior. Tu borrador actual se conserva.</p>}
       <ul className="space-y-1 text-xs text-muted-foreground">
@@ -108,4 +118,9 @@ export function DeliveryReceipts(props: { sourceKind: "daily" | "digest" | "comm
 
 export function ManualDeliveryReceipts({ kind, scope }: { kind: ManualKind; scope?: "mine" | "team" }) {
   return <ReceiptHistory manualKind={kind} scope={scope} />
+}
+
+export function SingleDeliveryReceipt({ deliveryId }: { deliveryId: string }) {
+  const { user } = useAuth()
+  return <ReceiptHistory key={`${user?.id}:${deliveryId}`} deliveryId={deliveryId} />
 }

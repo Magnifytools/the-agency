@@ -9,7 +9,7 @@ async def check_database_ready(engine) -> None:
         async with engine.connect() as conn:
             # LIMIT 0 verifies the actual schema without reading business data.
             await conn.execute(text("SELECT completed_at FROM tasks LIMIT 0"))
-            await conn.execute(text("SELECT dedupe_key FROM notifications LIMIT 0"))
+            await conn.execute(text("SELECT dedupe_key, incident_state, incident_severity, incident_revision, incident_detected_at, incident_fingerprint, incident_snoozed_until, incident_resolved_at, incident_resolution_reason, incident_dismissal_reason, entity_key FROM notifications LIMIT 0"))
             await conn.execute(text("SELECT paused_at, accumulated_seconds FROM time_entries LIMIT 0"))
             await conn.execute(text("SELECT id, user_id, entity_type, entity_id, action, label, operations, undone_at, undone_by, created_at, updated_at FROM change_logs LIMIT 0"))
             await conn.execute(text("SELECT id, user_id, request_key, request_hash, channel, context, raw_text, status, intent, prompt, result, change_log_id, error_code, error_detail, revision, step_replays, created_at, updated_at FROM command_receipts LIMIT 0"))

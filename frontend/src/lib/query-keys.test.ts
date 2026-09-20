@@ -1,5 +1,6 @@
 import { QueryClient } from "@tanstack/react-query"
 import { describe, expect, it, vi } from "vitest"
+import { incidentKeys } from "./incidents-api"
 import {
   clientKeys,
   dashboardKeys,
@@ -28,6 +29,8 @@ describe("shared operational query keys", () => {
       dashboardKeys.today(),
       myWeekKeys.week("2026-09-14"),
       [...briefingKeys.all(), "mine"],
+      incidentKeys.count(7),
+      incidentKeys.list(7, "active"),
       ["unrelated", "settings"] as const,
     ]
     keys.forEach((key) => client.setQueryData(key, { ok: true }))

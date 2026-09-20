@@ -148,7 +148,7 @@ export function AppLayout() {
         <p className="font-semibold mb-1">{user?.full_name}</p>
         <p className="text-sm text-muted-foreground mb-4">{user?.email}</p>
         <div className="flex items-center gap-4 min-h-11">
-          <UndoPanel /><NotificationBell />
+          <UndoPanel /><NotificationBell onNavigate={() => setMoreDrawerOpen(false)} />
           <button onClick={() => { setMoreDrawerOpen(false); void logout() }} className="flex items-center gap-2 min-h-11 text-sm"><LogOut className="h-4 w-4" />Cerrar sesión</button>
         </div>
       </BottomDrawer>

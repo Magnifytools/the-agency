@@ -906,6 +906,7 @@ export const dailysApi = {
 }
 
 export const deliveriesApi = {
+  get: (id: string) => api.get<import("./types").DeliveryReceipt>(`/deliveries/${encodeURIComponent(id)}`).then((r) => r.data),
   list: (source_kind: "daily" | "digest" | "communication", source_id: number) =>
     api.get<import("./types").DeliveryReceipt[]>("/deliveries", { params: { source_kind, source_id } }).then((r) => r.data),
   retry: (id: string) => api.post<import("./types").DeliveryReceipt>(`/deliveries/${id}/retry`).then((r) => r.data),

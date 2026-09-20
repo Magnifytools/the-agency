@@ -24,13 +24,15 @@ const itemKey = (item: GenerationPreviewItem) => [item.client_id, item.policy_re
 const selectable = (item: GenerationPreviewItem) => item.eligible && item.policy_revision !== null && !!item.period_start && !!item.period_end
 function civilDate(value: string) { return new Intl.DateTimeFormat("es", { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${value}T12:00:00`)) }
 
-export function DigestCohort({ clientId }: { clientId?: number } = {}) {
+export interface DigestExpectedPeriod { start: string; end: string }
+
+export function DigestCohort({ clientId, expectedPeriod }: { clientId?: number; expectedPeriod?: DigestExpectedPeriod } = {}) {
   const { user, isAdmin, hasPermission } = useAuth()
   if (!user || !hasPermission("digests")) return null
-  return <Cohort key={`${user.id}:${isAdmin}:${hasPermission("digests", true)}:${clientId ?? "all"}`} clientId={clientId} userId={user.id} isAdmin={isAdmin} canWrite={hasPermission("digests", true)} canViewClients={hasPermission("clients")} />
+  return <Cohort key={`${user.id}:${isAdmin}:${hasPermission("digests", true)}:${clientId ?? "all"}:${expectedPeriod?.start ?? ""}:${expectedPeriod?.end ?? ""}`} clientId={clientId} expectedPeriod={expectedPeriod} userId={user.id} isAdmin={isAdmin} canWrite={hasPermission("digests", true)} canViewClients={hasPermission("clients")} />
 }
 
-function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId }: { userId: number; isAdmin: boolean; canWrite: boolean; canViewClients: boolean; clientId?: number }) {
+function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedPeriod }: { userId: number; isAdmin: boolean; canWrite: boolean; canViewClients: boolean; clientId?: number; expectedPeriod?: DigestExpectedPeriod }) {
   const queryClient = useQueryClient()
   const [scope, setScope] = useState<ReportScope>("mine")
   const [tone, setTone] = useState<DigestTone>("cercano")
@@ -41,7 +43,10 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId }: { userI
   const alive = useRef(true)
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   const query = useQuery({ queryKey: [...reportPolicyKeys.preview, userId, scope], queryFn: () => reportPolicyApi.generationPreview(scope) })
-  const rows = (query.data?.items ?? []).filter(item => !clientId || item.client_id === clientId)
+  const clientRows = (query.data?.items ?? []).filter(item => !clientId || item.client_id === clientId)
+  const rows = clientRows.filter(item => !expectedPeriod || (item.period_start === expectedPeriod.start && item.period_end === expectedPeriod.end))
+  const expectedPeriodChanged = !!expectedPeriod && clientRows.length > 0 && rows.length === 0
+  const expectedPeriodUnavailable = !!expectedPeriod && clientRows.length === 0
   const chosen = rows.filter(item => selectable(item) && selected.includes(itemKey(item)))
   const mutation = useMutation({
     retry: false,
@@ -54,6 +59,7 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId }: { userI
       setSelected([])
       setSubmitError("")
       queryClient.invalidateQueries({ queryKey: ["digests"] })
+      queryClient.invalidateQueries({ queryKey: ["incidents"] })
       queryClient.invalidateQueries({ queryKey: reportPolicyKeys.preview })
       queryClient.invalidateQueries({ queryKey: reportPolicyKeys.external })
     },
@@ -71,7 +77,7 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId }: { userI
   return <Card>
     <CardContent className="p-4 sm:p-6 space-y-4">
       <div className="flex flex-wrap justify-between gap-3">
-        <div><h2 className="font-semibold text-lg">Preparar resúmenes pendientes</h2><p className="text-sm text-muted-foreground">Selecciona los clientes que quieres preparar. Cada uno usa su frecuencia y último período cerrado.</p></div>
+        <div><h2 className="font-semibold text-lg">Preparar resúmenes pendientes</h2><p className="text-sm text-muted-foreground">Selecciona los clientes que quieres preparar. Cada uno usa su frecuencia y último período cerrado.</p>{expectedPeriod && <p className="mt-1 text-sm font-medium">Período del aviso: {civilDate(expectedPeriod.start)} — {civilDate(expectedPeriod.end)}</p>}</div>
         <Button variant="outline" size="sm" disabled={busy} onClick={() => void refresh()}><RefreshCw className="size-4 mr-2" />Actualizar selección</Button>
       </div>
       <div className="flex flex-wrap items-end gap-3">
@@ -80,6 +86,8 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId }: { userI
       </div>
       {!canWrite && <p className="text-sm text-muted-foreground">Tienes acceso de lectura. Necesitas permiso para preparar resúmenes.</p>}
       {query.isPending ? <p role="status" className="text-sm flex items-center gap-2"><Loader2 className="size-4 animate-spin" />Consultando los períodos pendientes…</p> : query.isError ? <div role="alert" className="text-sm">No se pudo consultar qué clientes necesitan un resumen. <Button size="sm" variant="outline" disabled={query.isFetching} onClick={() => void refresh()}>Reintentar consulta</Button></div> : <>
+        {expectedPeriodChanged && <div role="alert" className="text-sm rounded-lg border border-amber-500/40 p-3">La política actual usa otro período; no se preparará uno distinto desde este aviso. <Link className="underline" to={`/digests?client_id=${clientId}`}>Ver períodos actuales</Link></div>}
+        {expectedPeriodUnavailable && <div role="alert" className="text-sm rounded-lg border border-amber-500/40 p-3">El cliente o su política ya no está disponible para este período. <Link className="underline" to={`/digests?client_id=${clientId}`}>Ver períodos actuales</Link></div>}
         <p className="text-sm text-muted-foreground">A {civilDate(query.data.as_of)}: {rows.filter(item => item.eligible).length} pendientes · {rows.filter(item => !item.eligible).length} fuera de esta selección.{clientId ? " Solo el cliente del filtro del historial." : ""}</p>
         {rows.length === 0 && <p className="text-sm">{scope === "mine" ? "No hay clientes a tu cargo en esta selección. La frecuencia y el responsable se configuran en la ficha del cliente." : "No hay clientes en esta consulta."}</p>}
         <ul className="divide-y rounded-lg border">

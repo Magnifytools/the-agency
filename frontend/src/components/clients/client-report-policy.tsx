@@ -37,6 +37,7 @@ function PolicyPanel({ clientId, clientName }: { clientId: number; clientName: s
       cache.setQueryData(key, data)
       void cache.invalidateQueries({ queryKey: ["digest-generation-preview"] })
       void cache.invalidateQueries({ queryKey: ["digests"] })
+      void cache.invalidateQueries({ queryKey: ["incidents"] })
       setDraft(null); setError(""); setConflict(null)
       toast.success("Frecuencia del resumen guardada")
     },

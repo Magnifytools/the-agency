@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { MemoryRouter } from "react-router-dom"
+import { MemoryRouter, useLocation } from "react-router-dom"
 import { beforeEach, expect, it, vi } from "vitest"
 import { DigestCohort } from "./digest-cohort"
 import type { GenerationPreviewItem } from "@/lib/report-policy-api"
@@ -11,10 +11,18 @@ function item(id: number, overrides: Partial<GenerationPreviewItem> = {}): Gener
   return { client_id: id, client_name: `Cliente ${id}`, policy_revision: 3, cadence: "weekly", responsible_user_id: 2, responsible_name: "Responsable", period_start: "2026-09-07", period_end: "2026-09-13", eligible: true, reason: "eligible", latest_digest_id: null, version_count: 0, state: "pending", digest: {latest_digest_id: null, latest_status: null, version_count: 0}, internal_distribution: {digest_id: null, state: null, delivery_id: null, sent_at: null}, external_delivery: {digest_id: null, state: "unconfirmed", actor_name: null, confirmed_at: null}, ...overrides }
 }
 const response = (items: GenerationPreviewItem[], scope = "mine") => ({ as_of: "2026-09-19", scope, items, counts: {eligible: items.filter(i => i.eligible).length, excluded: items.filter(i => !i.eligible).length} })
-function setup(clientId?: number) {
+function setup(clientId?: number, expectedPeriod?: { start: string; end: string }) {
   const client = new QueryClient({defaultOptions: {queries: {retry: false}, mutations: {retry: false}}})
-  const element = <QueryClientProvider client={client}><MemoryRouter><DigestCohort clientId={clientId} /></MemoryRouter></QueryClientProvider>
+  const element = <QueryClientProvider client={client}><MemoryRouter><DigestCohort clientId={clientId} expectedPeriod={expectedPeriod} /></MemoryRouter></QueryClientProvider>
   return {...render(element), element, client}
+}
+function PeriodLinkHarness() {
+  const { search } = useLocation()
+  const params = new URLSearchParams(search)
+  const clientId = Number(params.get("client_id")) || undefined
+  const start = params.get("period_start") || ""
+  const end = params.get("period_end") || ""
+  return <DigestCohort clientId={clientId} expectedPeriod={start && end ? { start, end } : undefined} />
 }
 beforeEach(() => { vi.clearAllMocks(); mocks.auth = {id: 2, admin: false, write: true}; mocks.preview.mockResolvedValue(response([item(1), item(2, {cadence: "monthly", period_start: "2026-08-01", period_end: "2026-08-31"}), item(3, {eligible: false, reason: "policy_missing", policy_revision: null})])); mocks.generate.mockResolvedValue({results: []}) })
 it("starts unselected, explains exclusions, and sends only selected monthly period/revision", async () => {
@@ -113,4 +121,24 @@ it("labels an older confirmed delivery without claiming the latest version was d
   expect(await screen.findByText("La última versión aún no tiene entrega confirmada.")).toBeInTheDocument()
   expect(screen.getByText(/Confirmada manualmente por Responsible · Versión #19/)).toBeInTheDocument()
   expect(screen.getByRole("link", {name: "Ver versión #20"})).toHaveAttribute("href", "/digests/20/edit")
+})
+it("prepares the exact monthly period linked by an incident", async () => {
+  mocks.preview.mockResolvedValue(response([item(2, {cadence: "monthly", period_start: "2026-08-01", period_end: "2026-08-31"})]))
+  setup(2, {start: "2026-08-01", end: "2026-08-31"})
+  const monthly = await screen.findByRole("checkbox", {name: "Preparar Cliente 2"})
+  expect(await screen.findByText(/Período del aviso: 1 ago 2026 — 31 ago 2026/)).toBeInTheDocument()
+  fireEvent.click(monthly)
+  fireEvent.click(screen.getByRole("button", {name: "Preparar selección (1)"}))
+  await waitFor(() => expect(mocks.generate).toHaveBeenCalledWith({items: [{client_id: 2, policy_revision: 3, period_start: "2026-08-01", period_end: "2026-08-31"}], tone: "cercano"}))
+})
+it("does not prepare a newer policy period from an old incident link and recovers current periods", async () => {
+  mocks.preview.mockResolvedValue(response([item(2, {cadence: "monthly", period_start: "2026-09-01", period_end: "2026-09-30"})]))
+  const client = new QueryClient({defaultOptions: {queries: {retry: false}, mutations: {retry: false}}})
+  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/digests?client_id=2&period_start=2026-08-01&period_end=2026-08-31"]}><PeriodLinkHarness /></MemoryRouter></QueryClientProvider>)
+  expect(await screen.findByRole("alert")).toHaveTextContent("La política actual usa otro período")
+  expect(screen.queryByRole("checkbox", {name: "Preparar Cliente 2"})).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole("link", {name: "Ver períodos actuales"}))
+  expect(await screen.findByRole("checkbox", {name: "Preparar Cliente 2"})).toBeInTheDocument()
+  expect(screen.queryByText(/Período del aviso:/)).not.toBeInTheDocument()
+  expect(mocks.generate).not.toHaveBeenCalled()
 })

@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     # Enable only after older direct-sender instances have drained.
     DELIVERY_WORKER_ENABLED: bool = False
     SCHEDULED_COMMUNICATIONS_ENABLED: bool = False
+    INCIDENTS_ENABLED: bool = False
     ANTHROPIC_API_KEY: Optional[str] = None
     HOLDED_API_KEY: Optional[str] = None
     DEFAULT_HOURLY_RATE: float = 40.0

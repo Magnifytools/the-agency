@@ -5,6 +5,7 @@ import { MemoryRouter, useNavigate } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import TasksPage from "./tasks-page"
 const api = vi.hoisted(() => ({ list: vi.fn(), listAll: vi.fn(), empty: vi.fn(), agenda: vi.fn(), user: {id: 1, role: "admin"} }))
+vi.mock("@/components/incidents/incident-inbox", () => ({ IncidentInbox: () => <div>Alertas personales</div> }))
 vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: api.user }) }))
 vi.mock("@/lib/api", () => ({
   tasksApi: { list: api.list, listAll: api.listAll, agenda: api.agenda },
@@ -23,9 +24,11 @@ describe("tasks URL navigation", () => {
     showAgenda("/tasks?view=my_day")
     await waitFor(() => expect(api.agenda).toHaveBeenCalledTimes(4))
     expect(api.agenda.mock.calls.every(([params]) => params.assigned_to === "me")).toBe(true)
+    expect(screen.getByText("Alertas personales")).toBeInTheDocument()
     await userEvent.selectOptions(screen.getByLabelText("Ámbito de Hoy"), "team")
     await waitFor(() => expect(api.agenda).toHaveBeenCalledTimes(8))
     expect(api.agenda.mock.calls.slice(4).every(([params]) => params.assigned_to === undefined)).toBe(true)
+    expect(screen.queryByText("Alertas personales")).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", {name:"Atrás navegador"}))
     expect(screen.getByLabelText("Ámbito de Hoy")).toHaveValue("mine")
   })

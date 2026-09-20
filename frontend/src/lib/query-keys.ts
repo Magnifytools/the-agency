@@ -1,4 +1,5 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query"
+import { incidentKeys } from "@/lib/incidents-api"
 
 export const taskKeys = {
   all: () => ["tasks"] as const,
@@ -64,6 +65,7 @@ export async function invalidateTaskChange(
 ) {
   const invalidations = [
     queryClient.invalidateQueries({ queryKey: taskKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
     queryClient.invalidateQueries({ queryKey: projectKeys.all() }),
     queryClient.invalidateQueries({ queryKey: timeKeys.all() }),
     queryClient.invalidateQueries({ queryKey: ["active-timer"] }),
@@ -83,6 +85,7 @@ export async function invalidateTaskChange(
 
 export async function invalidateProjectChange(queryClient: QueryClient, affected: OperationalImpact = {}) {
   const invalidations = [
+    queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
     queryClient.invalidateQueries({ queryKey: projectKeys.all() }),
     queryClient.invalidateQueries({ queryKey: taskKeys.all() }),
     queryClient.invalidateQueries({ queryKey: timeKeys.all() }),

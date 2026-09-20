@@ -13,8 +13,9 @@ describe("agency areas and permission boundaries", () => {
   })
   it("keeps only authorized destinations and selects the first available work surface", () => {
     const areas = navigationFor((module) => module === "projects", false)
-    expect(areas.map((area) => area.id)).toEqual(["work", "summaries", "settings"])
-    expect(areas[0].links[0].to).toBe("/projects")
+    expect(areas.map((area) => area.id)).toEqual(["today", "work", "summaries", "settings"])
+    expect(areas[0].links).toEqual([{ to: "/incidents", label: "Alertas" }])
+    expect(areas.find(area => area.id === "work")?.links[0].to).toBe("/projects")
     expect(areas.flatMap((area) => area.links).some((link) => ["/users", "/clients", "/tasks?view=all", "/digests"].includes(link.to))).toBe(false)
   })
   it("distinguishes agenda from work while preserving legacy and QA task links", () => {
@@ -26,5 +27,6 @@ describe("agency areas and permission boundaries", () => {
     expect(activeArea("/projects/17", "")).toBe("work")
     expect(activeArea("/digests/19/edit", "")).toBe("summaries")
     expect(activeArea("/users", "")).toBe("settings")
+    expect(activeArea("/incidents", "")).toBe("today")
   })
 })

@@ -4,27 +4,39 @@ One batch per recipient locks their user row before loading existing checks.
 This serializes concurrent generators and retains the batch-query behaviour.
 Each condition supplies its own cycle (due date, reporting month, etc.).
 """
+
 from __future__ import annotations
 
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import noload
 
-from backend.core.modules import is_enabled
 from backend.db.models import Notification, User
+
+# These rows came from the retired ``/notifications/generate-checks`` writer.
+# They remain stored as history, but the activity feed must not present stale
+# checks beside the canonical incident inbox.
+RETIRED_CHECK_TYPES = (
+    "billing_reminder",
+    "capacity_overload",
+    "client_no_hours",
+    "daily_missing",
+    "lead_followup",
+    "project_closing_overdue",
+    "project_closing_soon",
+    "project_monthly_hours_exceeded",
+    "project_monthly_hours_warning",
+    "task_overdue",
+    "timesheet_incomplete",
+)
 
 
 def visible_notification_condition():
-    hidden_types = []
-    for module, types in (
-        ("billing", ["billing_reminder"]),
-        ("leads", ["lead_followup"]),
-        ("capacity", ["capacity_overload"]),
-    ):
-        if not is_enabled(module):
-            hidden_types.extend(types)
-    return Notification.type.notin_(hidden_types)
+    hidden_types = list(RETIRED_CHECK_TYPES)
+    return and_(
+        Notification.incident_state.is_(None), Notification.type.notin_(hidden_types)
+    )
 
 
 class NotificationChecks:
@@ -38,7 +50,11 @@ class NotificationChecks:
     @classmethod
     async def load(cls, db, user_id: int):
         await db.execute(select(User.id).where(User.id == user_id).with_for_update())
-        result = await db.execute(select(Notification).options(noload("*")).where(Notification.user_id == user_id))
+        result = await db.execute(
+            select(Notification)
+            .options(noload("*"))
+            .where(Notification.user_id == user_id)
+        )
         return cls(db, user_id, list(result.scalars().all()))
 
     def has(self, kind: str, entity: str, entity_id: int, cycle: date) -> bool:
@@ -65,8 +81,12 @@ class NotificationChecks:
         if key in self.keys:
             return None
         notification = Notification(
-            user_id=self.user_id, type=type, entity_type=entity_type,
-            entity_id=entity_id, dedupe_key=key, **fields,
+            user_id=self.user_id,
+            type=type,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            dedupe_key=key,
+            **fields,
         )
         self.db.add(notification)
         self.keys.add(key)
