@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import noload
 
 from backend.core.modules import is_enabled
@@ -24,7 +24,7 @@ def visible_notification_condition():
     ):
         if not is_enabled(module):
             hidden_types.extend(types)
-    return Notification.type.notin_(hidden_types)
+    return and_(Notification.incident_state.is_(None), Notification.type.notin_(hidden_types))
 
 
 class NotificationChecks:

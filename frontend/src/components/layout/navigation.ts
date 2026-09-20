@@ -8,6 +8,7 @@ export interface NavigationArea { id: AreaId; label: string; icon: LucideIcon; l
 const areas: NavigationArea[] = [
   { id: "today", label: "Hoy", icon: CalendarDays, links: [
     { to: "/tasks?view=my_day", label: "Mi agenda", module: "tasks" },
+    { to: "/incidents", label: "Alertas" },
     { to: "/dashboard", label: "Visión general", module: "dashboard" },
   ] },
   { id: "work", label: "Trabajo", icon: CheckSquare, links: [
@@ -50,7 +51,7 @@ export function activeArea(pathname: string, search: string): AreaId {
     const params = new URLSearchParams(search)
     return params.has("qaFilter") || (params.has("view") && params.get("view") !== "my_day") ? "work" : "today"
   }
-  if (pathname === "/dashboard") return "today"
+  if (pathname === "/dashboard" || pathname === "/incidents") return "today"
   if (pathname.startsWith("/clients")) return "clients"
   if (["/dailys", "/digests", "/reports"].some((path) => pathname === path || pathname.startsWith(path + "/"))) return "summaries"
   if (["/projects", "/timesheet", "/inbox", "/my-week", "/leads", "/growth", "/proposals"].some((path) => pathname === path || pathname.startsWith(path + "/"))) return "work"

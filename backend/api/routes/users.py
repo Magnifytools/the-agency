@@ -162,7 +162,12 @@ async def sync_user_permissions(
             status_code=422,
             detail=f"Módulos no reconocidos: {sorted(invalid)}. Permitidos: {sorted(_VALID_MODULES)}",
         )
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(
+        select(User)
+        .where(User.id == user_id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -211,7 +216,11 @@ async def sync_default_permissions_all_users(
     default_modules = ["dashboard", "clients", "tasks", "projects", "timesheet", "pm"]
 
     users_result = await db.execute(
-        select(User).where(User.role != UserRole.admin)
+        select(User)
+        .where(User.role != UserRole.admin)
+        .order_by(User.id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
     )
     users = users_result.scalars().all()
 

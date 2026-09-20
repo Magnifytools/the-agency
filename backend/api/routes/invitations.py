@@ -202,7 +202,12 @@ async def update_user_permissions(
 ):
     """Update permissions for a user (admin only). Replaces all existing permissions."""
     # Verify user exists
-    user_result = await db.execute(select(User).where(User.id == user_id))
+    user_result = await db.execute(
+        select(User)
+        .where(User.id == user_id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )
     target_user = user_result.scalar_one_or_none()
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")

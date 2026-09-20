@@ -6,5 +6,6 @@ import { navigationFor } from "./navigation"
 export function HomeRedirect() {
   const { isLoading, hasPermission, isAdmin } = useAuth()
   if (isLoading) return null
-  return <Navigate to={navigationFor(hasPermission, isAdmin)[0]?.links[0].to ?? "/settings"} replace />
+  const firstWorkSurface = navigationFor(hasPermission, isAdmin).flatMap(area => area.links).find(link => link.to !== "/incidents")
+  return <Navigate to={firstWorkSurface?.to ?? "/settings"} replace />
 }

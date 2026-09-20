@@ -45,6 +45,7 @@ const CapacityPage = lazy(() => import("@/pages/capacity-page"))
 const ExecutiveDashboardPage = lazy(() => import("@/pages/executive-dashboard-page"))
 const AgencyVaultPage = lazy(() => import("@/pages/agency-vault-page"))
 const InboxPage = lazy(() => import("@/pages/inbox-page"))
+const IncidentsPage = lazy(() => import("@/pages/incidents-page"))
 const MyWeekPage = lazy(() => import("@/pages/my-week-page"))
 const SettingsPage = lazy(() => import("@/pages/settings-page"))
 const AutomationsPage = lazy(() => import("@/pages/automations-page"))
@@ -98,6 +99,7 @@ export default function App() {
               }
             >
               <Route path="/" element={<HomeRedirect />} />
+              <Route path="/incidents" element={<ErrorBoundary section="Alertas"><Suspense fallback={<PageLoader />}><IncidentsPage /></Suspense></ErrorBoundary>} />
               <Route path="/dashboard" element={<ErrorBoundary section="Dashboard"><Suspense fallback={<PageLoader />}><DashboardPage /></Suspense></ErrorBoundary>} />
               <Route path="/executive" element={<PermissionRoute adminOnly><ErrorBoundary section="Executive"><Suspense fallback={<PageLoader />}><ExecutiveDashboardPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/pipeline" element={<Navigate to="/leads" replace />} />

@@ -434,6 +434,12 @@ def start_background_tasks() -> list[asyncio.Task]:
     """
     tasks: list[asyncio.Task] = []
 
+    if settings.INCIDENTS_ENABLED:
+        from backend.services.incidents import incident_loop
+        t = asyncio.create_task(incident_loop(), name="operational-incidents")
+        t.add_done_callback(_log_task_error)
+        tasks.append(t)
+
     if settings.DELIVERY_WORKER_ENABLED:
         from backend.services.deliveries import delivery_loop
         t = asyncio.create_task(delivery_loop(), name="manual-deliveries")

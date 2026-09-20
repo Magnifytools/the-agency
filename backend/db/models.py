@@ -1714,6 +1714,7 @@ class Notification(TimestampMixin, Base):
 
     __table_args__ = (
         Index("uq_notifications_user_dedupe", "user_id", "dedupe_key", unique=True),
+        Index("ix_notifications_incident_state", "user_id", "incident_state", "id"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -1726,6 +1727,18 @@ class Notification(TimestampMixin, Base):
     entity_type = Column(String(50), nullable=True)  # task, lead, digest
     entity_id = Column(Integer, nullable=True)
     dedupe_key = Column(String(255), nullable=True)
+
+    # NULL state distinguishes historical activity from reconciled conditions.
+    incident_state = Column(String(20), nullable=True)
+    incident_severity = Column(String(10), nullable=True)
+    incident_revision = Column(Integer, nullable=True)
+    incident_detected_at = Column(DateTime, nullable=True)
+    incident_fingerprint = Column(String(64), nullable=True)
+    incident_snoozed_until = Column(DateTime, nullable=True)
+    incident_resolved_at = Column(DateTime, nullable=True)
+    incident_resolution_reason = Column(String(50), nullable=True)
+    incident_dismissal_reason = Column(String(500), nullable=True)
+    entity_key = Column(String(80), nullable=True)
 
     user = relationship("User", lazy="selectin")
 

@@ -100,6 +100,7 @@ async def mark_read(
         select(Notification).where(
             Notification.id == notification_id,
             Notification.user_id == user.id,
+            visible_notification_condition(),
         )
     )
     notif = result.scalar_one_or_none()
@@ -122,7 +123,7 @@ async def mark_all_read(
     """Mark all notifications as read for the current user."""
     await db.execute(
         update(Notification)
-        .where(Notification.user_id == user.id, Notification.is_read.is_(False))
+        .where(Notification.user_id == user.id, Notification.is_read.is_(False), visible_notification_condition())
         .values(is_read=True)
     )
     await db.commit()

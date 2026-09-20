@@ -1,142 +1,121 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useId } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { notificationsApi } from "@/lib/api"
-import { Bell, CheckCheck } from "lucide-react"
+import { incidentKeys, incidentsApi } from "@/lib/incidents-api"
+import { IncidentInbox } from "@/components/incidents/incident-inbox"
+import { useAuth } from "@/context/auth-context"
+import { Bell, CheckCheck, X } from "lucide-react"
 import { formatTimeAgo } from "@/lib/utils"
 import { useNavigate } from "react-router-dom"
 
-export function NotificationBell() {
+export function NotificationBell({ onNavigate }: { onNavigate?: () => void } = {}) {
+  const { user } = useAuth()
+  return user ? <RecipientBell key={user.id} userId={user.id} onNavigate={onNavigate} /> : null
+}
+
+function RecipientBell({ userId, onNavigate }: { userId: number; onNavigate?: () => void }) {
   const [open, setOpen] = useState(false)
+  const [view, setView] = useState<"incidents" | "activity">("incidents")
+  const [position, setPosition] = useState<{ left: number; top?: number; bottom?: number; maxHeight?: number }>({ left: 16, top: 56 })
   const panelRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const panelId = useId()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-
-  const { data: unread } = useQuery({
-    queryKey: ["notifications-unread-count"],
-    queryFn: () => notificationsApi.unreadCount(),
-    refetchInterval: 60_000,
-    refetchIntervalInBackground: false,
-  })
-
-  const { data: notifications } = useQuery({
-    queryKey: ["notifications-list"],
-    queryFn: () => notificationsApi.list({ limit: 20 }),
-    enabled: open,
-  })
-
-  const markReadMutation = useMutation({
-    mutationFn: (id: number) => notificationsApi.markRead(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notifications-unread-count"] })
-      queryClient.invalidateQueries({ queryKey: ["notifications-list"] })
-    },
-  })
-
-  const markAllReadMutation = useMutation({
-    mutationFn: () => notificationsApi.markAllRead(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notifications-unread-count"] })
-      queryClient.invalidateQueries({ queryKey: ["notifications-list"] })
-    },
-  })
-
-  // Close on click outside
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    if (open) document.addEventListener("mousedown", handleClick)
-    return () => document.removeEventListener("mousedown", handleClick)
-  }, [open])
-
-  // When panel opens, generate checks for overdue tasks & lead followups, then refresh
-  useEffect(() => {
-    if (open) {
-      notificationsApi.generateChecks().then(() => {
-        queryClient.invalidateQueries({ queryKey: ["notifications-unread-count"] })
-        queryClient.invalidateQueries({ queryKey: ["notifications-list"] })
-      }).catch(() => {
-        // Silent fail — generate-checks is best-effort
+  const closeForNavigation = () => { setOpen(false); onNavigate?.() }
+  const toggle = () => {
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect()
+      const width = Math.min(384, window.innerWidth - 32)
+      const above = rect.top > window.innerHeight / 2
+      setPosition({
+        left: Math.max(16, Math.min(rect.left, window.innerWidth - width - 16)),
+        maxHeight: Math.min(512, above ? rect.top - 24 : window.innerHeight - rect.bottom - 24),
+        ...(above ? { bottom: window.innerHeight - rect.top + 8 } : { top: rect.bottom + 8 }),
       })
     }
-  }, [open, queryClient])
-
-  const count = unread?.count || 0
-
-  const handleNotifClick = (notif: { id: number; link_url: string | null; is_read: boolean }) => {
-    if (!notif.is_read) markReadMutation.mutate(notif.id)
-    if (notif.link_url && notif.link_url.startsWith("/")) {
-      navigate(notif.link_url)
-    }
-    setOpen(false)
+    setOpen(!open)
   }
 
+  const pendingQuery = useQuery({
+    queryKey: incidentKeys.count(userId), queryFn: incidentsApi.count,
+    refetchInterval: 30_000, refetchIntervalInBackground: false,
+  })
+  const unreadQuery = useQuery({
+    queryKey: ["notifications-unread-count", userId],
+    queryFn: () => notificationsApi.unreadCount(),
+    refetchInterval: 60_000, refetchIntervalInBackground: false,
+  })
+  const activityQuery = useQuery({
+    queryKey: ["notifications-list", userId],
+    queryFn: () => notificationsApi.list({ limit: 20 }),
+    enabled: open && view === "activity",
+  })
+  const refreshActivity = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["notifications-unread-count", userId] }),
+    queryClient.invalidateQueries({ queryKey: ["notifications-list", userId] }),
+  ])
+  const readMutation = useMutation({
+    mutationFn: (id: number | "all") => id === "all" ? notificationsApi.markAllRead() : notificationsApi.markRead(id),
+    onSuccess: refreshActivity,
+  })
+
+  useEffect(() => {
+    if (!open) return
+    closeRef.current?.focus()
+    function outside(event: MouseEvent) {
+      if (!panelRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    function escape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false)
+        triggerRef.current?.focus()
+      }
+    }
+    function resize() { setOpen(false) }
+    window.addEventListener("resize", resize)
+    document.addEventListener("mousedown", outside)
+    document.addEventListener("keydown", escape)
+    return () => {
+      window.removeEventListener("resize", resize)
+      document.removeEventListener("mousedown", outside)
+      document.removeEventListener("keydown", escape)
+    }
+  }, [open])
+
+  const count = pendingQuery.data?.count ?? 0
+  const unread = unreadQuery.data?.count ?? 0
   return (
     <div className="relative" ref={panelRef}>
-      <button
-        onClick={() => setOpen(!open)}
-        className="relative p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
-        title="Notificaciones"
-      >
-        <Bell className="h-4 w-4" />
-        {count > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 h-4 min-w-[16px] flex items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white px-1">
-            {count > 99 ? "99+" : count}
-          </span>
-        )}
+      <button ref={triggerRef} type="button" aria-label="Alertas y actividad" aria-expanded={open} aria-controls={open ? panelId : undefined}
+        onClick={toggle} className="relative rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground">
+        <Bell className="h-4 w-4" aria-hidden="true" />
+        {!pendingQuery.isError && count > 0 && <span aria-label={`${count} alertas pendientes`} className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">{count > 99 ? "99+" : count}</span>}
       </button>
-
-      {open && (
-        <div className="fixed right-4 top-14 w-80 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-4rem)] overflow-auto rounded-xl border border-border bg-card shadow-xl z-50">
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-            <span className="text-sm font-semibold">Notificaciones</span>
-            {count > 0 && (
-              <button
-                onClick={() => markAllReadMutation.mutate()}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-brand transition-colors"
-              >
-                <CheckCheck className="h-3 w-3" />
-                Marcar todas
-              </button>
-            )}
-          </div>
-
-          {!notifications || notifications.length === 0 ? (
-            <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-              Sin notificaciones
-            </div>
-          ) : (
-            <div>
-              {notifications.map((n) => (
-                <button
-                  key={n.id}
-                  onClick={() => handleNotifClick(n)}
-                  className={`w-full text-left px-3 py-2.5 border-b border-border/50 hover:bg-muted/50 transition-colors flex items-start gap-2 ${
-                    !n.is_read ? "bg-brand/5" : ""
-                  }`}
-                >
-                  {!n.is_read && (
-                    <div className="w-1.5 h-1.5 rounded-full bg-brand mt-1.5 flex-shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm truncate ${!n.is_read ? "font-medium" : "text-muted-foreground"}`}>
-                      {n.title}
-                    </p>
-                    {n.message && (
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">{n.message}</p>
-                    )}
-                  </div>
-                  <span className="text-[10px] text-muted-foreground/70 flex-shrink-0 mt-0.5">
-                    {formatTimeAgo(n.created_at)}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
+      {open && <div id={panelId} role="dialog" aria-label="Alertas y actividad" style={position} className="fixed z-50 max-h-[min(32rem,calc(100dvh-8rem))] w-96 max-w-[calc(100vw-2rem)] overflow-auto rounded-xl border border-border bg-card shadow-xl">
+        <div className="flex items-center gap-2 border-b border-border p-3">
+          <button type="button" aria-pressed={view === "incidents"} onClick={() => setView("incidents")} className={`rounded px-2 py-1 text-sm ${view === "incidents" ? "bg-muted font-semibold" : "text-muted-foreground"}`}>Alertas</button>
+          <button type="button" aria-pressed={view === "activity"} onClick={() => setView("activity")} className={`rounded px-2 py-1 text-sm ${view === "activity" ? "bg-muted font-semibold" : "text-muted-foreground"}`}>Actividad{unread > 0 ? ` (${unread})` : ""}</button>
+          <button ref={closeRef} type="button" aria-label="Cerrar notificaciones" onClick={() => { setOpen(false); triggerRef.current?.focus() }} className="ml-auto rounded p-2 hover:bg-muted"><X className="h-4 w-4" /></button>
         </div>
-      )}
+        {view === "incidents" ? <div className="p-3"><IncidentInbox userId={userId} compact onNavigate={closeForNavigation} /></div> : <>
+          {unread > 0 && <button type="button" disabled={readMutation.isPending} onClick={() => readMutation.mutate("all")} className="flex items-center gap-2 p-3 text-xs text-muted-foreground hover:text-foreground"><CheckCheck className="h-4 w-4" />Marcar actividad como leída</button>}
+          {readMutation.isError && <p role="alert" className="px-3 py-2 text-sm text-destructive">No se pudo marcar como leída. Puedes volver a intentarlo.</p>}
+          {activityQuery.isPending ? <p className="p-5 text-sm text-muted-foreground">Cargando actividad…</p>
+            : activityQuery.isError ? <div role="alert" className="p-5 text-sm">No se pudo cargar la actividad. <button type="button" className="underline" onClick={() => void activityQuery.refetch()}>Reintentar</button></div>
+            : !activityQuery.data?.length ? <p className="p-5 text-sm text-muted-foreground">Sin actividad reciente.</p>
+            : activityQuery.data.map(item => <button type="button" key={item.id} onClick={() => {
+              if (!item.is_read) readMutation.mutate(item.id)
+              if (item.link_url?.startsWith("/") && !item.link_url.startsWith("//")) navigate(item.link_url)
+              closeForNavigation()
+            }} className={`w-full border-t border-border/50 p-3 text-left hover:bg-muted/50 ${!item.is_read ? "bg-brand/5" : ""}`}>
+              <p className="break-words text-sm font-medium">{item.title}</p>
+              {item.message && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.message}</p>}
+              <span className="mt-1 block text-xs text-muted-foreground">{formatTimeAgo(item.created_at)}</span>
+            </button>)}
+        </>}
+      </div>}
     </div>
   )
 }

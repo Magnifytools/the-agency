@@ -1,6 +1,6 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-19T10:45:31.331027+00:00",
+  "ultima_actualizacion": "2026-09-20T09:43:16.305630+00:00",
   "estado_general": "produccion_octava_mejora_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
@@ -248,7 +248,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "Unificar incidencias operativas con detección proactiva, destinatarios y permisos reales, posposición y resolución por cambios de dominio. Continuar dailys, comandos, recurrencias y resto de cobertura de auditoría. Objetivo completo activo.",
+  "proximos_pasos": "P9: base canónica de avisos, bandeja, Hoy y campana verificados localmente (879 backend, 233 frontend más regresivos UI). Completar condiciones de proyecto, presupuesto, resúmenes y entregas; consolidar PM y productores antes de publicar. Producción conserva P8. Continuar resto de cobertura; objetivo completo activo.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
