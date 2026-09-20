@@ -22,8 +22,8 @@ async def reset(engine):
 @pytest_asyncio.fixture(autouse=True)
 async def p20_schema(engine):
     await reset(engine)
-    assert deployment_schema.MIGRATIONS[-1] == MIGRATION
-    await run_schema_migrations(engine, deployment_schema.MIGRATIONS[:-1], schema_baseline.preflight)
+    preceding = deployment_schema.MIGRATIONS[:deployment_schema.MIGRATIONS.index(MIGRATION)]
+    await run_schema_migrations(engine, preceding, schema_baseline.preflight)
     async with AsyncSession(engine) as db:
         db.add_all([
             User(id=1, email="schema1@example.test", hashed_password="synthetic", full_name="One", role=UserRole.admin),
@@ -49,7 +49,7 @@ async def test_upgrade_preserves_history_and_ledger_and_is_repeatable(engine):
         assert (await conn.execute(text("SELECT to_jsonb(c) FROM clients c"))).scalars().all() == clients
         after = (await conn.execute(text("SELECT * FROM agency_schema_versions ORDER BY version"))).all()
         assert set(ledger) <= set(after)
-        assert len(after) == len(ledger) + 1
+        assert len(after) == len(deployment_schema.MIGRATIONS)
         assert await conn.scalar(text("SELECT count(*) FROM client_onboarding_receipts")) == 0
 
 

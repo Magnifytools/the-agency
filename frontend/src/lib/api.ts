@@ -342,7 +342,7 @@ export const tasksApi = {
     api.post<RecurrenceSummary>("/tasks/recurrence-preview", data).then((r) => r.data),
   delete: (id: number) => api.delete(`/tasks/${id}`).then((r) => r.data),
   bulkUpdate: (ids: number[], updates: Record<string, unknown>) =>
-    api.patch<{ updated: number; requested: number }>("/tasks/bulk/update", { ids, updates }).then((r) => r.data),
+    api.patch<{ updated: number; failed: number; requested: number; results: Array<{ id: number; updated: boolean; detail?: string }> }>("/tasks/bulk/update", { ids, updates }).then((r) => r.data),
   bulkDelete: (ids: number[]) =>
     api.post<{ deleted: number; errors: number; requested: number }>("/tasks/bulk/delete", { ids }).then((r) => r.data),
   checklist: {

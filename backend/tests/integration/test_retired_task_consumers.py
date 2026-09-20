@@ -23,7 +23,7 @@ from backend.services.incident_project_conditions import (
 )
 from backend.services.incidents import reconcile_recipient
 from backend.services.recurrence import generate_recurring_instances
-from backend.services.temporal import business_today
+from backend.services.temporal import business_today, civil_day_utc_bounds
 
 pytestmark = pytest.mark.integration
 NOW = datetime(2026, 9, 20, 10)  # noqa: DTZ001 -- persisted application UTC
@@ -188,6 +188,7 @@ async def test_project_views_use_active_work_but_keep_retired_history_and_hours(
         client_id=client.id,
         owner_id=admin_user.id,
         status=ProjectStatus.active,
+        start_date=datetime.combine(business_today(), datetime.min.time()),
     )
     db_session.add(project)
     await db_session.flush()
@@ -205,12 +206,13 @@ async def test_project_views_use_active_work_but_keep_retired_history_and_hours(
         status=TaskStatus.pending,
         scheduled_date=business_today(),
     )
+    completed_at = civil_day_utc_bounds(business_today())[0] + timedelta(hours=1)
     retired_done = Task(
         title="Hecho retirado",
         client_id=client.id,
         project_id=project.id,
         status=TaskStatus.completed,
-        completed_at=NOW,
+        completed_at=completed_at,
     )
     _retire(retired_open)
     _retire(retired_done)

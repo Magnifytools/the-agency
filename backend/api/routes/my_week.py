@@ -528,7 +528,7 @@ async def schedule_task(
     if task.assigned_to != user.id and user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    await update_task_write(db, task, {"scheduled_date": scheduled_date}, actor=user)
+    await update_task_write(db, task, {"scheduled_date": scheduled_date}, actor=user, allow_assignee_schedule=True)
     await db.commit()
     return {"ok": True, "scheduled_date": str(scheduled_date) if scheduled_date else None}
 

@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   preview: vi.fn(), send: vi.fn(), settings: vi.fn(), weekly: vi.fn(),
   tasks: vi.fn(), taskUpdate: vi.fn(), timeWeekly: vi.fn(), active: vi.fn(), start: vi.fn(), stop: vi.fn(),
   users: vi.fn(), clients: vi.fn(), engine: vi.fn(), leads: vi.fn(), proposals: vi.fn(),
+  toastSuccess: vi.fn(), toastError: vi.fn(),
 }))
 
 vi.mock("@/context/auth-context", () => ({
@@ -40,7 +41,7 @@ vi.mock("@/components/dashboard/engine-alerts-widget", () => ({ EngineAlertsWidg
 vi.mock("@/components/pm/insights-panel", () => ({ InsightsPanel: () => <div /> }))
 vi.mock("@/components/pm/daily-briefing", () => ({ DailyBriefingButton: () => <div /> }))
 vi.mock("@/components/delivery-receipts", () => ({ ManualDeliveryReceipts: () => <div />, deliveryToast: vi.fn() }))
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock("sonner", () => ({ toast: { success: mocks.toastSuccess, error: mocks.toastError } }))
 
 const operational = { active_clients: 2, pending_tasks: 3, in_progress_tasks: 1, hours_this_month: 7, availability: { clients: true, tasks: true, timesheet: true }, hours_scope: "mine" as const }
 function show(client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })) {
@@ -74,7 +75,79 @@ describe("DashboardPage", () => {
     mocks.tasks.mockResolvedValue([{ id: 12, title: "Revisar propuesta", status: "in_progress", client_name: null, due_date: null }])
     show()
     expect((await screen.findAllByText("Revisar propuesta")).length).toBeGreaterThan(0)
-    expect(screen.getAllByTitle("Marcar como completada").every((button) => button.hasAttribute("disabled"))).toBe(true)
+    expect(screen.getAllByTitle("Completar").every((button) => button.hasAttribute("disabled"))).toBe(true)
+  })
+
+  it("sends a concrete project task to review for a member who is not the owner", async () => {
+    mocks.user = { id: 4, role: "member", permissions: [{ module: "tasks", can_read: true, can_write: true }] }
+    const task = {
+      id: 12,
+      title: "Revisar propuesta",
+      status: "in_progress",
+      client_name: null,
+      due_date: null,
+      is_recurring: false,
+      project_requires_task_review: true,
+      project_review_owner_id: 9,
+      project_id: 3,
+      client_id: 2,
+    }
+    mocks.tasks.mockImplementation((params) => Promise.resolve(params.status === "in_progress" ? [task] : []))
+    mocks.taskUpdate.mockResolvedValue({ ...task, status: "in_review" })
+
+    show()
+    await userEvent.click(await screen.findByTitle("Enviar a revisión"))
+
+    await waitFor(() => expect(mocks.taskUpdate).toHaveBeenCalledWith(12, { status: "in_review" }))
+    expect(mocks.toastSuccess).toHaveBeenCalledWith("Tarea enviada a revisión")
+  })
+
+  it("lets the project owner complete a reviewed task directly", async () => {
+    mocks.user = { id: 9, role: "member", permissions: [{ module: "tasks", can_read: true, can_write: true }] }
+    const task = {
+      id: 13,
+      title: "Aprobar propuesta",
+      status: "pending",
+      client_name: null,
+      due_date: null,
+      is_recurring: false,
+      project_requires_task_review: true,
+      project_review_owner_id: 9,
+      project_id: 3,
+      client_id: 2,
+    }
+    mocks.tasks.mockImplementation((params) => Promise.resolve(params.status === "pending" ? [task] : []))
+    mocks.taskUpdate.mockResolvedValue({ ...task, status: "completed" })
+
+    show()
+    await userEvent.click(await screen.findByTitle("Completar"))
+
+    await waitFor(() => expect(mocks.taskUpdate).toHaveBeenCalledWith(13, { status: "completed" }))
+    expect(mocks.toastSuccess).toHaveBeenCalledWith("Tarea completada")
+  })
+
+  it("does not claim review submission succeeded when the write fails", async () => {
+    mocks.user = { id: 4, role: "member", permissions: [{ module: "tasks", can_read: true, can_write: true }] }
+    const task = {
+      id: 14,
+      title: "Informe mensual",
+      status: "in_progress",
+      client_name: null,
+      due_date: null,
+      is_recurring: false,
+      project_requires_task_review: true,
+      project_review_owner_id: 9,
+      project_id: 3,
+      client_id: 2,
+    }
+    mocks.tasks.mockImplementation((params) => Promise.resolve(params.status === "in_progress" ? [task] : []))
+    mocks.taskUpdate.mockRejectedValue(new Error("Sin conexión"))
+
+    show()
+    await userEvent.click(await screen.findByTitle("Enviar a revisión"))
+
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith("Sin conexión"))
+    expect(mocks.toastSuccess).not.toHaveBeenCalled()
   })
 
   it("does not expose cached finance data after a 403", async () => {

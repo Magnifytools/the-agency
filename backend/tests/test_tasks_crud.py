@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 @pytest.mark.asyncio
@@ -61,10 +61,13 @@ class TestTaskCreate:
         assert resp.status_code == 422
 
     async def test_create_task_happy_path_mock_db(self, admin_client):
-        resp = await admin_client.post(
-            "/api/tasks",
-            json={"title": "Test task"},
-        )
+        # The real permission/locking behavior has PostgreSQL coverage; this
+        # mock-only contract isolates the missing post-commit response row.
+        with patch("backend.services.domain_writes.require_current_write", new_callable=AsyncMock):
+            resp = await admin_client.post(
+                "/api/tasks",
+                json={"title": "Test task"},
+            )
         # Mock DB: _load_task_for_response returns None → 404
         # This confirms the route logic reaches the DB lookup after commit
         assert resp.status_code == 404

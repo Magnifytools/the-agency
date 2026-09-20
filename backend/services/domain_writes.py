@@ -4,6 +4,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
 
+from backend.core.modules import is_enabled
+
 from backend.db.models import (
     Client,
     ClientContact,
@@ -16,10 +18,12 @@ from backend.db.models import (
 from backend.services.change_journal import capture_manual_time
 from backend.services.project_owner import validate_project_owner
 from backend.services.recurrence import validate_recurrence_rule
-from backend.services.task_lifecycle import stamp_task_status
+from backend.services.task_lifecycle import stamp_task_status, validate_task_waiting
+from backend.services.task_review import validate_project_review, validate_task_review
 from backend.services.task_scope import validate_client_exists, validate_task_scope
 from backend.services.temporal import business_today, utc_now_naive
 from backend.services.time_entry_dates import manual_time_entry_date
+from backend.services.write_access import require_current_write
 
 UPDATABLE_TASK_FIELDS = {
     "title", "description", "status", "priority", "estimated_minutes",
@@ -99,6 +103,7 @@ def _prepare_recurrence(data: dict, *, existing: Task | None = None) -> None:
 async def create_project(db: AsyncSession, data: dict) -> Project:
     await validate_client_exists(db, data.get("client_id"))
     await validate_project_owner(db, data.get("owner_id"))
+    await validate_project_review(db, data)
     project = Project(**data)
     db.add(project)
     await db.flush()
@@ -119,6 +124,9 @@ async def create_task(
     _prepare_recurrence(data)
     await validate_task_scope(db, data)
     actual = data.get("actual_minutes")
+    await require_current_write(db, actor, {"tasks", "timesheet"} if actual else {"tasks"})
+    await validate_task_waiting(db, data)
+    await validate_task_review(db, data, actor)
     if actual and not _can_write_time(actor):
         raise HTTPException(403, "Crear horas reales requiere permiso de escritura en timesheet")
     if actual:
@@ -178,12 +186,27 @@ async def lock_task_patch(db: AsyncSession, task_id: int, data: dict) -> Task:
 
 async def update_task(
     db: AsyncSession, task: Task, data: dict, *, actor: User | None, manual_entry_date=None,
+    allow_assignee_schedule: bool = False,
 ) -> Task:
     """Apply a validated task patch; caller owns transaction and response effects."""
     # The writer is also called by automation/command adapters. Re-lock and
     # refresh here so no stale ORM instance can bypass retirement invariants.
     data = dict(data)
     task = await lock_task_patch(db, task.id, data)
+    manual_changed = "actual_minutes" in data and data["actual_minutes"] != task.actual_minutes
+    # My Week deliberately lets an assignee schedule their own work without
+    # granting general task editing. This exception is scalar and exact, after
+    # the task is locked; it cannot authorize status, scope, or time changes.
+    owns_schedule = bool(
+        allow_assignee_schedule and actor is not None
+        and task.assigned_to == actor.id and set(data) == {"scheduled_date"}
+    )
+    if owns_schedule and not is_enabled("tasks"):
+        raise HTTPException(403, "Módulo no disponible: tasks")
+    required = set() if owns_schedule else {"tasks"}
+    if manual_changed:
+        required.add("timesheet")
+    await require_current_write(db, actor, required)
     unsupported = sorted(set(data) - UPDATABLE_TASK_FIELDS)
     if unsupported:
         raise HTTPException(422, f"Campos de tarea no editables: {', '.join(unsupported)}")
@@ -197,21 +220,16 @@ async def update_task(
             changed_fields.add("recurrence_paused")
     if task.retired_at is not None and changed_fields - RETIRED_TASK_EDITABLE_FIELDS:
         raise HTTPException(409, "Restaura la tarea antes de cambiar su trabajo operativo")
-    if (
-        "status" in data and data["status"] != TaskStatus.waiting
-        and task.status == TaskStatus.waiting
-    ):
-        data.setdefault("waiting_for", None)
-        data.setdefault("follow_up_date", None)
+    await validate_task_waiting(db, data, existing=task)
     _prepare_recurrence(data, existing=task)
     old_status = task.status
-    manual_changed = "actual_minutes" in data and data["actual_minutes"] != task.actual_minutes
     if manual_changed and not _can_write_time(actor):
         raise HTTPException(403, "Editar horas reales requiere permiso de escritura en timesheet")
     if manual_changed:
         capture_manual_time(db.sync_session)
     new_actual = data.get("actual_minutes")
     await validate_task_scope(db, data, existing=task)
+    await validate_task_review(db, data, actor, existing=task)
     for field, value in data.items():
         setattr(task, field, value)
     if "status" in data:

@@ -420,7 +420,10 @@ async def test_bulk_reopen_waits_for_parent_before_locking_child(engine):
     release_parent.set()
     result = await updater
     await holder
-    assert result == {"updated": 1, "failed": 0, "requested": 1}
+    assert result["updated"] == result["requested"] == 1
+    assert result["failed"] == 0
+    assert len(result["results"]) == 1
+    assert result["results"][0]["updated"] is True
 
     async with AsyncSession(engine) as cleanup:
         for entity_id in (child_id, parent_id):

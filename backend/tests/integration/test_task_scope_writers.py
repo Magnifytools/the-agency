@@ -116,7 +116,10 @@ async def test_update_and_bulk_cannot_cross_a_task_into_another_client(
         json={"ids": [task.id], "updates": {"client_id": second.id}},
     )
     assert bulk.status_code == 200, bulk.text
-    assert bulk.json() == {"updated": 0, "failed": 1, "requested": 1}
+    assert bulk.json()["updated"] == 0
+    assert bulk.json()["failed"] == bulk.json()["requested"] == 1
+    assert bulk.json()["results"][0]["updated"] is False
+    assert bulk.json()["results"][0]["id"] == task.id
     await db_session.refresh(task)
     assert (task.client_id, task.project_id) == (first.id, project.id)
 

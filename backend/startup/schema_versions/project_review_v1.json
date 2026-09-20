@@ -1,0 +1,8 @@
+{
+  "version": "20260920_project_review_v1",
+  "sql": "ALTER TABLE projects ADD COLUMN IF NOT EXISTS requires_task_review BOOLEAN NOT NULL DEFAULT false",
+  "column": "requires_task_review",
+  "type": "bool",
+  "nullable": false,
+  "default": "false"
+}

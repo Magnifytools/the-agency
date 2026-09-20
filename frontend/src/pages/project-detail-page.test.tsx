@@ -1,12 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
+import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { projectKeys } from "@/lib/query-keys"
 import ProjectDetailPage from "./project-detail-page"
 
-const api = vi.hoisted(() => ({ get: vi.fn(), tasks: vi.fn(), monthlyCycle: vi.fn(), burndown: vi.fn(), today: "2026-09-18", canReadTasks: true }))
+const api = vi.hoisted(() => ({ get: vi.fn(), update: vi.fn(), tasks: vi.fn(), monthlyCycle: vi.fn(), burndown: vi.fn(), today: "2026-09-18", canReadTasks: true }))
 
 vi.mock("@/lib/api", () => ({
   projectsApi: {
@@ -14,7 +14,7 @@ vi.mock("@/lib/api", () => ({
     tasks: api.tasks,
     monthlyCycle: api.monthlyCycle,
     burndown: api.burndown,
-    update: vi.fn(),
+    update: api.update,
     updatePhase: vi.fn(),
     createTask: vi.fn(),
   },
@@ -112,6 +112,38 @@ describe("project detail stale data after access changes", () => {
     expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument()
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(42))
   })
+})
+
+it("starts the edit form from the next cached project rather than the previous draft", async () => {
+  const first = { ...staleProject, is_recurring: false, owner_id: 7, owner_name: "Responsable A", requires_task_review: true }
+  const second = { ...staleProject, id: 43, name: "Proyecto siguiente", is_recurring: false, owner_id: 8, owner_name: "Responsable B", requires_task_review: false }
+  api.canReadTasks = true
+  api.tasks.mockResolvedValue({ phases: [], unassigned_tasks: [] })
+  api.get.mockImplementation((id: number) => Promise.resolve(id === 42 ? first : second))
+  api.update.mockResolvedValue(second)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
+  client.setQueryData(projectKeys.detail(42), first)
+  client.setQueryData(projectKeys.detail(43), second)
+  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/42"]}>
+    <Link to="/projects/43">Ir al siguiente proyecto</Link>
+    <Routes><Route path="/projects/:id" element={<ProjectDetailPage />} /></Routes>
+  </MemoryRouter></QueryClientProvider>)
+
+  await userEvent.click(await screen.findByRole("button", { name: "Editar" }))
+  expect(screen.getByLabelText("Nombre")).toHaveValue(first.name)
+  expect(screen.getByRole("checkbox", { name: /Revisar tareas antes/ })).toBeChecked()
+  fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Borrador del primero" } })
+  await userEvent.click(screen.getByRole("button", { name: "Cancelar" }))
+  await userEvent.click(screen.getByRole("link", { name: "Ir al siguiente proyecto" }))
+  await screen.findByRole("heading", { name: second.name })
+  await userEvent.click(screen.getByRole("button", { name: "Editar" }))
+
+  expect(screen.getByLabelText("Nombre")).toHaveValue(second.name)
+  expect(screen.getByLabelText("Responsable del proyecto")).toHaveValue("8")
+  expect(screen.getByRole("checkbox", { name: /Revisar tareas antes/ })).not.toBeChecked()
+  await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Guardar/ }))
+  await waitFor(() => expect(api.update).toHaveBeenCalledWith(43, expect.objectContaining({ name: second.name, requires_task_review: false })))
+  expect(api.update.mock.calls.at(-1)?.[1]).not.toHaveProperty("owner_id")
 })
 
 describe("recurring project monthly cycle", () => {

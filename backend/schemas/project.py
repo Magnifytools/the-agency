@@ -47,6 +47,7 @@ class ProjectCreate(BaseModel):
     description: Optional[str] = None
     project_type: Optional[str] = None
     is_recurring: bool = False
+    requires_task_review: bool = False
     start_date: Optional[datetime] = None
     target_end_date: Optional[datetime] = None
     budget_hours: Optional[float] = None
@@ -69,6 +70,7 @@ class ProjectUpdate(BaseModel):
     description: Optional[str] = None
     project_type: Optional[str] = None
     is_recurring: Optional[bool] = None
+    requires_task_review: Optional[bool] = None
     start_date: Optional[datetime] = None
     target_end_date: Optional[datetime] = None
     actual_end_date: Optional[datetime] = None
@@ -97,6 +99,7 @@ class ProjectResponse(BaseModel):
     description: Optional[str]
     project_type: Optional[str]
     is_recurring: bool = False
+    requires_task_review: bool = False
     start_date: Optional[datetime]
     target_end_date: Optional[datetime]
     actual_end_date: Optional[datetime]
@@ -143,6 +146,7 @@ class ProjectListResponse(BaseModel):
     name: str
     project_type: Optional[str]
     is_recurring: bool = False
+    requires_task_review: bool = False
     start_date: Optional[datetime]
     target_end_date: Optional[datetime]
     status: str

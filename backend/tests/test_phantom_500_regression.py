@@ -66,6 +66,9 @@ async def test_create_task_returns_201_when_notification_fails(admin_client, adm
     fake_task.checklist_items = []
 
     with (
+        # Authorization is exercised against PostgreSQL in test_write_access;
+        # this unit test isolates the post-commit notification failure.
+        patch("backend.services.domain_writes.require_current_write", new_callable=AsyncMock),
         patch(
             "backend.api.routes.tasks._load_task_for_response",
             new_callable=AsyncMock,

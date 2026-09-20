@@ -103,6 +103,21 @@ async def test_my_week_schedule_preserves_owner_admin_and_foreign_rules(
 
 
 @pytest.mark.asyncio
+async def test_assignee_schedule_exception_does_not_grant_other_task_writes(db_session, member_user):
+    task = Task(title="Own schedule only", assigned_to=member_user.id, status=TaskStatus.pending)
+    db_session.add(task)
+    await db_session.flush()
+    await update_task(db_session, task, {"scheduled_date": business_today()}, actor=member_user,
+                      allow_assignee_schedule=True)
+    assert task.scheduled_date == business_today()
+    with pytest.raises(HTTPException) as denied:
+        await update_task(db_session, task, {"scheduled_date": business_today(), "status": TaskStatus.completed},
+                          actor=member_user, allow_assignee_schedule=True)
+    assert denied.value.status_code == 403
+    assert task.status == TaskStatus.pending
+
+
+@pytest.mark.asyncio
 async def test_growth_conversion_rolls_back_entity_and_link_on_commit_failure(engine, monkeypatch):
     marker = "growth-atomic-conversion"
     async with AsyncSession(engine, expire_on_commit=False) as db:

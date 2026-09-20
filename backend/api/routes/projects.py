@@ -35,6 +35,8 @@ from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 from backend.services.time_budget import effective_budgets, build_closing_status, is_recurring_project
 from backend.services.task_scope import validate_client_exists
 from backend.services.project_owner import validate_project_owner
+from backend.services.task_review import validate_project_review
+from backend.services.write_access import require_current_write
 from backend.services.domain_writes import create_project as create_project_write, create_task as create_task_write
 from backend.services.temporal import as_utc_instant, business_today, business_zone, utc_now_naive
 from backend.services.time_entry_dates import time_entry_civil_period
@@ -167,6 +169,7 @@ def _build_project_response(
         description=project.description,
         project_type=project.project_type,
         is_recurring=project.is_recurring,
+        requires_task_review=project.requires_task_review,
         start_date=project.start_date,
         target_end_date=project.target_end_date,
         actual_end_date=project.actual_end_date,
@@ -284,6 +287,7 @@ async def list_projects(
                 name=p.name,
                 project_type=p.project_type,
                 is_recurring=p.is_recurring,
+                requires_task_review=p.requires_task_review,
                 start_date=p.start_date,
                 target_end_date=p.target_end_date,
                 status=p.status.value,
@@ -372,15 +376,18 @@ async def create_project(
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_module("projects", write=True)),
 ):
-    project = await create_project_write(db, {
+    create_data = {
         key: value for key, value in body.model_dump().items()
         if key in {
             "name", "description", "project_type", "is_recurring", "start_date",
+            "requires_task_review",
             "target_end_date", "budget_hours", "weekly_hours_budget",
             "monthly_hours_budget", "budget_amount", "pricing_model", "monthly_fee",
             "unit_price", "unit_label", "scope", "client_id", "owner_id",
         }
-    })
+    }
+    await require_current_write(db, _user, {"projects"})
+    project = await create_project_write(db, create_data)
     await db.commit()
 
     result = await db.execute(
@@ -792,6 +799,7 @@ async def project_monthly_cycle(
 
 _UPDATABLE_PROJECT_FIELDS = {
     "name", "description", "project_type", "is_recurring",
+    "requires_task_review",
     "start_date", "target_end_date", "actual_end_date",
     "status", "budget_hours", "weekly_hours_budget", "monthly_hours_budget", "budget_amount",
     "gsc_url", "ga4_property_id",
@@ -809,14 +817,16 @@ async def update_project(
     _user=Depends(require_module("projects", write=True)),
 ):
     result = await db.execute(
-        select(Project).options(*_project_load_options()).where(Project.id == project_id)
+        select(Project).options(*_project_load_options()).where(Project.id == project_id).with_for_update()
     )
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
     old_status = project.status.value if hasattr(project.status, "value") else str(project.status)
+    await require_current_write(db, _user, {"projects"})
     update_data = body.model_dump(exclude_unset=True)
+    await validate_project_review(db, update_data, existing=project)
     if "owner_id" in update_data:
         await validate_project_owner(db, update_data["owner_id"])
     for field, value in update_data.items():

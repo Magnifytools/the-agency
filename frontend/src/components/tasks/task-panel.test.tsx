@@ -3,11 +3,14 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TaskPanel } from "./task-panel";
-import { clientKeys } from "@/lib/query-keys";
+import { clientKeys, taskKeys } from "@/lib/query-keys";
 
 const mocks = vi.hoisted(() => ({
   canWrite: true,
+  canReadProjects: true,
   canReadTime: true,
+  user: { id: 2 },
+  isAdmin: false,
   get: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
@@ -22,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   upload: vi.fn(),
   toastError: vi.fn(),
   listTasks: vi.fn(),
+  listProjects: vi.fn(),
   getProject: vi.fn(),
   updateChecklist: vi.fn(),
   deleteChecklist: vi.fn(),
@@ -30,8 +34,10 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/context/auth-context", () => ({
   useAuth: () => ({
-    hasPermission: (_module: string, write?: boolean) =>
-      _module === "timesheet" ? mocks.canReadTime : !write || mocks.canWrite,
+    user: mocks.user,
+    isAdmin: mocks.isAdmin,
+    hasPermission: (module: string, write?: boolean) =>
+      module === "timesheet" ? mocks.canReadTime : module === "projects" ? (!write && mocks.canReadProjects) : !write || mocks.canWrite,
   }),
 }));
 vi.mock("@/lib/api", () => ({
@@ -43,11 +49,7 @@ vi.mock("@/lib/api", () => ({
       ]),
   },
   projectsApi: {
-    listAll: () =>
-      Promise.resolve([
-        { id: 7, name: "SEO archivado", client_id: 4, status: "completed" },
-        { id: 8, name: "SEO nuevo", client_id: 4, status: "active" },
-      ]),
+    listAll: mocks.listProjects,
     get: mocks.getProject,
   },
   usersApi: {
@@ -126,6 +128,8 @@ const task = {
   dependency_title: null,
   created_by_name: null,
   recurring_parent_title: null,
+  project_requires_task_review: false,
+  project_review_owner_id: null,
   checklist_count: 0,
 } as const;
 
@@ -152,6 +156,9 @@ describe("TaskPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.canWrite = true;
+    mocks.canReadProjects = true;
+    mocks.user = { id: 2 };
+    mocks.isAdmin = false;
   mocks.canReadTime = true;
     mocks.get.mockResolvedValue(task);
     mocks.checklist.mockResolvedValue([]);
@@ -159,6 +166,10 @@ describe("TaskPanel", () => {
     mocks.comments.mockResolvedValue([]);
     mocks.listTasks.mockResolvedValue([
       { ...task, id: 11, title: "Preparar datos" },
+    ]);
+    mocks.listProjects.mockResolvedValue([
+      { id: 7, name: "SEO archivado", client_id: 4, status: "completed" },
+      { id: 8, name: "SEO nuevo", client_id: 4, status: "active" },
     ]);
     mocks.getProject.mockResolvedValue({
       id: 7,
@@ -211,6 +222,25 @@ describe("TaskPanel", () => {
     expect(screen.queryByRole("button", { name: "Ver horas y registrar tiempo" })).not.toBeInTheDocument();
   });
 
+  it("hides cached task details after a task read error", async () => {
+    mocks.get.mockRejectedValue(new Error("forbidden"));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    client.setQueryData(taskKeys.detail(9), task);
+    render(<QueryClientProvider client={client}><TaskPanel open taskId={9} onOpenChange={vi.fn()} /></QueryClientProvider>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("forbidden");
+    expect(screen.queryByLabelText("Título")).not.toBeInTheDocument();
+  });
+
+  it("does not fetch or clear a project scope without projects read", async () => {
+    mocks.canReadProjects = false;
+    setup({ taskId: 9 });
+    await screen.findByLabelText("Proyecto");
+    expect(mocks.listProjects).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Proyecto")).toBeDisabled();
+    expect(screen.getByLabelText("Cliente")).toBeDisabled();
+    expect(screen.getByLabelText("Proyecto")).toHaveValue("7");
+  });
+
   it("respects read-only permission and keeps time behind an explicit action", async () => {
     mocks.canWrite = false;
     const { onOpenTime } = setup({ taskId: 9 });
@@ -237,8 +267,8 @@ describe("TaskPanel", () => {
     expect(
       await screen.findByRole("option", { name: "SEO archivado" }),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getByText("Seguimiento"));
-    expect(screen.getByLabelText("Esperando a")).toHaveValue("Aprobación");
+    await userEvent.click(screen.getByText("Espera y seguimiento"));
+    expect(screen.getByLabelText("Respuesta pendiente")).toHaveValue("Aprobación");
     expect(screen.getByLabelText("Revisar el")).toHaveValue("2026-09-24");
     await userEvent.selectOptions(screen.getByLabelText("Proyecto"), "8");
     await userEvent.click(screen.getByRole("button", { name: "Guardar" }));
@@ -508,6 +538,112 @@ describe("TaskPanel", () => {
     mocks.get.mockResolvedValue({ ...task, status: "completed", completed_at: null });
     setup({ taskId: 9 });
     expect(await screen.findByText(/No se registró la fecha de finalización/)).toBeInTheDocument();
+  });
+
+  it("keeps a legacy incomplete wait editable until its wait fields change", async () => {
+    mocks.get.mockResolvedValue({ ...task, status: "waiting", waiting_for: null, follow_up_date: null });
+    mocks.update.mockResolvedValue({ ...task, status: "waiting", title: "Auditar nota" });
+    setup({ taskId: 9 });
+    const title = await screen.findByLabelText("Título");
+    await userEvent.clear(title);
+    await userEvent.type(title, "Auditar nota");
+    await userEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(9, expect.objectContaining({ title: "Auditar nota" })));
+  });
+
+  it("keeps an existing past review date when only the waiting reason changes", async () => {
+    mocks.get.mockResolvedValue({ ...task, status: "waiting", assigned_to: 2, waiting_for: "Respuesta antigua", follow_up_date: "2026-09-01" });
+    mocks.update.mockResolvedValue({ ...task, status: "waiting", assigned_to: 2, waiting_for: "Respuesta actualizada", follow_up_date: "2026-09-01" });
+    setup({ taskId: 9 });
+    await screen.findByDisplayValue("Auditar");
+    await userEvent.click(screen.getByText("Espera y seguimiento"));
+    const reason = screen.getByLabelText("Respuesta pendiente");
+    await userEvent.clear(reason);
+    await userEvent.type(reason, "Respuesta actualizada");
+    expect(screen.getByRole("button", { name: "Guardar" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(9, expect.objectContaining({ follow_up_date: "2026-09-01" })));
+  });
+
+  it("requires a review date when editing the reason of a legacy wait that has none", async () => {
+    mocks.get.mockResolvedValue({ ...task, status: "waiting", assigned_to: 2, waiting_for: "Respuesta antigua", follow_up_date: null });
+    setup({ taskId: 9 });
+    await screen.findByDisplayValue("Auditar");
+    await userEvent.click(screen.getByText("Espera y seguimiento"));
+    const reason = screen.getByLabelText("Respuesta pendiente");
+    await userEvent.clear(reason);
+    await userEvent.type(reason, "Respuesta actualizada");
+    expect(screen.getByRole("button", { name: "Guardar" })).toBeDisabled();
+    expect(screen.getByText(/Indica la respuesta pendiente/)).toBeInTheDocument();
+  });
+
+  it("requires complete wait details when entering a wait", async () => {
+    setup({ taskId: 9 });
+    await screen.findByDisplayValue("Auditar");
+    await userEvent.selectOptions(screen.getByLabelText("Estado"), "waiting");
+    expect(screen.getByText(/Completa Espera y seguimiento/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Guardar" })).toBeDisabled();
+  });
+
+  it("honors an explicit waiting intent when opened from an inline action", async () => {
+    setup({ taskId: 9, defaults: { initialStatus: "waiting" } });
+    await screen.findByDisplayValue("Auditar");
+    expect(screen.getByLabelText("Estado")).toHaveValue("waiting");
+    expect(screen.getByLabelText("Respuesta pendiente")).toBeVisible();
+    expect(screen.getByLabelText("Revisar el")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Guardar" })).toBeDisabled();
+  });
+
+  it("lets a person resume an advanced task without changing its planned date", async () => {
+    mocks.get.mockResolvedValue({ ...task, status: "advanced", scheduled_date: "2026-09-20" });
+    mocks.update.mockResolvedValue({ ...task, status: "in_progress", scheduled_date: "2026-09-20" });
+    setup({ taskId: 9 });
+    await screen.findByRole("button", { name: "Retomar ahora" });
+    await userEvent.click(screen.getByRole("button", { name: "Retomar ahora" }));
+    await userEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(9, expect.objectContaining({ status: "in_progress", scheduled_date: "2026-09-20" })));
+  });
+
+  it("lets a person remove a dated legacy task from backlog explicitly", async () => {
+    mocks.get.mockResolvedValue({ ...task, status: "backlog", scheduled_date: "2026-09-20" });
+    mocks.update.mockResolvedValue({ ...task, status: "pending", scheduled_date: "2026-09-20" });
+    setup({ taskId: 9 });
+    await screen.findByRole("button", { name: "Sacar del backlog" });
+    await userEvent.click(screen.getByRole("button", { name: "Sacar del backlog" }));
+    await userEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(9, expect.objectContaining({ status: "pending", scheduled_date: "2026-09-20" })));
+  });
+
+  it("sends a non-owner task to review when its project requires review", async () => {
+    mocks.get.mockResolvedValue({
+      ...task,
+      is_recurring: false,
+      project_requires_task_review: true,
+      project_review_owner_id: 3,
+    });
+    mocks.update.mockResolvedValue({ ...task, status: "in_review", project_requires_task_review: true, project_review_owner_id: 3 });
+    setup({ taskId: 9 });
+    await screen.findByDisplayValue("Auditar");
+    await screen.findByText(/El responsable del proyecto revisa/);
+    await userEvent.selectOptions(screen.getByLabelText("Estado"), "completed");
+    await userEvent.click(await screen.findByRole("button", { name: "Enviar a revisión" }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(9, expect.objectContaining({ status: "in_review" })));
+  });
+
+  it("lets the project owner approve or return a task in review", async () => {
+    mocks.get.mockResolvedValue({
+      ...task,
+      is_recurring: false,
+      status: "in_review",
+      project_requires_task_review: true,
+      project_review_owner_id: 2,
+    });
+    mocks.update.mockResolvedValue({ ...task, status: "completed" });
+    setup({ taskId: 9 });
+    await screen.findByRole("button", { name: "Aprobar y completar" });
+    await userEvent.click(screen.getByRole("button", { name: "Aprobar y completar" }));
+    await userEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(9, expect.objectContaining({ status: "completed" })));
   });
 
   it("keeps a retired task readable but blocks operational controls until restore", async () => {

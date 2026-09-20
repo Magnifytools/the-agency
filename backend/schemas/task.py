@@ -134,6 +134,8 @@ class TaskResponse(BaseModel):
     category_id: Optional[int] = None
     assigned_to: Optional[int] = None
     project_id: Optional[int] = None
+    project_requires_task_review: bool = False
+    project_review_owner_id: Optional[int] = None
     phase_id: Optional[int] = None
     depends_on: Optional[int] = None
     created_by: Optional[int] = None
