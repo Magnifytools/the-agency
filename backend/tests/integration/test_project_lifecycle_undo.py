@@ -172,6 +172,54 @@ async def test_deleted_active_task_cannot_be_restored_inside_archived_project(
     assert (await db_session.get(ChangeLog, change_id)).undone_at is None
 
 
+async def test_completed_template_cannot_be_unpaused_inside_archived_project(
+    admin_client, db_session,
+):
+    project = await _project(db_session, status=ProjectStatus.completed)
+    template = Task(
+        title="Completed is still a template", project_id=project.id,
+        status=TaskStatus.completed, is_recurring=True,
+        recurrence_pattern="weekly", recurrence_day=0,
+        recurrence_paused_at=datetime(2026, 9, 20, 9),  # noqa: DTZ001
+    )
+    db_session.add(template)
+    await db_session.commit()
+
+    response = await admin_client.put(
+        f"/api/tasks/{template.id}", json={"recurrence_paused": False},
+    )
+
+    assert response.status_code == 409, response.text
+    await db_session.refresh(template)
+    assert template.recurrence_paused_at is not None
+
+
+async def test_undo_cannot_restore_completed_unpaused_template_into_archive(
+    admin_client, db_session,
+):
+    project = await _project(db_session)
+    template = Task(
+        title="Completed unpaused template", project_id=project.id,
+        status=TaskStatus.completed, is_recurring=True,
+        recurrence_pattern="weekly", recurrence_day=0,
+    )
+    db_session.add(template)
+    await db_session.commit()
+    template_id = template.id
+    change = await _deleted_task_change(admin_client, db_session, template)
+    change_id = change.id
+    with change_journal.paused():
+        project.status = ProjectStatus.completed
+        await db_session.commit()
+
+    response = await admin_client.post(f"/api/changes/{change_id}/undo")
+
+    assert response.status_code == 409, response.text
+    db_session.expire_all()
+    assert await db_session.get(Task, template_id) is None
+    assert (await db_session.get(ChangeLog, change_id)).undone_at is None
+
+
 async def test_conflict_skipped_project_status_validates_actual_result(
     admin_client, db_session, admin_user,
 ):
