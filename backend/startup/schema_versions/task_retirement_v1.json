@@ -1,0 +1,19 @@
+{
+  "version": "20260920_task_retirement_v1",
+  "sql": "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS retired_at TIMESTAMP, ADD COLUMN IF NOT EXISTS retired_reason VARCHAR(500)",
+  "columns": {
+    "retired_at": [
+      "timestamp",
+      true,
+      null
+    ],
+    "retired_reason": [
+      "varchar",
+      true,
+      500
+    ]
+  },
+  "constraint_name": "ck_tasks_retirement_pair",
+  "constraint_expression": "(retired_at IS NULL AND retired_reason IS NULL) OR (retired_at IS NOT NULL AND retired_reason IS NOT NULL AND length(btrim(retired_reason)) > 0)",
+  "constraint_deparsed": "(((retired_at IS NULL) AND (retired_reason IS NULL)) OR ((retired_at IS NOT NULL) AND (retired_reason IS NOT NULL) AND (length(btrim((retired_reason)::text)) > 0)))"
+}

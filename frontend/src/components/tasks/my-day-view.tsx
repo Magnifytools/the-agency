@@ -1,10 +1,11 @@
+import { useState } from "react"
 import type { PaginatedResponse, Task, TaskStatus } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Pencil, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { agencyTimezoneLabel, businessDateString, formatCivilDate } from "@/lib/dates"
+import { agencyTimezoneLabel, businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates"
 
 
 interface Props {
@@ -12,10 +13,16 @@ interface Props {
   carryover: PaginatedResponse<Task>
   unplanned: PaginatedResponse<Task>
   completed: PaginatedResponse<Task>
+  retired: PaginatedResponse<Task>
   isLoadingMore?: boolean
-  onLoadMore: (section: "planned" | "carryover" | "unplanned" | "completed") => void
+  onLoadMore: (section: "planned" | "carryover" | "unplanned" | "completed" | "retired") => void
   onStatusChange: (id: number, status: TaskStatus) => void
   onOpenEdit: (task: Task) => void
+  onReviewCarryover: (task: Task) => void
+  retiredLoading?: boolean
+  retiredError?: boolean
+  onRetryRetired?: () => void
+  canWrite?: boolean
 }
 
 const priorityOrder: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
@@ -38,8 +45,9 @@ const formatMinutes = (mins: number) => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-export function MyDayView({ planned, carryover, unplanned, completed, isLoadingMore, onLoadMore, onStatusChange, onOpenEdit }: Props) {
+export function MyDayView({ planned, carryover, unplanned, completed, retired, isLoadingMore, onLoadMore, onStatusChange, onOpenEdit, onReviewCarryover, retiredLoading = false, retiredError = false, onRetryRetired, canWrite = false }: Props) {
   const today = businessDateString()
+  const [showRetired, setShowRetired] = useState(false)
 
   const sortTasks = (items: Task[]) => [...items].sort((a, b) => {
     const aOverdue = a.due_date && a.due_date < today ? 1 : 0
@@ -61,7 +69,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, isLoadingM
   const unplannedTasks = sortTasks(unplanned.items)
   const completedToday = completed.items
 
-  const renderTaskCard = (task: Task) => {
+  const renderTaskCard = (task: Task, carryover = false) => {
     const isOverdue = task.due_date && task.due_date < today
     const isInProgress = task.status === "in_progress"
 
@@ -84,6 +92,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, isLoadingM
             }}
             onClick={(e) => e.stopPropagation()}
             aria-label={`Estado de ${task.title}`}
+            disabled={!canWrite}
             className={cn(
               "col-span-2 row-start-2 w-fit sm:w-auto shrink-0 text-xs sm:text-[10px] rounded-md border px-2 py-1 min-h-9 sm:min-h-7 cursor-pointer font-semibold transition-colors shadow-sm",
               "bg-background text-foreground border-input"
@@ -124,15 +133,16 @@ export function MyDayView({ planned, carryover, unplanned, completed, isLoadingM
                   <Clock className="h-2.5 w-2.5" />
                   Planificada {formatCivilDate(task.scheduled_date, { day: "numeric", month: "short" })}
                 </span>
-              ) : task.due_date ? (
-                <span className={cn("flex items-center gap-0.5", isOverdue && "text-red-500 font-medium")}>
-                  {isOverdue && <AlertTriangle className="h-2.5 w-2.5" />}
-                  {formatCivilDate(task.due_date, { day: "numeric", month: "short" })}
-                </span>
-              ) : (
+              ) : !task.due_date && (
                 <span className="flex items-center gap-0.5 text-muted-foreground">
                   <CalendarX className="h-2.5 w-2.5" />
                   Sin fecha planificada
+                </span>
+              )}
+              {task.due_date && (
+                <span className={cn("flex items-center gap-0.5", isOverdue && "text-red-500 font-medium")}>
+                  {isOverdue && <AlertTriangle className="h-2.5 w-2.5" />}
+                  Fecha límite {formatCivilDate(task.due_date, { day: "numeric", month: "short" })}
                 </span>
               )}
             </div>
@@ -147,6 +157,11 @@ export function MyDayView({ planned, carryover, unplanned, completed, isLoadingM
           >
             <Pencil className="h-3.5 w-3.5" />
           </Button>
+          {carryover && canWrite && (
+            <Button variant="outline" size="sm" className="col-span-2 sm:col-span-1" onClick={(event) => { event.stopPropagation(); onReviewCarryover(task) }}>
+              Revisar
+            </Button>
+          )}
         </CardContent>
       </Card>
     )
@@ -168,7 +183,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, isLoadingM
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-2">{plannedTodayTasks.map(renderTaskCard)}</div>
+          <div className="space-y-2">{plannedTodayTasks.map((task) => renderTaskCard(task))}</div>
         )}
         {planned.total > planned.items.length && (
           <Button variant="outline" className="mt-3" disabled={isLoadingMore} onClick={() => onLoadMore("planned")}>
@@ -181,7 +196,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, isLoadingM
         <div className="mt-6">
           <p className="text-xs font-bold uppercase tracking-wider text-red-600 mb-2">Arrastre pendiente ({carryover.total})</p>
           <p className="text-sm text-muted-foreground mb-2">No son compromisos nuevos de hoy. Reprograma, deja en espera o completa cada una.</p>
-          <div className="space-y-2">{carryoverTasks.map(renderTaskCard)}</div>
+          <div className="space-y-2">{carryoverTasks.map((task) => renderTaskCard(task, true))}</div>
           {carryover.total > carryover.items.length && (
             <Button variant="outline" className="mt-3" disabled={isLoadingMore} onClick={() => onLoadMore("carryover")}>
               Ver más de arrastre ({carryover.total - carryover.items.length} restantes)
@@ -196,7 +211,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, isLoadingM
             Sin planificar ({unplanned.total})
           </p>
           <div className="space-y-2">
-            {unplannedTasks.map(renderTaskCard)}
+            {unplannedTasks.map((task) => renderTaskCard(task))}
           </div>
           {unplanned.total > unplanned.items.length && (
             <Button variant="outline" className="mt-3" disabled={isLoadingMore} onClick={() => onLoadMore("unplanned")}>
@@ -218,13 +233,13 @@ export function MyDayView({ planned, carryover, unplanned, completed, isLoadingM
                 <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
                 <span className="text-sm line-through truncate flex-1">{task.title}</span>
                 {task.client_name && <span className="text-[10px] shrink-0">{task.client_name}</span>}
-                <button
+                {canWrite && <button
                   title="Reabrir tarea"
                   className="opacity-0 group-hover/done:opacity-100 transition-opacity shrink-0 text-muted-foreground hover:text-amber-600"
                   onClick={() => onStatusChange(task.id, "pending")}
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
-                </button>
+                </button>}
               </div>
             ))}
           </div>
@@ -235,6 +250,28 @@ export function MyDayView({ planned, carryover, unplanned, completed, isLoadingM
           )}
         </div>
       )}
+
+      <div className="pt-2">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setShowRetired((value) => !value)}>
+          {showRetired ? "Ocultar retiradas" : `Ver retiradas${retired.total ? ` (${retired.total})` : ""}`}
+        </Button>
+        {showRetired && (
+          <div className="mt-2 space-y-2">
+            {retiredLoading && retired.items.length === 0 ? <p role="status" className="text-sm text-muted-foreground">Cargando retiradas…</p> : retiredError && retired.items.length === 0 ? <div role="alert" className="text-sm text-destructive">No se pudieron cargar las retiradas. <Button type="button" size="sm" variant="outline" onClick={onRetryRetired}>Reintentar</Button></div> : retired.items.length === 0 ? <p className="text-sm text-muted-foreground">No hay tareas retiradas.</p> : retired.items.map((task) => (
+              <Card key={task.id}>
+                <CardContent className="p-0">
+                  <button type="button" className="w-full rounded-[inherit] p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand" onClick={() => onOpenEdit(task)}>
+                    <p className="text-sm font-medium">{task.title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Retirada el {task.retired_at ? formatCivilDate(businessDateString(parseApiInstant(task.retired_at)), { day: "numeric", month: "short", year: "numeric" }) : "—"} · {task.retired_reason}</p>
+                  </button>
+                </CardContent>
+              </Card>
+            ))}
+            {retiredError && retired.items.length > 0 && <div role="alert" className="text-sm text-warning">Mostramos retiradas guardadas; no se pudieron actualizar. <Button type="button" size="sm" variant="outline" onClick={onRetryRetired}>Reintentar</Button></div>}
+            {retired.total > retired.items.length && <Button type="button" variant="outline" size="sm" disabled={isLoadingMore} onClick={() => onLoadMore("retired")}>Ver más retiradas ({retired.total - retired.items.length} restantes)</Button>}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

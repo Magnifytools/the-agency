@@ -72,6 +72,7 @@ export async function invalidateTaskChange(
     queryClient.invalidateQueries({ queryKey: dashboardKeys.all() }),
     queryClient.invalidateQueries({ queryKey: myWeekKeys.all() }),
     queryClient.invalidateQueries({ queryKey: briefingKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: searchKeys.all() }),
   ]
   for (const clientId of uniqueIds(affected.clientId, affected.previousClientId, ...(affected.clientIds ?? []))) {
     invalidations.push(
@@ -161,6 +162,7 @@ export const inboxKeys = {
 }
 
 export const searchKeys = {
+  all: () => ["global-search"] as const,
   results: (userId: number, permissionSignature: string, query: string) => ["global-search", userId, permissionSignature, query] as const,
 }
 

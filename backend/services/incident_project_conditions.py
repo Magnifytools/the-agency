@@ -89,6 +89,7 @@ def _project_rows(now: datetime):
         select(Task.project_id.label("project_id"))
         .where(
             Task.project_id.is_not(None),
+            Task.retired_at.is_(None),
             Task.is_recurring.is_(False),
             Task.status.in_(_NEXT_ACTION_STATUSES),
             or_(Task.scheduled_date.is_not(None), Task.due_date.is_not(None)),
@@ -315,6 +316,7 @@ def project_visibility_clause(user_id: int, *, current_only: bool = False, now: 
     next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
     has_next = select(literal(1)).where(
         Task.project_id == Project.id,
+        Task.retired_at.is_(None),
         Task.is_recurring.is_(False),
         Task.status.in_(_NEXT_ACTION_STATUSES),
         or_(Task.scheduled_date.is_not(None), Task.due_date.is_not(None)),

@@ -62,11 +62,12 @@ async def generate_weekly_report(db: AsyncSession, *, period_start: date | None 
 
     in_progress_result = await db.execute(
         select(Task).options(selectinload(Task.client), selectinload(Task.assigned_user))
-        .where(Task.status.in_(IN_PROGRESS_TASK_STATUSES)).order_by(Task.client_id, Task.title)
+        .where(Task.retired_at.is_(None), Task.status.in_(IN_PROGRESS_TASK_STATUSES))
+        .order_by(Task.client_id, Task.title)
     )
     in_progress_tasks = in_progress_result.scalars().all()
 
-    pending_filter = Task.status == TaskStatus.pending
+    pending_filter = (Task.status == TaskStatus.pending) & Task.retired_at.is_(None)
     pending_total = (await db.execute(select(func.count(Task.id)).where(pending_filter))).scalar() or 0
     pending_result = await db.execute(
         select(Task).options(selectinload(Task.client), selectinload(Task.assigned_user))
@@ -76,6 +77,7 @@ async def generate_weekly_report(db: AsyncSession, *, period_start: date | None 
 
     overdue_filter = (
         Task.status.notin_([TaskStatus.completed])
+        & Task.retired_at.is_(None)
         & (cast(Task.due_date, Date) < ws)
         & Task.due_date.isnot(None)
     )

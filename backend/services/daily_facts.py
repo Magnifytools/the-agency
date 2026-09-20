@@ -144,14 +144,18 @@ async def collect_daily_facts(db, actor, day: date) -> dict:
                             Task.completed_at < end,
                         ),
                         and_(
-                            Task.status == TaskStatus.advanced, Task.advanced_at == day
+                            Task.retired_at.is_(None),
+                            Task.status == TaskStatus.advanced,
+                            Task.advanced_at == day,
                         ),
                         and_(
+                            Task.retired_at.is_(None),
                             Task.status == TaskStatus.waiting,
                             Task.waiting_for.is_not(None),
                             Task.waiting_for != "",
                         ),
                         and_(
+                            Task.retired_at.is_(None),
                             Task.status.notin_(
                                 (
                                     TaskStatus.completed,

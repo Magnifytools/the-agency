@@ -32,8 +32,7 @@ from sqlalchemy.orm import noload
 
 from backend.api.deps import get_current_user
 from backend.db.database import get_db
-from backend.db.models import ChangeLog, Task, TimeEntry, User, UserRole
-from backend.services.temporal import utc_isoformat, utc_now_naive
+from backend.db.models import ChangeLog, Task, TaskChecklist, TimeEntry, User, UserRole
 from backend.services import change_journal
 from backend.services.change_journal import (
     MODELS_BY_TYPE,
@@ -41,6 +40,7 @@ from backend.services.change_journal import (
     deserialize,
     serialize,
 )
+from backend.services.temporal import utc_isoformat, utc_now_naive
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +190,33 @@ async def _lock_operation_rows(db: AsyncSession, operations: list[dict]) -> dict
         )).scalars().all() if task_id is not None)
     if anticipated_task_ids:
         grouped.setdefault("task", set()).update(anticipated_task_ids)
+    checklist_ops = [op for op in operations if op.get("entity_type") == "task_checklist"]
+    checklist_ids = [op["entity_id"] for op in checklist_ops if op.get("entity_id") is not None]
+    checklist_task_ids = {
+        task_id for op in checklist_ops
+        for task_id in ((op.get("before") or {}).get("task_id"), (op.get("after") or {}).get("task_id"))
+        if task_id is not None
+    }
+    if checklist_ids:
+        checklist_task_ids.update((await db.scalars(
+            select(TaskChecklist.task_id).where(TaskChecklist.id.in_(checklist_ids))
+        )).all())
+    if checklist_task_ids:
+        grouped.setdefault("task", set()).update(checklist_task_ids)
+    # Undo can restore an old dependency, reopen a completed dependent, or
+    # reinsert a deleted task. Lock both current and intended parents in the
+    # same deterministic task order before inspecting their lifecycle.
+    dependency_ids = {
+        dependency_id for op in operations if op.get("entity_type") == "task"
+        for dependency_id in ((op.get("before") or {}).get("depends_on"), (op.get("after") or {}).get("depends_on"))
+        if dependency_id is not None
+    }
+    if grouped.get("task"):
+        dependency_ids.update(dependency_id for dependency_id in (await db.scalars(
+            select(Task.depends_on).where(Task.id.in_(sorted(grouped["task"])))
+        )).all() if dependency_id is not None)
+    if dependency_ids:
+        grouped.setdefault("task", set()).update(dependency_ids)
     # Alphabetical order is stable and keeps task before time_entry, matching
     # the time writer's lock protocol.
     for entity_type in sorted(grouped):
@@ -206,7 +233,90 @@ async def _lock_operation_rows(db: AsyncSession, operations: list[dict]) -> dict
         row = locked.get(("time_entry", op.get("entity_id")))
         if row is not None and row.task_id is not None and row.task_id not in anticipated_task_ids:
             raise HTTPException(409, "El registro de tiempo cambió de tarea; vuelve a intentarlo")
+    for op in checklist_ops:
+        row = locked.get(("task_checklist", op.get("entity_id")))
+        if row is not None and row.task_id not in checklist_task_ids:
+            raise HTTPException(409, "La subtarea cambió de tarea; vuelve a intentarlo")
     return locked
+
+
+async def _preflight_retirement(
+    db: AsyncSession, operations: list[dict], locked: dict[tuple[str, int], Any],
+) -> None:
+    """An old Undo must respect today's withdrawal and its dependent work."""
+    from backend.services.task_retirement import ensure_can_restore, ensure_can_retire
+
+    pair = {"retired_at", "retired_reason"}
+    annotations = {"title", "description", "link_url"}
+    manual_task_ids = {
+        task_id for op in operations if op.get("entity_type") == "time_entry"
+        for task_id in ((op.get("before") or {}).get("task_id"), (op.get("after") or {}).get("task_id"))
+        if task_id is not None
+    }
+    for op in operations:
+        entity_type, action = op.get("entity_type"), op.get("action")
+        row = locked.get((entity_type, op.get("entity_id")))
+        before, after = op.get("before") or {}, op.get("after") or {}
+        if entity_type == "task_checklist":
+            task_id = row.task_id if row is not None else before.get("task_id")
+            task = locked.get(("task", task_id))
+            if task is not None and task.retired_at is not None:
+                raise HTTPException(409, "Restaura la tarea antes de deshacer cambios de su checklist")
+        if entity_type != "task" or row is None:
+            continue
+        if action == "create" and row.retired_at is not None:
+            raise HTTPException(409, "La tarea fue retirada después; no se ha eliminado")
+        if action != "update":
+            continue
+        if pair.intersection(before):
+            # The pair is one domain decision, never a partially restored patch.
+            if not pair.issubset(before) or not pair.issubset(after) or any(
+                serialize(getattr(row, key)) != after[key] for key in pair
+            ):
+                raise HTTPException(409, "La retirada cambió después; no se ha deshecho")
+            if before["retired_at"] is None:
+                await ensure_can_restore(db, row)
+            else:
+                await ensure_can_retire(db, row)
+        elif row.retired_at is not None:
+            allowed = annotations | ({"actual_minutes"} if row.id in manual_task_ids else set())
+            if set(before) - allowed:
+                raise HTTPException(409, "Restaura la tarea antes de deshacer cambios de su trabajo")
+
+    # Validate the actual inverse result, including partial conflict-preserving
+    # updates. Checking only retired_* would miss Undo of completed/status,
+    # dependency edits and deletion of a formerly active dependent.
+    resulting: dict[int, dict | None] = {}
+    for op in operations:
+        if op.get("entity_type") != "task":
+            continue
+        task_id, action = op["entity_id"], op.get("action")
+        row = locked.get(("task", task_id))
+        before, after = op.get("before") or {}, op.get("after") or {}
+        state = {key: serialize(getattr(row, key)) for key in ("status", "retired_at", "depends_on")} if row is not None else None
+        if action == "delete" and row is None:
+            state = {key: before.get(key) for key in ("status", "retired_at", "depends_on")}
+        elif action == "create":
+            state = None
+        elif action == "update" and state is not None:
+            for key in state:
+                if key in before and (key not in after or state[key] == after[key]):
+                    state[key] = before[key]
+        resulting[task_id] = state
+    for state in resulting.values():
+        if state is None or state["retired_at"] is not None or state["status"] == "completed":
+            continue
+        dependency_id = state["depends_on"]
+        if dependency_id is None:
+            continue
+        if dependency_id in resulting:
+            parent = resulting[dependency_id]
+            valid = parent is not None and parent["retired_at"] is None
+        else:
+            parent = locked.get(("task", dependency_id))
+            valid = parent is not None and parent.retired_at is None
+        if not valid:
+            raise HTTPException(409, "La dependencia fue retirada o cambió; revísala antes de deshacer")
 
 
 def _created_children(operations: list[dict]) -> dict[str, set[int]]:
@@ -428,6 +538,7 @@ async def undo_change(
     try:
         with change_journal.paused():
             locked_rows = await _lock_operation_rows(db, operations)
+            await _preflight_retirement(db, operations, locked_rows)
             await _preflight_create_removals(db, removals, locked_rows, operations)
             manual_ops = [op for op in operations if op.get("entity_type") == "time_entry"]
             manual_ids = [op["entity_id"] for op in manual_ops if op.get("entity_id") is not None]

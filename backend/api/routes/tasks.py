@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func, or_
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import noload, selectinload
 
 from backend.db.database import get_db
 from backend.db.models import (
@@ -22,7 +22,9 @@ from backend.db.models import (
     TaskComment,
     TaskAttachment,
 )
-from backend.schemas.task import TaskCreate, TaskUpdate, TaskResponse
+from backend.schemas.task import (
+    CarryoverDecisionRequest, TaskCreate, TaskRestoreRequest, TaskUpdate, TaskResponse,
+)
 from backend.schemas.task import RecurrencePreviewRequest, RecurrenceSummaryResponse
 from backend.schemas.task_checklist import ChecklistItemCreate, ChecklistItemUpdate, ChecklistItemResponse
 from backend.schemas.task_comment import TaskCommentCreate, TaskCommentResponse
@@ -33,10 +35,16 @@ from backend.api.utils.db_helpers import safe_refresh
 from backend.api.middleware.audit_log import log_audit
 from backend.services.temporal import civil_day_utc_bounds
 from backend.services.time_entry_dates import manual_time_entry_date
-from backend.services.domain_writes import create_task as create_task_write, lock_task, update_task as update_task_write
+from backend.services.domain_writes import (
+    create_task as create_task_write, lock_task, lock_task_patch,
+    update_task as update_task_write,
+)
 from backend.services.recurrence import summarize_recurrence
 from backend.services.task_scope import validate_task_scope
 from backend.services.temporal import business_today
+from backend.services.task_retirement import (
+    apply_carryover_decision, lock_task_for_cas, restore_task as restore_retired_task,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +109,8 @@ def _task_to_response(task: Task) -> TaskResponse:
         created_at=task.created_at,
         updated_at=task.updated_at,
         completed_at=task.completed_at,
+        retired_at=task.retired_at,
+        retired_reason=task.retired_reason,
         is_recurring=task.is_recurring,
         recurrence_pattern=task.recurrence_pattern,
         recurrence_day=task.recurrence_day,
@@ -130,6 +140,7 @@ async def _load_task_for_response(db: AsyncSession, task_id: int) -> Task | None
         select(Task)
         .options(*_TASK_RESPONSE_OPTIONS)
         .where(Task.id == task_id)
+        .execution_options(populate_existing=True)
     )
     return result.scalar_one_or_none()
 
@@ -166,6 +177,7 @@ async def list_tasks(
     scheduled_date_from: Optional[str] = Query(None),
     scheduled_date_to: Optional[str] = Query(None),
     is_recurring: Optional[bool] = Query(None),
+    retirement: Literal["active", "retired"] = Query("active"),
     search: Optional[str] = Query(None, description="Search tasks by title or description"),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=1000),
@@ -173,7 +185,9 @@ async def list_tasks(
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_module("tasks")),
 ):
-    base = select(Task)
+    base = select(Task).where(
+        Task.retired_at.is_(None) if retirement == "active" else Task.retired_at.is_not(None)
+    )
     if search is not None and search.strip():
         term = f"%{search.strip()}%"
         base = base.where(
@@ -299,7 +313,7 @@ async def list_task_agenda(
     _: User = Depends(require_module("tasks")),
 ):
     """Return one explicitly paginated section of a user's civil-day agenda."""
-    base = select(Task).where(Task.is_recurring.is_(False))
+    base = select(Task).where(Task.is_recurring.is_(False), Task.retired_at.is_(None))
     if assigned_to == "me":
         if section == "completed":
             base = base.where(Task.assigned_to == current_user.id)
@@ -322,7 +336,8 @@ async def list_task_agenda(
             Task.status != TaskStatus.completed,
             or_(
                 due_day == date,
-                (Task.scheduled_date == date)
+                (Task.status != TaskStatus.waiting)
+                & (Task.scheduled_date == date)
                 & or_(Task.due_date.is_(None), due_day > date),
             ),
         )
@@ -331,13 +346,15 @@ async def list_task_agenda(
             Task.status != TaskStatus.completed,
             or_(
                 due_day < date,
-                (Task.scheduled_date < date)
+                (Task.status != TaskStatus.waiting)
+                & (Task.scheduled_date < date)
                 & or_(Task.due_date.is_(None), due_day != date),
             ),
         )
     elif section == "unplanned":
         base = base.where(
             Task.status != TaskStatus.completed,
+            Task.status != TaskStatus.waiting,
             Task.scheduled_date.is_(None),
             or_(Task.due_date.is_(None), due_day > date),
         )
@@ -486,13 +503,14 @@ async def update_task(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("tasks", write=True)),
 ):
+    update_data = body.model_dump(exclude_unset=True)
     # Serialize all task edits before comparing or deriving actual_minutes.
     # Without this lock, two concurrent explicit total edits can both observe
     # the old total and each create the same manual adjustment.
-    task = await lock_task(db, task_id)
+    # Dependency changes lock both ids in order, avoiding A→B / B→A deadlocks.
+    task = await lock_task_patch(db, task_id, update_data)
     old_assigned_to = task.assigned_to
     old_status = task.status.value if hasattr(task.status, "value") else str(task.status)
-    update_data = body.model_dump(exclude_unset=True)
     try:
         task = await update_task_write(
             db, task, update_data, actor=current_user,
@@ -560,6 +578,42 @@ async def update_task(
     return _task_to_response(task)
 
 
+@router.post("/{task_id}/carryover-decision", response_model=TaskResponse)
+async def decide_carryover(
+    task_id: int,
+    body: CarryoverDecisionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("tasks", write=True)),
+):
+    task = await lock_task_for_cas(db, task_id, body.expected_updated_at)
+    await apply_carryover_decision(
+        db, task, body.model_dump(exclude={"expected_updated_at"}), actor=current_user,
+    )
+    await db.commit()
+    loaded = await _load_task_for_response(db, task_id)
+    if loaded is None:
+        raise HTTPException(404, "Task not found after carryover decision")
+    return _task_to_response(loaded)
+
+
+@router.post("/{task_id}/restore", response_model=TaskResponse)
+async def restore_task(
+    task_id: int,
+    body: TaskRestoreRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("tasks", write=True)),
+):
+    task = await lock_task_for_cas(
+        db, task_id, body.expected_updated_at, lock_dependency=True,
+    )
+    await restore_retired_task(db, task, actor=current_user)
+    await db.commit()
+    loaded = await _load_task_for_response(db, task_id)
+    if loaded is None:
+        raise HTTPException(404, "Task not found after restore")
+    return _task_to_response(loaded)
+
+
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(
     task_id: int,
@@ -615,11 +669,28 @@ async def bulk_update_tasks(
     if not updates:
         raise HTTPException(400, "No valid fields to update")
 
+    dependency_snapshot: dict[int, int | None] = {}
+    try:
+        requested_status = TaskStatus(updates["status"]) if updates.get("status") else None
+    except ValueError:
+        requested_status = None
+    if requested_status is not None and requested_status != TaskStatus.completed:
+        dependency_snapshot = dict((await db.execute(
+            select(Task.id, Task.depends_on).where(Task.id.in_(body.ids))
+        )).all())
+    requested_ids = set(body.ids)
+    lock_ids = set(requested_ids)
+    lock_ids.update(value for value in dependency_snapshot.values() if value is not None)
+
     result = await db.execute(
-        select(Task).where(Task.id.in_(body.ids)).order_by(Task.id).with_for_update()
+        select(Task).where(Task.id.in_(lock_ids)).order_by(Task.id)
+        .options(noload("*")).with_for_update()
         .execution_options(populate_existing=True)
     )
-    tasks = result.scalars().all()
+    locked = {task.id: task for task in result.scalars().all()}
+    tasks = [locked[task_id] for task_id in sorted(requested_ids) if task_id in locked]
+    if any(task.depends_on != dependency_snapshot[task.id] for task in tasks if task.id in dependency_snapshot):
+        raise HTTPException(409, "La dependencia cambió; vuelve a intentarlo")
     updated = 0
     failed = 0
     for task in tasks:
@@ -731,6 +802,9 @@ async def create_checklist_item(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("tasks", write=True)),
 ):
+    task = await lock_task(db, task_id)
+    if task.retired_at is not None:
+        raise HTTPException(409, "Restaura la tarea antes de modificar su checklist")
     item = TaskChecklist(task_id=task_id, **data.model_dump())
     db.add(item)
     await db.commit()
@@ -746,8 +820,12 @@ async def update_checklist_item(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("tasks", write=True)),
 ):
+    task = await lock_task(db, task_id)
+    if task.retired_at is not None:
+        raise HTTPException(409, "Restaura la tarea antes de modificar su checklist")
     r = await db.execute(
         select(TaskChecklist).where(TaskChecklist.id == item_id, TaskChecklist.task_id == task_id)
+        .with_for_update().execution_options(populate_existing=True)
     )
     item = r.scalar_one_or_none()
     if not item:
@@ -766,8 +844,12 @@ async def delete_checklist_item(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_module("tasks", write=True)),
 ):
+    task = await lock_task(db, task_id)
+    if task.retired_at is not None:
+        raise HTTPException(409, "Restaura la tarea antes de modificar su checklist")
     r = await db.execute(
         select(TaskChecklist).where(TaskChecklist.id == item_id, TaskChecklist.task_id == task_id)
+        .with_for_update().execution_options(populate_existing=True)
     )
     item = r.scalar_one_or_none()
     if not item:

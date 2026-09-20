@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import type { PaginatedResponse, Task } from "@/lib/types"
 import { MyDayView } from "./my-day-view"
 
@@ -25,22 +26,60 @@ describe("MyDayView", () => {
     const iso = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
     const onLoadMore = vi.fn()
 
+    const onReviewCarryover = vi.fn()
     render(
       <MyDayView
         planned={page([task(1, "Para hoy", { scheduled_date: iso(today) })], 3)}
-        carryover={page([task(2, "Arrastre", { scheduled_date: iso(old) })])}
+        carryover={page([task(2, "Arrastre", { scheduled_date: iso(old), due_date: iso(today) })])}
         unplanned={page([])}
         completed={page([])}
+        retired={page([])}
         onLoadMore={onLoadMore}
         onStatusChange={vi.fn()}
         onOpenEdit={vi.fn()}
+        onReviewCarryover={onReviewCarryover}
+        canWrite
       />,
     )
 
     expect(screen.getByText("Planificadas hoy (3)")).toBeInTheDocument()
     expect(screen.getByText("Arrastre pendiente (1)")).toBeInTheDocument()
     expect(screen.getByText("No son compromisos nuevos de hoy. Reprograma, deja en espera o completa cada una.")).toBeInTheDocument()
+    expect(screen.getAllByText(/Planificada/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/Fecha límite/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /Ver más planificadas/i }))
     expect(onLoadMore).toHaveBeenCalledWith("planned")
+    fireEvent.click(screen.getByRole("button", { name: "Revisar" }))
+    expect(onReviewCarryover).toHaveBeenCalledWith(expect.objectContaining({ id: 2 }))
+  })
+
+  it("does not present carryover actions to a read-only user", () => {
+    render(<MyDayView planned={page([])} carryover={page([task(2, "Arrastre")])} unplanned={page([])} completed={page([])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} onReviewCarryover={vi.fn()} canWrite={false} />)
+    expect(screen.queryByRole("button", { name: "Revisar" })).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Estado de Arrastre")).toBeDisabled()
+  })
+
+  it("distinguishes a retired-list error from an empty history and retries it", () => {
+    const retry = vi.fn()
+    render(<MyDayView planned={page([])} carryover={page([])} unplanned={page([])} completed={page([])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} onReviewCarryover={vi.fn()} retiredError onRetryRetired={retry} />)
+    fireEvent.click(screen.getByRole("button", { name: /Ver retiradas/i }))
+    expect(screen.getByRole("alert")).toHaveTextContent("No se pudieron cargar")
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }))
+    expect(retry).toHaveBeenCalledOnce()
+  })
+
+  it("keeps cached retired rows visible, formats their UTC instant in the business timezone, and opens them from the keyboard", async () => {
+    const retry = vi.fn()
+    const onOpenEdit = vi.fn()
+    render(<MyDayView planned={page([])} carryover={page([])} unplanned={page([])} completed={page([])} retired={page([task(4, "Conservada", { retired_at: "2026-09-17T23:30:00Z", retired_reason: "Duplicada" })])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={onOpenEdit} onReviewCarryover={vi.fn()} retiredError onRetryRetired={retry} />)
+    fireEvent.click(screen.getByRole("button", { name: /Ver retiradas/i }))
+    const retiredTask = screen.getByRole("button", { name: /Conservada/ })
+    expect(retiredTask).toHaveTextContent("Retirada el 18 sept")
+    retiredTask.focus()
+    await userEvent.keyboard("{Enter}")
+    expect(onOpenEdit).toHaveBeenCalledWith(expect.objectContaining({ id: 4 }))
+    expect(screen.getByRole("alert")).toHaveTextContent("Mostramos retiradas guardadas")
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }))
+    expect(retry).toHaveBeenCalledOnce()
   })
 })

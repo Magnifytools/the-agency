@@ -531,7 +531,9 @@ async def get_client_summary(
             selectinload(Task.assigned_user),
             selectinload(Task.project),
             selectinload(Task.phase),
-        ).where(Task.client_id == client_id).order_by(Task.created_at.desc())
+        ).where(
+            Task.client_id == client_id, Task.retired_at.is_(None)
+        ).order_by(Task.created_at.desc())
     )
     tasks = tasks_result.scalars().unique().all()
 

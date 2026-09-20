@@ -28,6 +28,7 @@ interface TimeLogDialogProps {
   taskTitle: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  taskRetired?: boolean;
 }
 
 function formatMinutes(m: number): string {
@@ -43,6 +44,7 @@ export function TimeLogDialog({
   taskTitle,
   open,
   onOpenChange,
+  taskRetired = false,
 }: TimeLogDialogProps) {
   const queryClient = useQueryClient();
   const businessToday = useBusinessDate();
@@ -110,6 +112,7 @@ export function TimeLogDialog({
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (taskRetired) return;
     const fd = new FormData(e.currentTarget);
     const hours = Number(fd.get("hours") || 0);
     const mins = Number(fd.get("mins") || 0);
@@ -176,7 +179,7 @@ export function TimeLogDialog({
                 {formatMinutes(totalMinutes)}
               </span>
             </p>
-            {canWrite && (
+            {canWrite && !taskRetired && (
               <Button
                 type="button"
                 size="sm"
@@ -187,7 +190,8 @@ export function TimeLogDialog({
             )}
           </div>
 
-          {showForm && (
+          {taskRetired && <p className="text-sm text-muted-foreground">La tarea está retirada. Puedes consultar y corregir sus horas existentes, pero no añadir nuevas entradas.</p>}
+          {showForm && !taskRetired && (
             <form
               onSubmit={handleSubmit}
               className="border border-brand/20 p-3 space-y-3"
@@ -269,8 +273,8 @@ export function TimeLogDialog({
               </Button>
             </div>
           ) : entries.length > 0 ? (
-            <Table>
-              <TableHeader>
+            <Table className="block w-full sm:table">
+              <TableHeader className="hidden sm:table-header-group">
                 <TableRow>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Duración</TableHead>
@@ -278,19 +282,22 @@ export function TimeLogDialog({
                   <TableHead className="w-20"></TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody className="block sm:table-row-group">
                 {entries.map((e: TimeEntry) => (
-                  <TableRow key={e.id}>
+                  <TableRow key={e.id} className="mb-3 block rounded-md border p-3 sm:mb-0 sm:table-row sm:rounded-none sm:border-0 sm:p-0">
                     {editingId === e.id && canChangeEntry(e) ? (
                       <>
-                        <TableCell className="mono">
+                        <TableCell className="flex items-center justify-between gap-3 px-0 py-1 mono sm:table-cell sm:px-4 sm:py-3">
+                          <span className="text-xs font-medium text-muted-foreground sm:hidden">Fecha</span>
                           {formatCivilDate(timeEntryBusinessDate(e))}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="flex items-center justify-between gap-3 px-0 py-1 sm:table-cell sm:px-4 sm:py-3">
+                          <span className="text-xs font-medium text-muted-foreground sm:hidden">Duración</span>
                           <div className="flex items-center gap-1">
                             <Input
                               type="number"
                               min="0"
+                              aria-label="Horas"
                               value={editHours}
                               onChange={(ev) =>
                                 setEditHours(Number(ev.target.value))
@@ -305,6 +312,7 @@ export function TimeLogDialog({
                               type="number"
                               min="0"
                               max="59"
+                              aria-label="Minutos"
                               value={editMins}
                               onChange={(ev) =>
                                 setEditMins(Number(ev.target.value))
@@ -317,15 +325,18 @@ export function TimeLogDialog({
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="flex items-center justify-between gap-3 px-0 py-1 sm:table-cell sm:px-4 sm:py-3">
+                          <span className="text-xs font-medium text-muted-foreground sm:hidden">Notas</span>
                           <Input
+                            aria-label="Notas"
                             value={editNotes}
                             onChange={(ev) => setEditNotes(ev.target.value)}
                             className="h-7 text-xs"
                             placeholder="Notas..."
                           />
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="flex items-center justify-end gap-3 px-0 py-1 sm:table-cell sm:px-4 sm:py-3">
+                          <span className="text-xs font-medium text-muted-foreground sm:hidden">Acciones</span>
                           <div className="flex items-center gap-1">
                             <Button
                               type="button"
@@ -354,16 +365,20 @@ export function TimeLogDialog({
                       </>
                     ) : (
                       <>
-                        <TableCell className="mono">
+                        <TableCell className="flex items-center justify-between gap-3 px-0 py-1 mono sm:table-cell sm:px-4 sm:py-3">
+                          <span className="text-xs font-medium text-muted-foreground sm:hidden">Fecha</span>
                           {formatCivilDate(timeEntryBusinessDate(e))}
                         </TableCell>
-                        <TableCell className="mono">
+                        <TableCell className="flex items-center justify-between gap-3 px-0 py-1 mono sm:table-cell sm:px-4 sm:py-3">
+                          <span className="text-xs font-medium text-muted-foreground sm:hidden">Duración</span>
                           {e.minutes ? formatMinutes(e.minutes) : "-"}
                         </TableCell>
-                        <TableCell className="max-w-[200px] truncate">
-                          {e.notes || "-"}
+                        <TableCell className="flex items-center justify-between gap-3 px-0 py-1 sm:table-cell sm:max-w-[200px] sm:px-4 sm:py-3">
+                          <span className="text-xs font-medium text-muted-foreground sm:hidden">Notas</span>
+                          <span className="min-w-0 truncate">{e.notes || "-"}</span>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="flex items-center justify-end gap-3 px-0 py-1 sm:table-cell sm:px-4 sm:py-3">
+                          <span className="text-xs font-medium text-muted-foreground sm:hidden">Acciones</span>
                           {canChangeEntry(e) && (
                             <div className="flex items-center gap-1">
                               <Button

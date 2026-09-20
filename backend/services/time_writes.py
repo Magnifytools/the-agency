@@ -46,6 +46,8 @@ async def create_manual_time_entry(
         locked = await lock_tasks(db, {task_id})
         if task_id not in locked:
             raise HTTPException(404, "Task not found")
+        if locked[task_id].retired_at is not None:
+            raise HTTPException(409, "Restaura la tarea antes de añadir tiempo")
     if entry_date is not None and entry_date.tzinfo is not None:
         entry_date = entry_date.astimezone(timezone.utc).replace(tzinfo=None)
     entry = TimeEntry(user_id=user_id, minutes=minutes, task_id=task_id, notes=notes,

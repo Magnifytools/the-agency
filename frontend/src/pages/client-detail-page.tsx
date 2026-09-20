@@ -225,7 +225,7 @@ export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const clientId = Number(id)
   const [searchParams, setSearchParams] = useSearchParams()
-  const [timeLogTaskId, setTimeLogTaskId] = useState<{ id: number; title: string } | null>(null)
+  const [timeLogTaskId, setTimeLogTaskId] = useState<{ id: number; title: string; retired?: boolean } | null>(null)
   const [taskPanelId, setTaskPanelId] = useState<number | null>(null)
   const [creatingTask, setCreatingTask] = useState(false)
   const [whatIfOpen, setWhatIfOpen] = useState(false)
@@ -358,7 +358,7 @@ export default function ClientDetailPage() {
             variant="ghost"
             size="icon"
             aria-label={`Ver horas de ${t.title}`}
-            onClick={() => setTimeLogTaskId({ id: t.id, title: t.title })}
+            onClick={() => setTimeLogTaskId({ id: t.id, title: t.title, retired: !!t.retired_at })}
           >
             <Clock className="h-4 w-4" />
           </Button>
@@ -899,6 +899,7 @@ export default function ClientDetailPage() {
         <TimeLogDialog
           taskId={timeLogTaskId.id}
           taskTitle={timeLogTaskId.title}
+          taskRetired={timeLogTaskId.retired}
           open={!!timeLogTaskId}
           onOpenChange={(open) => !open && setTimeLogTaskId(null)}
         />
@@ -908,7 +909,7 @@ export default function ClientDetailPage() {
         taskId={taskPanelId}
         defaults={creatingTask ? { clientId } : undefined}
         onOpenChange={(open) => { if (!open) { setTaskPanelId(null); setCreatingTask(false) } }}
-        onOpenTime={(task) => { setTaskPanelId(null); setTimeLogTaskId({ id: task.id, title: task.title }) }}
+        onOpenTime={(task) => { setTaskPanelId(null); setTimeLogTaskId({ id: task.id, title: task.title, retired: !!task.retired_at }) }}
       />
 
       {/* What-If Modal */}

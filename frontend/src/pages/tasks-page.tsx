@@ -25,6 +25,7 @@ import { TimeLogDialog } from "@/components/timer/time-log-dialog"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { NextMeeting } from "@/components/tasks/next-meeting"
 import { MyDayView } from "@/components/tasks/my-day-view"
+import { CarryoverReviewDialog } from "@/components/tasks/carryover-review-dialog"
 import { IncidentInbox } from "@/components/incidents/incident-inbox"
 import { KanbanBoard } from "@/components/tasks/kanban-board"
 import { TaskCalendarView } from "@/components/tasks/task-calendar-view"
@@ -70,6 +71,7 @@ export default function TasksPage() {
   const { page, pageSize, setPage, reset } = usePagination(25)
   const businessToday = useBusinessDate()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [carryoverTask, setCarryoverTask] = useState<Task | null>(null)
   const [editing, setEditing] = useState<Task | null>(null)
   const [timeLogTask, setTimeLogTask] = useState<Task | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
@@ -169,6 +171,13 @@ export default function TasksPage() {
   const carryoverAgenda = useAgendaQuery("carryover")
   const unplannedAgenda = useAgendaQuery("unplanned")
   const completedAgenda = useAgendaQuery("completed")
+  const retiredTasks = useInfiniteQuery({
+    queryKey: taskKeys.list(["retired", user?.id]),
+    queryFn: ({ pageParam }) => tasksApi.list({ retirement: "retired", page: pageParam, page_size: pageSize }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.page * lastPage.page_size < lastPage.total ? lastPage.page + 1 : undefined,
+    enabled: view === "my_day",
+  })
   const agendaData = (query: typeof plannedAgenda) => {
     const pages = query.data?.pages ?? []
     const last = pages[pages.length - 1]
@@ -750,10 +759,16 @@ export default function TasksPage() {
             carryover={agendaData(carryoverAgenda)}
             unplanned={agendaData(unplannedAgenda)}
             completed={agendaData(completedAgenda)}
-            isLoadingMore={plannedAgenda.isFetchingNextPage || carryoverAgenda.isFetchingNextPage || unplannedAgenda.isFetchingNextPage || completedAgenda.isFetchingNextPage}
-            onLoadMore={(section) => ({ planned: plannedAgenda, carryover: carryoverAgenda, unplanned: unplannedAgenda, completed: completedAgenda }[section].fetchNextPage())}
+            retired={agendaData(retiredTasks)}
+            retiredLoading={retiredTasks.isLoading}
+            retiredError={retiredTasks.isError}
+            onRetryRetired={() => void retiredTasks.refetch()}
+            isLoadingMore={plannedAgenda.isFetchingNextPage || carryoverAgenda.isFetchingNextPage || unplannedAgenda.isFetchingNextPage || completedAgenda.isFetchingNextPage || retiredTasks.isFetchingNextPage}
+            onLoadMore={(section) => ({ planned: plannedAgenda, carryover: carryoverAgenda, unplanned: unplannedAgenda, completed: completedAgenda, retired: retiredTasks }[section].fetchNextPage())}
             onStatusChange={(id, status) => updateMutation.mutate({ id, data: { status } })}
             onOpenEdit={openEdit}
+            onReviewCarryover={setCarryoverTask}
+            canWrite={canWriteTasks}
           />
         )
       )}
@@ -869,10 +884,12 @@ export default function TasksPage() {
         onOpenChange={(open) => { if (!open) closeDialog() }}
         onOpenTime={(task) => { setTimeLogTask(task); closeDialog() }}
       />
+      {carryoverTask && canWriteTasks && <CarryoverReviewDialog key={carryoverTask.id} task={carryoverTask} open onOpenChange={(open) => !open && setCarryoverTask(null)} />}
       {timeLogTask && (
         <TimeLogDialog
           taskId={timeLogTask.id}
           taskTitle={timeLogTask.title}
+          taskRetired={!!timeLogTask.retired_at}
           open={!!timeLogTask}
           onOpenChange={(open) => !open && setTimeLogTask(null)}
         />

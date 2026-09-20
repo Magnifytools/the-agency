@@ -127,6 +127,12 @@ async def create_time_entry(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("timesheet", write=True)),
 ):
+    if body.task_id is not None:
+        task = (await _lock_tasks(db, {body.task_id})).get(body.task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+        if task.retired_at is not None:
+            raise HTTPException(status_code=409, detail="Restaura la tarea antes de añadir tiempo")
     entry = await create_manual_time_entry(
         db, user_id=current_user.id, minutes=body.minutes, task_id=body.task_id,
         notes=body.notes, entry_date=body.date or manual_time_entry_date(),
@@ -649,11 +655,23 @@ async def start_timer(
         )
     )
     active = result.scalar_one_or_none()
+    task_ids = {
+        task_id for task_id in (
+            active.task_id if active is not None else None,
+            body.task_id,
+        ) if task_id is not None
+    }
+    locked_tasks = await _lock_tasks(db, task_ids)
+    if body.task_id is not None:
+        target = locked_tasks.get(body.task_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+        if target.retired_at is not None:
+            raise HTTPException(status_code=409, detail="Restaura la tarea antes de iniciar el timer")
     if active is not None:
         # Auto-stop the current timer before starting a new one — must mirror
         # stop_timer's logic: include accumulated_seconds from pause/resume
         # cycles, and don't count time elapsed while paused.
-        locked_tasks = await _lock_tasks(db, {active.task_id} if active.task_id is not None else set())
         active = (await db.execute(
             select(TimeEntry).where(TimeEntry.id == active.id).with_for_update().execution_options(populate_existing=True)
         )).scalar_one_or_none()
@@ -673,6 +691,15 @@ async def start_timer(
         if active.task_id is not None:
             await _sync_task_actual_minutes(db, active.task_id, task=locked_tasks[active.task_id])
         await db.commit()
+        # The auto-stop commit released every task lock. Reacquire the target
+        # before creating the new timer so retirement cannot cross this gap.
+        if body.task_id is not None:
+            locked_tasks = await _lock_tasks(db, {body.task_id})
+            target = locked_tasks.get(body.task_id)
+            if target is None:
+                raise HTTPException(status_code=404, detail="Task not found")
+            if target.retired_at is not None:
+                raise HTTPException(status_code=409, detail="Restaura la tarea antes de iniciar el timer")
         
     if body.task_id is None and not body.notes:
         raise HTTPException(status_code=400, detail="Debes enviar un task_id o una nota")
@@ -680,7 +707,7 @@ async def start_timer(
     task = None
     if body.task_id is not None:
         # Verify task exists
-        task = (await _lock_tasks(db, {body.task_id})).get(body.task_id)
+        task = locked_tasks.get(body.task_id)
         if task is None:
             raise HTTPException(status_code=404, detail="Task not found")
         # Auto-set task to in_progress when starting timer

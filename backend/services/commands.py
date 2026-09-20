@@ -292,7 +292,7 @@ async def _resolve_named(db: AsyncSession, model, name_column, name: str, entity
     columns = name_column if isinstance(name_column, tuple) else (name_column,)
     query = select(model).where(or_(*[func.lower(column) == name.casefold() for column in columns]))
     if entity == "task":
-        query = query.where(Task.is_recurring.is_(False))
+        query = query.where(Task.is_recurring.is_(False), Task.retired_at.is_(None))
     elif entity == "client":
         query = query.where(Client.status == ClientStatus.active)
     elif entity == "project":
@@ -707,6 +707,7 @@ async def query_work(db: AsyncSession, kind: str, *, actor: User, scope: str,
     if scope == "team" and actor.role != UserRole.admin:
         raise HTTPException(403, "Solo un administrador puede consultar el trabajo del equipo")
     query = select(Task).where(
+        Task.retired_at.is_(None),
         Task.status.in_(ACTIVE_TASK_STATUSES),
         Task.is_recurring.is_(False),
     )

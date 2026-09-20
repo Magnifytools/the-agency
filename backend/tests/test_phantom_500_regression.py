@@ -40,6 +40,8 @@ async def test_create_task_returns_201_when_notification_fails(admin_client, adm
     fake_task.scheduled_date = None
     fake_task.waiting_for = None
     fake_task.follow_up_date = None
+    fake_task.retired_at = None
+    fake_task.retired_reason = None
     fake_task.created_at = "2026-01-01T00:00:00"
     fake_task.updated_at = "2026-01-01T00:00:00"
     fake_task.is_recurring = False

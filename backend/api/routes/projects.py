@@ -5,10 +5,10 @@ from typing import Optional
 import base64
 from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import Date, cast, or_, select, func, case, text
+from sqlalchemy import Date, and_, cast, or_, select, func, case, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload, noload
+from sqlalchemy.orm import selectinload, noload, with_loader_criteria
 
 from backend.db.database import get_db
 from backend.db.models import Project, ProjectPhase, ProjectTemplateDB, Task, TaskStatus, PhaseStatus, ProjectStatus, TimeEntry, Income, User
@@ -100,6 +100,7 @@ def _project_load_options():
         selectinload(Project.owner),
         selectinload(Project.phases),
         selectinload(Project.tasks).selectinload(Task.assigned_user),
+        with_loader_criteria(Task, Task.retired_at.is_(None)),
     ]
 
 
@@ -121,7 +122,7 @@ async def _list_counts(db: AsyncSession, project_ids: list[int]):
                 func.sum(case((Task.status == TaskStatus.completed, 1), else_=0)), 0
             ).label("completed"),
         )
-        .where(Task.project_id.in_(project_ids))
+        .where(Task.project_id.in_(project_ids), Task.retired_at.is_(None))
         .group_by(Task.project_id)
     )
     task_counts = {
@@ -717,7 +718,16 @@ async def project_burndown(
     # Get all tasks for the project
     r_tasks = await db.execute(
         select(Task.id, Task.status, Task.completed_at)
-        .where(Task.project_id == project_id)
+        .where(
+            Task.project_id == project_id,
+            or_(
+                Task.retired_at.is_(None),
+                and_(
+                    Task.status == TaskStatus.completed,
+                    Task.completed_at.is_not(None),
+                ),
+            ),
+        )
     )
     all_tasks = r_tasks.all()
     total = len(all_tasks)
@@ -985,7 +995,11 @@ async def update_phase(
             if project:
                 user_ids: set[int] = set()
                 task_result = await db.execute(
-                    select(Task).where(Task.project_id == project.id, Task.assigned_to.isnot(None))
+                    select(Task).where(
+                        Task.project_id == project.id,
+                        Task.retired_at.is_(None),
+                        Task.assigned_to.isnot(None),
+                    )
                 )
                 for t in task_result.scalars().all():
                     if t.assigned_to:

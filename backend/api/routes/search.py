@@ -78,7 +78,7 @@ async def global_search(
         )
         task_query = (
             select(Task.id, Task.title, Task.status, client_name)
-            .where(Task.title.ilike(pattern))
+            .where(Task.retired_at.is_(None), Task.title.ilike(pattern))
             .order_by(Task.title, Task.id)
             .limit(5)
         )

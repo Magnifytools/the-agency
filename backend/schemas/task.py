@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Literal, Optional
 
 from datetime import datetime, date
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, Field, field_serializer, model_validator
 from backend.db.models import TaskStatus, TaskPriority
 from backend.services.temporal import civil_date_isoformat, utc_isoformat
 
@@ -83,6 +83,43 @@ class RecurrencePreviewRequest(BaseModel):
     phase_id: Optional[int] = None
 
 
+class CarryoverDecisionRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    action: Literal["reschedule", "wait", "complete", "retire"]
+    expected_updated_at: datetime
+    scheduled_date: Optional[date] = None
+    waiting_for: Optional[str] = Field(None, max_length=255)
+    follow_up_date: Optional[date] = None
+    reason: Optional[str] = Field(None, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_action_fields(self):
+        supplied = {
+            "scheduled_date": self.scheduled_date is not None,
+            "waiting_for": self.waiting_for is not None,
+            "follow_up_date": self.follow_up_date is not None,
+            "reason": self.reason is not None,
+        }
+        allowed = {
+            "reschedule": {"scheduled_date"},
+            "wait": {"waiting_for", "follow_up_date"},
+            "complete": set(),
+            "retire": {"reason"},
+        }[self.action]
+        unexpected = sorted(key for key, present in supplied.items() if present and key not in allowed)
+        if unexpected:
+            raise ValueError(f"Campos incompatibles con {self.action}: {', '.join(unexpected)}")
+        required = allowed - {key for key, present in supplied.items() if present}
+        if required:
+            raise ValueError(f"Faltan campos para {self.action}: {', '.join(sorted(required))}")
+        return self
+
+
+class TaskRestoreRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    expected_updated_at: datetime
+
+
 class TaskResponse(BaseModel):
     id: int
     title: str
@@ -118,6 +155,8 @@ class TaskResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None
+    retired_at: Optional[datetime] = None
+    retired_reason: Optional[str] = None
 
     # Nested names for display
     client_name: Optional[str] = None
@@ -136,6 +175,10 @@ class TaskResponse(BaseModel):
 
     @field_serializer("recurrence_paused_at", when_used="json")
     def serialize_recurrence_paused_at(self, value: datetime | None) -> str | None:
+        return utc_isoformat(value)
+
+    @field_serializer("retired_at", when_used="json")
+    def serialize_retired_at(self, value: datetime | None) -> str | None:
         return utc_isoformat(value)
 
     @field_serializer("start_date", "due_date", when_used="json")
