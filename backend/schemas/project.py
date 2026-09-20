@@ -1,9 +1,9 @@
 from __future__ import annotations
-from typing import Literal, Optional
 
 from datetime import date, datetime
-from pydantic import BaseModel
+from typing import Literal, Optional
 
+from pydantic import BaseModel, field_validator
 
 # --- Project Phase Schemas ---
 
@@ -91,6 +91,13 @@ class ProjectUpdate(BaseModel):
     billing_amount: Optional[float] = None
     next_billing_date: Optional[date] = None
     owner_id: Optional[int] = None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def status_cannot_be_null(cls, value):
+        if value is None:
+            raise ValueError("El estado no puede ser nulo")
+        return value
 
 
 class ProjectResponse(BaseModel):
