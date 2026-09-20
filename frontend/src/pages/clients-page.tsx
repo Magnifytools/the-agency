@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { clientsApi, clientHealthApi, engineApi } from "@/lib/api"
-import type { Client, ClientContactCreate, ClientCreate, ClientExtract, ClientOnboardingCreate, ClientOnboardingResult, ClientOnboardingProjectCreate, ClientStatus, ClientHealthScore } from "@/lib/types"
+import type { Client, ClientCohort, ClientContactCreate, ClientCreate, ClientExtract, ClientOnboardingCreate, ClientOnboardingResult, ClientOnboardingProjectCreate, ClientStatus, ClientHealthScore } from "@/lib/types"
 import { usePagination } from "@/hooks/use-pagination"
 import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { Plus, Pencil, MoreVertical, Users, Heart, Loader2, ExternalLink, Sparkles, Upload } from "lucide-react"
+import { Plus, Pencil, MoreVertical, Users, Loader2, ExternalLink, Sparkles, Upload } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
@@ -27,12 +27,19 @@ import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
 import { clientKeys, invalidateClientChange } from "@/lib/query-keys"
+import { clientHealthPresentation } from "@/components/dashboard/client-health-presentation"
 
 const STATUS_TABS: { label: string; value: ClientStatus | "all" }[] = [
-  { label: "Todos", value: "all" },
+  { label: "En cartera", value: "all" },
   { label: "Activos", value: "active" },
   { label: "Pausados", value: "paused" },
   { label: "Finalizados", value: "finished" },
+]
+
+const COHORTS: { label: string; value: ClientCohort }[] = [
+  { label: "Todos", value: "all" },
+  { label: "Externos", value: "external" },
+  { label: "Internos", value: "internal" },
 ]
 
 const onboardingStoragePrefix = (userId: number) => `agency:client-onboarding:${userId}:`
@@ -108,6 +115,7 @@ function ClientsPageBody() {
   const canWriteProjects = hasPermission("projects", true)
   const { page, pageSize, setPage, reset } = usePagination(25)
   const [tab, setTab] = useState<ClientStatus | "all">("all")
+  const [cohort, setCohort] = useState<ClientCohort>("all")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
   const [prefill, setPrefill] = useState<ClientExtract | null>(null)
@@ -153,8 +161,8 @@ function ClientsPageBody() {
   })
 
   const clientsQuery = useQuery({
-    queryKey: [...clientKeys.all(), tab, page, pageSize],
-    queryFn: () => clientsApi.list({ status: tab === "all" ? undefined : tab, page, page_size: pageSize }),
+    queryKey: [...clientKeys.all(), tab, cohort, page, pageSize],
+    queryFn: () => clientsApi.list({ status: tab === "all" ? undefined : tab, cohort, page, page_size: pageSize }),
   })
   const clientsDenied = [401, 403].includes((clientsQuery.error as { response?: { status?: number } } | null)?.response?.status ?? 0)
   const data = clientsQuery.isError ? undefined : clientsQuery.data
@@ -162,8 +170,8 @@ function ClientsPageBody() {
   const clients = data?.items ?? []
 
   const healthQuery = useQuery({
-    queryKey: ["client-health-scores"],
-    queryFn: () => clientHealthApi.list(),
+    queryKey: ["client-health-scores", cohort],
+    queryFn: () => clientHealthApi.list(cohort),
     staleTime: 60_000,
   })
   const healthDenied = [401, 403].includes((healthQuery.error as { response?: { status?: number } } | null)?.response?.status ?? 0)
@@ -442,7 +450,9 @@ function ClientsPageBody() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold uppercase tracking-wide">Clientes</h2>
-          {data && <p className="text-sm text-muted-foreground mt-1">{data.total} clientes · {clients.length} en vista</p>}
+          {data && <p className="text-sm text-muted-foreground mt-1">
+            {STATUS_TABS.find((item) => item.value === tab)?.label} · {COHORTS.find((item) => item.value === cohort)?.label} · {data.total} resultados
+          </p>}
         </div>
         <Button onClick={openCreate} disabled={!canWriteClients || !!onboardingKey || storageReadFailed}>
           <Plus className="h-4 w-4 mr-2" /> Nuevo cliente
@@ -479,6 +489,19 @@ function ClientsPageBody() {
           </Button>
         ))}
       </div>
+      <div className="flex flex-wrap items-center gap-2" aria-label="Población de clientes">
+        <span className="text-xs font-medium text-muted-foreground">Tipo de cliente</span>
+        {COHORTS.map((item) => (
+          <Button
+            key={item.value}
+            variant={cohort === item.value ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => { setCohort(item.value); reset(); clearClientSelection() }}
+          >
+            {item.label}
+          </Button>
+        ))}
+      </div>
 
       {healthQuery.isError && !healthDenied && (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm text-muted-foreground">
@@ -506,14 +529,8 @@ function ClientsPageBody() {
                   <InfoTooltip
                     content={
                       <div className="space-y-1.5">
-                        <p className="font-semibold">Puntuación de salud del cliente (0–100)</p>
-                        <p className="text-muted-foreground">Combina 5 factores: comunicación reciente, tareas completadas, digests enviados, rentabilidad y followups pendientes.</p>
-                        <div className="flex flex-col gap-0.5 pt-0.5">
-                          <span className="text-green-600 font-medium">● ≥ 70 — Saludable</span>
-                          <span className="text-amber-500 font-medium">● 40–69 — Atención</span>
-                          <span className="text-red-500 font-medium">● &lt; 40 — En riesgo</span>
-                        </div>
-                        <p className="text-muted-foreground text-[11px] pt-0.5">Pasa el ratón sobre la puntuación para ver el desglose.</p>
+                        <p className="font-semibold">Condiciones observables</p>
+                        <p className="text-muted-foreground">Muestra riesgos comprobados en comunicación, tareas, resúmenes, rentabilidad y seguimientos. Si falta una fuente, se indica como información incompleta.</p>
                       </div>
                     }
                   />
@@ -542,7 +559,7 @@ function ClientsPageBody() {
         <div className="sm:hidden space-y-3">
           {sortedClients.map((c) => {
             const h = healthMap.get(c.id)
-            const healthColor = h ? (h.risk_level === "healthy" ? "text-green-600" : h.risk_level === "warning" ? "text-amber-500" : h.risk_level === "no_data" ? "text-muted-foreground" : "text-red-500") : ""
+            const presentation = h ? clientHealthPresentation(h) : null
             return (
               <div key={c.id} className="border border-border rounded-xl p-4 bg-card space-y-2">
                 <div className="flex items-start justify-between">
@@ -561,13 +578,16 @@ function ClientsPageBody() {
                 <div className="flex flex-wrap items-center gap-2">
                   {statusBadge(c.status)}
                   {isAdmin && c.monthly_budget != null && <Badge variant="outline" className="text-xs">{formatCurrency(c.monthly_budget)}</Badge>}
-                  {h && <span className={`inline-flex items-center gap-1 text-xs font-semibold ${healthColor}`}><Heart className="h-3 w-3" />{h.score ?? (h.risk_signals.length ? "Riesgo" : "Sin datos")}</span>}
+                  {c.status !== "active" ? <span className="text-xs text-muted-foreground">No evaluado · solo activos</span>
+                    : presentation ? <Badge variant={presentation.variant}>{presentation.label}</Badge>
+                    : healthQuery.isLoading ? <span className="text-xs text-muted-foreground">Consultando…</span>
+                    : <span className="text-xs text-muted-foreground">Información no disponible</span>}
                 </div>
               </div>
             )
           })}
           {clients.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">Sin clientes todavía</div>
+            <div className="text-center py-12 text-muted-foreground">No hay clientes {tab === "all" ? "" : STATUS_TABS.find((item) => item.value === tab)?.label.toLowerCase()} {cohort === "all" ? "" : COHORTS.find((item) => item.value === cohort)?.label.toLowerCase()}</div>
           )}
         </div>
 
@@ -595,14 +615,8 @@ function ClientsPageBody() {
                   <InfoTooltip
                     content={
                       <div className="space-y-1.5">
-                        <p className="font-semibold">Puntuación de salud del cliente (0–100)</p>
-                        <p className="text-muted-foreground">Combina 5 factores: comunicación reciente, tareas completadas, digests enviados, rentabilidad y followups pendientes.</p>
-                        <div className="flex flex-col gap-0.5 pt-0.5">
-                          <span className="text-green-600 font-medium">● ≥ 70 — Saludable</span>
-                          <span className="text-amber-500 font-medium">● 40–69 — Atención</span>
-                          <span className="text-red-500 font-medium">● &lt; 40 — En riesgo</span>
-                        </div>
-                        <p className="text-muted-foreground text-[11px] pt-0.5">Pasa el ratón sobre la puntuación para ver el desglose.</p>
+                        <p className="font-semibold">Condiciones observables</p>
+                        <p className="text-muted-foreground">Los riesgos comprobados tienen prioridad. Las fuentes que faltan se muestran como información incompleta.</p>
                       </div>
                     }
                   />
@@ -661,13 +675,12 @@ function ClientsPageBody() {
                 <TableCell>{statusBadge(c.status)}</TableCell>
                 <TableCell className="hidden md:table-cell">
                   {(() => {
+                    if (c.status !== "active") return <span className="text-muted-foreground text-xs">No evaluado · solo activos</span>
                     const h = healthMap.get(c.id)
-                    if (!h) return <span className="text-muted-foreground text-xs">-</span>
-                    const color = h.risk_level === "healthy" ? "text-green-600" : h.risk_level === "warning" ? "text-amber-500" : h.risk_level === "no_data" ? "text-muted-foreground" : "text-red-500"
+                    if (!h) return <span className="text-muted-foreground text-xs">{healthQuery.isLoading ? "Consultando…" : "Información no disponible"}</span>
+                    const presentation = clientHealthPresentation(h)
                     return (
-                      <span className={`inline-flex items-center gap-1 text-xs font-semibold ${color}`} title={(Object.values(h.observations)).join(" · ")}>
-                        <Heart className="h-3 w-3" />{h.score ?? (h.risk_signals.length ? "Riesgo" : "Sin datos")}
-                      </span>
+                      <Badge variant={presentation.variant} title={(Object.values(h.observations)).join(" · ")}>{presentation.label}</Badge>
                     )
                   })()}
                 </TableCell>
@@ -709,7 +722,7 @@ function ClientsPageBody() {
               </TableRow>
             ))}
             {clients.length === 0 && (
-              <EmptyTableState colSpan={9} icon={Users} title="Sin clientes todavía" description="Aquí verás tus clientes con estado, presupuesto y contacto." />
+              <EmptyTableState colSpan={9} icon={Users} title="Sin resultados" description={`No hay clientes ${tab === "all" ? "" : STATUS_TABS.find((item) => item.value === tab)?.label.toLowerCase()} ${cohort === "all" ? "" : COHORTS.find((item) => item.value === cohort)?.label.toLowerCase()}.`} />
             )}
           </TableBody>
         </Table>

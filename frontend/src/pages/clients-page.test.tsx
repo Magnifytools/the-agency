@@ -85,9 +85,9 @@ describe("ClientsPage recovery states", () => {
     show()
 
     expect(await screen.findByRole("alert")).toHaveTextContent("No se pudieron cargar los clientes")
-    expect(screen.queryByText("Sin clientes todavía")).not.toBeInTheDocument()
+    expect(screen.queryByText("Sin resultados")).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Reintentar" }))
-    expect(await screen.findAllByText("Sin clientes todavía")).not.toHaveLength(0)
+    expect(await screen.findAllByText("Sin resultados")).not.toHaveLength(0)
   })
 
   it("keeps prior rows cached but hidden after a recoverable refresh failure", async () => {
@@ -100,7 +100,7 @@ describe("ClientsPage recovery states", () => {
 
     expect(await screen.findByText("No se pudieron cargar los clientes. Reintenta en unos momentos.")).toBeInTheDocument()
     expect(screen.queryByText("Cliente conservado")).not.toBeInTheDocument()
-    expect(queryClient.getQueryData([...clientKeys.all(), "all", 1, 25])).toMatchObject({ total: 1 })
+    expect(queryClient.getQueryData([...clientKeys.all(), "all", "all", 1, 25])).toMatchObject({ total: 1 })
   })
 
   it("hides cached rows when refreshed access is denied", async () => {
@@ -149,6 +149,34 @@ describe("ClientsPage recovery states", () => {
     expect(screen.queryByText(/Saludable/)).not.toBeInTheDocument()
   })
 
+  it("keeps cohort in both list and active-health requests", async () => {
+    show()
+    await screen.findAllByText("Sin resultados")
+
+    await userEvent.click(screen.getByRole("button", { name: "Externos" }))
+
+    await waitFor(() => expect(api.clients).toHaveBeenLastCalledWith(expect.objectContaining({ cohort: "external", page: 1 })))
+    expect(api.health).toHaveBeenLastCalledWith("external")
+    expect(screen.getByText(/En cartera · Externos · 0 resultados/)).toBeInTheDocument()
+  })
+
+  it("shows observable risks before a high legacy score and does not evaluate inactive clients", async () => {
+    api.clients.mockResolvedValueOnce({ items: [clientRow, { ...clientRow, id: 5, name: "Cliente pausado", status: "paused" }], total: 2, page: 1, page_size: 25 })
+    api.health.mockResolvedValueOnce([{
+      client_id: 4, client_name: clientRow.name, score: 95, risk_level: "healthy", enough_information: true,
+      available_source_count: 5, available_weight: 100,
+      factors: { communication: 25, tasks: 20, digests: 15, profitability: 20, followups: 15 },
+      factor_max: { communication: 25, tasks: 25, digests: 15, profitability: 20, followups: 15 },
+      observations: { communication: "Reciente", tasks: "Una tarea vencida a fecha de hoy", digests: "Al día", profitability: "Dentro de presupuesto", followups: "Sin pendientes" },
+      risk_signals: ["Una tarea vencida a fecha de hoy"],
+    }])
+    show()
+
+    expect((await screen.findAllByText("1 riesgo")).length).toBeGreaterThan(0)
+    expect(screen.queryByText("95")).not.toBeInTheDocument()
+    expect(screen.getAllByText("No evaluado · solo activos").length).toBeGreaterThan(0)
+  })
+
   it("creates the client, contacts and optional project in one recoverable request", async () => {
     api.extractContext.mockResolvedValue({
       name: "Cliente extraído",
@@ -156,7 +184,7 @@ describe("ClientsPage recovery states", () => {
       contacts: [{ name: "Contacto IA", is_primary: true }],
     })
     show()
-    await screen.findAllByText("Sin clientes todavía")
+    await screen.findAllByText("Sin resultados")
 
     await userEvent.click(screen.getByRole("button", { name: "Nuevo cliente" }))
     await userEvent.click(screen.getByRole("button", { name: "Pegar contexto" }))
@@ -187,7 +215,7 @@ describe("ClientsPage recovery states", () => {
     auth.canWriteProjects = false
     api.extractContext.mockResolvedValue({ name: "Cliente sin proyecto", project: { name: "No crear" }, contacts: [] })
     show()
-    await screen.findAllByText("Sin clientes todavía")
+    await screen.findAllByText("Sin resultados")
     await userEvent.click(screen.getByRole("button", { name: "Nuevo cliente" }))
     await userEvent.click(screen.getByRole("button", { name: "Pegar contexto" }))
     await userEvent.type(screen.getByPlaceholderText(/Pega aquí emails/), "Proyecto opcional")
@@ -204,7 +232,7 @@ describe("ClientsPage recovery states", () => {
     api.onboard.mockRejectedValueOnce(Object.assign(new Error("invalid"), { response: { status: 422, data: { detail: [{ msg: "El nombre ya existe" }] } } }))
     api.recoverOnboarding.mockResolvedValueOnce({ status: "not_committed", client_id: null, contact_ids: [], project_id: null, replayed: false, undo_state: "unavailable", change_log_id: null })
     show()
-    await screen.findAllByText("Sin clientes todavía")
+    await screen.findAllByText("Sin resultados")
     await userEvent.click(screen.getByRole("button", { name: "Nuevo cliente" }))
     await userEvent.type(screen.getByLabelText("Nombre *"), "Repetido")
     await userEvent.click(screen.getByRole("button", { name: "Crear" }))
@@ -221,7 +249,7 @@ describe("ClientsPage recovery states", () => {
       ],
     })
     show()
-    await screen.findAllByText("Sin clientes todavía")
+    await screen.findAllByText("Sin resultados")
 
     await userEvent.click(screen.getByRole("button", { name: "Nuevo cliente" }))
     await userEvent.click(screen.getByRole("button", { name: "Pegar contexto" }))
@@ -247,7 +275,7 @@ describe("ClientsPage recovery states", () => {
       contacts: [{ name: "Ana detectada", is_primary: true }],
     })
     show()
-    await screen.findAllByText("Sin clientes todavía")
+    await screen.findAllByText("Sin resultados")
 
     await userEvent.click(screen.getByRole("button", { name: "Nuevo cliente" }))
     await userEvent.click(screen.getByRole("button", { name: "Pegar contexto" }))
@@ -268,7 +296,7 @@ describe("ClientsPage recovery states", () => {
       contacts: [{ name: "Ana", is_primary: false }],
     })
     show()
-    await screen.findAllByText("Sin clientes todavía")
+    await screen.findAllByText("Sin resultados")
 
     await userEvent.click(screen.getByRole("button", { name: "Nuevo cliente" }))
     await userEvent.click(screen.getByRole("button", { name: "Pegar contexto" }))
@@ -287,7 +315,7 @@ describe("ClientsPage recovery states", () => {
   it("does not send an onboarding attempt when durable key storage is unavailable", async () => {
     const storage = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked") })
     show()
-    await screen.findAllByText("Sin clientes todavía")
+    await screen.findAllByText("Sin resultados")
 
     await userEvent.click(screen.getByRole("button", { name: "Nuevo cliente" }))
     await userEvent.type(screen.getByLabelText("Nombre *"), "Sin almacenamiento")
@@ -333,7 +361,7 @@ describe("ClientsPage recovery states", () => {
     let resolveRecovery!: (value: { status: "not_committed"; client_id: null; contact_ids: []; project_id: null; replayed: false; undo_state: "unavailable"; change_log_id: null }) => void
     api.recoverOnboarding.mockImplementationOnce(() => new Promise((resolve) => { resolveRecovery = resolve }))
     show()
-    await screen.findAllByText("Sin clientes todavía")
+    await screen.findAllByText("Sin resultados")
 
     await userEvent.click(screen.getByRole("button", { name: "Nuevo cliente" }))
     await userEvent.type(screen.getByLabelText("Nombre *"), "Intento incierto")
