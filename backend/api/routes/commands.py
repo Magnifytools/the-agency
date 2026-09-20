@@ -11,6 +11,7 @@ from backend.db.models import CommandReceipt, User
 from backend.schemas.command import (
     CommandCreate, CommandExecute, CommandListResponse, CommandReceiptResponse, CommandResolve,
 )
+from backend.services.command_decisions import query_decisions
 from backend.services.change_journal import prepare_entry
 from backend.services.temporal import utc_now_naive
 from backend.services.commands import (
@@ -31,11 +32,11 @@ async def _owned_locked(db: AsyncSession, receipt_id: str, user_id: int) -> Comm
     return row
 
 
-async def _execute_atomically(db: AsyncSession, row: CommandReceipt, actor: User) -> None:
+async def _execute_atomically(db: AsyncSession, row: CommandReceipt, actor: User, *, reviewed: bool = False) -> None:
     """Keep validation failures out of the outer receipt transaction."""
     nested = await db.begin_nested()
     try:
-        await execute_or_prompt(db, row, actor)
+        await execute_or_prompt(db, row, actor, reviewed=reviewed)
         await nested.commit()
     except Exception:
         await nested.rollback()
@@ -140,12 +141,12 @@ async def execute_reviewed_command(receipt_id: str, payload: CommandExecute,
         raise HTTPException(409, "El recibo cambió; vuelve a cargarlo")
     try:
         row.revision += 1
-        await _execute_atomically(db, row, actor)
+        await _execute_atomically(db, row, actor, reviewed=True)
         record_step(row, payload.request_key, digest)
         row.updated_at = utc_now_naive()
         await db.commit()
     except HTTPException as exc:
-        if exc.status_code == 403:
+        if exc.status_code in {403, 409}:
             await _persist_failed_step(db, receipt_id, actor.id, exc)
         else:
             await db.rollback()
@@ -174,6 +175,9 @@ async def get_command_query(receipt_id: str, page: int = Query(1, ge=1),
         raise HTTPException(404, "Command receipt not found")
     if row.status != STATUS_EXECUTED or (row.intent or {}).get("kind") != "query_work":
         raise HTTPException(409, "El recibo no contiene una consulta")
+    if row.intent["query"] == "decisions":
+        return await query_decisions(db, actor, scope=row.intent.get("scope", "mine"),
+                                     page=page, page_size=page_size)
     require_permission(actor, "tasks", write=False)
     return await query_work(db, row.intent["query"], actor=actor,
                             scope=row.intent.get("scope", "mine"), page=page, page_size=page_size)

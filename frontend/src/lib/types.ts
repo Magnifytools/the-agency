@@ -49,11 +49,16 @@ export interface CommandQuestion {
 }
 
 export interface CommandEntity {
-  type: "task" | "project" | "client" | "time_entry"
+  type: "task" | "project" | "client" | "time_entry" | "incident"
   id: number
   label: string
   project_id?: number | null
   client_id?: number | null
+  href?: string
+  message?: string
+  severity?: string
+  recipient_name?: string
+  revision?: number
 }
 
 export interface CommandReceipt {
@@ -64,7 +69,7 @@ export interface CommandReceipt {
   context: CommandContext | null
   status: "needs_input" | "needs_review" | "executed" | "failed"
   intent: { kind?: string; [key: string]: unknown } | null
-  prompt: { questions: CommandQuestion[] } | null
+  prompt: { questions?: CommandQuestion[]; kind?: string; plan?: unknown; signature?: string } | null
   result: {
     message: string
     entities: CommandEntity[]

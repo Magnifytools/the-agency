@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 
 from backend.db.models import (
     ACTIVE_TASK_STATUSES, Client, ClientStatus, CommandReceipt, Project,
@@ -99,6 +100,15 @@ def _peel_clause(text: str, marker: str) -> tuple[str, str | None]:
     return text[:match.start()].strip(), value.strip('"')
 
 
+def _split_clause(text: str, marker: str) -> tuple[str, str | None]:
+    """Split once on a marker outside quoted literals."""
+    for match in re.finditer(rf"(?:^|\s+){marker}\s+", text, flags=re.IGNORECASE):
+        if text[:match.start()].count('"') % 2 == 0:
+            value = text[match.end():].strip()
+            return text[:match.start()].strip(), value or None
+    return text, None
+
+
 def _date_intent(kind: str, task_name: str, label: str, **extra) -> dict[str, Any]:
     resolved, choices, error = _civil_date(label)
     if error:
@@ -128,6 +138,21 @@ def parse_command(raw: str) -> dict[str, Any]:
     project_match = re.match(r"^(?:crea|crear) (?:un )?proyecto (.+)$", text, re.I)
     if project_match:
         remainder = project_match.group(1).strip()
+        project_text, first_task_text = _split_clause(remainder, r"con primera tarea")
+        if first_task_text is not None:
+            project_intent = parse_command(f'Crea proyecto {project_text}')
+            task_intent = parse_command(f'Crea tarea {first_task_text}')
+            if project_intent.get("kind") != "create_project":
+                return {"kind": "invalid", "error": "Aclara el proyecto completo sin perder la primera tarea"}
+            if task_intent.get("kind") != "create_task":
+                return {"kind": "invalid", "error": "Aclara la primera tarea dentro del proyecto compuesto"}
+            if task_intent.get("project_name") or task_intent.get("client_name"):
+                return {"kind": "invalid", "error": "La primera tarea pertenece al proyecto nuevo; no indiques otro proyecto o cliente"}
+            return {
+                "kind": "create_project_with_task",
+                **{key: value for key, value in project_intent.items() if key != "kind"},
+                "first_task": {key: value for key, value in task_intent.items() if key != "kind"},
+            }
         quoted, clauses = _quoted_head(remainder)
         if quoted is not None:
             name = quoted
@@ -239,12 +264,23 @@ def parse_command(raw: str) -> dict[str, Any]:
                 intent["date_options"] = choices
             return intent
         return {"kind": "log_time", "minutes": int(match.group(1)), "task_name": task_name}
-    lowered = text.casefold()
+    # Normalize only the outer Spanish question marks after all write parsers
+    # have consumed the original text, so quoted names remain byte-for-byte.
+    query_text = re.sub(r"^\s*¿\s*", "", text)
+    query_text = re.sub(r"\s*\?\s*$", "", query_text)
+    lowered = query_text.casefold()
     scope = "team" if "equipo" in lowered else "mine"
-    if any(word in lowered for word in ("prioridades", "prioridad")) and lowered.startswith(("qué", "que", "muestra", "consulta")):
+    explicit_query = lowered.startswith(("qué", "que", "muestra", "consulta"))
+    if explicit_query and any(word in lowered for word in ("prioridades", "prioridad")):
         return {"kind": "query_work", "query": "priorities", "scope": scope}
-    if any(word in lowered for word in ("bloqueos", "bloqueadas", "esperando")):
+    if explicit_query and any(word in lowered for word in ("bloqueos", "bloqueadas", "esperando")):
         return {"kind": "query_work", "query": "blockers", "scope": scope}
+    asks_for_my_answer = lowered in {
+        "qué necesita respuesta mía", "que necesita respuesta mía",
+        "qué necesita mi respuesta", "que necesita mi respuesta",
+    }
+    if (explicit_query and "decisiones" in lowered) or asks_for_my_answer:
+        return {"kind": "query_work", "query": "decisions", "scope": scope}
     return {"kind": "unsupported"}
 
 
@@ -307,7 +343,72 @@ async def _applied_labels(db: AsyncSession, applied: dict[str, Any]) -> dict[str
     return labels
 
 
-async def execute_or_prompt(db: AsyncSession, receipt: CommandReceipt, actor: User) -> None:
+async def _active_row(db: AsyncSession, model, row_id: int, *, entity: str):
+    query = select(model).where(model.id == row_id)
+    if entity == "client":
+        query = query.where(Client.status == ClientStatus.active)
+    elif entity == "user":
+        query = query.where(User.is_active.is_(True))
+    row = (await db.execute(query)).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(409, f"El {entity} elegido ya no está disponible; vuelve a revisar el plan")
+    return row
+
+
+async def _lock_compound_scope(
+    db: AsyncSession, *, client_id: int, user_ids: list[int],
+) -> tuple[Client, dict[int, User]]:
+    """Freeze reviewed labels/status while the compound pair is inserted.
+
+    SQLAlchemy's ``key_share=True`` without ``read=True`` compiles on
+    PostgreSQL as ``FOR NO KEY UPDATE``.  That blocks rename/deactivation and
+    deletion, while the FK inserts retain their compatible KEY SHARE locks.
+    The global order is Client first, then Users by id.
+    """
+    client = (await db.execute(
+        select(Client).options(noload("*")).where(Client.id == client_id)
+        .with_for_update(key_share=True).execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if client is None or client.status != ClientStatus.active:
+        raise HTTPException(409, "El cliente elegido ya no está disponible; vuelve a revisar el plan")
+    ordered_ids = sorted(set(user_ids))
+    users = list((await db.execute(
+        select(User).options(noload("*")).where(User.id.in_(ordered_ids))
+        .order_by(User.id).with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )).scalars()) if ordered_ids else []
+    by_id = {user.id: user for user in users}
+    if len(by_id) != len(ordered_ids) or any(not user.is_active for user in users):
+        raise HTTPException(409, "Una persona elegida ya no está disponible; vuelve a revisar el plan")
+    return client, by_id
+
+
+def _compound_plan(intent: dict, *, client: Client, owner: User | None,
+                   assignee: User | None) -> dict[str, Any]:
+    task = intent["first_task"]
+    return {
+        "operation": "create_project_with_task",
+        "project": {
+            "name": intent["project_name"],
+            "client_id": client.id,
+            "client_name": client.name,
+            "owner_id": owner.id if owner else None,
+            "owner_name": (owner.short_name or owner.full_name) if owner else None,
+            "target_date": intent.get("target_date"),
+        },
+        "first_task": {
+            "title": task["title"],
+            "assigned_to": assignee.id if assignee else None,
+            "assigned_name": (assignee.short_name or assignee.full_name) if assignee else None,
+            "scheduled_date": task.get("scheduled_date"),
+            "schedule_mode": task.get("schedule_mode", "omitted"),
+        },
+    }
+
+
+async def execute_or_prompt(
+    db: AsyncSession, receipt: CommandReceipt, actor: User, *, reviewed: bool = False,
+) -> None:
     intent = dict(receipt.intent or {})
     kind = intent.get("kind")
     receipt.prompt = None
@@ -327,6 +428,10 @@ async def execute_or_prompt(db: AsyncSession, receipt: CommandReceipt, actor: Us
         semantic_error = "El título de la tarea no puede superar 255 caracteres"
     elif kind == "create_project" and len(intent.get("project_name") or "") > 200:
         semantic_error = "El nombre del proyecto no puede superar 200 caracteres"
+    elif kind == "create_project_with_task" and len(intent.get("project_name") or "") > 200:
+        semantic_error = "El nombre del proyecto no puede superar 200 caracteres"
+    elif kind == "create_project_with_task" and len((intent.get("first_task") or {}).get("title") or "") > 255:
+        semantic_error = "El título de la primera tarea no puede superar 255 caracteres"
     elif kind == "log_time" and not 1 <= int(intent.get("minutes") or 0) <= MAX_COMMAND_MINUTES:
         semantic_error = f"Los minutos deben estar entre 1 y {MAX_COMMAND_MINUTES}"
     if semantic_error:
@@ -340,6 +445,129 @@ async def execute_or_prompt(db: AsyncSession, receipt: CommandReceipt, actor: Us
             "field": "literal_title", "label": intent["error"], "kind": "choice",
             "choices": [{"id": "literal_title:confirm", "label": "Usar todo como título", "subtitle": intent["literal"]}],
         }]}
+        return
+    if kind == "create_project_with_task":
+        require_permission(actor, "projects")
+        require_permission(actor, "tasks")
+        task_intent = dict(intent["first_task"])
+        if intent.get("scheduled_date") and not task_intent.get("scheduled_date"):
+            task_intent["scheduled_date"] = intent["scheduled_date"]
+            task_intent.pop("date_options", None)
+        if task_intent.get("date_options") and not task_intent.get("scheduled_date"):
+            receipt.status = STATUS_INPUT
+            receipt.prompt = {"questions": [{
+                "field": "scheduled_date",
+                "label": f"¿Qué fecha significa «{task_intent.get('date_label')}»?",
+                "kind": "choice",
+                "choices": [{"id": f"date:{value}", "label": value}
+                            for value in task_intent["date_options"]],
+            }]}
+            return
+        client_id = intent.get("client_id")
+        owner_id = intent.get("owner_id")
+        assigned_to = intent.get("assigned_to")
+        if reviewed:
+            if client_id is None:
+                raise HTTPException(409, "El plan perdió su cliente; vuelve a revisarlo")
+            user_ids = [int(value) for value in (owner_id, assigned_to) if value is not None]
+            client, users = await _lock_compound_scope(
+                db, client_id=int(client_id), user_ids=user_ids,
+            )
+            owner = users.get(int(owner_id)) if owner_id is not None else None
+            assignee = users.get(int(assigned_to)) if assigned_to is not None else None
+        else:
+            if client_id is None:
+                client, prompt = await _resolve_named(db, Client, Client.name, intent["client_name"], "client")
+                if prompt:
+                    receipt.status, receipt.prompt = STATUS_INPUT, prompt
+                    return
+                client_id = client.id
+            else:
+                client = await _active_row(db, Client, int(client_id), entity="client")
+            owner = None
+            if intent.get("owner_name") and owner_id is None:
+                owner, prompt = await _resolve_named(
+                    db, User, (User.full_name, User.short_name), intent["owner_name"], "user",
+                )
+                if prompt:
+                    prompt["questions"][0]["field"] = "owner_id"
+                    receipt.status, receipt.prompt = STATUS_INPUT, prompt
+                    return
+                owner_id = owner.id
+            elif owner_id is not None:
+                owner = await _active_row(db, User, int(owner_id), entity="user")
+            assignee = None
+            if task_intent.get("assigned_name") and assigned_to is None:
+                assignee, prompt = await _resolve_named(
+                    db, User, (User.full_name, User.short_name), task_intent["assigned_name"], "user",
+                )
+                if prompt:
+                    prompt["questions"][0]["field"] = "assigned_to"
+                    receipt.status, receipt.prompt = STATUS_INPUT, prompt
+                    return
+                assigned_to = assignee.id
+            elif assigned_to is not None:
+                assignee = await _active_row(db, User, int(assigned_to), entity="user")
+        resolved = {
+            **intent,
+            "client_id": client_id,
+            "owner_id": owner_id,
+            "assigned_to": assigned_to,
+            "first_task": task_intent,
+        }
+        plan = _compound_plan(resolved, client=client, owner=owner, assignee=assignee)
+        signature = canonical_hash(plan)
+        if not reviewed or intent.get("review_signature") != signature:
+            resolved["review_signature"] = signature
+            receipt.intent = resolved
+            receipt.status = STATUS_REVIEW
+            receipt.prompt = {"kind": "compound_plan", "plan": plan, "signature": signature}
+            review_applied = {
+                "project_name": intent["project_name"], "client_id": client_id,
+                "owner_id": owner_id, "target_date": intent.get("target_date"),
+                "task_title": task_intent["title"], "assigned_to": assigned_to,
+                "scheduled_date": task_intent.get("scheduled_date"),
+            }
+            receipt.result = {
+                "message": ("El plan cambió. Revisa de nuevo antes de crear." if reviewed
+                            else "Revisa el proyecto y su primera tarea"),
+                "entities": [], "applied": review_applied,
+                "applied_labels": await _applied_labels(db, review_applied),
+                "undo_available": False,
+            }
+            return
+        project_payload = {
+            "name": intent["project_name"], "client_id": client_id, "owner_id": owner_id,
+        }
+        if intent.get("target_date"):
+            project_payload["target_end_date"] = datetime.combine(
+                date.fromisoformat(intent["target_date"]), time.min,
+            )
+        project = await create_project(db, project_payload)
+        task_payload = {
+            "title": task_intent["title"], "project_id": project.id,
+            "client_id": client_id, "assigned_to": assigned_to,
+        }
+        if task_intent.get("schedule_mode") == "none" or "scheduled_date" in task_intent:
+            task_payload["scheduled_date"] = (
+                date.fromisoformat(task_intent["scheduled_date"])
+                if task_intent.get("scheduled_date") else None
+            )
+        task = await create_task(db, task_payload, actor=actor)
+        entities = [_entity_result("project", project), _entity_result("task", task)]
+        applied = {
+            "client_id": client_id, "owner_id": owner_id,
+            "project_id": project.id, "assigned_to": assigned_to,
+            "target_date": intent.get("target_date"),
+            "scheduled_date": task.scheduled_date.isoformat() if task.scheduled_date else None,
+        }
+        receipt.status = STATUS_EXECUTED
+        receipt.prompt = None
+        receipt.result = {
+            "message": f"Proyecto «{project.name}» y primera tarea «{task.title}» creados",
+            "entities": entities, "applied": applied,
+            "applied_labels": await _applied_labels(db, applied), "undo_available": False,
+        }
         return
     date_field = "entry_date" if kind == "log_time" else "scheduled_date"
     if intent.get("date_options") and not intent.get(date_field):
@@ -450,11 +678,18 @@ async def execute_or_prompt(db: AsyncSession, receipt: CommandReceipt, actor: Us
             applied.update({"minutes": int(intent["minutes"]), "user_id": actor.id,
                             "entry_date": intent.get("entry_date") or business_today().isoformat()})
     elif kind == "query_work":
-        require_permission(actor, "tasks", write=False)
-        page = await query_work(db, intent["query"], actor=actor,
-                                scope=intent.get("scope", "mine"), page=1, page_size=25)
+        if intent["query"] == "decisions":
+            from backend.services.command_decisions import query_decisions
+            page = await query_decisions(
+                db, actor, scope=intent.get("scope", "mine"), page=1, page_size=25,
+            )
+        else:
+            require_permission(actor, "tasks", write=False)
+            page = await query_work(db, intent["query"], actor=actor,
+                                    scope=intent.get("scope", "mine"), page=1, page_size=25)
         receipt.status = STATUS_EXECUTED
-        receipt.result = {"message": f"{page['total']} tareas", "entities": [], "query": page,
+        noun = "decisiones" if intent["query"] == "decisions" else "tareas"
+        receipt.result = {"message": f"{page['total']} {noun}", "entities": [], "query": page,
                           "undo_available": False}
         return
     else:
