@@ -13,10 +13,11 @@ async def test_readiness_checks_real_schema(engine):
     await check_database_ready(engine)
 
 
-async def test_real_web_startup_adds_project_owner_to_existing_schema(engine, monkeypatch):
+async def test_release_step_adds_owner_before_readonly_web_startup(engine, monkeypatch):
     import backend.main as main
     import backend.db.database as database
     from backend.startup.project_schema import ensure_project_owner_schema
+    from backend.startup.schema_baseline import migrate_schema
 
     monkeypatch.setattr(database, "engine", engine)
     monkeypatch.setattr(main, "_ensure_pg_enums", AsyncMock())
@@ -24,6 +25,9 @@ async def test_real_web_startup_adds_project_owner_to_existing_schema(engine, mo
     monkeypatch.setattr(main, "start_background_tasks", lambda: [])
     async with engine.begin() as conn:
         await conn.execute(text("ALTER TABLE projects DROP COLUMN owner_id CASCADE"))
+    async with engine.begin() as conn:
+        await conn.execute(text("DROP TABLE IF EXISTS agency_schema_versions"))
+    await migrate_schema(engine)
     lifecycle = main.lifespan(main.app)
     try:
         await lifecycle.__anext__()
@@ -94,6 +98,8 @@ async def test_web_startup_preserves_business_rows(engine, monkeypatch):
         await session.commit()
         ids = (user.id, fit.id, sage.id, qa.id, project.id, task.id)
     try:
+        from backend.startup.schema_baseline import migrate_schema
+        await migrate_schema(engine)
         for _ in range(2):
             lifecycle = main.lifespan(main.app)
             await anext(lifecycle)
@@ -124,3 +130,29 @@ async def test_readiness_requires_atomic_journal_schema(engine):
     finally:
         async with engine.begin() as conn:
             await conn.execute(text("ALTER TABLE change_logs RENAME COLUMN operations_unavailable TO operations"))
+
+
+async def test_web_refuses_unversioned_schema_without_ddl_or_jobs(engine, monkeypatch):
+    import backend.main as main
+    import backend.db.database as database
+    from unittest.mock import Mock
+
+    monkeypatch.setattr(database, "engine", engine)
+    jobs = Mock(return_value=[])
+    monkeypatch.setattr(main, "start_background_tasks", jobs)
+    async with engine.begin() as conn:
+        exists = await conn.scalar(text("SELECT to_regclass('agency_schema_versions')"))
+        if exists:
+            await conn.execute(text("ALTER TABLE agency_schema_versions RENAME TO schema_versions_test_backup"))
+    try:
+        lifecycle = main.lifespan(main.app)
+        with pytest.raises(Exception, match="agency_schema_versions"):
+            await anext(lifecycle)
+        await lifecycle.aclose()
+        jobs.assert_not_called()
+        async with engine.connect() as conn:
+            assert await conn.scalar(text("SELECT to_regclass('agency_schema_versions')")) is None
+    finally:
+        if exists:
+            async with engine.begin() as conn:
+                await conn.execute(text("ALTER TABLE schema_versions_test_backup RENAME TO agency_schema_versions"))
