@@ -157,7 +157,7 @@ describe("ClientsPage recovery states", () => {
 
     await waitFor(() => expect(api.clients).toHaveBeenLastCalledWith(expect.objectContaining({ cohort: "external", page: 1 })))
     expect(api.health).toHaveBeenLastCalledWith("external")
-    expect(screen.getByText(/Todos · Externos · 0 resultados/)).toBeInTheDocument()
+    expect(screen.getByText(/En cartera · Externos · 0 resultados/)).toBeInTheDocument()
   })
 
   it("shows observable risks before a high legacy score and does not evaluate inactive clients", async () => {

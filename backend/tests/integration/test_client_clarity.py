@@ -112,6 +112,8 @@ async def test_single_and_batch_use_identical_explicit_observation_windows(
     assert batch["observations"] == individual["observations"]
     assert batch["risk_signals"] == individual["risk_signals"]
     assert "riesgo a partir de 31 días" in individual["observations"]["communication"]
-    assert "Histórico no retirado" in individual["observations"]["tasks"]
+    assert individual["observations"]["tasks"] == (
+        "Histórico no retirado: 1/2 completadas · 1 atrasadas a fecha de hoy"
+    )
     assert individual["observations"]["digests"] == "Fuente no disponible"
     assert individual["observations"]["followups"].startswith("Ahora:")
