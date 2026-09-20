@@ -17,6 +17,7 @@ from backend.db.models import (
     TaskStatus,
     TaskPriority,
     User,
+    UserRole,
     TaskChecklist,
     TaskComment,
     TaskAttachment,
@@ -306,11 +307,14 @@ async def list_task_agenda(
             base = base.where(or_(Task.assigned_to == current_user.id, Task.assigned_to.is_(None)))
     elif assigned_to == "unassigned":
         base = base.where(Task.assigned_to.is_(None))
+    elif assigned_to == "all":
+        if current_user.role != UserRole.admin:
+            raise HTTPException(status_code=403, detail="Admin required for team agenda")
     else:
         try:
             base = base.where(Task.assigned_to == int(assigned_to))
         except ValueError:
-            raise HTTPException(status_code=422, detail="assigned_to must be 'me', 'unassigned', or a valid user ID")
+            raise HTTPException(status_code=422, detail="assigned_to must be 'me', 'unassigned', 'all', or a valid user ID")
 
     due_day = func.date(Task.due_date)
     if section == "planned":

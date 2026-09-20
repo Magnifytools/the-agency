@@ -224,9 +224,9 @@
     {
       "id": "AUDIT-20260920-P15",
       "descripcion": "Inbox recuperable, permisos y respuestas tardías; notas paginadas y Hoy más claro",
-      "estado": "verificado_local_pendiente_publicacion",
+      "estado": "completado",
       "prioridad": "alta",
-      "notas": "1104 backend (2 omitidas),294 frontend y build correctos. Cola durable con CAS y reintentos visibles; asociaciones y lifecycle protegidos; adjuntos activos descargables. Migración aditiva sin reescritura histórica. Verificación aislada de captura, error, reintento y conversión manual."
+      "notas": "PR26+27 publicadas y verificadas en7195a8d, schema inbox_recovery_v2. 1108 backend (2 omitidas),294 frontend,46extensión; CI rama/main, migración compatible con timestamps heredados, hashes conservados y UI390/1440 sin errores. Pendiente general Engine y acciones móvil enP16."
     }
   ],
   "bugs": [
@@ -297,7 +297,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "Publicar y verificar la corrección P15 v2 tras rollback del predeploy v1. Corregir consulta upstream Engine, continuar revisión histórica, simplificación restante de UX, canal y demás criterios de la matriz. Objetivo completo activo.",
+  "proximos_pasos": "P16: ámbito real Todo el equipo, búsqueda autorizada con estados claros, próxima reunión personal y acciones Inbox visibles en móvil. Continuar Engine, revisión histórica, canal y todos los criterios pendientes de la matriz. Objetivo completo activo.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
@@ -307,9 +307,9 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "013d5ba918952b5d8e95a5a4bab3a7849737fcca",
+    "revision": "7195a8ddc0f0f8436d49997e19d8fc01857479ca",
     "healthcheck": "/api/ready",
-    "schema_revision": "20260920_job_runtime_v1"
+    "schema_revision": "20260920_inbox_recovery_v2"
   },
   "pendiente_david": "Revisar Google Calendar en Ajustes y reconectar las cuentas que muestran autorización rechazada. La implementación restante sigue avanzando."
 }

@@ -23,6 +23,7 @@ import { SkeletonTableRow } from "@/components/ui/skeleton"
 import { TimerButton } from "@/components/timer/timer-button"
 import { TimeLogDialog } from "@/components/timer/time-log-dialog"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { NextMeeting } from "@/components/tasks/next-meeting"
 import { MyDayView } from "@/components/tasks/my-day-view"
 import { IncidentInbox } from "@/components/incidents/incident-inbox"
 import { KanbanBoard } from "@/components/tasks/kanban-board"
@@ -159,7 +160,7 @@ export default function TasksPage() {
 
   const useAgendaQuery = (section: "planned" | "carryover" | "unplanned" | "completed") => useInfiniteQuery({
     queryKey: taskKeys.agenda(section, businessToday, user?.id, 0, agendaScope),
-    queryFn: ({ pageParam }) => tasksApi.agenda({ date: businessToday, section, assigned_to: agendaScope === "team" ? undefined : "me", page: pageParam, page_size: pageSize }),
+    queryFn: ({ pageParam }) => tasksApi.agenda({ date: businessToday, section, assigned_to: agendaScope === "team" ? "all" : "me", page: pageParam, page_size: pageSize }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => lastPage.page * lastPage.page_size < lastPage.total ? lastPage.page + 1 : undefined,
     enabled: view === "my_day",
@@ -377,6 +378,7 @@ export default function TasksPage() {
       </div>
 
       {view === "my_day" && (user?.role === "admin" ? <Select aria-label="Ámbito de Hoy" className="w-full sm:w-48" value={agendaScope} onChange={(event) => setAgendaScope(event.target.value)}><option value="mine">Mi trabajo</option><option value="team">Todo el equipo</option></Select> : <p className="text-sm text-muted-foreground">Mi trabajo</p>)}
+      {view === "my_day" && agendaScope === "mine" && user && <NextMeeting today={businessToday} />}
       {view === "my_day" && agendaScope === "mine" && user && <IncidentInbox key={user.id} userId={user.id} compact />}
       {view !== "my_day" && view !== "recurring" && <>
       {/* Search + Filters */}
