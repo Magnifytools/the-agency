@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-20T19:57:54.325422+00:00",
-  "estado_general": "produccion_decimonovena_mejora_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-20T20:37:10.599133+00:00",
+  "estado_general": "produccion_vigesima_mejora_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -259,9 +259,16 @@
     {
       "id": "AUDIT-20260920-P20",
       "descripcion": "Recuperación visible y caché coherente en superficies operativas",
-      "estado": "en_progreso",
+      "estado": "completado",
       "prioridad": "alta",
-      "notas": "Implementación y revisión local final:372 frontend/62archivos, build, navegador390/1440 y read-only. Sin migración/backend. Pendiente CI/publicación. Alta compuesta atómica preparada para P21."
+      "notas": "PR32/551eac8 publicada y verificada.372frontend/62archivos,1204backend(2omitidas), seisgatesCI, UI390/1440. Datos/hashes/ledger conservados, sin migración. P21 sólo plan, objetivo global activo."
+    },
+    {
+      "id": "AUDIT-20260920-P21",
+      "descripcion": "Alta atómica de cliente, contactos y proyecto con recuperación y Deshacer",
+      "estado": "en_validacion",
+      "prioridad": "alta",
+      "notas": "Implementada localmente;1243backend(2omitidas),14pruebas dirigidasUI y build final correctos. Pendientes navegador,CI ypublicación. ProducciónP20sin cambios."
     }
   ],
   "bugs": [
@@ -332,7 +339,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "Publicar/verificar P20; después alta compuesta atómica e idempotente P21. Mantener matriz completa y decisiones de estados/canales/histórico pendientes.",
+  "proximos_pasos": "P21: alta compuesta de cliente/contactos/proyecto atómica e idempotente, recuperación de respuesta perdida y Undo coherente. Mantener matriz completa y decisiones de estados/canales/histórico pendientes.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
@@ -342,7 +349,7 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "ea44b53b2c0ada670262b10248703d126bfd4cf3",
+    "revision": "551eac812ce03ea121dea93801864ee7479762a9",
     "healthcheck": "/api/ready",
     "schema_revision": "20260920_task_retirement_v1"
   },

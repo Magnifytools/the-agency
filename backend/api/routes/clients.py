@@ -4,9 +4,10 @@ import os
 from typing import Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Path, Query, UploadFile, status
 from pydantic import BaseModel
 from fastapi.responses import Response
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, func, delete, update, or_, text
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,11 +23,14 @@ from backend.db.models import (
     BalanceSnapshot,
 )
 from backend.schemas.client import ClientCreate, ClientUpdate, ClientResponse, ClientDocumentResponse
+from backend.schemas.client_onboarding import ClientOnboardingCreate, ClientOnboardingResponse
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module, require_admin
 from backend.services.client_health import HealthCapabilities, compute_health, compute_health_batch
 from backend.core.modules import is_enabled
 from backend.api.utils.db_helpers import safe_refresh
+from backend.services.client_onboarding import create_onboarding, recover_onboarding
+from backend.services.domain_writes import create_client as create_client_write
 
 logger = logging.getLogger(__name__)
 
@@ -196,9 +200,8 @@ async def create_client(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients", write=True)),
 ):
-    client = Client(**body.model_dump())
-    db.add(client)
     try:
+        client = await create_client_write(db, body.model_dump())
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -212,6 +215,61 @@ async def create_client(
         raise HTTPException(status_code=500, detail="Error interno del servidor")
     await safe_refresh(db, client, log_context="clients")
     return client
+
+
+_ONBOARDING_KEY_PATTERN = r"^[A-Za-z0-9_-]{16,64}$"
+
+
+@router.post(
+    "/onboarding",
+    response_model=ClientOnboardingResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def onboard_client(
+    body: ClientOnboardingCreate,
+    request_key: str = Header(..., alias="X-Agency-Request-Key", pattern=_ONBOARDING_KEY_PATTERN),
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_module("clients", write=True)),
+):
+    try:
+        response, created = await create_onboarding(db, actor, request_key, body)
+    except HTTPException:
+        await db.rollback()
+        raise
+    except DataError:
+        await db.rollback()
+        raise HTTPException(422, "Datos inválidos: campo excede longitud máxima")
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(422, "Los datos del alta no cumplen las restricciones")
+    except Exception:
+        await db.rollback()
+        logger.exception("Error creando alta compuesta de cliente")
+        raise HTTPException(500, "Error interno del servidor")
+    if not created:
+        return JSONResponse(status_code=200, content=response.model_dump(mode="json"))
+    return response
+
+
+@router.post(
+    "/onboarding-attempts/{request_key}/recover",
+    response_model=ClientOnboardingResponse,
+)
+async def recover_client_onboarding(
+    request_key: str = Path(..., pattern=_ONBOARDING_KEY_PATTERN),
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_module("clients", write=True)),
+):
+    try:
+        response, response_status = await recover_onboarding(db, actor, request_key)
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception:
+        await db.rollback()
+        logger.exception("Error recuperando alta compuesta de cliente")
+        raise HTTPException(500, "Error interno del servidor")
+    return JSONResponse(status_code=response_status, content=response.model_dump(mode="json"))
 
 
 def _health_capabilities(user: User) -> HealthCapabilities:

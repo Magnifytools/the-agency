@@ -382,7 +382,7 @@ class User(TimestampMixin, Base):
 # CLIENT MANAGEMENT: Clients, Contacts, Resources, Documents
 # ═══════════════════════════════════════════════════════════════
 
-class Client(TimestampMixin, Base):
+class Client(UTCTimestampMixin, Base):
     __tablename__ = "clients"
     __table_args__ = (
         CheckConstraint("monthly_budget >= 0", name="ck_client_monthly_budget_positive"),
@@ -469,7 +469,7 @@ class TaskCategory(TimestampMixin, Base):
 # PROJECT MANAGEMENT: Projects, Phases, Evidence
 # ═══════════════════════════════════════════════════════════════
 
-class Project(TimestampMixin, Base):
+class Project(UTCTimestampMixin, Base):
     __tablename__ = "projects"
     __table_args__ = (
         CheckConstraint("budget_amount >= 0", name="ck_project_budget_amount_positive"),
@@ -801,7 +801,7 @@ class TimeEntry(TimestampMixin, Base):
 
 # ── Client sub-models (contacts, resources, documents) ────────
 
-class ClientContact(TimestampMixin, Base):
+class ClientContact(UTCTimestampMixin, Base):
     __tablename__ = "client_contacts"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -1043,6 +1043,27 @@ class ChangeLog(TimestampMixin, Base):
     operations = Column(JSONB, nullable=False)
     undone_at = Column(DateTime, nullable=True)
     undone_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class ClientOnboardingReceipt(Base):
+    """Terminal result or cancellation barrier for a user's client creation."""
+    __tablename__ = "client_onboarding_receipts"
+    __table_args__ = (
+        CheckConstraint(
+            "(status = 'cancelled' AND request_hash IS NULL AND result IS NULL AND change_log_id IS NULL) OR "
+            "(status = 'confirmed' AND request_hash IS NOT NULL AND request_hash ~ '^[0-9a-f]{64}$' "
+            "AND result IS NOT NULL AND jsonb_typeof(result) = 'object')",
+            name="ck_client_onboarding_receipts_terminal",
+        ),
+        CheckConstraint("request_key ~ '^[A-Za-z0-9_-]{16,64}$'", name="ck_client_onboarding_receipts_key"),
+    )
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    request_key = Column(String(64), primary_key=True)
+    status = Column(String(16), nullable=False)
+    request_hash = Column(String(64), nullable=True)
+    result = Column(JSONB(none_as_null=True), nullable=True)
+    change_log_id = Column(Integer, ForeignKey("change_logs.id", ondelete="SET NULL"), nullable=True)
 
 
 class CommandReceipt(TimestampMixin, Base):

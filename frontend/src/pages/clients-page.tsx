@@ -1,8 +1,8 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { clientsApi, clientHealthApi, contactsApi, engineApi, projectsApi } from "@/lib/api"
-import type { Client, ClientCreate, ClientExtract, ClientStatus, ClientHealthScore } from "@/lib/types"
+import { clientsApi, clientHealthApi, engineApi } from "@/lib/api"
+import type { Client, ClientContactCreate, ClientCreate, ClientExtract, ClientOnboardingCreate, ClientOnboardingResult, ClientOnboardingProjectCreate, ClientStatus, ClientHealthScore } from "@/lib/types"
 import { usePagination } from "@/hooks/use-pagination"
 import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
@@ -35,6 +35,56 @@ const STATUS_TABS: { label: string; value: ClientStatus | "all" }[] = [
   { label: "Finalizados", value: "finished" },
 ]
 
+const onboardingStoragePrefix = (userId: number) => `agency:client-onboarding:${userId}:`
+const requestKeyPattern = /^[A-Za-z0-9_-]{16,64}$/
+
+function readOnboardingKeys(userId: number) {
+  try {
+    const prefix = onboardingStoragePrefix(userId)
+    const keys: string[] = []
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const storageKey = localStorage.key(index)
+      if (!storageKey?.startsWith(prefix)) continue
+      const requestKey = storageKey.slice(prefix.length)
+      if (requestKeyPattern.test(requestKey) && localStorage.getItem(storageKey) === "pending") keys.push(requestKey)
+    }
+    return { keys, failed: false }
+  } catch {
+    return { keys: [], failed: true }
+  }
+}
+
+function persistOnboardingKey(userId: number, key: string) {
+  try {
+    localStorage.setItem(`${onboardingStoragePrefix(userId)}${key}`, "pending")
+    return true
+  } catch {
+    return false
+  }
+}
+
+function clearOnboardingKey(userId: number, key: string) {
+  try {
+    localStorage.removeItem(`${onboardingStoragePrefix(userId)}${key}`)
+  } catch {
+    // The key may be gone already. This must not keep a confirmed attempt blocked.
+  }
+}
+
+function newRequestKey() {
+  return crypto.randomUUID()
+}
+
+function onboardingErrorMessage(error: unknown) {
+  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+  if (Array.isArray(detail)) {
+    const messages = detail.flatMap((item) => typeof item === "object" && item !== null && "msg" in item && typeof item.msg === "string" ? [item.msg] : [])
+    if (messages.length) return messages.join(", ")
+  }
+  if (typeof detail === "string") return detail
+  return getErrorMessage(error, "El alta no pasó la validación. Revisa los datos.")
+}
+
 const statusBadge = (status: ClientStatus) => {
   const map: Record<ClientStatus, { label: string; variant: "success" | "warning" | "secondary" }> = {
     active: { label: "Activo", variant: "success" },
@@ -46,18 +96,55 @@ const statusBadge = (status: ClientStatus) => {
 }
 
 export default function ClientsPage() {
+  const { user } = useAuth()
+  return <ClientsPageBody key={user?.id ?? "anonymous"} />
+}
+
+function ClientsPageBody() {
   const queryClient = useQueryClient()
-  const { isAdmin } = useAuth()
+  const { isAdmin, user, hasPermission } = useAuth()
+  const userId = user?.id
+  const canWriteClients = hasPermission("clients", true)
+  const canWriteProjects = hasPermission("projects", true)
   const { page, pageSize, setPage, reset } = usePagination(25)
   const [tab, setTab] = useState<ClientStatus | "all">("all")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
   const [prefill, setPrefill] = useState<ClientExtract | null>(null)
+  const [includeProject, setIncludeProject] = useState(true)
   const [formKey, setFormKey] = useState(0)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [hardDeleteId, setHardDeleteId] = useState<number | null>(null)
   const [openMenuId, setOpenMenuId] = useState<number | null>(null)
   const [bulkStatus, setBulkStatus] = useState("")
+  const [onboardingKeys, setOnboardingKeys] = useState<string[]>(() => userId ? readOnboardingKeys(userId).keys : [])
+  const [storageReadFailed, setStorageReadFailed] = useState(() => userId ? readOnboardingKeys(userId).failed : false)
+  const onboardingKey = onboardingKeys[0] ?? null
+  const [recoveringOnboarding, setRecoveringOnboarding] = useState(() => Boolean(userId && readOnboardingKeys(userId).keys.length))
+  const [onboardingNotice, setOnboardingNotice] = useState<string | null>(null)
+  const [onboardingError, setOnboardingError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const stored = userId ? readOnboardingKeys(userId) : { keys: [], failed: false }
+    setOnboardingKeys(stored.keys)
+    setStorageReadFailed(stored.failed)
+    setRecoveringOnboarding(stored.keys.length > 0)
+    setOnboardingNotice(null)
+    setOnboardingError(null)
+  }, [userId])
+
+  useEffect(() => {
+    if (!userId) return
+    const prefix = onboardingStoragePrefix(userId)
+    const onStorage = (event: StorageEvent) => {
+      if (event.storageArea !== localStorage || !event.key?.startsWith(prefix)) return
+      const stored = readOnboardingKeys(userId)
+      setOnboardingKeys(stored.keys)
+      setStorageReadFailed(stored.failed)
+    }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [userId])
 
   const { data: engineConfig } = useQuery({
     queryKey: ["engine-config"],
@@ -107,75 +194,76 @@ export default function ClientsPage() {
     onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar clientes")),
   })
 
+  function releaseOnboardingAttempt(requestKey = onboardingKey) {
+    if (user && requestKey) clearOnboardingKey(user.id, requestKey)
+    setOnboardingKeys((keys) => requestKey ? keys.filter((key) => key !== requestKey) : keys)
+    setRecoveringOnboarding(Boolean(requestKey && onboardingKeys.some((key) => key !== requestKey)))
+  }
+
+  function handleOnboardingResult(result: ClientOnboardingResult, requestKey = onboardingKey) {
+    if (result.status === "processing") {
+      setRecoveringOnboarding(true)
+      return
+    }
+    if (result.status === "not_committed") {
+      releaseOnboardingAttempt(requestKey)
+      setOnboardingNotice((notice) => notice ?? "No se confirmó el alta. Revisa los datos y vuelve a intentarlo.")
+      return
+    }
+
+    releaseOnboardingAttempt(requestKey)
+    setOnboardingError(null)
+    void invalidateClientChange(queryClient, result.client_id ? [result.client_id] : [])
+    closeDialog()
+    const created = [
+      "Cliente",
+      result.contact_ids.length ? `${result.contact_ids.length} contacto${result.contact_ids.length === 1 ? "" : "s"}` : null,
+      result.project_id ? "proyecto" : null,
+    ].filter(Boolean).join(" + ")
+    if (result.undo_state === "undone") {
+      toast.message("El alta ya fue deshecha.")
+    } else if (result.undo_state === "available") {
+      toast.success(result.replayed ? `${created} recuperado. Puedes deshacerlo en Cambios recientes.` : `${created} creado. Puedes deshacerlo en Cambios recientes.`)
+    } else {
+      toast.success(result.replayed ? `${created} recuperado.` : `${created} creado.`)
+    }
+  }
+
+  const recoveryQuery = useQuery({
+    queryKey: ["client-onboarding", user?.id ?? "anonymous", onboardingKey],
+    queryFn: () => clientsApi.recoverOnboarding(onboardingKey!),
+    enabled: Boolean(user && canWriteClients && onboardingKey && recoveringOnboarding),
+    retry: false,
+  })
+
+  useEffect(() => {
+    if (recoveryQuery.data) handleOnboardingResult(recoveryQuery.data, onboardingKey)
+  // A recovery result is terminal unless it remains processing. Its timestamp keeps a
+  // background refetch from reprocessing an old result after the key is cleared.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recoveryQuery.dataUpdatedAt])
+
   const createMutation = useMutation({
-    mutationFn: async ({ clientData, contact, extraContacts }: {
-      clientData: ClientCreate;
-      contact?: { name: string; email?: string | null; phone?: string | null; position?: string | null };
-      extraContacts?: Array<{ name: string; email?: string | null; phone?: string | null; position?: string | null; is_primary?: boolean; notes?: string | null; language?: string | null; company?: string | null }>;
-    }) => {
-      const client = await clientsApi.create(clientData)
-      try {
-        // Create primary contact if provided manually
-        if (contact?.name) {
-          await contactsApi.create(client.id, {
-            name: contact.name,
-            email: contact.email || null,
-            phone: contact.phone || null,
-            position: contact.position || null,
-            is_primary: true,
-          })
-        }
-        // Create additional AI-extracted contacts
-        let contactsCreated = contact?.name ? 1 : 0
-        if (extraContacts?.length) {
-          for (const c of extraContacts) {
-            try {
-              await contactsApi.create(client.id, {
-                name: c.name,
-                email: c.email || null,
-                phone: c.phone || null,
-                position: [c.position, c.company].filter(Boolean).join(" - ") || null,
-                is_primary: !contact?.name && c.is_primary === true,
-                notes: c.notes || null,
-                language: c.language || null,
-              })
-              contactsCreated++
-            } catch {
-              // Skip if contact creation fails (e.g. duplicate)
-            }
-          }
-        }
-        if (prefill?.project?.name) {
-          await projectsApi.create({
-            name: prefill.project.name,
-            description: prefill.project.description ?? null,
-            project_type: prefill.project.project_type ?? null,
-            is_recurring: prefill.project.is_recurring ?? false,
-            pricing_model: prefill.project.pricing_model ?? null,
-            unit_price: prefill.project.unit_price ?? null,
-            unit_label: prefill.project.unit_label ?? null,
-            scope: prefill.project.scope ?? null,
-            monthly_fee: prefill.project.monthly_fee ?? null,
-            budget_amount: prefill.project.budget_amount ?? null,
-            start_date: prefill.project.start_date ?? null,
-            target_end_date: prefill.project.target_end_date ?? null,
-            client_id: client.id,
-          })
-        }
-        return { client, hadProject: !!prefill?.project?.name, contactsCreated }
-      } finally {
-        // The client already exists even if a later contact/project request fails.
-        void invalidateClientChange(queryClient, [client.id])
+    mutationFn: ({ data, requestKey }: { data: ClientOnboardingCreate; requestKey: string }) => clientsApi.onboard(data, requestKey),
+    onSuccess: (result, variables) => handleOnboardingResult(result, variables.requestKey),
+    onError: (err) => {
+      const code = (err as { response?: { data?: { detail?: { code?: string } } } })?.response?.data?.detail?.code
+      if (code === "attempt_cancelled") {
+        releaseOnboardingAttempt()
+        setOnboardingNotice("Este intento ya se canceló. Revisa los datos antes de crear otro.")
+        return
       }
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status && status >= 400 && status < 500) {
+        const message = onboardingErrorMessage(err)
+        setOnboardingError(message)
+        setOnboardingNotice(null)
+        setRecoveringOnboarding(true)
+        return
+      }
+      setRecoveringOnboarding(true)
+      toast.error("No se pudo confirmar el alta. Estamos comprobando si se guardó antes de permitir otro intento.")
     },
-    onSuccess: ({ hadProject, contactsCreated }) => {
-      closeDialog()
-      const parts = ["Cliente creado"]
-      if (contactsCreated > 0) parts.push(`${contactsCreated} contacto${contactsCreated > 1 ? "s" : ""}`)
-      if (hadProject) parts.push("proyecto")
-      toast.success(parts.join(" + "))
-    },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al crear cliente")),
   })
 
   const updateMutation = useMutation({
@@ -210,9 +298,11 @@ export default function ClientsPage() {
     setDialogOpen(false)
     setEditing(null)
     setPrefill(null)
+    setIncludeProject(true)
   }
 
   const openCreate = () => {
+    if (!canWriteClients || onboardingKey || storageReadFailed) return
     setEditing(null)
     setPrefill(null)
     setFormKey((k) => k + 1)
@@ -220,6 +310,7 @@ export default function ClientsPage() {
   }
 
   const openEdit = (client: Client) => {
+    if (!canWriteClients || onboardingKey || storageReadFailed) return
     setEditing(client)
     setDialogOpen(true)
   }
@@ -249,17 +340,100 @@ export default function ClientsPage() {
       updateMutation.mutate({ id: editing.id, data })
     } else {
       const contactName = (fd.get("contact_name") as string) || ""
-      const manualContact = contactName ? {
+      const manualContact: ClientContactCreate | undefined = contactName ? {
         name: contactName,
         email: (fd.get("contact_email") as string) || null,
         phone: (fd.get("contact_phone") as string) || null,
         position: (fd.get("contact_position") as string) || null,
+        is_primary: true,
       } : undefined
-      // Merge manual contact with AI-extracted contacts (avoid duplicates)
-      const aiContacts = prefill?.contacts?.filter(
-        (c) => !manualContact || c.name.toLowerCase() !== manualContact.name.toLowerCase()
-      ) ?? []
-      createMutation.mutate({ clientData: data, contact: manualContact, extraContacts: aiContacts })
+      const selectedExtracted = new Set(
+        fd.getAll("extracted_contact").map((value) => Number(value)).filter((value) => Number.isInteger(value) && value >= 0),
+      )
+      const selectedPrimary = fd.get("extracted_primary")
+      const extractedPrimary = typeof selectedPrimary === "string" && /^\d+$/.test(selectedPrimary) ? Number(selectedPrimary) : null
+      if (extractedPrimary !== null && (!selectedExtracted.has(extractedPrimary) || !Number.isInteger(extractedPrimary))) {
+        toast.error("El contacto principal debe estar incluido en el alta.")
+        return
+      }
+      if (manualContact && extractedPrimary !== null) {
+        toast.error("El contacto escrito manualmente ya es principal. Elige sólo uno.")
+        return
+      }
+      const aiContacts = (prefill?.contacts ?? []).flatMap((_contact, index) => {
+        if (!selectedExtracted.has(index)) return []
+        const name = String(fd.get(`extracted_contact_name_${index}`) ?? "").trim()
+        return [{
+          name,
+          email: String(fd.get(`extracted_contact_email_${index}`) ?? "") || null,
+          phone: String(fd.get(`extracted_contact_phone_${index}`) ?? "") || null,
+          position: String(fd.get(`extracted_contact_position_${index}`) ?? "") || null,
+          company: String(fd.get(`extracted_contact_company_${index}`) ?? "") || null,
+          notes: String(fd.get(`extracted_contact_notes_${index}`) ?? "") || null,
+          language: String(fd.get(`extracted_contact_language_${index}`) ?? "") || null,
+          index,
+        }]
+      })
+      if (aiContacts.some((contact) => !contact.name)) {
+        toast.error("Cada contacto incluido necesita un nombre.")
+        return
+      }
+      const contacts: ClientContactCreate[] = [
+        ...(manualContact ? [manualContact] : []),
+        ...aiContacts.map((contact) => {
+          return {
+          name: contact.name,
+          email: contact.email || null,
+          phone: contact.phone || null,
+          position: [contact.position, contact.company].filter(Boolean).join(" - ") || null,
+          is_primary: !manualContact && contact.index === extractedPrimary,
+          notes: contact.notes || null,
+          language: contact.language || null,
+          }
+        }),
+      ]
+      if (contacts.length > 50) {
+        toast.error("El alta admite un máximo de 50 contactos.")
+        return
+      }
+      const projectName = String(fd.get("project_name") ?? "").trim()
+      const project: ClientOnboardingProjectCreate | null = includeProject && projectName ? {
+        name: projectName,
+        description: String(fd.get("project_description") ?? "") || null,
+        project_type: String(fd.get("project_type") ?? "") || null,
+        is_recurring: fd.get("project_is_recurring") === "on",
+        pricing_model: String(fd.get("project_pricing_model") ?? "") || null,
+        unit_price: fd.get("project_unit_price") ? Number(fd.get("project_unit_price")) : null,
+        unit_label: String(fd.get("project_unit_label") ?? "") || null,
+        scope: String(fd.get("project_scope") ?? "") || null,
+        monthly_fee: fd.get("project_monthly_fee") ? Number(fd.get("project_monthly_fee")) : null,
+        budget_amount: fd.get("project_budget_amount") ? Number(fd.get("project_budget_amount")) : null,
+        start_date: String(fd.get("project_start_date") ?? "") || null,
+        target_end_date: String(fd.get("project_target_end_date") ?? "") || null,
+      } : null
+      if (includeProject && prefill?.project?.name && !projectName) {
+        toast.error("El proyecto incluido necesita un nombre.")
+        return
+      }
+      if (project && !canWriteProjects) {
+        toast.error("No tienes permiso para crear el proyecto incluido en este alta.")
+        return
+      }
+      if (!user || !canWriteClients) return
+      if (storageReadFailed) {
+        toast.error("Este navegador no pudo comprobar si hay un alta pendiente. Habilita el almacenamiento local antes de crear un cliente.")
+        return
+      }
+      const requestKey = onboardingKey ?? newRequestKey()
+      if (!onboardingKey && !persistOnboardingKey(user.id, requestKey)) {
+        toast.error("Este navegador no pudo preparar una recuperación segura. Habilita el almacenamiento local antes de crear el cliente.")
+        return
+      }
+      if (!onboardingKey) setOnboardingKeys((keys) => [...keys, requestKey])
+      setRecoveringOnboarding(false)
+      setOnboardingNotice(null)
+      setOnboardingError(null)
+      createMutation.mutate({ data: { client: data, contacts, project }, requestKey })
     }
   }
 
@@ -270,10 +444,27 @@ export default function ClientsPage() {
           <h2 className="text-2xl font-bold uppercase tracking-wide">Clientes</h2>
           {data && <p className="text-sm text-muted-foreground mt-1">{data.total} clientes · {clients.length} en vista</p>}
         </div>
-        <Button onClick={openCreate}>
+        <Button onClick={openCreate} disabled={!canWriteClients || !!onboardingKey || storageReadFailed}>
           <Plus className="h-4 w-4 mr-2" /> Nuevo cliente
         </Button>
       </div>
+
+      {(onboardingKey || onboardingNotice || storageReadFailed) && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm">
+          <span>
+            {onboardingNotice ?? (storageReadFailed
+              ? "Este navegador no pudo comprobar si hay un alta pendiente. Habilita el almacenamiento local antes de crear o editar clientes."
+              : recoveryQuery.isError
+              ? "No se pudo comprobar el alta anterior. No crees ni edites clientes hasta resolverla."
+              : recoveryQuery.data?.status === "processing"
+                ? "El alta anterior sigue procesándose. Espera antes de crear o editar clientes."
+                : "Estamos comprobando un alta anterior antes de permitir cambios.")}
+          </span>
+          {onboardingKey && <Button variant="outline" size="sm" disabled={recoveryQuery.isFetching} onClick={() => void recoveryQuery.refetch()}>
+            {recoveryQuery.isFetching ? "Comprobando…" : "Comprobar alta"}
+          </Button>}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-2">
@@ -362,7 +553,7 @@ export default function ClientsPage() {
                     {c.company && <p className="text-sm text-muted-foreground">{c.company}</p>}
                   </div>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" aria-label="Editar cliente" onClick={() => openEdit(c)}>
+                    <Button variant="ghost" size="icon" aria-label="Editar cliente" disabled={!canWriteClients || !!onboardingKey || storageReadFailed} onClick={() => openEdit(c)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
                   </div>
@@ -482,7 +673,7 @@ export default function ClientsPage() {
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" aria-label="Editar cliente" onClick={() => openEdit(c)}>
+                    <Button variant="ghost" size="icon" aria-label="Editar cliente" disabled={!canWriteClients || !!onboardingKey || storageReadFailed} onClick={() => openEdit(c)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <div className="relative">
@@ -532,8 +723,21 @@ export default function ClientsPage() {
         <DialogHeader>
           <DialogTitle>{editing ? "Editar cliente" : "Nuevo cliente"}</DialogTitle>
         </DialogHeader>
-        {!editing && <AiFillSection onExtracted={(data) => { setPrefill(data); setFormKey((k) => k + 1) }} />}
+        {!editing && !onboardingKey && !storageReadFailed && <AiFillSection onExtracted={(data) => { setPrefill(data); setIncludeProject(true); setFormKey((k) => k + 1) }} />}
         <form key={formKey} onSubmit={handleSubmit} className="space-y-4">
+          {!editing && (onboardingKey || onboardingNotice || onboardingError || storageReadFailed) && (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
+              <span>{onboardingError ?? onboardingNotice ?? (storageReadFailed
+                ? "Este navegador no pudo comprobar si hay un alta pendiente."
+                : recoveryQuery.isError
+                  ? "No se pudo comprobar el alta anterior."
+                  : "Estamos comprobando el alta anterior antes de permitir cambios.")}</span>
+              {onboardingKey && <Button type="button" variant="outline" size="sm" disabled={recoveryQuery.isFetching} onClick={() => void recoveryQuery.refetch()}>
+                {recoveryQuery.isFetching ? "Comprobando…" : "Comprobar alta"}
+              </Button>}
+            </div>
+          )}
+          <fieldset disabled={!!onboardingKey || storageReadFailed || createMutation.isPending || (editing !== null && updateMutation.isPending)} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="name">Nombre *</Label>
@@ -627,34 +831,54 @@ export default function ClientsPage() {
           </div>
           {/* Contacto principal (solo al crear) */}
           {!editing && (() => {
-            const primaryContact = prefill?.contacts?.find((c) => c.is_primary) ?? prefill?.contacts?.[0]
+            const extractedContacts = prefill?.contacts ?? []
+            const declaredPrimary = extractedContacts.filter((contact) => contact.is_primary)
+            const hasAmbiguousPrimary = declaredPrimary.length > 1
             return (
               <div className="space-y-3 border border-border rounded-lg p-3">
                 <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Contacto principal</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="contact_name" className="text-xs">Nombre</Label>
-                    <Input id="contact_name" name="contact_name" defaultValue={primaryContact?.name ?? ""} placeholder="Nombre del contacto" />
+                    <Input id="contact_name" name="contact_name" placeholder="Nombre del contacto" />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="contact_email" className="text-xs">Email</Label>
-                    <Input id="contact_email" name="contact_email" type="email" defaultValue={primaryContact?.email ?? ""} placeholder="contacto@empresa.com" />
+                    <Input id="contact_email" name="contact_email" type="email" placeholder="contacto@empresa.com" />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="contact_phone" className="text-xs">Teléfono</Label>
-                    <Input id="contact_phone" name="contact_phone" defaultValue={primaryContact?.phone ?? ""} placeholder="+34 600 000 000" />
+                    <Input id="contact_phone" name="contact_phone" placeholder="+34 600 000 000" />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="contact_position" className="text-xs">Cargo</Label>
-                    <Input id="contact_position" name="contact_position" defaultValue={primaryContact?.position ?? ""} placeholder="CEO, Marketing Director..." />
+                    <Input id="contact_position" name="contact_position" placeholder="CEO, Marketing Director..." />
                   </div>
                 </div>
-                {prefill?.contacts && prefill.contacts.length > 1 && (
-                  <div className="text-xs text-muted-foreground mt-2 space-y-1">
-                    <p className="font-medium flex items-center gap-1"><Sparkles className="h-3 w-3 text-primary" /> {prefill.contacts.length - 1} contacto{prefill.contacts.length > 2 ? "s" : ""} adicional{prefill.contacts.length > 2 ? "es" : ""} detectado{prefill.contacts.length > 2 ? "s" : ""} (se crearán automáticamente):</p>
-                    {prefill.contacts.filter((c) => c !== primaryContact).map((c, i) => (
-                      <p key={i} className="ml-4">· {c.name}{c.position ? ` — ${c.position}` : ""}{c.company ? ` (${c.company})` : ""}</p>
+                {extractedContacts.length > 0 && (
+                  <div className="space-y-2 rounded-md bg-muted/30 p-3 text-sm">
+                    <p className="font-medium">Contactos detectados</p>
+                    <p className="text-xs text-muted-foreground">Elige cuáles crear y, si corresponde, cuál es el principal. Puedes dejar contactos fuera.</p>
+                    {hasAmbiguousPrimary && <p role="alert" className="text-xs">La extracción marcó más de un contacto principal. Elige sólo uno antes de crear.</p>}
+                    {extractedContacts.map((contact, index) => (
+                      <div key={`${contact.name}-${index}`} className="space-y-2 rounded border p-2 text-xs">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <label className="flex items-center gap-1.5"><input type="checkbox" name="extracted_contact" value={index} defaultChecked className="rounded border-border" />Crear contacto</label>
+                          <label className="flex items-center gap-1.5"><input type="radio" name="extracted_primary" value={index} defaultChecked={!hasAmbiguousPrimary && contact.is_primary === true} />Principal</label>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <div><Label htmlFor={`extracted_contact_name_${index}`} className="text-xs">Nombre</Label><Input id={`extracted_contact_name_${index}`} name={`extracted_contact_name_${index}`} defaultValue={contact.name} /></div>
+                          <div><Label htmlFor={`extracted_contact_email_${index}`} className="text-xs">Email</Label><Input id={`extracted_contact_email_${index}`} name={`extracted_contact_email_${index}`} defaultValue={contact.email ?? ""} /></div>
+                          <div><Label htmlFor={`extracted_contact_phone_${index}`} className="text-xs">Teléfono</Label><Input id={`extracted_contact_phone_${index}`} name={`extracted_contact_phone_${index}`} defaultValue={contact.phone ?? ""} /></div>
+                          <div><Label htmlFor={`extracted_contact_position_${index}`} className="text-xs">Cargo</Label><Input id={`extracted_contact_position_${index}`} name={`extracted_contact_position_${index}`} defaultValue={contact.position ?? ""} /></div>
+                        </div>
+                        <details><summary className="cursor-pointer text-muted-foreground">Más campos</summary><div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2"><div><Label htmlFor={`extracted_contact_company_${index}`} className="text-xs">Empresa</Label><Input id={`extracted_contact_company_${index}`} name={`extracted_contact_company_${index}`} defaultValue={contact.company ?? ""} /></div><div><Label htmlFor={`extracted_contact_language_${index}`} className="text-xs">Idioma</Label><Input id={`extracted_contact_language_${index}`} name={`extracted_contact_language_${index}`} defaultValue={contact.language ?? ""} /></div><div className="sm:col-span-2"><Label htmlFor={`extracted_contact_notes_${index}`} className="text-xs">Notas</Label><Textarea id={`extracted_contact_notes_${index}`} name={`extracted_contact_notes_${index}`} defaultValue={contact.notes ?? ""} /></div></div></details>
+                      </div>
                     ))}
+                    <label className="flex items-center gap-1.5 text-xs">
+                      <input type="radio" name="extracted_primary" value="" />
+                      Ninguno de los contactos detectados
+                    </label>
                   </div>
                 )}
               </div>
@@ -667,30 +891,22 @@ export default function ClientsPage() {
             </div>
           )}
           {prefill?.project?.name && (
-            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5">
-              <p className="text-sm font-medium flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-primary" />
-                Proyecto a crear automáticamente
-              </p>
-              <div className="text-sm text-muted-foreground space-y-0.5">
-                <p><span className="font-medium text-foreground">{prefill.project.name}</span></p>
-                {prefill.project.description && <p>{prefill.project.description}</p>}
-                <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs mt-1">
-                  {prefill.project.project_type && <span>Tipo: {prefill.project.project_type}</span>}
-                  {prefill.project.pricing_model && <span>Pricing: {prefill.project.pricing_model}</span>}
-                  {prefill.project.monthly_fee && <span>Fee: {formatCurrency(prefill.project.monthly_fee)}/mes</span>}
-                  {prefill.project.unit_price && <span>{formatCurrency(prefill.project.unit_price)}{prefill.project.unit_label ? `/${prefill.project.unit_label}` : ""}</span>}
-                  {prefill.project.is_recurring && <span>Recurrente</span>}
-                  {prefill.project.scope && <span>Scope: {prefill.project.scope}</span>}
-                </div>
-              </div>
+            <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">
+              <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" name="create_project" checked={includeProject} onChange={(event) => setIncludeProject(event.target.checked)} className="rounded border-border" />Crear proyecto detectado</label>
+              <fieldset disabled={!includeProject} className="space-y-3"><div><Label htmlFor="project_name">Nombre del proyecto</Label><Input id="project_name" name="project_name" defaultValue={prefill.project.name} /></div>
+              <div><Label htmlFor="project_description">Descripción</Label><Textarea id="project_description" name="project_description" defaultValue={prefill.project.description ?? ""} /></div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><Label htmlFor="project_start_date">Inicio</Label><Input id="project_start_date" name="project_start_date" type="date" defaultValue={prefill.project.start_date ?? ""} /></div><div><Label htmlFor="project_target_end_date">Fecha objetivo</Label><Input id="project_target_end_date" name="project_target_end_date" type="date" defaultValue={prefill.project.target_end_date ?? ""} /></div></div>
+              <details><summary className="cursor-pointer text-sm text-muted-foreground">Campos avanzados</summary><div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2"><div><Label htmlFor="project_type">Tipo</Label><Input id="project_type" name="project_type" defaultValue={prefill.project.project_type ?? ""} /></div><div><Label htmlFor="project_pricing_model">Modelo de precio</Label><Input id="project_pricing_model" name="project_pricing_model" defaultValue={prefill.project.pricing_model ?? ""} /></div><div><Label htmlFor="project_monthly_fee">Cuota mensual</Label><Input id="project_monthly_fee" name="project_monthly_fee" type="number" step="0.01" defaultValue={prefill.project.monthly_fee ?? ""} /></div><div><Label htmlFor="project_budget_amount">Presupuesto</Label><Input id="project_budget_amount" name="project_budget_amount" type="number" step="0.01" defaultValue={prefill.project.budget_amount ?? ""} /></div><div><Label htmlFor="project_unit_price">Precio unitario</Label><Input id="project_unit_price" name="project_unit_price" type="number" step="0.01" defaultValue={prefill.project.unit_price ?? ""} /></div><div><Label htmlFor="project_unit_label">Unidad</Label><Input id="project_unit_label" name="project_unit_label" defaultValue={prefill.project.unit_label ?? ""} /></div><div className="sm:col-span-2"><Label htmlFor="project_scope">Alcance</Label><Textarea id="project_scope" name="project_scope" defaultValue={prefill.project.scope ?? ""} /></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="project_is_recurring" defaultChecked={prefill.project.is_recurring ?? false} />Recurrente</label></div></details></fieldset>
             </div>
           )}
+          </fieldset>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={closeDialog}>
               Cancelar
             </Button>
-            <Button type="submit">{editing ? "Guardar" : "Crear"}</Button>
+            <Button type="submit" disabled={!canWriteClients || !!onboardingKey || storageReadFailed || createMutation.isPending || updateMutation.isPending}>
+              {editing ? "Guardar" : createMutation.isPending ? "Creando…" : "Crear"}
+            </Button>
           </div>
         </form>
       </Dialog>

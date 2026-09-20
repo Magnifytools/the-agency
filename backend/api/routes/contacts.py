@@ -3,12 +3,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 
-from backend.db.database import get_db
-from backend.db.models import User, ClientContact
-from backend.schemas.contact import ContactCreate, ContactUpdate, ContactResponse
-from backend.api.deps import get_current_user, require_module, get_client_or_404
+from backend.api.deps import require_module
 from backend.api.utils.db_helpers import safe_refresh
+from backend.db.database import get_db
+from backend.db.models import Client, ClientContact, User
+from backend.schemas.contact import ContactCreate, ContactResponse, ContactUpdate
+from backend.services.domain_writes import create_contact as create_contact_write
 
 router = APIRouter(prefix="/api/clients/{client_id}/contacts", tags=["contacts"])
 
@@ -38,21 +40,7 @@ async def create_contact(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients", write=True)),
 ):
-    await get_client_or_404(client_id, db)
-
-    # If setting as primary, unset other primaries for this client
-    if body.is_primary:
-        existing = await db.execute(
-            select(ClientContact).where(
-                ClientContact.client_id == client_id,
-                ClientContact.is_primary == True,
-            )
-        )
-        for c in existing.scalars().all():
-            c.is_primary = False
-
-    contact = ClientContact(client_id=client_id, **body.model_dump())
-    db.add(contact)
+    contact = await create_contact_write(db, client_id, body.model_dump())
     await db.commit()
     await safe_refresh(db, contact, log_context="contacts")
     return contact
@@ -66,11 +54,16 @@ async def update_contact(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients", write=True)),
 ):
+    locked_client_id = await db.scalar(
+        select(Client.id).where(Client.id == client_id).with_for_update()
+    )
+    if locked_client_id is None:
+        raise HTTPException(status_code=404, detail="Client not found")
     result = await db.execute(
         select(ClientContact).where(
             ClientContact.id == contact_id,
             ClientContact.client_id == client_id,
-        )
+        ).options(noload("*")).with_for_update()
     )
     contact = result.scalar_one_or_none()
     if contact is None:
@@ -83,9 +76,9 @@ async def update_contact(
         existing = await db.execute(
             select(ClientContact).where(
                 ClientContact.client_id == client_id,
-                ClientContact.is_primary == True,
+                ClientContact.is_primary.is_(True),
                 ClientContact.id != contact_id,
-            )
+            ).order_by(ClientContact.id).options(noload("*")).with_for_update()
         )
         for c in existing.scalars().all():
             c.is_primary = False
@@ -104,11 +97,16 @@ async def delete_contact(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients", write=True)),
 ):
+    locked_client_id = await db.scalar(
+        select(Client.id).where(Client.id == client_id).with_for_update()
+    )
+    if locked_client_id is None:
+        raise HTTPException(status_code=404, detail="Client not found")
     result = await db.execute(
         select(ClientContact).where(
             ClientContact.id == contact_id,
             ClientContact.client_id == client_id,
-        )
+        ).options(noload("*")).with_for_update()
     )
     contact = result.scalar_one_or_none()
     if contact is None:

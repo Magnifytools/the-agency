@@ -1,6 +1,7 @@
 import type { ContractType, ClientStatus, ProfitabilityStatus } from "./common"
 import type { EngineSummaryData, EngineAlert } from "./integration"
 import type { Task } from "./task"
+import type { ProjectCreate } from "./project"
 
 // --- Billing ---
 export type BillingCycle = "monthly" | "bimonthly" | "quarterly" | "annual" | "one_time"
@@ -152,6 +153,24 @@ export interface ClientContactCreate {
   linkedin_url?: string | null
   is_primary?: boolean
   notes?: string | null
+}
+
+export type ClientOnboardingProjectCreate = Omit<ProjectCreate, "client_id">
+
+export interface ClientOnboardingCreate {
+  client: ClientCreate
+  contacts: ClientContactCreate[]
+  project: ClientOnboardingProjectCreate | null
+}
+
+export interface ClientOnboardingResult {
+  status: "confirmed" | "not_committed" | "processing"
+  client_id: number | null
+  contact_ids: number[]
+  project_id: number | null
+  replayed: boolean
+  undo_state: "available" | "undone" | "unavailable"
+  change_log_id: number | null
 }
 
 // Client Resources

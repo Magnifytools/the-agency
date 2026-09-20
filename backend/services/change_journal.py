@@ -42,15 +42,18 @@ import logging
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 
-from sqlalchemy import Date, DateTime, Enum as SAEnum, Float, Numeric, event, inspect as sa_inspect
+from sqlalchemy import Date, DateTime, Float, Numeric, event
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from backend.db.models import (
     ChangeLog,
     Client,
+    ClientContact,
     GrowthIdea,
     Lead,
     LeadActivity,
@@ -60,7 +63,6 @@ from backend.db.models import (
     TaskChecklist,
     TimeEntry,
 )
-
 from backend.services.temporal import utc_now_naive
 
 logger = logging.getLogger(__name__)
@@ -131,6 +133,7 @@ _SPECS: dict[type, _Spec] = {
     Task:          _Spec("task",          "title",        "tasks",    "Tarea",     True,  0),
     Project:       _Spec("project",       "name",         "projects", "Proyecto",  False, 0),
     Client:        _Spec("client",        "name",         "clients",  "Cliente",   False, 0),
+    ClientContact: _Spec("client_contact", "name",        "clients",  "Contacto",  False, 1),
     Lead:          _Spec("lead",          "company_name", "growth",   "Lead",      False, 0),
     GrowthIdea:    _Spec("growth_idea",   "title",        "growth",   "Idea",      True,  0),
     ProjectPhase:  _Spec("project_phase", "name",         "projects", "Fase",      True,  1),
@@ -174,6 +177,41 @@ def serialize(value: Any) -> Any:
     return str(value)
 
 
+def serialize_column(column, value: Any) -> Any:
+    """Serialize with the coercion PostgreSQL applies for the real column.
+
+    ORM attributes keep the assigned Python float after INSERT/UPDATE, while a
+    later SELECT returns ``Decimal`` for NUMERIC.  Canonicalizing to the column
+    scale makes both representations compare exactly without weakening CAS.
+    """
+    if value is None:
+        return None
+    col_type = column.type
+    if isinstance(col_type, Numeric) and not isinstance(col_type, Float):
+        # asyncpg binds a Python float as its binary float8 value before
+        # PostgreSQL coerces it to NUMERIC.  ``Decimal(str(value))`` models the
+        # human decimal spelling instead and disagrees at boundaries such as
+        # 2.675 (persisted as 2.67).  Preserve the actual binary value here.
+        decimal = Decimal.from_float(value) if isinstance(value, float) else Decimal(str(value))
+        scale = getattr(col_type, "scale", None)
+        if scale is not None:
+            decimal = decimal.quantize(Decimal(1).scaleb(-scale), rounding=ROUND_HALF_UP)
+            # PostgreSQL NUMERIC does not retain a negative sign when the
+            # value rounds to zero (for example -0.001::numeric(12,2)).
+            if decimal.is_zero():
+                decimal = decimal.copy_abs()
+            return format(decimal, f".{scale}f")
+        if decimal.is_zero():
+            decimal = decimal.copy_abs()
+        return format(decimal.normalize(), "f")
+    return serialize(value)
+
+
+def column_value_matches(column, current: Any, expected: Any) -> bool:
+    """Compare a DB value with current and legacy journal JSON encodings."""
+    return serialize_column(column, current) == serialize_column(column, expected)
+
+
 def deserialize(column, value: Any) -> Any:
     """Inverso de :func:`serialize`, guiado por el tipo real de la columna."""
     if value is None:
@@ -184,7 +222,10 @@ def deserialize(column, value: Any) -> Any:
     # Float hereda de Numeric: hay que descartarlo antes o los float acabarían
     # como Decimal.
     if isinstance(col_type, Numeric) and not isinstance(col_type, Float):
-        return Decimal(str(value))
+        # Los snapshots nuevos ya son strings a la escala de la columna. Los
+        # históricos pueden contener un JSON number: debe atravesar la misma
+        # coerción float8 -> NUMERIC que tuvo el writer original.
+        return Decimal(serialize_column(column, value))
     if isinstance(col_type, DateTime):
         return datetime.fromisoformat(value) if isinstance(value, str) else value
     if isinstance(col_type, Date):
@@ -198,7 +239,7 @@ def _snapshot(obj: Any) -> dict[str, Any]:
     for attr in state.mapper.column_attrs:
         if attr.key in _SKIP_COLUMNS:
             continue
-        out[attr.key] = serialize(getattr(obj, attr.key, None))
+        out[attr.key] = serialize_column(attr.expression, getattr(obj, attr.key, None))
     return out
 
 
@@ -217,8 +258,8 @@ def _diff(obj: Any) -> tuple[dict[str, Any], dict[str, Any]]:
         new = history.added[0] if history.added else None
         if old == new:
             continue
-        before[attr.key] = serialize(old)
-        after[attr.key] = serialize(new)
+        before[attr.key] = serialize_column(attr.expression, old)
+        after[attr.key] = serialize_column(attr.expression, new)
     return before, after
 
 

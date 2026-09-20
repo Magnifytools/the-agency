@@ -5,12 +5,13 @@ from backend.startup import schema_baseline
 from backend.startup.job_runtime_schema import MIGRATION as JOB_RUNTIME_MIGRATION
 from backend.startup.inbox_recovery_schema_v2 import MIGRATION as INBOX_RECOVERY_MIGRATION
 from backend.startup.task_retirement_schema import MIGRATION as TASK_RETIREMENT_MIGRATION
+from backend.startup.client_onboarding_schema import MIGRATION as CLIENT_ONBOARDING_MIGRATION
 from backend.startup.schema_runner import run_schema_migrations
 
 
 MIGRATIONS = (
     *schema_baseline.MIGRATIONS, JOB_RUNTIME_MIGRATION, INBOX_RECOVERY_MIGRATION,
-    TASK_RETIREMENT_MIGRATION,
+    TASK_RETIREMENT_MIGRATION, CLIENT_ONBOARDING_MIGRATION,
 )
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 

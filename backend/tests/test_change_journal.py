@@ -8,7 +8,15 @@ from decimal import Decimal
 
 import pytest
 
-from backend.db.models import Client, ClientStatus, Project, Task, TaskChecklist, TaskStatus
+from backend.db.models import (
+    Client,
+    ClientOnboardingReceipt,
+    ClientStatus,
+    Project,
+    Task,
+    TaskChecklist,
+    TaskStatus,
+)
 from backend.services import change_journal as cj
 
 
@@ -32,6 +40,23 @@ def test_decimal_survives_el_viaje_sin_perder_centimos():
     assert serialized == "1234.57"
     column = Project.__mapper__.column_attrs["monthly_fee"].expression
     assert cj.deserialize(column, serialized) == value
+
+
+def test_numeric_usa_la_escala_persistida_y_acepta_snapshot_legacy_number():
+    column = Project.__mapper__.column_attrs["monthly_fee"].expression
+    assert cj.serialize_column(column, 50.5) == "50.50"
+    assert cj.serialize_column(column, Decimal("50.50")) == "50.50"
+    assert cj.serialize_column(column, 50.555) == "50.55"
+    assert cj.serialize_column(column, 2.675) == "2.67"
+    assert cj.serialize_column(column, 1.005) == "1.00"
+    assert cj.serialize_column(column, -2.675) == "-2.67"
+    assert cj.serialize_column(column, -1.005) == "-1.00"
+    assert cj.serialize_column(column, -0.0) == "0.00"
+    assert cj.serialize_column(column, -0.001) == "0.00"
+    assert cj.deserialize(column, 2.675) == Decimal("2.67")
+    assert cj.deserialize(column, -0.001) == Decimal("0.00")
+    assert cj.column_value_matches(column, Decimal("50.50"), 50.5)
+    assert not cj.column_value_matches(column, Decimal("50.51"), 50.5)
 
 
 def test_float_no_se_convierte_en_decimal():
@@ -146,11 +171,14 @@ def test_el_titulo_largo_se_recorta():
 def test_solo_se_vigilan_las_entidades_operativas():
     """Finanzas queda fuera a propósito (ver "No tocar" en CLAUDE.md)."""
     assert set(cj.MODELS_BY_TYPE) == {
-        "task", "project", "client", "lead", "growth_idea",
+        "task", "project", "client", "client_contact", "lead", "growth_idea",
         "project_phase", "task_checklist", "lead_activity", "time_entry",
     }
     from backend.db.models import Expense, Income
     assert Income not in cj._SPECS and Expense not in cj._SPECS
+    # El recibo durable sólo coordina idempotencia/recovery. Incluirlo en Undo
+    # duplicaría su payload y convertiría metadatos internos en historial visible.
+    assert ClientOnboardingReceipt not in cj._SPECS
 
 
 def test_los_hijos_se_restauran_despues_que_los_padres():

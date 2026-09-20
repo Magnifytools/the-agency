@@ -32,11 +32,20 @@ from sqlalchemy.orm import noload
 
 from backend.api.deps import get_current_user
 from backend.db.database import get_db
-from backend.db.models import ChangeLog, Task, TaskChecklist, TimeEntry, User, UserRole
+from backend.db.models import (
+    ChangeLog,
+    ClientContact,
+    Task,
+    TaskChecklist,
+    TimeEntry,
+    User,
+    UserRole,
+)
 from backend.services import change_journal
 from backend.services.change_journal import (
     MODELS_BY_TYPE,
     SPECS_BY_TYPE,
+    column_value_matches,
     deserialize,
     serialize,
 )
@@ -128,6 +137,55 @@ def _columns(model: type) -> dict[str, Any]:
     return {attr.key: attr.expression for attr in model.__mapper__.column_attrs}
 
 
+def _order_fk_operations(operations: list[dict], *, parents_first: bool) -> list[dict]:
+    """Order one journal subset by its concrete FK values.
+
+    Static entity ranks cannot express that Project is both a child of Client
+    and a parent of other work.  Build the order from the rows captured in this
+    change, retaining rank/insertion order only as a deterministic fallback.
+    """
+    indexed = list(enumerate(operations))
+    indexed.sort(key=lambda item: (item[1].get("rank", 0), item[0]))
+    by_table_and_id: dict[tuple[str, int], tuple[str, int]] = {}
+    for _, op in indexed:
+        model = MODELS_BY_TYPE.get(op.get("entity_type"))
+        entity_id = op.get("entity_id")
+        if model is not None and entity_id is not None:
+            by_table_and_id[(model.__table__.name, entity_id)] = (op["entity_type"], entity_id)
+
+    parents: dict[tuple[str, int], set[tuple[str, int]]] = {}
+    for _, op in indexed:
+        identity = (op.get("entity_type"), op.get("entity_id"))
+        model = MODELS_BY_TYPE.get(op.get("entity_type"))
+        snapshot = op.get("before") if op.get("action") == "delete" else op.get("after")
+        dependencies: set[tuple[str, int]] = set()
+        if model is not None:
+            for column in model.__table__.columns:
+                value = (snapshot or {}).get(column.key)
+                if value is None:
+                    continue
+                for foreign_key in column.foreign_keys:
+                    parent = by_table_and_id.get((foreign_key.column.table.name, value))
+                    if parent is not None and parent != identity:
+                        dependencies.add(parent)
+        parents[identity] = dependencies
+
+    emitted: set[tuple[str, int]] = set()
+    ordered: list[dict] = []
+    pending = [op for _, op in indexed]
+    while pending:
+        ready_index = next((
+            index for index, op in enumerate(pending)
+            if parents[(op.get("entity_type"), op.get("entity_id"))].issubset(emitted)
+        ), None)
+        # Cyclic/self-referential legacy data keeps the deterministic fallback.
+        index = ready_index if ready_index is not None else 0
+        op = pending.pop(index)
+        ordered.append(op)
+        emitted.add((op.get("entity_type"), op.get("entity_id")))
+    return ordered if parents_first else list(reversed(ordered))
+
+
 async def _manual_time_conflict(db: AsyncSession, operations: list[dict]) -> str | None:
     """Preflight a grouped manual-time undo so Task and TimeEntry stay atomic."""
     for op in operations:
@@ -203,6 +261,19 @@ async def _lock_operation_rows(db: AsyncSession, operations: list[dict]) -> dict
         )).all())
     if checklist_task_ids:
         grouped.setdefault("task", set()).update(checklist_task_ids)
+    contact_ops = [op for op in operations if op.get("entity_type") == "client_contact"]
+    contact_ids = [op["entity_id"] for op in contact_ops if op.get("entity_id") is not None]
+    anticipated_client_ids = {
+        client_id for op in contact_ops
+        for client_id in ((op.get("before") or {}).get("client_id"), (op.get("after") or {}).get("client_id"))
+        if client_id is not None
+    }
+    if contact_ids:
+        anticipated_client_ids.update((await db.scalars(
+            select(ClientContact.client_id).where(ClientContact.id.in_(contact_ids))
+        )).all())
+    if anticipated_client_ids:
+        grouped.setdefault("client", set()).update(anticipated_client_ids)
     # Undo can restore an old dependency, reopen a completed dependent, or
     # reinsert a deleted task. Lock both current and intended parents in the
     # same deterministic task order before inspecting their lifecycle.
@@ -237,7 +308,62 @@ async def _lock_operation_rows(db: AsyncSession, operations: list[dict]) -> dict
         row = locked.get(("task_checklist", op.get("entity_id")))
         if row is not None and row.task_id not in checklist_task_ids:
             raise HTTPException(409, "La subtarea cambió de tarea; vuelve a intentarlo")
+    for op in contact_ops:
+        row = locked.get(("client_contact", op.get("entity_id")))
+        if row is not None and row.client_id not in anticipated_client_ids:
+            raise HTTPException(409, "El contacto cambió de cliente; vuelve a intentarlo")
     return locked
+
+
+async def _preflight_contact_primaries(
+    db: AsyncSession, operations: list[dict], locked: dict[tuple[str, int], Any],
+) -> None:
+    """Reject an Undo whose final state would create two primary contacts."""
+    contact_ops = [op for op in operations if op.get("entity_type") == "client_contact"]
+    if not contact_ops:
+        return
+    client_ids = {
+        client_id for op in contact_ops
+        for client_id in ((op.get("before") or {}).get("client_id"), (op.get("after") or {}).get("client_id"))
+        if client_id is not None
+    }
+    client_ids.update(
+        row.client_id for op in contact_ops
+        if (row := locked.get(("client_contact", op.get("entity_id")))) is not None
+    )
+    primary_rows = (await db.execute(
+        select(ClientContact.id, ClientContact.client_id)
+        .where(
+            ClientContact.client_id.in_(sorted(client_ids)),
+            ClientContact.is_primary.is_(True),
+        )
+        .order_by(ClientContact.client_id, ClientContact.id)
+    )).all()
+    primaries = {client_id: set() for client_id in client_ids}
+    for contact_id, client_id in primary_rows:
+        primaries[client_id].add(contact_id)
+
+    for op in contact_ops:
+        contact_id, action = op.get("entity_id"), op.get("action")
+        before, after = op.get("before") or {}, op.get("after") or {}
+        row = locked.get(("client_contact", contact_id))
+        current_client_id = row.client_id if row is not None else None
+        if action == "create":
+            if current_client_id is not None:
+                primaries[current_client_id].discard(contact_id)
+        elif action == "delete" and row is None and before.get("is_primary"):
+            primaries[before["client_id"]].add(contact_id)
+        elif action == "update" and row is not None and "is_primary" in before:
+            if "is_primary" not in after or serialize(row.is_primary) == after["is_primary"]:
+                primaries[row.client_id].discard(contact_id)
+                if before["is_primary"]:
+                    primaries[row.client_id].add(contact_id)
+
+    if any(len(contact_ids) > 1 for contact_ids in primaries.values()):
+        raise HTTPException(
+            status_code=409,
+            detail="Ya existe otro contacto principal; no se ha deshecho el cambio",
+        )
 
 
 async def _preflight_retirement(
@@ -377,7 +503,9 @@ async def _preflight_create_removals(db: AsyncSession, removals: list[dict],
         columns = _columns(type(row))
         changed = []
         for key, value in after.items():
-            if key == "id" or key not in columns or serialize(getattr(row, key, None)) == value:
+            if key == "id" or key not in columns or column_value_matches(
+                columns[key], getattr(row, key, None), value,
+            ):
                 continue
             column = columns[key]
             # Legacy INSERT snapshots were taken before SQLAlchemy applied
@@ -387,7 +515,9 @@ async def _preflight_create_removals(db: AsyncSession, removals: list[dict],
                 if key == "created_at":
                     continue  # immutable legacy INSERT timestamp
                 default = column.default
-                if default is not None and default.is_scalar and serialize(default.arg) == serialize(getattr(row, key, None)):
+                if default is not None and default.is_scalar and column_value_matches(
+                    column, getattr(row, key, None), default.arg,
+                ):
                     continue
             changed.append(key)
         if changed:
@@ -491,7 +621,9 @@ async def _undo_update(db: AsyncSession, op: dict, warnings: list[str], row: Any
         if key not in cols or key == "id":
             continue
         # Si el valor actual ya no es el que dejamos, alguien lo tocó después.
-        if key in after and serialize(getattr(row, key, None)) != after[key]:
+        if key in after and not column_value_matches(
+            cols[key], getattr(row, key, None), after[key],
+        ):
             skipped.append(key)
             continue
         setattr(row, key, deserialize(cols[key], old_value))
@@ -528,16 +660,20 @@ async def undo_change(
     # Orden importa: primero repongo lo borrado (padres antes que hijos) para que
     # los updates tengan a dónde apuntar, y dejo los borrados para el final
     # (hijos antes que padres) para no chocar con las claves ajenas.
-    reinserts = sorted([o for o in operations if o["action"] == "delete"], key=lambda o: o.get("rank", 0))
+    reinserts = _order_fk_operations(
+        [o for o in operations if o["action"] == "delete"], parents_first=True,
+    )
     updates = [o for o in operations if o["action"] == "update"]
-    removals = sorted([o for o in operations if o["action"] == "create"],
-                      key=lambda o: o.get("rank", 0), reverse=True)
+    removals = _order_fk_operations(
+        [o for o in operations if o["action"] == "create"], parents_first=False,
+    )
 
     warnings: list[str] = []
     restored = 0
     try:
         with change_journal.paused():
             locked_rows = await _lock_operation_rows(db, operations)
+            await _preflight_contact_primaries(db, operations, locked_rows)
             await _preflight_retirement(db, operations, locked_rows)
             await _preflight_create_removals(db, removals, locked_rows, operations)
             manual_ops = [op for op in operations if op.get("entity_type") == "time_entry"]
