@@ -9,6 +9,7 @@ import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS } from "@/hooks/use-keyboard-shortcu
 import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar, FileText } from "lucide-react"
 import { CommunicationSchedules } from "@/components/communication-schedules"
 import { JobRuntimeStatusPanel } from "@/components/job-runtime-status"
+import { OperationalUsagePanel } from "@/components/admin/operational-usage"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Button } from "@/components/ui/button"
 
@@ -290,6 +291,7 @@ export default function SettingsPage() {
     { id: "digest", label: "Preferencias de digest" },
     { id: "notifications", label: "Avisos" },
     ...(isAdmin ? [{ id: "scheduled-processes", label: "Procesos programados" }] : []),
+    ...(isAdmin ? [{ id: "operational-usage", label: "Señales operativas" }] : []),
     { id: "calendar", label: "Google Calendar" },
     ...(isAdmin ? [{ id: "holidays", label: "Festivos" }] : []),
   ]
@@ -607,6 +609,7 @@ export default function SettingsPage() {
       <CommunicationSchedules />
 
       {isAdmin && <JobRuntimeStatusPanel userId={user?.id} />}
+      {isAdmin && <OperationalUsagePanel userId={user?.id} />}
 
       {/* Google Calendar */}
       <CalendarSection />

@@ -77,6 +77,16 @@ describe("API Client", () => {
     expect(instance.defaults.baseURL).toBe("/api")
   })
 
+  it("declares the web client on every API request", async () => {
+    let request: InternalAxiosRequestConfig | undefined
+    api.defaults.adapter = async (config) => {
+      request = config
+      return { data: {}, status: 200, statusText: "OK", headers: {}, config }
+    }
+    await api.get("/auth/me")
+    expect(request?.headers.get("X-Agency-Client")).toBe("web")
+  })
+
   it("request interceptor adds CSRF header when cookie exists", () => {
     document.cookie = `${CSRF_COOKIE_NAME}=test-csrf-token;path=/`
     const match = document.cookie

@@ -78,6 +78,34 @@ test('popup UTC parsing accepts explicit Z and legacy instants without doubling 
   assert.equal(h.run('parseApiInstant("2026-09-17T12:00:00+02:00").toISOString()'), '2026-09-17T10:00:00.000Z');
 });
 
+test('every authenticated popup request declares the extension client', async t => {
+  const h = await setup(t);
+  await h.run('loadProjectsAndClients()');
+  const authenticated = h.requests.filter(request => request.options.headers?.Authorization);
+  assert.ok(authenticated.length > 0);
+  assert.ok(authenticated.every(request => request.options.headers['X-Agency-Client'] === 'extension'));
+});
+
+test('commercial command opens the empty project review and never offers undo', async t => {
+  const h = await setup(t);
+  let opened;
+  h.dom.window.chrome.tabs.create = value => { opened = value; };
+  h.state.commandResponse = {
+    id: 'commercial-1', request_key: 'commercial-request', raw_text: 'Proyecto SEO tarifa 500 EUR',
+    channel: 'extension', context: null, status: 'executed', intent: { kind: 'project_commercial_handoff' },
+    prompt: null, change_log_id: null, error: null, revision: 1,
+    result: { kind: 'derivation', message: 'Revisa las condiciones comerciales', entities: [], undo_available: false,
+      action: { kind: 'open_project_form', href: '/projects?new=1' } },
+  };
+  h.run(`renderCommand(${JSON.stringify(h.state.commandResponse)})`);
+  const buttons = [...h.get('command-receipt').querySelectorAll('button')];
+  assert.ok(!buttons.some(button => button.textContent === 'Deshacer'));
+  buttons.find(button => button.textContent === 'Revisar proyecto').click();
+  assert.equal(opened.url, 'https://agency.magnifytools.com/projects?new=1');
+  assert.match(h.get('command-receipt').textContent, /Proyecto SEO tarifa 500 EUR/);
+  assert.doesNotMatch(h.get('command-receipt').textContent, /proyecto creado/i);
+});
+
 test('popup paused timer freezes at accumulated time and renders the pause indicator', async t => {
   const h = await setup(t);
   h.run('showActiveTimer({started_at:"2026-09-17T10:00:00Z", task_title:"Prueba pausa", is_paused:true, accumulated_seconds:3661})');

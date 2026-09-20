@@ -6,13 +6,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import ProjectsPage from "./projects-page"
 
 const api = vi.hoisted(() => ({ list: vi.fn(), templates: vi.fn(), clients: vi.fn(), users: vi.fn(), create: vi.fn(), createFromTemplate: vi.fn(), extractFromPdf: vi.fn(), extractFromText: vi.fn() }))
+const auth = vi.hoisted(() => ({ canWrite: true }))
 vi.mock("@/lib/api", () => ({
   projectsApi: { list: api.list, templates: api.templates, create: api.create, createFromTemplate: api.createFromTemplate, extractFromPdf: api.extractFromPdf, extractFromText: api.extractFromText },
   clientsApi: { listAll: api.clients },
   usersApi: { listAll: api.users },
 }))
 vi.mock("@/context/auth-context", () => ({
-  useAuth: () => ({ hasPermission: () => true }),
+  useAuth: () => ({ hasPermission: () => auth.canWrite }),
 }))
 function Location() { return <output data-testid="location">{useLocation().pathname + useLocation().search}</output> }
 function setup(url = "/projects") {
@@ -23,6 +24,7 @@ function setup(url = "/projects") {
 describe("projects filter navigation", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    auth.canWrite = true
     api.list.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 })
     api.templates.mockResolvedValue({})
     api.clients.mockResolvedValue([{id: 17, name: "Cliente de prueba"}])
@@ -77,6 +79,22 @@ describe("projects filter navigation", () => {
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/projects/91?created=1"))
     expect(api.create).toHaveBeenLastCalledWith(expect.objectContaining({name: "Entrega nueva", client_id: 17, owner_id: 8, is_recurring: false, start_date: undefined, target_end_date: undefined, monthly_fee: undefined, budget_amount: undefined}))
     expect(screen.queryByRole("option", {name: "Persona inactiva"})).not.toBeInTheDocument()
+  })
+  it("opens an empty review form from the commercial handoff URL", async () => {
+    setup("/projects?new=1")
+    const dialog = await screen.findByRole("dialog", { name: "Nuevo proyecto" })
+    expect(within(dialog).getByLabelText("Nombre *")).toHaveValue("")
+    await userEvent.click(within(dialog).getByText("Alcance, fechas y condiciones económicas"))
+    expect(within(dialog).getByLabelText("Modelo de precio")).toHaveValue("")
+    expect(within(dialog).getByLabelText("Presupuesto total (EUR, opcional)")).toHaveValue(null)
+    expect(api.create).not.toHaveBeenCalled()
+  })
+  it("does not open the handoff form without project write access", async () => {
+    auth.canWrite = false
+    setup("/projects?new=1")
+    await waitFor(() => expect(api.list).toHaveBeenCalled())
+    expect(screen.queryByRole("dialog", { name: "Nuevo proyecto" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Nuevo proyecto" })).toBeDisabled()
   })
   it("separates monthly pricing and total budget without requiring guessed hours", async () => {
     setup()
