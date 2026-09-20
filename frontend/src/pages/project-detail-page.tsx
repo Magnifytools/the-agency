@@ -1,7 +1,10 @@
 import { ProjectWorkSummary } from "@/components/projects/project-work-summary"
 import type { ProjectTaskItem, ProjectTaskGroup } from "@/lib/project-work"
 import { useBusinessDate } from "@/hooks/use-business-date"
+import { businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates"
 import { useMemo, useState } from "react"
+import { format, parseISO } from "date-fns"
+import { es } from "date-fns/locale"
 import { useAuth } from "@/context/auth-context"
 import { ProjectTaskList } from "@/components/projects/project-task-list"
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom"
@@ -24,7 +27,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { projectsApi, tasksApi, usersApi } from "@/lib/api"
-import type { Project, ProjectStatus, PhaseStatus, TaskStatus, ProjectClosingStatus } from "@/lib/types"
+import type { Project, ProjectStatus, PhaseStatus, TaskStatus, ProjectClosingStatus, ProjectMonthlyCycle } from "@/lib/types"
 import { isEnabled } from "@/lib/hidden-modules"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -89,6 +92,9 @@ export default function ProjectDetailPage() {
   const [searchParams] = useSearchParams()
 
   const businessToday = useBusinessDate()
+  const currentMonth = businessToday.slice(0, 7)
+  const [selectedCycleMonth, setSelectedCycleMonth] = useState<string | null>(null)
+  const cycleMonth = selectedCycleMonth ?? currentMonth
   const projectId = id ? parseInt(id) : NaN
   const validId = !isNaN(projectId)
 
@@ -108,6 +114,12 @@ export default function ProjectDetailPage() {
     queryKey: projectKeys.burndown(projectId),
     queryFn: () => projectsApi.burndown(projectId),
     enabled: validId && showMetrics && project?.is_recurring === false,
+  })
+
+  const cycleQuery = useQuery({
+    queryKey: ["projects", projectId, "monthly-cycle", cycleMonth],
+    queryFn: () => projectsApi.monthlyCycle(projectId, cycleMonth),
+    enabled: validId && project?.is_recurring === true,
   })
 
   const updateStatusMutation = useMutation({
@@ -140,6 +152,7 @@ export default function ProjectDetailPage() {
   })
 
   const filterTask = (t: ProjectTaskItem) => {
+    if (t.is_recurring) return false
     if (filterStatus !== "all" && t.status !== filterStatus) return false
     if (filterSearch && !t.title.toLowerCase().includes(filterSearch.toLowerCase())) return false
     return true
@@ -147,7 +160,6 @@ export default function ProjectDetailPage() {
 
   const filteredPhases = useMemo(() => {
     if (!tasksData?.phases) return []
-    if (filterStatus === "all" && !filterSearch) return tasksData.phases
     return tasksData.phases
       .map((pg: ProjectTaskGroup) => ({
         ...pg,
@@ -158,7 +170,6 @@ export default function ProjectDetailPage() {
 
   const filteredUnassigned = useMemo(() => {
     if (!tasksData?.unassigned_tasks) return []
-    if (filterStatus === "all" && !filterSearch) return tasksData.unassigned_tasks
     return tasksData.unassigned_tasks.filter(filterTask)
   }, [tasksData, filterStatus, filterSearch])
 
@@ -204,6 +215,9 @@ export default function ProjectDetailPage() {
     return <div role="alert" className="space-y-3"><p>{getErrorMessage(projectLoadError, "No se pudo cargar el proyecto.")}</p><Button variant="outline" onClick={() => retryProject()}>Reintentar</Button></div>
   }
   if (!project) return <div className="text-muted-foreground">Proyecto no encontrado</div>
+
+  const primaryHoursUsed = project.is_recurring ? (project.hours_used_month ?? 0) : (project.hours_used ?? 0)
+  const primaryHoursBudget = project.is_recurring ? project.effective_monthly_hours_budget : project.budget_hours
 
   const formatDate = (date: string | null) => {
     if (!date) return "—"
@@ -271,6 +285,17 @@ export default function ProjectDetailPage() {
         canWrite={hasPermission("tasks", true)}
         onOpen={setPreviewTaskId}
         onAdd={() => setShowAddTaskDialog(0)}
+      />}
+
+      {project.is_recurring && <MonthlyCycleCard
+        cycle={cycleQuery.data}
+        month={cycleMonth}
+        currentMonth={currentMonth}
+        loading={cycleQuery.isLoading}
+        error={cycleQuery.isError}
+        onMonthChange={(month) => setSelectedCycleMonth(month === currentMonth ? null : month)}
+        onRetry={() => void cycleQuery.refetch()}
+        canOpenTasks={isEnabled("tasks") && hasPermission("tasks")}
       />}
 
       <details onToggle={event => setShowMetrics(event.currentTarget.open)} className="border-y border-border py-1">
@@ -357,30 +382,30 @@ export default function ProjectDetailPage() {
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1.5">
-              <span className="text-sm font-medium">Tiempo registrado</span>
+              <span className="text-sm font-medium">{project.is_recurring ? "Tiempo registrado este mes" : "Tiempo registrado"}</span>
               <span
                 className="text-muted-foreground/60 cursor-help text-xs"
-                title="Suma del tiempo registrado en el registro de horas para tareas vinculadas a este proyecto. No incluye tareas del cliente que estén sin proyecto asignado."
+                title={`Suma del tiempo real registrado para tareas de este proyecto${project.is_recurring ? " durante el mes civil actual" : ""}. No incluye tareas del cliente sin proyecto asignado.`}
               >
                 ⓘ
               </span>
             </div>
             <span className="text-sm text-muted-foreground">
-              {project.hours_used ?? 0}h
-              {project.budget_hours != null && project.budget_hours > 0 ? ` / ${project.budget_hours}h` : " · sin presupuesto"}
+              {primaryHoursUsed}h
+              {primaryHoursBudget != null && primaryHoursBudget > 0 ? ` / ${primaryHoursBudget}h` : " · sin presupuesto"}
             </span>
           </div>
-          {project.budget_hours != null && project.budget_hours > 0 ? (
+          {primaryHoursBudget != null && primaryHoursBudget > 0 ? (
             <div className="h-2 bg-secondary rounded-full overflow-hidden">
               <div
                 className={`h-full transition-all ${
-                  (project.hours_used ?? 0) / project.budget_hours > 0.9
+                  primaryHoursUsed / primaryHoursBudget > 0.9
                     ? "bg-red-500"
-                    : (project.hours_used ?? 0) / project.budget_hours > 0.7
+                    : primaryHoursUsed / primaryHoursBudget > 0.7
                     ? "bg-amber-500"
                     : "bg-brand"
                 }`}
-                style={{ width: `${Math.min(100, ((project.hours_used ?? 0) / project.budget_hours) * 100)}%` }}
+                style={{ width: `${Math.min(100, (primaryHoursUsed / primaryHoursBudget) * 100)}%` }}
               />
             </div>
           ) : (
@@ -403,23 +428,6 @@ export default function ProjectDetailPage() {
       {/* Aviso de cierre para proyectos puntuales (fecha final + horas vs tiempo restante) */}
       {project.closing_status && (
         <ProjectClosingCard closing={project.closing_status} />
-      )}
-
-      {/* Aviso en recurrentes: el burndown no aplica. */}
-      {project.is_recurring && (
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm font-medium mb-1">Proyecto recurrente</p>
-            <p className="text-xs text-muted-foreground">
-              El burndown no aplica en retainers (las tareas se reinician cada ciclo).
-              Para ver la carga por mes, abre el {" "}
-              <Link to="/dashboard" className="text-brand underline-offset-2 hover:underline">
-                dashboard
-              </Link>{" "}
-              y filtra por mes — la tabla "Rentabilidad por cliente" muestra horas reales del mes seleccionado.
-            </p>
-          </CardContent>
-        </Card>
       )}
 
       {/* Burndown Chart — solo en proyectos no-recurrentes. En recurrentes el
@@ -517,7 +525,10 @@ export default function ProjectDetailPage() {
       {/* View Toggle + Phases and Tasks */}
       {activeTab === "tasks" && <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Trabajo del proyecto</h2>
+          <div>
+            <h2 className="text-lg font-semibold">Trabajo del proyecto</h2>
+            {hasPermission("tasks") && <Link className="text-sm text-primary hover:underline" to="/tasks?view=recurring">Ver plantillas recurrentes</Link>}
+          </div>
           <div className="flex items-center gap-1">
             <Button
               variant={viewMode === "list" ? "default" : "outline"}
@@ -594,7 +605,7 @@ export default function ProjectDetailPage() {
           <p>{tasksData ? "No se pudieron actualizar las tareas. Se muestran los últimos datos recibidos." : "No se pudieron cargar las tareas del proyecto."}</p>
           <Button variant="outline" onClick={() => retryTasks()}>Reintentar tareas</Button>
         </div>}
-        {tasksData && !tasksError && !tasksData.phases.some((group: ProjectTaskGroup) => group.tasks.length) && !tasksData.unassigned_tasks.length && <p className="text-sm text-muted-foreground">Aún no hay tareas. Añade la primera cuando tengas claro el próximo paso.</p>}
+        {tasksData && !tasksError && !hasActiveFilters && !filteredPhases.some((group: ProjectTaskGroup) => group.tasks.length) && !filteredUnassigned.length && <p className="text-sm text-muted-foreground">Aún no hay tareas. Añade la primera cuando tengas claro el próximo paso.</p>}
         {tasksData && hasActiveFilters && filteredPhases.length === 0 && filteredUnassigned.length === 0 && <p className="text-sm text-muted-foreground">No hay tareas que coincidan con estos filtros.</p>}
 
         {viewMode === "gantt" && project && tasksData && (
@@ -607,7 +618,7 @@ export default function ProjectDetailPage() {
 
         {viewMode === "kanban" && tasksData && (
           <ProjectPhaseKanban
-            phases={tasksData.phases}
+            phases={filteredPhases}
             onPhaseStatusChange={(phaseId, newStatus) =>
               updatePhaseMutation.mutate({ phaseId, status: newStatus })
             }
@@ -1199,16 +1210,71 @@ function BudgetRow({
   )
 }
 
+function MonthlyCycleCard({ cycle, month, currentMonth, loading, error, onMonthChange, onRetry, canOpenTasks }: {
+  cycle?: ProjectMonthlyCycle
+  month: string
+  currentMonth: string
+  loading: boolean
+  error: boolean
+  onMonthChange: (month: string) => void
+  onRetry: () => void
+  canOpenTasks: boolean
+}) {
+  const label = format(parseISO(`${month}-01T12:00:00`), "MMMM yyyy", { locale: es })
+  return <Card>
+    <CardHeader className="pb-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><CardTitle className="text-base">Ciclo de {label}</CardTitle><p className="mt-1 text-xs text-muted-foreground">Actividad real de este proyecto recurrente durante el mes civil.</p></div>
+        {month !== currentMonth && <Button size="sm" variant="outline" onClick={() => onMonthChange(currentMonth)}>Volver al mes actual</Button>}
+      </div>
+    </CardHeader>
+    <CardContent className="space-y-4">
+      {loading ? <p role="status" className="text-sm text-muted-foreground">Cargando ciclo mensual…</p>
+        : error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm">No se pudo cargar este ciclo.</p><Button size="sm" variant="outline" onClick={onRetry}>Reintentar</Button></div>
+        : cycle && <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <CycleMetric label="Planificadas en el mes" value={String(cycle.planned_count)} />
+            <CycleMetric label="Finalizadas en el mes" value={String(cycle.completed_in_month_count)} />
+            <CycleMetric label="Horas reales del mes" value={`${cycle.used_hours.toFixed(1)}h`} />
+            <CycleMetric label={month === currentMonth ? "Horas restantes" : "Diferencia con presupuesto actual"} value={cycle.remaining_hours == null ? "Sin presupuesto" : `${cycle.remaining_hours.toFixed(1)}h`} />
+          </div>
+          {cycle.budget_hours != null && <HoursBudgetCard weeklyBudget={null} monthlyBudget={cycle.budget_hours} usedWeek={0} usedMonth={cycle.used_hours} showWeekly={false} monthLabel={month === currentMonth ? "Este mes" : "Presupuesto actual de referencia"} />}
+          <div>
+            <p className="mb-2 text-sm font-medium">Tareas planificadas o finalizadas en el mes</p>
+            {cycle.tasks.length ? <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border">
+              {cycle.tasks.map(task => <li key={task.id} className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+                {canOpenTasks ? <Link className="min-w-0 break-words text-primary hover:underline" to={`/tasks?task=${task.id}`}>{task.title}</Link> : <span className="min-w-0 break-words">{task.title}</span>}
+                <span className="shrink-0 text-xs text-muted-foreground">{task.scheduled_date ? `Planificada ${format(parseISO(`${task.scheduled_date}T12:00:00`), "d MMM", { locale: es })}` : "Sin fecha planificada"}{task.completed_at ? ` · finalizada ${formatCivilDate(businessDateString(parseApiInstant(task.completed_at)), { day: "numeric", month: "short" })}` : ""}</span>
+              </li>)}
+            </ul> : <p className="text-sm text-muted-foreground">No hay instancias planificadas ni finalizadas en este mes.</p>}
+          </div>
+        </>}
+      <details className="border-t pt-3">
+        <summary className="cursor-pointer text-sm text-muted-foreground">Consultar otro mes</summary>
+        <label className="mt-3 block text-sm font-medium">Mes del historial <input aria-label="Mes del ciclo" type="month" value={month} max={currentMonth} onChange={event => event.target.value && onMonthChange(event.target.value)} className="ml-2 rounded-md border border-border bg-background px-2 py-1.5" /></label>
+      </details>
+    </CardContent>
+  </Card>
+}
+
+function CycleMetric({ label, value }: { label: string; value: string }) {
+  return <div className="min-w-0 rounded-lg bg-muted/40 p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 break-words text-lg font-semibold">{value}</p></div>
+}
+
 function HoursBudgetCard({
   weeklyBudget,
   monthlyBudget,
   usedWeek,
   usedMonth,
+  showWeekly = true,
+  monthLabel = "Este mes",
 }: {
   weeklyBudget: number | null
   monthlyBudget: number | null
   usedWeek: number
   usedMonth: number
+  showWeekly?: boolean
+  monthLabel?: string
 }) {
   const monthStatus = budgetStatus(usedMonth, monthlyBudget)
   const alert = monthStatus === "warning" || monthStatus === "over"
@@ -1219,17 +1285,17 @@ function HoursBudgetCard({
           <Clock className="w-4 h-4" />
           <span className="text-sm font-medium">Presupuesto de horas</span>
         </div>
-        <BudgetRow
+        {showWeekly && <BudgetRow
           label="Esta semana"
           used={usedWeek}
           budget={weeklyBudget}
           note="Guía visual de carga semanal. Se puede compensar entre semanas."
-        />
+        />}
         <BudgetRow
-          label="Este mes"
+          label={monthLabel}
           used={usedMonth}
           budget={monthlyBudget}
-          note="Techo mensual: aviso al 80%, alerta al pasarse (dispara la notificación)."
+          note="Aviso al llegar al 80 % del presupuesto mensual."
         />
       </CardContent>
     </Card>

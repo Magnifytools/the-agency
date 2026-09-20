@@ -9,6 +9,19 @@ async def check_database_ready(engine) -> None:
         async with engine.connect() as conn:
             # LIMIT 0 verifies the actual schema without reading business data.
             await conn.execute(text("SELECT completed_at FROM tasks LIMIT 0"))
+            await conn.execute(text("SELECT recurrence_anchor_date, recurrence_paused_at, recurrence_occurrence_date FROM tasks LIMIT 0"))
+            await conn.execute(text("SELECT id, template_id, date, task_id, created_at FROM task_recurrence_occurrences LIMIT 0"))
+            receipt_fk = await conn.scalar(text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM pg_constraint c
+                    JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=ANY(c.conkey)
+                    WHERE c.conrelid='task_recurrence_occurrences'::regclass
+                      AND c.contype='f' AND c.confrelid='tasks'::regclass
+                      AND a.attname='task_id' AND c.confdeltype='n'
+                )
+            """))
+            if receipt_fk is not True:
+                raise RuntimeError("Required recurrence receipt deletion behavior is missing")
             await conn.execute(text("SELECT dedupe_key, incident_state, incident_severity, incident_revision, incident_detected_at, incident_fingerprint, incident_snoozed_until, incident_resolved_at, incident_resolution_reason, incident_dismissal_reason, entity_key FROM notifications LIMIT 0"))
             await conn.execute(text("SELECT paused_at, accumulated_seconds FROM time_entries LIMIT 0"))
             await conn.execute(text("SELECT id, user_id, entity_type, entity_id, action, label, operations, undone_at, undone_by, created_at, updated_at FROM change_logs LIMIT 0"))
@@ -47,6 +60,8 @@ async def check_database_ready(engine) -> None:
             for table, columns, predicate in (
                 ("notifications", ["user_id", "dedupe_key"], ""),
                 ("daily_updates", ["user_id", "date"], ""),
+                ("tasks", ["recurring_parent_id", "recurrence_occurrence_date"], "(recurring_parent_id IS NOT NULL)"),
+                ("task_recurrence_occurrences", ["template_id", "date"], ""),
                 ("time_entries", ["user_id"], "(minutes IS NULL)"),
                 ("deliveries", ["dedupe_key"], ""),
                 ("communication_requests", ["request_key"], ""),

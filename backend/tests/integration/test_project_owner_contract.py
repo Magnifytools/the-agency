@@ -138,6 +138,7 @@ async def test_project_tasks_contract_preserves_operational_fields(
         "assigned_user_name": owner.full_name,
         "waiting_for": "Respuesta del cliente",
         "follow_up_date": "2026-09-19",
+        "is_recurring": False,
     }
 
 

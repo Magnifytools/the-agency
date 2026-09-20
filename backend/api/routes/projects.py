@@ -5,7 +5,8 @@ from typing import Optional
 import base64
 from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import Date, cast, or_, select, func, case
+from sqlalchemy import Date, cast, or_, select, func, case, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, noload
 
@@ -26,6 +27,7 @@ from backend.schemas.project import (
     SaveAsTemplateInput,
     InvoiceTasksInput,
     ProjectTasksResponse,
+    ProjectMonthlyCycleResponse,
 )
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module, require_admin
@@ -34,8 +36,9 @@ from backend.services.time_budget import effective_budgets, build_closing_status
 from backend.services.task_scope import validate_client_exists
 from backend.services.project_owner import validate_project_owner
 from backend.services.domain_writes import create_project as create_project_write, create_task as create_task_write
-from backend.services.temporal import as_utc_instant, business_today, business_zone
+from backend.services.temporal import as_utc_instant, business_today, business_zone, utc_now_naive
 from backend.services.time_entry_dates import time_entry_civil_period
+from backend.services.project_cycles import collect_project_monthly_cycle
 from backend.api.utils.db_helpers import safe_refresh
 from backend.api.middleware.audit_log import log_audit
 
@@ -758,6 +761,25 @@ async def project_burndown(
     return {"total_tasks": total, "points": points}
 
 
+@router.get("/{project_id}/monthly-cycle", response_model=ProjectMonthlyCycleResponse)
+async def project_monthly_cycle(
+    project_id: int,
+    month: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(require_module("projects")),
+):
+    """Return one real civil-month cycle for a recurring project."""
+    try:
+        cycle = await collect_project_monthly_cycle(db, project_id, month)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except TypeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if cycle is None:
+        raise HTTPException(404, "Project not found")
+    return cycle
+
+
 _UPDATABLE_PROJECT_FIELDS = {
     "name", "description", "project_type", "is_recurring",
     "start_date", "target_end_date", "actual_end_date",
@@ -839,20 +861,40 @@ async def delete_project(
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_module("projects", write=True)),
 ):
+    # Recurrence reconciliation takes the same lock before touching templates.
+    # Acquiring it as our first statement prevents a late orphan occurrence.
+    await db.execute(text("SELECT pg_advisory_xact_lock(76241317)"))
     result = await db.execute(
-        select(Project).options(selectinload(Project.tasks)).where(Project.id == project_id)
+        select(Project).where(Project.id == project_id)
+        .with_for_update(key_share=True).execution_options(populate_existing=True)
     )
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Unlink tasks from project (don't delete them)
-    for task in project.tasks:
+    # Unlink tasks from project (don't delete them). Recurring templates must
+    # stop first: once project_id is NULL the generator can no longer use the
+    # deleted project's status as an eligibility guard.
+    tasks = list((await db.execute(
+        select(Task).where(Task.project_id == project_id).order_by(Task.id)
+        .with_for_update().execution_options(populate_existing=True)
+    )).scalars())
+    paused_at = utc_now_naive()
+    for task in tasks:
+        if task.is_recurring and task.recurrence_paused_at is None:
+            task.recurrence_paused_at = paused_at
         task.project_id = None
         task.phase_id = None
 
-    await db.delete(project)
-    await db.commit()
+    try:
+        await db.delete(project)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="El proyecto cambió mientras se eliminaba. Revisa sus tareas y vuelve a intentarlo.",
+        )
     log_audit(_user.id if hasattr(_user, "id") else "-", "delete", "project", project_id)
 
 
@@ -1031,6 +1073,7 @@ async def get_project_tasks(
             "assigned_user_name": task.assigned_user.full_name if task.assigned_user else None,
             "waiting_for": task.waiting_for,
             "follow_up_date": task.follow_up_date,
+            "is_recurring": task.is_recurring,
         }
         if task.phase_id:
             if task.phase_id not in tasks_by_phase:

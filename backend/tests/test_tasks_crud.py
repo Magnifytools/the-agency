@@ -101,6 +101,9 @@ class TestTaskToResponse:
         mock_task.recurrence_pattern = None
         mock_task.recurrence_day = None
         mock_task.recurrence_end_date = None
+        mock_task.recurrence_anchor_date = None
+        mock_task.recurrence_paused_at = None
+        mock_task.recurrence_occurrence_date = None
         mock_task.recurring_parent_id = None
         mock_task.link_url = None
         mock_task.checklist_items = []
@@ -152,6 +155,9 @@ class TestTaskToResponse:
         mock_task.recurrence_pattern = None
         mock_task.recurrence_day = None
         mock_task.recurrence_end_date = None
+        mock_task.recurrence_anchor_date = None
+        mock_task.recurrence_paused_at = None
+        mock_task.recurrence_occurrence_date = None
         mock_task.recurring_parent_id = None
         mock_task.link_url = None
         mock_task.checklist_items = [MagicMock(), MagicMock()]

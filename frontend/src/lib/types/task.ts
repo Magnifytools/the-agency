@@ -1,5 +1,14 @@
 import type { TaskStatus, TaskPriority } from "./common"
 
+export type RecurrenceState = "inactive" | "active" | "paused" | "ended" | "blocked_client" | "blocked_project" | "invalid"
+
+export interface RecurrenceSummary {
+  state: RecurrenceState
+  reason: string | null
+  label: string
+  next_dates: string[]
+}
+
 export interface TaskCategory {
   id: number
   name: string
@@ -33,7 +42,11 @@ export interface Task {
   recurrence_pattern: string | null
   recurrence_day: number | null
   recurrence_end_date: string | null
+  recurrence_anchor_date?: string | null
+  recurrence_paused_at?: string | null
+  recurrence_summary?: RecurrenceSummary | null
   recurring_parent_id: number | null
+  recurrence_occurrence_date?: string | null
   unit_cost: number | null
   invoiced_at: string | null
   link_url: string | null
@@ -88,6 +101,8 @@ export interface TaskCreate {
   recurrence_pattern?: string | null
   recurrence_day?: number | null
   recurrence_end_date?: string | null
+  recurrence_anchor_date?: string | null
+  recurrence_paused?: boolean
   recurring_parent_id?: number | null
   unit_cost?: number | null
 }

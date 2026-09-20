@@ -46,6 +46,9 @@ async def test_create_task_returns_201_when_notification_fails(admin_client, adm
     fake_task.recurrence_pattern = None
     fake_task.recurrence_day = None
     fake_task.recurrence_end_date = None
+    fake_task.recurrence_anchor_date = None
+    fake_task.recurrence_paused_at = None
+    fake_task.recurrence_occurrence_date = None
     fake_task.recurring_parent_id = None
     fake_task.unit_cost = None
     fake_task.invoiced_at = None
@@ -217,4 +220,3 @@ async def test_create_evidence_returns_201_when_reload_fails(admin_client, admin
         )
 
     assert response.status_code == 201, f"Expected 201 but got {response.status_code}: {response.text}"
-
