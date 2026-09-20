@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
 
@@ -44,6 +46,10 @@ SAMPLE_LIMIT = 20
 ARCHIVED_STATUSES = {ProjectStatus.completed, ProjectStatus.cancelled}
 OPERATING_STATUSES = {ProjectStatus.planning, ProjectStatus.active, ProjectStatus.on_hold}
 
+TASK_PROJECT_STATE_FIELDS = (
+    "project_id", "status", "retired_at", "is_recurring", "recurrence_paused_at",
+)
+
 
 def _status(value: ProjectStatus | str) -> ProjectStatus:
     try:
@@ -61,6 +67,93 @@ def _epoch(value: datetime) -> Decimal:
 def _iso(value: datetime | None) -> str | None:
     instant = as_utc_instant(value)
     return instant.isoformat(timespec="microseconds").replace("+00:00", "Z") if instant else None
+
+
+def task_project_state(task: Task | None = None, overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Build an immutable lifecycle snapshot before an ORM row is mutated."""
+    data = dict(overrides or {})
+    return {
+        field: data[field] if field in data else getattr(task, field, None)
+        for field in TASK_PROJECT_STATE_FIELDS
+    }
+
+
+def _task_state_is_operational(state: Mapping[str, Any]) -> bool:
+    status = getattr(state.get("status"), "value", state.get("status"))
+    if state.get("retired_at") is not None or status == TaskStatus.completed.value:
+        return False
+    if bool(state.get("is_recurring")):
+        return state.get("recurrence_paused_at") is None
+    return True
+
+
+def _same_task_lifecycle(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
+    def normalized(state: Mapping[str, Any]) -> tuple[Any, ...]:
+        return (
+            state.get("project_id"),
+            getattr(state.get("status"), "value", state.get("status")),
+            state.get("retired_at") is not None,
+            bool(state.get("is_recurring")),
+            state.get("recurrence_paused_at") is not None,
+        )
+    return normalized(left) == normalized(right)
+
+
+async def ensure_project_allows_task_state(
+    db: AsyncSession, *, state: Mapping[str, Any],
+    previous_state: Mapping[str, Any] | None = None,
+    creating: bool = False, allow_historical_restore: bool = False,
+) -> None:
+    """Serialize a task result against project archival.
+
+    ``previous_state`` must be captured before mutating the ORM object.  Undo
+    may opt into ``allow_historical_restore`` only for an explicit reinsert;
+    the resulting row still has to be completed, retired, or a paused template.
+    """
+    project_id = state.get("project_id")
+    if project_id is None:
+        return
+    try:
+        status = await db.scalar(
+            select(Project.status).where(Project.id == project_id)
+            .with_for_update(read=True, nowait=True)
+        )
+    except DBAPIError as exc:
+        if getattr(exc.orig, "sqlstate", None) == "55P03":
+            raise HTTPException(409, "El proyecto está cambiando; vuelve a intentarlo") from exc
+        raise
+    if status is None or _status(status) not in ARCHIVED_STATUSES:
+        return
+
+    operational = _task_state_is_operational(state)
+    if creating:
+        if allow_historical_restore and not operational:
+            return
+        raise HTTPException(409, "Reabre el proyecto antes de crear trabajo nuevo")
+    if previous_state is not None and _same_task_lifecycle(state, previous_state):
+        return
+    if not operational:
+        return
+    raise HTTPException(409, "Reabre el proyecto antes de activar trabajo")
+
+
+async def ensure_project_allows_timer(db: AsyncSession, task: Task) -> None:
+    """Reject new running time against a freshly locked archived project."""
+    state = task_project_state(task)
+    project_id = state["project_id"]
+    if project_id is None:
+        return
+    try:
+        status = await db.scalar(
+            select(Project.status).where(Project.id == project_id)
+            .with_for_update(read=True, nowait=True)
+        )
+    except DBAPIError as exc:
+        if getattr(exc.orig, "sqlstate", None) == "55P03":
+            raise HTTPException(409, "El proyecto está cambiando; vuelve a intentarlo") from exc
+        raise
+    if status is not None and _status(status) in ARCHIVED_STATUSES:
+        raise HTTPException(409, "Reabre el proyecto antes de iniciar el timer")
 
 
 async def _module_readable(db: AsyncSession, actor: User | None, module: str) -> bool:
@@ -99,17 +192,15 @@ async def _decision_rows(db: AsyncSession, project_id: int, *, lock: bool):
     if lock:
         task_stmt = task_stmt.with_for_update().execution_options(populate_existing=True)
     tasks = list((await db.execute(task_stmt)).scalars())
-    task_ids = [task.id for task in tasks]
-    timers: list[TimeEntry] = []
-    if task_ids:
-        timer_stmt = (
-            select(TimeEntry).where(
-                TimeEntry.task_id.in_(task_ids), TimeEntry.minutes.is_(None),
-            ).options(noload("*")).order_by(TimeEntry.id)
-        )
-        if lock:
-            timer_stmt = timer_stmt.with_for_update().execution_options(populate_existing=True)
-        timers = list((await db.execute(timer_stmt)).scalars())
+    timer_stmt = (
+        select(TimeEntry)
+        .join(Task, Task.id == TimeEntry.task_id)
+        .where(Task.project_id == project_id, TimeEntry.minutes.is_(None))
+        .options(noload("*")).order_by(TimeEntry.id)
+    )
+    if lock:
+        timer_stmt = timer_stmt.with_for_update(of=TimeEntry).execution_options(populate_existing=True)
+    timers = list((await db.execute(timer_stmt)).scalars())
     return tasks, timers
 
 
@@ -152,10 +243,11 @@ async def _close_preview(
     task_sample = [ProjectLifecycleTaskSample(
         id=task.id, title=task.title,
         status=task.status.value if hasattr(task.status, "value") else str(task.status),
-        href=f"/tasks/{task.id}",
+        href=f"/tasks?task={task.id}",
     ) for task in active[:SAMPLE_LIMIT]] if can_see_tasks else []
     timer_sample = [ProjectLifecycleTimerSample(
-        id=timer.id, task_id=timer.task_id, href=f"/tasks/{timer.task_id}",
+        id=timer.id, task_id=timer.task_id,
+        href=f"/tasks?task={timer.task_id}" if can_see_tasks else None,
     ) for timer in timers[:SAMPLE_LIMIT]] if can_see_timers else []
     return ProjectClosePreview(
         project_id=project.id, target=target.value,
@@ -205,12 +297,42 @@ async def get_reopen_preview(
     )
 
 
-async def _locked_state(db: AsyncSession, project_id: int, actor: User | None):
+async def acquire_project_lifecycle_lock(db: AsyncSession) -> None:
+    """Acquire the shared project/recurrence transaction lock."""
     await db.execute(text(f"SELECT pg_advisory_xact_lock({PROJECT_LIFECYCLE_LOCK})"))
+
+
+async def _locked_state(db: AsyncSession, project_id: int, actor: User | None):
+    await acquire_project_lifecycle_lock(db)
     await require_current_write(db, actor, {"projects"})
     project, epoch = await _project_row(db, project_id, lock=True)
     tasks, timers = await _decision_rows(db, project_id, lock=True)
     return project, epoch, tasks, timers
+
+
+async def validate_project_lifecycle_inverse(
+    db: AsyncSession, *, project_id: int,
+    previous_status: ProjectStatus | str, actor: User | None,
+) -> None:
+    """Validate an already-applied inverse while its lifecycle locks are held.
+
+    Undo callers acquire the advisory lock before locking journal entities. The
+    current Project row is the inverse result; ``previous_status`` is the
+    immutable status captured before applying it.
+    """
+    await require_current_write(db, actor, {"projects"})
+    project, _epoch_value = await _project_row(db, project_id, lock=True)
+    current = _status(project.status)
+    previous = _status(previous_status)
+    if current not in ARCHIVED_STATUSES or previous in ARCHIVED_STATUSES:
+        return
+    tasks, timers = await _decision_rows(db, project_id, lock=True)
+    preview = await _close_preview(db, project, tasks, timers, current, actor)
+    if not preview.can_close:
+        raise HTTPException(409, detail={
+            "code": "project_close_blocked",
+            "current_preview": preview.model_dump(mode="json"),
+        })
 
 
 def _changed(preview: Any) -> HTTPException:

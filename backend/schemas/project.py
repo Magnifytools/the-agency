@@ -179,7 +179,7 @@ class ProjectLifecycleTaskSample(BaseModel):
 class ProjectLifecycleTimerSample(BaseModel):
     id: int
     task_id: int
-    href: str
+    href: Optional[str] = None
 
 
 class ProjectLifecycleCount(BaseModel):

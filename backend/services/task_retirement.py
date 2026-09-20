@@ -11,6 +11,10 @@ from sqlalchemy.orm import noload
 
 from backend.db.models import Task, TaskStatus, TimeEntry, User
 from backend.services.domain_writes import update_task
+from backend.services.project_lifecycle import (
+    ensure_project_allows_task_state,
+    task_project_state,
+)
 from backend.services.temporal import business_today, utc_now_naive
 
 
@@ -106,6 +110,12 @@ async def apply_carryover_decision(
 
 async def restore_task(db: AsyncSession, task: Task, *, actor: User) -> Task:
     await ensure_can_restore(db, task)
+    previous_state = task_project_state(task)
+    await ensure_project_allows_task_state(
+        db,
+        state=task_project_state(task, {"retired_at": None}),
+        previous_state=previous_state,
+    )
     task.retired_at = None
     task.retired_reason = None
     await db.flush()

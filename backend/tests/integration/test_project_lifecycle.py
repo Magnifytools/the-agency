@@ -92,6 +92,10 @@ async def test_close_preview_reports_exact_blockers_and_permission_aware_samples
     assert preview["blockers"]["in_review_count"] == 1
     assert preview["blockers"]["active_timers"]["total"] == 1
     assert preview["blockers"]["active_timers"]["sample"][0]["id"] == timer.id
+    assert {row["href"] for row in preview["blockers"]["active_tasks"]["sample"]} == {
+        f"/tasks?task={waiting.id}", f"/tasks?task={review.id}",
+    }
+    assert preview["blockers"]["active_timers"]["sample"][0]["href"] == f"/tasks?task={completed.id}"
 
     project_only = await make_member_client([("projects", True, True)])
     try:
@@ -102,6 +106,17 @@ async def test_close_preview_reports_exact_blockers_and_permission_aware_samples
     assert hidden["blockers"]["active_tasks"]["sample"] == []
     assert hidden["blockers"]["active_timers"]["total"] == 1
     assert hidden["blockers"]["active_timers"]["sample"] == []
+
+    timers_only = await make_member_client([
+        ("projects", True, True), ("timesheet", True, False),
+    ])
+    try:
+        limited = await _preview(timers_only, project.id)
+    finally:
+        await timers_only.aclose()
+    assert limited["blockers"]["active_timers"]["sample"] == [{
+        "id": timer.id, "task_id": completed.id, "href": None,
+    }]
 
 
 async def test_close_is_reviewed_atomic_and_never_mutates_tasks_or_templates(
