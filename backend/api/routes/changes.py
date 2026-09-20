@@ -125,7 +125,7 @@ async def recent_changes(
     return [
         ChangeEntry(
             id=row.id,
-            label=row.label,
+            label=_recent_label(row),
             action=row.action,
             entity_type=row.entity_type,
             entity_id=row.entity_id,
@@ -134,6 +134,25 @@ async def recent_changes(
         )
         for row in rows
     ]
+
+
+def _recent_label(row: ChangeLog) -> str:
+    """Explain a project inverse without rewriting the immutable journal."""
+    archived = {"completed", "cancelled"}
+    for op in row.operations or []:
+        if op.get("entity_type") != "project" or op.get("action") != "update":
+            continue
+        before = (op.get("before") or {}).get("status")
+        after = (op.get("after") or {}).get("status")
+        if before == after or before is None or after is None:
+            continue
+        if after in archived and before not in archived:
+            if before == "active":
+                return row.label + ". Deshacer reabrirá el proyecto; las plantillas no pausadas podrán crear tareas desde hoy."
+            return row.label + ". Deshacer devolverá el proyecto a la cartera, conservando sus pausas."
+        if before in archived and after not in archived:
+            return row.label + ". Deshacer volverá a archivarlo sólo si no quedan tareas abiertas ni cronómetros."
+    return row.label
 
 
 def _columns(model: type) -> dict[str, Any]:
@@ -490,9 +509,14 @@ async def _validate_inverse_lifecycle(db, operations, previous, actor):
             project = await db.scalar(select(Project).where(Project.id == op["entity_id"]).options(noload("*")))
             old_status = previous.get(("project", op["entity_id"]))
             if project is not None and old_status is not None and "status" in fields:
-                await validate_project_lifecycle_inverse(
-                    db, project_id=project.id, previous_status=old_status, actor=actor,
-                )
+                try:
+                    await validate_project_lifecycle_inverse(
+                        db, project_id=project.id, previous_status=old_status, actor=actor,
+                    )
+                except HTTPException as exc:
+                    if isinstance(exc.detail, dict) and exc.detail.get("code") == "project_close_blocked":
+                        raise HTTPException(409, "No se puede deshacer la reapertura: quedan tareas abiertas o cronómetros en el proyecto.") from exc
+                    raise
             if action != "delete" and not fields.intersection({"owner_id", "requires_task_review"}):
                 continue
             if project is not None:

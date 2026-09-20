@@ -47,6 +47,7 @@ import { Skeleton, SkeletonCard } from "@/components/ui/skeleton"
 import { invalidateProjectChange, invalidateTaskChange, projectKeys, taskKeys } from "@/lib/query-keys"
 import { TaskPanel } from "@/components/tasks/task-panel"
 import { TimeLogDialog } from "@/components/timer/time-log-dialog"
+import { ProjectLifecycleDialog } from "@/components/projects/project-lifecycle-dialog"
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   planning: "Planificación",
@@ -80,6 +81,7 @@ export default function ProjectDetailPage() {
   const queryClient = useQueryClient()
   const { hasPermission, user, isAdmin } = useAuth()
   const [showEditDialog, setShowEditDialog] = useState(false)
+  const [lifecycleAction, setLifecycleAction] = useState<"completed" | "cancelled" | "reopen" | null>(null)
   const [showAddTaskDialog, setShowAddTaskDialog] = useState<number | null>(null)
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false)
   const [viewMode, setViewMode] = useState<"list" | "gantt" | "kanban">("list")
@@ -218,6 +220,8 @@ export default function ProjectDetailPage() {
   }
   if (!project) return <div className="text-muted-foreground">Proyecto no encontrado</div>
 
+  const isArchived = project.status === "completed" || project.status === "cancelled"
+  const canWriteProjects = hasPermission("projects", true)
   const primaryHoursUsed = project.is_recurring ? (project.hours_used_month ?? 0) : (project.hours_used ?? 0)
   const primaryHoursBudget = project.is_recurring ? project.effective_monthly_hours_budget : project.budget_hours
 
@@ -254,25 +258,31 @@ export default function ProjectDetailPage() {
           <p className="mt-1 text-sm text-muted-foreground">Responsable: {project.owner_name || "Sin responsable"}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {hasPermission("tasks", true) && <Button onClick={() => setShowAddTaskDialog(0)}><Plus className="h-4 w-4 mr-2" />Añadir tarea</Button>}
-          <Select
-            aria-label="Estado del proyecto"
+          {hasPermission("tasks", true) && !isArchived && <Button onClick={() => setShowAddTaskDialog(0)}><Plus className="h-4 w-4 mr-2" />Añadir tarea</Button>}
+          {!isArchived && <Select
+            aria-label="Estado operativo del proyecto"
             value={project.status}
             onChange={(e) => updateStatusMutation.mutate(e.target.value)}
-            disabled={!hasPermission("projects", true) || updateStatusMutation.isPending}
+            disabled={!canWriteProjects || updateStatusMutation.isPending}
             className="w-40"
           >
             <option value="planning">Planificación</option>
             <option value="active">Activo</option>
             <option value="on_hold">Pausado</option>
-            <option value="completed">Completado</option>
-            <option value="cancelled">Cancelado</option>
-          </Select>
-          <Button variant="outline" disabled={!hasPermission("projects", true)} onClick={() => setShowSaveTemplateDialog(true)}>
+          </Select>}
+          {isArchived ? (
+            <Button disabled={!canWriteProjects} onClick={() => setLifecycleAction("reopen")}>Reabrir proyecto</Button>
+          ) : (
+            <>
+              <Button variant="outline" disabled={!canWriteProjects} onClick={() => setLifecycleAction("completed")}>Cerrar como terminado</Button>
+              <Button variant="outline" disabled={!canWriteProjects} onClick={() => setLifecycleAction("cancelled")}>Cancelar y archivar</Button>
+            </>
+          )}
+          <Button variant="outline" disabled={!canWriteProjects} onClick={() => setShowSaveTemplateDialog(true)}>
             <Copy className="h-4 w-4 mr-2" />
             Guardar plantilla
           </Button>
-          <Button variant="outline" disabled={!hasPermission("projects", true)} onClick={() => setShowEditDialog(true)}>
+          <Button variant="outline" disabled={!canWriteProjects} onClick={() => setShowEditDialog(true)}>
             <Edit2 className="h-4 w-4 mr-2" />
             Editar
           </Button>
@@ -284,9 +294,9 @@ export default function ProjectDetailPage() {
       {tasksData && !tasksError && <ProjectWorkSummary
         tasks={[...tasksData.phases.flatMap(group => group.tasks), ...tasksData.unassigned_tasks]}
         today={businessToday}
-        canWrite={hasPermission("tasks", true)}
+        canWrite={hasPermission("tasks", true) && !isArchived}
         onOpen={setPreviewTaskId}
-        onAdd={() => setShowAddTaskDialog(0)}
+        onAdd={() => !isArchived && setShowAddTaskDialog(0)}
       />}
 
       {project.is_recurring && <MonthlyCycleCard
@@ -631,6 +641,7 @@ export default function ProjectDetailPage() {
         {viewMode === "kanban" && tasksData && (
           <ProjectPhaseKanban
             phases={filteredPhases}
+            canWrite={hasPermission("projects", true) && !isArchived}
             onPhaseStatusChange={(phaseId, newStatus) =>
               updatePhaseMutation.mutate({ phaseId, status: newStatus })
             }
@@ -672,7 +683,7 @@ export default function ProjectDetailPage() {
                         updatePhaseMutation.mutate({ phaseId: phase.id, status: e.target.value })
                       }
                       aria-label={`Estado de la fase ${phase.name}`}
-                      disabled={!hasPermission("projects", true) || updatePhaseMutation.isPending}
+                      disabled={!hasPermission("projects", true) || isArchived || updatePhaseMutation.isPending}
                       className="w-32 h-8 text-xs"
                     >
                       <option value="pending">Pendiente</option>
@@ -683,7 +694,7 @@ export default function ProjectDetailPage() {
                       variant="ghost"
                       size="sm"
                       aria-label={`Añadir tarea a ${phase.name}`}
-                      disabled={!hasPermission("tasks", true)}
+                      disabled={!hasPermission("tasks", true) || isArchived}
                       onClick={() => setShowAddTaskDialog(phase.id)}
                     >
                       <Plus className="h-4 w-4" />
@@ -696,7 +707,7 @@ export default function ProjectDetailPage() {
                   <p className="text-sm text-muted-foreground py-2">Sin tareas en esta fase</p>
                 ) : (
                   <ProjectTaskList tasks={tasks} showCompleted={hasActiveFilters}
-                    canWrite={hasPermission("tasks", true)}
+                    canWrite={hasPermission("tasks", true) && !isArchived}
                     requiresReview={!!project?.requires_task_review}
                     canCompleteReviewedTask={!!(isAdmin || (user?.id && project?.owner_id === user.id))}
                     pendingTaskId={updateTaskMutation.isPending ? updateTaskMutation.variables.taskId : undefined}
@@ -718,7 +729,7 @@ export default function ProjectDetailPage() {
             </CardHeader>
             <CardContent>
                   <ProjectTaskList tasks={filteredUnassigned} showCompleted={hasActiveFilters}
-                    canWrite={hasPermission("tasks", true)}
+                    canWrite={hasPermission("tasks", true) && !isArchived}
                     requiresReview={!!project?.requires_task_review}
                     canCompleteReviewedTask={!!(isAdmin || (user?.id && project?.owner_id === user.id))}
                     pendingTaskId={updateTaskMutation.isPending ? updateTaskMutation.variables.taskId : undefined}
@@ -736,6 +747,16 @@ export default function ProjectDetailPage() {
           open={showEditDialog}
           onOpenChange={setShowEditDialog}
           project={project}
+        />
+      )}
+
+      {lifecycleAction && (
+        <ProjectLifecycleDialog
+          key={`${project.id}-${lifecycleAction}`}
+          project={project}
+          action={lifecycleAction}
+          open
+          onOpenChange={(open) => !open && setLifecycleAction(null)}
         />
       )}
 
