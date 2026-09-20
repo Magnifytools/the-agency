@@ -27,6 +27,13 @@ STATUS_EXECUTED = "executed"
 STATUS_FAILED = "failed"
 MAX_COMMAND_MINUTES = 24 * 60
 
+_COMMERCIAL_AMOUNT = r"(?:\d+(?:[.,]\d+)?)"
+_COMMERCIAL_SIGNAL = re.compile(
+    rf"(?:{_COMMERCIAL_AMOUNT}\s*(?:€|eur\b)|"
+    rf"\b(?:tarifa|cuota|fee|precio|presupuesto|facturación)\b[^\n\d]{{0,32}}{_COMMERCIAL_AMOUNT})",
+    re.IGNORECASE,
+)
+
 
 def canonical_hash(value: Any) -> str:
     raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -138,6 +145,8 @@ def parse_command(raw: str) -> dict[str, Any]:
     project_match = re.match(r"^(?:crea|crear) (?:un )?proyecto (.+)$", text, re.I)
     if project_match:
         remainder = project_match.group(1).strip()
+        if _COMMERCIAL_SIGNAL.search(remainder):
+            return {"kind": "project_commercial_handoff"}
         project_text, first_task_text = _split_clause(remainder, r"con primera tarea")
         if first_task_text is not None:
             project_intent = parse_command(f'Crea proyecto {project_text}')
@@ -445,6 +454,20 @@ async def execute_or_prompt(
             "field": "literal_title", "label": intent["error"], "kind": "choice",
             "choices": [{"id": "literal_title:confirm", "label": "Usar todo como título", "subtitle": intent["literal"]}],
         }]}
+        return
+    if kind == "project_commercial_handoff":
+        receipt.status = STATUS_EXECUTED
+        receipt.result = {
+            "kind": "derivation",
+            "label": "Derivación",
+            "message": (
+                "Esta orden contiene condiciones comerciales. Revísalas en el "
+                "formulario de proyecto antes de crear."
+            ),
+            "action": {"kind": "open_project_form", "href": "/projects?new=1"},
+            "entities": [],
+            "undo_available": False,
+        }
         return
     if kind == "create_project_with_task":
         require_permission(actor, "projects")
