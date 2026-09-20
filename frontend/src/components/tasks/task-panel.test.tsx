@@ -589,6 +589,8 @@ describe("TaskPanel", () => {
     setup({ taskId: 9, defaults: { initialStatus: "waiting" } });
     await screen.findByDisplayValue("Auditar");
     expect(screen.getByLabelText("Estado")).toHaveValue("waiting");
+    expect(screen.getByLabelText("Respuesta pendiente")).toBeVisible();
+    expect(screen.getByLabelText("Revisar el")).toBeVisible();
     expect(screen.getByRole("button", { name: "Guardar" })).toBeDisabled();
   });
 

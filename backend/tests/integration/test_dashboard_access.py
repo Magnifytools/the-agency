@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 from sqlalchemy import delete, func, select
@@ -339,8 +339,13 @@ async def test_zero_capacity_is_explicit_and_period_validation_is_shared(
 
 
 async def test_clients_without_hours_alert_is_team_only(
-    make_member_client, admin_client, db_session,
+    make_member_client, admin_client, db_session, monkeypatch,
 ):
+    # This alert is deliberately available only from Wednesday. Freeze the
+    # business day so the ACL assertion does not depend on the CI weekday.
+    import backend.api.routes.dashboard as dashboard_route
+
+    monkeypatch.setattr(dashboard_route, "business_today", lambda: date(2026, 9, 23))
     member_client = await make_member_client([
         ("dashboard", True, False), ("clients", True, False),
         ("tasks", True, False), ("timesheet", True, False),
