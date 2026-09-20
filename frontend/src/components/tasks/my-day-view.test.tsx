@@ -59,6 +59,17 @@ describe("MyDayView", () => {
     expect(screen.getByLabelText("Estado de Arrastre")).toBeDisabled()
   })
 
+  it("sends reviewed work to review and opens the waiting form with its intended status", async () => {
+    const onStatusChange = vi.fn()
+    const onOpenEdit = vi.fn()
+    const reviewed = task(5, "Revisar antes de cerrar", { project_requires_task_review: true, project_review_owner_id: 7 })
+    render(<MyDayView planned={page([reviewed])} carryover={page([])} unplanned={page([])} completed={page([])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={onStatusChange} onOpenEdit={onOpenEdit} onReviewCarryover={vi.fn()} canWrite canCompleteReviewedTask={() => false} />)
+    await userEvent.selectOptions(screen.getByLabelText("Estado de Revisar antes de cerrar"), "completed")
+    expect(onStatusChange).toHaveBeenCalledWith(5, "in_review")
+    await userEvent.selectOptions(screen.getByLabelText("Estado de Revisar antes de cerrar"), "waiting")
+    expect(onOpenEdit).toHaveBeenLastCalledWith(expect.objectContaining({ id: 5 }), "waiting")
+  })
+
   it("distinguishes a retired-list error from an empty history and retries it", () => {
     const retry = vi.fn()
     render(<MyDayView planned={page([])} carryover={page([])} unplanned={page([])} completed={page([])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} onReviewCarryover={vi.fn()} retiredError onRetryRetired={retry} />)

@@ -4,7 +4,7 @@ import { dashboardApi, discordApi, tasksApi, timeEntriesApi, timerApi, usersApi,
 import { dashboardKeys, holdedKeys, invalidateTaskChange, invalidateTimeChange, taskKeys, timeKeys } from "@/lib/query-keys"
 import { profitabilityStatus } from "@/lib/profitability"
 import { isEnabled } from "@/lib/hidden-modules"
-import type { PricingOption } from "@/lib/types"
+import type { PricingOption, Task } from "@/lib/types"
 import { useAuth } from "@/context/auth-context"
 import { MetricCard } from "@/components/dashboard/metric-card"
 import { OperationalOverview } from "@/components/dashboard/operational-overview"
@@ -49,6 +49,17 @@ function profitBadge(status: string) {
 function isForbidden(error: unknown) {
   return typeof error === "object" && error !== null && "response" in error
     && (error as { response?: { status?: number } }).response?.status === 403
+}
+
+function completionAction(task: Task, actorId: number, isAdmin: boolean) {
+  const requiresReview = !task.is_recurring
+    && task.project_requires_task_review === true
+    && !isAdmin
+    && task.project_review_owner_id !== actorId
+
+  return requiresReview
+    ? { status: "in_review" as const, label: "Enviar a revisión" }
+    : { status: "completed" as const, label: "Completar" }
 }
 
 export default function DashboardPage() {
@@ -272,12 +283,12 @@ export default function DashboardPage() {
     onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar los guardarraíles")),
   })
   const markDoneMutation = useMutation({
-    mutationFn: (taskId: number) => tasksApi.update(taskId, { status: "completed" }),
-    onSuccess: (task) => {
-      toast.success("Tarea completada")
+    mutationFn: ({ taskId, status }: { taskId: number; status: "completed" | "in_review" }) => tasksApi.update(taskId, { status }),
+    onSuccess: (task, action) => {
+      toast.success(action.status === "in_review" ? "Tarea enviada a revisión" : "Tarea completada")
       invalidateTaskChange(queryClient, { projectId: task.project_id, clientId: task.client_id })
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al completar la tarea")),
+    onError: (err, action) => toast.error(getErrorMessage(err, action.status === "in_review" ? "Error al enviar la tarea a revisión" : "Error al completar la tarea")),
   })
   const startTimerMutation = useMutation({
     mutationFn: (taskId: number) => timerApi.start({ task_id: taskId }),
@@ -505,16 +516,19 @@ export default function DashboardPage() {
             </div>
             {myInProgressTasks && myInProgressTasks.length > 0 ? (
               <div className="space-y-2">
-                {myInProgressTasks.slice(0, 5).map((t) => (
+                {myInProgressTasks.slice(0, 5).map((t) => {
+                  const completion = completionAction(t, user.id, isAdmin)
+                  return (
                   <div
                     key={t.id}
                     className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3 hover:border-brand/30 transition-colors"
                   >
                     <button
-                      onClick={() => markDoneMutation.mutate(t.id)}
+                      onClick={() => markDoneMutation.mutate({ taskId: t.id, status: completion.status })}
                       disabled={markDoneMutation.isPending || !canWriteTasks}
                       className="group w-5 h-5 rounded-full border-2 border-border hover:border-green-400 hover:bg-green-400/10 flex items-center justify-center flex-shrink-0 transition-colors"
-                      title="Marcar como completada"
+                      aria-label={`${completion.label}: ${t.title}`}
+                      title={completion.label}
                     >
                       <Check className="h-3 w-3 text-transparent group-hover:text-green-400 transition-colors" />
                     </button>
@@ -542,7 +556,8 @@ export default function DashboardPage() {
                       </button>
                     )}
                   </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
               <div className="border border-dashed border-border rounded-xl p-5 text-center">
@@ -561,7 +576,9 @@ export default function DashboardPage() {
                 Pendientes ({myPendingTasks.length})
               </p>
               <div className="space-y-1">
-                {myPendingTasks.slice(0, 8).map((t) => (
+                {myPendingTasks.slice(0, 8).map((t) => {
+                  const completion = completionAction(t, user.id, isAdmin)
+                  return (
                   <div key={t.id} className="flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-muted/50 transition-colors group">
                     <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 flex-shrink-0" />
                     <span className="text-sm flex-1 truncate">{t.title}</span>
@@ -581,16 +598,18 @@ export default function DashboardPage() {
                         <Play className="h-3 w-3" />
                       </button>
                       <button
-                        onClick={() => markDoneMutation.mutate(t.id)}
+                        onClick={() => markDoneMutation.mutate({ taskId: t.id, status: completion.status })}
                         disabled={markDoneMutation.isPending || !canWriteTasks}
                         className="p-1 text-muted-foreground hover:text-green-400 rounded transition-colors"
-                        title="Marcar como completada"
+                        aria-label={`${completion.label}: ${t.title}`}
+                        title={completion.label}
                       >
                         <Check className="h-3 w-3" />
                       </button>
                     </div>
                   </div>
-                ))}
+                  )
+                })}
                 {myPendingTasks.length > 8 && (
                   <Link to="/tasks" className="block text-xs text-muted-foreground hover:text-brand px-4 py-1.5">
                     +{myPendingTasks.length - 8} más en Tareas →

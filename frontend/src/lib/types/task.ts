@@ -63,6 +63,10 @@ export interface Task {
   dependency_title: string | null
   created_by_name: string | null
   recurring_parent_title: string | null
+  // These policy fields are deliberately derived in TaskResponse so task-only
+  // users can follow the review flow without reading the whole project.
+  project_requires_task_review?: boolean
+  project_review_owner_id?: number | null
   checklist_count: number
 }
 

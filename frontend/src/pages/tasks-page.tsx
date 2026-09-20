@@ -38,6 +38,7 @@ import { invalidateTaskChange, optimisticallyUpdateExactQuery, restoreQuerySnaps
 import type { OperationalImpact } from "@/lib/query-keys"
 import { addCivilDays, formatCivilDate } from "@/lib/dates"
 import { useBusinessDate } from "@/hooks/use-business-date"
+import { taskStatusPresentation } from "@/lib/task-status"
 
 const priorityBadge = (priority: TaskPriority) => {
   const map: Record<TaskPriority, { label: string; variant: "destructive" | "warning" | "secondary" | "outline" }> = {
@@ -64,7 +65,7 @@ const weekRange = (offset: number, today: string) => {
 }
 
 export default function TasksPage() {
-  const { user, hasPermission } = useAuth()
+  const { user, isAdmin, hasPermission } = useAuth()
   const canWriteTasks = hasPermission?.("tasks", true) ?? false
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -73,6 +74,7 @@ export default function TasksPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [carryoverTask, setCarryoverTask] = useState<Task | null>(null)
   const [editing, setEditing] = useState<Task | null>(null)
+  const [editingInitialStatus, setEditingInitialStatus] = useState<TaskStatus | undefined>()
   const [timeLogTask, setTimeLogTask] = useState<Task | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
@@ -203,19 +205,24 @@ export default function TasksPage() {
   const { selectedIds: selectedTaskIds, isSelected: isTaskSelected, toggleItem: toggleTask, toggleAll: toggleAllTasks, clearSelection: clearTaskSelection, selectedCount: selectedTaskCount, allSelected: allTasksSelected } = useBulkSelect(tasks)
 
   // Clear bulk selection when switching views
-  useEffect(() => { clearTaskSelection(); reset() }, [view, qaFilter, reset])
+  useEffect(() => { clearTaskSelection(); reset() }, [view, qaFilter, reset, clearTaskSelection])
 
   const bulkUpdateMutation = useMutation({
     mutationFn: async ({ ids, updates }: { ids: number[]; updates: Record<string, unknown> }) =>
       tasksApi.bulkUpdate(ids, updates),
-    onSuccess: ({ updated, requested }, { ids, updates }) => {
+    onSuccess: ({ updated, requested, results }, { ids, updates }) => {
       invalidateTaskViews(impactForTasks(visibleTasks.filter((task) => ids.includes(task.id)), updates))
-      clearTaskSelection()
+      const failedIds = (results ?? []).filter((result) => !result.updated).map((result) => result.id)
+      if (failedIds.length) {
+        clearTaskSelection()
+        failedIds.forEach(toggleTask)
+      } else clearTaskSelection()
       setBulkStatus("")
       if (updated === requested) {
         toast.success(`${updated} tareas actualizadas`)
       } else {
-        toast.warning(`${updated}/${requested} actualizadas`)
+        const detail = results?.find((result) => !result.updated)?.detail
+        toast.warning(detail ? `${updated}/${requested} actualizadas. ${detail}` : `${updated}/${requested} actualizadas`)
       }
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar tareas")),
@@ -317,17 +324,25 @@ export default function TasksPage() {
   const closeDialog = () => {
     setDialogOpen(false)
     setEditing(null)
+    setEditingInitialStatus(undefined)
   }
 
   const openCreate = () => {
     setEditing(null)
+    setEditingInitialStatus(undefined)
     setDialogOpen(true)
   }
 
-  const openEdit = (task: Task) => {
+  const openEdit = (task: Task, initialStatus?: TaskStatus) => {
     setEditing(task)
+    setEditingInitialStatus(initialStatus)
     setDialogOpen(true)
   }
+
+  const sendsForReview = (task: Task) => !!task.project_requires_task_review
+    && !task.is_recurring
+    && !isAdmin
+    && task.project_review_owner_id !== user?.id
 
   useEffect(() => {
     if (!deepLinkTaskId) return
@@ -418,13 +433,13 @@ export default function TasksPage() {
         <Select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); reset() }} className="w-48">
           <option value="">Todos (incl. completadas)</option>
           <option value="backlog,pending,in_progress,advanced,waiting,in_review">Activas</option>
-          <option value="backlog">Backlog</option>
-          <option value="pending">Pendiente</option>
-          <option value="in_progress">En curso</option>
+          <option value="pending,backlog">Pendiente</option>
+          <option value="in_progress,advanced">En curso</option>
           <option value="waiting">En espera</option>
           <option value="in_review">En revisión</option>
-          <option value="advanced">Avanzada (sigo mañana)</option>
-          <option value="completed">Completada</option>
+          <option value="completed">Hecho</option>
+          <option value="backlog">Pendiente · backlog</option>
+          <option value="advanced">En curso · avance registrado</option>
         </Select>
         <Select value={filterPriority} onChange={(e) => { setFilterPriority(e.target.value); reset() }} className="w-48">
           <option value="">Todas las prioridades</option>
@@ -672,17 +687,22 @@ export default function TasksPage() {
                       "bg-green-500": t.status === "completed",
                     })} />
                     <Select
-                      value={t.status}
-                      onChange={(e) => updateMutation.mutate({ id: t.id, data: { status: e.target.value as TaskStatus } })}
+                      value={taskStatusPresentation(t.status, t.scheduled_date).group}
+                      onChange={(e) => {
+                        const next = e.target.value as TaskStatus
+                        if (next === "waiting") {
+                          openEdit(t, "waiting")
+                          return
+                        }
+                        updateMutation.mutate({ id: t.id, data: { status: next === "completed" && sendsForReview(t) ? "in_review" : next } })
+                      }}
                       className="h-7 text-xs w-32 py-0"
                     >
-                      <option value="backlog">Backlog</option>
                       <option value="pending">Pendiente</option>
                       <option value="in_progress">En curso</option>
-                      <option value="waiting">En espera</option>
+                      <option value="waiting">En espera…</option>
                       <option value="in_review">En revisión</option>
-                      <option value="advanced">Avanzada (sigo mañana)</option>
-                      <option value="completed">Completada</option>
+                      <option value="completed">{sendsForReview(t) ? "Enviar a revisión" : "Hecho"}</option>
                     </Select>
                     </div>
                   </TableCell>
@@ -765,8 +785,12 @@ export default function TasksPage() {
             onRetryRetired={() => void retiredTasks.refetch()}
             isLoadingMore={plannedAgenda.isFetchingNextPage || carryoverAgenda.isFetchingNextPage || unplannedAgenda.isFetchingNextPage || completedAgenda.isFetchingNextPage || retiredTasks.isFetchingNextPage}
             onLoadMore={(section) => ({ planned: plannedAgenda, carryover: carryoverAgenda, unplanned: unplannedAgenda, completed: completedAgenda, retired: retiredTasks }[section].fetchNextPage())}
-            onStatusChange={(id, status) => updateMutation.mutate({ id, data: { status } })}
+            onStatusChange={(id, status) => {
+              const task = [...agendaData(plannedAgenda).items, ...agendaData(carryoverAgenda).items, ...agendaData(unplannedAgenda).items, ...agendaData(completedAgenda).items].find((item) => item.id === id)
+              updateMutation.mutate({ id, data: { status: status === "completed" && task && sendsForReview(task) ? "in_review" : status } })
+            }}
             onOpenEdit={openEdit}
+            canCompleteReviewedTask={(task) => !!(isAdmin || task.project_review_owner_id === user?.id)}
             onReviewCarryover={setCarryoverTask}
             canWrite={canWriteTasks}
           />
@@ -776,7 +800,10 @@ export default function TasksPage() {
       {!isLoading && !isTasksError && view === "sprint" && (
         <KanbanBoard
           tasks={tasks}
-          onStatusChange={(taskId, newStatus) => updateMutation.mutate({ id: taskId, data: { status: newStatus } })}
+          onStatusChange={(taskId, newStatus) => {
+            const task = tasks.find((item) => item.id === taskId)
+            updateMutation.mutate({ id: taskId, data: { status: newStatus === "completed" && task && sendsForReview(task) ? "in_review" : newStatus } })
+          }}
           onOpenEdit={openEdit}
         />
       )}
@@ -881,6 +908,7 @@ export default function TasksPage() {
       <TaskPanel
         open={dialogOpen}
         taskId={editing?.id}
+        defaults={editingInitialStatus ? { initialStatus: editingInitialStatus } : undefined}
         onOpenChange={(open) => { if (!open) closeDialog() }}
         onOpenTime={(task) => { setTimeLogTask(task); closeDialog() }}
       />
@@ -920,13 +948,10 @@ export default function TasksPage() {
           className="h-8 text-xs w-36"
         >
           <option value="">Estado...</option>
-          <option value="backlog">Backlog</option>
           <option value="pending">Pendiente</option>
           <option value="in_progress">En curso</option>
-          <option value="waiting">En espera</option>
           <option value="in_review">En revisión</option>
-          <option value="advanced">Avanzada (sigo mañana)</option>
-          <option value="completed">Completada</option>
+          <option value="completed">Hecho</option>
         </Select>
         <Select
           value=""

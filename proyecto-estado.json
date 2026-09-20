@@ -1,6 +1,6 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-20T21:53:51.546682+00:00",
+  "ultima_actualizacion": "2026-09-20T22:07:46.786270+00:00",
   "estado_general": "produccion_p21_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
@@ -275,7 +275,7 @@
       "descripcion": "Ciclo de tareas: cinco grupos, esperas completas y revisión opcional por proyecto",
       "estado": "en_validacion",
       "prioridad": "alta",
-      "notas": "Backend local verificado:1285pass/2skip, esquema14, Undo67 y carreras permisos26. Migración aditiva defaultfalse, policy en writers/Undo/bulk/comandos y permisos frescos tras locks. Frontend y navegador en curso; pendientes CI/publicación. Producción permanece P21."
+      "notas": "Local verificado:1285 backend/2skip,402 frontend/64archivos, TypeScript+Vite correctos. Esperas, revisión por proyecto y permisos frescos; UI tareas/proyectos/dashboard y regresión de identidad corregidas. E2E aislado en curso; pendientes CI/publicación. Producción permanece P21."
     }
   ],
   "bugs": [

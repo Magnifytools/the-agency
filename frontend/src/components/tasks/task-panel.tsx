@@ -30,11 +30,13 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import { businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates";
+import { taskStatusPresentation } from "@/lib/task-status";
 
 type Defaults = {
   clientId?: number | null;
   projectId?: number | null;
   phaseId?: number | null;
+  initialStatus?: TaskStatus;
 };
 type RecurrencePreview = { key: string; summary: RecurrenceSummary };
 type LegacyComparison = { key: string; sourceKey: string; current: RecurrenceSummary; proposed: RecurrenceSummary; anchor: string };
@@ -83,7 +85,7 @@ function fromTask(task?: Task, defaults?: Defaults): TaskCreate {
   return {
     title: task.title,
     description: task.description,
-    status: task.status,
+    status: defaults?.initialStatus ?? task.status,
     priority: task.priority,
     estimated_minutes: task.estimated_minutes,
     due_date: task.due_date?.slice(0, 10) ?? null,
@@ -134,8 +136,9 @@ export function TaskPanel({
   onOpenTime,
 }: TaskPanelProps) {
   const queryClient = useQueryClient();
-  const { hasPermission } = useAuth();
+  const { hasPermission, user, isAdmin } = useAuth();
   const canWrite = hasPermission?.("tasks", true) ?? false;
+  const canReadProjects = hasPermission?.("projects") ?? false;
   const canReadTime = hasPermission?.("timesheet") ?? false;
   const businessToday = useBusinessDate();
   const [draft, setDraft] = useState<TaskCreate>(() =>
@@ -148,7 +151,7 @@ export function TaskPanel({
   const [legacyComparison, setLegacyComparison] = useState<LegacyComparison | null>(null);
   const [restoreConflict, setRestoreConflict] = useState<string | null>(null);
   const initializedFor = useRef<string | null>(null);
-  const contextKey = `${taskId ?? "new"}:${defaults?.clientId ?? ""}:${defaults?.projectId ?? ""}:${defaults?.phaseId ?? ""}`;
+  const contextKey = `${taskId ?? "new"}:${defaults?.clientId ?? ""}:${defaults?.projectId ?? ""}:${defaults?.phaseId ?? ""}:${defaults?.initialStatus ?? ""}`;
 
   const taskQuery = useQuery({
     queryKey: taskKeys.detail(taskId ?? 0),
@@ -164,7 +167,7 @@ export function TaskPanel({
   const { data: projects = [] } = useQuery({
     queryKey: projectKeys.list(["all"]),
     queryFn: () => projectsApi.listAll(),
-    enabled: open,
+    enabled: open && !!canReadProjects,
   });
   const { data: users = [] } = useQuery({
     queryKey: ["users-all"],
@@ -184,7 +187,7 @@ export function TaskPanel({
   const projectQuery = useQuery({
     queryKey: projectKeys.detail(draft.project_id ?? 0),
     queryFn: () => projectsApi.get(draft.project_id!),
-    enabled: open && !!draft.project_id,
+    enabled: open && !!draft.project_id && !!canReadProjects,
   });
   const checklistQuery = useQuery({
     queryKey: ["task-checklist", taskId],
@@ -249,8 +252,12 @@ export function TaskPanel({
   const legacySourceKey = JSON.stringify({ contextKey, open, recurrenceDraftKey, anchor: null });
 
   const save = useMutation({
-    mutationFn: () =>
-      taskId ? tasksApi.update(taskId, isRetired ? { title: draft.title, description: draft.description, link_url: draft.link_url } : draft) : tasksApi.create(draft),
+    mutationFn: () => {
+      const taskDraft = submitForReview ? { ...draft, status: "in_review" as const } : draft;
+      return taskId
+        ? tasksApi.update(taskId, isRetired ? { title: draft.title, description: draft.description, link_url: draft.link_url } : taskDraft)
+        : tasksApi.create(taskDraft);
+    },
     onSuccess: (task) => {
       invalidateTaskChange(queryClient, {
         projectId: task.project_id,
@@ -433,7 +440,33 @@ export function TaskPanel({
   const loadedTask = taskQuery.data;
   const isRetired = !!loadedTask?.retired_at;
   const canOperate = canWrite && !isRetired;
-  const canSave = canWrite && !!draft.title.trim() && (isRetired || !(legacyAnchorChange && !comparisonReady));
+  const statusPresentation = taskStatusPresentation(draft.status ?? "pending", draft.scheduled_date);
+  const enteringWaiting = draft.status === "waiting" && loadedTask?.status !== "waiting";
+  const waitingDetailsChanged = draft.status === "waiting" && (!!enteringWaiting
+    || draft.waiting_for !== loadedTask?.waiting_for
+    || draft.follow_up_date !== loadedTask?.follow_up_date
+    || draft.assigned_to !== loadedTask?.assigned_to);
+  const followUpChanged = draft.follow_up_date !== loadedTask?.follow_up_date;
+  const waitingNeedsCurrentDate = enteringWaiting || followUpChanged;
+  const waitingError = waitingDetailsChanged && (!draft.waiting_for?.trim()
+    || !draft.assigned_to
+    || !draft.follow_up_date
+    || (waitingNeedsCurrentDate && draft.follow_up_date < businessToday))
+    ? "Indica la respuesta pendiente, el responsable interno y una fecha de revisión de hoy o posterior."
+    : null;
+  const usesLoadedProjectPolicy = !!loadedTask && draft.project_id === loadedTask.project_id;
+  const projectRequiresReview = usesLoadedProjectPolicy
+    ? !!loadedTask.project_requires_task_review
+    : !!projectQuery.data?.requires_task_review;
+  const projectReviewOwnerId = usesLoadedProjectPolicy
+    ? loadedTask.project_review_owner_id
+    : projectQuery.data?.owner_id;
+  const requiresReview = projectRequiresReview && !draft.is_recurring;
+  const mayCompleteReviewedTask = !!(isAdmin || (user?.id && projectReviewOwnerId === user.id));
+  const legacyWaitingIncomplete = loadedTask?.status === "waiting"
+    && (!loadedTask.waiting_for?.trim() || !loadedTask.follow_up_date);
+  const submitForReview = requiresReview && !mayCompleteReviewedTask && draft.status === "in_review";
+  const canSave = canWrite && !!draft.title.trim() && !waitingError && (isRetired || !(legacyAnchorChange && !comparisonReady));
   const restoreTask = useMutation({
     mutationFn: () => tasksApi.restore(loadedTask!.id, loadedTask!.updated_at),
     onSuccess: async (task) => {
@@ -473,7 +506,7 @@ export function TaskPanel({
           Cargando…
         </p>
       ) : (
-        (!taskId || loadedTask) && (
+        (!taskQuery.isError && (!taskId || loadedTask)) && (
           <form
             className="space-y-4"
             onSubmit={(event) => {
@@ -516,20 +549,61 @@ export function TaskPanel({
                 <Label htmlFor="task-panel-status">Estado</Label>
                 <Select
                   id="task-panel-status"
-                  value={draft.status}
-                  onChange={(e) =>
-                    change("status", e.target.value as TaskStatus)
-                  }
+                  value={statusPresentation.group}
+                  onChange={(e) => {
+                    const next = e.target.value as TaskStatus;
+                    change(
+                      "status",
+                      next === "completed" && requiresReview && !mayCompleteReviewedTask
+                        ? "in_review"
+                        : next,
+                    );
+                  }}
                   disabled={!canOperate}
                 >
-                  <option value="backlog">Backlog</option>
                   <option value="pending">Pendiente</option>
                   <option value="in_progress">En curso</option>
                   <option value="waiting">En espera</option>
                   <option value="in_review">En revisión</option>
-                  <option value="advanced">Avanzada</option>
-                  <option value="completed">Completada</option>
+                  <option value="completed">{requiresReview && !mayCompleteReviewedTask ? "Enviar a revisión" : "Hecho"}</option>
                 </Select>
+                {statusPresentation.detail && <p className="mt-1 text-xs text-muted-foreground">{statusPresentation.detail}</p>}
+                {requiresReview && !mayCompleteReviewedTask && (
+                  <p role="status" className="mt-1 text-xs text-muted-foreground">
+                    El responsable del proyecto revisa y completa esta tarea.
+                  </p>
+                )}
+                {requiresReview && mayCompleteReviewedTask && draft.status === "in_review" && canOperate && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button type="button" size="sm" variant="outline" onClick={() => change("status", "completed")}>
+                      Aprobar y completar
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => change("status", "in_progress")}>
+                      Devolver a en curso
+                    </Button>
+                  </div>
+                )}
+                {legacyWaitingIncomplete && (
+                  <p role="status" className="mt-1 text-xs text-warning">
+                    Esta espera heredada no tiene todos los datos de seguimiento. Puedes editar el resto de la tarea; complétalos al actualizar la espera.
+                  </p>
+                )}
+                {canOperate && draft.status === "advanced" && (
+                  <Button type="button" size="sm" variant="ghost" className="mt-1 px-0 text-xs" onClick={() => change("status", "in_progress")}>
+                    Retomar ahora
+                  </Button>
+                )}
+                {canOperate && draft.status === "backlog" && (
+                  <Button type="button" size="sm" variant="ghost" className="mt-1 px-0 text-xs" onClick={() => change("status", "pending")}>
+                    Sacar del backlog
+                  </Button>
+                )}
+                {canOperate && draft.status !== "advanced" && draft.status !== "backlog" && draft.status !== "completed" && (
+                  <Button type="button" size="sm" variant="ghost" className="mt-1 px-0 text-xs" onClick={() => change("status", "advanced")}>
+                    Avancé hoy
+                  </Button>
+                )}
+                {waitingError && <p role="alert" className="mt-1 text-xs text-destructive">Completa Espera y seguimiento para guardar esta espera.</p>}
               </div>
               <div>
                 <Label htmlFor="task-panel-priority">Prioridad</Label>
@@ -557,6 +631,9 @@ export function TaskPanel({
                       ? Number(e.target.value)
                       : null;
                     setDraft((current) => {
+                      if (!canReadProjects) {
+                        return { ...current, client_id: clientId };
+                      }
                       const keepsProject =
                         current.project_id &&
                         projects.some(
@@ -572,7 +649,7 @@ export function TaskPanel({
                       };
                     });
                   }}
-                  disabled={!canOperate || defaults?.clientId != null}
+                  disabled={!canOperate || defaults?.clientId != null || (!canReadProjects && !!draft.project_id)}
                 >
                   <option value="">Sin cliente</option>
                   {clients.map((client) => (
@@ -601,9 +678,12 @@ export function TaskPanel({
                       client_id: project?.client_id ?? current.client_id,
                     }));
                   }}
-                  disabled={!canOperate || defaults?.projectId != null}
+                  disabled={!canOperate || !canReadProjects || defaults?.projectId != null}
                 >
                   <option value="">Sin proyecto</option>
+                  {!canReadProjects && draft.project_id && (
+                    <option value={draft.project_id}>{loadedTask?.project_name ?? "Proyecto actual"}</option>
+                  )}
                   {availableProjects.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.name}
@@ -731,11 +811,11 @@ export function TaskPanel({
             </div>
             <details>
               <summary className="cursor-pointer text-sm font-medium">
-                Seguimiento
+                Espera y seguimiento
               </summary>
               <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <Label htmlFor="task-panel-waiting">Esperando a</Label>
+                  <Label htmlFor="task-panel-waiting">Respuesta pendiente</Label>
                   <Input
                     id="task-panel-waiting"
                     value={draft.waiting_for ?? ""}
@@ -744,6 +824,18 @@ export function TaskPanel({
                     }
                     disabled={!canOperate}
                   />
+                </div>
+                <div>
+                  <Label htmlFor="task-panel-waiting-owner">Responsable interno del siguiente paso</Label>
+                  <Select
+                    id="task-panel-waiting-owner"
+                    value={draft.assigned_to ?? ""}
+                    onChange={(e) => change("assigned_to", e.target.value ? Number(e.target.value) : null)}
+                    disabled={!canOperate}
+                  >
+                    <option value="">Selecciona responsable</option>
+                    {users.filter((item) => item.is_active !== false).map((item) => <option key={item.id} value={item.id}>{item.full_name}</option>)}
+                  </Select>
                 </div>
                 <div>
                   <Label htmlFor="task-panel-followup">Revisar el</Label>
@@ -758,6 +850,7 @@ export function TaskPanel({
                   />
                 </div>
               </div>
+              {waitingError && <p role="alert" className="mt-2 text-sm text-destructive">{waitingError}</p>}
             </details>
             <details>
               <summary className="cursor-pointer text-sm font-medium">
@@ -1234,7 +1327,7 @@ export function TaskPanel({
                   type="submit"
                   disabled={save.isPending || !canSave}
                 >
-                  {save.isPending ? "Guardando…" : "Guardar"}
+                  {save.isPending ? "Guardando…" : submitForReview ? "Enviar a revisión" : "Guardar"}
                 </Button>
               )}
             </div>

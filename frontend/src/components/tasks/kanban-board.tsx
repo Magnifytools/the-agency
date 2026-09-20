@@ -5,23 +5,21 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Pencil, Clock, AlertTriangle, User, GripVertical, UserX, CalendarX, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 import { businessDateString, formatCivilDate } from "@/lib/dates"
+import { taskStatusPresentation, type TaskStatusGroup } from "@/lib/task-status"
 
 interface Props {
   tasks: Task[]
   onStatusChange: (taskId: number, newStatus: TaskStatus) => void
-  onOpenEdit: (task: Task) => void
+  onOpenEdit: (task: Task, initialStatus?: TaskStatus) => void
 }
 
-const columns: { status: TaskStatus; label: string; color: string; bgColor: string }[] = [
-  { status: "in_review", label: "En revisión", color: "text-purple-400", bgColor: "bg-purple-950/60 border-purple-700" },
-  // "Avanzada" = hoy he avanzado, mañana sigo. La barrida nocturna del backend
-  // devuelve estas tarjetas a "En curso", así que la columna amanece vacía.
-  { status: "advanced", label: "Avanzada", color: "text-teal-400", bgColor: "bg-teal-950/60 border-teal-700" },
-  { status: "waiting", label: "En espera", color: "text-orange-400", bgColor: "bg-orange-950/60 border-orange-700" },
-  { status: "in_progress", label: "En curso", color: "text-blue-400", bgColor: "bg-blue-950/60 border-blue-700" },
+const columns: Array<{ status: TaskStatusGroup; label: string; color: string; bgColor: string }> = [
   { status: "pending", label: "Pendiente", color: "text-yellow-400", bgColor: "bg-yellow-950/60 border-yellow-700" },
-  { status: "backlog", label: "Backlog", color: "text-gray-400", bgColor: "bg-gray-900/60 border-gray-700" },
+  { status: "in_progress", label: "En curso", color: "text-blue-400", bgColor: "bg-blue-950/60 border-blue-700" },
+  { status: "waiting", label: "En espera", color: "text-orange-400", bgColor: "bg-orange-950/60 border-orange-700" },
+  { status: "in_review", label: "En revisión", color: "text-purple-400", bgColor: "bg-purple-950/60 border-purple-700" },
 ]
 
 const priorityColors: Record<string, string> = {
@@ -47,7 +45,7 @@ const formatMinutes = (mins: number) => {
 
 export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
   const dragTaskRef = useRef<Task | null>(null)
-  const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null)
+  const [dragOverColumn, setDragOverColumn] = useState<TaskStatusGroup | null>(null)
 
   const handleDragStart = (e: React.DragEvent, task: Task) => {
     dragTaskRef.current = task
@@ -66,7 +64,7 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
     dragTaskRef.current = null
   }
 
-  const handleDragOver = (e: React.DragEvent, status: TaskStatus) => {
+  const handleDragOver = (e: React.DragEvent, status: TaskStatusGroup) => {
     e.preventDefault()
     e.dataTransfer.dropEffect = "move"
     setDragOverColumn(status)
@@ -80,12 +78,16 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
     }
   }
 
-  const handleDrop = (e: React.DragEvent, newStatus: TaskStatus) => {
+  const handleDrop = (e: React.DragEvent, newStatus: TaskStatusGroup) => {
     e.preventDefault()
     setDragOverColumn(null)
     const task = dragTaskRef.current
-    if (task && task.status !== newStatus) {
-      onStatusChange(task.id, newStatus)
+    if (task && taskStatusPresentation(task.status, task.scheduled_date).group !== newStatus) {
+      if (newStatus === "waiting") {
+        onOpenEdit(task, "waiting")
+        toast.message("Completa Respuesta pendiente, responsable y fecha para poner la tarea en espera.")
+      }
+      else onStatusChange(task.id, newStatus)
     }
     dragTaskRef.current = null
   }
@@ -95,7 +97,7 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       {columns.map((col) => {
-        const colTasks = tasks.filter((t) => t.status === col.status)
+        const colTasks = tasks.filter((t) => taskStatusPresentation(t.status, t.scheduled_date).group === col.status)
         const isDragOver = dragOverColumn === col.status
 
         return (
@@ -153,6 +155,7 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
                             {task.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" />}
                             {task.title}
                           </p>
+                          {taskStatusPresentation(task.status, task.scheduled_date).detail && <p className="text-[10px] text-muted-foreground">{taskStatusPresentation(task.status, task.scheduled_date).detail}</p>}
                         </div>
                         <Button
                           variant="ghost"

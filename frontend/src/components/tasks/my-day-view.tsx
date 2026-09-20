@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Pencil, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { agencyTimezoneLabel, businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates"
+import { taskStatusPresentation } from "@/lib/task-status"
 
 
 interface Props {
@@ -17,12 +18,13 @@ interface Props {
   isLoadingMore?: boolean
   onLoadMore: (section: "planned" | "carryover" | "unplanned" | "completed" | "retired") => void
   onStatusChange: (id: number, status: TaskStatus) => void
-  onOpenEdit: (task: Task) => void
+  onOpenEdit: (task: Task, initialStatus?: TaskStatus) => void
   onReviewCarryover: (task: Task) => void
   retiredLoading?: boolean
   retiredError?: boolean
   onRetryRetired?: () => void
   canWrite?: boolean
+  canCompleteReviewedTask?: (task: Task) => boolean
 }
 
 const priorityOrder: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
@@ -45,7 +47,7 @@ const formatMinutes = (mins: number) => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-export function MyDayView({ planned, carryover, unplanned, completed, retired, isLoadingMore, onLoadMore, onStatusChange, onOpenEdit, onReviewCarryover, retiredLoading = false, retiredError = false, onRetryRetired, canWrite = false }: Props) {
+export function MyDayView({ planned, carryover, unplanned, completed, retired, isLoadingMore, onLoadMore, onStatusChange, onOpenEdit, onReviewCarryover, retiredLoading = false, retiredError = false, onRetryRetired, canWrite = false, canCompleteReviewedTask = () => true }: Props) {
   const today = businessDateString()
   const [showRetired, setShowRetired] = useState(false)
 
@@ -72,6 +74,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
   const renderTaskCard = (task: Task, carryover = false) => {
     const isOverdue = task.due_date && task.due_date < today
     const isInProgress = task.status === "in_progress"
+    const sendsForReview = !!task.project_requires_task_review && !task.is_recurring && !canCompleteReviewedTask(task)
 
     return (
       <Card
@@ -85,10 +88,12 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
       >
         <CardContent className="p-3 grid grid-cols-[minmax(0,1fr)_auto] gap-3 sm:flex sm:items-center">
           <select
-            value={task.status}
+            value={taskStatusPresentation(task.status, task.scheduled_date).group}
             onChange={(e) => {
               e.stopPropagation()
-              onStatusChange(task.id, e.target.value as TaskStatus)
+              const next = e.target.value as TaskStatus
+              if (next === "waiting") onOpenEdit(task, "waiting")
+              else onStatusChange(task.id, next === "completed" && sendsForReview ? "in_review" : next)
             }}
             onClick={(e) => e.stopPropagation()}
             aria-label={`Estado de ${task.title}`}
@@ -98,13 +103,11 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
               "bg-background text-foreground border-input"
             )}
           >
-            <option value="backlog">Backlog</option>
             <option value="pending">Pendiente</option>
             <option value="in_progress">En curso</option>
-            <option value="waiting">En espera</option>
+            <option value="waiting">En espera…</option>
             <option value="in_review">En revisión</option>
-            <option value="advanced">Avanzada (sigo mañana)</option>
-            <option value="completed">Completada</option>
+            <option value="completed">{sendsForReview ? "Enviar a revisión" : "Hecho"}</option>
           </select>
 
           <div className="flex-1 min-w-0">
@@ -116,6 +119,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
               {priorityBadge(task.priority)}
             </div>
             <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground flex-wrap">
+              {taskStatusPresentation(task.status, task.scheduled_date).detail && <span>{taskStatusPresentation(task.status, task.scheduled_date).detail}</span>}
               {task.client_name && <span>{task.client_name}</span>}
               {task.project_name && <span className="text-muted-foreground">· {task.project_name}</span>}
               {task.estimated_minutes && (

@@ -124,7 +124,7 @@ async def test_concrete_completion_requires_fresh_owner_or_admin(db_session):
             db_session, {"project_id": project.id, "status": TaskStatus.completed}, other,
         )
     assert denied.value.status_code == 409
-    assert "status=in_review" in denied.value.detail
+    assert "envía la tarea a revisión" in denied.value.detail
 
     with pytest.raises(HTTPException):
         await validate_task_review(
@@ -304,7 +304,7 @@ async def test_bulk_and_command_report_review_failure_without_false_success(
         assert bulk.status_code == 200, bulk.text
         assert bulk.json()["updated"] == 0
         assert bulk.json()["failed"] == 1
-        assert "status=in_review" in bulk.json()["results"][0]["detail"]
+        assert "envía la tarea a revisión" in bulk.json()["results"][0]["detail"]
 
         command = await client.post("/api/commands", json={
             "request_key": "review-command-000001",
@@ -319,7 +319,7 @@ async def test_bulk_and_command_report_review_failure_without_false_success(
         ))
         assert receipt.status == "failed"
         assert receipt.error_code == "invalid_command"
-        assert "status=in_review" in receipt.error_detail
+        assert "envía la tarea a revisión" in receipt.error_detail
         assert not (receipt.result or {}).get("entities")
 
     db_session.expire_all()

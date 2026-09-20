@@ -43,4 +43,11 @@ describe("project task working list", () => {
     expect(screen.getByText("Persona de prueba")).toBeInTheDocument()
     expect(screen.queryByText("7")).not.toBeInTheDocument()
   })
+
+  it("sends a concrete task to review when the viewer cannot close reviewed work", async () => {
+    const actions = callbacks()
+    render(<ProjectTaskList tasks={tasks} canWrite requiresReview {...actions} />)
+    await userEvent.click(screen.getByRole("button", { name: "Enviar a revisión: Revisar propuesta" }))
+    expect(actions.onStatusChange).toHaveBeenCalledWith(1, "in_review")
+  })
 })

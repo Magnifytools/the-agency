@@ -2,7 +2,7 @@ import { ProjectWorkSummary } from "@/components/projects/project-work-summary"
 import type { ProjectTaskItem, ProjectTaskGroup } from "@/lib/project-work"
 import { useBusinessDate } from "@/hooks/use-business-date"
 import { businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates"
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
 import { useAuth } from "@/context/auth-context"
@@ -78,7 +78,7 @@ export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { hasPermission } = useAuth()
+  const { hasPermission, user, isAdmin } = useAuth()
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showAddTaskDialog, setShowAddTaskDialog] = useState<number | null>(null)
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false)
@@ -153,12 +153,12 @@ export default function ProjectDetailPage() {
     onError: () => toast.error("Error al actualizar tarea"),
   })
 
-  const filterTask = (t: ProjectTaskItem) => {
+  const filterTask = useCallback((t: ProjectTaskItem) => {
     if (t.is_recurring) return false
     if (filterStatus !== "all" && t.status !== filterStatus) return false
     if (filterSearch && !t.title.toLowerCase().includes(filterSearch.toLowerCase())) return false
     return true
-  }
+  }, [filterSearch, filterStatus])
 
   const filteredPhases = useMemo(() => {
     if (!tasksData?.phases) return []
@@ -168,12 +168,12 @@ export default function ProjectDetailPage() {
         tasks: pg.tasks.filter(filterTask),
       }))
       .filter((pg: ProjectTaskGroup) => pg.tasks.length > 0)
-  }, [tasksData, filterStatus, filterSearch])
+  }, [tasksData, filterTask])
 
   const filteredUnassigned = useMemo(() => {
     if (!tasksData?.unassigned_tasks) return []
     return tasksData.unassigned_tasks.filter(filterTask)
-  }, [tasksData, filterStatus, filterSearch])
+  }, [tasksData, filterTask])
 
   const hasActiveFilters = filterStatus !== "all" || filterSearch !== ""
 
@@ -697,6 +697,8 @@ export default function ProjectDetailPage() {
                 ) : (
                   <ProjectTaskList tasks={tasks} showCompleted={hasActiveFilters}
                     canWrite={hasPermission("tasks", true)}
+                    requiresReview={!!project?.requires_task_review}
+                    canCompleteReviewedTask={!!(isAdmin || (user?.id && project?.owner_id === user.id))}
                     pendingTaskId={updateTaskMutation.isPending ? updateTaskMutation.variables.taskId : undefined}
                     onStatusChange={(taskId, status) => updateTaskMutation.mutate({ taskId, status })}
                     onOpen={setPreviewTaskId} />
@@ -715,9 +717,11 @@ export default function ProjectDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ProjectTaskList tasks={filteredUnassigned} showCompleted={hasActiveFilters}
-                canWrite={hasPermission("tasks", true)}
-                pendingTaskId={updateTaskMutation.isPending ? updateTaskMutation.variables.taskId : undefined}
+                  <ProjectTaskList tasks={filteredUnassigned} showCompleted={hasActiveFilters}
+                    canWrite={hasPermission("tasks", true)}
+                    requiresReview={!!project?.requires_task_review}
+                    canCompleteReviewedTask={!!(isAdmin || (user?.id && project?.owner_id === user.id))}
+                    pendingTaskId={updateTaskMutation.isPending ? updateTaskMutation.variables.taskId : undefined}
                 onStatusChange={(taskId, status) => updateTaskMutation.mutate({ taskId, status })}
                 onOpen={setPreviewTaskId} />
             </CardContent>
@@ -728,6 +732,7 @@ export default function ProjectDetailPage() {
       {/* Edit Dialog */}
       {project && (
         <EditProjectDialog
+          key={project.id}
           open={showEditDialog}
           onOpenChange={setShowEditDialog}
           project={project}
@@ -780,6 +785,7 @@ function EditProjectDialog({
   const [formData, setFormData] = useState({
     name: project.name,
     owner_id: project.owner_id?.toString() || "",
+    requires_task_review: project.requires_task_review,
     description: project.description || "",
     start_date: project.start_date?.split("T")[0] || "",
     target_end_date: project.target_end_date?.split("T")[0] || "",
@@ -807,6 +813,7 @@ function EditProjectDialog({
     mutationFn: () =>
       projectsApi.update(project.id, {
         ...(formData.owner_id !== (project.owner_id?.toString() || "") ? { owner_id: formData.owner_id ? Number(formData.owner_id) : null } : {}),
+        requires_task_review: formData.requires_task_review,
         name: formData.name,
         description: formData.description || undefined,
         start_date: formData.start_date || undefined,
@@ -863,6 +870,19 @@ function EditProjectDialog({
           </Select>
           {ownersError && <p role="alert" className="text-xs text-muted-foreground">No se pudo cargar el equipo. Se conserva el responsable actual.</p>}
         </div>
+        <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
+          <input
+            type="checkbox"
+            checked={formData.requires_task_review}
+            onChange={(event) => setFormData({ ...formData, requires_task_review: event.target.checked })}
+            disabled={!formData.owner_id || ownersError}
+          />
+          <span>
+            <span className="font-medium">Revisar tareas antes de darlas por hechas</span>
+            <span className="block text-xs text-muted-foreground">El responsable del proyecto o una persona administradora podrá completarlas.</span>
+            {!formData.owner_id && <span className="block text-xs text-destructive">Selecciona un responsable activo para activar esta revisión.</span>}
+          </span>
+        </label>
         <div className="space-y-2">
           <Label htmlFor="project-detail-page-field-2">Descripción</Label>
           <Input id="project-detail-page-field-2"

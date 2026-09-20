@@ -14,7 +14,7 @@ Deshacer contrasta la política actual y el resultado real de restaurar los camp
 
 La migración añade solamente `projects.requires_task_review`, booleano no nulo y desactivado por defecto. No cambia estados, responsables, fechas, horas ni acuerdos. Los campos de contexto de revisión de la respuesta de tareas se derivan del proyecto; no se duplican en la base de datos y pueden leerse sin permiso para consultar el resto de la ficha de proyecto.
 
-Verificación backend final: 1.285 pruebas aprobadas y 2 omitidas (295,82 s), incluidos los casos PostgreSQL y HTTP; Ruff y `git diff --check` correctos. Frontend, navegador, CI y despliegue siguen pendientes.
+Verificación backend final: 1.285 pruebas aprobadas y 2 omitidas (295,82 s), incluidos los casos PostgreSQL y HTTP; Ruff y `git diff --check` correctos. Frontend final: 402 pruebas aprobadas en 64 archivos; compilación TypeScript y Vite correctas. Se verifican etiquetas y payloads de revisión en Hoy, Trabajo, ficha de proyecto y Visión general, la intención de espera al arrastrar y la separación de formularios al navegar entre proyectos. Navegador, CI y despliegue siguen pendientes.
 
 Evidencia local disponible: ensayo de esquema anterior y preservación, rutas HTTP y PostgreSQL reales, respuesta por tarea en cambios masivos, comandos rechazados, restauración de fechas antiguas, contención de política y revocación mediante el escritor oficial de permisos. La comprobación de producción previa encontró siete tareas backlog con fecha y cuatro esperas incompletas; permanecen sin modificar.
 

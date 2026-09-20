@@ -44,6 +44,7 @@ export interface Project {
   client_name: string | null
   owner_id: number | null
   owner_name: string | null
+  requires_task_review: boolean
   phases: ProjectPhase[]
   task_count: number
   completed_task_count: number
@@ -104,6 +105,7 @@ export interface ProjectListItem {
   client_name: string | null
   owner_id: number | null
   owner_name: string | null
+  requires_task_review: boolean
   gsc_url: string | null
   ga4_property_id: string | null
   is_recurring: boolean
@@ -137,6 +139,7 @@ export interface ProjectCreate {
   next_billing_date?: string | null
   client_id: number
   owner_id?: number | null
+  requires_task_review?: boolean
 }
 
 export interface ProjectTemplate {

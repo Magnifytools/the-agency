@@ -190,6 +190,6 @@ async def validate_task_review(
     if not privileged:
         raise HTTPException(
             409,
-            "Este proyecto requiere revisión: envía la tarea con status=in_review para que la cierre su responsable",
+            "Este proyecto requiere revisión: envía la tarea a revisión para que la cierre su responsable",
         )
     return TaskReviewContext(project_id, True, effective_row.owner_id)
