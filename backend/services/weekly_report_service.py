@@ -363,6 +363,7 @@ def render_weekly_operational(facts: WeeklyReportFacts) -> str:
     )
     lines += [
         f"✅ **Completadas en el período:** {facts.completed_count}",
+        "_Solo se atribuyen al período las tareas con fecha de finalización registrada._",
         f"🔄 **En progreso ahora:** {facts.in_progress_count}",
         f"📋 **Pendientes:** {facts.pending_count} (estado actual)",
         f"🔴 **Vencidas ahora:** {facts.overdue_count}",
