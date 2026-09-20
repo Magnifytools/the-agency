@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-20T23:21:09.020003+00:00",
-  "estado_general": "produccion_p23_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-20T23:40:21.808235+00:00",
+  "estado_general": "produccion_p24_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -283,6 +283,13 @@
       "estado": "completado",
       "prioridad": "alta",
       "notas": "PR35/f24647c publicada y verificada. CI35543742673 seis gates SUCCESS; frontend411/build; PostgreSQL cubre cierre, concurrencia, permisos, Undo y semana completa. E2E aislado390/1440 y producción19GET/UI correctos. Todos los hashes de datos y ledger conservados; sin migración."
+    },
+    {
+      "id": "AUDIT-20260921-P24",
+      "descripcion": "Cohortes de clientes y señales con fuentes y ventanas comprensibles",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "PR36 publicada bc900ee; CI PR/main y Railway SUCCESS. 1332 backend/2skip,416 frontend/build; E2E aislado y producción390/1440. 29GET SQL/API, hashes/counts/ledger conservados."
     }
   ],
   "bugs": [
@@ -345,7 +352,7 @@
   ],
   "notas_tecnicas": [
     "Stack: React 19 + FastAPI + PostgreSQL + Railway",
-    "Tests P23: CI de PR seis gates correctos, 411 frontend/build; PostgreSQL y producción verificados. P24 local1332 backend/416frontend; todavía pendiente publicación.",
+    "Tests P24: 1332 backend/2skip con PostgreSQL obligatorio,416 frontend/build; CI PR y main seis gates correctos; producción y preservación verificadas.",
     "CUIDADO: lazy='selectin' esta en ~80 relaciones de models.py. Quitar un selectinload() de .options() NO evita la carga; hace falta noload() explicito",
     "La suite unitaria mockea get_db: cualquier cambio de SQL debe verificarse en tests/integration/",
     "Los estados de rentabilidad viven en services/profitability.py (backend) y lib/profitability.ts (frontend), un unico mapa cada uno",
@@ -353,7 +360,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "P24 claridad de clientes PR36 en CI/E2E; P25 recuperación y períodos en validación; P26 comandos comerciales y uso operativo en desarrollo. REP004/011 tienen contrato P27 pendiente. Canal, revisión histórica y validación humana siguen explícitos.",
+  "proximos_pasos": "P25 recuperación y períodos en verificación final, incluido GET/PUT permisos en router core. P26 comandos comerciales y uso operativo en validación; P27 recuperación/trazabilidad de informes en implementación; P28 auditoría de accesibilidad. Canal, revisión histórica y validación humana siguen explícitos.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
@@ -363,7 +370,7 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "f24647ce458d6beb602dc394fd8239be10b3a9a9",
+    "revision": "bc900eef186083b59efe8d340c09e2c41946fccc",
     "healthcheck": "/api/ready",
     "schema_revision": "20260920_project_review_v1"
   },
