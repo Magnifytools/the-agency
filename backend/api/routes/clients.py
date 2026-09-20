@@ -1,7 +1,7 @@
 from __future__ import annotations
 import logging
 import os
-from typing import Optional
+from typing import Literal, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Path, Query, UploadFile, status
@@ -35,11 +35,21 @@ from backend.services.domain_writes import create_client as create_client_write
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
+ClientCohort = Literal["all", "external", "internal"]
+
+
+def _client_cohort(query, cohort: ClientCohort):
+    if cohort == "external":
+        return query.where(Client.is_internal.is_(False))
+    if cohort == "internal":
+        return query.where(Client.is_internal.is_(True))
+    return query
 
 
 @router.get("", response_model=PaginatedResponse[ClientResponse])
 async def list_clients(
     status_filter: Optional[ClientStatus] = Query(None, alias="status"),
+    cohort: ClientCohort = Query("all"),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
@@ -50,6 +60,7 @@ async def list_clients(
         base = base.where(Client.status == status_filter)
     else:
         base = base.where(Client.status != ClientStatus.finished)
+    base = _client_cohort(base, cohort)
 
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
 
@@ -308,14 +319,14 @@ def _health_sort_key(result: dict) -> tuple[bool, bool, int]:
 
 @router.get("/health-scores")
 async def list_health_scores(
+    cohort: ClientCohort = Query("all"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("clients")),
 ):
     """Health scores for all active clients."""
     try:
-        result = await db.execute(
-            select(Client).where(Client.status == ClientStatus.active).order_by(Client.name)
-        )
+        query = select(Client).where(Client.status == ClientStatus.active)
+        result = await db.execute(_client_cohort(query, cohort).order_by(Client.name))
         clients = result.scalars().all()
         scores = await compute_health_batch(clients, db, _health_capabilities(current_user))
         # Sort by score ascending (worst first)

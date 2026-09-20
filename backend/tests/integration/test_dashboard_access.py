@@ -350,7 +350,10 @@ async def test_clients_without_hours_alert_is_team_only(
         ("dashboard", True, False), ("clients", True, False),
         ("tasks", True, False), ("timesheet", True, False),
     ])
-    db_session.add(Client(name="Cliente sin horas", status=ClientStatus.active))
+    db_session.add_all([
+        Client(name="Cliente externo sin horas", status=ClientStatus.active, is_internal=False),
+        Client(name="Cliente interno sin horas", status=ClientStatus.active, is_internal=True),
+    ])
     await db_session.flush()
     try:
         member = await member_client.get("/api/dashboard/alerts-summary")
@@ -359,7 +362,10 @@ async def test_clients_without_hours_alert_is_team_only(
     admin = await admin_client.get("/api/dashboard/alerts-summary")
     assert member.status_code == admin.status_code == 200
     assert "clients_no_hours" not in {item["type"] for item in member.json()["alerts"]}
-    assert "clients_no_hours" in {item["type"] for item in admin.json()["alerts"]}
+    alert = next(item for item in admin.json()["alerts"] if item["type"] == "clients_no_hours")
+    assert alert["count"] == 1
+    assert alert["title"] == "1 clientes externos sin horas esta semana"
+    assert alert["detail"] == ["Cliente externo sin horas"]
 
 
 async def test_team_cost_matches_financial_aggregates_with_exact_minutes_and_rate_fallback(

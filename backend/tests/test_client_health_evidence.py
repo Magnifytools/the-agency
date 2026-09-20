@@ -139,7 +139,7 @@ async def test_compute_health_treats_client_without_tasks_as_unmeasured():
     assert result["factors"]["tasks"] is None
     assert result["score"] is None
     assert result["risk_level"] == "no_data"
-    assert result["observations"]["tasks"] == "Sin tareas registradas"
+    assert result["observations"]["tasks"] == "Histórico no retirado: sin tareas registradas"
     db.execute.assert_awaited_once()
 
 
@@ -154,7 +154,9 @@ async def test_compute_health_does_not_invent_digest_cadence():
     result = await compute_health(_client(), db, capabilities)
 
     assert result["factors"]["digests"] is None
-    assert result["observations"]["digests"] == "Sin resúmenes recientes; cadencia no configurada"
+    assert result["observations"]["digests"] == (
+        "Últimas 4 semanas: 0 resúmenes · la ausencia no implica riesgo sin cadencia"
+    )
     assert result["risk_level"] == "no_data"
 
 

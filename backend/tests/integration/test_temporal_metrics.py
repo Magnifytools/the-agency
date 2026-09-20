@@ -81,7 +81,9 @@ async def test_month_metrics_share_manual_civil_and_timer_utc_boundaries(
 
     health = await admin_client.get(f"/api/clients/{client.id}/health")
     assert health.status_code == 200, health.text
-    assert "Coste estimado 33" in health.json()["observations"]["profitability"]
+    assert health.json()["observations"]["profitability"] == (
+        "Mes civil actual: coste estimado 33 de presupuesto 1000"
+    )
 
     client_dashboard = await admin_client.get(f"/api/clients/{client.id}/dashboard")
     assert client_dashboard.status_code == 200, client_dashboard.text

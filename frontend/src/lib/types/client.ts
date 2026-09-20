@@ -267,6 +267,8 @@ export interface ClientHealthScore {
   risk_level: "healthy" | "warning" | "at_risk" | "no_data"
 }
 
+export type ClientCohort = "all" | "external" | "internal"
+
 // Client Summary
 export interface ClientSummary {
   client: Client

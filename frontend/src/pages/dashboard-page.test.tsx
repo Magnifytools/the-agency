@@ -63,7 +63,7 @@ describe("DashboardPage", () => {
   it("does not fetch team, finance, or task sources for a member without those permissions", async () => {
     mocks.user = { id: 4, role: "member", permissions: [] }
     show()
-    await screen.findByText("Clientes activos")
+    await screen.findByText("Clientes externos activos")
     expect(mocks.overview).toHaveBeenCalled()
     expect(mocks.financialOverview).not.toHaveBeenCalled()
     expect(mocks.team).not.toHaveBeenCalled()
@@ -182,20 +182,20 @@ describe("DashboardPage", () => {
     mocks.user = { id: 4, role: "member", permissions: [] }
     mocks.overview.mockResolvedValueOnce(operational).mockRejectedValueOnce({ response: { status: 403 } }).mockRejectedValueOnce(new Error("503")).mockResolvedValueOnce(operational)
     const { client } = show()
-    await screen.findByText("Clientes activos")
+    await screen.findByText("Clientes externos activos")
     const key = dashboardKeys.overview(2026, 9, 4, "member::0")
     await client.invalidateQueries({ queryKey: key })
-    await waitFor(() => expect(screen.queryByText("Clientes activos")).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText("Clientes externos activos")).not.toBeInTheDocument())
     await client.invalidateQueries({ queryKey: key })
-    expect(screen.queryByText("Clientes activos")).not.toBeInTheDocument()
+    expect(screen.queryByText("Clientes externos activos")).not.toBeInTheDocument()
     await client.invalidateQueries({ queryKey: key })
-    expect(await screen.findByText("Clientes activos")).toBeInTheDocument()
+    expect(await screen.findByText("Clientes externos activos")).toBeInTheDocument()
   })
 
   it("uses a new overview query after the signed-in identity changes", async () => {
     mocks.user = { id: 4, role: "member", permissions: [] }
     const { rerender, client } = show()
-    await screen.findByText("Clientes activos")
+    await screen.findByText("Clientes externos activos")
     mocks.user = { id: 5, role: "member", permissions: [] }
     rerender(<MemoryRouter><QueryClientProvider client={client}><DashboardPage /></QueryClientProvider></MemoryRouter>)
     await waitFor(() => expect(mocks.overview).toHaveBeenCalledTimes(2))

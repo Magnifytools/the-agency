@@ -33,7 +33,7 @@ export function OperationalOverview({ overview, isLoading, isError, onRetry }: P
   if (!overview) return null
 
   const metrics: Metric[] = [
-    { key: "clients", icon: Users, label: "Clientes activos", value: overview.active_clients, tooltip: "Clientes con estado activo." },
+    { key: "clients", icon: Users, label: "Clientes externos activos", value: overview.active_clients, tooltip: "Foto actual de clientes externos activos. No cambia con el mes seleccionado." },
     { key: "tasks", icon: CheckSquare, label: "Tareas del mes", value: overview.pending_tasks == null || overview.in_progress_tasks == null ? null : overview.pending_tasks + overview.in_progress_tasks, subtitle: overview.in_progress_tasks == null ? undefined : `${overview.in_progress_tasks} en curso`, tooltip: "Tareas pendientes y en curso del mes seleccionado." },
     { key: "timesheet", icon: Clock, label: overview.hours_scope === "mine" ? "Mis horas del mes" : "Horas del equipo", value: overview.hours_this_month == null ? null : `${overview.hours_this_month}h`, tooltip: overview.hours_scope === "mine" ? "Tus horas registradas en el mes seleccionado." : "Horas registradas en el mes seleccionado." },
   ]

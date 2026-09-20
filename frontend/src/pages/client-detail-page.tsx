@@ -37,6 +37,7 @@ import { useAuth } from "@/context/auth-context"
 import { clientKeys, holdedKeys, invalidateClientChange, projectKeys, timeKeys } from "@/lib/query-keys"
 import { formatCurrency } from "@/lib/format"
 import { TaskPanel } from "@/components/tasks/task-panel"
+import { clientHealthPresentation } from "@/components/dashboard/client-health-presentation"
 
 function formatMinutes(m: number): string {
   const h = Math.floor(m / 60)
@@ -399,6 +400,7 @@ export default function ClientDetailPage() {
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold uppercase tracking-wide">{client.name}</h2>
             {statusBadge(client.status)}
+            {client.is_internal && <Badge variant="outline" className="border-purple-500/50 text-purple-400">Interno</Badge>}
             {client.engine_project_id && engineConfig?.engine_frontend_url && (
               <a
                 href={`${engineConfig.engine_frontend_url}/p/${client.engine_project_id}/dashboard`}
@@ -586,51 +588,34 @@ export default function ClientDetailPage() {
             </CardContent>
           </Card>
         )}
-        {health && (
-          <Card className={health.risk_level === "at_risk" ? "border-red-500/40" : health.risk_level === "warning" ? "border-amber-500/40" : ""}>
+        {health && (() => {
+          const presentation = clientHealthPresentation(health)
+          const measuredFactors = (Object.keys(health.factors) as Array<keyof typeof health.factors>).filter((factor) => health.factors[factor] != null)
+          const unavailableFactors = (Object.keys(health.factors) as Array<keyof typeof health.factors>).filter((factor) => health.factors[factor] == null)
+          return <Card className={health.risk_signals.length ? "border-red-500/40" : ""}>
             <CardContent className="p-4">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                 <Heart className="h-3 w-3 flex-shrink-0" /> <span className="truncate">Salud</span>
               </p>
-              <p className={`kpi-value mt-1 ${health.risk_level === "healthy" ? "text-green-600" : health.risk_level === "warning" ? "text-amber-500" : health.risk_level === "no_data" ? "text-muted-foreground" : "text-red-500"}`}>
-                {health.score == null ? (health.risk_signals.length ? "Riesgo observado" : "Sin información suficiente") : `${health.score}/100`}
-              </p>
+              <Badge variant={presentation.variant} className="mt-2">{presentation.label}</Badge>
               <p className="mt-1 text-xs text-muted-foreground">
-                {health.enough_information ? `Basado en ${health.available_source_count} fuentes observables (${health.available_weight}/100 puntos).` : health.risk_signals.length ? "Hay una señal comprobada, pero faltan fuentes para valorar la salud global." : "Faltan fuentes suficientes para clasificar este cliente."}
+                {presentation.detail}. {health.available_source_count} fuentes disponibles.
               </p>
-              <div className="mt-2 grid grid-cols-5 gap-1">
-                {[
-                  { key: "communication", label: "Com", val: health.factors.communication, max: 25 },
-                  { key: "tasks", label: "Tar", val: health.factors.tasks, max: 25 },
-                  { key: "digests", label: "Dig", val: health.factors.digests, max: 15 },
-                  { key: "profitability", label: "Ren", val: health.factors.profitability, max: 20 },
-                  { key: "followups", label: "Fup", val: health.factors.followups, max: 15 },
-                ].map((f) => (
-                  <div key={f.label} className="text-center" title={health.observations[f.key as keyof typeof health.observations]}>
-                    <div className="text-[9px] text-muted-foreground">{f.label}</div>
-                    <div className="h-1 bg-muted rounded-full overflow-hidden mt-0.5">
-                      <div className="h-full bg-brand rounded-full" style={{ width: `${f.val == null ? 0 : (f.val / f.max) * 100}%` }} />
-                    </div>
-                    <div className="text-[9px] text-muted-foreground mt-0.5">{f.val ?? "—"}</div>
-                  </div>
-                ))}
-              </div>
               <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                {(Object.keys(health.factors) as Array<keyof typeof health.factors>)
-                  .filter((factor) => health.factors[factor] != null)
-                  .map((factor) => (
+                {health.risk_signals.map((signal) => <p key={signal} className="font-medium text-red-600">{signal}</p>)}
+                {measuredFactors.map((factor) => (
                     <p key={factor}>
                       {health.observations[factor]}
                       {factor === "tasks" && <> · <Link className="text-brand hover:underline" to={`/clients/${clientId}?tab=tareas`}>Ver tareas</Link></>}
                       {factor === "profitability" && <> · <Link className="text-brand hover:underline" to={`/clients/${clientId}?tab=panel`}>Ver consumo</Link></>}
                     </p>
                   ))}
-                {health.risk_signals.map((signal) => <p key={signal} className="text-red-600">{signal}</p>)}
-                {!health.enough_information && <p>Activa o registra fuentes reales antes de usar esta señal para decidir.</p>}
+                {unavailableFactors.length > 0 && <div className="mt-2 border-t pt-2"><p className="font-medium">Información incompleta</p>{unavailableFactors.map((factor) => <p key={factor}>{health.observations[factor]}</p>)}</div>}
+                {health.score != null && <details className="mt-2"><summary className="cursor-pointer">Ver índice orientativo legado</summary><p className="mt-1">{health.score} puntos; no sustituye las condiciones anteriores.</p></details>}
               </div>
             </CardContent>
           </Card>
-        )}
+        })()}
       </div>}
 
       {/* Tab: Ficha */}

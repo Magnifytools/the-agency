@@ -377,7 +377,7 @@ export default function DashboardPage() {
           <h2 className="text-2xl font-bold uppercase tracking-wide">Dashboard</h2>
           {!overviewQuery.isError && overview && overview.pending_tasks != null && overview.in_progress_tasks != null && overview.active_clients != null && (
             <p className="text-sm text-muted-foreground mt-1">
-              {MONTHS[month - 1]}: {overview.pending_tasks + overview.in_progress_tasks} tareas activas, {overview.active_clients} clientes
+              {MONTHS[month - 1]}: {overview.pending_tasks + overview.in_progress_tasks} tareas activas · {overview.active_clients} clientes externos activos hoy
             </p>
           )}
         </div>

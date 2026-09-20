@@ -176,6 +176,37 @@ def _as_naive_utc(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
+def _observations(
+    capabilities: HealthCapabilities, *, days_since: int | None,
+    total_tasks: int, completed: int, overdue: int, digest_count: int,
+    profitability_available: bool, estimated_cost: float, monthly_budget: float | None,
+    overdue_followups: int,
+) -> dict[str, str]:
+    """Describe each measured source and its real decision window."""
+    return {
+        "communication": "Fuente no disponible" if not capabilities.communications else (
+            f"Último contacto registrado: hace {days_since} días · riesgo a partir de 31 días"
+            if days_since is not None else
+            "Sin comunicaciones registradas · riesgo sólo tras 31 días desde un contacto registrado"
+        ),
+        "tasks": "Fuente no disponible" if not capabilities.tasks else (
+            f"Histórico no retirado: {completed}/{total_tasks} completadas · "
+            f"{overdue} atrasadas a fecha de hoy"
+            if total_tasks else "Histórico no retirado: sin tareas registradas"
+        ),
+        "digests": "Fuente no disponible" if not capabilities.digests else (
+            f"Últimas 4 semanas: {digest_count} resúmenes · la ausencia no implica riesgo sin cadencia"
+        ),
+        "profitability": "Fuente no disponible" if not capabilities.profitability else (
+            "Mes civil actual: presupuesto no configurado" if not profitability_available else
+            f"Mes civil actual: coste estimado {estimated_cost:.0f} de presupuesto {monthly_budget:.0f}"
+        ),
+        "followups": "Fuente no disponible" if days_since is None else (
+            f"Ahora: {overdue_followups} seguimientos vencidos"
+        ),
+    }
+
+
 # ── Single-client version (used by /{client_id}/health) ─────
 
 
@@ -305,22 +336,13 @@ async def compute_health(
         "digests": digest_score,
         "profitability": profit_score,
         "followups": followup_score,
-    }, {
-        "communication": "Fuente no disponible" if not capabilities.communications else (
-            f"Último contacto hace {days_since} días" if days_since is not None else "Sin comunicaciones registradas"
-        ),
-        "tasks": "Fuente no disponible" if not capabilities.tasks else (
-            f"{completed}/{total_tasks} completadas · {overdue} vencidas" if total_tasks else "Sin tareas registradas"
-        ),
-        "digests": "Fuente no disponible" if not capabilities.digests else (
-            "Sin resúmenes recientes; cadencia no configurada" if not digest_count else f"{digest_count} resúmenes recientes"
-        ),
-        "profitability": "Fuente no disponible" if not capabilities.profitability else (
-            "Presupuesto no configurado" if not profitability_available else
-            f"Coste estimado {estimated_cost:.0f} de {float(client.monthly_budget):.0f}"
-        ),
-        "followups": "Fuente no disponible" if last_comm_date is None else f"{overdue_followups} seguimientos vencidos",
-    }, risk_signals)
+    }, _observations(
+        capabilities, days_since=days_since, total_tasks=total_tasks,
+        completed=completed, overdue=overdue, digest_count=digest_count,
+        profitability_available=profitability_available, estimated_cost=estimated_cost,
+        monthly_budget=float(client.monthly_budget) if client.monthly_budget is not None else None,
+        overdue_followups=overdue_followups,
+    ), risk_signals)
 
 
 # ── Batch version (used by /health-scores) ──────────────────
@@ -499,21 +521,11 @@ async def compute_health_batch(
             "digests": digests,
             "profitability": profit,
             "followups": followups,
-        }, {
-            "communication": "Fuente no disponible" if not capabilities.communications else (
-                f"Último contacto hace {days_since} días" if days_since is not None else "Sin comunicaciones registradas"
-            ),
-            "tasks": "Fuente no disponible" if not capabilities.tasks else (
-                f"{completed}/{total_tasks} completadas · {overdue} vencidas" if total_tasks else "Sin tareas registradas"
-            ),
-            "digests": "Fuente no disponible" if not capabilities.digests else (
-                "Sin resúmenes recientes; cadencia no configurada" if not digest_count else f"{digest_count} resúmenes recientes"
-            ),
-            "profitability": "Fuente no disponible" if not capabilities.profitability else (
-                "Presupuesto no configurado" if not profitability_available else
-                f"Coste estimado {estimated_cost:.0f} de {client_budget_map[cid]:.0f}"
-            ),
-            "followups": "Fuente no disponible" if last_date is None else f"{overdue_followups} seguimientos vencidos",
-        }, risk_signals))
+        }, _observations(
+            capabilities, days_since=days_since, total_tasks=total_tasks,
+            completed=completed, overdue=overdue, digest_count=digest_count,
+            profitability_available=profitability_available, estimated_cost=estimated_cost,
+            monthly_budget=client_budget_map[cid], overdue_followups=overdue_followups,
+        ), risk_signals))
 
     return scores

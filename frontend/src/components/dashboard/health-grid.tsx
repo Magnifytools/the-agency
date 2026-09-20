@@ -1,64 +1,38 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Tooltip } from "@/components/ui/tooltip"
 import type { ClientHealthScore } from "@/lib/types"
+import { clientHealthPresentation } from "@/components/dashboard/client-health-presentation"
 
 interface HealthGridProps {
   data: ClientHealthScore[]
 }
 
-const riskConfig = {
-  healthy: { label: "Saludable", variant: "success" as const, color: "bg-green-500" },
-  warning: { label: "Atención", variant: "warning" as const, color: "bg-yellow-500" },
-  at_risk: { label: "En riesgo", variant: "destructive" as const, color: "bg-red-500" },
-  no_data: { label: "Sin datos suficientes", variant: "secondary" as const, color: "bg-slate-300" },
-}
-
 export function HealthGrid({ data }: HealthGridProps) {
   const sorted = [...data].sort((a, b) => {
-    if (a.risk_level === "at_risk" && b.risk_level !== "at_risk") return -1
-    if (b.risk_level === "at_risk" && a.risk_level !== "at_risk") return 1
-    return (a.score ?? Number.POSITIVE_INFINITY) - (b.score ?? Number.POSITIVE_INFINITY)
+    const riskDifference = b.risk_signals.length - a.risk_signals.length
+    return riskDifference || a.client_name.localeCompare(b.client_name, "es")
   })
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       {sorted.map((client) => {
-        const cfg = riskConfig[client.risk_level] || riskConfig.warning
+        const presentation = clientHealthPresentation(client)
         return (
           <Card key={client.client_id} className="p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium truncate mr-2">{client.client_name}</span>
-              <Badge variant={cfg.variant} className="shrink-0">{cfg.label}</Badge>
+              <Badge variant={presentation.variant} className="shrink-0">{presentation.label}</Badge>
             </div>
-            <div className="flex items-center gap-3">
-              <Tooltip
-                content={
-                  <div className="space-y-1 text-xs">
-                    <p className="font-semibold mb-1.5">Factores del score</p>
-                    {(Object.keys(client.factors) as Array<keyof typeof client.factors>).map((factor) => (
-                      <p key={factor}>{client.observations[factor]}: <strong>{client.factors[factor] ?? "—"}</strong></p>
-                    ))}
-                  </div>
-                }
-                side="top"
-              >
-                <div className="text-2xl font-bold cursor-help">{client.score ?? "—"}</div>
-              </Tooltip>
-              <div className="flex-1">
-                <div className="h-2 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${cfg.color} transition-all`}
-                    style={{ width: `${client.score ?? 0}%` }}
-                  />
-                </div>
-                <div className="flex justify-between mt-1.5 text-[10px] text-muted-foreground">
-                  <span>Comm: {client.factors.communication ?? "—"}</span>
-                  <span>Tareas: {client.factors.tasks ?? "—"}</span>
-                  <span>Rent: {client.factors.profitability ?? "—"}</span>
-                </div>
-              </div>
+            <p className="text-xs text-muted-foreground">{presentation.detail}</p>
+            {client.risk_signals.length > 0 && <ul className="mt-2 space-y-1 text-xs text-destructive">
+              {client.risk_signals.map((signal) => <li key={signal}>{signal}</li>)}
+            </ul>}
+            <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+              {(Object.keys(client.observations) as Array<keyof typeof client.observations>).map((factor) => (
+                <p key={factor}>{client.observations[factor]}</p>
+              ))}
             </div>
+            {client.score != null && <details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">Índice orientativo legado</summary><p className="mt-1">{client.score} puntos</p></details>}
           </Card>
         )
       })}
