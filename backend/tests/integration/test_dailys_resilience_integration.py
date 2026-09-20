@@ -46,7 +46,7 @@ async def _dailys_de(db_session, user_id: int) -> list[DailyUpdate]:
 async def test_si_la_ia_falla_el_daily_se_guarda_igual(admin_client, db_session, monkeypatch):
     from backend.api.routes import dailys as dailys_route
 
-    async def _revienta(_raw_text):
+    async def _revienta(_raw_text, **_kwargs):
         raise RuntimeError("Anthropic caída")
 
     monkeypatch.setattr(dailys_route, "parse_daily_update", _revienta)
@@ -68,7 +68,7 @@ async def test_si_la_ia_devuelve_basura_tampoco_se_pierde(admin_client, db_sessi
     """`parse_daily_update` levanta ValueError cuando Claude no devuelve JSON."""
     from backend.api.routes import dailys as dailys_route
 
-    async def _json_invalido(_raw_text):
+    async def _json_invalido(_raw_text, **_kwargs):
         raise ValueError("La respuesta de Claude no es JSON valido")
 
     monkeypatch.setattr(dailys_route, "parse_daily_update", _json_invalido)
@@ -80,10 +80,10 @@ async def test_si_la_ia_devuelve_basura_tampoco_se_pierde(admin_client, db_sessi
 
 
 @pytest.mark.asyncio
-async def test_cuando_la_ia_responde_se_guarda_lo_parseado(admin_client, db_session, monkeypatch):
+async def test_enriquecimiento_explicito_guarda_lo_parseado(admin_client, db_session, monkeypatch):
     from backend.api.routes import dailys as dailys_route
 
-    async def _ok(_raw_text):
+    async def _ok(_raw_text, **_kwargs):
         return {
             "projects": [{"name": "SEO", "client": "Acme", "tasks": [
                 {"description": "Auditoría técnica", "details": ""}
@@ -97,7 +97,10 @@ async def test_cuando_la_ia_responde_se_guarda_lo_parseado(admin_client, db_sess
     resp = await admin_client.post("/api/dailys", json={"raw_text": "Acme: auditoría"})
 
     assert resp.status_code == 201, resp.text
-    assert resp.json()["parsed_data"]["projects"][0]["client"] == "Acme"
+    assert resp.json()["parsed_data"] is None
+    enriched = await admin_client.post(f"/api/dailys/{resp.json()['id']}/reparse", json={"revision": resp.json()["revision"]})
+    assert enriched.status_code == 200, enriched.text
+    assert enriched.json()["parsed_data"]["projects"][0]["client"] == "Acme"
 
     guardados = await _dailys_de(db_session, admin_client.test_user.id)
     assert guardados[0].parsed_data is not None
@@ -109,7 +112,7 @@ async def test_el_daily_duplicado_sigue_devolviendo_409(admin_client, monkeypatc
     provoca solo, porque la respuesta ya no tarda más que el timeout del cliente."""
     from backend.api.routes import dailys as dailys_route
 
-    async def _ok(_raw_text):
+    async def _ok(_raw_text, **_kwargs):
         return {"projects": [], "general": [], "tomorrow": []}
 
     monkeypatch.setattr(dailys_route, "parse_daily_update", _ok)
@@ -119,7 +122,8 @@ async def test_el_daily_duplicado_sigue_devolviendo_409(admin_client, monkeypatc
 
     segundo = await admin_client.post("/api/dailys", json={"raw_text": "dos"})
     assert segundo.status_code == 409
-    assert business_today().isoformat() in segundo.json()["detail"]
+    assert business_today().isoformat() in segundo.json()["detail"]["message"]
+    assert segundo.json()["detail"]["current"]["raw_text"] == "uno"
 
 
 @pytest.mark.asyncio
@@ -127,18 +131,18 @@ async def test_un_daily_sin_parsear_se_puede_reparsear_despues(admin_client, mon
     """La salida para el usuario cuando la IA falló: el botón de re-parsear."""
     from backend.api.routes import dailys as dailys_route
 
-    async def _revienta(_raw_text):
+    async def _revienta(_raw_text, **_kwargs):
         raise RuntimeError("Anthropic caída")
 
     monkeypatch.setattr(dailys_route, "parse_daily_update", _revienta)
     creado = await admin_client.post("/api/dailys", json={"raw_text": "Acme: auditoría"})
     daily_id = creado.json()["id"]
 
-    async def _ok(_raw_text):
+    async def _ok(_raw_text, **_kwargs):
         return {"projects": [], "general": [{"description": "Auditoría", "details": ""}], "tomorrow": []}
 
     monkeypatch.setattr(dailys_route, "parse_daily_update", _ok)
-    reparseado = await admin_client.post(f"/api/dailys/{daily_id}/reparse")
+    reparseado = await admin_client.post(f"/api/dailys/{daily_id}/reparse", json={"revision": creado.json()["revision"]})
 
     assert reparseado.status_code == 200, reparseado.text
     assert reparseado.json()["parsed_data"]["general"][0]["description"] == "Auditoría"
@@ -203,7 +207,7 @@ async def test_un_daily_sin_parsear_se_envia_en_crudo_en_vez_de_dar_400(
     """
     from backend.api.routes import dailys as dailys_route
 
-    async def _revienta(_raw_text):
+    async def _revienta(_raw_text, **_kwargs):
         raise RuntimeError("Anthropic caída")
 
     monkeypatch.setattr(dailys_route, "parse_daily_update", _revienta)
@@ -231,7 +235,7 @@ async def test_el_daily_parseado_se_sigue_enviando_estructurado(
     """El camino normal no cambia: si hay parseo, manda el embed por cliente."""
     from backend.api.routes import dailys as dailys_route
 
-    async def _ok(_raw_text):
+    async def _ok(_raw_text, **_kwargs):
         return {
             "projects": [{"name": "Acme", "client": "Acme", "tasks": [
                 {"description": "Auditoría técnica", "details": ""}
@@ -244,6 +248,8 @@ async def test_el_daily_parseado_se_sigue_enviando_estructurado(
 
     creado = await admin_client.post("/api/dailys", json={"raw_text": "Acme: auditoría"})
     daily_id = creado.json()["id"]
+    enriched = await admin_client.post(f"/api/dailys/{daily_id}/reparse", json={"revision": creado.json()["revision"]})
+    assert enriched.status_code == 200, enriched.text
 
     enviado = await admin_client.post(f"/api/dailys/{daily_id}/send-discord")
 

@@ -329,6 +329,7 @@ export type DailyUpdateStatus = "draft" | "sent"
 export interface ParsedTask {
   description: string
   details: string
+  fact_keys?: string[]
 }
 
 export interface ParsedProject {
@@ -349,17 +350,42 @@ export interface DailyUpdate {
   user_name: string | null
   date: string
   raw_text: string
+  revision: number
+  source_facts: DailyFact[]
   parsed_data: ParsedDailyData | null
   status: DailyUpdateStatus
   discord_sent_at: string | null
-  time_entries_created?: number
   created_at: string
   updated_at: string
 }
 
 export interface DailySubmitRequest {
   raw_text: string
-  date?: string | null
+  date?: string
+  source_fact_keys?: string[]
+}
+
+export interface DailyFact {
+  key: string
+  kind: "task_completed" | "time_logged" | "task_advanced" | "task_waiting" | "next_step"
+  task_id: number | null
+  title: string
+  client_id?: number | null
+  client_name?: string | null
+  project_id?: number | null
+  project_name?: string | null
+  minutes: number | null
+  href: string | null
+  detail: string | null
+}
+
+export interface DailyPrefill {
+  date: string
+  text: string
+  completed_count: number
+  worked_on_count: number
+  total_minutes: number
+  facts: DailyFact[]
 }
 
 export interface DeliveryReceipt {

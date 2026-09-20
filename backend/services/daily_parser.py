@@ -6,8 +6,10 @@ A team member pastes their raw daily update text and the AI extracts:
 - What tasks were done per project
 - What's planned for tomorrow
 """
+
 from __future__ import annotations
 
+import json
 import logging
 
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
@@ -54,7 +56,9 @@ Estructura de respuesta:
 }"""
 
 
-async def parse_daily_update(raw_text: str) -> dict:
+async def parse_daily_update(
+    raw_text: str, *, source_facts: list[dict] | None = None
+) -> dict:
     """Call Claude API to parse a raw daily update into structured data.
 
     Returns the parsed dict with projects, general tasks, and tomorrow plans.
@@ -82,11 +86,32 @@ async def parse_daily_update(raw_text: str) -> dict:
 
     logger.info("Parsing daily update (%d chars)", len(raw_text))
 
+    facts = source_facts or []
+    allowed_keys = {str(fact["key"]) for fact in facts}
+    prompt = raw_text
+    system = SYSTEM_PROMPT
+    if source_facts is not None:
+        system += """
+
+FUENTES CANÓNICAS:
+- Recibirás hechos verificados y notas del usuario en bloques separados.
+- Cada tarea de projects/general DEBE incluir fact_keys (lista, vacía si es aporte libre).
+- Usa únicamente keys presentes en source_facts. No inventes IDs, horas, finalizaciones,
+  clientes ni proyectos. Los hechos son contexto; las notas del usuario deciden la redacción.
+"""
+        prompt = (
+            "<source_facts>\n"
+            + json.dumps(facts, ensure_ascii=False, separators=(",", ":"))
+            + "\n</source_facts>\n<user_notes>\n"
+            + raw_text
+            + "\n</user_notes>"
+        )
+
     message = await client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=4096,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": raw_text}],
+        system=system,
+        messages=[{"role": "user", "content": prompt}],
     )
 
     content = parse_claude_json(message)
@@ -97,35 +122,120 @@ async def parse_daily_update(raw_text: str) -> dict:
         "general": [],
         "tomorrow": [],
     }
+    used_keys: set[str] = set()
+    facts_by_key = {str(fact["key"]): fact for fact in facts}
 
-    for proj in content.get("projects", []):
-        if not isinstance(proj, dict) or "name" not in proj:
-            continue
-        tasks = []
-        for t in proj.get("tasks", []):
-            if isinstance(t, dict) and "description" in t:
-                tasks.append({
-                    "description": t["description"],
-                    "details": t.get("details", ""),
-                })
-        result["projects"].append({
-            "name": proj["name"],
-            "client": proj.get("client", ""),
-            "tasks": tasks,
-        })
+    def validated_fact_keys(task: dict) -> list[str]:
+        if source_facts is None:
+            return []
+        if "fact_keys" not in task or not isinstance(task["fact_keys"], list):
+            raise ValueError("Daily parser omitted fact_keys")
+        keys = [str(key) for key in task["fact_keys"]]
+        if len(keys) != len(set(keys)) or any(key not in allowed_keys for key in keys):
+            raise ValueError("Daily parser returned an unknown source fact")
+        if used_keys.intersection(keys):
+            raise ValueError("Daily parser reused a source fact")
+        used_keys.update(keys)
+        return keys
 
-    for t in content.get("general", []):
-        if isinstance(t, dict) and "description" in t:
-            result["general"].append({
-                "description": t["description"],
-                "details": t.get("details", ""),
-            })
+    if source_facts is None:
+        for proj in content.get("projects", []):
+            if not isinstance(proj, dict) or "name" not in proj:
+                continue
+            tasks = [
+                {"description": task["description"], "details": task.get("details", "")}
+                for task in proj.get("tasks", [])
+                if isinstance(task, dict) and "description" in task
+            ]
+            result["projects"].append(
+                {
+                    "name": proj["name"],
+                    "client": proj.get("client", ""),
+                    "tasks": tasks,
+                }
+            )
+        result["general"] = [
+            {"description": task["description"], "details": task.get("details", "")}
+            for task in content.get("general", [])
+            if isinstance(task, dict) and "description" in task
+        ]
+    else:
+        # The model writes prose, but source facts alone decide grouping. This keeps
+        # invented client/project labels out of persisted parsed data.
+        grouped: dict[tuple, dict] = {}
+        candidates = [
+            task
+            for project in content.get("projects", [])
+            if isinstance(project, dict)
+            for task in project.get("tasks", [])
+        ] + list(content.get("general", []))
+        for task in candidates:
+            if not isinstance(task, dict) or "description" not in task:
+                continue
+            fact_keys = validated_fact_keys(task)
+            parsed_task = {
+                "description": task["description"],
+                "details": task.get("details", ""),
+                "fact_keys": fact_keys,
+            }
+            if not fact_keys:
+                result["general"].append(parsed_task)
+                continue
+
+            referenced = [facts_by_key[key] for key in fact_keys]
+            identities = {
+                (
+                    fact.get("client_id"),
+                    fact.get("project_id"),
+                    fact.get("client_name") if fact.get("client_id") is None else None,
+                    fact.get("project_name")
+                    if fact.get("project_id") is None
+                    else None,
+                )
+                for fact in referenced
+            }
+            if len(identities) != 1:
+                raise ValueError(
+                    "Daily parser mixed source facts from different projects"
+                )
+            identity = next(iter(identities))
+            client_name = next(
+                (
+                    fact.get("client_name")
+                    for fact in referenced
+                    if fact.get("client_name")
+                ),
+                "",
+            )
+            project_name = next(
+                (
+                    fact.get("project_name")
+                    for fact in referenced
+                    if fact.get("project_name")
+                ),
+                "",
+            )
+            if not any(identity) and not client_name and not project_name:
+                result["general"].append(parsed_task)
+                continue
+            bucket = grouped.setdefault(
+                identity,
+                {
+                    "name": project_name or client_name or "General",
+                    "client": client_name,
+                    "tasks": [],
+                },
+            )
+            bucket["tasks"].append(parsed_task)
+        result["projects"] = list(grouped.values())
 
     for item in content.get("tomorrow", []):
         if isinstance(item, str):
             result["tomorrow"].append(item)
 
-    total_tasks = sum(len(p["tasks"]) for p in result["projects"]) + len(result["general"])
+    total_tasks = sum(len(p["tasks"]) for p in result["projects"]) + len(
+        result["general"]
+    )
     logger.info(
         "Daily parsed: %d projects, %d total tasks, %d tomorrow items",
         len(result["projects"]),
@@ -136,8 +246,37 @@ async def parse_daily_update(raw_text: str) -> dict:
     return result
 
 
-def format_daily_for_discord(parsed_data: dict, user_name: str, date_str: str, *, max_length: int | None = 2000) -> str:
+def format_daily_for_discord(
+    parsed_data: dict,
+    user_name: str,
+    date_str: str,
+    *,
+    max_length: int | None = 2000,
+    source_facts: list[dict] | None = None,
+) -> str:
     """Format parsed daily data into a clean Discord message (one line per task)."""
+    facts_by_key = {
+        str(fact["key"]): fact for fact in (source_facts or []) if "key" in fact
+    }
+
+    def marker(task: dict) -> str:
+        if source_facts is None:
+            return "✅"
+        kinds = {
+            facts_by_key[key].get("kind")
+            for key in task.get("fact_keys", [])
+            if key in facts_by_key
+        }
+        if len(kinds) != 1:
+            return "•"
+        return {
+            "task_waiting": "⏸",
+            "next_step": "➡️",
+            "time_logged": "⏱",
+            "task_completed": "✅",
+            "task_advanced": "🔄",
+        }.get(next(iter(kinds)), "•")
+
     lines = []
     lines.append(f"**{user_name}** — {date_str}")
     lines.append("")
@@ -146,13 +285,13 @@ def format_daily_for_discord(parsed_data: dict, user_name: str, date_str: str, *
         proj_name = proj.get("name") or proj.get("client") or "General"
         lines.append(f"**{proj_name}**")
         for task in proj.get("tasks", []):
-            lines.append(f"✅ {task['description']}")
+            lines.append(f"{marker(task)} {task['description']}")
         lines.append("")
 
     if parsed_data.get("general"):
         lines.append("**General**")
         for task in parsed_data["general"]:
-            lines.append(f"✅ {task['description']}")
+            lines.append(f"{marker(task)} {task['description']}")
         lines.append("")
 
     if parsed_data.get("tomorrow"):
@@ -163,7 +302,7 @@ def format_daily_for_discord(parsed_data: dict, user_name: str, date_str: str, *
     result = "\n".join(lines).rstrip()
 
     if max_length is not None and len(result) > max_length:
-        result = result[:max_length - 3] + "..."
+        result = result[: max_length - 3] + "..."
 
     return result
 
@@ -210,27 +349,33 @@ def format_daily_embed(parsed_data: dict, user_name: str, date_str: str) -> dict
         name = proj.get("name") or proj.get("client") or "General"
         task_lines = [f"✅ {t['description']}" for t in proj.get("tasks", [])]
         value = "\n".join(task_lines) or "—"
-        fields.append({
-            "name": name[:256],
-            "value": value[:1024],
-            "inline": False,
-        })
+        fields.append(
+            {
+                "name": name[:256],
+                "value": value[:1024],
+                "inline": False,
+            }
+        )
 
     if parsed_data.get("general"):
         lines = [f"✅ {t['description']}" for t in parsed_data["general"]]
-        fields.append({
-            "name": "General",
-            "value": "\n".join(lines)[:1024],
-            "inline": False,
-        })
+        fields.append(
+            {
+                "name": "General",
+                "value": "\n".join(lines)[:1024],
+                "inline": False,
+            }
+        )
 
     if parsed_data.get("tomorrow"):
         lines = [f"• {item}" for item in parsed_data["tomorrow"]]
-        fields.append({
-            "name": "📅 Mañana",
-            "value": "\n".join(lines)[:1024],
-            "inline": False,
-        })
+        fields.append(
+            {
+                "name": "📅 Mañana",
+                "value": "\n".join(lines)[:1024],
+                "inline": False,
+            }
+        )
 
     embed: dict = {
         "title": f"{user_name} — {date_str}",

@@ -96,6 +96,9 @@ def source_version(kind, source):
                             source.period_end, source.title, source.content, source.destination_kind])
     if kind == "daily":
         data = [source.user_id, source.date, source.raw_text, source.parsed_data]
+        # Preserve hashes of existing receipts with no evidence snapshot.
+        if source.source_facts:
+            data.append(source.source_facts)
     else:
         data = [source.created_by, source.client_id, source.period_start, source.period_end, source.tone, source.content]
     return fingerprint(data)
@@ -149,7 +152,17 @@ def render_snapshot(kind, source, custom_content=None):
         if parsed and not any(parsed.values()):
             parsed = None
         if parsed:
-            text = format_daily_for_discord(parsed, name, source.date.isoformat(), max_length=None)
+            # New free notes explicitly carry fact_keys=[], so they must not be
+            # labelled completed. Keep the legacy formatter for old structures.
+            original = source.parsed_data
+            original_tasks = original.get("general", []) + [
+                task for project in original.get("projects", []) for task in project.get("tasks", [])
+            ]
+            has_provenance = bool(source.source_facts) or any("fact_keys" in task for task in original_tasks)
+            text = format_daily_for_discord(
+                parsed, name, source.date.isoformat(), max_length=None,
+                source_facts=(source.source_facts or []) if has_provenance else None,
+            )
         else:
             text = f"{header}\nSin estructurar\n\n{source.raw_text.strip()}"
     else:

@@ -108,6 +108,7 @@ import type {
   HoldedTestConnection,
   DailyUpdate,
   DailySubmitRequest,
+  DailyPrefill,
   DailyDiscordResponse,
   EmailDraftRequest,
   EmailDraftResponse,
@@ -889,20 +890,17 @@ export const dailysApi = {
   list: (params?: { user_id?: number; date_from?: string; date_to?: string; limit?: number }) =>
     api.get<DailyUpdate[]>("/dailys", { params }).then((r) => r.data),
   get: (id: number) => api.get<DailyUpdate>(`/dailys/${id}`).then((r) => r.data),
-  // Los tres endpoints que llaman a Claude van con el presupuesto de 90 s del
-  // resto de la IA de la app. Con los 30 s por defecto, el recap de final de día
-  // (12 proyectos ~ 20 s de generación) se quedaba a un suspiro de que el
-  // navegador cortase la conexión.
   submit: (data: DailySubmitRequest) =>
-    api.post<DailyUpdate>("/dailys", data, { timeout: 90_000 }).then((r) => r.data),
-  reparse: (id: number) =>
-    api.post<DailyUpdate>(`/dailys/${id}/reparse`, null, { timeout: 90_000 }).then((r) => r.data),
+    api.post<DailyUpdate>("/dailys", data).then((r) => r.data),
+  forDate: (date: string) => api.get<DailyUpdate | null>("/dailys/for-date", { params: { date } }).then((r) => r.data),
+  reparse: (id: number, revision: number) =>
+    api.post<DailyUpdate>(`/dailys/${id}/reparse`, { revision }, { timeout: 90_000 }).then((r) => r.data),
   sendDiscord: (id: number) =>
     api.post<DailyDiscordResponse>(`/dailys/${id}/send-discord`).then((r) => r.data),
-  edit: (id: number, data: { raw_text?: string }) =>
-    api.put<DailyUpdate>(`/dailys/${id}`, data, { timeout: 90_000 }).then((r) => r.data),
-  delete: (id: number) => api.delete(`/dailys/${id}`).then((r) => r.data),
-  prefill: () => api.get<{ text: string; completed_count: number; worked_on_count: number }>("/dailys/prefill").then((r) => r.data),
+  edit: (id: number, data: { raw_text?: string; parsed_data?: DailyUpdate["parsed_data"]; revision: number; source_fact_keys?: string[] }) =>
+    api.put<DailyUpdate>(`/dailys/${id}`, data).then((r) => r.data),
+  delete: (id: number, revision: number) => api.delete(`/dailys/${id}`, { params: { revision } }).then((r) => r.data),
+  prefill: (date: string) => api.get<DailyPrefill>("/dailys/prefill", { params: { date } }).then((r) => r.data),
 }
 
 export const deliveriesApi = {

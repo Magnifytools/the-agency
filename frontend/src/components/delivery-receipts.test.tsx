@@ -8,7 +8,16 @@ import DigestsPage from "@/pages/digests-page"
 import { MemoryRouter } from "react-router-dom"
 
 const mock = vi.hoisted(() => ({ get: vi.fn(), list: vi.fn(), listManual: vi.fn(), retry: vi.fn(), resend: vi.fn(), cancel: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() }))
-const daily = vi.hoisted(() => ({ list: vi.fn(), sendDiscord: vi.fn() }))
+const daily = vi.hoisted(() => ({
+  list: vi.fn(),
+  forDate: vi.fn(),
+  prefill: vi.fn(),
+  submit: vi.fn(),
+  edit: vi.fn(),
+  reparse: vi.fn(),
+  delete: vi.fn(),
+  sendDiscord: vi.fn(),
+}))
 const digest = vi.hoisted(() => ({ list: vi.fn(), render: vi.fn(), sendDigest: vi.fn(), sendCustom: vi.fn(), listAll: vi.fn() }))
 vi.mock("@/lib/api", () => ({ deliveriesApi: mock, dailysApi: daily, digestsApi: digest, discordApi: digest, clientsApi: digest }))
 vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: { id: 7 }, isAdmin: true, hasPermission: () => true }) }))
@@ -24,11 +33,22 @@ function show() {
   render(<QueryClientProvider client={client}><DeliveryReceipts sourceKind="daily" sourceId={1} /></QueryClientProvider>)
 }
 
-beforeEach(() => vi.resetAllMocks())
+beforeEach(() => {
+  vi.resetAllMocks()
+  daily.forDate.mockResolvedValue(null)
+  daily.prefill.mockResolvedValue({
+    date: "2026-09-20",
+    text: "",
+    completed_count: 0,
+    worked_on_count: 0,
+    total_minutes: 0,
+    facts: [],
+  })
+})
 
 describe("Delivery receipts", () => {
   it("shows the receipt for a daily without AI data after queuing", async () => {
-    daily.list.mockResolvedValue([{ id: 1, user_id: 7, user_name: "Test", date: "2026-09-17", raw_text: "Texto sin parsear", parsed_data: null, status: "draft" }])
+    daily.list.mockResolvedValue([{ id: 1, user_id: 7, user_name: "Test", date: "2026-09-17", raw_text: "Texto sin parsear", parsed_data: null, status: "draft", revision: 1, source_facts: [] }])
     daily.sendDiscord.mockResolvedValue(receipt())
     mock.list.mockResolvedValue([receipt()])
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
