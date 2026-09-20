@@ -951,7 +951,10 @@ async def alerts_summary(
     if is_admin and clients_available and tasks_available and timesheet_available and today.weekday() >= 2:
         week_start = today - timedelta(days=today.weekday())
         active_clients = await db.execute(
-            select(Client.id, Client.name).where(Client.status == ClientStatus.active)
+            select(Client.id, Client.name).where(
+                Client.status == ClientStatus.active,
+                Client.is_internal.is_(False),
+            )
         )
         all_active = active_clients.all()
         active_ids = [r.id for r in all_active]
@@ -976,7 +979,7 @@ async def alerts_summary(
                 "type": "clients_no_hours",
                 "severity": "warning",
                 "count": len(no_hours_clients),
-                "title": f"{len(no_hours_clients)} clientes sin horas esta semana",
+                "title": f"{len(no_hours_clients)} clientes externos sin horas esta semana",
                 "detail": no_hours_clients[:5],
                 "link": "/clients",
             })
