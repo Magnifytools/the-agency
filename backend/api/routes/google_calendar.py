@@ -1,33 +1,35 @@
 """Google Calendar integration routes — OAuth2 + event sync."""
 from __future__ import annotations
 
-import logging
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Literal
-from zoneinfo import ZoneInfo
-
 import base64
 import hashlib
 import hmac
+import logging
 import time
+from datetime import datetime, timedelta, timezone
+from typing import Literal, Optional
+from zoneinfo import ZoneInfo
 
 import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
-from sqlalchemy import select, and_, or_, delete, text
+from sqlalchemy import and_, delete, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.database import get_db
-from backend.db.models import User, Event, EventType
 from backend.api.deps import get_current_user
 from backend.config import settings
+from backend.db.database import get_db
+from backend.db.models import Event, EventType, User
 from backend.services.google_calendar_service import (
-    get_auth_url, exchange_code, fetch_events, encrypt_refresh_token,
-    authorization_needs_reconnect, connection_status,
+    authorization_needs_reconnect,
+    connection_status,
+    encrypt_refresh_token,
+    exchange_code,
+    fetch_events,
+    get_auth_url,
 )
-
-from backend.services.temporal import utc_now_naive, utc_isoformat
+from backend.services.temporal import business_zone, utc_isoformat, utc_now_naive
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
@@ -62,6 +64,21 @@ class EventResponse(BaseModel):
     google_event_id: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class NextMeeting(BaseModel):
+    id: int
+    title: str
+    date: str
+    time: str
+    source: Literal["manual", "google"]
+
+
+class NextMeetingResponse(BaseModel):
+    meeting: NextMeeting | None
+    timezone: str
+    connection_status: Literal["connected", "disconnected", "reconnect_required"]
+    last_synced_at: str | None
 
 
 # ── OAuth2 Flow ─────────────────────────────────────────────
@@ -208,6 +225,63 @@ async def list_calendar_events(
 
     result = await db.execute(query.limit(100))
     return result.scalars().all()
+
+
+@router.get("/next-meeting", response_model=NextMeetingResponse)
+async def next_meeting(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the actor's next attributable meeting without triggering sync."""
+    effective_status = connection_status(current_user)
+    now_civil = (
+        utc_now_naive().replace(tzinfo=timezone.utc)
+        .astimezone(business_zone())
+        .replace(tzinfo=None)
+    )
+    visible_source = and_(
+        Event.source == "manual",
+        Event.google_event_id.is_(None),
+    )
+    if current_user.google_refresh_token:
+        configured_calendar_id = current_user.google_calendar_id or "primary"
+        visible_source = or_(
+            visible_source,
+            and_(
+                Event.source == "google",
+                Event.google_event_id.is_not(None),
+                Event.source_calendar_id == configured_calendar_id,
+            ),
+        )
+
+    row = (await db.execute(
+        select(Event.id, Event.title, Event.start_time, Event.source)
+        .where(
+            Event.user_id == current_user.id,
+            Event.event_type == EventType.meeting,
+            Event.is_all_day.is_(False),
+            Event.start_time >= now_civil,
+            visible_source,
+        )
+        .order_by(Event.start_time, Event.id)
+        .limit(1)
+    )).one_or_none()
+
+    meeting = None
+    if row is not None:
+        meeting = NextMeeting(
+            id=row.id,
+            title=row.title,
+            date=row.start_time.strftime("%Y-%m-%d"),
+            time=row.start_time.strftime("%H:%M"),
+            source=row.source,
+        )
+    return NextMeetingResponse(
+        meeting=meeting,
+        timezone=settings.AGENCY_TIMEZONE,
+        connection_status=effective_status,
+        last_synced_at=utc_isoformat(current_user.google_calendar_synced_at),
+    )
 
 
 @router.get("/upcoming")

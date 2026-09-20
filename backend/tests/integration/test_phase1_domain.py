@@ -279,6 +279,54 @@ async def test_agenda_is_server_filtered_paginated_and_timezone_aware(
 
 
 @pytest.mark.asyncio
+async def test_agenda_all_is_explicit_admin_scope_and_preserves_other_scopes(
+    admin_client, db_session, make_member_client,
+):
+    target_day = date(2026, 9, 18)
+    actor_id = admin_client.test_user.id
+    member_api = await make_member_client([("tasks", True, False)])
+    member_id = member_api.test_user.id
+    try:
+        own = await _task(
+            db_session, actor_id, title="Agenda propia", scheduled_date=target_day,
+        )
+        other = await _task(
+            db_session, member_id, title="Agenda de otra persona", scheduled_date=target_day,
+        )
+        unassigned = await _task(
+            db_session, actor_id, title="Agenda sin responsable",
+            assigned_to=None, scheduled_date=target_day,
+        )
+        await db_session.flush()
+
+        async def agenda(client, assigned_to):
+            return await client.get("/api/tasks/agenda", params={
+                "date": target_day.isoformat(), "section": "planned",
+                "assigned_to": assigned_to,
+            })
+
+        team = await agenda(admin_client, "all")
+        assert team.status_code == 200, team.text
+        assert {item["id"] for item in team.json()["items"]} == {
+            own.id, other.id, unassigned.id,
+        }
+
+        mine = await agenda(admin_client, "me")
+        assert {item["id"] for item in mine.json()["items"]} == {
+            own.id, unassigned.id,
+        }
+        only_unassigned = await agenda(admin_client, "unassigned")
+        assert [item["id"] for item in only_unassigned.json()["items"]] == [unassigned.id]
+        numeric = await agenda(admin_client, str(member_id))
+        assert [item["id"] for item in numeric.json()["items"]] == [other.id]
+
+        forbidden = await agenda(member_api, "all")
+        assert forbidden.status_code == 403
+    finally:
+        await member_api.aclose()
+
+
+@pytest.mark.asyncio
 async def test_daily_parse_never_creates_estimated_or_fallback_time(
     admin_client, db_session, monkeypatch
 ):

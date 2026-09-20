@@ -12,6 +12,7 @@ import {
   taskKeys,
   myWeekKeys,
   inboxKeys,
+  searchKeys,
 } from "./query-keys"
 
 describe("shared operational query keys", () => {
@@ -80,5 +81,10 @@ describe("shared operational query keys", () => {
 
   it("keeps an Inbox preview distinct from the paginated list cache", () => {
     expect(inboxKeys.preview(7, "pending,classified", 5)).not.toEqual(inboxKeys.list(7, "pending,classified", 50))
+  })
+
+  it("does not share search results across identities or permission sets", () => {
+    expect(searchKeys.results(7, "tasks", "reunión")).not.toEqual(searchKeys.results(8, "tasks", "reunión"))
+    expect(searchKeys.results(7, "tasks", "reunión")).not.toEqual(searchKeys.results(7, "clients,tasks", "reunión"))
   })
 })

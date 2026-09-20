@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
+import { invalidateCalendarViews } from "@/lib/calendar-queries"
 import { useAuth } from "@/context/auth-context"
 import { usersApi, categoriesApi, myWeekApi, calendarApi } from "@/lib/api"
 import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS } from "@/hooks/use-keyboard-shortcuts"
@@ -741,7 +742,7 @@ export function CalendarSection() {
     if (calendarParam === "connected") {
       toast.success("Google Calendar conectado")
       window.history.replaceState({}, "", "/settings")
-      queryClient.invalidateQueries({ queryKey: ["calendar-status"] })
+      void invalidateCalendarViews(queryClient)
     } else if (calendarParam === "error") {
       toast.error("Error al conectar Google Calendar")
       window.history.replaceState({}, "", "/settings")
@@ -759,7 +760,7 @@ export function CalendarSection() {
   const disconnectMut = useMutation({
     mutationFn: calendarApi.disconnect,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["calendar-status"] })
+      void invalidateCalendarViews(queryClient)
       toast.success("Google Calendar desconectado")
     },
     onError: () => toast.error("Error al desconectar"),
@@ -768,11 +769,11 @@ export function CalendarSection() {
   const syncMut = useMutation({
     mutationFn: calendarApi.sync,
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["calendar-status"] })
+      void invalidateCalendarViews(queryClient)
       toast.success(`Sincronizados ${data.events_synced} eventos`)
     },
     onError: () => {
-      queryClient.invalidateQueries({ queryKey: ["calendar-status"] })
+      void invalidateCalendarViews(queryClient)
       toast.error("No se pudo sincronizar. Revisa el estado del calendario.")
     },
   })

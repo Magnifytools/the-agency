@@ -3,6 +3,10 @@ import { useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { searchApi } from "@/lib/api"
 import { Building2, FolderKanban, CheckSquare, Target, Search } from "lucide-react"
+import { useAuth } from "@/context/auth-context"
+import { searchKeys } from "@/lib/query-keys"
+import { isEnabled } from "@/lib/hidden-modules"
+import { Dialog, DialogTitle } from "@/components/ui/dialog"
 
 interface Props {
   open: boolean
@@ -10,50 +14,60 @@ interface Props {
 }
 
 export function SearchPalette({ open, onOpenChange }: Props) {
+  if (!open) return null
+  return <SearchPaletteDialog onOpenChange={onOpenChange} />
+}
+
+function SearchPaletteDialog({ onOpenChange }: Omit<Props, "open">) {
   const [query, setQuery] = useState("")
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
+  const { user, hasPermission } = useAuth()
+  const normalizedQuery = query.trim()
+  const searchableTypes = ["clients", "projects", "tasks", "leads"].filter(
+    (module) => isEnabled(module) && hasPermission(module),
+  )
+  const permissionSignature = searchableTypes.join(",")
+  const searchTargetLabels: Record<string, string> = {
+    clients: "clientes",
+    projects: "proyectos",
+    tasks: "tareas",
+    leads: "leads",
+  }
+  const searchPlaceholder = searchableTypes.length > 0
+    ? `Buscar ${searchableTypes.map((module) => searchTargetLabels[module]).join(", ")}...`
+    : "Buscar..."
 
-  const { data: results } = useQuery({
-    queryKey: ["global-search", query],
-    queryFn: () => searchApi.search(query),
-    enabled: query.length >= 2,
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => inputRef.current?.focus())
+    return () => cancelAnimationFrame(frame)
+  }, [])
+
+  const { data: results, isLoading, isError, refetch } = useQuery({
+    queryKey: searchKeys.results(user?.id ?? 0, permissionSignature, normalizedQuery),
+    queryFn: () => searchApi.search(normalizedQuery),
+    enabled: !!user && normalizedQuery.length >= 2,
     staleTime: 10_000,
   })
 
   // Build flat list of all results for keyboard nav
   const allItems: { type: string; id: number; label: string; sub: string | null; href: string }[] = []
-  if (results) {
-    for (const c of results.clients) {
-      allItems.push({ type: "client", id: c.id, label: c.name, sub: c.company, href: `/clients/${c.id}` })
+  if (results && !isError) {
+    if (searchableTypes.includes("clients")) {
+      for (const c of results.clients) allItems.push({ type: "client", id: c.id, label: c.name, sub: c.company, href: `/clients/${c.id}` })
     }
-    for (const p of results.projects) {
-      allItems.push({ type: "project", id: p.id, label: p.name, sub: p.client_name, href: `/projects/${p.id}` })
+    if (searchableTypes.includes("projects")) {
+      for (const p of results.projects) allItems.push({ type: "project", id: p.id, label: p.name, sub: p.client_name, href: `/projects/${p.id}` })
     }
-    for (const t of results.tasks) {
-      allItems.push({ type: "task", id: t.id, label: t.title, sub: t.client_name, href: `/tasks?id=${t.id}` })
+    if (searchableTypes.includes("tasks")) {
+      for (const t of results.tasks) allItems.push({ type: "task", id: t.id, label: t.title, sub: t.client_name, href: `/tasks?id=${t.id}` })
     }
-    for (const l of results.leads) {
-      allItems.push({ type: "lead", id: l.id, label: l.company_name, sub: l.contact_name, href: `/leads/${l.id}` })
+    if (searchableTypes.includes("leads")) {
+      for (const l of results.leads) allItems.push({ type: "lead", id: l.id, label: l.company_name, sub: l.contact_name, href: `/leads/${l.id}` })
     }
   }
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset + focus on palette open; focus requires effect
-  useEffect(() => {
-    if (open) {
-      setQuery("")
-      setSelectedIndex(0)
-      setTimeout(() => inputRef.current?.focus(), 50)
-    }
-  }, [open])
-
-  // Reset selection when query changes — derived via ref comparison during render
-  const prevQueryRef = useRef(query)
-  if (query !== prevQueryRef.current) {
-    prevQueryRef.current = query
-    setSelectedIndex(0)
-  }
+  const activeIndex = Math.min(selectedIndex, Math.max(allItems.length - 1, 0))
 
   const handleNavigate = useCallback((href: string) => {
     onOpenChange(false)
@@ -63,19 +77,15 @@ export function SearchPalette({ open, onOpenChange }: Props) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault()
-      setSelectedIndex((i) => Math.min(i + 1, allItems.length - 1))
+      setSelectedIndex((i) => Math.min(i + 1, Math.max(allItems.length - 1, 0)))
     } else if (e.key === "ArrowUp") {
       e.preventDefault()
       setSelectedIndex((i) => Math.max(i - 1, 0))
-    } else if (e.key === "Enter" && allItems[selectedIndex]) {
+    } else if (e.key === "Enter" && allItems[activeIndex]) {
       e.preventDefault()
-      handleNavigate(allItems[selectedIndex].href)
-    } else if (e.key === "Escape") {
-      onOpenChange(false)
+      handleNavigate(allItems[activeIndex].href)
     }
   }
-
-  if (!open) return null
 
   const sectionIcon = (type: string) => {
     switch (type) {
@@ -105,29 +115,30 @@ export function SearchPalette({ open, onOpenChange }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[20vh]" onClick={() => onOpenChange(false)}>
-      <div
-        className="w-full max-w-lg bg-card border border-border rounded-xl shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogTitle className="sr-only">Búsqueda global</DialogTitle>
+      <div className="-m-6 overflow-hidden rounded-[16px]">
+        <div className="flex items-center gap-3 px-4 py-3 pr-14 border-b border-border">
           <Search className="h-5 w-5 text-muted-foreground shrink-0" />
           <input
             ref={inputRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Buscar"
+            onChange={(e) => { setQuery(e.target.value); setSelectedIndex(0) }}
             onKeyDown={handleKeyDown}
-            placeholder="Buscar clientes, proyectos, tareas, leads..."
-            className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground text-sm outline-none"
+            placeholder={searchPlaceholder}
+            className="min-w-0 flex-1 bg-transparent text-foreground placeholder:text-muted-foreground text-sm outline-none"
           />
           <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground bg-muted rounded border border-border">
             ESC
           </kbd>
         </div>
 
-        {query.length >= 2 && (
+        {normalizedQuery.length >= 2 && (
           <div className="max-h-[50vh] overflow-y-auto p-2">
-            {allItems.length === 0 ? (
+            {isLoading ? <p role="status" className="text-sm text-muted-foreground text-center py-8">Buscando…</p> : isError ? (
+              <div role="alert" className="text-center py-8 text-sm text-muted-foreground">No se pudo buscar. <button type="button" className="underline" onClick={() => void refetch()}>Reintentar</button></div>
+            ) : allItems.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">Sin resultados para &quot;{query}&quot;</p>
             ) : (
               sections.map((section) => {
@@ -142,7 +153,7 @@ export function SearchPalette({ open, onOpenChange }: Props) {
                     </div>
                     {section.items.map((item) => {
                       const idx = allItems.indexOf(item)
-                      const isSelected = idx === selectedIndex
+                      const isSelected = idx === activeIndex
                       return (
                         <button
                           key={`${item.type}-${item.id}`}
@@ -164,12 +175,12 @@ export function SearchPalette({ open, onOpenChange }: Props) {
           </div>
         )}
 
-        {query.length < 2 && (
+        {normalizedQuery.length < 2 && (
           <div className="p-6 text-center">
             <p className="text-sm text-muted-foreground">Escribe al menos 2 caracteres para buscar</p>
           </div>
         )}
       </div>
-    </div>
+    </Dialog>
   )
 }

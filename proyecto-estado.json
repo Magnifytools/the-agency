@@ -224,9 +224,9 @@
     {
       "id": "AUDIT-20260920-P15",
       "descripcion": "Inbox recuperable, permisos y respuestas tardías; notas paginadas y Hoy más claro",
-      "estado": "verificado_local_pendiente_publicacion",
+      "estado": "completado",
       "prioridad": "alta",
-      "notas": "1104 backend (2 omitidas),294 frontend y build correctos. Cola durable con CAS y reintentos visibles; asociaciones y lifecycle protegidos; adjuntos activos descargables. Migración aditiva sin reescritura histórica. Verificación aislada de captura, error, reintento y conversión manual."
+      "notas": "PR26+27 publicadas y verificadas en7195a8d, schema inbox_recovery_v2. 1108 backend (2 omitidas),294 frontend,46extensión; CI rama/main, migración compatible con timestamps heredados, hashes conservados y UI390/1440 sin errores. Pendiente general Engine y acciones móvil enP16."
     }
   ],
   "bugs": [

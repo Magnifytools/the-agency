@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { invalidateTaskChange, myWeekKeys } from "@/lib/query-keys"
+import { invalidateCalendarViews } from "@/lib/calendar-queries"
 import { myWeekApi, tasksApi } from "@/lib/api"
 import type { MyWeekResponse, MyWeekTask, MyWeekDay, EventResponse, TeamMemberWeek } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -625,13 +626,13 @@ export default function MyWeekPage() {
   const eventMutation = useMutation({
     mutationFn: (data: { date: string; time: string; title: string; duration_minutes?: number }) =>
       myWeekApi.createEvent(data),
-    onSuccess: () => { invalidate(); setAddEventDate(null); toast.success("Evento creado") },
+    onSuccess: () => { void invalidateCalendarViews(queryClient); setAddEventDate(null); toast.success("Evento creado") },
     onError: (err) => toast.error(getErrorMessage(err, "Error al crear evento")),
   })
 
   const deleteEventMutation = useMutation({
     mutationFn: (id: number) => myWeekApi.deleteEvent(id),
-    onSuccess: () => { invalidate(); toast.success("Evento eliminado") },
+    onSuccess: () => { void invalidateCalendarViews(queryClient); toast.success("Evento eliminado") },
     onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar evento")),
   })
 

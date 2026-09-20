@@ -320,7 +320,7 @@ export function InboxNoteCard({ note }: Props) {
                 </Select>
               </div>}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 size="sm"
                 variant="default"
@@ -358,7 +358,7 @@ export function InboxNoteCard({ note }: Props) {
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-7 text-xs gap-1.5 px-3 ml-auto"
+                className="h-7 text-xs gap-1.5 px-3"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploadMutation.isPending}
               >

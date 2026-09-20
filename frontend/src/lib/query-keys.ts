@@ -160,6 +160,10 @@ export const inboxKeys = {
   count: (userId: number) => ["inbox", userId, "count"] as const,
 }
 
+export const searchKeys = {
+  results: (userId: number, permissionSignature: string, query: string) => ["global-search", userId, permissionSignature, query] as const,
+}
+
 export function isHoldedQueryKey(queryKey: readonly unknown[]): boolean {
   const key = queryKey[0]
   return typeof key === "string" && key.startsWith("holded-")
