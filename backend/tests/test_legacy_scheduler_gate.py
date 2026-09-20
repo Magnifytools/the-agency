@@ -1,11 +1,13 @@
 """B2 replacement for bridge tests: old producers have been removed permanently."""
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from fastapi import HTTPException
+
+from backend.api.routes import google_calendar
 from backend.config import Settings, settings
 from backend.startup import background_tasks
-from backend.api.routes import google_calendar
 
 
 def test_new_scheduler_requires_explicit_enablement():
@@ -53,6 +55,7 @@ async def test_oauth_preserves_connection_without_enabling_reminders(monkeypatch
 
 async def test_first_calendar_sync_precedes_initial_sleep(monkeypatch):
     from contextlib import asynccontextmanager
+
     from backend.db import database
     calls = []
     user = SimpleNamespace(id=7, full_name="Person", short_name="Person", email="person@example.test")
@@ -70,7 +73,21 @@ async def test_first_calendar_sync_precedes_initial_sleep(monkeypatch):
         raise KeyboardInterrupt("stop loop")
     monkeypatch.setattr(database, "async_session", session)
     monkeypatch.setattr(google_calendar, "sync_user_events", sync)
+    from backend.services import job_runtime
+
+    definition = SimpleNamespace(
+        spec=SimpleNamespace(key="calendar", interval_seconds=900),
+    )
+
+    async def run_job(_engine, _spec, operation):
+        await operation()
+        return True
+
+    monkeypatch.setattr(job_runtime, "run_job", run_job)
     monkeypatch.setattr(background_tasks.asyncio, "sleep", sleep)
-    with pytest.raises(KeyboardInterrupt): await background_tasks._calendar_sync_loop()
+    with pytest.raises(KeyboardInterrupt):
+        await background_tasks._coordinated_job_loop(
+            definition, background_tasks._sync_calendars_once,
+        )
     assert calls == ["sync", "sleep"]
     assert "users.google_refresh_token IS NOT NULL" in str(statements[0])

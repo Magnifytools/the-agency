@@ -557,13 +557,34 @@ async def run_once(session_factory, *, transport=None):
 
 async def delivery_loop():
     import asyncio
+    import time
 
-    from backend.db.database import async_session
+    from backend.db.database import async_session, engine
+
+    last_success_observation = None
     while True:
+        failed = False
         try:
             worked = await run_once(async_session)
         except Exception as exc:
             # No URL/token/raw provider exception in logs.
             logger.error("Delivery worker failed (%s); in-flight receipts require recovery", type(exc).__name__)
             worked = False
+            failed = True
+        now = time.monotonic()
+        if (
+            failed
+            or last_success_observation is None
+            or now - last_success_observation >= 30
+        ):
+            try:
+                from backend.services.job_runtime_status import record_delivery_cycle
+
+                await record_delivery_cycle(engine, failed=failed)
+                if not failed:
+                    last_success_observation = now
+            except Exception as exc:
+                # Health observation must never change delivery scheduling or
+                # cause a provider operation to be replayed.
+                logger.error("Delivery health observation failed (%s)", type(exc).__name__)
         await asyncio.sleep(0 if worked else 5)

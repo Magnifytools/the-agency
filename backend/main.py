@@ -30,7 +30,7 @@ from backend.api.routes import (
     google_calendar,
     bank_import,
     cfo,
-    usage_stats,
+    usage_stats, job_runtime,
 )
 
 # ── Re-export migration/seed functions so scripts/init_db.py keeps working ──
@@ -67,17 +67,18 @@ async def lifespan(app: FastAPI):
     # Schema evolution is an explicit release step. A web replica never seeds,
     # repairs or migrates data and cannot start background work on a partial DB.
     from backend.db.database import engine
-    from backend.startup.schema_baseline import check_deployment_ready
+    from backend.startup.deployment_schema import check_deployment_ready
     await asyncio.wait_for(check_deployment_ready(engine), timeout=10)
     bg_tasks = start_background_tasks()
     logging.info("Startup ready.")
-    yield
-    for t in bg_tasks:
-        t.cancel()
-        try:
-            await t
-        except asyncio.CancelledError:
-            pass
+    try:
+        yield
+    finally:
+        # Signal every worker before awaiting cleanup. An already failed task
+        # must not stop shutdown while the others still hold locks or send work.
+        for task in bg_tasks:
+            task.cancel()
+        await asyncio.gather(*bg_tasks, return_exceptions=True)
 
 
 app = FastAPI(title="The Agency", version="1.0.0", lifespan=lifespan)
@@ -217,7 +218,7 @@ _CORE_ROUTERS = [
     auth, clients, tasks, task_categories, time_entries, users, dashboard,
     projects, pm, report_policies, digests, sync, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     client_dashboard, engine_integration, inbox, extension, google_calendar,
-    usage_stats,
+    usage_stats, job_runtime,
     # changes: el Undo del shell. No es una pantalla, es la red de seguridad
     # de todas las demás — se registra siempre.
     changes, commands,
@@ -295,7 +296,7 @@ async def health_check():
 @app.get("/api/ready")
 async def readiness_check():
     from backend.db.database import engine
-    from backend.startup.schema_baseline import check_deployment_ready, EXPECTED_SCHEMA_VERSION
+    from backend.startup.deployment_schema import check_deployment_ready, EXPECTED_SCHEMA_VERSION
     try:
         await asyncio.wait_for(check_deployment_ready(engine), timeout=5)
     except Exception:

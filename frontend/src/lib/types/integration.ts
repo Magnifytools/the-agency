@@ -438,6 +438,24 @@ export interface DiscordSendResponse {
   date?: string
 }
 
+export type JobRuntimeState = "running" | "stale" | "failed" | "paused" | "never" | "success"
+
+export interface JobRuntimeStatus {
+  key: string
+  label: string
+  description: string | null
+  state: JobRuntimeState
+  last_success_at: string | null
+  started_at: string | null
+  last_failure_at: string | null
+  failure_summary: string | null
+  paused_reason: string | null
+}
+
+export interface JobRuntimeResponse {
+  jobs: JobRuntimeStatus[]
+}
+
 // --- Inbox Quick Capture ---
 
 export type InboxNoteStatus = "pending" | "classified" | "processed" | "dismissed"

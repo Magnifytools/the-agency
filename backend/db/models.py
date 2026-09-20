@@ -1931,3 +1931,15 @@ class AutomationLog(TimestampMixin, Base):
     error_message = Column(Text, nullable=True)
     executed_at = Column(DateTime, nullable=False, default=func.now())
     rule = relationship("AutomationRule", lazy="selectin")
+
+
+class JobRuntime(Base):
+    """Latest scheduled cycle; configuration and labels live in the job catalog."""
+    __tablename__ = "job_runtime"
+
+    key = Column(String(64), primary_key=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    success_at = Column(DateTime(timezone=True), nullable=True)
+    error_code = Column(String(64), nullable=True)
+    next_run_at = Column(DateTime(timezone=True), nullable=True)

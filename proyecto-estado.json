@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-20T14:04:03.281281+00:00",
-  "estado_general": "produccion_decimotercera_mejora_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-20T14:34:28.501262+00:00",
+  "estado_general": "produccion_P13_P14_validada_local_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -213,6 +213,13 @@
       "estado": "completado",
       "prioridad": "alta",
       "notas": "PR24 54d9802 publicada; 1027 backend (2 omitidas), 278 frontend y 46 extensión. CI rama/main, bootstrap/upgrade/restore y producción verificados. Ledger, revisión y 30 contratos únicos correctos; datos preservados. Objetivo global activo."
+    },
+    {
+      "id": "AUDIT-20260920-P14",
+      "descripcion": "Procesos programados coordinados, recuperación durable y panel administrativo de estado",
+      "estado": "en_curso",
+      "prioridad": "alta",
+      "notas": "Validación local: 1067 backend (2 omitidas), 282 frontend, pruebas dirigidas y build final; PG concurrencia/migración/fallo, panel390/1440. Pendientes CI, publicación y verificación productiva. No se modifica el contrato P12 ni se activan módulos ocultos."
     }
   ],
   "bugs": [
@@ -283,7 +290,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "Estado y recuperación de procesos programados, medición operativa y escenarios adversos. Continuar recorridos de UX, revisión histórica y todos los criterios restantes; canal externo según decisión y uso. Objetivo completo activo.",
+  "proximos_pasos": "Publicar y verificar P14. Continuar recuperación de Inbox, decisiones de módulos/canal, revisión histórica, UX y todos los criterios restantes. Objetivo completo activo.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,

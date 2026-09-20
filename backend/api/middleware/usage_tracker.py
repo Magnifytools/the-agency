@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Optional
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -31,11 +30,11 @@ _SKIP_PREFIXES: tuple[str, ...] = (
     "/api/health",
     "/api/notifications/unread-count",
     "/api/auth/refresh",
-    "/api/active-timer",  # polled
+    "/api/timer/active",  # polled by the global timer UI
 )
 
 
-def _route_template(request: Request) -> Optional[str]:
+def _route_template(request: Request) -> str | None:
     """Resolve a parameterised route template ('/api/projects/{project_id}').
 
     Falls back to None if the request hasn't matched a route — Starlette only
@@ -47,13 +46,8 @@ def _route_template(request: Request) -> Optional[str]:
     return path
 
 
-def _extract_user_id(request: Request) -> Optional[int]:
-    """Read user id from request.state if a downstream dep set it.
-
-    get_current_user doesn't currently stash the user on state; rather than
-    touching it, we read it lazily from state.user_id if present, otherwise None.
-    The middleware in track_request() handles the None case gracefully.
-    """
+def _extract_user_id(request: Request) -> int | None:
+    """Read the user id exposed by the authentication dependency, if any."""
     return getattr(request.state, "user_id", None)
 
 
@@ -88,7 +82,7 @@ class UsageTrackerMiddleware(BaseHTTPMiddleware):
                         duration_ms=duration_ms,
                     ))
                     await db.commit()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - analytics must never break the response
                 logger.debug("Usage tracker write failed: %s", e)
 
         return response

@@ -1,0 +1,12 @@
+{
+  "version": "20260920_job_runtime_v1",
+  "sql": "CREATE TABLE IF NOT EXISTS job_runtime (key VARCHAR(64) PRIMARY KEY, started_at TIMESTAMPTZ, finished_at TIMESTAMPTZ, success_at TIMESTAMPTZ, error_code VARCHAR(64), next_run_at TIMESTAMPTZ)",
+  "columns": {
+    "key": ["varchar", false, 64],
+    "started_at": ["timestamptz", true, null],
+    "finished_at": ["timestamptz", true, null],
+    "success_at": ["timestamptz", true, null],
+    "error_code": ["varchar", true, 64],
+    "next_run_at": ["timestamptz", true, null]
+  }
+}

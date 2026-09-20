@@ -73,8 +73,10 @@ async def sync_engine_metrics() -> dict:
                             client.engine_summary_data = s_resp.json()
                         else:
                             logger.warning("Engine sync: summary HTTP %d for client %d", s_resp.status_code, client.id)
+                            failed += 1
                     except Exception:
                         logger.warning("Engine sync: summary fetch failed for client %d", client.id)
+                        failed += 1
 
                     # Fetch alerts data (keep cached value on failure)
                     try:
@@ -84,8 +86,10 @@ async def sync_engine_metrics() -> dict:
                             client.engine_alerts_data = a_resp.json()
                         else:
                             logger.warning("Engine sync: alerts HTTP %d for client %d", a_resp.status_code, client.id)
+                            failed += 1
                     except Exception:
                         logger.warning("Engine sync: alerts fetch failed for client %d", client.id)
+                        failed += 1
 
                     synced += 1
                 except Exception:
