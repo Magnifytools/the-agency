@@ -1,23 +1,25 @@
 from __future__ import annotations
 
 import logging
-from datetime import date as date_type, datetime, timedelta, timezone
+from datetime import date as date_type
 from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from fastapi.encoders import jsonable_encoder
+from sqlalchemy import select, exists
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, noload
 
 from backend.db.database import get_db
-from backend.db.models import DailyUpdate, DailyUpdateStatus, DiscordSettings, User
+from backend.db.models import DailyUpdate, DailyUpdateStatus, Delivery, DiscordSettings, User
 from backend.api.deps import get_current_user
 from backend.core.rate_limiter import ai_limiter
 from backend.schemas.delivery import DeliveryReceipt
 from backend.schemas.daily import (
     DailySubmitRequest,
     DailyEditRequest,
+    DailyEnrichRequest,
     DailyUpdateResponse,
     ParsedDailyData,
 )
@@ -25,8 +27,7 @@ from backend.services.daily_parser import (
     parse_daily_update,
 )
 from backend.api.utils.db_helpers import safe_refresh
-from backend.services.temporal import business_today, civil_day_utc_bounds
-from backend.services.time_entry_dates import time_entry_civil_period
+from backend.services.temporal import business_today, utc_now_naive
 
 router = APIRouter(prefix="/api/dailys", tags=["daily-updates"])
 logger = logging.getLogger(__name__)
@@ -57,7 +58,70 @@ def _to_response(d: DailyUpdate) -> DailyUpdateResponse:
         discord_sent_at=d.discord_sent_at,
         created_at=d.created_at,
         updated_at=d.updated_at,
+        revision=d.revision,
+        source_facts=d.source_facts or [],
     )
+
+
+async def _lock_actor(db: AsyncSession, user_id: int) -> User:
+    # Same recipient lock as permission writers; reacquire after enrichment.
+    actor = (await db.execute(select(User).options(noload("*")).where(
+        User.id == user_id,
+    ).with_for_update(key_share=True).execution_options(populate_existing=True))).scalar_one_or_none()
+    if actor is None or not actor.is_active:
+        raise HTTPException(403, "Tu sesión ya no tiene acceso. Vuelve a entrar.")
+    return actor
+
+
+async def _load_owned(db, daily_id, actor, *, lock=False):
+    query = select(DailyUpdate).options(noload("*")).where(DailyUpdate.id == daily_id)
+    if lock:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    daily = (await db.execute(query)).scalar_one_or_none()
+    if daily is None:
+        raise HTTPException(404, "Resumen diario no encontrado")
+    if daily.user_id != actor.id and actor.role.value != "admin":
+        raise HTTPException(403, "Solo puedes modificar tus propios resúmenes diarios")
+    return daily
+
+
+def _conflict(daily, *, exists=False):
+    raise HTTPException(409, detail={
+        "code": "daily_exists" if exists else "daily_conflict",
+        "message": (f"Ya existe un resumen para el {daily.date.isoformat()}. Revisa el texto guardado."
+                    if exists else "El resumen cambió en otra sesión. Revisa la versión guardada antes de continuar."),
+        "current": _to_response(daily).model_dump(mode="json"),
+    })
+
+
+def _keys(facts):
+    return [fact["key"] for fact in (facts or [])]
+
+
+async def _selected_facts(db, actor, day, keys, *, previous=None):
+    """Keep selected historical evidence; validate additions against real sources."""
+    keys = list(dict.fromkeys(keys))
+    known = {f["key"]: f for f in previous or []}
+    if any(key not in known for key in keys):
+        from backend.services.daily_facts import collect_daily_facts
+        context = await collect_daily_facts(db, actor, day)
+        known.update({f["key"]: f for f in context["facts"] if f["key"] not in known})
+    if any(key not in known for key in keys):
+        raise HTTPException(422, "Algunos hechos cambiaron. Actualiza las fuentes antes de añadirlos.")
+
+    def event_key(key: str) -> str:
+        base, separator, version = key.rpartition(":")
+        if separator and len(version) == 16 and all(c in "0123456789abcdef" for c in version):
+            return base
+        return key
+
+    event_keys = [event_key(key) for key in keys]
+    if len(event_keys) != len(set(event_keys)):
+        raise HTTPException(
+            422,
+            "El mismo hecho está seleccionado en dos versiones. Conserva la versión histórica o sustitúyela por la actual.",
+        )
+    return jsonable_encoder([known[key] for key in keys])
 
 
 @router.post("", response_model=DailyUpdateResponse, status_code=status.HTTP_201_CREATED)
@@ -66,60 +130,30 @@ async def submit_daily(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Submit a daily update. The raw text is parsed by AI into structured data."""
-    ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
-
+    """Save immediately. AI enrichment is a separate, explicit operation."""
     if not body.raw_text.strip():
-        raise HTTPException(status_code=400, detail="El texto del daily no puede estar vacío")
-
+        raise HTTPException(400, "El texto del resumen no puede estar vacío")
+    actor = await _lock_actor(db, current_user.id)
     update_date = body.date or business_today()
-
-    # Check for duplicate daily on same date for this user
-    existing = await db.execute(
-        select(DailyUpdate).where(
-            DailyUpdate.user_id == current_user.id,
-            DailyUpdate.date == update_date,
-        )
-    )
-    if existing.scalars().first():
-        raise HTTPException(
-            status_code=409,
-            detail=f"Ya existe un daily para el {update_date.isoformat()}. Edita o elimina el existente.",
-        )
-
-    # Guardar PRIMERO, parsear después. El orden inverso perdía el texto del
-    # daily entero cada vez que fallaba la llamada a Claude, y dejaba al usuario
-    # con un 502 y nada guardado. Además el INSERT tarda milisegundos: así la
-    # fila está a salvo aunque el cliente corte la conexión (axios aborta a los
-    # 30 s y el SDK de Anthropic puede tardar bastante más).
+    keys = list(dict.fromkeys(body.source_fact_keys))
+    existing = (await db.execute(select(DailyUpdate).options(noload("*")).where(
+        DailyUpdate.user_id == actor.id, DailyUpdate.date == update_date,
+    ).with_for_update().execution_options(populate_existing=True))).scalar_one_or_none()
+    if existing is not None:
+        if existing.raw_text == body.raw_text and _keys(existing.source_facts) == keys:
+            await db.commit()
+            return _to_response(existing)
+        _conflict(existing, exists=True)
+    facts = await _selected_facts(db, actor, update_date, keys)
     daily = DailyUpdate(
-        user_id=current_user.id,
-        date=update_date,
-        raw_text=body.raw_text,
-        parsed_data=None,
-        status=DailyUpdateStatus.draft,
+        user_id=actor.id, date=update_date, raw_text=body.raw_text,
+        parsed_data=None, source_facts=facts, revision=1,
+        status=DailyUpdateStatus.draft, created_at=utc_now_naive(), updated_at=utc_now_naive(),
     )
     db.add(daily)
     await db.commit()
     await safe_refresh(db, daily, log_context="dailys")
-
-    # El parseo es un enriquecimiento, no un requisito: si falla, el daily queda
-    # guardado sin estructurar y el usuario puede reintentarlo con POST
-    # /dailys/{id}/reparse. Nunca es motivo para devolver un error.
-    parsed = None
-    try:
-        parsed = await parse_daily_update(body.raw_text)
-    except Exception:
-        logger.exception("Error parseando daily_id=%s (queda guardado sin parsear)", daily.id)
-
-    if parsed:
-        daily.parsed_data = parsed
-        await db.commit()
-        await safe_refresh(db, daily, log_context="dailys")
-
-    resp = _to_response(daily)
-    resp.time_entries_created = 0
-    return resp
+    return _to_response(daily)
 
 
 @router.get("", response_model=list[DailyUpdateResponse])
@@ -157,84 +191,24 @@ async def list_dailys(
 
 @router.get("/prefill")
 async def prefill_daily(
+    date: date_type | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return tasks completed/moved today by the current user to pre-fill the daily."""
-    from backend.db.models import Task, TaskStatus, TimeEntry
-    today = business_today()
-    completed_start, completed_end = civil_day_utc_bounds(today)
+    from backend.services.daily_facts import collect_daily_facts
+    return await collect_daily_facts(db, current_user, date or business_today())
 
-    # Tasks completed today by this user
-    completed_result = await db.execute(
-        select(Task)
-        .options(selectinload(Task.client))
-        .where(
-            Task.assigned_to == current_user.id,
-            Task.status == TaskStatus.completed,
-            Task.completed_at >= completed_start,
-            Task.completed_at < completed_end,
-        )
-    )
-    completed = completed_result.scalars().all()
 
-    # Tasks worked on today but not finished. Dos fuentes:
-    #  - tiempo fichado hoy (requiere haber usado el timer)
-    #  - estado "Avanzada" marcado hoy (gesto explícito de "hoy seguí con esto")
-    te_result = await db.execute(
-        select(Task)
-        .options(selectinload(Task.client))
-        .join(TimeEntry, TimeEntry.task_id == Task.id)
-        .where(
-            TimeEntry.user_id == current_user.id,
-            time_entry_civil_period(today, today + timedelta(days=1)),
-            Task.status != TaskStatus.completed,
-        )
-        .distinct()
-    )
-    worked_on = list(te_result.scalars().all())
-
-    advanced_result = await db.execute(
-        select(Task)
-        .options(selectinload(Task.client))
-        .where(
-            Task.assigned_to == current_user.id,
-            Task.status == TaskStatus.advanced,
-            Task.advanced_at == today,
-        )
-    )
-    seen_ids = {t.id for t in worked_on}
-    worked_on += [t for t in advanced_result.scalars().all() if t.id not in seen_ids]
-
-    # Build prefill text grouped by client
-    lines: list[str] = []
-    by_client: dict[str, list[str]] = {}
-
-    for task in completed:
-        try:
-            client = task.client.name if task.client else "General"
-        except Exception:
-            client = "General"
-        by_client.setdefault(client, []).append(f"✅ {task.title}")
-
-    for task in worked_on:
-        try:
-            client = task.client.name if task.client else "General"
-        except Exception:
-            client = "General"
-        by_client.setdefault(client, []).append(f"🔄 {task.title}")
-
-    for client, tasks in sorted(by_client.items()):
-        lines.append(f"**{client}**")
-        for t in tasks:
-            lines.append(f"- {t}")
-        lines.append("")
-
-    return {
-        "text": "\n".join(lines).strip(),
-        "completed_count": len(completed),
-        "worked_on_count": len(worked_on),
-    }
+@router.get("/for-date", response_model=DailyUpdateResponse | None)
+async def daily_for_date(
+    date: date_type | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    daily = (await db.execute(select(DailyUpdate).options(selectinload(DailyUpdate.user)).where(
+        DailyUpdate.user_id == current_user.id, DailyUpdate.date == (date or business_today()),
+    ))).scalar_one_or_none()
+    return _to_response(daily) if daily else None
 
 
 @router.get("/{daily_id}", response_model=DailyUpdateResponse)
@@ -259,31 +233,42 @@ async def get_daily(
 @router.post("/{daily_id}/reparse", response_model=DailyUpdateResponse)
 async def reparse_daily(
     daily_id: int,
+    body: DailyEnrichRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Re-parse an existing daily update with AI."""
-    result = await db.execute(select(DailyUpdate).where(DailyUpdate.id == daily_id))
-    daily = result.scalars().first()
-    if not daily:
-        raise HTTPException(status_code=404, detail="Daily update no encontrado")
-
-    # Ownership check: only owner or admin
-    if daily.user_id != current_user.id and current_user.role.value != "admin":
-        raise HTTPException(status_code=403, detail="Solo puedes re-parsear tus propios dailys")
-
-    try:
-        parsed = await parse_daily_update(daily.raw_text)
-    except Exception:
-        logger.exception("Unexpected error reparsing daily_id=%s", daily_id)
-        raise HTTPException(status_code=502, detail="Error al re-parsear el daily")
-
-    if daily.parsed_data != parsed:
-        daily.status = DailyUpdateStatus.draft
-    daily.parsed_data = parsed
+    """Enrich one saved revision without holding locks during the provider call."""
+    actor = await _lock_actor(db, current_user.id)
+    daily = await _load_owned(db, daily_id, actor, lock=True)
+    if daily.revision != body.revision:
+        _conflict(daily)
+    if daily.status != DailyUpdateStatus.draft:
+        raise HTTPException(409, "Este resumen ya se compartió. Conserva su versión enviada.")
+    ai_limiter.check(actor.id, max_requests=10, window_seconds=60)
+    revision, raw, facts = daily.revision, daily.raw_text, daily.source_facts or []
+    actor_id = actor.id
     await db.commit()
-    await safe_refresh(db, daily, log_context="dailys")
-
+    try:
+        parsed = await parse_daily_update(raw, source_facts=facts)
+        # Validate provider structure before publishing any change.
+        normalized = ParsedDailyData.model_validate(parsed).model_dump()
+        known = set(_keys(facts))
+        task_rows = normalized["general"] + [task for project in normalized["projects"] for task in project["tasks"]]
+        if any(set(task["fact_keys"]) - known for task in task_rows):
+            raise ValueError("Unknown source fact returned by parser")
+    except Exception:
+        logger.exception("Daily enrichment failed; saved text retained: daily_id=%s", daily_id)
+        raise HTTPException(502, "El texto sigue guardado. No se pudo estructurar; puedes reintentarlo.") from None
+    actor = await _lock_actor(db, actor_id)
+    daily = await _load_owned(db, daily_id, actor, lock=True)
+    if daily.revision != revision or daily.raw_text != raw or daily.status != DailyUpdateStatus.draft:
+        _conflict(daily)
+    if daily.parsed_data != normalized:
+        daily.parsed_data = normalized
+        daily.status = DailyUpdateStatus.draft
+        daily.revision += 1
+        daily.updated_at = utc_now_naive()
+    await db.commit()
     return _to_response(daily)
 
 
@@ -294,34 +279,33 @@ async def edit_daily(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Edit a daily update's text or parsed data (only drafts)."""
-    result = await db.execute(select(DailyUpdate).where(DailyUpdate.id == daily_id))
-    daily = result.scalars().first()
-    if not daily:
-        raise HTTPException(status_code=404, detail="Daily update no encontrado")
-
-    if daily.user_id != current_user.id and current_user.role.value != "admin":
-        raise HTTPException(status_code=403, detail="Solo puedes editar tus propios dailys")
-
+    """Save a reviewed draft immediately, with optimistic revision control."""
+    actor = await _lock_actor(db, current_user.id)
+    daily = await _load_owned(db, daily_id, actor, lock=True)
+    raw = body.raw_text if body.raw_text is not None else daily.raw_text
+    if not raw.strip():
+        raise HTTPException(400, "El texto del resumen no puede estar vacío")
+    keys = list(dict.fromkeys(body.source_fact_keys)) if body.source_fact_keys is not None else _keys(daily.source_facts)
+    parsed = (body.parsed_data.model_dump() if body.parsed_data is not None else
+              None if raw != daily.raw_text or keys != _keys(daily.source_facts) else daily.parsed_data)
+    unchanged = raw == daily.raw_text and keys == _keys(daily.source_facts) and parsed == daily.parsed_data
+    if unchanged:
+        await db.commit()
+        return _to_response(daily)
+    if daily.revision != body.revision:
+        _conflict(daily)
     if daily.status != DailyUpdateStatus.draft:
-        raise HTTPException(status_code=409, detail="Solo se pueden editar dailys en borrador")
-
-    if body.raw_text is not None:
-        daily.raw_text = body.raw_text
-    if body.parsed_data is not None:
-        daily.parsed_data = body.parsed_data.model_dump()
-    elif body.raw_text is not None:
-        # Re-parse automatically when raw_text changes and no explicit parsed_data
-        try:
-            parsed = await parse_daily_update(body.raw_text)
-            daily.parsed_data = parsed
-        except Exception:
-            daily.parsed_data = None
-            logger.warning("Auto-reparse failed for daily_id=%s; raw draft retained", daily_id)
-
+        raise HTTPException(409, "Este resumen ya se compartió. Conserva su versión enviada.")
+    subject = actor if daily.user_id == actor.id else await db.get(User, daily.user_id)
+    facts = await _selected_facts(db, subject, daily.date, keys, previous=daily.source_facts)
+    if parsed:
+        rows = parsed["general"] + [t for p in parsed["projects"] for t in p["tasks"]]
+        if any(set(t["fact_keys"]) - set(keys) for t in rows):
+            raise HTTPException(422, "La redacción contiene fuentes no seleccionadas.")
+    daily.raw_text, daily.source_facts, daily.parsed_data = raw, facts, parsed
+    daily.revision += 1
+    daily.updated_at = utc_now_naive()
     await db.commit()
-    await safe_refresh(db, daily, log_context="dailys")
-
     return _to_response(daily)
 
 
@@ -417,17 +401,20 @@ async def send_daily_to_discord(
 @router.delete("/{daily_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_daily(
     daily_id: int,
+    revision: int = Query(..., ge=1),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete a daily update (only owner or admin)."""
-    result = await db.execute(select(DailyUpdate).where(DailyUpdate.id == daily_id))
-    daily = result.scalars().first()
-    if not daily:
-        raise HTTPException(status_code=404, detail="Daily update no encontrado")
-
-    if daily.user_id != current_user.id and current_user.role.value != "admin":
-        raise HTTPException(status_code=403, detail="Solo puedes borrar tus propios dailys")
-
+    actor = await _lock_actor(db, current_user.id)
+    daily = await _load_owned(db, daily_id, actor, lock=True)
+    if daily.revision != revision:
+        _conflict(daily)
+    if daily.status != DailyUpdateStatus.draft or await db.scalar(select(exists().where(
+        Delivery.source_kind == "daily", Delivery.source_id == daily_id,
+    ))):
+        raise HTTPException(409, detail={
+            "code": "traceability_required",
+            "message": "Este resumen tiene historial de envío y se conserva junto a sus recibos.",
+        })
     await db.delete(daily)
     await db.commit()

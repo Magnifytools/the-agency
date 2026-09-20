@@ -1554,12 +1554,15 @@ class DiscordSettings(Base):
 
 class DailyUpdate(TimestampMixin, Base):
     __tablename__ = "daily_updates"
+    __table_args__ = (Index("uq_daily_user_date", "user_id", "date", unique=True),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     date = Column(Date, nullable=False)
     raw_text = Column(Text, nullable=False)
     parsed_data = Column(JSON, nullable=True)  # {projects: [{name, client, tasks: [{description, details}]}]}
+    revision = Column(Integer, nullable=False, default=1, server_default="1")
+    source_facts = Column(JSON, nullable=False, default=list, server_default="[]")
     status = Column(Enum(DailyUpdateStatus), nullable=False, default=DailyUpdateStatus.draft)
     discord_sent_at = Column(DateTime, nullable=True)
 

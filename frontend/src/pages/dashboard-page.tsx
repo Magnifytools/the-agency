@@ -376,8 +376,9 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
-      {isAdmin && <ManualDeliveryReceipts kind="weekly_report" />}
-      {isAdmin && <ManualDeliveryReceipts kind="daily_summary" />}
+      {isAdmin && <ManualDeliveryReceipts kind="weekly_report" hideWhenEmpty />}
+      {isAdmin && <ManualDeliveryReceipts kind="daily_summary" hideWhenEmpty />}
+      {user && !viewAsUserId && <DailyUpdateWidget userId={user.id} />}
 
       {/* Overdue Holded invoices alert */}
       {overdueInvoices.length > 0 && (
@@ -441,7 +442,6 @@ export default function DashboardPage() {
             )
           })()}
 
-          <DailyUpdateWidget userId={user.id} />
           <DeberesWidget userId={user.id} />
 
           {/* Las 3 de hoy — tareas en curso como tarjetas visuales */}
@@ -719,7 +719,7 @@ export default function DashboardPage() {
 
       {isAdmin && profitability && profitability.clients.length > 0 && (
         <div className="grid lg:grid-cols-2 gap-6">
-          <Card>
+          <Card className="min-w-0">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 Rentabilidad por cliente
@@ -778,7 +778,7 @@ export default function DashboardPage() {
               </Table></div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="min-w-0">
             <CardHeader><CardTitle>Presupuesto vs Coste</CardTitle></CardHeader>
             <CardContent className="pt-4"><ProfitabilityChart data={profitability.clients} /></CardContent>
           </Card>

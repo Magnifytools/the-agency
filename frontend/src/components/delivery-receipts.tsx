@@ -23,9 +23,9 @@ export function deliveryToast(receipt: DeliveryReceipt) {
 type ManualKind = "pm_briefing" | "weekly_report" | "daily_summary" | "custom" | "connection_test"
 
 type ReceiptSource =
-  | { sourceKind: "daily" | "digest" | "communication"; sourceId: number; manualKind?: never; scope?: never }
-  | { manualKind: ManualKind; scope?: "mine" | "team"; sourceKind?: never; sourceId?: never }
-  | { deliveryId: string; sourceKind?: never; sourceId?: never; manualKind?: never; scope?: never }
+  | { sourceKind: "daily" | "digest" | "communication"; sourceId: number; manualKind?: never; scope?: never; hideWhenEmpty?: never }
+  | { manualKind: ManualKind; scope?: "mine" | "team"; sourceKind?: never; sourceId?: never; hideWhenEmpty?: boolean }
+  | { deliveryId: string; sourceKind?: never; sourceId?: never; manualKind?: never; scope?: never; hideWhenEmpty?: never }
 
 function ReceiptHistory(props: ReceiptSource) {
   const { user } = useAuth()
@@ -74,7 +74,7 @@ function ReceiptHistory(props: ReceiptSource) {
 
   if (query.isPending) return <p className="text-xs text-muted-foreground">Cargando recibos…</p>
   if (query.isError) return <div role="alert" className="text-sm">No se pudieron cargar los recibos. <Button size="sm" variant="outline" onClick={() => query.refetch()}>Reintentar consulta</Button></div>
-  if (!query.data?.length) return <p className="text-xs text-muted-foreground">Sin recibos de envío registrados. Los envíos anteriores pueden no tener recibo.</p>
+  if (!query.data?.length) return props.hideWhenEmpty ? null : <p className="text-xs text-muted-foreground">Sin recibos de envío registrados. Los envíos anteriores pueden no tener recibo.</p>
 
   return <section className="space-y-3 text-sm" aria-label="Recibos de Discord">
     <h3 className="font-medium">Envíos a Discord</h3>
@@ -116,8 +116,8 @@ export function DeliveryReceipts(props: { sourceKind: "daily" | "digest" | "comm
   return <ReceiptHistory {...props} />
 }
 
-export function ManualDeliveryReceipts({ kind, scope }: { kind: ManualKind; scope?: "mine" | "team" }) {
-  return <ReceiptHistory manualKind={kind} scope={scope} />
+export function ManualDeliveryReceipts({ kind, scope, hideWhenEmpty = false }: { kind: ManualKind; scope?: "mine" | "team"; hideWhenEmpty?: boolean }) {
+  return <ReceiptHistory manualKind={kind} scope={scope} hideWhenEmpty={hideWhenEmpty} />
 }
 
 export function SingleDeliveryReceipt({ deliveryId }: { deliveryId: string }) {

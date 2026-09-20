@@ -68,8 +68,15 @@ class TestDailysPrefill:
 class TestDailysDelete:
     """DELETE /api/dailys/{id}"""
 
-    async def test_delete_nonexistent_daily(self, admin_client):
-        resp = await admin_client.delete("/api/dailys/9999")
+    async def test_delete_nonexistent_daily(self, admin_client, admin_user):
+        from backend.main import app
+        from backend.db.database import get_db
+        db = app.dependency_overrides[get_db]()
+        actor_result, missing_result = MagicMock(), MagicMock()
+        actor_result.scalar_one_or_none.return_value = admin_user
+        missing_result.scalar_one_or_none.return_value = None
+        db.execute.side_effect = [actor_result, missing_result]
+        resp = await admin_client.delete("/api/dailys/9999", params={"revision": 1})
         assert resp.status_code == 404
 
 
@@ -84,6 +91,8 @@ class TestDailysToResponse:
         mock_daily.user_id = 1
         mock_daily.user = MagicMock(full_name="David")
         mock_daily.date = "2025-06-01"
+        mock_daily.revision = 1
+        mock_daily.source_facts = []
         mock_daily.raw_text = "Worked on stuff"
         mock_daily.parsed_data = {
             "tasks": [
@@ -109,6 +118,8 @@ class TestDailysToResponse:
         mock_daily.user_id = 1
         mock_daily.user = None
         mock_daily.date = "2025-06-01"
+        mock_daily.revision = 1
+        mock_daily.source_facts = []
         mock_daily.raw_text = "Test"
         mock_daily.parsed_data = None
         mock_daily.status = DailyUpdateStatus.draft
@@ -128,6 +139,8 @@ class TestDailysToResponse:
         mock_daily.user_id = 1
         mock_daily.user = MagicMock(full_name="Test")
         mock_daily.date = "2025-06-01"
+        mock_daily.revision = 1
+        mock_daily.source_facts = []
         mock_daily.raw_text = "Test"
         mock_daily.parsed_data = {"invalid": "structure"}
         mock_daily.status = DailyUpdateStatus.draft
