@@ -6,7 +6,7 @@ import logging
 from datetime import timedelta
 
 from pydantic import ValidationError
-from sqlalchemy import DateTime, func, select, update
+from sqlalchemy import func, literal_column, select, update
 from sqlalchemy.orm import lazyload, load_only, selectinload
 
 from backend.db.models import (
@@ -22,9 +22,20 @@ CLASSIFICATION_RETRY_SECONDS = 300
 
 
 def _updated_clock():
-    # InboxNote.updated_at is a legacy timestamp in the DB session timezone.
-    # Cast clock_timestamp to that same type so a post-lock write is monotonic.
-    return func.clock_timestamp().cast(DateTime(timezone=False))
+    # Let PostgreSQL coerce its own clock to the deployed column type. Legacy
+    # databases use timestamptz while the canonical baseline uses timestamp.
+    return func.clock_timestamp()
+
+
+def _queue_clock():
+    return func.timezone("UTC", func.clock_timestamp())
+
+
+def _snapshot_matches(snapshot):
+    # Compare values calculated wholly inside PostgreSQL. Binding the datetime
+    # loaded from a legacy timestamptz column through the ORM's naive DateTime
+    # type makes asyncpg reject the CAS before PostgreSQL can compare it.
+    return func.extract("epoch", InboxNote.updated_at) == snapshot["updated_epoch"]
 
 
 def can_read(user, module: str) -> bool:
@@ -107,11 +118,11 @@ async def _requeue_changed_context(session_factory, snapshot) -> None:
                 InboxNote.user_id == snapshot["user_id"],
                 InboxNote.status == InboxNoteStatus.pending,
                 InboxNote.raw_text == snapshot["raw_text"],
-                InboxNote.updated_at == snapshot["updated_at"],
+                _snapshot_matches(snapshot),
             )
             .values(
                 classification_error_code=None,
-                classification_next_attempt_at=None,
+                classification_next_attempt_at=_queue_clock(),
                 updated_at=_updated_clock(),
             )
         )
@@ -127,7 +138,7 @@ async def _store_failure(session_factory, snapshot, code: str) -> bool:
                 InboxNote.user_id == snapshot["user_id"],
                 InboxNote.status == InboxNoteStatus.pending,
                 InboxNote.raw_text == snapshot["raw_text"],
-                InboxNote.updated_at == snapshot["updated_at"],
+                _snapshot_matches(snapshot),
             )
             .values(
                 classification_error_code=code,
@@ -145,7 +156,10 @@ async def _store_failure(session_factory, snapshot, code: str) -> bool:
 async def _process_one(session_factory, note_id: int) -> bool:
     async with session_factory() as db:
         row = (await db.execute(
-            select(InboxNote, User)
+            select(
+                InboxNote, User,
+                func.extract("epoch", InboxNote.updated_at).label("updated_epoch"),
+            )
             .join(User, InboxNote.user_id == User.id)
             .where(
                 InboxNote.id == note_id,
@@ -156,7 +170,7 @@ async def _process_one(session_factory, note_id: int) -> bool:
                 lazyload("*"),
                 load_only(
                     InboxNote.id, InboxNote.user_id, InboxNote.raw_text,
-                    InboxNote.updated_at, InboxNote.status,
+                    InboxNote.status,
                 ),
                 load_only(User.id, User.role, User.is_active),
                 selectinload(User.permissions),
@@ -164,12 +178,12 @@ async def _process_one(session_factory, note_id: int) -> bool:
         )).one_or_none()
         if row is None:
             return False
-        note, user = row
+        note, user, updated_epoch = row
         snapshot = {
             "id": note.id,
             "user_id": note.user_id,
             "raw_text": note.raw_text,
-            "updated_at": note.updated_at,
+            "updated_epoch": updated_epoch,
         }
         projects, clients = await fetch_context(db, user)
 
@@ -222,7 +236,7 @@ async def _process_one(session_factory, note_id: int) -> bool:
                 InboxNote.user_id == snapshot["user_id"],
                 InboxNote.status == InboxNoteStatus.pending,
                 InboxNote.raw_text == snapshot["raw_text"],
-                InboxNote.updated_at == snapshot["updated_at"],
+                _snapshot_matches(snapshot),
             )
             .values(
                 ai_suggestion=canonical,
@@ -251,7 +265,7 @@ def pending_batch_query(now):
         )
         .order_by(
             func.coalesce(
-                InboxNote.classification_next_attempt_at, InboxNote.updated_at,
+                InboxNote.classification_next_attempt_at, literal_column("TIMESTAMP 'epoch'"),
             ),
             InboxNote.id,
         )

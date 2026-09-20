@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 
 import pytest
 from fastapi import HTTPException
@@ -249,7 +250,7 @@ async def test_context_change_while_provider_runs_discards_generated_text(engine
             assert note.status == InboxNoteStatus.pending
             assert note.ai_suggestion is None
             assert note.classification_error_code is None
-            assert note.classification_next_attempt_at is None
+            assert note.classification_next_attempt_at is not None
     finally:
         await _cleanup(engine, user_id, client_id)
 
@@ -431,6 +432,7 @@ async def test_public_update_rejects_lifecycle_and_hidden_associations(
     try:
         created = await api.post("/api/inbox", json={"raw_text": "Privada"})
         assert created.status_code == 201
+        assert created.json()["classification_next_attempt_at"] is not None
         note_id = created.json()["id"]
         lifecycle = await api.put(
             f"/api/inbox/{note_id}",
@@ -467,9 +469,116 @@ async def test_manual_classify_only_requeues_durable_note(admin_client, db_sessi
     assert body["status"] == "pending"
     assert body["ai_suggestion"] is None
     assert body["classification_error_code"] is None
-    assert body["classification_next_attempt_at"] is None
+    assert body["classification_next_attempt_at"] is not None
     await db_session.refresh(note)
     assert note.updated_at > previous_updated_at
+
+
+async def test_worker_cas_supports_legacy_timestamptz_updated_at(engine, monkeypatch):
+    """Production legacy timestamps must not be rebound as naive datetimes."""
+    user_id, client_id, project_id, note_id = await _setup(engine, "legacy-tz")
+    async with engine.connect() as conn:
+        index_def = await conn.scalar(text(
+            "SELECT pg_get_indexdef(to_regclass('ix_inbox_pending_attempt'))"
+        ))
+        await conn.execute(text("DROP INDEX IF EXISTS ix_inbox_pending_attempt"))
+        await conn.execute(text(
+            "ALTER TABLE inbox_notes ALTER COLUMN updated_at TYPE timestamptz "
+            "USING updated_at AT TIME ZONE 'UTC'"
+        ))
+        await conn.commit()
+
+    async def classify(*_args):
+        return _suggestion(project_id, client_id)
+
+    monkeypatch.setattr(inbox_processing, "classify_inbox_note", classify)
+    try:
+        assert await inbox_processing.run_inbox_classification_once(_sessions(engine)) == 0
+        async with AsyncSession(engine) as db:
+            row = (await db.execute(text(
+                "SELECT status::text, ai_suggestion IS NOT NULL "
+                "FROM inbox_notes WHERE id=:id"
+            ), {"id": note_id})).one()
+            assert row == ("classified", True)
+    finally:
+        async with engine.connect() as conn:
+            await conn.execute(text(
+                "ALTER TABLE inbox_notes ALTER COLUMN updated_at TYPE timestamp "
+                "USING updated_at AT TIME ZONE 'UTC'"
+            ))
+            if index_def:
+                await conn.execute(text(index_def))
+            await conn.commit()
+        await _cleanup(engine, user_id, client_id)
+
+
+@pytest.mark.parametrize("legacy_timestamptz", [False, True])
+async def test_worker_cas_rejects_concurrent_edit_across_session_timezones(
+    engine, monkeypatch, legacy_timestamptz,
+):
+    """A non-text edit wins even when worker/editor use different DB zones."""
+    user_id, client_id, project_id, note_id = await _setup(
+        engine, f"cas-zone-{legacy_timestamptz}",
+    )
+    index_def = None
+    if legacy_timestamptz:
+        async with engine.connect() as conn:
+            index_def = await conn.scalar(text(
+                "SELECT pg_get_indexdef(to_regclass('ix_inbox_pending_attempt'))"
+            ))
+            await conn.execute(text("DROP INDEX IF EXISTS ix_inbox_pending_attempt"))
+            await conn.execute(text(
+                "ALTER TABLE inbox_notes ALTER COLUMN updated_at TYPE timestamptz "
+                "USING updated_at AT TIME ZONE 'UTC'"
+            ))
+            await conn.commit()
+
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def classify(*_args):
+        entered.set()
+        await release.wait()
+        return _suggestion(project_id, client_id)
+
+    @asynccontextmanager
+    async def madrid_sessions():
+        async with AsyncSession(engine, expire_on_commit=False) as db:
+            await db.execute(text("SET LOCAL TIME ZONE 'Europe/Madrid'"))
+            yield db
+
+    monkeypatch.setattr(inbox_processing, "classify_inbox_note", classify)
+    try:
+        running = asyncio.create_task(
+            inbox_processing.run_inbox_classification_once(madrid_sessions)
+        )
+        await entered.wait()
+        async with AsyncSession(engine) as db:
+            await db.execute(text("SET LOCAL TIME ZONE 'America/New_York'"))
+            await db.execute(text(
+                "UPDATE inbox_notes SET link_url='https://edit.example', "
+                "updated_at=clock_timestamp() WHERE id=:id"
+            ), {"id": note_id})
+            await db.commit()
+        release.set()
+        assert await running == 0
+        async with AsyncSession(engine) as db:
+            row = (await db.execute(text(
+                "SELECT status::text, ai_suggestion, link_url "
+                "FROM inbox_notes WHERE id=:id"
+            ), {"id": note_id})).one()
+            assert row == ("pending", None, "https://edit.example")
+    finally:
+        release.set()
+        if legacy_timestamptz:
+            async with engine.connect() as conn:
+                await conn.execute(text(
+                    "ALTER TABLE inbox_notes ALTER COLUMN updated_at TYPE timestamp "
+                    "USING updated_at AT TIME ZONE 'UTC'"
+                ))
+                if index_def:
+                    await conn.execute(text(index_def))
+                await conn.commit()
+        await _cleanup(engine, user_id, client_id)
 
 
 async def test_manual_assignment_closes_pending_and_clearing_it_requeues(
@@ -502,6 +611,7 @@ async def test_manual_assignment_closes_pending_and_clearing_it_requeues(
     )
     assert cleared.status_code == 200
     assert cleared.json()["status"] == "pending"
+    assert cleared.json()["classification_next_attempt_at"] is not None
 
 
 async def test_terminal_note_transitions_cannot_create_a_second_outcome(

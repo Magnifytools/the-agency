@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import Response
-from sqlalchemy import DateTime, select, func
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,7 +32,11 @@ router = APIRouter(prefix="/api/inbox", tags=["inbox"])
 
 
 def _updated_clock():
-    return func.clock_timestamp().cast(DateTime(timezone=False))
+    return func.clock_timestamp()
+
+
+def _queue_clock():
+    return func.timezone("UTC", func.clock_timestamp())
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -152,6 +156,9 @@ async def create_inbox_note(
         client_id=body.client_id,
         link_url=body.link_url,
         status=initial_status,
+        classification_next_attempt_at=(
+            _queue_clock() if initial_status == InboxNoteStatus.pending else None
+        ),
     )
     db.add(note)
     await db.commit()
@@ -250,7 +257,9 @@ async def update_inbox_note(
         )
         note.ai_suggestion = None
         note.classification_error_code = None
-        note.classification_next_attempt_at = None
+        note.classification_next_attempt_at = (
+            _queue_clock() if note.status == InboxNoteStatus.pending else None
+        )
     note.updated_at = _updated_clock()
 
     await db.commit()
@@ -306,7 +315,7 @@ async def classify_note(
     note.status = InboxNoteStatus.pending
     note.ai_suggestion = None
     note.classification_error_code = None
-    note.classification_next_attempt_at = None
+    note.classification_next_attempt_at = _queue_clock()
     note.updated_at = _updated_clock()
     await db.commit()
     await safe_refresh(db, note, log_context="inbox_requeue")

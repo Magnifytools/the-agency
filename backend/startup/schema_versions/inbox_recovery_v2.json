@@ -1,0 +1,17 @@
+{
+  "version": "20260920_inbox_recovery_v2",
+  "sql": "ALTER TABLE inbox_notes ADD COLUMN IF NOT EXISTS classification_error_code VARCHAR(32), ADD COLUMN IF NOT EXISTS classification_next_attempt_at TIMESTAMP",
+  "columns": {
+    "classification_error_code": [
+      "varchar",
+      true,
+      32
+    ],
+    "classification_next_attempt_at": [
+      "timestamp",
+      true,
+      null
+    ]
+  },
+  "index_sql": "CREATE INDEX IF NOT EXISTS ix_inbox_pending_attempt ON inbox_notes (COALESCE(classification_next_attempt_at, TIMESTAMP 'epoch'), id) WHERE status='pending'"
+}
