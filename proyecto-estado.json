@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-20T09:43:16.305630+00:00",
-  "estado_general": "produccion_octava_mejora_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-20T10:44:42.528822+00:00",
+  "estado_general": "produccion_novena_mejora_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -178,6 +178,13 @@
       "estado": "completado",
       "prioridad": "alta",
       "notas": "PR19 1e667d2 publicada;858backend (2omitidos),225frontend,42extensión.42lecturasAPI yUI390/1440 verificadas; migración aditiva sin activar políticas, UTC explícito, consultas agrupadas e historial paginado. Objetivo global sigue activo."
+    },
+    {
+      "id": "AUDIT-20260920-P9",
+      "descripcion": "Avisos comunes de tareas, proyectos, presupuestos, resúmenes y entregas con decisiones por destinatario",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "PR20 987b182 publicada;903backend (2omitidos),238frontend,42extensión. CI rama/main,47lecturasAPI,colectores6 y UI390/1440 verificadas. Detector activado tras migración y observado sin duplicados; sin comunicaciones de prueba. Objetivo global sigue activo."
     }
   ],
   "bugs": [
@@ -240,7 +247,7 @@
   ],
   "notas_tecnicas": [
     "Stack: React 19 + FastAPI + PostgreSQL + Railway",
-    "Tests octava entrega: 858 backend (2 omitidos), 225 frontend y 42 extensión; CI de rama/main, imagen Linux y producción verificados.",
+    "Tests novena entrega: 903 backend (2 omitidos), 238 frontend y 42 extensión; CI de rama/main, imagen Linux y producción verificados.",
     "CUIDADO: lazy='selectin' esta en ~80 relaciones de models.py. Quitar un selectinload() de .options() NO evita la carga; hace falta noload() explicito",
     "La suite unitaria mockea get_db: cualquier cambio de SQL debe verificarse en tests/integration/",
     "Los estados de rentabilidad viven en services/profitability.py (backend) y lib/profitability.ts (frontend), un unico mapa cada uno",
@@ -248,7 +255,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "P9 local: incidencias de tareas, proyectos, presupuestos, políticas de resumen y entregas integradas; Hoy/campana/PM comparten bandeja. Recibos y períodos exactos verificados con API/PG aislados en móvil/escritorio. Preparar CI y publicación; decisión de canal y resto de cobertura siguen pendientes. Producción conserva P8; objetivo completo activo.",
+  "proximos_pasos": "P10: cierre diario con borrador recuperable, guardado sin esperar IA, revisión optimista y hechos trazables. Después recurrencias explicables, comandos compuestos/decisiones y resto de cobertura. Canal externo pendiente de configuración explícita; objetivo completo activo.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
@@ -258,7 +265,7 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "1e667d231582e2f3052562f86683b262b58ff845",
+    "revision": "987b182009e08fc8978bd029a1258f47221ada89",
     "healthcheck": "/api/ready"
   },
   "pendiente_david": "Revisar Google Calendar en Ajustes y reconectar las cuentas que muestran autorización rechazada. La implementación restante sigue avanzando."
