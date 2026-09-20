@@ -5,6 +5,8 @@ import {
   clientKeys,
   dashboardKeys,
   briefingKeys,
+  invalidateClientChange,
+  invalidateProjectChange,
   invalidateTaskChange,
   optimisticallyUpdateExactQuery,
   projectKeys,
@@ -34,6 +36,9 @@ describe("shared operational query keys", () => {
       incidentKeys.count(7),
       incidentKeys.list(7, "active"),
       searchKeys.results(7, "tasks", "reunión"),
+      ["client-health-scores"] as const,
+      ["client-health", 4] as const,
+      ["client-health", 5] as const,
       ["unrelated", "settings"] as const,
     ]
     keys.forEach((key) => client.setQueryData(key, { ok: true }))
@@ -93,5 +98,62 @@ describe("shared operational query keys", () => {
   it("does not share search results across identities or permission sets", () => {
     expect(searchKeys.results(7, "tasks", "reunión")).not.toEqual(searchKeys.results(8, "tasks", "reunión"))
     expect(searchKeys.results(7, "tasks", "reunión")).not.toEqual(searchKeys.results(7, "clients,tasks", "reunión"))
+  })
+
+  it("invalidates every active operational consumer after a client change", async () => {
+    const client = new QueryClient()
+    const affected = [
+      ["clients", "active", 1, 25],
+      ["clients-all", 7],
+      ["clients-all-active"],
+      ["clients-active"],
+      ["clients-active-list"],
+      ["clients-list"],
+      ["client-health-scores"],
+      ["client-health", 4],
+      ["active-timer"],
+      ["admin-active-timers"],
+      clientKeys.summary(4),
+      clientKeys.dashboard(4),
+      ["client-activity", 4],
+      projectKeys.list(["active"]),
+      taskKeys.list(["client", 4]),
+      ["time-entries", "client", 4],
+      incidentKeys.list(7, "active"),
+      dashboardKeys.today(),
+      myWeekKeys.week("2026-09-14"),
+      [...briefingKeys.all(), "mine"],
+      searchKeys.results(7, "clients", "acme"),
+    ] as const
+    const unrelated = ["holded-invoices", "paid"] as const
+    ;[...affected, unrelated].forEach((key) => client.setQueryData(key, { ok: true }))
+
+    await invalidateClientChange(client, [4])
+
+    affected.forEach((key) => expect(client.getQueryState(key)?.isInvalidated).toBe(true))
+    expect(client.getQueryState(unrelated)?.isInvalidated).toBe(false)
+  })
+
+  it("invalidates global search after a project change", async () => {
+    const client = new QueryClient()
+    const searchKey = searchKeys.results(7, "projects", "portal")
+    client.setQueryData(searchKey, { ok: true })
+
+    await invalidateProjectChange(client, { clientId: 4 })
+
+    expect(client.getQueryState(searchKey)?.isInvalidated).toBe(true)
+  })
+
+  it("invalidates all client health when an operational mutation lacks a client id", async () => {
+    const client = new QueryClient()
+    const health = ["client-health", 41] as const
+    const healthScores = ["client-health-scores"] as const
+    client.setQueryData(health, { score: 80 })
+    client.setQueryData(healthScores, [{ client_id: 41, score: 80 }])
+
+    await invalidateTaskChange(client)
+
+    expect(client.getQueryState(health)?.isInvalidated).toBe(true)
+    expect(client.getQueryState(healthScores)?.isInvalidated).toBe(true)
   })
 })

@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { serviceTypeLabels } from "@/lib/constants"
+import { invalidateClientChange } from "@/lib/query-keys"
 
 export interface WizardForm {
     title: string
@@ -379,6 +380,7 @@ export function ProposalWizard({
                     ltv: form.ltv ? Number(form.ltv) : null,
                     seo_maturity_level: form.seo_maturity_level || null,
                 })
+                void invalidateClientChange(queryClient, [form.client_id])
             } catch {
                 // Client data save is best-effort; proposal creation continues
             }

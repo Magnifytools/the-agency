@@ -34,7 +34,7 @@ import { EngineSeoTab } from "@/components/clients/engine-seo-tab"
 // CoreUpdatesTab removed — analysis only available in Engine
 import { FichaTab } from "@/components/clients/ficha-tab"
 import { useAuth } from "@/context/auth-context"
-import { clientKeys, holdedKeys, projectKeys, timeKeys } from "@/lib/query-keys"
+import { clientKeys, holdedKeys, invalidateClientChange, projectKeys, timeKeys } from "@/lib/query-keys"
 import { formatCurrency } from "@/lib/format"
 import { TaskPanel } from "@/components/tasks/task-panel"
 
@@ -84,7 +84,7 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
   const updateMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => clientsApi.update(client.id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: clientKeys.summary(client.id) })
+      void invalidateClientChange(queryClient, [client.id])
       setEditing(false)
     },
     onError: () => toast.error("Error al guardar los datos del cliente"),
@@ -301,12 +301,14 @@ export default function ClientDetailPage() {
     staleTime: 10 * 60_000,
   })
 
-  const { data: health } = useQuery({
+  const canReadClientHealth = hasPermission("clients")
+  const healthQuery = useQuery({
     queryKey: ["client-health", clientId],
     queryFn: () => clientHealthApi.get(clientId),
-    enabled: !!clientId,
+    enabled: !!clientId && canReadClientHealth,
     staleTime: 60_000,
   })
+  const health = canReadClientHealth && !healthQuery.isError ? healthQuery.data : undefined
 
   const recentEntriesQuery = useQuery({
     queryKey: timeKeys.client(clientId),
@@ -576,6 +578,14 @@ export default function ClientDetailPage() {
             </div>
           </CardContent>
         </Card>
+        {canReadClientHealth && healthQuery.isError && (
+          <Card>
+            <CardContent className="flex h-full flex-col items-start justify-center gap-2 p-4" role="alert">
+              <p className="text-sm">No se pudo cargar la salud del cliente.</p>
+              <Button variant="outline" size="sm" disabled={healthQuery.isFetching} onClick={() => void healthQuery.refetch()}>Reintentar salud</Button>
+            </CardContent>
+          </Card>
+        )}
         {health && (
           <Card className={health.risk_level === "at_risk" ? "border-red-500/40" : health.risk_level === "warning" ? "border-amber-500/40" : ""}>
             <CardContent className="p-4">

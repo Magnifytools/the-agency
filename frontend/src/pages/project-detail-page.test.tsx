@@ -1,19 +1,19 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { projectKeys } from "@/lib/query-keys"
 import ProjectDetailPage from "./project-detail-page"
 
-const api = vi.hoisted(() => ({ get: vi.fn(), tasks: vi.fn(), monthlyCycle: vi.fn(), today: "2026-09-18", canReadTasks: true }))
+const api = vi.hoisted(() => ({ get: vi.fn(), tasks: vi.fn(), monthlyCycle: vi.fn(), burndown: vi.fn(), today: "2026-09-18", canReadTasks: true }))
 
 vi.mock("@/lib/api", () => ({
   projectsApi: {
     get: api.get,
     tasks: api.tasks,
     monthlyCycle: api.monthlyCycle,
-    burndown: vi.fn(),
+    burndown: api.burndown,
     update: vi.fn(),
     updatePhase: vi.fn(),
     createTask: vi.fn(),
@@ -204,5 +204,49 @@ describe("recurring project monthly cycle", () => {
 
     expect(await screen.findByText("Ciclo de octubre 2026")).toBeInTheDocument()
     await waitFor(() => expect(api.monthlyCycle).toHaveBeenCalledWith(42, "2026-10"))
+  })
+})
+
+
+describe("project progress recovery", () => {
+  const points = { total_tasks: 2, points: [{ date: "2026-09-19", remaining: 2, ideal: 2 }, { date: "2026-09-20", remaining: 1, ideal: 0 }] }
+  async function openProgress() {
+    api.get.mockResolvedValue({ ...staleProject, is_recurring: false })
+    api.tasks.mockResolvedValue({ phases: [], unassigned_tasks: [] })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/42"]}><Routes><Route path="/projects/:id" element={<ProjectDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
+    await screen.findByRole("heading", { name: "Proyecto deshecho" })
+    await userEvent.click(screen.getByText(/Plazos, horas y progreso/))
+    return client
+  }
+
+  beforeEach(() => { vi.clearAllMocks(); api.canReadTasks = true })
+
+  it("distinguishes failure from empty progress and retries", async () => {
+    api.burndown.mockRejectedValueOnce(responseError(503)).mockResolvedValueOnce({ total_tasks: 0, points: [] })
+    await openProgress()
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo actualizar el progreso de tareas")
+    expect(screen.queryByText("Añade tareas al proyecto para ver el burndown.")).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Reintentar progreso" }))
+    expect(await screen.findByText("Añade tareas al proyecto para ver el burndown.")).toBeInTheDocument()
+  })
+
+  it("keeps previous chart hidden after denial and later errors until fresh success", async () => {
+    api.burndown.mockResolvedValueOnce(points)
+    const client = await openProgress()
+    await screen.findByText("Burndown de tareas")
+    api.burndown.mockRejectedValueOnce(responseError(403)).mockRejectedValueOnce(responseError(503))
+    await act(async () => { await client.invalidateQueries({ queryKey: projectKeys.burndown(42) }) })
+    await screen.findByText("No se pudo actualizar el progreso de tareas.")
+    expect(screen.queryByText("Burndown de tareas")).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Reintentar progreso" }))
+    await waitFor(() => expect(api.burndown).toHaveBeenCalledTimes(3))
+    expect(screen.queryByText("Burndown de tareas")).not.toBeInTheDocument()
+    let resolve!: (value: typeof points) => void
+    api.burndown.mockImplementationOnce(() => new Promise(r => { resolve = r }))
+    await userEvent.click(screen.getByRole("button", { name: "Reintentar progreso" }))
+    expect(screen.queryByText("Burndown de tareas")).not.toBeInTheDocument()
+    await act(async () => { resolve(points) })
+    expect(await screen.findByText("Burndown de tareas")).toBeInTheDocument()
   })
 })

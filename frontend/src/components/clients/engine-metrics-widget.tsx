@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Globe, FileText, Key, MousePointerClick, Eye, TrendingUp, RefreshCw } from "lucide-react"
 import { formatTimeAgo } from "@/lib/utils"
 import { toast } from "sonner"
+import { invalidateClientChange } from "@/lib/query-keys"
 
 interface Props {
   client: Client
@@ -37,7 +38,7 @@ export function EngineMetricsWidget({ client }: Props) {
     setRefreshing(true)
     try {
       const result = await engineApi.triggerSync()
-      await queryClient.invalidateQueries({ queryKey: ["client-summary"] })
+      await invalidateClientChange(queryClient)
       if (result.detail === "not configured") toast.error("Engine no está configurado.")
       else if (result.failed) toast.error(`Sincronización incompleta: ${result.failed} cliente(s) conservaron sus datos anteriores.`)
       else toast.success(`${result.synced} cliente(s) sincronizados.`)

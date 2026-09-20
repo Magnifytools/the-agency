@@ -23,12 +23,14 @@ function PermittedTimerButton({ taskId }: TimerButtonProps) {
   const queryClient = useQueryClient()
   const [elapsed, setElapsed] = useState("")
 
-  const { data: timer } = useQuery({
+  const timerQuery = useQuery({
     queryKey: ["active-timer"],
     queryFn: () => timerApi.active(),
     refetchInterval: 10_000,
     refetchIntervalInBackground: false,
   })
+  const timer = timerQuery.isError ? undefined : timerQuery.data
+  const timerUnknown = (timerQuery.isPending || timerQuery.isError) && !timer
 
   const isThisTaskRunning = timer?.task_id === taskId
 
@@ -84,6 +86,22 @@ function PermittedTimerButton({ taskId }: TimerButtonProps) {
           title="Detener timer"
         >
           <Square className="h-4 w-4" />
+        </Button>
+      </div>
+    )
+  }
+
+  if (timerUnknown) {
+    if (timerQuery.isPending) {
+      return <Button variant="ghost" size="icon" disabled aria-label="Comprobando el cronómetro" title="Comprobando el cronómetro"><Play className="h-4 w-4" /></Button>
+    }
+    return (
+      <div className="flex items-center gap-1.5">
+        <Button variant="ghost" size="icon" disabled aria-label="Estado del cronómetro no disponible" title="No se pudo comprobar el cronómetro">
+          <Play className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => void timerQuery.refetch()} disabled={timerQuery.isFetching}>
+          Reintentar
         </Button>
       </div>
     )

@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-20T19:19:23.126527+00:00",
-  "estado_general": "produccion_decimoctava_mejora_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-20T19:57:54.325422+00:00",
+  "estado_general": "produccion_decimonovena_mejora_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -247,14 +247,21 @@
       "descripcion": "Panel y resúmenes con fuentes, períodos y permisos claros",
       "estado": "completado",
       "prioridad": "alta",
-      "notas": "PR30/a7a29cd publicada y verificada.1190backend (2 omitidas),337frontend; CI rama/main, contratos financieros/operativos, archivo de informes,51GET/6colectores y UI390/1440 correctos. Producción vigente; objetivo global activo."
+      "notas": "PR30/a7a29cd publicada y verificada.1190backend (2 omitidas),337frontend; CI rama/main, contratos financieros/operativos, archivo de informes,51GET/6colectores y UI390/1440 correctos. Publicación anterior verificada; objetivo global activo."
     },
     {
       "id": "AUDIT-20260920-P19",
       "descripcion": "Métricas Engine acotadas a períodos reales, coherentes y recuperables",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "PR31/ea44b53 publicada y verificada.1204backend(2omitidas),346frontend, seis gates CI, snapshot real coherente y job recuperado, UI390/1440. Engine PR7 publicado; seguimiento CIfrontend independiente. report-data sin consumidor activo confirmado. Objetivo global activo."
+    },
+    {
+      "id": "AUDIT-20260920-P20",
+      "descripcion": "Recuperación visible y caché coherente en superficies operativas",
       "estado": "en_progreso",
       "prioridad": "alta",
-      "notas": "Preparada y verificada localmente, aún no publicada. Engine616tests,6PG,33API/indexación y9handlers readonly; Agency26dirigidas con CAS, ACL y UTC TIMESTAMPTZ. CI/PR/despliegue y navegador final pendientes; report-data legacy queda fuera hasta confirmar consumidor. Objetivo global activo."
+      "notas": "Implementación y revisión local final:372 frontend/62archivos, build, navegador390/1440 y read-only. Sin migración/backend. Pendiente CI/publicación. Alta compuesta atómica preparada para P21."
     }
   ],
   "bugs": [
@@ -317,7 +324,7 @@
   ],
   "notas_tecnicas": [
     "Stack: React 19 + FastAPI + PostgreSQL + Railway",
-    "Tests decimoctava entrega:1190backend (2 omitidas),337frontend; CI rama/main y producción verificadas.",
+    "Tests decimonovena entrega:1204backend(2omitidas),346frontend; CI y producción verificadas.",
     "CUIDADO: lazy='selectin' esta en ~80 relaciones de models.py. Quitar un selectinload() de .options() NO evita la carga; hace falta noload() explicito",
     "La suite unitaria mockea get_db: cualquier cambio de SQL debe verificarse en tests/integration/",
     "Los estados de rentabilidad viven en services/profitability.py (backend) y lib/profitability.ts (frontend), un unico mapa cada uno",
@@ -325,7 +332,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "Publicar y verificar P19: CI de Engine y Agency, revisión exacta, sincronización recuperada y navegador final sin datos falsos. Después medir el recorrido completo Agency+red+render y confirmar si report-data conserva consumidor antes de modernizarlo. Seguir histórico, decisiones de canal y matriz completa; objetivo activo.",
+  "proximos_pasos": "Publicar/verificar P20; después alta compuesta atómica e idempotente P21. Mantener matriz completa y decisiones de estados/canales/histórico pendientes.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
@@ -335,7 +342,7 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "a7a29cd2d4f46846529cc9f4f1f5ab35ef449462",
+    "revision": "ea44b53b2c0ada670262b10248703d126bfd4cf3",
     "healthcheck": "/api/ready",
     "schema_revision": "20260920_task_retirement_v1"
   },

@@ -1,6 +1,6 @@
 # Métricas Engine acotadas y verificables
 
-Estado: preparada y verificada localmente el 20 de septiembre de 2026. Pendiente de integrar y publicar; la mejora vigente en producción sigue siendo P18.
+Estado: publicada y verificada el 20 de septiembre de 2026. Agency PR31 (`ea44b53`) y Engine PR7 (`de8e9fd`).
 
 Engine calcula ahora una instantánea por proyecto con dos períodos civiles consecutivos de 30 días. Suma clics e impresiones y pondera la posición por impresiones. El ranking usa la última observación de escritorio de cada palabra clave dentro del período actual y publica cuántas palabras tienen una observación reciente; una posición antigua ya no aparenta actividad actual.
 
@@ -14,4 +14,6 @@ Los productores GSC y GA4 conservan las columnas de la otra fuente mediante upse
 
 Validación local: Engine aprobó 616 pruebas con PostgreSQL obligatorio. Seis pruebas PostgreSQL cubren 18.750 métricas y 3.600 observaciones; 42 pruebas cubren API e indexación. Los nueve handlers se recorrieron en modo de sólo lectura. En la comprobación final del proyecto de mayor volumen, `metrics` respondió en 2,407 s, `summary` en 1,762 s y `alerts` en 0,406 s. Agency aprobó 27 pruebas dirigidas de productor, contrato y PostgreSQL, incluidas sincronización correcta, fallos parciales, permisos y carreras de vínculo.
 
-La interfaz aprueba 346 pruebas y el build. La revisión visual aislada a 390 y 1440 px verifica cobertura, indicador no disponible, permisos de administración y aviso de conexión ausente sin perder la caché. Engine PR7 está integrado tras CI aprobado; Agency continúa pendiente de CI y publicación. Esta entrega no afirma adopción humana ni completa el objetivo global de la auditoría.
+La interfaz aprueba 346 pruebas y el build. La revisión visual aislada a 390 y 1440 px verifica cobertura, indicador no disponible, permisos de administración y aviso de conexión ausente sin perder la caché. Agency completa 1.204 pruebas backend (2 omitidas) y los seis gates de CI del commit; Railway publica la revisión exacta. Engine completa 616 pruebas backend. Su CI permitía una suite frontend fallida por configuración de test ausente: un seguimiento separado corrige ese entorno y exige el paso, sin atribuirle un éxito inexistente. Esta entrega no afirma adopción humana ni completa el objetivo global de la auditoría.
+
+La sincronización programada se recuperó con los dos clientes vinculados. El contrato de caché y API coincide con la base de datos, con lecturas de ficha de 0,095 y 0,192 s en el servidor. Las nueve rutas Engine respondieron 200 entre 0,368 y 2,101 s; sin clave se devuelve 401. La UI publicada se comprobó a 390 y 1440 px sin desbordamiento ni errores de consola. Los contenidos de tareas, horas, notas e informes y el historial de migraciones permanecen iguales antes y después. No hubo comunicaciones ni escrituras experimentales en producción.
