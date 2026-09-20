@@ -42,6 +42,23 @@ def test_decimal_survives_el_viaje_sin_perder_centimos():
     assert cj.deserialize(column, serialized) == value
 
 
+def test_numeric_usa_la_escala_persistida_y_acepta_snapshot_legacy_number():
+    column = Project.__mapper__.column_attrs["monthly_fee"].expression
+    assert cj.serialize_column(column, 50.5) == "50.50"
+    assert cj.serialize_column(column, Decimal("50.50")) == "50.50"
+    assert cj.serialize_column(column, 50.555) == "50.55"
+    assert cj.serialize_column(column, 2.675) == "2.67"
+    assert cj.serialize_column(column, 1.005) == "1.00"
+    assert cj.serialize_column(column, -2.675) == "-2.67"
+    assert cj.serialize_column(column, -1.005) == "-1.00"
+    assert cj.serialize_column(column, -0.0) == "0.00"
+    assert cj.serialize_column(column, -0.001) == "0.00"
+    assert cj.deserialize(column, 2.675) == Decimal("2.67")
+    assert cj.deserialize(column, -0.001) == Decimal("0.00")
+    assert cj.column_value_matches(column, Decimal("50.50"), 50.5)
+    assert not cj.column_value_matches(column, Decimal("50.51"), 50.5)
+
+
 def test_float_no_se_convierte_en_decimal():
     """Float hereda de Numeric en SQLAlchemy; el orden de los isinstance importa."""
     column = Client.__mapper__.column_attrs["aov"].expression

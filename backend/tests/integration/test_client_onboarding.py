@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from decimal import Decimal
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -427,6 +428,55 @@ async def test_real_undo_then_replay_reports_original_undone_result_without_recr
     }
     assert await db_session.scalar(
         select(func.count(Client.id)).where(Client.name == "Alta deshecha")
+    ) == 0
+
+
+async def test_decimal_bundle_can_be_undone_and_replayed_without_recreation(
+    admin_client, db_session,
+):
+    key = _key("decimal-undo")
+    body = _payload("Alta decimal")
+    body["client"]["monthly_budget"] = 50.5
+    body["project"].update({
+        "monthly_fee": 2.675,
+        "budget_amount": 1.005,
+        "unit_price": 19.995,
+    })
+
+    created = await admin_client.post(
+        "/api/clients/onboarding", json=body,
+        headers={"X-Agency-Request-Key": key},
+    )
+    assert created.status_code == 201, created.text
+    original = created.json()
+
+    client = await db_session.get(Client, original["client_id"])
+    project = await db_session.get(Project, original["project_id"])
+    assert client.monthly_budget == Decimal("50.50")
+    assert project.monthly_fee == Decimal("2.67")
+    assert project.budget_amount == Decimal("1.00")
+    assert project.unit_price == Decimal("20.00")
+
+    undone = await admin_client.post(f"/api/changes/{original['change_log_id']}/undo")
+    assert undone.status_code == 200, undone.text
+    db_session.expire_all()
+    assert await db_session.get(Client, original["client_id"]) is None
+    assert await db_session.get(Project, original["project_id"]) is None
+    for contact_id in original["contact_ids"]:
+        assert await db_session.get(ClientContact, contact_id) is None
+
+    replay = await admin_client.post(
+        "/api/clients/onboarding", json=body,
+        headers={"X-Agency-Request-Key": key},
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == {
+        **original,
+        "replayed": True,
+        "undo_state": "undone",
+    }
+    assert await db_session.scalar(
+        select(func.count(Client.id)).where(Client.name == "Alta decimal")
     ) == 0
 
 

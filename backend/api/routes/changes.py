@@ -45,6 +45,7 @@ from backend.services import change_journal
 from backend.services.change_journal import (
     MODELS_BY_TYPE,
     SPECS_BY_TYPE,
+    column_value_matches,
     deserialize,
     serialize,
 )
@@ -502,7 +503,9 @@ async def _preflight_create_removals(db: AsyncSession, removals: list[dict],
         columns = _columns(type(row))
         changed = []
         for key, value in after.items():
-            if key == "id" or key not in columns or serialize(getattr(row, key, None)) == value:
+            if key == "id" or key not in columns or column_value_matches(
+                columns[key], getattr(row, key, None), value,
+            ):
                 continue
             column = columns[key]
             # Legacy INSERT snapshots were taken before SQLAlchemy applied
@@ -512,7 +515,9 @@ async def _preflight_create_removals(db: AsyncSession, removals: list[dict],
                 if key == "created_at":
                     continue  # immutable legacy INSERT timestamp
                 default = column.default
-                if default is not None and default.is_scalar and serialize(default.arg) == serialize(getattr(row, key, None)):
+                if default is not None and default.is_scalar and column_value_matches(
+                    column, getattr(row, key, None), default.arg,
+                ):
                     continue
             changed.append(key)
         if changed:
@@ -616,7 +621,9 @@ async def _undo_update(db: AsyncSession, op: dict, warnings: list[str], row: Any
         if key not in cols or key == "id":
             continue
         # Si el valor actual ya no es el que dejamos, alguien lo tocó después.
-        if key in after and serialize(getattr(row, key, None)) != after[key]:
+        if key in after and not column_value_matches(
+            cols[key], getattr(row, key, None), after[key],
+        ):
             skipped.append(key)
             continue
         setattr(row, key, deserialize(cols[key], old_value))

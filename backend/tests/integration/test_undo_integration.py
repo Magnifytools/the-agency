@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
@@ -444,6 +445,153 @@ async def test_undo_create_detects_later_change_from_a_column_default(
     assert "is_inbox" in response.json()["detail"]
     await db_session.refresh(task)
     assert task.is_inbox is True
+
+
+async def test_project_numeric_roundtrip_create_update_delete_and_conflict(
+    admin_client, db_session, base_client, journal,
+):
+    created = await admin_client.post("/api/projects", json={
+        "name": "Numeric create", "client_id": base_client.id, "monthly_fee": 50.5,
+    })
+    assert created.status_code == 201, created.text
+    created_id = created.json()["id"]
+    create_change = await journal.only()
+    assert create_change.operations[0]["after"]["monthly_fee"] == "50.50"
+    # P21 alcanzó a guardar NUMERIC como JSON number antes de esta
+    # canonización. Ese snapshot durable también debe seguir siendo deshacible.
+    legacy_operations = [dict(operation) for operation in create_change.operations]
+    legacy_operations[0] = {
+        **legacy_operations[0],
+        "after": {**legacy_operations[0]["after"], "monthly_fee": 50.5},
+    }
+    create_change.operations = legacy_operations
+    await db_session.commit()
+    undone = await admin_client.post(f"/api/changes/{create_change.id}/undo")
+    assert undone.status_code == 200, undone.text
+    assert await db_session.get(Project, created_id) is None
+
+    cj.set_actor(None)
+    project = Project(
+        name="Numeric update/delete", client_id=base_client.id,
+        monthly_fee=Decimal("10.10"),
+    )
+    db_session.add(project)
+    await db_session.commit()
+    project_id = project.id
+    updated = await admin_client.put(f"/api/projects/{project_id}", json={"monthly_fee": 50.5})
+    assert updated.status_code == 200, updated.text
+    update_change = await journal.only()
+    assert update_change.operations[0]["after"]["monthly_fee"] == "50.50"
+    undone = await admin_client.post(f"/api/changes/{update_change.id}/undo")
+    assert undone.status_code == 200, undone.text
+    db_session.expire_all()
+    assert (await db_session.get(Project, project_id)).monthly_fee == Decimal("10.10")
+
+    deleted = await admin_client.delete(f"/api/projects/{project_id}")
+    assert deleted.status_code == 204, deleted.text
+    delete_change = await journal.only()
+    assert delete_change.operations[0]["before"]["monthly_fee"] == "10.10"
+    undone = await admin_client.post(f"/api/changes/{delete_change.id}/undo")
+    assert undone.status_code == 200, undone.text
+    db_session.expire_all()
+    assert (await db_session.get(Project, project_id)).monthly_fee == Decimal("10.10")
+
+    changed = await admin_client.post("/api/projects", json={
+        "name": "Numeric later edit", "client_id": base_client.id, "monthly_fee": 50.5,
+    })
+    assert changed.status_code == 201, changed.text
+    changed_id = changed.json()["id"]
+    changed_create = await journal.only()
+    cj.set_actor(None)
+    changed_project = await db_session.get(Project, changed_id)
+    changed_project.monthly_fee = Decimal("50.51")
+    await db_session.commit()
+
+    rejected = await admin_client.post(f"/api/changes/{changed_create.id}/undo")
+    assert rejected.status_code == 409, rejected.text
+    assert "monthly_fee" in rejected.json()["detail"]
+    db_session.expire_all()
+    assert (await db_session.get(Project, changed_id)).monthly_fee == Decimal("50.51")
+
+
+@pytest.mark.parametrize(("value", "persisted"), [
+    (2.675, Decimal("2.67")),
+    (1.005, Decimal("1.00")),
+    (-2.675, Decimal("-2.67")),
+    (-1.005, Decimal("-1.00")),
+    (-0.0, Decimal("0.00")),
+    (-0.001, Decimal("0.00")),
+])
+async def test_numeric_snapshot_matches_postgres_float_binding(
+    value, persisted, admin_client, db_session, base_client, journal,
+):
+    created = await admin_client.post("/api/projects", json={
+        "name": f"Float boundary {value}",
+        "client_id": base_client.id,
+        "monthly_fee": value,
+    })
+    assert created.status_code == 201, created.text
+    project_id = created.json()["id"]
+    change = await journal.only()
+    change_id = change.id
+    snapshot_fee = change.operations[0]["after"]["monthly_fee"]
+    db_session.expire_all()
+    assert (await db_session.get(Project, project_id)).monthly_fee == persisted
+    assert snapshot_fee == format(persisted, ".2f")
+
+    undone = await admin_client.post(f"/api/changes/{change_id}/undo")
+    assert undone.status_code == 200, undone.text
+    assert await db_session.get(Project, project_id) is None
+
+
+async def test_legacy_numeric_float_before_restores_persisted_value(
+    admin_client, db_session, base_client, journal,
+):
+    """Legacy JSON numbers restore through PostgreSQL's float8 boundary."""
+    created = await admin_client.post("/api/projects", json={
+        "name": "Legacy numeric before",
+        "client_id": base_client.id,
+        "monthly_fee": 2.675,
+    })
+    assert created.status_code == 201, created.text
+    project_id = created.json()["id"]
+    await journal.only()
+
+    updated = await admin_client.put(
+        f"/api/projects/{project_id}", json={"monthly_fee": 9.0},
+    )
+    assert updated.status_code == 200, updated.text
+    update_change = await journal.only()
+    update_operations = [dict(operation) for operation in update_change.operations]
+    update_operations[0] = {
+        **update_operations[0],
+        "before": {**update_operations[0]["before"], "monthly_fee": 2.675},
+    }
+    update_change.operations = update_operations
+    update_change_id = update_change.id
+    await db_session.commit()
+
+    undone_update = await admin_client.post(f"/api/changes/{update_change_id}/undo")
+    assert undone_update.status_code == 200, undone_update.text
+    db_session.expire_all()
+    assert (await db_session.get(Project, project_id)).monthly_fee == Decimal("2.67")
+
+    deleted = await admin_client.delete(f"/api/projects/{project_id}")
+    assert deleted.status_code == 204, deleted.text
+    delete_change = await journal.only()
+    delete_operations = [dict(operation) for operation in delete_change.operations]
+    delete_operations[0] = {
+        **delete_operations[0],
+        "before": {**delete_operations[0]["before"], "monthly_fee": 2.675},
+    }
+    delete_change.operations = delete_operations
+    delete_change_id = delete_change.id
+    await db_session.commit()
+
+    undone_delete = await admin_client.post(f"/api/changes/{delete_change_id}/undo")
+    assert undone_delete.status_code == 200, undone_delete.text
+    db_session.expire_all()
+    assert (await db_session.get(Project, project_id)).monthly_fee == Decimal("2.67")
 
 
 async def test_time_entry_only_undo_locks_task_before_time_entry(
