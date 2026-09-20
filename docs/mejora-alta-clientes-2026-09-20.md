@@ -1,6 +1,6 @@
 # Alta de clientes completa y recuperable
 
-Estado: implementación P21 en validación local. Producción continúa en P20 (`551eac8`).
+Estado: P21 publicada y verificada en producción. PR [33](https://github.com/Magnifytools/the-agency/pull/33), revisión `6f1c8ffe54b64b53ff369d8687bdf49afea7ba75`. El objetivo global continúa activo.
 
 El formulario de Clientes prepara un alta que incluye el cliente, los contactos revisados y, si se ha incluido, su proyecto. El servidor confirma el conjunto en una sola transacción: un fallo no deja un cliente creado a medias ni descarta contactos silenciosamente. Las fechas ausentes se conservan vacías. Los sellos de creación y actualización nuevos de clientes, contactos y proyectos se guardan en UTC independientemente de la zona horaria de la sesión de base de datos; sus valores históricos se conservan.
 
@@ -14,6 +14,12 @@ La revisión permite corregir los datos de cada contacto y del proyecto detectad
 
 Límites explícitos: hasta 50 contactos por alta y como máximo uno marcado como principal. Crear un proyecto requiere su permiso de escritura además del de Clientes. El formulario debe permitir corregir los datos antes de enviarlos.
 
-Verificación local: 1.243 pruebas backend aprobadas (2 omitidas), incluidas concurrencia, rollback, recuperación, permisos revocados, Deshacer y migración sobre el esquema anterior. El frontend final pasa 382 pruebas, `tsc -b` y build. El recorrido aislado comprobó recuperación tras perder la respuesta y detectó un conflicto de Deshacer con decimales; la corrección añade regresiones de persistencia, redondeo, historial anterior y cambios posteriores. Suite backend y repetición del navegador en curso. La revisión del formulario permite excluir contactos y elegir expresamente que ninguno de los detectados sea principal.
+Verificación: 1.253 pruebas backend aprobadas (2 omitidas), 382 de frontend, `tsc -b` y build correctos. Las seis comprobaciones de CI pasan tanto en el último commit de la PR (`35537908243`) como en main (`35538255820`). Las pruebas PostgreSQL cubren concurrencia, rollback, permisos actuales, recuperación, migración y Deshacer.
 
-Pendiente de publicación: terminar la comprobación del navegador aislado, CI, despliegue y preservación de producción.
+El navegador aislado comprobó una respuesta perdida con una sola creación, recuperación del mismo resultado, edición persistida de contactos y proyecto, fechas vacías y Deshacer. Un conflicto inicial con importes decimales se reprodujo y corrigió antes de publicar: la repetición restaura tanto el recibo anterior como uno nuevo, manteniendo la protección frente a cambios posteriores reales.
+
+Railway confirmó el despliegue `1ca6dd99-bdcc-4613-bdd7-975af05d92f2`; `/api/ready` devuelve la revisión publicada y el esquema `20260920_client_onboarding_v1`. Se verificaron listado y formulario a 390 y 1440 px, sin desbordamiento ni errores de consola. No se crearon clientes de prueba ni se enviaron comunicaciones en producción.
+
+La comparación anterior/posterior conserva 955 tareas, 11 proyectos, 13 clientes, 15 contactos, 1.601 registros de tiempo, 112 dailys, 37 digests y 4 informes. Coinciden los hashes de clientes, contactos, proyectos, tareas, horas, notas e informes; el historial de migraciones conserva sus registros y añade únicamente la nueva versión. No existen recibos de altas de prueba en producción.
+
+Siguiente entrega: coherencia del ciclo de trabajo, esperas, revisión y cierre de proyectos. La matriz de auditoría mantiene el resto de hallazgos y decisiones pendientes; P21 no cierra el objetivo completo.
