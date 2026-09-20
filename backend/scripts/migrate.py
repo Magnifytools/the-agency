@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from backend.db.database import engine
-from backend.startup.schema_baseline import (
+from backend.startup.deployment_schema import (
     EXPECTED_SCHEMA_VERSION, check_deployment_ready, migrate_schema,
 )
 

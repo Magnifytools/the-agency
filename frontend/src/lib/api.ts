@@ -139,6 +139,7 @@ import type {
   AutomationLogEntry,
   AutomationTriggerOption,
   AutomationActionOption,
+  JobRuntimeResponse,
 } from "./types"
 
 export const CSRF_COOKIE_NAME = "agency_csrf_token"
@@ -1310,4 +1311,8 @@ export const automationsApi = {
     api.delete(`/automations/${id}`).then((r) => r.data),
   toggle: (id: number) =>
     api.post<AutomationRule>(`/automations/${id}/toggle`).then((r) => r.data),
+}
+
+export const jobRuntimeApi = {
+  list: () => api.get<JobRuntimeResponse>("/admin/job-runtime").then((r) => r.data),
 }

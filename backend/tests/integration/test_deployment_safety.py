@@ -17,7 +17,7 @@ async def test_release_step_adds_owner_before_readonly_web_startup(engine, monke
     import backend.main as main
     import backend.db.database as database
     from backend.startup.project_schema import ensure_project_owner_schema
-    from backend.startup.schema_baseline import migrate_schema
+    from backend.startup.deployment_schema import migrate_schema
 
     monkeypatch.setattr(database, "engine", engine)
     monkeypatch.setattr(main, "_ensure_pg_enums", AsyncMock())
@@ -98,7 +98,7 @@ async def test_web_startup_preserves_business_rows(engine, monkeypatch):
         await session.commit()
         ids = (user.id, fit.id, sage.id, qa.id, project.id, task.id)
     try:
-        from backend.startup.schema_baseline import migrate_schema
+        from backend.startup.deployment_schema import migrate_schema
         await migrate_schema(engine)
         for _ in range(2):
             lifecycle = main.lifespan(main.app)

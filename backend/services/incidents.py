@@ -290,15 +290,3 @@ async def reconcile_all(session_factory, *, now: datetime | None = None):
                     totals["failed"] += 1
                     logging.getLogger(__name__).error("Incident reconciliation failed user_id=%s type=%s", user_id, type(exc).__name__)
         after_id = ids[-1]
-
-
-async def incident_loop():
-    import asyncio
-    from backend.db.database import async_session
-    while True:
-        try:
-            await reconcile_all(async_session)
-        except Exception as exc:
-            import logging
-            logging.getLogger(__name__).error("Incident recipient scan failed type=%s", type(exc).__name__)
-        await asyncio.sleep(30)

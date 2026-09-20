@@ -7,6 +7,7 @@ import { usersApi, categoriesApi, myWeekApi, calendarApi } from "@/lib/api"
 import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS } from "@/hooks/use-keyboard-shortcuts"
 import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar, FileText } from "lucide-react"
 import { CommunicationSchedules } from "@/components/communication-schedules"
+import { JobRuntimeStatusPanel } from "@/components/job-runtime-status"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 const SPAIN_REGIONS: { code: string; name: string }[] = [
@@ -277,6 +278,7 @@ export default function SettingsPage() {
     { id: "location", label: "Ubicación" },
     { id: "digest", label: "Preferencias de digest" },
     { id: "notifications", label: "Avisos" },
+    ...(isAdmin ? [{ id: "scheduled-processes", label: "Procesos programados" }] : []),
     { id: "calendar", label: "Google Calendar" },
     ...(isAdmin ? [{ id: "holidays", label: "Festivos" }] : []),
   ]
@@ -589,6 +591,8 @@ export default function SettingsPage() {
       </div>
 
       <CommunicationSchedules />
+
+      {isAdmin && <JobRuntimeStatusPanel userId={user?.id} />}
 
       {/* Google Calendar */}
       <CalendarSection />

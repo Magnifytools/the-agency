@@ -343,22 +343,32 @@ async def prepare_occurrence(db, occurrence, now):
     occurrence.state, occurrence.reason = "ready", "Disponible para la extensión; entrega de escritorio no confirmada" if occurrence.channel == "extension" else "Preparado; consulta el recibo de envío"
 
 
-async def run_scheduler_once(session_factory, *, now=None):
+async def run_scheduler_once(session_factory, *, now=None, raise_on_error=False):
     if not settings.SCHEDULED_COMMUNICATIONS_ENABLED:
         return 0
     now = now or utc_now_naive()
+    failures = 0
     # Page by primary key, never silently truncate the eligible population.
     after = 0
     while True:
         async with session_factory() as db:
-            policies = (await db.execute(select(Schedule).where(Schedule.enabled.is_(True), Schedule.id > after)
-                        .order_by(Schedule.id).limit(50))).scalars().all()
-            if not policies:
+            policy_ids = (await db.scalars(select(Schedule.id).where(
+                Schedule.enabled.is_(True), Schedule.id > after,
+            ).order_by(Schedule.id).limit(50))).all()
+            if not policy_ids:
                 break
-            for policy in policies:
-                await plan_policy(db, policy, now)
-            after = policies[-1].id
-            await db.commit()
+        for policy_id in policy_ids:
+            async with session_factory() as db:
+                policy = await db.get(Schedule, policy_id)
+                if policy is None or not policy.enabled:
+                    continue
+                try:
+                    await plan_policy(db, policy, now)
+                    await db.commit()
+                except Exception:
+                    await db.rollback()
+                    failures += 1
+        after = policy_ids[-1]
     prepared = 0
     # One locked occurrence per transaction; a crash cannot leave half a request.
     async with session_factory() as db:
@@ -378,21 +388,14 @@ async def run_scheduler_once(session_factory, *, now=None):
                 occurrence = await db.get(Occurrence, ident, populate_existing=True)
                 occurrence.state = "blocked"
                 occurrence.reason = "No se pudo preparar el aviso; se volverá a comprobar dentro de su ventana (" + type(exc).__name__ + ")"
+                failures += 1
             # Rotate blocked/quiet rows behind unchecked ones; one bad prefix
             # of 500 occurrences must not starve later eligible work.
             occurrence.updated_at = func.now()
             await db.commit()
             prepared += 1
+    if failures and raise_on_error:
+        from backend.services.job_runtime import JobFailure
+
+        raise JobFailure("partial_failure")
     return prepared
-
-
-async def scheduler_loop():
-    import asyncio
-    import logging
-    from backend.db.database import async_session
-    while True:
-        try:
-            await run_scheduler_once(async_session)
-        except Exception as exc:
-            logging.error("Scheduled preparation failed (%s); no provider call during preparation", type(exc).__name__)
-        await asyncio.sleep(60)

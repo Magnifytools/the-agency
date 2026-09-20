@@ -27,3 +27,9 @@ Keep published artifacts immutable. Add a new ordered migration and its contract
 The migration ledger is an operational contract consumed by release verification and readiness. It does not replace delivery receipts, command receipts or the business change journal.
 
 The contract verifies all 29 ORM uniqueness rules plus the active-timer partial index by their keys and predicates, independently of their names. It preserves the stronger historical holiday index using `COALESCE`. Two missing historical constraints are added explicitly: balance snapshot date and monthly close year/month. Duplicate keys prevent the transaction from committing; no financial rows are consolidated or changed.
+
+## Current composed plan
+
+P14 adds `schema_versions/job_runtime_v1.json` through `startup/deployment_schema.py`. It creates only the job runtime table, then verifies its columns and primary key. The published P12 artifacts and checksums remain unchanged; their migration records and application timestamps are preserved.
+
+The DDL is additive, but an older binary with an exact older ledger check does not accept the new revision on a fresh startup. Do not blindly redeploy that binary after the new ledger commits. Use a forward fix or a reviewed binary that recognizes the current schema contract; do not delete migration records to bypass readiness.
