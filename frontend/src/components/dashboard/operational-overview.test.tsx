@@ -12,6 +12,13 @@ const overview = {
 }
 
 describe("OperationalOverview", () => {
+  it("identifies the external active snapshot independently from the selected month", () => {
+    render(<OperationalOverview overview={overview} isLoading={false} isError={false} onRetry={vi.fn()} />)
+    const label = screen.getByText("Clientes externos activos")
+    fireEvent.mouseEnter(label.querySelector("span")!)
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Foto actual")
+  })
+
   it("labels personal hours and does not turn an unavailable source into zero", () => {
     render(<OperationalOverview overview={{ ...overview, hours_this_month: null, availability: { ...overview.availability, timesheet: false } }} isLoading={false} isError={false} onRetry={vi.fn()} />)
     expect(screen.getByText(/No tienes acceso a mis horas del mes/i)).toBeInTheDocument()

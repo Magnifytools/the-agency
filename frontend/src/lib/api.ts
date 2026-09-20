@@ -126,6 +126,7 @@ import type {
   BillingStatus,
   ClientDashboard,
   ClientHealthScore,
+  ClientCohort,
   CapacityMember,
   CapacityMemberDetail,
   ActivityEvent,
@@ -274,10 +275,10 @@ export const authApi = {
 
 // Clients
 export const clientsApi = {
-  list: (params?: { status?: string; page?: number; page_size?: number }) =>
+  list: (params?: { status?: string; cohort?: ClientCohort; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Client>>("/clients", { params }).then((r) => r.data),
-  listAll: (status?: string) =>
-    api.get<PaginatedResponse<Client>>("/clients", { params: { ...(status && { status }), page_size: 1000 } }).then((r) => r.data.items),
+  listAll: (status?: string, cohort?: ClientCohort) =>
+    api.get<PaginatedResponse<Client>>("/clients", { params: { ...(status && { status }), ...(cohort && { cohort }), page_size: 1000 } }).then((r) => r.data.items),
   get: (id: number) => api.get<Client>(`/clients/${id}`).then((r) => r.data),
   create: (data: ClientCreate) => api.post<Client>("/clients", data).then((r) => r.data),
   onboard: (data: ClientOnboardingCreate, requestKey: string) =>
@@ -1007,8 +1008,8 @@ export const clientDashboardApi = {
 export const clientHealthApi = {
   get: (clientId: number) =>
     api.get<ClientHealthScore>(`/clients/${clientId}/health`).then((r) => r.data),
-  list: () =>
-    api.get<ClientHealthScore[]>("/clients/health-scores").then((r) => r.data),
+  list: (cohort: ClientCohort = "all") =>
+    api.get<ClientHealthScore[]>("/clients/health-scores", { params: { cohort } }).then((r) => r.data),
 }
 
 // --- Capacity Planning ---

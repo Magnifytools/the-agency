@@ -27,9 +27,8 @@ describe("HealthGrid", () => {
   it("shows insufficient information instead of a healthy or risk score", () => {
     render(<HealthGrid data={[noData]} />)
 
-    expect(screen.getByText("Sin datos suficientes")).toBeInTheDocument()
-    expect(screen.getByText("—")).toBeInTheDocument()
-    expect(screen.queryByText("Saludable")).not.toBeInTheDocument()
+    expect(screen.getByText("Información incompleta")).toBeInTheDocument()
+        expect(screen.queryByText("Saludable")).not.toBeInTheDocument()
     expect(screen.queryByText("En riesgo")).not.toBeInTheDocument()
   })
 
@@ -52,8 +51,8 @@ describe("HealthGrid", () => {
       risk_level: "at_risk",
     }]} />)
 
-    expect(screen.getByText("En riesgo")).toBeInTheDocument()
-    expect(screen.getByText("18")).toBeInTheDocument()
+    expect(screen.getByText("1 riesgo")).toBeInTheDocument()
+    expect(screen.getByText("18 puntos")).toBeInTheDocument()
   })
 
   it("keeps a partial observed risk visible without inventing a global score", () => {
@@ -68,7 +67,22 @@ describe("HealthGrid", () => {
       risk_level: "at_risk",
     }]} />)
 
-    expect(screen.getByText("En riesgo")).toBeInTheDocument()
-    expect(screen.getByText("—")).toBeInTheDocument()
+    expect(screen.getByText("1 riesgo")).toBeInTheDocument()
+  })
+
+  it("does not let a high legacy score hide an observed risk", () => {
+    render(<HealthGrid data={[{
+      ...noData,
+      client_name: "Cliente con puntuación alta",
+      score: 95,
+      enough_information: true,
+      risk_signals: ["Una tarea vencida a fecha de hoy"],
+      factors: { ...noData.factors, tasks: 20 },
+    }]} />)
+
+    expect(screen.getByText("1 riesgo")).toBeInTheDocument()
+    expect(screen.getByText("Una tarea vencida a fecha de hoy")).toBeInTheDocument()
+    expect(screen.queryByText("Saludable")).not.toBeInTheDocument()
+    expect(screen.getByText("95 puntos")).toBeInTheDocument()
   })
 })

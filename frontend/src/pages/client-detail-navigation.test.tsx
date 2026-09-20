@@ -85,6 +85,12 @@ describe("client detail areas", () => {
     expect(screen.getByLabelText("Área del cliente")).toHaveValue("resumen")
   })
 
+  it("labels an internal client in its detail header", async () => {
+    mocks.summary.mockResolvedValueOnce({ ...summary, client: { ...summary.client, is_internal: true } })
+    show("ficha")
+    expect(await screen.findByText("Interno")).toBeInTheDocument()
+  })
+
   it("falls back safely when a legacy URL points to a hidden module", async () => {
     mocks.enabled.delete("communications")
     show("comunicaciones")
@@ -121,16 +127,16 @@ describe("client detail areas", () => {
     }
     mocks.health.mockResolvedValueOnce(health)
     const { client } = show("ficha")
-    expect(await screen.findByText("81/100")).toBeInTheDocument()
+    expect(await screen.findByText("81 puntos; no sustituye las condiciones anteriores.")).toBeInTheDocument()
 
     mocks.health.mockRejectedValueOnce({ response: { status: 403 } })
     await act(async () => { await client.invalidateQueries({ queryKey: ["client-health", 5] }) })
     expect(await screen.findByText("No se pudo cargar la salud del cliente.")).toBeInTheDocument()
-    expect(screen.queryByText("81/100")).not.toBeInTheDocument()
+    expect(screen.queryByText("81 puntos; no sustituye las condiciones anteriores.")).not.toBeInTheDocument()
 
     mocks.health.mockResolvedValueOnce(health)
     await userEvent.click(screen.getByRole("button", { name: "Reintentar salud" }))
-    expect(await screen.findByText("81/100")).toBeInTheDocument()
+    expect(await screen.findByText("81 puntos; no sustituye las condiciones anteriores.")).toBeInTheDocument()
   })
 
   it("does not request or render health without current client permission", async () => {
@@ -140,7 +146,7 @@ describe("client detail areas", () => {
 
     expect(await screen.findByText("FichaTab")).toBeInTheDocument()
     expect(mocks.health).not.toHaveBeenCalled()
-    expect(screen.queryByText("99/100")).not.toBeInTheDocument()
+    expect(screen.queryByText("99 puntos; no sustituye las condiciones anteriores.")).not.toBeInTheDocument()
   })
 
   it("keeps summaries useful when optional output modules are hidden", async () => {
