@@ -6,9 +6,9 @@ import { formatCurrency } from "@/lib/format"
 interface TeamMember {
   user_id: number
   full_name: string
-  hourly_rate: number | null
+  hourly_rate?: number | null
   hours_this_month: number
-  cost: number
+  cost?: number
   task_count: number
   clients_touched: number
 }
@@ -19,6 +19,7 @@ interface TeamSummaryTableProps {
 
 export function TeamSummaryTable({ team }: TeamSummaryTableProps) {
   if (!team || team.length === 0) return null
+  const showsFinancials = team.some((member) => member.hourly_rate !== undefined || member.cost !== undefined)
 
   return (
     <Card>
@@ -30,21 +31,21 @@ export function TeamSummaryTable({ team }: TeamSummaryTableProps) {
           <TableHeader>
             <TableRow>
               <TableHead>Miembro</TableHead>
-              <TableHead>
+              {showsFinancials && <TableHead>
                 <span className="inline-flex items-center gap-1">
                   Tarifa/h <InfoTooltip content="Tarifa por hora configurada para este miembro." />
                 </span>
-              </TableHead>
+              </TableHead>}
               <TableHead>
                 <span className="inline-flex items-center gap-1">
                   Horas mes <InfoTooltip content="Total horas registradas este mes." />
                 </span>
               </TableHead>
-              <TableHead>
+              {showsFinancials && <TableHead>
                 <span className="inline-flex items-center gap-1">
-                  Coste <InfoTooltip content="Horas x Tarifa/h." />
+                  Coste <InfoTooltip content="Minutos registrados × tarifa personal. Si no hay tarifa personal, se usa la tarifa predeterminada." />
                 </span>
-              </TableHead>
+              </TableHead>}
               <TableHead>Tareas</TableHead>
               <TableHead>
                 <span className="inline-flex items-center gap-1">
@@ -57,9 +58,9 @@ export function TeamSummaryTable({ team }: TeamSummaryTableProps) {
             {team.map((m) => (
               <TableRow key={m.user_id}>
                 <TableCell className="font-medium">{m.full_name}</TableCell>
-                <TableCell className="mono">{m.hourly_rate != null ? `${formatCurrency(m.hourly_rate)}/h` : "-"}</TableCell>
+                {showsFinancials && <TableCell className="mono">{m.hourly_rate != null ? `${formatCurrency(m.hourly_rate)}/h` : "-"}</TableCell>}
                 <TableCell className="mono">{m.hours_this_month}h</TableCell>
-                <TableCell className="mono">{formatCurrency(m.cost)}</TableCell>
+                {showsFinancials && <TableCell className="mono">{m.cost == null ? "-" : formatCurrency(m.cost)}</TableCell>}
                 <TableCell className="mono">{m.task_count}</TableCell>
                 <TableCell className="mono">{m.clients_touched}</TableCell>
               </TableRow>

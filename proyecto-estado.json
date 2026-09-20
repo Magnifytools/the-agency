@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-20T17:27:36.040426+00:00",
-  "estado_general": "produccion_decimoseptima_mejora_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-20T18:07:11.559466+00:00",
+  "estado_general": "produccion_P17_P18_validada_local_pendiente_CI",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -311,7 +311,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "P18: permisos de datos económicos en Dashboard, períodos/errores/caché y fuentes del resumen semanal. Mantener Reports oculto por falta de uso. Continuar Engine, revisión histórica, canal y todos los criterios pendientes de la matriz. Objetivo completo activo.",
+  "proximos_pasos": "Publicar P18 tras CI y verificación: Dashboard con permisos y fuentes separadas, resumen semanal operativo, preview Discord revisada y archivo Reports preservado. Después continuar Engine, revisión histórica, canal y matriz completa; objetivo activo.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,

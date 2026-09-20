@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from jinja2 import Environment, BaseLoader
 from pydantic import BaseModel
@@ -17,10 +17,7 @@ from backend.db.models import GeneratedReport, User, UserRole
 from backend.schemas.report import (
     ReportRequest, ReportResponse, ReportSection, ReportNarrativeRequest,
 )
-from backend.services.reports import generate_report
-from backend.services.report_narrator import generate_report_narrative
-from backend.api.deps import get_current_user, require_module
-from backend.core.rate_limiter import ai_limiter
+from backend.api.deps import require_module
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 logger = logging.getLogger(__name__)
@@ -52,28 +49,17 @@ async def create_report(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("reports", write=True)),
 ):
-    """Generate a new report."""
-    try:
-        report = await generate_report(
-            db,
-            report_type=request.type.value,
-            user_id=current_user.id,
-            client_id=request.client_id,
-            project_id=request.project_id,
-            period=request.period.value,
-            audience=request.audience,
-        )
-        return _to_response(report)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="No se pudo generar el reporte con esos datos")
-    except Exception as e:
-        logger.error(f"Report generation failed: {e}")
-        raise HTTPException(status_code=500, detail="Error generando el informe")
+    raise HTTPException(410, detail={
+        "code": "report_generation_retired",
+        "message": "Prepara los resúmenes de cliente desde Resúmenes. Los informes anteriores siguen disponibles.",
+        "href": "/digests",
+    })
 
 
 @router.get("", response_model=list[ReportResponse])
 async def list_reports(
-    limit: int = 20,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     client_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("reports")),
@@ -87,7 +73,7 @@ async def list_reports(
         query = query.where(GeneratedReport.user_id == current_user.id)
     if client_id is not None:
         query = query.where(GeneratedReport.client_id == client_id)
-    query = query.order_by(GeneratedReport.generated_at.desc()).limit(limit)
+    query = query.order_by(GeneratedReport.generated_at.desc(), GeneratedReport.id.desc()).offset(offset).limit(limit)
     result = await db.execute(query)
     return [_to_response(r) for r in result.scalars().all()]
 
@@ -119,39 +105,11 @@ async def generate_narrative(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("reports")),
 ):
-    """Generate an AI narrative version of an existing report."""
-    ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
-
-    result = await db.execute(
-        select(GeneratedReport).options(selectinload(GeneratedReport.client), selectinload(GeneratedReport.project)).where(GeneratedReport.id == report_id)
-    )
-    report = result.scalar_one_or_none()
-
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
-    if current_user.role != UserRole.admin and report.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not your report")
-
-    content = json.loads(report.content)
-    sections = content.get("sections", [])
-    summary = content.get("summary", "")
-
-    try:
-        narrative = await generate_report_narrative(
-            report_title=report.title,
-            sections=sections,
-            summary=summary,
-            client_name=report.client.name if report.client else None,
-            project_name=report.project.name if report.project else None,
-            audience=report.audience.value if report.audience else None,
-        )
-    except ValueError:
-        raise HTTPException(status_code=502, detail="No se pudo generar la narrativa del reporte")
-    except Exception:
-        logger.exception("Unexpected error generating report narrative for report_id=%s", report_id)
-        raise HTTPException(status_code=502, detail="Error generando narrativa")
-
-    return narrative
+    raise HTTPException(410, detail={
+        "code": "report_generation_retired",
+        "message": "Este archivo conserva el contenido original. Prepara nuevas versiones en Resúmenes.",
+        "href": "/digests",
+    })
 
 
 @router.delete("/{report_id}")
@@ -477,26 +435,11 @@ async def generate_client_monthly(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("reports", write=True)),
 ):
-    """Generate a monthly SEO report for a client using Engine + Agency data."""
-    if not (1 <= body.month <= 12) or not (2000 <= body.year <= 2100):
-        raise HTTPException(status_code=400, detail="Mes o año inválido")
-
-    from backend.services.monthly_report_service import generate_client_monthly_report
-
-    try:
-        report = await generate_client_monthly_report(
-            db,
-            client_id=body.client_id,
-            year=body.year,
-            month=body.month,
-            user_id=current_user.id,
-        )
-        return _to_response(report)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception:
-        logger.exception("Error generating client monthly report")
-        raise HTTPException(status_code=502, detail="Error generando informe mensual")
+    raise HTTPException(410, detail={
+        "code": "report_generation_retired",
+        "message": "Prepara el resumen mensual del cliente desde Resúmenes.",
+        "href": "/digests",
+    })
 
 
 MONTHLY_PDF_HTML_TEMPLATE = """\

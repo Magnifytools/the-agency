@@ -22,9 +22,14 @@ export const projectKeys = {
 
 export const dashboardKeys = {
   all: () => ["dashboard"] as const,
-  overview: (year: number, month: number) => ["dashboard", "overview", year, month] as const,
-  profitability: (year: number, month: number) => ["dashboard", "profitability", year, month] as const,
-  team: (year: number, month: number) => ["dashboard", "team", year, month] as const,
+  overview: (year: number, month: number, userId?: number, permissionSignature = "") => ["dashboard", "overview", userId ?? "anonymous", permissionSignature, year, month] as const,
+  financialOverview: (year: number, month: number, userId?: number, permissionSignature = "") => ["dashboard", "financial-overview", userId ?? "anonymous", permissionSignature, year, month] as const,
+  profitability: (year: number, month: number, userId?: number, permissionSignature = "") => ["dashboard", "profitability", userId ?? "anonymous", permissionSignature, year, month] as const,
+  team: (year: number, month: number, userId?: number, permissionSignature = "") => ["dashboard", "team", userId ?? "anonymous", permissionSignature, year, month] as const,
+  discordPreview: (userId?: number, permissionSignature = "") => ["dashboard", "discord-preview", userId ?? "anonymous", permissionSignature] as const,
+  utilization: (year: number, month: number, userId?: number, permissionSignature = "") => ["dashboard", "utilization", userId ?? "anonymous", permissionSignature, year, month] as const,
+  monthlyClose: (year: number, month: number, userId?: number, permissionSignature = "") => ["dashboard", "monthly-close", userId ?? "anonymous", permissionSignature, year, month] as const,
+  financialSettings: (userId?: number, permissionSignature = "") => ["dashboard", "financial-settings", userId ?? "anonymous", permissionSignature] as const,
   today: () => ["dashboard", "today"] as const,
 }
 

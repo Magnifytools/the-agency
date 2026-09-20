@@ -84,6 +84,12 @@ describe("shared operational query keys", () => {
     expect(inboxKeys.preview(7, "pending,classified", 5)).not.toEqual(inboxKeys.list(7, "pending,classified", 50))
   })
 
+  it("keeps dashboard data distinct across identities, permissions, and months", () => {
+    expect(dashboardKeys.overview(2026, 9, 7, "member:tasks:1")).not.toEqual(dashboardKeys.overview(2026, 9, 8, "member:tasks:1"))
+    expect(dashboardKeys.overview(2026, 9, 7, "member:tasks:1")).not.toEqual(dashboardKeys.overview(2026, 9, 7, "member:tasks:0"))
+    expect(dashboardKeys.overview(2026, 9, 7, "member:tasks:1")).not.toEqual(dashboardKeys.overview(2026, 8, 7, "member:tasks:1"))
+  })
+
   it("does not share search results across identities or permission sets", () => {
     expect(searchKeys.results(7, "tasks", "reunión")).not.toEqual(searchKeys.results(8, "tasks", "reunión"))
     expect(searchKeys.results(7, "tasks", "reunión")).not.toEqual(searchKeys.results(7, "clients,tasks", "reunión"))

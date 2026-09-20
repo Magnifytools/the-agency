@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { AlertTriangle } from "lucide-react"
+import { isEnabled } from "@/lib/hidden-modules"
 
 const CLOSE_ITEMS = [
   { key: "reviewed_numbers", label: "Revisar ingresos, gastos y cashflow del mes", link: "/finance" },
@@ -32,6 +33,7 @@ export function MonthlyCloseChecklist({
 }: MonthlyCloseChecklistProps) {
   const doneCount = CLOSE_ITEMS.filter((item) => Boolean(monthlyClose[item.key])).length
   const totalCount = CLOSE_ITEMS.length
+  const holdedEnabled = isEnabled("holded")
 
   // Warn if Holded hasn't been synced in 7+ days
   const holdedSyncStale = (() => {
@@ -59,8 +61,9 @@ export function MonthlyCloseChecklist({
       <CardContent className="space-y-3">
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <div className="text-xs text-muted-foreground mb-1">Responsable</div>
+            <label htmlFor="monthly-close-responsible" className="block text-xs text-muted-foreground mb-1">Responsable</label>
             <input
+              id="monthly-close-responsible"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               type="text"
               defaultValue={String(monthlyClose.responsible_name || "")}
@@ -68,8 +71,9 @@ export function MonthlyCloseChecklist({
             />
           </div>
           <div>
-            <div className="text-xs text-muted-foreground mb-1">Notas del cierre</div>
+            <label htmlFor="monthly-close-notes" className="block text-xs text-muted-foreground mb-1">Notas del cierre</label>
             <textarea
+              id="monthly-close-notes"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               rows={3}
               defaultValue={String(monthlyClose.notes || "")}
@@ -81,7 +85,14 @@ export function MonthlyCloseChecklist({
           Marca los checks para evitar las decisiones de riesgo más comunes.
         </div>
         <div className="grid gap-3 md:grid-cols-2">
-          {CLOSE_ITEMS.map((item) => (
+          {CLOSE_ITEMS.map((item) => {
+            const link =
+              item.key === "reviewed_margin" && !isEnabled("executive")
+                ? null
+                : item.key === "reviewed_holded" && !holdedEnabled
+                  ? null
+                  : item.link
+            return (
             <label key={item.key} className="flex items-start gap-2 rounded-lg border border-border p-3">
               <input
                 type="checkbox"
@@ -91,12 +102,13 @@ export function MonthlyCloseChecklist({
               />
               <span className="text-sm flex-1">
                 {item.label}
-                {item.key === "reviewed_holded" && holdedSyncStale && (
-                  <AlertTriangle className="inline-block h-3.5 w-3.5 text-amber-500 ml-1.5 -mt-0.5" />
+                {item.key === "reviewed_holded" && holdedEnabled && holdedSyncStale && (
+                  <AlertTriangle aria-label="Holded sin sincronización reciente" className="inline-block h-3.5 w-3.5 text-amber-500 ml-1.5 -mt-0.5" />
                 )}
-                {item.link && (
+                {link && (
                   <Link
-                    to={item.link}
+                    to={link}
+                    aria-label={`Abrir ${item.label}`}
                     className="ml-1.5 text-xs text-brand hover:underline"
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -105,7 +117,8 @@ export function MonthlyCloseChecklist({
                 )}
               </span>
             </label>
-          ))}
+            )
+          })}
         </div>
         <div className="flex items-center justify-between">
           <div className="text-xs text-muted-foreground">

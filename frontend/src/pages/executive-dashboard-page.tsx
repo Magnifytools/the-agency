@@ -45,6 +45,7 @@ import {
   Target,
 } from "lucide-react"
 import { FinanceTabNav } from "@/components/finance/finance-tab-nav"
+import { isEnabled } from "@/lib/hidden-modules"
 
 export default function ExecutiveDashboardPage() {
   const now = new Date()
@@ -52,6 +53,8 @@ export default function ExecutiveDashboardPage() {
   const month = now.getMonth() + 1
   const [balanceDialogOpen, setBalanceDialogOpen] = useState(false)
   const qc = useQueryClient()
+  const profitabilitySourcesEnabled = ["finance", "clients", "projects", "tasks", "timesheet"].every(isEnabled)
+  const capacitySourcesEnabled = isEnabled("capacity") && isEnabled("tasks")
 
   // Financial overview (current month)
   const { data: overview } = useQuery({
@@ -75,6 +78,7 @@ export default function ExecutiveDashboardPage() {
   const { data: profitability } = useQuery({
     queryKey: ["exec-profitability", year, month],
     queryFn: () => dashboardApi.profitability({ year, month }),
+    enabled: profitabilitySourcesEnabled,
   })
 
   // Client health scores
@@ -87,6 +91,7 @@ export default function ExecutiveDashboardPage() {
   const { data: capacity } = useQuery({
     queryKey: ["exec-capacity"],
     queryFn: () => capacityApi.get(),
+    enabled: capacitySourcesEnabled,
   })
 
   // Lead pipeline

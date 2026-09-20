@@ -3,9 +3,10 @@ from datetime import timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, and_, or_, distinct
+from sqlalchemy import select, func, and_, or_, distinct, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import noload, selectinload
 
 from backend.config import settings
 from backend.db.database import get_db
@@ -27,6 +28,7 @@ from backend.db.models import (
 )
 from backend.schemas.dashboard import (
     DashboardOverview,
+    DashboardFinancialOverview,
     ClientProfitability,
     ProfitabilityResponse,
     TeamMemberSummary,
@@ -49,19 +51,18 @@ from backend.services.report_period import (
 )
 from backend.services.temporal import business_today
 from backend.services.time_entry_dates import time_entry_civil_period
+from backend.services.dashboard_access import (
+    ensure_source_access,
+    has_module_read,
+    require_financial_dashboard_access,
+)
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
-async def _get_or_create_financial_settings(db: AsyncSession) -> FinancialSettings:
+async def _get_financial_settings(db: AsyncSession) -> FinancialSettings | None:
     r = await db.execute(select(FinancialSettings))
-    record = r.scalars().first()
-    if record is None:
-        record = FinancialSettings()
-        db.add(record)
-        await db.commit()
-        await safe_refresh(db, record, log_context="dashboard")
-    return record
+    return r.scalars().first()
 
 
 @router.get("/overview", response_model=DashboardOverview)
@@ -69,49 +70,92 @@ async def get_overview(
     year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
     month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("dashboard")),
+    current_user: User = Depends(require_module("dashboard")),
 ):
     y, m = resolve_default_period(year, month)
     start, end = month_range_naive(y, m)
     month_start_day = start.date()
     month_end_exclusive_day = (end + timedelta(seconds=1)).date()
 
-    # Active clients
-    r = await db.execute(
-        select(func.count()).select_from(Client).where(
-            Client.status == ClientStatus.active,
-            Client.is_internal == False,
+    clients_available = has_module_read(current_user, "clients")
+    tasks_available = has_module_read(current_user, "tasks")
+    timesheet_available = has_module_read(current_user, "timesheet")
+
+    active_clients = None
+    if clients_available:
+        r = await db.execute(
+            select(func.count()).select_from(Client).where(
+                Client.status == ClientStatus.active,
+                Client.is_internal == False,
+            )
         )
-    )
-    active_clients = r.scalar()
+        active_clients = r.scalar()
 
     # Tasks — scoped to the selected month (by scheduled_date, or due_date if no scheduled)
     task_date_filter = or_(
         and_(Task.scheduled_date.isnot(None), Task.scheduled_date >= start, Task.scheduled_date <= end),
         and_(Task.scheduled_date.is_(None), Task.due_date.isnot(None), Task.due_date >= start, Task.due_date <= end),
     )
-    r = await db.execute(
-        select(func.count()).select_from(Task).where(
-            Task.retired_at.is_(None), Task.status == TaskStatus.pending, task_date_filter
+    pending_tasks = None
+    in_progress_tasks = None
+    if tasks_available:
+        r = await db.execute(
+            select(func.count()).select_from(Task).where(
+                Task.retired_at.is_(None), Task.is_recurring.is_(False),
+                Task.status == TaskStatus.pending, task_date_filter,
+            )
         )
-    )
-    pending_tasks = r.scalar()
+        pending_tasks = r.scalar()
 
-    r = await db.execute(
-        select(func.count()).select_from(Task).where(
-            Task.retired_at.is_(None), Task.status.in_(IN_PROGRESS_TASK_STATUSES), task_date_filter
+        r = await db.execute(
+            select(func.count()).select_from(Task).where(
+                Task.retired_at.is_(None), Task.is_recurring.is_(False),
+                Task.status.in_(IN_PROGRESS_TASK_STATUSES), task_date_filter,
+            )
         )
-    )
-    in_progress_tasks = r.scalar()
+        in_progress_tasks = r.scalar()
 
-    # Hours this month
-    r = await db.execute(
-        select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
+    hours_this_month = None
+    if timesheet_available:
+        hours_query = select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
             TimeEntry.minutes.isnot(None),
             time_entry_civil_period(month_start_day, month_end_exclusive_day),
         )
+        if current_user.role != UserRole.admin:
+            hours_query = hours_query.where(TimeEntry.user_id == current_user.id)
+        r = await db.execute(hours_query)
+        hours_this_month = round((r.scalar() or 0) / 60, 1)
+
+    return DashboardOverview(
+        active_clients=active_clients,
+        pending_tasks=pending_tasks,
+        in_progress_tasks=in_progress_tasks,
+        hours_this_month=hours_this_month,
+        availability={
+            "clients": clients_available,
+            "tasks": tasks_available,
+            "timesheet": timesheet_available,
+        },
+        hours_scope=(
+            "unavailable" if not timesheet_available
+            else "team" if current_user.role == UserRole.admin
+            else "mine"
+        ),
     )
-    hours_this_month = round((r.scalar() or 0) / 60, 1)
+
+
+@router.get("/overview/financial", response_model=DashboardFinancialOverview)
+async def get_financial_overview(
+    year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
+    month: Optional[int] = Query(None, ge=1, le=12),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_financial_dashboard_access),
+):
+    ensure_source_access(current_user, "clients", "projects", "timesheet")
+    y, m = resolve_default_period(year, month)
+    start, end = month_range_naive(y, m)
+    month_start_day = start.date()
+    month_end_exclusive_day = (end + timedelta(seconds=1)).date()
 
     # Total budget — derived from active projects' monthly_fee (fallback to client.monthly_budget)
     r = await db.execute(
@@ -142,11 +186,7 @@ async def get_overview(
     margin = round(float(total_budget) - float(total_cost), 2)
     margin_percent = round((margin / total_budget * 100) if total_budget > 0 else 0, 1)
 
-    return DashboardOverview(
-        active_clients=active_clients,
-        pending_tasks=pending_tasks,
-        in_progress_tasks=in_progress_tasks,
-        hours_this_month=hours_this_month,
+    return DashboardFinancialOverview(
         total_budget=total_budget,
         total_cost=total_cost,
         margin=margin,
@@ -159,8 +199,9 @@ async def get_profitability(
     year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
     month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_financial_dashboard_access),
 ):
+    ensure_source_access(current_user, "clients", "projects", "tasks", "timesheet")
     y, m = resolve_default_period(year, month)
     start, end = month_range_naive(y, m)
     month_start_day = start.date()
@@ -219,6 +260,7 @@ async def get_profitability(
         .where(
             Task.client_id.in_(client_ids),
             Task.retired_at.is_(None),
+            Task.is_recurring.is_(False),
             Task.created_at >= start,
             Task.created_at <= end,
         )
@@ -260,21 +302,26 @@ async def get_profitability(
     return ProfitabilityResponse(clients=result)
 
 
-@router.get("/team", response_model=list[TeamMemberSummary])
+@router.get("/team", response_model=list[TeamMemberSummary], response_model_exclude_none=True)
 async def get_team_summary(
     year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
     month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("dashboard")),
+    current_user: User = Depends(require_admin),
 ):
+    ensure_source_access(current_user, "dashboard", "tasks", "clients", "timesheet")
     y, m = resolve_default_period(year, month)
     start, end = month_range_naive(y, m)
     month_start_day = start.date()
     month_end_exclusive_day = (end + timedelta(seconds=1)).date()
 
     # Get users (1 query)
-    r = await db.execute(select(User).order_by(User.full_name))
-    users = r.scalars().all()
+    finance_available = is_enabled("finance")
+    user_columns = [User.id, User.full_name]
+    if finance_available:
+        user_columns.append(User.hourly_rate)
+    r = await db.execute(select(*user_columns).order_by(User.full_name))
+    users = r.all()
 
     # Aggregate all metrics per user in a single query (instead of 3N queries)
     r = await db.execute(
@@ -302,12 +349,18 @@ async def get_team_summary(
     for user in users:
         total_minutes, task_count, clients_touched = metrics_map.get(user.id, (0, 0, 0))
         hours = round(total_minutes / 60, 1)
-        cost = round(hours * float(user.hourly_rate or 0), 2)
+        hourly_rate = user.hourly_rate if finance_available else None
+        effective_rate = (
+            float(hourly_rate)
+            if hourly_rate is not None
+            else float(settings.DEFAULT_HOURLY_RATE)
+        )
+        cost = round(total_minutes * effective_rate / 60, 2) if finance_available else None
 
         result.append(TeamMemberSummary(
             user_id=user.id,
             full_name=user.full_name,
-            hourly_rate=user.hourly_rate,
+            hourly_rate=hourly_rate,
             hours_this_month=hours,
             cost=cost,
             task_count=task_count,
@@ -322,37 +375,33 @@ async def get_monthly_close(
     year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
     month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_financial_dashboard_access),
 ):
     y, m = resolve_default_period(year, month)
 
     r = await db.execute(
         select(MonthlyClose).where(and_(MonthlyClose.year == y, MonthlyClose.month == m))
     )
-    record = r.scalars().first()
-    if record is None:
-        record = MonthlyClose(year=y, month=m)
-        db.add(record)
-        await db.commit()
-        await safe_refresh(db, record, log_context="dashboard")
-
-    return _monthly_close_response(record)
+    return _monthly_close_response(r.scalars().first(), year=y, month=m)
 
 
-def _monthly_close_response(record: MonthlyClose) -> MonthlyCloseResponse:
+def _monthly_close_response(
+    record: MonthlyClose | None, *, year: int | None = None, month: int | None = None,
+) -> MonthlyCloseResponse:
     return MonthlyCloseResponse(
-        year=record.year,
-        month=record.month,
-        reviewed_numbers=record.reviewed_numbers,
-        reviewed_margin=record.reviewed_margin,
-        reviewed_cash_buffer=record.reviewed_cash_buffer,
-        reviewed_reinvestment=record.reviewed_reinvestment,
-        reviewed_debt=record.reviewed_debt,
-        reviewed_taxes=record.reviewed_taxes,
-        reviewed_personal=record.reviewed_personal,
-        responsible_name=record.responsible_name or "",
-        notes=record.notes or "",
-        updated_at=record.updated_at.isoformat() if record.updated_at else None,
+        year=record.year if record else year,
+        month=record.month if record else month,
+        reviewed_numbers=bool(record and record.reviewed_numbers),
+        reviewed_margin=bool(record and record.reviewed_margin),
+        reviewed_cash_buffer=bool(record and record.reviewed_cash_buffer),
+        reviewed_reinvestment=bool(record and record.reviewed_reinvestment),
+        reviewed_debt=bool(record and record.reviewed_debt),
+        reviewed_taxes=bool(record and record.reviewed_taxes),
+        reviewed_personal=bool(record and record.reviewed_personal),
+        reviewed_holded=bool(record and record.reviewed_holded),
+        responsible_name=(record.responsible_name or "") if record else "",
+        notes=(record.notes or "") if record else "",
+        updated_at=record.updated_at.isoformat() if record and record.updated_at else None,
     )
 
 
@@ -362,24 +411,27 @@ async def update_monthly_close(
     year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
     month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("dashboard")),
+    _: User = Depends(require_financial_dashboard_access),
 ):
     y, m = resolve_default_period(year, month)
 
-    r = await db.execute(
-        select(MonthlyClose).where(and_(MonthlyClose.year == y, MonthlyClose.month == m))
+    await db.execute(
+        pg_insert(MonthlyClose)
+        .values(year=y, month=m)
+        .on_conflict_do_nothing(index_elements=["year", "month"])
     )
-    record = r.scalars().first()
-    if record is None:
-        record = MonthlyClose(year=y, month=m)
-        db.add(record)
-        await db.commit()
-        await safe_refresh(db, record, log_context="dashboard")
+    record = (await db.execute(
+        select(MonthlyClose)
+        .where(and_(MonthlyClose.year == y, MonthlyClose.month == m))
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )).scalar_one()
 
     updates = body.model_dump(exclude_unset=True)
     for field in (
         "reviewed_numbers", "reviewed_margin", "reviewed_cash_buffer",
         "reviewed_reinvestment", "reviewed_debt", "reviewed_taxes", "reviewed_personal",
+        "reviewed_holded",
     ):
         if field in updates:
             setattr(record, field, bool(updates[field]))
@@ -399,33 +451,13 @@ async def export_monthly_close(
     year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
     month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_financial_dashboard_access),
 ):
     y, m = resolve_default_period(year, month)
     r = await db.execute(
         select(MonthlyClose).where(and_(MonthlyClose.year == y, MonthlyClose.month == m))
     )
-    record = r.scalars().first()
-    if record is None:
-        record = MonthlyClose(year=y, month=m)
-        db.add(record)
-        await db.commit()
-        await safe_refresh(db, record, log_context="dashboard")
-
-    payload = {
-        "year": record.year,
-        "month": record.month,
-        "reviewed_numbers": record.reviewed_numbers,
-        "reviewed_margin": record.reviewed_margin,
-        "reviewed_cash_buffer": record.reviewed_cash_buffer,
-        "reviewed_reinvestment": record.reviewed_reinvestment,
-        "reviewed_debt": record.reviewed_debt,
-        "reviewed_taxes": record.reviewed_taxes,
-        "reviewed_personal": record.reviewed_personal,
-        "responsible_name": record.responsible_name or "",
-        "notes": record.notes or "",
-        "updated_at": record.updated_at.isoformat() if record.updated_at else None,
-    }
+    payload = _monthly_close_response(r.scalars().first(), year=y, month=m).model_dump()
 
     csv_rows = ([key, value] for key, value in payload.items())
     return build_csv_response(
@@ -438,13 +470,22 @@ async def export_monthly_close(
 @router.get("/financial-settings", response_model=FinancialSettingsResponse)
 async def get_financial_settings(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_financial_dashboard_access),
 ):
-    record = await _get_or_create_financial_settings(db)
+    record = await _get_financial_settings(db)
     return _financial_settings_response(record)
 
 
-def _financial_settings_response(record: FinancialSettings) -> FinancialSettingsResponse:
+def _financial_settings_response(record: FinancialSettings | None) -> FinancialSettingsResponse:
+    if record is None:
+        return FinancialSettingsResponse(
+            tax_reserve=0, credit_limit=0, credit_used=0, credit_utilization=0,
+            monthly_close_day=5, credit_alert_pct=70, tax_reserve_target_pct=20,
+            default_vat_rate=21, corporate_tax_rate=25, irpf_retention_rate=15,
+            cash_start=0, advisor_expense_alert_pct=20,
+            advisor_margin_warning_pct=10, ai_provider="openai-compatible",
+            ai_model="", ai_api_url="",
+        )
     utilization = (float(record.credit_used) / float(record.credit_limit) * 100) if record.credit_limit > 0 else 0.0
     return FinancialSettingsResponse(
         tax_reserve=record.tax_reserve,
@@ -470,9 +511,14 @@ def _financial_settings_response(record: FinancialSettings) -> FinancialSettings
 async def update_financial_settings(
     body: FinancialSettingsUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_financial_dashboard_access),
 ):
-    record = await _get_or_create_financial_settings(db)
+    await db.execute(text("SELECT pg_advisory_xact_lock(76241320)"))
+    record = await _get_financial_settings(db)
+    if record is None:
+        record = FinancialSettings()
+        db.add(record)
+        await db.flush()
     updates = body.model_dump(exclude_unset=True)
     float_fields = (
         "tax_reserve", "credit_limit", "credit_used", "credit_alert_pct",
@@ -500,13 +546,15 @@ async def update_financial_settings(
 @router.get("/capacity")
 async def get_capacity(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ):
     """Team capacity: assigned hours vs available hours per active member."""
+    ensure_source_access(current_user, "dashboard", "tasks")
     users_result = await db.execute(
-        select(User).where(User.is_active == True).order_by(User.full_name)
+        select(User.id, User.full_name, User.weekly_hours)
+        .where(User.is_active == True).order_by(User.full_name)
     )
-    users = users_result.scalars().all()
+    users = users_result.all()
 
     # Single aggregate query for all users (fix N+1)
     task_stats_result = await db.execute(
@@ -515,7 +563,10 @@ async def get_capacity(
             func.coalesce(func.sum(Task.estimated_minutes), 0),
             func.count(),
         )
-        .where(Task.retired_at.is_(None), Task.status.in_(ACTIVE_TASK_STATUSES))
+        .where(
+            Task.retired_at.is_(None), Task.is_recurring.is_(False),
+            Task.status.in_(ACTIVE_TASK_STATUSES),
+        )
         .group_by(Task.assigned_to)
     )
     stats_map = {row[0]: (row[1] or 0, row[2] or 0) for row in task_stats_result.all()}
@@ -524,10 +575,13 @@ async def get_capacity(
     for user in users:
         assigned_minutes, task_count = stats_map.get(user.id, (0, 0))
 
-        weekly_minutes = (user.weekly_hours or 40) * 60
-        load_pct = round((assigned_minutes / weekly_minutes) * 100) if weekly_minutes > 0 else 0
+        weekly_hours = 40 if user.weekly_hours is None else user.weekly_hours
+        weekly_minutes = weekly_hours * 60
+        load_pct = round((assigned_minutes / weekly_minutes) * 100) if weekly_minutes > 0 else None
 
-        if load_pct < 70:
+        if load_pct is None:
+            status = "no_capacity"
+        elif load_pct < 70:
             status = "available"
         elif load_pct < 90:
             status = "busy"
@@ -537,7 +591,7 @@ async def get_capacity(
         capacity.append({
             "user_id": user.id,
             "full_name": user.full_name,
-            "weekly_hours": user.weekly_hours or 40,
+            "weekly_hours": weekly_hours,
             "assigned_minutes": assigned_minutes,
             "task_count": task_count,
             "load_percent": load_pct,
@@ -550,13 +604,15 @@ async def get_capacity(
 @router.get("/capacity/detail")
 async def get_capacity_detail(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ):
     """Enhanced capacity: per-user task list grouped by client, with priorities."""
+    ensure_source_access(current_user, "dashboard", "tasks", "clients")
     users_result = await db.execute(
-        select(User).where(User.is_active == True).order_by(User.full_name)
+        select(User.id, User.full_name, User.weekly_hours)
+        .where(User.is_active == True).order_by(User.full_name)
     )
-    users = users_result.scalars().all()
+    users = users_result.all()
     user_ids = [u.id for u in users]
 
     if not user_ids:
@@ -570,6 +626,7 @@ async def get_capacity_detail(
         .outerjoin(Project, Task.project_id == Project.id)
         .where(
             Task.retired_at.is_(None),
+            Task.is_recurring.is_(False),
             Task.assigned_to.in_(user_ids),
             Task.status.in_(active_statuses),
         )
@@ -596,10 +653,13 @@ async def get_capacity_detail(
     for user in users:
         tasks = user_tasks.get(user.id, [])
         assigned_minutes = sum(t["estimated_minutes"] for t in tasks)
-        weekly_minutes = (user.weekly_hours or 40) * 60
-        load_pct = round((assigned_minutes / weekly_minutes) * 100) if weekly_minutes > 0 else 0
+        weekly_hours = 40 if user.weekly_hours is None else user.weekly_hours
+        weekly_minutes = weekly_hours * 60
+        load_pct = round((assigned_minutes / weekly_minutes) * 100) if weekly_minutes > 0 else None
 
-        if load_pct < 70:
+        if load_pct is None:
+            status = "no_capacity"
+        elif load_pct < 70:
             status = "available"
         elif load_pct < 90:
             status = "busy"
@@ -623,7 +683,7 @@ async def get_capacity_detail(
         result.append({
             "user_id": user.id,
             "full_name": user.full_name,
-            "weekly_hours": user.weekly_hours or 40,
+            "weekly_hours": weekly_hours,
             "assigned_minutes": assigned_minutes,
             "task_count": len(tasks),
             "load_percent": load_pct,
@@ -638,15 +698,16 @@ async def get_capacity_detail(
 
 @router.get("/utilization")
 async def get_utilization(
-    year: Optional[int] = Query(None),
-    month: Optional[int] = Query(None),
+    year: Optional[int] = Query(None, ge=MIN_REPORT_YEAR, le=MAX_REPORT_YEAR),
+    month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("dashboard")),
+    current_user: User = Depends(require_admin),
 ):
     """Team utilization: actual hours logged vs available hours.
 
     Returns per-user utilization for the given month + global average.
     """
+    ensure_source_access(current_user, "dashboard", "timesheet")
     from datetime import date, timedelta
     import calendar
 
@@ -663,9 +724,10 @@ async def get_utilization(
                         if date(y, m, d + 1).weekday() < 5)
 
     users_result = await db.execute(
-        select(User).where(User.is_active == True).order_by(User.full_name)
+        select(User.id, User.full_name, User.weekly_hours)
+        .where(User.is_active == True).order_by(User.full_name)
     )
-    users = users_result.scalars().all()
+    users = users_result.all()
 
     # Aggregate logged hours per user for the month
     hours_result = await db.execute(
@@ -681,10 +743,11 @@ async def get_utilization(
     total_available = 0
 
     for user in users:
-        daily_hours = (user.weekly_hours or 40) / 5
+        weekly_hours = 40 if user.weekly_hours is None else user.weekly_hours
+        daily_hours = weekly_hours / 5
         available_minutes = int(daily_hours * 60 * business_days)
         logged_minutes = hours_map.get(user.id, 0)
-        pct = round((logged_minutes / available_minutes) * 100) if available_minutes > 0 else 0
+        pct = round((logged_minutes / available_minutes) * 100) if available_minutes > 0 else None
 
         total_logged += logged_minutes
         total_available += available_minutes
@@ -697,7 +760,7 @@ async def get_utilization(
             "utilization_pct": pct,
         })
 
-    global_pct = round((total_logged / total_available) * 100) if total_available > 0 else 0
+    global_pct = round((total_logged / total_available) * 100) if total_available > 0 else None
 
     return {
         "year": y,
@@ -706,7 +769,14 @@ async def get_utilization(
         "global_utilization_pct": global_pct,
         "total_logged_hours": round(total_logged / 60, 1),
         "total_available_hours": round(total_available / 60, 1),
-        "members": sorted(members, key=lambda x: x["utilization_pct"], reverse=True),
+        "members": sorted(
+            members,
+            key=lambda item: (
+                item["utilization_pct"] is not None,
+                item["utilization_pct"] or 0,
+            ),
+            reverse=True,
+        ),
     }
 
 
@@ -715,18 +785,23 @@ async def get_utilization(
 @router.get("/today")
 async def get_today(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_module("dashboard")),
 ):
     """Tasks scheduled for today, grouped by user. Returns all users' tasks for admin, own for member."""
+    ensure_source_access(current_user, "tasks")
     today = business_today()
+    clients_available = has_module_read(current_user, "clients")
 
     query = (
         select(Task)
-        .options(selectinload(Task.assigned_user), selectinload(Task.client))
+        .options(noload("*"), selectinload(Task.assigned_user))
         .where(Task.scheduled_date == today)
         .where(Task.status != TaskStatus.completed)
         .where(Task.retired_at.is_(None))
+        .where(Task.is_recurring.is_(False))
     )
+    if clients_available:
+        query = query.options(selectinload(Task.client))
     if current_user.role != UserRole.admin:
         query = query.where(Task.assigned_to == current_user.id)
 
@@ -744,7 +819,7 @@ async def get_today(
             "title": t.title,
             "status": t.status.value,
             "priority": t.priority.value,
-            "client_name": t.client.name if t.client else None,
+            "client_name": t.client.name if clients_available and t.client else None,
             "estimated_minutes": t.estimated_minutes,
         })
 
@@ -774,23 +849,31 @@ async def alerts_summary(
     today = business_today()
     alerts: list[dict] = []
 
+    tasks_available = has_module_read(current_user, "tasks")
+    timesheet_available = has_module_read(current_user, "timesheet")
+    clients_available = has_module_read(current_user, "clients")
+    projects_available = has_module_read(current_user, "projects")
+    is_admin = current_user.role == UserRole.admin
+
     # 1. Overdue tasks (all users, for admin view)
-    overdue_result = await db.execute(
-        select(func.count(Task.id)).where(
+    if tasks_available:
+        overdue_query = select(func.count(Task.id)).where(
             Task.retired_at.is_(None),
+            Task.is_recurring.is_(False),
             Task.due_date < today,
             Task.status.notin_([TaskStatus.completed]),
         )
-    )
-    overdue_count = overdue_result.scalar() or 0
-    if overdue_count > 0:
-        alerts.append({
-            "type": "overdue_tasks",
-            "severity": "critical" if overdue_count >= 5 else "warning",
-            "count": overdue_count,
-            "title": f"{overdue_count} tareas vencidas",
-            "link": "/tasks?overdue=true",
-        })
+        if not is_admin:
+            overdue_query = overdue_query.where(Task.assigned_to == current_user.id)
+        overdue_count = (await db.execute(overdue_query)).scalar() or 0
+        if overdue_count > 0:
+            alerts.append({
+                "type": "overdue_tasks",
+                "severity": "critical" if overdue_count >= 5 else "warning",
+                "count": overdue_count,
+                "title": f"{overdue_count} tareas vencidas",
+                "link": "/tasks?overdue=true",
+            })
 
     # 2. Missing dailys (users with no daily in 2+ business days)
     # On Monday check from Thursday, otherwise 2 calendar days back
@@ -804,9 +887,10 @@ async def alerts_summary(
         lookback = today - timedelta(days=2)
     missing_daily_names: list[str] = []
     if lookback is not None:
-        active_users_result = await db.execute(
-            select(User).where(User.is_active.is_(True), User.role != UserRole.admin)
-        )
+        active_users_query = select(User).where(User.is_active.is_(True), User.role != UserRole.admin)
+        if not is_admin:
+            active_users_query = active_users_query.where(User.id == current_user.id)
+        active_users_result = await db.execute(active_users_query)
         active_users = active_users_result.scalars().all()
 
         # Batch: get user IDs who HAVE submitted a daily since lookback (1 query)
@@ -833,10 +917,11 @@ async def alerts_summary(
 
     # 3. Incomplete timesheets yesterday (< 6h on weekday)
     yesterday = today - timedelta(days=1)
-    if yesterday.weekday() < 5:  # Only check weekdays
-        all_users_result = await db.execute(
-            select(User).where(User.is_active.is_(True), User.role != UserRole.admin)
-        )
+    if timesheet_available and yesterday.weekday() < 5:  # Only check weekdays
+        all_users_query = select(User).where(User.is_active.is_(True), User.role != UserRole.admin)
+        if not is_admin:
+            all_users_query = all_users_query.where(User.id == current_user.id)
+        all_users_result = await db.execute(all_users_query)
         all_users = all_users_result.scalars().all()
 
         # Batch: get hours per user for yesterday (1 query instead of N)
@@ -863,7 +948,7 @@ async def alerts_summary(
             })
 
     # 4. Active clients with 0 hours this week (from Wednesday)
-    if today.weekday() >= 2:
+    if is_admin and clients_available and tasks_available and timesheet_available and today.weekday() >= 2:
         week_start = today - timedelta(days=today.weekday())
         active_clients = await db.execute(
             select(Client.id, Client.name).where(Client.status == ClientStatus.active)
@@ -897,25 +982,26 @@ async def alerts_summary(
             })
 
     # 5. Capacity overload (20+ hours estimated pending)
-    overloaded = await db.execute(
-        select(
+    overloaded_rows = []
+    if is_admin and tasks_available and is_enabled("capacity"):
+        overloaded = await db.execute(select(
             Task.assigned_to,
             func.sum(Task.estimated_minutes).label("total"),
         ).where(
             Task.retired_at.is_(None),
+            Task.is_recurring.is_(False),
             Task.assigned_to.isnot(None),
             Task.status.in_([TaskStatus.pending, *IN_PROGRESS_TASK_STATUSES]),
             Task.estimated_minutes.isnot(None),
-        ).group_by(Task.assigned_to)
-    )
-    overloaded_rows = [row for row in overloaded.all() if row.total and row.total > 1200]
+        ).group_by(Task.assigned_to))
+        overloaded_rows = [row for row in overloaded.all() if row.total and row.total > 1200]
     overloaded_names: list[str] = []
     if overloaded_rows:
         overloaded_user_ids = [row.assigned_to for row in overloaded_rows]
         u_res = await db.execute(select(User.id, User.full_name).where(User.id.in_(overloaded_user_ids)))
         user_name_map = {uid: name for uid, name in u_res.all()}
         overloaded_names = [user_name_map.get(row.assigned_to, f"#{row.assigned_to}") for row in overloaded_rows]
-    if overloaded_names and is_enabled("capacity"):
+    if overloaded_names:
         alerts.append({
             "type": "capacity_overload",
             "severity": "critical",
@@ -925,7 +1011,7 @@ async def alerts_summary(
             "link": "/capacity",
         })
 
-    if is_enabled("billing"):
+    if is_admin and projects_available and is_enabled("finance") and is_enabled("billing"):
         # 6. Billing: projects with upcoming or overdue billing
         billing_result = await db.execute(
             select(Project).where(

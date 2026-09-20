@@ -7,6 +7,7 @@ import { isEnabled } from "@/lib/hidden-modules"
 import type { PricingOption } from "@/lib/types"
 import { useAuth } from "@/context/auth-context"
 import { MetricCard } from "@/components/dashboard/metric-card"
+import { OperationalOverview } from "@/components/dashboard/operational-overview"
 import { ProfitabilityChart } from "@/components/dashboard/profitability-chart"
 import { InsightsPanel } from "@/components/pm/insights-panel"
 import { DailyBriefingButton } from "@/components/pm/daily-briefing"
@@ -23,7 +24,7 @@ import { Select } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { InfoTooltip } from "@/components/ui/tooltip"
-import { Users, CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink, Play, Square, Check, UserCog, AlertTriangle, ChevronLeft, ChevronRight, BarChart3 } from "lucide-react"
+import { CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink, Play, Square, Check, UserCog, AlertTriangle, ChevronLeft, ChevronRight, BarChart3 } from "lucide-react"
 import { toast } from "sonner"
 import { Link } from "react-router-dom"
 import { InboxWidget } from "@/components/dashboard/inbox-widget"
@@ -32,7 +33,6 @@ import { DeberesWidget } from "@/components/dashboard/deberes-widget"
 import { TodayBlock } from "@/components/dashboard/today-block"
 import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
-import { SkeletonCard } from "@/components/ui/skeleton"
 import { addCivilDays, formatCivilDate, parseCivilDate } from "@/lib/dates"
 import { useBusinessDate } from "@/hooks/use-business-date"
 
@@ -46,8 +46,13 @@ function profitBadge(status: string) {
   return <Badge variant={variant}>{label}</Badge>
 }
 
+function isForbidden(error: unknown) {
+  return typeof error === "object" && error !== null && "response" in error
+    && (error as { response?: { status?: number } }).response?.status === 403
+}
+
 export default function DashboardPage() {
-  const { user } = useAuth()
+  const { user, hasPermission } = useAuth()
   const todayStr = useBusinessDate()
   const businessNow = parseCivilDate(todayStr)
   const businessWeekday = businessNow.getDay()
@@ -60,6 +65,10 @@ export default function DashboardPage() {
 
   const params = { year, month }
   const isAdmin = user?.role === "admin"
+  const canWriteTasks = hasPermission("tasks", true)
+  const canWriteTime = hasPermission("timesheet", true)
+  const financeEnabled = isAdmin && isEnabled("finance")
+  const dashboardPermissionSignature = user ? `${user.role}:${[...(user.permissions ?? [])].sort((left, right) => left.module.localeCompare(right.module)).map((permission) => `${permission.module}:${Number(permission.can_read)}:${Number(permission.can_write)}`).join(",")}:${Number(isEnabled("finance"))}` : ""
   const isCurrentMonth = year === businessNow.getFullYear() && month === businessNow.getMonth() + 1
 
   const goToPrevMonth = () => {
@@ -73,65 +82,81 @@ export default function DashboardPage() {
   const goToCurrentMonth = () => { setYear(businessNow.getFullYear()); setMonth(businessNow.getMonth() + 1) }
 
   // ─── Shared queries ─────────────────────────────────────────
-  const { data: overview } = useQuery({
-    queryKey: dashboardKeys.overview(year, month),
+  const overviewQuery = useQuery({
+    queryKey: dashboardKeys.overview(year, month, user?.id, dashboardPermissionSignature),
     queryFn: () => dashboardApi.overview(params),
-  })
-  const { data: profitability } = useQuery({
-    queryKey: dashboardKeys.profitability(year, month),
-    queryFn: () => dashboardApi.profitability(params),
-    enabled: isAdmin,
-  })
-  const { data: team } = useQuery({
-    queryKey: dashboardKeys.team(year, month),
-    queryFn: () => dashboardApi.team(params),
-  })
-  const { data: monthlyClose } = useQuery({
-    queryKey: ["dashboard-monthly-close", year, month],
-    queryFn: () => dashboardApi.monthlyClose(params),
-    enabled: isAdmin && isEnabled("finance"),
-  })
-  const { data: financialSettings } = useQuery({
-    queryKey: ["dashboard-financial-settings"],
-    queryFn: () => dashboardApi.financialSettings(),
-    enabled: isAdmin && isEnabled("finance"),
-  })
-  const { data: allClients, isError: allClientsError, refetch: refetchClients } = useQuery({
-    queryKey: ["clients-all-active"],
-    queryFn: () => clientsApi.listAll("active"),
     enabled: !!user,
+    retry: false,
+  })
+  const overview = overviewQuery.data
+  const financialOverviewQuery = useQuery({
+    queryKey: dashboardKeys.financialOverview(year, month, user?.id, dashboardPermissionSignature),
+    queryFn: () => dashboardApi.financialOverview(params),
+    enabled: financeEnabled,
+    retry: false,
+  })
+  const { data: profitability, isError: profitabilityError, refetch: refetchProfitability } = useQuery({
+    queryKey: dashboardKeys.profitability(year, month, user?.id, dashboardPermissionSignature),
+    queryFn: () => dashboardApi.profitability(params),
+    enabled: financeEnabled,
+    retry: false,
+  })
+  const { data: team, isError: teamError, refetch: refetchTeam } = useQuery({
+    queryKey: dashboardKeys.team(year, month, user?.id, dashboardPermissionSignature),
+    queryFn: () => dashboardApi.team(params),
+    enabled: isAdmin,
+    retry: false,
+  })
+  const { data: monthlyClose, error: monthlyCloseFailure, isError: monthlyCloseError, refetch: refetchMonthlyClose } = useQuery({
+    queryKey: dashboardKeys.monthlyClose(year, month, user?.id, dashboardPermissionSignature),
+    queryFn: () => dashboardApi.monthlyClose(params),
+    enabled: financeEnabled,
+  })
+  const { data: financialSettings, error: financialSettingsFailure, isError: financialSettingsError, refetch: refetchFinancialSettings } = useQuery({
+    queryKey: dashboardKeys.financialSettings(user?.id, dashboardPermissionSignature),
+    queryFn: () => dashboardApi.financialSettings(),
+    enabled: financeEnabled,
+  })
+  const financialOverviewForbidden = isForbidden(financialOverviewQuery.error)
+  const monthlyCloseForbidden = isForbidden(monthlyCloseFailure)
+  const financialSettingsForbidden = isForbidden(financialSettingsFailure)
+  const { data: allClients, isError: allClientsError, refetch: refetchClients } = useQuery({
+    queryKey: ["dashboard", "clients-active", user?.id ?? "anonymous", dashboardPermissionSignature],
+    queryFn: () => clientsApi.listAll("active"),
+    enabled: !!user && hasPermission("clients") && isEnabled("clients"),
   })
   const { data: engineConfig } = useQuery({
-    queryKey: ["engine-config"],
+    queryKey: ["dashboard", "engine-config", user?.id ?? "anonymous", dashboardPermissionSignature],
     queryFn: () => engineApi.getConfig(),
     staleTime: 10 * 60_000,
+    enabled: !!user && isEnabled("engine"),
   })
   // `enabled` corta la petición de raíz cuando el módulo está oculto: su router
   // no está registrado, así que la llamada sería un 404 en cada carga del panel.
   const { data: leadReminders } = useQuery({
-    queryKey: ["lead-reminders"],
+    queryKey: ["dashboard", "lead-reminders", user?.id ?? "anonymous", dashboardPermissionSignature],
     queryFn: () => leadsApi.reminders(),
-    enabled: !!user && isEnabled("leads"),
+    enabled: !!user && hasPermission("leads") && isEnabled("leads"),
   })
   const { data: allProposals } = useQuery({
-    queryKey: ["proposals-pipeline"],
+    queryKey: ["dashboard", "proposals-pipeline", user?.id ?? "anonymous", dashboardPermissionSignature],
     queryFn: () => proposalsApi.list(),
-    enabled: !!user && isEnabled("proposals"),
+    enabled: !!user && hasPermission("proposals") && isEnabled("proposals"),
   })
 
   // ─── Holded queries (admin only) ───────────────────────────
   const { data: holdedConfig } = useQuery({
-    queryKey: holdedKeys.config(),
+    queryKey: [...holdedKeys.config(), user?.id ?? "anonymous", dashboardPermissionSignature],
     queryFn: holdedApi.config,
     staleTime: 5 * 60_000,
     retry: false,
-    enabled: isAdmin && isEnabled("holded"),
+    enabled: financeEnabled && isEnabled("holded"),
   })
-  const holdedEnabled = isAdmin && (holdedConfig?.api_key_configured ?? false)
+  const holdedEnabled = financeEnabled && isEnabled("holded") && (holdedConfig?.api_key_configured ?? false)
   const lastHoldedSync = holdedConfig?.last_sync_invoices?.completed_at ?? null
 
   const { data: holdedDashboard } = useQuery({
-    queryKey: holdedKeys.dashboard(),
+    queryKey: [...holdedKeys.dashboard(), user?.id ?? "anonymous", dashboardPermissionSignature],
     queryFn: holdedApi.dashboard,
     staleTime: 5 * 60_000,
     enabled: holdedEnabled,
@@ -140,32 +165,33 @@ export default function DashboardPage() {
   const overdueTotal = overdueInvoices.reduce((sum, i) => sum + i.total, 0)
 
   // ─── Utilization (admin) ────────────────────────────────────
-  const { data: utilization } = useQuery({
-    queryKey: ["utilization", year, month],
+  const { data: utilization, isError: utilizationError, refetch: refetchUtilization } = useQuery({
+    queryKey: dashboardKeys.utilization(year, month, user?.id, dashboardPermissionSignature),
     queryFn: () => dashboardApi.utilization({ year, month }),
     enabled: isAdmin,
+    retry: false,
   })
 
   // ─── Worker queries ─────────────────────────────────────────
-  const { data: myInProgressTasks } = useQuery({
+  const { data: myInProgressTasks, isError: myInProgressError, refetch: refetchMyInProgress } = useQuery({
     queryKey: taskKeys.assigned("dashboard", user?.id, "in_progress"),
     queryFn: () => tasksApi.listAll({ assigned_to: user!.id, status: "in_progress" }),
-    enabled: !!user && user.role === "member",
+    enabled: !!user && user.role === "member" && hasPermission("tasks") && isEnabled("tasks"),
   })
-  const { data: myPendingTasks } = useQuery({
+  const { data: myPendingTasks, isError: myPendingError, refetch: refetchMyPending } = useQuery({
     queryKey: taskKeys.assigned("dashboard", user?.id, "pending"),
     queryFn: () => tasksApi.listAll({ assigned_to: user!.id, status: "pending" }),
-    enabled: !!user && user.role === "member",
+    enabled: !!user && user.role === "member" && hasPermission("tasks") && isEnabled("tasks"),
   })
-  const { data: weeklyTimesheet } = useQuery({
-    queryKey: timeKeys.week(thisMonday),
+  const { data: weeklyTimesheet, isError: weeklyTimesheetError, refetch: refetchWeeklyTimesheet } = useQuery({
+    queryKey: timeKeys.week(`dashboard:${user?.id ?? "anonymous"}:${thisMonday}`),
     queryFn: () => timeEntriesApi.weekly(thisMonday),
-    enabled: !!user && user.role === "member",
+    enabled: !!user && user.role === "member" && hasPermission("timesheet") && isEnabled("timesheet"),
   })
   const { data: activeTimer } = useQuery({
-    queryKey: ["active-timer"],
+    queryKey: ["dashboard", "active-timer", user?.id ?? "anonymous", dashboardPermissionSignature],
     queryFn: () => timerApi.active(),
-    enabled: !!user && user.role === "member",
+    enabled: !!user && user.role === "member" && hasPermission("tasks") && isEnabled("tasks"),
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   })
@@ -173,39 +199,40 @@ export default function DashboardPage() {
   const { data: allOverdueTasks } = useQuery({
     queryKey: taskKeys.assigned("dashboard", "all", "overdue"),
     queryFn: () => tasksApi.listAll({ overdue: true }),
-    enabled: !!user && user.role === "admin",
+    enabled: !!user && user.role === "admin" && hasPermission("tasks") && isEnabled("tasks"),
   })
   const { data: allUsers } = useQuery({
-    queryKey: ["users-all"],
+    queryKey: ["dashboard", "users", user?.id ?? "anonymous", dashboardPermissionSignature],
     queryFn: () => usersApi.listAll(),
-    enabled: isAdmin,
+    enabled: isAdmin && isEnabled("users"),
   })
   const memberUsers = (allUsers || []).filter((u) => u.role === "member")
-  const { data: viewAsInProgress } = useQuery({
+  const { data: viewAsInProgress, isError: viewAsInProgressError, refetch: refetchViewAsInProgress } = useQuery({
     queryKey: taskKeys.assigned("dashboard-view-as", viewAsUserId, "in_progress"),
     queryFn: () => tasksApi.listAll({ assigned_to: viewAsUserId!, status: "in_progress" }),
-    enabled: isAdmin && !!viewAsUserId,
+    enabled: isAdmin && !!viewAsUserId && hasPermission("tasks") && isEnabled("tasks"),
   })
-  const { data: viewAsPending } = useQuery({
+  const { data: viewAsPending, isError: viewAsPendingError, refetch: refetchViewAsPending } = useQuery({
     queryKey: taskKeys.assigned("dashboard-view-as", viewAsUserId, "pending"),
     queryFn: () => tasksApi.listAll({ assigned_to: viewAsUserId!, status: "pending" }),
-    enabled: isAdmin && !!viewAsUserId,
+    enabled: isAdmin && !!viewAsUserId && hasPermission("tasks") && isEnabled("tasks"),
   })
-  const { data: viewAsOverdue } = useQuery({
+  const { data: viewAsOverdue, isError: viewAsOverdueError, refetch: refetchViewAsOverdue } = useQuery({
     queryKey: taskKeys.assigned("dashboard-view-as", viewAsUserId, "overdue"),
     queryFn: () => tasksApi.listAll({ assigned_to: viewAsUserId!, overdue: true }),
-    enabled: isAdmin && !!viewAsUserId,
+    enabled: isAdmin && !!viewAsUserId && hasPermission("tasks") && isEnabled("tasks"),
   })
-  const { data: viewAsWeekly } = useQuery({
-    queryKey: timeKeys.week(thisMonday),
+  const { data: viewAsWeekly, isError: viewAsWeeklyError, refetch: refetchViewAsWeekly } = useQuery({
+    queryKey: timeKeys.week(`dashboard-view-as:${viewAsUserId ?? "none"}:${thisMonday}`),
     queryFn: () => timeEntriesApi.weekly(thisMonday),
-    enabled: isAdmin && !!viewAsUserId,
+    enabled: isAdmin && !!viewAsUserId && hasPermission("timesheet") && isEnabled("timesheet"),
   })
   const viewAsUser = memberUsers.find((u) => u.id === viewAsUserId)
-  const { data: preview, refetch: fetchPreview } = useQuery({
-    queryKey: ["discord-preview"],
+  const { data: preview, refetch: fetchPreview, isError: previewError, isFetching: previewFetching } = useQuery({
+    queryKey: dashboardKeys.discordPreview(user?.id, dashboardPermissionSignature),
     queryFn: () => discordApi.preview(),
     enabled: false,
+    retry: false,
   })
   const { data: discordSettings } = useQuery({
     queryKey: ["discord-settings"],
@@ -217,22 +244,29 @@ export default function DashboardPage() {
 
   // ─── Mutations ──────────────────────────────────────────────
   const sendMutation = useMutation({
-    mutationFn: (date?: string) => discordApi.send(date),
+    mutationFn: (input: { date: string; expected_revision: string }) => discordApi.send(input),
     onSuccess: (receipt) => {
       deliveryToast(receipt)
       queryClient.invalidateQueries({ queryKey: ["deliveries", "manual"] })
       setPreviewOpen(false)
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al enviar a Discord")),
+    onError: (err) => {
+      if ((err as { response?: { status?: number } }).response?.status === 409) {
+        toast.error("El contenido cambió. Revisa la vista previa antes de enviar.")
+        void fetchPreview()
+        return
+      }
+      toast.error(getErrorMessage(err, "Error al enviar a Discord"))
+    },
   })
   const closeMutation = useMutation({
     mutationFn: (payload: Record<string, boolean | string>) => dashboardApi.updateMonthlyClose(payload, params),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dashboard-monthly-close", year, month] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: dashboardKeys.monthlyClose(year, month, user?.id, dashboardPermissionSignature) }),
     onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar el cierre")),
   })
   const financialMutation = useMutation({
     mutationFn: (payload: Record<string, number>) => dashboardApi.updateFinancialSettings(payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dashboard-financial-settings"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: dashboardKeys.financialSettings(user?.id, dashboardPermissionSignature) }),
     onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar los guardarraíles")),
   })
   const markDoneMutation = useMutation({
@@ -247,7 +281,7 @@ export default function DashboardPage() {
     mutationFn: (taskId: number) => timerApi.start({ task_id: taskId }),
     onSuccess: () => {
       toast.success("Timer iniciado")
-      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all() })
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al iniciar el timer")),
   })
@@ -255,7 +289,7 @@ export default function DashboardPage() {
     mutationFn: () => timerApi.stop(),
     onSuccess: () => {
       toast.success("Timer parado")
-      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all() })
       invalidateTimeChange(queryClient)
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al parar el timer")),
@@ -287,20 +321,24 @@ export default function DashboardPage() {
   const closeDoneCount = monthlyClose ? closeKeys.filter((key) => Boolean(monthlyClose[key as keyof typeof monthlyClose])).length : 0
   const closeTotalCount = closeKeys.length
   const closeDay = financialSettings?.monthly_close_day || 5
-  const nowDay = new Date().getDate()
+  const nowDay = Number(todayStr.slice(8, 10))
   const closeReminder = monthlyClose && nowDay >= closeDay && closeDoneCount < closeTotalCount
 
   const creditUtilization = financialSettings?.credit_utilization || 0
   const creditAlertPct = financialSettings?.credit_alert_pct || 70
   const taxReserve = financialSettings?.tax_reserve || 0
   const taxReserveTargetPct = financialSettings?.tax_reserve_target_pct || 20
-  const monthlyCost = overview?.total_cost || 0
+  const monthlyCost = financialOverviewQuery.isError ? null : financialOverviewQuery.data?.total_cost ?? null
   const financialAlerts = [
     creditUtilization >= creditAlertPct ? { title: "Uso alto de línea de crédito", description: `La línea está al ${creditUtilization}%, supera el umbral ${creditAlertPct}%.` } : null,
-    monthlyCost > 0 && taxReserve < monthlyCost * (taxReserveTargetPct / 100) ? { title: "Fondo de impuestos bajo", description: "El fondo reservado parece insuficiente para costes actuales." } : null,
+    monthlyCost != null && monthlyCost > 0 && taxReserve < monthlyCost * (taxReserveTargetPct / 100) ? { title: "Fondo de impuestos bajo", description: "El fondo reservado parece insuficiente para costes actuales." } : null,
   ].filter(Boolean) as { title: string; description: string }[]
 
-  const handlePreview = async () => { await fetchPreview(); setPreviewOpen(true) }
+  const handlePreview = async () => {
+    setPreviewOpen(true)
+    await fetchPreview()
+  }
+  const previewVerified = !!preview?.summary && !previewError && !previewFetching
   const handleExportClose = async () => {
     try {
       const blob = await dashboardApi.exportMonthlyClose({ year, month })
@@ -323,7 +361,7 @@ export default function DashboardPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold uppercase tracking-wide">Dashboard</h2>
-          {overview && (
+          {!overviewQuery.isError && overview && overview.pending_tasks != null && overview.in_progress_tasks != null && overview.active_clients != null && (
             <p className="text-sm text-muted-foreground mt-1">
               {MONTHS[month - 1]}: {overview.pending_tasks + overview.in_progress_tasks} tareas activas, {overview.active_clients} clientes
             </p>
@@ -381,7 +419,7 @@ export default function DashboardPage() {
       {user && !viewAsUserId && <DailyUpdateWidget userId={user.id} />}
 
       {/* Overdue Holded invoices alert */}
-      {overdueInvoices.length > 0 && (
+      {financeEnabled && overdueInvoices.length > 0 && (
         <div className="rounded-lg border border-red-300 bg-red-50/10 p-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0" />
@@ -396,11 +434,12 @@ export default function DashboardPage() {
       )}
 
       {/* Today Block */}
-      <TodayBlock />
+      {hasPermission("tasks") && isEnabled("tasks") && <TodayBlock />}
 
       {/* Worker Dashboard */}
       {!isAdmin && user && (
         <div className="space-y-4">
+          {(myInProgressError || myPendingError || weeklyTimesheetError) && <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6"><p role="alert" className="text-sm">No se pudo actualizar tu trabajo del día.</p><Button type="button" variant="outline" size="sm" onClick={() => { void refetchMyInProgress(); void refetchMyPending(); void refetchWeeklyTimesheet() }}>Reintentar</Button></CardContent></Card>}
 
           {/* Active timer */}
           {activeTimer && (
@@ -421,7 +460,7 @@ export default function DashboardPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => stopTimerMutation.mutate()}
-                    disabled={stopTimerMutation.isPending}
+                    disabled={stopTimerMutation.isPending || !canWriteTime}
                   >
                     <Square className="h-3 w-3 mr-1.5" />
                     Parar
@@ -464,7 +503,7 @@ export default function DashboardPage() {
                   >
                     <button
                       onClick={() => markDoneMutation.mutate(t.id)}
-                      disabled={markDoneMutation.isPending}
+                      disabled={markDoneMutation.isPending || !canWriteTasks}
                       className="group w-5 h-5 rounded-full border-2 border-border hover:border-green-400 hover:bg-green-400/10 flex items-center justify-center flex-shrink-0 transition-colors"
                       title="Marcar como completada"
                     >
@@ -486,7 +525,7 @@ export default function DashboardPage() {
                     ) : (
                       <button
                         onClick={() => startTimerMutation.mutate(t.id)}
-                        disabled={startTimerMutation.isPending || !!activeTimer}
+                        disabled={startTimerMutation.isPending || !!activeTimer || !canWriteTime}
                         className="p-1.5 text-muted-foreground hover:text-brand hover:bg-brand/10 rounded-lg transition-colors disabled:opacity-40 flex-shrink-0"
                         title="Iniciar timer"
                       >
@@ -526,7 +565,7 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                       <button
                         onClick={() => startTimerMutation.mutate(t.id)}
-                        disabled={startTimerMutation.isPending || !!activeTimer}
+                        disabled={startTimerMutation.isPending || !!activeTimer || !canWriteTime}
                         className="p-1 text-muted-foreground hover:text-brand rounded transition-colors disabled:opacity-40"
                         title="Iniciar timer"
                       >
@@ -534,7 +573,7 @@ export default function DashboardPage() {
                       </button>
                       <button
                         onClick={() => markDoneMutation.mutate(t.id)}
-                        disabled={markDoneMutation.isPending}
+                        disabled={markDoneMutation.isPending || !canWriteTasks}
                         className="p-1 text-muted-foreground hover:text-green-400 rounded transition-colors"
                         title="Marcar como completada"
                       >
@@ -557,6 +596,9 @@ export default function DashboardPage() {
       {/* Admin: view as member */}
       {isAdmin && viewAsUserId && viewAsUser && (
         <div className="space-y-6 border border-brand/20 rounded-xl p-5 bg-brand/5">
+          {(viewAsInProgressError || viewAsPendingError || viewAsOverdueError || viewAsWeeklyError) && (
+            <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6"><p role="alert" className="text-sm">No se pudo actualizar esta vista del equipo.</p><Button type="button" variant="outline" size="sm" onClick={() => { void refetchViewAsInProgress(); void refetchViewAsPending(); void refetchViewAsOverdue(); void refetchViewAsWeekly() }}>Reintentar</Button></CardContent></Card>
+          )}
           <div className="flex items-center gap-2">
             <UserCog className="h-4 w-4 text-brand" />
             <span className="text-sm font-semibold text-brand">Vista de {viewAsUser.full_name}</span>
@@ -618,34 +660,23 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {isEnabled("finance") && closeReminder && (
+      {financeEnabled && (monthlyCloseError || financialSettingsError) && (
+        <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6"><p role="alert" className="text-sm">No se pudo actualizar el cierre mensual.</p><Button type="button" variant="outline" size="sm" onClick={() => { void refetchMonthlyClose(); void refetchFinancialSettings() }}>Reintentar</Button></CardContent></Card>
+      )}
+
+      {financeEnabled && !monthlyCloseError && !financialSettingsError && closeReminder && (
         <Card><CardContent className="pt-6"><div className="text-sm font-medium">Recordatorio de cierre mensual</div><div className="text-xs text-muted-foreground mt-1">Estamos a partir del día {closeDay}. Completa el cierre mensual para evitar decisiones con datos incompletos.</div></CardContent></Card>
       )}
 
       {/* Metric Cards & Inbox */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 2xl:gap-6">
         <div className="xl:col-span-2 space-y-4 2xl:space-y-6">
-          {overview ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 2xl:gap-4">
-              <MetricCard icon={Users} label="Clientes activos" value={overview.active_clients} tooltip="Clientes con estado 'activo'." />
-              <MetricCard icon={CheckSquare} label="Tareas del mes" value={overview.pending_tasks + overview.in_progress_tasks} subtitle={`${overview.in_progress_tasks} en curso`} tooltip="Tareas 'pendiente' + 'en curso' planificadas o con fecha límite en el mes seleccionado. Las tareas sin fecha NO se cuentan aquí — el total real está en la página de Tareas." />
-              <MetricCard icon={Clock} label="Horas mes" value={`${overview.hours_this_month}h`} tooltip="Total horas registradas del equipo." />
-              <MetricCard icon={DollarSign} label="Presupuesto total" value={formatCurrency(overview.total_budget)} subtitle={`Coste: ${formatCurrency(overview.total_cost)}`} tooltip="Suma de presupuestos mensuales de clientes activos." />
-              {utilization && (
-                <MetricCard
-                  icon={UserCog}
-                  label="Ocupación"
-                  value={`${utilization.global_utilization_pct}%`}
-                  subtitle={`${utilization.total_logged_hours}h / ${utilization.total_available_hours}h`}
-                  tooltip="Horas registradas vs horas disponibles del equipo en el mes seleccionado."
-                />
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
-            </div>
+          <OperationalOverview overview={overview} isLoading={overviewQuery.isLoading} isError={overviewQuery.isError} onRetry={() => void overviewQuery.refetch()} />
+          {financeEnabled && !financialOverviewForbidden && (
+            financialOverviewQuery.isError ? <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6"><p role="alert" className="text-sm">No se pudo cargar el resumen financiero.</p><Button type="button" variant="outline" size="sm" onClick={() => void financialOverviewQuery.refetch()}>Reintentar</Button></CardContent></Card> : financialOverviewQuery.data ? <div className="space-y-2"><div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><MetricCard icon={DollarSign} label="Presupuesto total" value={financialOverviewQuery.data.total_budget == null ? "—" : formatCurrency(financialOverviewQuery.data.total_budget)} tooltip="Suma de presupuestos del mes seleccionado." /><MetricCard icon={DollarSign} label="Coste total" value={financialOverviewQuery.data.total_cost == null ? "—" : formatCurrency(financialOverviewQuery.data.total_cost)} subtitle={financialOverviewQuery.data.margin == null ? undefined : `Margen: ${formatCurrency(financialOverviewQuery.data.margin)}`} tooltip="Coste registrado del mes seleccionado." /></div></div> : null
           )}
+          {isAdmin && !utilizationError && utilization && <MetricCard icon={UserCog} label="Ocupación" value={utilization.global_utilization_pct == null ? "—" : `${utilization.global_utilization_pct}%`} subtitle={utilization.global_utilization_pct == null ? "Sin capacidad configurada" : `${utilization.total_logged_hours}h / ${utilization.total_available_hours}h`} tooltip="Horas registradas frente a horas disponibles del equipo." />}
+          {isAdmin && utilizationError && <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6"><p role="alert" className="text-sm">No se pudo actualizar la ocupación del equipo.</p><Button type="button" variant="outline" size="sm" onClick={() => void refetchUtilization()}>Reintentar</Button></CardContent></Card>}
         </div>
         <div className="xl:col-span-1 h-[250px]"><InboxWidget /></div>
       </div>
@@ -685,7 +716,7 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {isEnabled("finance") && financialAlerts.length > 0 && isAdmin && (
+      {financeEnabled && !financialSettingsError && financialSettings && financialAlerts.length > 0 && (
         <Card className="border-warning/50 bg-warning/5">
           <CardHeader className="pb-2"><CardTitle className="text-warning text-sm">Alertas financieras</CardTitle></CardHeader>
           <CardContent className="space-y-2">
@@ -694,7 +725,7 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {isEnabled("finance") && financialSettings && isAdmin && (
+      {financeEnabled && !financialSettingsForbidden && !financialSettingsError && financialSettings && (
         <details className="group border border-border rounded-xl bg-card">
           <summary className="flex cursor-pointer items-center justify-between p-4 font-medium marker:content-none hover:bg-muted/50 transition-colors rounded-xl">
             Configuración Financiera
@@ -715,9 +746,9 @@ export default function DashboardPage() {
         </details>
       )}
 
-      {isEnabled("finance") && monthlyClose && <MonthlyCloseChecklist monthlyClose={monthlyClose as unknown as Record<string, string | boolean | null>} onUpdate={(p) => closeMutation.mutate(p)} onExport={handleExportClose} isPending={closeMutation.isPending} lastHoldedSync={lastHoldedSync} />}
+      {financeEnabled && !monthlyCloseForbidden && !monthlyCloseError && monthlyClose && <MonthlyCloseChecklist key={`${user?.id ?? "anonymous"}:${year}:${month}:${dashboardPermissionSignature}`} monthlyClose={monthlyClose as unknown as Record<string, string | boolean | null>} onUpdate={(p) => closeMutation.mutate(p)} onExport={handleExportClose} isPending={closeMutation.isPending} lastHoldedSync={lastHoldedSync} />}
 
-      {isAdmin && profitability && profitability.clients.length > 0 && (
+      {financeEnabled && !profitabilityError && profitability && profitability.clients.length > 0 && (
         <div className="grid lg:grid-cols-2 gap-6">
           <Card className="min-w-0">
             <CardHeader>
@@ -785,15 +816,16 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {isAdmin && team && <TeamSummaryTable team={team} />}
+      {financeEnabled && profitabilityError && <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6"><p role="alert" className="text-sm">No se pudo cargar la rentabilidad del mes.</p><Button type="button" variant="outline" size="sm" onClick={() => void refetchProfitability()}>Reintentar</Button></CardContent></Card>}
+      {isAdmin && !teamError && team && <TeamSummaryTable team={team} />}
+      {isAdmin && teamError && <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6"><p role="alert" className="text-sm">No se pudo actualizar el resumen del equipo.</p><Button type="button" variant="outline" size="sm" onClick={() => void refetchTeam()}>Reintentar</Button></CardContent></Card>}
 
       {isAdmin && (
         <Card>
           <CardHeader><CardTitle>Resumen Diario</CardTitle></CardHeader>
           <CardContent className="pt-4">
             <div className="flex flex-wrap gap-2 items-center">
-              <Button variant="outline" onClick={handlePreview}><Eye className="h-4 w-4 mr-2" /> Vista previa</Button>
-              <Button onClick={() => sendMutation.mutate(undefined)} disabled={sendMutation.isPending || !discordConfigured}><Send className="h-4 w-4 mr-2" /> Enviar a Discord</Button>
+              <Button variant="outline" onClick={handlePreview}><Eye className="h-4 w-4 mr-2" /> Vista previa antes de enviar</Button>
               {!discordConfigured && <span className="text-xs text-muted-foreground">Configura el webhook en Ajustes → Discord</span>}
             </div>
           </CardContent>
@@ -802,10 +834,10 @@ export default function DashboardPage() {
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogHeader><DialogTitle>Vista previa — Discord</DialogTitle></DialogHeader>
-        <div className="bg-surface border border-brand/10 p-4 whitespace-pre-wrap text-sm font-mono text-foreground">{preview?.summary || "Cargando..."}</div>
+        {previewError ? <div role="alert" className="space-y-2 border border-destructive/30 p-4 text-sm"><p>No se pudo verificar el contenido para Discord.</p><Button type="button" size="sm" variant="outline" onClick={() => void fetchPreview()}>Reintentar</Button></div> : <div className="bg-surface border border-brand/10 p-4 whitespace-pre-wrap text-sm font-mono text-foreground">{previewFetching ? "Cargando..." : preview?.summary || "No hay contenido verificado."}</div>}
         <div className="flex justify-end gap-2 mt-4">
           <Button variant="outline" onClick={() => setPreviewOpen(false)}>Cerrar</Button>
-          <Button onClick={() => sendMutation.mutate(preview?.date)} disabled={sendMutation.isPending || !discordConfigured}><Send className="h-4 w-4 mr-2" /> {sendMutation.isPending ? "Enviando..." : "Enviar"}</Button>
+          <Button onClick={() => preview && sendMutation.mutate({ date: preview.date, expected_revision: preview.revision })} disabled={sendMutation.isPending || !discordConfigured || !previewVerified}><Send className="h-4 w-4 mr-2" /> {sendMutation.isPending ? "Enviando..." : "Enviar"}</Button>
         </div>
       </Dialog>
     </div>
