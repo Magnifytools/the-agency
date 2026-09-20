@@ -31,14 +31,15 @@ from backend.schemas.time_entry import (
 )
 from backend.api.deps import get_current_user, require_admin, require_module
 from backend.services.csv_utils import build_csv_response
+from backend.services.project_lifecycle import ensure_project_allows_timer
 from backend.services.time_budget import (
     build_budget_status,
     build_closing_status,
     effective_budgets,
     is_recurring_project,
 )
-from backend.services.temporal import as_utc_instant, business_today, business_zone
 from backend.services.task_lifecycle import stamp_task_status
+from backend.services.temporal import as_utc_instant, business_today, business_zone
 from backend.services.time_entry_dates import manual_time_entry_date, time_entry_civil_period
 from backend.services.time_writes import (
     create_manual_time_entry,
@@ -669,6 +670,7 @@ async def start_timer(
             raise HTTPException(status_code=404, detail="Task not found")
         if target.retired_at is not None:
             raise HTTPException(status_code=409, detail="Restaura la tarea antes de iniciar el timer")
+        await ensure_project_allows_timer(db, target)
     if active is not None:
         # Auto-stop the current timer before starting a new one — must mirror
         # stop_timer's logic: include accumulated_seconds from pause/resume
@@ -701,6 +703,7 @@ async def start_timer(
                 raise HTTPException(status_code=404, detail="Task not found")
             if target.retired_at is not None:
                 raise HTTPException(status_code=409, detail="Restaura la tarea antes de iniciar el timer")
+            await ensure_project_allows_timer(db, target)
         
     if body.task_id is None and not body.notes:
         raise HTTPException(status_code=400, detail="Debes enviar un task_id o una nota")

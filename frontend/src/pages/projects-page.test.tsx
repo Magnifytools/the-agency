@@ -11,6 +11,9 @@ vi.mock("@/lib/api", () => ({
   clientsApi: { listAll: api.clients },
   usersApi: { listAll: api.users },
 }))
+vi.mock("@/context/auth-context", () => ({
+  useAuth: () => ({ hasPermission: () => true }),
+}))
 function Location() { return <output data-testid="location">{useLocation().pathname + useLocation().search}</output> }
 function setup(url = "/projects") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -43,6 +46,20 @@ describe("projects filter navigation", () => {
     expect(screen.queryByText("Sin proyectos todavía")).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Reintentar" }))
     await screen.findByText("Sin proyectos todavía")
+  })
+  it("uses the server lifecycle cohort for Archivo and keeps its status filter scoped", async () => {
+    setup("/projects?view=archive")
+    await waitFor(() => expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ lifecycle: "archive", page: 1, page_size: 25 })))
+    expect(await screen.findByText("El archivo está vacío")).toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByLabelText("Estado del proyecto"), "cancelled")
+    await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ lifecycle: "archive", status: "cancelled" })))
+    await userEvent.click(screen.getByRole("button", { name: "Cartera" }))
+    await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ lifecycle: "portfolio" })))
+  })
+
+  it("treats an archived status deep link as Archivo without fetching the full list", async () => {
+    setup("/projects?status=completed")
+    await waitFor(() => expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ lifecycle: "archive", status: "completed" })))
   })
   it("creates with only name and client, preserves the draft on error and opens the created project", async () => {
     api.create.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({id: 91})

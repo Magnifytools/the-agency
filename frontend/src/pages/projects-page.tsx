@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
-import { Plus, FolderKanban, Calendar, Trash2, Repeat, FileUp, FileText, UserRound } from "lucide-react"
+import { Plus, FolderKanban, Calendar, Trash2, Repeat, FileUp, FileText, UserRound, Archive } from "lucide-react"
 import { toast } from "sonner"
 import { projectsApi, clientsApi, usersApi } from "@/lib/api"
 import type { ProjectListItem, ProjectStatus, ProjectDraft, User } from "@/lib/types"
@@ -20,6 +20,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { EmptyState } from "@/components/ui/empty-state"
 import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
+import { useAuth } from "@/context/auth-context"
 
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
@@ -40,11 +41,14 @@ const STATUS_VARIANTS: Record<ProjectStatus, "default" | "success" | "warning" |
 
 export default function ProjectsPage() {
   const queryClient = useQueryClient()
+  const { hasPermission } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const pageSize = 25
   const rawPage = Number(searchParams.get("page") || 1)
   const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1
-  const statusFilter = searchParams.get("status") || ""
+  const requestedStatus = searchParams.get("status") || ""
+  const archiveView = searchParams.get("view") === "archive" || (!searchParams.get("view") && ["completed", "cancelled"].includes(requestedStatus))
+  const statusFilter = requestedStatus
   const typeFilter = searchParams.get("type") || ""
   const periodFilter = searchParams.get("period") || ""
   const setFilter = (key: string, value: string) => setSearchParams((previous) => {
@@ -59,6 +63,14 @@ export default function ProjectsPage() {
     next.set("page", String(value))
     return next
   })
+  const setView = (view: "portfolio" | "archive") => setSearchParams((previous) => {
+    const next = new URLSearchParams(previous)
+    if (view === "archive") next.set("view", "archive")
+    else next.delete("view")
+    next.delete("status")
+    next.delete("page")
+    return next
+  })
   const periodBounds = projectPeriodBounds(periodFilter)
   const [showNewDialog, setShowNewDialog] = useState(false)
   const [showTemplateDialog, setShowTemplateDialog] = useState(false)
@@ -66,12 +78,18 @@ export default function ProjectsPage() {
   const [showImportTextDialog, setShowImportTextDialog] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
 
+  const effectiveStatusFilter = archiveView
+    ? (["completed", "cancelled"].includes(statusFilter) ? statusFilter : "")
+    : (["planning", "active", "on_hold"].includes(statusFilter) ? statusFilter : "")
   const { data: projectsData, isLoading, isError, refetch } = useQuery({
-    queryKey: ["projects", statusFilter, typeFilter, periodBounds, page, pageSize],
+    queryKey: ["projects", "lifecycle-list", archiveView ? "archive" : "portfolio", effectiveStatusFilter, typeFilter, periodBounds, page, pageSize],
     queryFn: () => projectsApi.list({
-      ...(statusFilter ? { status: statusFilter } : {}),
+      lifecycle: archiveView ? "archive" : "portfolio",
+      ...(effectiveStatusFilter ? { status: effectiveStatusFilter } : {}),
       ...(["recurring", "one_time"].includes(typeFilter) ? { is_recurring: typeFilter === "recurring" } : {}),
-      ...periodBounds, page, page_size: pageSize,
+      ...periodBounds,
+      page,
+      page_size: pageSize,
     }),
   })
   const projects = projectsData?.items ?? []
@@ -117,25 +135,33 @@ export default function ProjectsPage() {
             Gestiona proyectos con fases y tareas
           </p>
         </div>
-        <Button onClick={() => setShowNewDialog(true)}>
+        <Button disabled={!hasPermission("projects", true)} onClick={() => setShowNewDialog(true)}>
           <Plus className="h-4 w-4 mr-2" /> Nuevo proyecto
         </Button>
+      </div>
+
+      <div className="flex flex-wrap gap-2" aria-label="Vista de proyectos">
+        <Button size="sm" variant={archiveView ? "outline" : "default"} onClick={() => setView("portfolio")}>Cartera</Button>
+        <Button size="sm" variant={archiveView ? "default" : "outline"} onClick={() => setView("archive")}><Archive className="mr-2 h-4 w-4" />Archivo</Button>
       </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <Select
-          value={statusFilter}
+          value={effectiveStatusFilter}
           aria-label="Estado del proyecto"
           onChange={(e) => setFilter("status", e.target.value)}
           className="w-full sm:w-48"
         >
-          <option value="">Todos los estados</option>
-          <option value="planning">Planificación</option>
-          <option value="active">Activo</option>
-          <option value="on_hold">Pausado</option>
-          <option value="completed">Completado</option>
-          <option value="cancelled">Cancelado</option>
+          <option value="">{archiveView ? "Todo el archivo" : "Toda la cartera"}</option>
+          {archiveView ? <>
+            <option value="completed">Terminados</option>
+            <option value="cancelled">Cancelados</option>
+          </> : <>
+            <option value="planning">Planificación</option>
+            <option value="active">Activos</option>
+            <option value="on_hold">Pausados</option>
+          </>}
         </Select>
         <Select
           value={typeFilter}
@@ -179,10 +205,10 @@ export default function ProjectsPage() {
       ) : projects.length === 0 ? (
         <EmptyState
           icon={FolderKanban}
-          title={statusFilter || typeFilter || periodFilter ? "Sin proyectos con estos filtros" : "Sin proyectos todavía"}
-          description={statusFilter ? "No hay proyectos con este estado. Prueba a cambiar el filtro o crea uno nuevo." : "Organiza el trabajo en proyectos con fases y tareas. Puedes empezar desde una plantilla o importar una propuesta."}
-          actionLabel="Crear un proyecto"
-          onAction={() => setShowNewDialog(true)}
+          title={statusFilter || typeFilter || periodFilter ? "Sin proyectos con estos filtros" : archiveView ? "El archivo está vacío" : "Sin proyectos todavía"}
+          description={archiveView ? "Los proyectos terminados o cancelados aparecerán aquí y conservarán su historial." : statusFilter ? "No hay proyectos con este estado. Prueba a cambiar el filtro o crea uno nuevo." : "Organiza el trabajo en proyectos con fases y tareas. Puedes empezar desde una plantilla o importar una propuesta."}
+          actionLabel={archiveView ? undefined : "Crear un proyecto"}
+          onAction={archiveView ? undefined : () => setShowNewDialog(true)}
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

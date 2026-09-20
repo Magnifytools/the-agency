@@ -561,11 +561,19 @@ export const categoriesApi = {
 
 // Projects
 export const projectsApi = {
-  list: (params?: { client_id?: number; status?: string; project_type?: string; is_recurring?: boolean; period_from?: string; period_to?: string; page?: number; page_size?: number }) =>
+  list: (params?: { client_id?: number; status?: string; lifecycle?: "portfolio" | "archive"; project_type?: string; is_recurring?: boolean; period_from?: string; period_to?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<ProjectListItem>>("/projects", { params }).then((r) => r.data),
   listAll: (params?: { client_id?: number; status?: string; project_type?: string }) =>
     api.get<PaginatedResponse<ProjectListItem>>("/projects", { params: { ...params, page_size: 1000 } }).then((r) => r.data.items),
   get: (id: number) => api.get<Project>(`/projects/${id}`).then((r) => r.data),
+  closePreview: (id: number, target: "completed" | "cancelled") =>
+    api.get<import("./types").ProjectClosePreview>(`/projects/${id}/close-preview`, { params: { target } }).then((r) => r.data),
+  close: (id: number, data: { target: "completed" | "cancelled"; expected_updated_at: string; preview_revision: string }) =>
+    api.post<Project>(`/projects/${id}/close`, data).then((r) => r.data),
+  reopenPreview: (id: number) =>
+    api.get<import("./types").ProjectReopenPreview>(`/projects/${id}/reopen-preview`).then((r) => r.data),
+  reopen: (id: number, data: { expected_updated_at: string; preview_revision: string }) =>
+    api.post<Project>(`/projects/${id}/reopen`, data).then((r) => r.data),
   create: (data: ProjectCreate) => api.post<Project>("/projects", data).then((r) => r.data),
   update: (id: number, data: Partial<ProjectCreate> & { status?: string; progress_percent?: number }) =>
     api.put<Project>(`/projects/${id}`, data).then((r) => r.data),

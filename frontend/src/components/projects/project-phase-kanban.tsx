@@ -27,6 +27,7 @@ interface PhaseData {
 interface ProjectPhaseKanbanProps {
   phases: PhaseData[]
   onPhaseStatusChange: (phaseId: number, newStatus: string) => void
+  canWrite?: boolean
 }
 
 const COLUMNS: { status: string; label: string; color: string }[] = [
@@ -34,12 +35,12 @@ const COLUMNS: { status: string; label: string; color: string }[] = [
   { status: "in_progress", label: "En curso", color: "text-brand" },
 ]
 
-function PhaseCard({ phase, taskCount }: { phase: PhaseData["phase"]; taskCount: number }) {
+function PhaseCard({ phase, taskCount, canWrite = true }: { phase: PhaseData["phase"]; taskCount: number; canWrite?: boolean }) {
   const formatDate = (d: string | null | undefined) =>
     d ? new Date(d).toLocaleDateString("es-ES", { day: "numeric", month: "short" }) : ""
 
   return (
-    <Card className="cursor-grab active:cursor-grabbing hover:ring-1 hover:ring-brand/20 transition-all">
+    <Card className={canWrite ? "cursor-grab active:cursor-grabbing hover:ring-1 hover:ring-brand/20 transition-all" : "transition-all"}>
       <CardContent className="p-3">
         <div className="flex items-start gap-2">
           <GripVertical className="h-4 w-4 text-muted-foreground/40 mt-0.5 flex-shrink-0" />
@@ -60,9 +61,10 @@ function PhaseCard({ phase, taskCount }: { phase: PhaseData["phase"]; taskCount:
   )
 }
 
-function SortablePhaseCard({ phase, taskCount }: { phase: PhaseData["phase"]; taskCount: number }) {
+function SortablePhaseCard({ phase, taskCount, canWrite }: { phase: PhaseData["phase"]; taskCount: number; canWrite: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `phase-${phase.id}`,
+    disabled: !canWrite,
   })
 
   const style = {
@@ -73,12 +75,12 @@ function SortablePhaseCard({ phase, taskCount }: { phase: PhaseData["phase"]; ta
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <PhaseCard phase={phase} taskCount={taskCount} />
+      <PhaseCard phase={phase} taskCount={taskCount} canWrite={canWrite} />
     </div>
   )
 }
 
-export function ProjectPhaseKanban({ phases, onPhaseStatusChange }: ProjectPhaseKanbanProps) {
+export function ProjectPhaseKanban({ phases, onPhaseStatusChange, canWrite = true }: ProjectPhaseKanbanProps) {
   const [activePhase, setActivePhase] = useState<PhaseData | null>(null)
 
   const phasesByStatus = COLUMNS.reduce(
@@ -90,12 +92,14 @@ export function ProjectPhaseKanban({ phases, onPhaseStatusChange }: ProjectPhase
   )
 
   const handleDragStart = (event: DragStartEvent) => {
+    if (!canWrite) return
     const phaseId = Number(String(event.active.id).replace("phase-", ""))
     const found = phases.find((p) => p.phase.id === phaseId)
     setActivePhase(found || null)
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
+    if (!canWrite) return
     setActivePhase(null)
     const { active, over } = event
     if (!over) return
@@ -152,6 +156,7 @@ export function ProjectPhaseKanban({ phases, onPhaseStatusChange }: ProjectPhase
                       key={phaseData.phase.id}
                       phase={phaseData.phase}
                       taskCount={phaseData.tasks.length}
+                      canWrite={canWrite}
                     />
                   ))}
                 </SortableContext>
@@ -169,7 +174,7 @@ export function ProjectPhaseKanban({ phases, onPhaseStatusChange }: ProjectPhase
       <DragOverlay>
         {activePhase && (
           <div className="w-[280px]">
-            <PhaseCard phase={activePhase.phase} taskCount={activePhase.tasks.length} />
+            <PhaseCard phase={activePhase.phase} taskCount={activePhase.tasks.length} canWrite={canWrite} />
           </div>
         )}
       </DragOverlay>

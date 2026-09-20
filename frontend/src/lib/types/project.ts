@@ -71,6 +71,56 @@ export interface ProjectClosingStatus {
   status: "ok" | "warning" | "over"
 }
 
+export interface ProjectLifecycleTaskSample {
+  id: number
+  title: string
+  status: string
+  href: string | null
+}
+
+export interface ProjectLifecycleTimerSample {
+  id: number
+  task_id: number
+  href: string | null
+}
+
+export interface ProjectLifecycleCount<T> {
+  total: number
+  sample: T[]
+}
+
+export interface ProjectLifecycleRecurrence {
+  templates: number
+  paused: number
+  suppressed_after_close: number
+}
+
+export interface ProjectClosePreview {
+  project_id: number
+  target: "completed" | "cancelled"
+  current_status: ProjectStatus
+  expected_updated_at: string
+  preview_revision: string
+  can_close: boolean
+  blockers: {
+    active_tasks: ProjectLifecycleCount<ProjectLifecycleTaskSample>
+    waiting_count: number
+    in_review_count: number
+    active_timers: ProjectLifecycleCount<ProjectLifecycleTimerSample>
+  }
+  recurrence: ProjectLifecycleRecurrence
+}
+
+export interface ProjectReopenPreview {
+  project_id: number
+  current_status: ProjectStatus
+  expected_updated_at: string
+  preview_revision: string
+  can_reopen: boolean
+  recurrence: ProjectLifecycleRecurrence
+  message: string
+}
+
 export interface ProjectCycleTask {
   id: number
   title: string

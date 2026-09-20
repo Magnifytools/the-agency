@@ -16,6 +16,10 @@ from backend.db.models import (
     User,
 )
 from backend.services.change_journal import capture_manual_time
+from backend.services.project_lifecycle import (
+    ensure_project_allows_task_state,
+    task_project_state,
+)
 from backend.services.project_owner import validate_project_owner
 from backend.services.recurrence import validate_recurrence_rule
 from backend.services.task_lifecycle import stamp_task_status, validate_task_waiting
@@ -127,6 +131,9 @@ async def create_task(
     await require_current_write(db, actor, {"tasks", "timesheet"} if actual else {"tasks"})
     await validate_task_waiting(db, data)
     await validate_task_review(db, data, actor)
+    await ensure_project_allows_task_state(
+        db, state=task_project_state(overrides=data), creating=True,
+    )
     if actual and not _can_write_time(actor):
         raise HTTPException(403, "Crear horas reales requiere permiso de escritura en timesheet")
     if actual:
@@ -193,6 +200,7 @@ async def update_task(
     # refresh here so no stale ORM instance can bypass retirement invariants.
     data = dict(data)
     task = await lock_task_patch(db, task.id, data)
+    previous_project_state = task_project_state(task)
     manual_changed = "actual_minutes" in data and data["actual_minutes"] != task.actual_minutes
     # My Week deliberately lets an assignee schedule their own work without
     # granting general task editing. This exception is scalar and exact, after
@@ -229,6 +237,11 @@ async def update_task(
         capture_manual_time(db.sync_session)
     new_actual = data.get("actual_minutes")
     await validate_task_scope(db, data, existing=task)
+    await ensure_project_allows_task_state(
+        db,
+        state=task_project_state(task, data),
+        previous_state=previous_project_state,
+    )
     await validate_task_review(db, data, actor, existing=task)
     for field, value in data.items():
         setattr(task, field, value)

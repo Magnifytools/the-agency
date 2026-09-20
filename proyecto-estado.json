@@ -276,6 +276,13 @@
       "estado": "completado",
       "prioridad": "alta",
       "notas": "PR34/b9ae185 publicada y verificada.1285 backend (2 omitidas),402 frontend, TypeScript/Vite y seis gates CI PR/main. E2E aislado espera/avance/revisión/ACL y producción390/1440 correctos. Datos y ledger previo conservados; revisión por proyecto desactivada por defecto."
+    },
+    {
+      "id": "AUDIT-20260921-P23",
+      "descripcion": "Cierre y reapertura revisados de proyectos con Archivo y preservación de recurrencias",
+      "estado": "en_validacion",
+      "prioridad": "alta",
+      "notas": "Backend full1323/2skip, posterior Undo15dirigidas/semana1; frontend409/65files,build correctos. Interfaz y servidor congelados; E2Eaislado/CI pendientes. Sin migración; producciónP22."
     }
   ],
   "bugs": [
