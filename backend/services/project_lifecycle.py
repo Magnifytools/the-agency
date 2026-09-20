@@ -80,11 +80,11 @@ def task_project_state(task: Task | None = None, overrides: Mapping[str, Any] | 
 
 def _task_state_is_operational(state: Mapping[str, Any]) -> bool:
     status = getattr(state.get("status"), "value", state.get("status"))
-    if state.get("retired_at") is not None or status == TaskStatus.completed.value:
+    if state.get("retired_at") is not None:
         return False
     if bool(state.get("is_recurring")):
         return state.get("recurrence_paused_at") is None
-    return True
+    return status != TaskStatus.completed.value
 
 
 def _same_task_lifecycle(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
