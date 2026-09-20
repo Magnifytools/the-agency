@@ -244,6 +244,12 @@ export default function SettingsPage() {
   })
   const categories = categoriesQuery.isError ? [] : (categoriesQuery.data ?? [])
 
+  useEffect(() => {
+    if (!confirmDelete) return
+    const sourceReady = confirmDelete.kind === "category" ? categoriesQuery.isSuccess : holidaysQuery.isSuccess
+    if (!sourceReady) setConfirmDelete(null)
+  }, [confirmDelete, categoriesQuery.isSuccess, holidaysQuery.isSuccess])
+
   const createCatMut = useMutation({
     mutationFn: (data: { name: string; default_minutes: number }) => categoriesApi.create(data),
     onSuccess: () => {
@@ -725,8 +731,8 @@ export default function SettingsPage() {
       confirmLabel="Eliminar"
       onConfirm={() => {
         if (!confirmDelete) return
-        if (confirmDelete.kind === "category") deleteCatMut.mutate(confirmDelete.id)
-        else deleteHolidayMut.mutate(confirmDelete.id)
+        if (confirmDelete.kind === "category" && categoriesQuery.isSuccess) deleteCatMut.mutate(confirmDelete.id)
+        else if (confirmDelete.kind === "holiday" && holidaysQuery.isSuccess) deleteHolidayMut.mutate(confirmDelete.id)
       }}
     />
     </div>

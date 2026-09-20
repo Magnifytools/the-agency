@@ -31,6 +31,7 @@ describe("DigestFacts", () => {
     expect(screen.getByText("Tarea del cliente")).toBeInTheDocument()
     expect(screen.getByText("Confirmar acceso")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Hecho 1" })).toHaveAttribute("href", "/tasks?task=1")
+    expect(screen.getAllByText(/fecha registrada dentro del período/).length).toBeGreaterThan(0)
   })
   it("does not expose task links without tasks read permission", async () => {
     auth.canReadTasks = false; renderFacts(v2); await userEvent.click(screen.getByText("Hechos fuente del resumen"))

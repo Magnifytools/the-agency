@@ -21,7 +21,8 @@ describe("tasks URL navigation", () => {
   beforeEach(() => { vi.clearAllMocks(); api.user.role = "admin"; api.canWrite = true; api.agenda.mockResolvedValue({items:[], total:0, page:1, page_size:25}); api.list.mockResolvedValue({items:[],total:0,page:1,page_size:25}); api.listAll.mockResolvedValue([]); api.empty.mockResolvedValue([]) })
   function showAgenda(url: string) {
     const client = new QueryClient({defaultOptions:{queries:{retry:false}}})
-    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[url]}><TasksPage /><Back /></MemoryRouter></QueryClientProvider>)
+    const tree = <QueryClientProvider client={client}><MemoryRouter initialEntries={[url]}><TasksPage /><Back /></MemoryRouter></QueryClientProvider>
+    return { ...render(tree), tree }
   }
   it("defaults an administrator to personal work and explicitly switches all cohorts to team", async () => {
     showAgenda("/tasks?view=my_day")
@@ -88,12 +89,13 @@ describe("tasks URL navigation", () => {
   })
   it("opens the business month and keeps manual month navigation", async () => {
     clock.today = "2026-12-01"
-    showAgenda("/tasks?view=calendar")
+    const view = showAgenda("/tasks?view=calendar")
     await waitFor(() => expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ due_date_from: "2026-12-01", due_date_to: "2026-12-31" })))
     await screen.findByText(/diciembre 2026/i)
     await userEvent.click(screen.getByRole("button", { name: "Mes siguiente" }))
     await waitFor(() => expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ due_date_from: "2027-01-01", due_date_to: "2027-01-31" })))
     clock.today = "2027-02-01"
+    view.rerender(view.tree)
     expect(screen.getByText(/enero 2027/i)).toBeInTheDocument()
   })
 })
