@@ -188,13 +188,15 @@ export default function DashboardPage() {
     queryFn: () => timeEntriesApi.weekly(thisMonday),
     enabled: !!user && user.role === "member" && hasPermission("timesheet") && isEnabled("timesheet"),
   })
-  const { data: activeTimer } = useQuery({
-    queryKey: ["dashboard", "active-timer", user?.id ?? "anonymous", dashboardPermissionSignature],
+  const activeTimerQuery = useQuery({
+    queryKey: ["active-timer"],
     queryFn: () => timerApi.active(),
-    enabled: !!user && user.role === "member" && hasPermission("tasks") && isEnabled("tasks"),
+    enabled: !!user && user.role === "member" && hasPermission("tasks") && canWriteTime && isEnabled("tasks"),
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   })
+  const activeTimer = activeTimerQuery.isError ? undefined : activeTimerQuery.data
+  const timerUnknown = activeTimerQuery.isLoading || activeTimerQuery.isError
   // ─── Admin queries ──────────────────────────────────────────
   const { data: allOverdueTasks } = useQuery({
     queryKey: taskKeys.assigned("dashboard", "all", "overdue"),
@@ -281,6 +283,7 @@ export default function DashboardPage() {
     mutationFn: (taskId: number) => timerApi.start({ task_id: taskId }),
     onSuccess: () => {
       toast.success("Timer iniciado")
+      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       queryClient.invalidateQueries({ queryKey: dashboardKeys.all() })
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al iniciar el timer")),
@@ -441,6 +444,12 @@ export default function DashboardPage() {
         <div className="space-y-4">
           {(myInProgressError || myPendingError || weeklyTimesheetError) && <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6"><p role="alert" className="text-sm">No se pudo actualizar tu trabajo del día.</p><Button type="button" variant="outline" size="sm" onClick={() => { void refetchMyInProgress(); void refetchMyPending(); void refetchWeeklyTimesheet() }}>Reintentar</Button></CardContent></Card>}
 
+          {canWriteTime && activeTimerQuery.isError && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3">
+              <p role="alert" className="text-sm">No se pudo comprobar el cronómetro. Reintenta antes de iniciar otro.</p>
+              <Button variant="outline" size="sm" disabled={activeTimerQuery.isFetching} onClick={() => void activeTimerQuery.refetch()}>Reintentar cronómetro</Button>
+            </div>
+          )}
           {/* Active timer */}
           {activeTimer && (
             <Card className="border-brand/30 bg-brand/5">
@@ -525,7 +534,7 @@ export default function DashboardPage() {
                     ) : (
                       <button
                         onClick={() => startTimerMutation.mutate(t.id)}
-                        disabled={startTimerMutation.isPending || !!activeTimer || !canWriteTime}
+                        disabled={startTimerMutation.isPending || timerUnknown || !!activeTimer || !canWriteTime}
                         className="p-1.5 text-muted-foreground hover:text-brand hover:bg-brand/10 rounded-lg transition-colors disabled:opacity-40 flex-shrink-0"
                         title="Iniciar timer"
                       >
@@ -565,7 +574,7 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                       <button
                         onClick={() => startTimerMutation.mutate(t.id)}
-                        disabled={startTimerMutation.isPending || !!activeTimer || !canWriteTime}
+                        disabled={startTimerMutation.isPending || timerUnknown || !!activeTimer || !canWriteTime}
                         className="p-1 text-muted-foreground hover:text-brand rounded transition-colors disabled:opacity-40"
                         title="Iniciar timer"
                       >

@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { BarChart3, Search, Save, Globe } from "lucide-react"
 import { getErrorMessage } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
+import { invalidateClientChange } from "@/lib/query-keys"
 
 interface Props {
   client: Client
@@ -45,7 +46,7 @@ export function ClientSettingsTab({ client }: Props) {
         ...(isAdmin ? { engine_project_id: engineProjectId.trim() ? parseInt(engineProjectId) : null } : {}),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["client-summary", client.id] })
+      void invalidateClientChange(qc, [client.id])
       toast.success("Ajustes guardados")
     },
     onError: (e) => toast.error(getErrorMessage(e)),

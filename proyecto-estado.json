@@ -1,6 +1,6 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-20T19:30:18.347600+00:00",
+  "ultima_actualizacion": "2026-09-20T19:57:54.325422+00:00",
   "estado_general": "produccion_decimonovena_mejora_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
@@ -255,6 +255,13 @@
       "estado": "completado",
       "prioridad": "alta",
       "notas": "PR31/ea44b53 publicada y verificada.1204backend(2omitidas),346frontend, seis gates CI, snapshot real coherente y job recuperado, UI390/1440. Engine PR7 publicado; seguimiento CIfrontend independiente. report-data sin consumidor activo confirmado. Objetivo global activo."
+    },
+    {
+      "id": "AUDIT-20260920-P20",
+      "descripcion": "Recuperación visible y caché coherente en superficies operativas",
+      "estado": "en_progreso",
+      "prioridad": "alta",
+      "notas": "Implementación y revisión local final:372 frontend/62archivos, build, navegador390/1440 y read-only. Sin migración/backend. Pendiente CI/publicación. Alta compuesta atómica preparada para P21."
     }
   ],
   "bugs": [
@@ -325,7 +332,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "P20: coherencia de caché entre superficies y estados de error/recuperación en Clientes, Horas, cronómetro y progreso. Seguir matriz completa, decisiones de estados/canal y revisión histórica; objetivo activo.",
+  "proximos_pasos": "Publicar/verificar P20; después alta compuesta atómica e idempotente P21. Mantener matriz completa y decisiones de estados/canales/histórico pendientes.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,

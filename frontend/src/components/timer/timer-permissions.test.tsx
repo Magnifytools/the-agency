@@ -1,20 +1,22 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { beforeEach, expect, it, vi } from "vitest"
 import { ActiveTimerBar } from "./active-timer-bar"
 import { TimerButton } from "./timer-button"
+import { taskKeys } from "@/lib/query-keys"
 
 const mocks = vi.hoisted(() => ({
-  active: vi.fn(), tasks: vi.fn(), clients: vi.fn(), permission: vi.fn(),
+  active: vi.fn(), start: vi.fn(), tasks: vi.fn(), clients: vi.fn(), permission: vi.fn(),
 }))
 vi.mock("@/context/auth-context", () => ({useAuth: () => ({user: {id: 2}, hasPermission: mocks.permission})}))
 vi.mock("@/lib/api", () => ({
-  timerApi: {active: mocks.active}, tasksApi: {listAll: mocks.tasks}, clientsApi: {listAll: mocks.clients}, projectsApi: {}, timeEntriesApi: {},
+  timerApi: {active: mocks.active, start: mocks.start}, tasksApi: {listAll: mocks.tasks}, clientsApi: {listAll: mocks.clients}, projectsApi: {}, timeEntriesApi: {},
 }))
 vi.mock("@/hooks/use-business-date", () => ({useBusinessDate: () => "2026-09-19"}))
 function setup() {
   const client = new QueryClient({defaultOptions: {queries: {retry: false}}})
-  return render(<QueryClientProvider client={client}><ActiveTimerBar /><TimerButton taskId={1} /></QueryClientProvider>)
+  const view = render(<QueryClientProvider client={client}><ActiveTimerBar /><TimerButton taskId={1} /></QueryClientProvider>)
+  return { ...view, client }
 }
 beforeEach(() => {vi.resetAllMocks(); mocks.active.mockResolvedValue(null); mocks.tasks.mockResolvedValue([]); mocks.clients.mockResolvedValue([])})
 it.each([false, true])("does not poll or offer timer writes without timesheet write permission (read=%s)", async read => {
@@ -26,11 +28,86 @@ it.each([false, true])("does not poll or offer timer writes without timesheet wr
   expect(mocks.tasks).not.toHaveBeenCalled()
   expect(mocks.clients).not.toHaveBeenCalled()
 })
+
+it("drops cached task choices immediately when task read access is revoked", async () => {
+  let canReadTasks = true
+  mocks.permission.mockImplementation((module, write) => module === "timesheet" || (module === "tasks" && canReadTasks && !write))
+  mocks.tasks.mockResolvedValue([{ id: 4, title: "Tarea privada" }])
+  const view = setup()
+  await screen.findByRole("option", { name: "Tarea privada" })
+
+  mocks.tasks.mockRejectedValueOnce({ response: { status: 403 } })
+  await view.client.invalidateQueries({ queryKey: taskKeys.assigned("timer", "me", "2026-09-19") })
+  await waitFor(() => expect(screen.queryByRole("option", { name: "Tarea privada" })).not.toBeInTheDocument())
+
+  canReadTasks = false
+  view.rerender(<QueryClientProvider client={view.client}><ActiveTimerBar /><TimerButton taskId={1} /></QueryClientProvider>)
+  expect(screen.queryByRole("option", { name: "Tarea privada" })).not.toBeInTheDocument()
+})
+
+it("does not submit a previously selected task after task read is revoked", async () => {
+  let canReadTasks = true
+  mocks.permission.mockImplementation((module, write) => module === "timesheet" || (module === "tasks" && canReadTasks && !write))
+  mocks.tasks.mockResolvedValue([{ id: 4, title: "Tarea privada" }])
+  const view = setup()
+  await screen.findByRole("option", { name: "Tarea privada" })
+  fireEvent.change(screen.getByLabelText("Tarea del cronómetro"), { target: { value: "4" } })
+  const input = screen.getByPlaceholderText("¿En qué estás trabajando?")
+  fireEvent.change(input, { target: { value: "Nota sin tarea" } })
+
+  canReadTasks = false
+  view.rerender(<QueryClientProvider client={view.client}><ActiveTimerBar /><TimerButton taskId={1} /></QueryClientProvider>)
+  fireEvent.submit(input.closest("form")!)
+  await waitFor(() => expect(mocks.start).toHaveBeenCalledWith({ notes: "Nota sin tarea" }))
+})
 it("a timer writer without task/client access can use the timer without fetching forbidden modules", async () => {
   mocks.permission.mockImplementation(module => module === "timesheet")
   setup()
   await waitFor(() => expect(mocks.active).toHaveBeenCalled())
-  expect(screen.getByRole("button", {name:"Crear tarea rápida"})).toBeDisabled()
+  expect(await screen.findByRole("button", {name:"Crear tarea rápida"})).toBeDisabled()
   expect(mocks.tasks).not.toHaveBeenCalled()
   expect(mocks.clients).not.toHaveBeenCalled()
+})
+
+it("blocks a new timer while the initial timer state is unavailable and retries it", async () => {
+  mocks.permission.mockReturnValue(true)
+  mocks.active.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(null)
+  setup()
+  await screen.findByText("No se pudo comprobar el cronómetro. Espera a actualizarlo antes de iniciar otro.")
+  expect(screen.queryByTitle("Iniciar timer")).not.toBeInTheDocument()
+  within(screen.getByRole("alert")).getByRole("button", { name: "Reintentar" }).click()
+  await waitFor(() => expect(mocks.active).toHaveBeenCalledTimes(2))
+  await waitFor(() => expect(screen.queryByText(/No se pudo comprobar el cronómetro/)).not.toBeInTheDocument())
+})
+
+it("does not offer a start while the initial timer request is pending", async () => {
+  mocks.permission.mockReturnValue(true)
+  mocks.active.mockImplementationOnce(() => new Promise(() => undefined))
+  setup()
+  expect(await screen.findByRole("status")).toHaveTextContent("Comprobando el cronómetro")
+  expect(screen.getByRole("button", { name: "Comprobando el cronómetro" })).toBeDisabled()
+  expect(screen.queryByTitle("Iniciar timer")).not.toBeInTheDocument()
+})
+
+it("keeps a rejected timer cache hidden after 403, 503 and remount until success", async () => {
+  mocks.permission.mockReturnValue(true)
+  mocks.active.mockResolvedValueOnce({ id: 9, task_id: 1, task_title: "Privada", started_at: new Date().toISOString() })
+  const view = setup()
+  await screen.findByText("Privada")
+
+  mocks.active.mockRejectedValueOnce({ response: { status: 403 } })
+  await view.client.invalidateQueries({ queryKey: ["active-timer"] })
+  await screen.findByText("No se pudo comprobar el cronómetro. Espera a actualizarlo antes de iniciar otro.")
+  expect(screen.queryByText("Privada")).not.toBeInTheDocument()
+
+  view.unmount()
+  mocks.active.mockRejectedValueOnce({ response: { status: 503 } })
+  render(<QueryClientProvider client={view.client}><ActiveTimerBar /><TimerButton taskId={1} /></QueryClientProvider>)
+  await screen.findByText("No se pudo comprobar el cronómetro. Espera a actualizarlo antes de iniciar otro.")
+  expect(screen.queryByText("Privada")).not.toBeInTheDocument()
+
+  mocks.active.mockResolvedValueOnce(null)
+  await view.client.invalidateQueries({ queryKey: ["active-timer"] })
+  await waitFor(() => expect(screen.queryByText(/No se pudo comprobar el cronómetro/)).not.toBeInTheDocument())
+  expect(await screen.findByTitle("Iniciar timer")).toBeEnabled()
 })

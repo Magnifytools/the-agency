@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -184,5 +184,40 @@ describe("DashboardPage", () => {
     await waitFor(() => expect(mocks.send).toHaveBeenCalledWith({ date: "2026-09-20", expected_revision: "sha-1" }))
     expect(mocks.send).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(mocks.preview).toHaveBeenCalledTimes(2))
+  })
+})
+
+
+describe("Dashboard timer shared state", () => {
+  it("updates a mounted timer consumer immediately after starting from Dashboard", async () => {
+    mocks.user = { id: 4, role: "member", permissions: [{ module: "tasks", can_read: true, can_write: true }, { module: "timesheet", can_read: true, can_write: true }] }
+    mocks.tasks.mockImplementation((params) => Promise.resolve(params.status === "in_progress" ? [{ id: 12, title: "Revisar propuesta", status: "in_progress", client_name: null, due_date: null }] : []))
+    let running = false
+    mocks.active.mockImplementation(() => Promise.resolve(running ? { id: 7, task_id: 12, task_title: "Revisar propuesta" } : null))
+    mocks.start.mockImplementation(async () => { running = true; return { id: 7, task_id: 12 } })
+    function OtherTimerConsumer() {
+      const { data } = useQuery({ queryKey: ["active-timer"], queryFn: mocks.active, staleTime: Infinity })
+      return <output data-testid="other-timer">{data?.task_id ?? "Sin cronómetro"}</output>
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
+    render(<MemoryRouter><QueryClientProvider client={client}><DashboardPage /><OtherTimerConsumer /></QueryClientProvider></MemoryRouter>)
+    await screen.findByText("Revisar propuesta")
+    expect(screen.getByTestId("other-timer")).toHaveTextContent("Sin cronómetro")
+    await userEvent.click(screen.getByTitle("Iniciar timer"))
+    await waitFor(() => expect(screen.getByTestId("other-timer")).toHaveTextContent("12"))
+    expect(mocks.start).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not offer start as if no timer existed when its state is unknown", async () => {
+    mocks.user = { id: 4, role: "member", permissions: [{ module: "tasks", can_read: true, can_write: true }, { module: "timesheet", can_read: true, can_write: true }] }
+    mocks.tasks.mockImplementation((params) => Promise.resolve(params.status === "in_progress" ? [{ id: 12, title: "Revisar propuesta", status: "in_progress", client_name: null, due_date: null }] : []))
+    mocks.active.mockRejectedValueOnce(new Error("503"))
+    show()
+    await screen.findByText("No se pudo comprobar el cronómetro. Reintenta antes de iniciar otro.")
+    expect(screen.getByTitle("Iniciar timer")).toBeDisabled()
+    mocks.active.mockResolvedValue(null)
+    await userEvent.click(screen.getByRole("button", { name: "Reintentar cronómetro" }))
+    await waitFor(() => expect(screen.getByTitle("Iniciar timer")).toBeEnabled())
+    expect(mocks.start).not.toHaveBeenCalled()
   })
 })

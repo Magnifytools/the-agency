@@ -24,6 +24,7 @@ function TimerBar() {
   const { hasPermission } = useAuth()
   const canReadTasks = hasPermission("tasks")
   const canReadClients = hasPermission("clients")
+  const canReadProjects = hasPermission("projects")
   const canCreateTask = canReadClients && hasPermission("tasks", true)
   const queryClient = useQueryClient()
   const [elapsed, setElapsed] = useState("")
@@ -43,7 +44,7 @@ function TimerBar() {
   const [qcClientId, setQcClientId] = useState<string>("")
   const [qcProjectId, setQcProjectId] = useState<string>("")
 
-  const { data: timer } = useQuery({
+  const timerQuery = useQuery({
     queryKey: ["active-timer"],
     queryFn: () => timerApi.active(),
     refetchInterval: 10_000,
@@ -55,34 +56,39 @@ function TimerBar() {
     // concreto la frescura al recuperar el foco no es opcional.
     refetchOnWindowFocus: true,
   })
+  const timer = timerQuery.isError ? undefined : timerQuery.data
+  const timerUnknown = (timerQuery.isPending || timerQuery.isError) && !timer
 
   // Cualquier fallo de una acción de timer significa que la barra ya no
   // refleja el estado real del servidor: refrescarla antes de avisar.
   const resyncTimer = () => queryClient.invalidateQueries({ queryKey: ["active-timer"] })
 
   // Fetch user's tasks for selector
-  const { data: tasks = [] } = useQuery({
+  const tasksQuery = useQuery({
     queryKey: taskKeys.assigned("timer", "me", businessToday),
     enabled: canReadTasks,
     queryFn: () => tasksApi.listAll({ assigned_to: "me", status: "pending,in_progress,advanced,waiting,in_review", scheduled_date: businessToday }),
   })
+  const tasks = !canReadTasks || tasksQuery.isError ? [] : (tasksQuery.data ?? [])
 
   // Fetch clients for quick create
-  const { data: clients = [] } = useQuery<Client[]>({
+  const clientsQuery = useQuery<Client[]>({
     queryKey: ["clients-active"],
     enabled: showQuickCreate && canCreateTask,
     queryFn: () => clientsApi.listAll("active"),
     staleTime: 60_000,
   })
+  const clients = !canCreateTask || clientsQuery.isError ? [] : (clientsQuery.data ?? [])
 
   // Fetch active projects for the selected client (drives the Proyecto select)
   const qcClientIdNum = qcClientId ? parseInt(qcClientId, 10) : undefined
-  const { data: qcProjects = [] } = useQuery({
+  const qcProjectsQuery = useQuery({
     queryKey: projectKeys.list(["active", "client", qcClientIdNum]),
     queryFn: () => projectsApi.listAll({ client_id: qcClientIdNum, status: "active" }),
-    enabled: !!qcClientIdNum && showQuickCreate && hasPermission("projects"),
+    enabled: !!qcClientIdNum && showQuickCreate && canReadProjects,
     staleTime: 30_000,
   })
+  const qcProjects = !canReadProjects || qcProjectsQuery.isError ? [] : (qcProjectsQuery.data ?? [])
 
   // Auto-preselect when client has exactly one active project; clear when it has none/multiple
   const singleProjectId = useMemo(
@@ -234,22 +240,36 @@ function TimerBar() {
   const handleOmniSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const notes = omniInput.trim() || undefined
-    const task_id = selectedTaskId ? parseInt(selectedTaskId, 10) : undefined
+    const task_id = canReadTasks && !tasksQuery.isError && selectedTaskId ? parseInt(selectedTaskId, 10) : undefined
     if (!notes && !task_id) return
     startMutation.mutate({ task_id, notes })
   }
 
   // Si no hay timer activo, mostramos el Omni-Input de captura rápida
+  if (timerUnknown) {
+    if (timerQuery.isPending) {
+      return <div role="status" className="border-b bg-card px-4 py-2 text-center text-sm">Comprobando el cronómetro…</div>
+    }
+    return (
+      <div role="alert" className="flex flex-wrap items-center justify-center gap-2 border-b bg-card px-4 py-2 text-sm">
+        <span>No se pudo comprobar el cronómetro. Espera a actualizarlo antes de iniciar otro.</span>
+        <Button variant="outline" size="sm" onClick={() => void timerQuery.refetch()} disabled={timerQuery.isFetching}>Reintentar</Button>
+      </div>
+    )
+  }
+
   if (!timer) {
     return (
       <>
         <div className="bg-card border-b px-4 py-2 flex justify-center items-center">
           <form onSubmit={handleOmniSubmit} className="flex items-center gap-2 w-full max-w-2xl">
+            {canReadTasks && tasksQuery.isError && <span role="alert" className="sr-only">No se pudieron cargar las tareas del cronómetro.</span>}
             <Select
               value={selectedTaskId}
               onChange={(e) => setSelectedTaskId(e.target.value)}
               aria-label="Tarea del cronómetro"
               className="w-36 sm:w-48 shrink-0 h-9 text-xs"
+              disabled={!canReadTasks || tasksQuery.isError}
             >
               <option value="">Sin tarea</option>
               {tasks.map((t) => (
@@ -355,6 +375,7 @@ function TimerBar() {
             </Button>
             <Button
               onClick={() => {
+                if (!canCreateTask) return
                 if (!qcTitle.trim() || !qcClientId) {
                   toast.error("Título y cliente son obligatorios")
                   return
@@ -366,10 +387,10 @@ function TimerBar() {
                 createTaskMutation.mutate({
                   title: qcTitle.trim(),
                   client_id: parseInt(qcClientId, 10),
-                  project_id: qcProjectId ? parseInt(qcProjectId, 10) : undefined,
+                  project_id: canReadProjects && qcProjectId ? parseInt(qcProjectId, 10) : undefined,
                 })
               }}
-              disabled={createTaskMutation.isPending}
+              disabled={!canCreateTask || createTaskMutation.isPending}
             >
               {createTaskMutation.isPending ? "Creando..." : "Crear"}
             </Button>
@@ -442,20 +463,20 @@ function TimerBar() {
           <p className="text-sm text-muted-foreground">
             El tiempo registrado no tiene tarea asignada. Selecciona una tarea para asociarlo:
           </p>
-          <Select value={assignTaskId} onChange={(e) => setAssignTaskId(e.target.value)}>
+          {canReadTasks && !tasksQuery.isError ? <Select value={assignTaskId} onChange={(e) => setAssignTaskId(e.target.value)}>
             <option value="">Selecciona tarea</option>
             {tasks.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.title.length > 50 ? t.title.slice(0, 50) + "..." : t.title}
               </option>
             ))}
-          </Select>
+          </Select> : <p role="alert" className="text-sm text-muted-foreground">No se pudieron cargar las tareas disponibles para asignar este registro.</p>}
         </DialogContent>
         <DialogFooter>
           <Button variant="ghost" onClick={() => { setShowAssignDialog(false); setStoppedEntryId(null) }}>
             Omitir
           </Button>
-          <Button
+          {canReadTasks && !tasksQuery.isError && <Button
             onClick={() => {
               if (assignTaskId && stoppedEntryId) {
                 assignMutation.mutate({ entryId: stoppedEntryId, taskId: parseInt(assignTaskId, 10) })
@@ -464,7 +485,7 @@ function TimerBar() {
             disabled={!assignTaskId || assignMutation.isPending}
           >
             {assignMutation.isPending ? "Asignando..." : "Asignar"}
-          </Button>
+          </Button>}
         </DialogFooter>
       </Dialog>
     </>

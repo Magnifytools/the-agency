@@ -110,11 +110,13 @@ export default function ProjectDetailPage() {
     enabled: validId,
   })
 
-  const { data: burndown } = useQuery({
+  const burndownQuery = useQuery({
     queryKey: projectKeys.burndown(projectId),
     queryFn: () => projectsApi.burndown(projectId),
     enabled: validId && showMetrics && project?.is_recurring === false,
   })
+
+  const burndown = burndownQuery.isError ? undefined : burndownQuery.data
 
   const cycleQuery = useQuery({
     queryKey: ["projects", projectId, "monthly-cycle", cycleMonth],
@@ -432,6 +434,16 @@ export default function ProjectDetailPage() {
 
       {/* Burndown Chart — solo en proyectos no-recurrentes. En recurrentes el
           concepto no aplica porque las tareas se reinician cada ciclo. */}
+      {!project.is_recurring && burndownQuery.isLoading && <p role="status" className="text-sm text-muted-foreground">Cargando progreso de tareas…</p>}
+      {!project.is_recurring && burndownQuery.isError && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3">
+          <p role="alert" className="text-sm">No se pudo actualizar el progreso de tareas.</p>
+          <Button variant="outline" size="sm" disabled={burndownQuery.isFetching} onClick={() => void burndownQuery.refetch()}>Reintentar progreso</Button>
+        </div>
+      )}
+      {!project.is_recurring && burndown && burndown.total_tasks > 0 && burndown.points.length <= 1 && (
+        <p className="text-sm text-muted-foreground">Aún no hay suficientes días para mostrar la evolución de tareas.</p>
+      )}
       {!project.is_recurring && burndown && burndown.total_tasks === 0 && (
         <Card>
           <CardContent className="p-4 text-center text-sm text-muted-foreground">

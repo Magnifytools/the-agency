@@ -26,6 +26,7 @@ import { SkeletonTableRow } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
+import { clientKeys, invalidateClientChange } from "@/lib/query-keys"
 
 const STATUS_TABS: { label: string; value: ClientStatus | "all" }[] = [
   { label: "Todos", value: "all" },
@@ -64,17 +65,22 @@ export default function ClientsPage() {
     staleTime: 10 * 60_000,
   })
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["clients", tab, page, pageSize],
+  const clientsQuery = useQuery({
+    queryKey: [...clientKeys.all(), tab, page, pageSize],
     queryFn: () => clientsApi.list({ status: tab === "all" ? undefined : tab, page, page_size: pageSize }),
   })
+  const clientsDenied = [401, 403].includes((clientsQuery.error as { response?: { status?: number } } | null)?.response?.status ?? 0)
+  const data = clientsQuery.isError ? undefined : clientsQuery.data
+  const isLoading = clientsQuery.isLoading
   const clients = data?.items ?? []
 
-  const { data: healthScores = [] } = useQuery({
+  const healthQuery = useQuery({
     queryKey: ["client-health-scores"],
     queryFn: () => clientHealthApi.list(),
     staleTime: 60_000,
   })
+  const healthDenied = [401, 403].includes((healthQuery.error as { response?: { status?: number } } | null)?.response?.status ?? 0)
+  const healthScores = healthQuery.isError ? [] : (healthQuery.data ?? [])
   const healthMap = new Map(healthScores.map((h: ClientHealthScore) => [h.client_id, h]))
 
   const { sortedItems: sortedClients, sortConfig: clientSortConfig, requestSort: requestClientSort } = useTableSort(clients)
@@ -83,12 +89,13 @@ export default function ClientsPage() {
   const bulkClientStatusMutation = useMutation({
     mutationFn: async ({ ids, status }: { ids: number[]; status: string }) => {
       const results = await Promise.allSettled(ids.map((id) => clientsApi.update(id, { status: status as ClientCreate["status"] })))
-      const fulfilled = results.filter((r) => r.status === "fulfilled").length
+      const successfulIds = ids.filter((_, index) => results[index].status === "fulfilled")
+      const fulfilled = successfulIds.length
       const rejected = results.length - fulfilled
-      return { fulfilled, rejected }
+      return { fulfilled, rejected, successfulIds }
     },
-    onSuccess: ({ fulfilled, rejected }) => {
-      queryClient.invalidateQueries({ queryKey: ["clients"] })
+    onSuccess: ({ fulfilled, rejected, successfulIds }) => {
+      void invalidateClientChange(queryClient, successfulIds)
       clearClientSelection()
       setBulkStatus("")
       if (rejected === 0) {
@@ -107,59 +114,61 @@ export default function ClientsPage() {
       extraContacts?: Array<{ name: string; email?: string | null; phone?: string | null; position?: string | null; is_primary?: boolean; notes?: string | null; language?: string | null; company?: string | null }>;
     }) => {
       const client = await clientsApi.create(clientData)
-      // Create primary contact if provided manually
-      if (contact?.name) {
-        await contactsApi.create(client.id, {
-          name: contact.name,
-          email: contact.email || null,
-          phone: contact.phone || null,
-          position: contact.position || null,
-          is_primary: true,
-        })
-      }
-      // Create additional AI-extracted contacts
-      let contactsCreated = contact?.name ? 1 : 0
-      if (extraContacts?.length) {
-        for (const c of extraContacts) {
-          try {
-            await contactsApi.create(client.id, {
-              name: c.name,
-              email: c.email || null,
-              phone: c.phone || null,
-              position: [c.position, c.company].filter(Boolean).join(" - ") || null,
-              is_primary: !contact?.name && c.is_primary === true,
-              notes: c.notes || null,
-              language: c.language || null,
-            })
-            contactsCreated++
-          } catch {
-            // Skip if contact creation fails (e.g. duplicate)
+      try {
+        // Create primary contact if provided manually
+        if (contact?.name) {
+          await contactsApi.create(client.id, {
+            name: contact.name,
+            email: contact.email || null,
+            phone: contact.phone || null,
+            position: contact.position || null,
+            is_primary: true,
+          })
+        }
+        // Create additional AI-extracted contacts
+        let contactsCreated = contact?.name ? 1 : 0
+        if (extraContacts?.length) {
+          for (const c of extraContacts) {
+            try {
+              await contactsApi.create(client.id, {
+                name: c.name,
+                email: c.email || null,
+                phone: c.phone || null,
+                position: [c.position, c.company].filter(Boolean).join(" - ") || null,
+                is_primary: !contact?.name && c.is_primary === true,
+                notes: c.notes || null,
+                language: c.language || null,
+              })
+              contactsCreated++
+            } catch {
+              // Skip if contact creation fails (e.g. duplicate)
+            }
           }
         }
+        if (prefill?.project?.name) {
+          await projectsApi.create({
+            name: prefill.project.name,
+            description: prefill.project.description ?? null,
+            project_type: prefill.project.project_type ?? null,
+            is_recurring: prefill.project.is_recurring ?? false,
+            pricing_model: prefill.project.pricing_model ?? null,
+            unit_price: prefill.project.unit_price ?? null,
+            unit_label: prefill.project.unit_label ?? null,
+            scope: prefill.project.scope ?? null,
+            monthly_fee: prefill.project.monthly_fee ?? null,
+            budget_amount: prefill.project.budget_amount ?? null,
+            start_date: prefill.project.start_date ?? null,
+            target_end_date: prefill.project.target_end_date ?? null,
+            client_id: client.id,
+          })
+        }
+        return { client, hadProject: !!prefill?.project?.name, contactsCreated }
+      } finally {
+        // The client already exists even if a later contact/project request fails.
+        void invalidateClientChange(queryClient, [client.id])
       }
-      if (prefill?.project?.name) {
-        await projectsApi.create({
-          name: prefill.project.name,
-          description: prefill.project.description ?? null,
-          project_type: prefill.project.project_type ?? null,
-          is_recurring: prefill.project.is_recurring ?? false,
-          pricing_model: prefill.project.pricing_model ?? null,
-          unit_price: prefill.project.unit_price ?? null,
-          unit_label: prefill.project.unit_label ?? null,
-          scope: prefill.project.scope ?? null,
-          monthly_fee: prefill.project.monthly_fee ?? null,
-          budget_amount: prefill.project.budget_amount ?? null,
-          // Si la IA no extrae fecha de inicio, usamos hoy para alimentar el aviso de cierre / pace risk
-          start_date: prefill.project.start_date ?? new Date().toISOString().slice(0, 10),
-          target_end_date: prefill.project.target_end_date ?? null,
-          client_id: client.id,
-        })
-      }
-      return { client, hadProject: !!prefill?.project?.name, contactsCreated }
     },
     onSuccess: ({ hadProject, contactsCreated }) => {
-      queryClient.invalidateQueries({ queryKey: ["clients"] })
-      queryClient.invalidateQueries({ queryKey: ["projects"] })
       closeDialog()
       const parts = ["Cliente creado"]
       if (contactsCreated > 0) parts.push(`${contactsCreated} contacto${contactsCreated > 1 ? "s" : ""}`)
@@ -171,8 +180,8 @@ export default function ClientsPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<ClientCreate> }) => clientsApi.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["clients"] })
+    onSuccess: (_client, { id }) => {
+      void invalidateClientChange(queryClient, [id])
       closeDialog()
       toast.success("Cliente actualizado")
     },
@@ -181,8 +190,8 @@ export default function ClientsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => clientsApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["clients"] })
+    onSuccess: (_result, id) => {
+      void invalidateClientChange(queryClient, [id])
       toast.success("Cliente finalizado")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al finalizar cliente")),
@@ -190,8 +199,8 @@ export default function ClientsPage() {
 
   const hardDeleteMutation = useMutation({
     mutationFn: (id: number) => clientsApi.hardDelete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["clients"] })
+    onSuccess: (_result, id) => {
+      void invalidateClientChange(queryClient, [id])
       toast.success("Cliente eliminado permanentemente")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar cliente")),
@@ -280,6 +289,14 @@ export default function ClientsPage() {
         ))}
       </div>
 
+      {healthQuery.isError && !healthDenied && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm text-muted-foreground">
+          <span>No se pudo actualizar la salud de clientes.</span>
+          <Button variant="outline" size="sm" onClick={() => void healthQuery.refetch()}>Reintentar salud</Button>
+        </div>
+      )}
+      {healthDenied && !clientsDenied && <p role="alert" className="text-sm text-muted-foreground">No tienes acceso a la salud de clientes.</p>}
+
       {/* Table */}
       {isLoading ? (
         <Table>
@@ -318,6 +335,16 @@ export default function ClientsPage() {
             {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={isAdmin ? 9 : 8} />)}
           </TableBody>
         </Table>
+      ) : clientsDenied ? (
+        <div role="alert" className="py-12 text-center">
+          <p className="font-medium">No tienes acceso a la lista de clientes.</p>
+          <Button variant="outline" className="mt-3" onClick={() => void clientsQuery.refetch()}>Reintentar</Button>
+        </div>
+      ) : clientsQuery.isError && !data ? (
+        <div role="alert" className="py-12 text-center">
+          <p className="font-medium">No se pudieron cargar los clientes. Reintenta en unos momentos.</p>
+          <Button variant="outline" className="mt-3" onClick={() => void clientsQuery.refetch()}>Reintentar</Button>
+        </div>
       ) : (
         <>
         {/* Mobile card list */}

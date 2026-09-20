@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   summary: vi.fn(),
   projects: vi.fn(),
   time: vi.fn(),
+  health: vi.fn(),
 }))
 
 vi.mock("@/lib/hidden-modules", () => ({ isEnabled: (module: string) => mocks.enabled.has(module) }))
@@ -22,7 +23,7 @@ vi.mock("@/lib/api", () => ({
   clientsApi: { summary: mocks.summary, recentTimeEntries: mocks.time, whatIf: vi.fn() },
   projectsApi: { listAll: mocks.projects },
   holdedApi: { config: vi.fn(), clientInvoices: vi.fn() },
-  clientHealthApi: { get: vi.fn().mockResolvedValue(null) },
+  clientHealthApi: { get: mocks.health },
   engineApi: { getConfig: vi.fn().mockResolvedValue({}) },
 }))
 
@@ -52,23 +53,25 @@ const summary = {
 
 function show(tab: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  const view = render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[`/clients/5?tab=${tab}`]}>
         <Routes><Route path="/clients/:id" element={<ClientDetailPage />} /></Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   )
+  return { ...view, client }
 }
 
 describe("client detail areas", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.enabled = new Set(["digests", "communications", "reports", "resources", "billing"])
-    mocks.permissions = new Set(["tasks", "projects", "digests", "communications", "reports", "billing"])
+    mocks.permissions = new Set(["clients", "tasks", "projects", "digests", "communications", "reports", "billing"])
     mocks.summary.mockResolvedValue(summary)
     mocks.projects.mockResolvedValue([])
     mocks.time.mockResolvedValue([])
+    mocks.health.mockResolvedValue(null)
   })
 
   it("keeps a legacy activity URL inside the four-area navigation", async () => {
@@ -106,6 +109,38 @@ describe("client detail areas", () => {
     await userEvent.click(screen.getByRole("button", { name: "Reintentar" }))
     expect(await screen.findByText("FichaTab")).toBeInTheDocument()
     expect(mocks.summary).toHaveBeenCalledTimes(2)
+  })
+
+  it("hides cached health after an error until a fresh response succeeds", async () => {
+    const health = {
+      score: 81, risk_level: "healthy", enough_information: true,
+      available_source_count: 3, available_weight: 65,
+      factors: { communication: 20, tasks: 20, digests: 12, profitability: 16, followups: 13 },
+      observations: { communication: "Comunicación", tasks: "Tareas", digests: "Resúmenes", profitability: "Rentabilidad", followups: "Seguimiento" },
+      risk_signals: [],
+    }
+    mocks.health.mockResolvedValueOnce(health)
+    const { client } = show("ficha")
+    expect(await screen.findByText("81/100")).toBeInTheDocument()
+
+    mocks.health.mockRejectedValueOnce({ response: { status: 403 } })
+    await act(async () => { await client.invalidateQueries({ queryKey: ["client-health", 5] }) })
+    expect(await screen.findByText("No se pudo cargar la salud del cliente.")).toBeInTheDocument()
+    expect(screen.queryByText("81/100")).not.toBeInTheDocument()
+
+    mocks.health.mockResolvedValueOnce(health)
+    await userEvent.click(screen.getByRole("button", { name: "Reintentar salud" }))
+    expect(await screen.findByText("81/100")).toBeInTheDocument()
+  })
+
+  it("does not request or render health without current client permission", async () => {
+    mocks.permissions.delete("clients")
+    mocks.health.mockResolvedValue({ score: 99 })
+    show("ficha")
+
+    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(mocks.health).not.toHaveBeenCalled()
+    expect(screen.queryByText("99/100")).not.toBeInTheDocument()
   })
 
   it("keeps summaries useful when optional output modules are hidden", async () => {

@@ -57,6 +57,15 @@ function fmtMin(m: number) {
   return h > 0 ? (min > 0 ? `${h}h ${min}m` : `${h}h`) : `${min}m`
 }
 
+function RecoveryNotice({ onRetry, label }: { onRetry: () => void; label: string }) {
+  return (
+    <div role="alert" className="flex flex-wrap items-center justify-between gap-2 text-sm text-destructive">
+      <span>No se pudo cargar {label}.</span>
+      <Button type="button" variant="outline" size="sm" onClick={onRetry}>Reintentar</Button>
+    </div>
+  )
+}
+
 const TABS = [
   { key: "resumen", label: "Resumen", icon: Clock },
   { key: "trabajador", label: "Por Trabajador", icon: UserIcon },
@@ -173,36 +182,41 @@ function ClientReportRow({ client }: { client: ClientTimeReport }) {
   )
 }
 
-function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: string; status?: string; client_id?: number | null; client_name?: string | null; project_id?: number | null; project_name?: string | null; scheduled_date?: string | null; due_date?: string | null }[]; onTimerChange: () => void }) {
+function TimerWidget({ tasks, tasksError, canReadTasks, canReadClients, canReadProjects, onRetryTasks, onTimerChange }: { tasks: { id: number; title: string; status?: string; client_id?: number | null; client_name?: string | null; project_id?: number | null; project_name?: string | null; scheduled_date?: string | null; due_date?: string | null }[]; tasksError: boolean; canReadTasks: boolean; canReadClients: boolean; canReadProjects: boolean; onRetryTasks: () => void; onTimerChange: () => void }) {
   const queryClient = useQueryClient()
   const [filterClient, setFilterClient] = useState("")
   const [filterProject, setFilterProject] = useState("")
   const [selectedTask, setSelectedTask] = useState("")
   const [elapsed, setElapsed] = useState("")
 
-  const { data: activeTimer } = useQuery({
+  const activeTimerQuery = useQuery({
     queryKey: ["active-timer"],
     queryFn: () => timerApi.active(),
     refetchInterval: 10_000,
   })
+  const activeTimer = activeTimerQuery.isError ? undefined : activeTimerQuery.data
+  const timerUnknown = (activeTimerQuery.isPending || activeTimerQuery.isError) && !activeTimer
 
   // Source of truth for the Cliente dropdown: ALL active clients (not just those
   // with tasks assigned to the current user). Fixes the bug where only Taxfix +
   // Kinetic Digital appeared.
-  const { data: allActiveClients = [] } = useQuery({
+  const clientsQuery = useQuery({
     queryKey: ["clients-active"],
     queryFn: () => clientsApi.listAll("active"),
     staleTime: 60_000,
+    enabled: canReadClients,
   })
+  const allActiveClients = !canReadClients || clientsQuery.isError ? [] : (clientsQuery.data ?? [])
 
   // Active projects for the selected client (or all if none selected)
   const filterClientNum = filterClient ? parseInt(filterClient, 10) : undefined
-  const { data: allActiveProjects = [] } = useQuery({
+  const projectsQuery = useQuery({
     queryKey: projectKeys.list(["active", "client", filterClientNum]),
     queryFn: () => projectsApi.listAll({ client_id: filterClientNum, status: "active" }),
-    enabled: !!filterClientNum,
+    enabled: !!filterClientNum && canReadProjects,
     staleTime: 30_000,
   })
+  const allActiveProjects = !canReadProjects || projectsQuery.isError ? [] : (projectsQuery.data ?? [])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- Timer tick requires setInterval in effect
   useEffect(() => {
@@ -263,7 +277,11 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
   return (
     <Card className={activeTimer ? "border-green-500/30 bg-green-500/5" : ""}>
       <CardContent className="py-3">
-        {activeTimer ? (
+        {timerUnknown && activeTimerQuery.isPending ? (
+          <p role="status" className="text-sm text-muted-foreground">Comprobando el cronómetro…</p>
+        ) : timerUnknown ? (
+          <RecoveryNotice label="el estado del cronómetro" onRetry={() => void activeTimerQuery.refetch()} />
+        ) : activeTimer ? (
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 flex-1">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -279,17 +297,28 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
             </Button>
           </div>
         ) : (
+          <div className="space-y-2">
+            {(tasksError || (canReadClients && clientsQuery.isError) || (canReadProjects && projectsQuery.isError)) && (
+              <RecoveryNotice
+                label="los selectores del cronómetro"
+                onRetry={() => {
+                  if (canReadTasks) void onRetryTasks()
+                  if (canReadClients) void clientsQuery.refetch()
+                  if (canReadProjects && filterClientNum) void projectsQuery.refetch()
+                }}
+              />
+            )}
           <div className="flex items-center gap-2 flex-wrap">
             <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
-            <Select value={filterClient} onChange={(e) => { setFilterClient(e.target.value); setFilterProject(""); setSelectedTask("") }} className="h-8 text-xs w-36">
+            <Select value={filterClient} onChange={(e) => { setFilterClient(e.target.value); setFilterProject(""); setSelectedTask("") }} className="h-8 text-xs w-36" disabled={!canReadClients || (clientsQuery.isError && allActiveClients.length === 0)}>
               <option value="">Cliente...</option>
               {clients.map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
             </Select>
-            <Select value={filterProject} onChange={(e) => { setFilterProject(e.target.value); setSelectedTask("") }} className="h-8 text-xs w-36">
+            <Select value={filterProject} onChange={(e) => { setFilterProject(e.target.value); setSelectedTask("") }} className="h-8 text-xs w-36" disabled={!!filterClient && (!canReadProjects || (projectsQuery.isError && allActiveProjects.length === 0))}>
               <option value="">Proyecto...</option>
               {projects.map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
             </Select>
-            <Select value={selectedTask} onChange={(e) => setSelectedTask(e.target.value)} className="h-8 text-xs flex-1 min-w-[180px]">
+            <Select value={selectedTask} onChange={(e) => setSelectedTask(e.target.value)} className="h-8 text-xs flex-1 min-w-[180px]" disabled={!canReadTasks || (tasksError && tasks.length === 0)}>
               <option value="">Selecciona una tarea...</option>
               {filteredTasks.slice(0, 50).map((t) => (
                 <option key={t.id} value={String(t.id)}>
@@ -297,10 +326,11 @@ function TimerWidget({ tasks, onTimerChange }: { tasks: { id: number; title: str
                 </option>
               ))}
             </Select>
-            <Button size="sm" onClick={handleStart} disabled={!selectedTask} className="gap-1.5 shrink-0">
+            <Button size="sm" onClick={handleStart} disabled={!canReadTasks || !selectedTask || (tasksError && tasks.length === 0)} className="gap-1.5 shrink-0">
               <Play className="h-3.5 w-3.5" />
               Iniciar
             </Button>
+          </div>
           </div>
         )}
       </CardContent>
@@ -595,7 +625,11 @@ function WorkerTab({ weeklyData, weekLoading, assignedTasks }: WorkerTabProps) {
 // ─── Main Page ───────────────────────────────────────────────
 
 export default function TimesheetPage() {
-  const { user, isAdmin } = useAuth()
+  const { user, isAdmin, hasPermission } = useAuth()
+  const canWriteTime = hasPermission("timesheet") && hasPermission("timesheet", true)
+  const canReadTasks = hasPermission("tasks")
+  const canReadClients = hasPermission("clients")
+  const canReadProjects = hasPermission("projects")
   const queryClient = useQueryClient()
   const businessToday = useBusinessDate()
   const [weekStart, setWeekStart] = useState(() => toInputDate(getMonday(parseCivilDate(businessToday))))
@@ -644,7 +678,7 @@ export default function TimesheetPage() {
     queryFn: () => timeEntriesApi.weekly(weekStart),
   })
 
-  const { data: todaysEntries = [] } = useQuery({
+  const todaysEntriesQuery = useQuery({
     queryKey: timeKeys.today(user?.id, todayDate),
     queryFn: () => {
       const range = civilDateRangeUtc(todayDate, todayDate)
@@ -652,22 +686,25 @@ export default function TimesheetPage() {
     },
     enabled: !!user?.id,
   })
+  const todaysEntries = todaysEntriesQuery.isError ? [] : (todaysEntriesQuery.data ?? [])
 
-  const { data: myTasks = [] } = useQuery({
+  const myTasksQuery = useQuery({
     queryKey: taskKeys.assigned("timesheet", user?.id),
     queryFn: () => tasksApi.listAll({ assigned_to: user!.id }),
-    enabled: !!user?.id,
+    enabled: !!user?.id && canWriteTime && canReadTasks,
   })
+  const myTasks = !canReadTasks || !canWriteTime || myTasksQuery.isError ? [] : (myTasksQuery.data ?? [])
 
-  const { data: activeTimers = [] } = useQuery({
+  const activeTimersQuery = useQuery({
     queryKey: ["admin-active-timers"],
     queryFn: () => timeEntriesApi.adminTimers(),
     enabled: isAdmin,
     refetchInterval: 10_000,
     refetchIntervalInBackground: false,
   })
+  const activeTimers = activeTimersQuery.isError ? [] : (activeTimersQuery.data ?? [])
 
-  const { data: projectReport = [], isLoading: projectLoading } = useQuery({
+  const projectReportQuery = useQuery({
     queryKey: [...timeKeys.reports(), "project", dateFrom, dateTo],
     queryFn: () => {
       const range = civilDateRangeUtc(dateFrom, dateTo)
@@ -675,8 +712,9 @@ export default function TimesheetPage() {
     },
     enabled: activeTab === "proyecto",
   })
+  const projectReport = projectReportQuery.isError ? [] : (projectReportQuery.data ?? [])
 
-  const { data: clientReport = [], isLoading: clientLoading } = useQuery({
+  const clientReportQuery = useQuery({
     queryKey: [...timeKeys.reports(), "client", dateFrom, dateTo],
     queryFn: () => {
       const range = civilDateRangeUtc(dateFrom, dateTo)
@@ -684,6 +722,7 @@ export default function TimesheetPage() {
     },
     enabled: activeTab === "cliente",
   })
+  const clientReport = clientReportQuery.isError ? [] : (clientReportQuery.data ?? [])
 
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editHours, setEditHours] = useState(0)
@@ -758,7 +797,7 @@ export default function TimesheetPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold uppercase tracking-wide">Timesheet</h2>
-          <p className="text-sm text-muted-foreground mt-1">{PERIOD_OPTIONS.find(o => o.value === period)?.label} · {todaysEntries.length} registros hoy · {agencyTimezoneLabel()}</p>
+          <p className="text-sm text-muted-foreground mt-1">{PERIOD_OPTIONS.find(o => o.value === period)?.label} · {todaysEntriesQuery.isPending ? "cargando registros…" : todaysEntriesQuery.isError ? "registros de hoy no disponibles" : `${todaysEntries.length} registros hoy`} · {agencyTimezoneLabel()}</p>
         </div>
         <Button variant="outline" size="sm" onClick={handleExportCsv}>
           <Download className="h-4 w-4 mr-2" />
@@ -767,15 +806,23 @@ export default function TimesheetPage() {
       </div>
 
       {/* Quick Timer */}
-      <TimerWidget
+      {canWriteTime && <TimerWidget
         tasks={myTasks}
+        tasksError={myTasksQuery.isError}
+        canReadTasks={canReadTasks}
+        canReadClients={canReadClients}
+        canReadProjects={canReadProjects}
+        onRetryTasks={() => void myTasksQuery.refetch()}
         onTimerChange={() => {
           invalidateTimeEntries()
           queryClient.invalidateQueries({ queryKey: ["admin-active-timers"] })
         }}
-      />
+      />}
 
       {/* Admin: Active Timers */}
+      {isAdmin && activeTimersQuery.isError && (
+        <Card><CardContent className="pt-6"><RecoveryNotice label="los timers activos del equipo" onRetry={() => void activeTimersQuery.refetch()} /></CardContent></Card>
+      )}
       {isAdmin && activeTimers.length > 0 && (
         <Card>
           <CardHeader>
@@ -826,7 +873,13 @@ export default function TimesheetPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {todaysEntries.length === 0 && (
+              {todaysEntriesQuery.isPending && (
+                <TableRow><TableCell colSpan={4}><p role="status" className="py-4 text-center text-sm text-muted-foreground">Cargando registros…</p></TableCell></TableRow>
+              )}
+              {todaysEntriesQuery.isError && (
+                <TableRow><TableCell colSpan={4}><RecoveryNotice label="los registros de hoy" onRetry={() => void todaysEntriesQuery.refetch()} /></TableCell></TableRow>
+              )}
+              {!todaysEntriesQuery.isPending && !todaysEntriesQuery.isError && todaysEntries.length === 0 && (
                 <EmptyTableState colSpan={4} icon={Clock} title="Sin registros hoy" description="Usa el timer desde cualquier tarea para registrar tiempo." />
               )}
               {todaysEntries.map((e) => (
@@ -859,6 +912,7 @@ export default function TimesheetPage() {
                               if (ev.target.value) updateMutation.mutate({ id: e.id, data: { task_id: Number(ev.target.value) } })
                             }}
                             className="w-full max-w-xs h-8 text-xs"
+                            disabled={!canWriteTime || !canReadTasks || myTasksQuery.isError}
                           >
                             <option value="">+ Seleccionar Tarea...</option>
                             {myTasks.map(t => (
@@ -895,6 +949,7 @@ export default function TimesheetPage() {
                               if (ev.target.value) updateMutation.mutate({ id: e.id, data: { task_id: Number(ev.target.value) } })
                             }}
                             className="w-full max-w-xs h-8 text-xs"
+                            disabled={!canWriteTime || !canReadTasks || myTasksQuery.isError}
                           >
                             <option value="">+ Seleccionar Tarea...</option>
                             {myTasks.map(t => (
@@ -904,9 +959,9 @@ export default function TimesheetPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEditEntry(e)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
+                          {canWriteTime && <Button variant="ghost" size="icon" aria-label="Editar registro" className="h-7 w-7" onClick={() => startEditEntry(e)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>}
                       </TableCell>
                     </>
                   )}
@@ -1106,9 +1161,13 @@ export default function TimesheetPage() {
             <p className="text-sm text-muted-foreground">Horas y coste agrupados por cliente para el periodo seleccionado.</p>
           </CardHeader>
           <CardContent>
-            {clientLoading ? (
+            {clientReportQuery.isLoading ? (
               <div className="text-sm text-muted-foreground">Cargando...</div>
-            ) : clientReport.length === 0 ? (
+            ) : clientReportQuery.isError && clientReport.length === 0 ? (
+              <RecoveryNotice label="el informe por cliente" onRetry={() => void clientReportQuery.refetch()} />
+            ) : <>
+              {clientReportQuery.isError && <div className="mb-3"><RecoveryNotice label="el informe por cliente" onRetry={() => void clientReportQuery.refetch()} /></div>}
+              {clientReport.length === 0 ? (
               <EmptyTableState colSpan={5} icon={Building2} title="Sin datos por cliente" description="Asigna tareas a tus registros de tiempo para ver el desglose por cliente." />
             ) : (
               <Table>
@@ -1127,7 +1186,8 @@ export default function TimesheetPage() {
                   ))}
                 </TableBody>
               </Table>
-            )}
+              )}
+            </>}
           </CardContent>
         </Card>
       )}
@@ -1142,9 +1202,13 @@ export default function TimesheetPage() {
             <p className="text-sm text-muted-foreground">Horas agrupadas por proyecto para el periodo seleccionado.</p>
           </CardHeader>
           <CardContent>
-            {projectLoading ? (
+            {projectReportQuery.isLoading ? (
               <div className="text-sm text-muted-foreground">Cargando...</div>
-            ) : projectReport.length === 0 ? (
+            ) : projectReportQuery.isError && projectReport.length === 0 ? (
+              <RecoveryNotice label="el informe por proyecto" onRetry={() => void projectReportQuery.refetch()} />
+            ) : <>
+              {projectReportQuery.isError && <div className="mb-3"><RecoveryNotice label="el informe por proyecto" onRetry={() => void projectReportQuery.refetch()} /></div>}
+              {projectReport.length === 0 ? (
               <EmptyTableState colSpan={4} icon={FolderKanban} title="Sin datos por proyecto" description="Asigna tareas a tus registros de tiempo para ver el desglose por proyecto." />
             ) : (
               <Table>
@@ -1162,7 +1226,8 @@ export default function TimesheetPage() {
                   ))}
                 </TableBody>
               </Table>
-            )}
+              )}
+            </>}
           </CardContent>
         </Card>
       )}

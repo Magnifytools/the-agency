@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Receipt, CreditCard, CalendarClock, Plus } from "lucide-react"
 import { toast } from "sonner"
 import { billingEventsApi, clientsApi } from "@/lib/api"
-import { clientKeys } from "@/lib/query-keys"
+import { clientKeys, invalidateClientChange } from "@/lib/query-keys"
 import type { Client, BillingCycle, BillingEventCreate } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -58,7 +58,7 @@ export function BillingTab({ client }: Props) {
     mutationFn: () => billingEventsApi.markInvoiced(client.id),
     onSuccess: () => {
       invalidateBilling()
-      qc.invalidateQueries({ queryKey: clientKeys.summary(client.id) })
+      void invalidateClientChange(qc, [client.id])
       toast.success("Marcado como facturado")
     },
     onError: (e) => toast.error(getErrorMessage(e)),
@@ -232,7 +232,7 @@ export function BillingTab({ client }: Props) {
           onSave={() => {
             setShowConfig(false)
             qc.invalidateQueries({ queryKey: clientKeys.billingStatus(client.id) })
-            qc.invalidateQueries({ queryKey: clientKeys.summary(client.id) })
+            void invalidateClientChange(qc, [client.id])
           }}
         />
       </Dialog>

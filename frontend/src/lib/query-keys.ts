@@ -68,6 +68,7 @@ export async function invalidateTaskChange(
   queryClient: QueryClient,
   affected: OperationalImpact = {},
 ) {
+  const clientIds = uniqueIds(affected.clientId, affected.previousClientId, ...(affected.clientIds ?? []))
   const invalidations = [
     queryClient.invalidateQueries({ queryKey: taskKeys.all() }),
     queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
@@ -78,18 +79,22 @@ export async function invalidateTaskChange(
     queryClient.invalidateQueries({ queryKey: myWeekKeys.all() }),
     queryClient.invalidateQueries({ queryKey: briefingKeys.all() }),
     queryClient.invalidateQueries({ queryKey: searchKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: ["client-health-scores"] }),
   ]
-  for (const clientId of uniqueIds(affected.clientId, affected.previousClientId, ...(affected.clientIds ?? []))) {
+  if (clientIds.length === 0) invalidations.push(queryClient.invalidateQueries({ queryKey: ["client-health"] }))
+  for (const clientId of clientIds) {
     invalidations.push(
       queryClient.invalidateQueries({ queryKey: clientKeys.summary(clientId) }),
       queryClient.invalidateQueries({ queryKey: clientKeys.dashboard(clientId) }),
       queryClient.invalidateQueries({ queryKey: ["client-activity", clientId] }),
+      queryClient.invalidateQueries({ queryKey: ["client-health", clientId] }),
     )
   }
   await Promise.all(invalidations)
 }
 
 export async function invalidateProjectChange(queryClient: QueryClient, affected: OperationalImpact = {}) {
+  const clientIds = uniqueIds(affected.clientId, affected.previousClientId, ...(affected.clientIds ?? []))
   const invalidations = [
     queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
     queryClient.invalidateQueries({ queryKey: projectKeys.all() }),
@@ -98,12 +103,16 @@ export async function invalidateProjectChange(queryClient: QueryClient, affected
     queryClient.invalidateQueries({ queryKey: myWeekKeys.all() }),
     queryClient.invalidateQueries({ queryKey: briefingKeys.all() }),
     queryClient.invalidateQueries({ queryKey: dashboardKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: searchKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: ["client-health-scores"] }),
   ]
-  for (const clientId of uniqueIds(affected.clientId, affected.previousClientId, ...(affected.clientIds ?? []))) {
+  if (clientIds.length === 0) invalidations.push(queryClient.invalidateQueries({ queryKey: ["client-health"] }))
+  for (const clientId of clientIds) {
     invalidations.push(
       queryClient.invalidateQueries({ queryKey: clientKeys.summary(clientId) }),
       queryClient.invalidateQueries({ queryKey: clientKeys.dashboard(clientId) }),
       queryClient.invalidateQueries({ queryKey: ["client-activity", clientId] }),
+      queryClient.invalidateQueries({ queryKey: ["client-health", clientId] }),
     )
   }
   await Promise.all(invalidations)
@@ -135,6 +144,7 @@ export function restoreQuerySnapshot(queryClient: QueryClient, snapshot?: QueryS
 }
 
 export const clientKeys = {
+  all: () => ["clients"] as const,
   dashboard: (clientId: number) => ["client-dashboard", clientId] as const,
   billing: (clientId: number) => ["billing-events", clientId] as const,
   billingStatus: (clientId: number) => ["billing-status", clientId] as const,
@@ -142,6 +152,37 @@ export const clientKeys = {
   summaries: () => ["client-summary"] as const,
   resources: (clientId: number) => ["client-resources", clientId] as const,
   reports: (clientId: number) => ["client-reports", clientId] as const,
+}
+
+export async function invalidateClientChange(queryClient: QueryClient, clientIds: number[] = []) {
+  const invalidations = [
+    queryClient.invalidateQueries({ queryKey: clientKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: clientKeys.summaries() }),
+    queryClient.invalidateQueries({ queryKey: ["clients-all"] }),
+    queryClient.invalidateQueries({ queryKey: ["clients-all-active"] }),
+    queryClient.invalidateQueries({ queryKey: ["clients-active"] }),
+    queryClient.invalidateQueries({ queryKey: ["clients-active-list"] }),
+    queryClient.invalidateQueries({ queryKey: ["clients-list"] }),
+    queryClient.invalidateQueries({ queryKey: ["client-health-scores"] }),
+    queryClient.invalidateQueries({ queryKey: ["active-timer"] }),
+    queryClient.invalidateQueries({ queryKey: ["admin-active-timers"] }),
+    queryClient.invalidateQueries({ queryKey: projectKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: taskKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: timeKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: dashboardKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: myWeekKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: briefingKeys.all() }),
+    queryClient.invalidateQueries({ queryKey: searchKeys.all() }),
+  ]
+  for (const clientId of uniqueIds(...clientIds)) {
+    invalidations.push(
+      queryClient.invalidateQueries({ queryKey: clientKeys.dashboard(clientId) }),
+      queryClient.invalidateQueries({ queryKey: ["client-activity", clientId] }),
+      queryClient.invalidateQueries({ queryKey: ["client-health", clientId] }),
+    )
+  }
+  await Promise.all(invalidations)
 }
 
 export const holdedKeys = {

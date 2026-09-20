@@ -21,6 +21,7 @@ import {
 import { toast } from "sonner"
 import { formatTimeAgo, getErrorMessage } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
+import { invalidateClientChange } from "@/lib/query-keys"
 
 interface Props {
   client: Client
@@ -72,7 +73,7 @@ function LinkProjectDialog({ client }: { client: Client }) {
   const linkMutation = useMutation({
     mutationFn: (projectId: number) => clientsApi.update(client.id, { engine_project_id: projectId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["client-summary", client.id] })
+      void invalidateClientChange(queryClient, [client.id])
       toast.success("Proyecto vinculado correctamente")
       setOpen(false)
     },
@@ -126,7 +127,7 @@ export function EngineSeoTab({ client }: Props) {
     setRefreshing(true)
     try {
       const result = await engineApi.triggerSync()
-      queryClient.invalidateQueries({ queryKey: ["client-summary", client.id] })
+      void invalidateClientChange(queryClient)
       if (result.detail === "not configured") toast.error("Engine no está configurado.")
       else if (result.failed) toast.error(`Sincronización incompleta: ${result.failed} cliente(s) conservaron sus datos anteriores.`)
       else toast.success(`${result.synced} cliente(s) sincronizados.`)
