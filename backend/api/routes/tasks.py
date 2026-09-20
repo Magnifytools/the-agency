@@ -100,6 +100,10 @@ def _task_to_response(task: Task) -> TaskResponse:
         category_id=task.category_id,
         assigned_to=task.assigned_to,
         project_id=task.project_id,
+        project_requires_task_review=bool(
+            _safe_attr(task, "project", "requires_task_review")
+        ),
+        project_review_owner_id=_safe_attr(task, "project", "owner_id"),
         phase_id=task.phase_id,
         depends_on=task.depends_on,
         created_by=task.created_by,
@@ -668,6 +672,8 @@ async def bulk_update_tasks(
     updates = {k: v for k, v in body.updates.items() if k in allowed}
     if not updates:
         raise HTTPException(400, "No valid fields to update")
+    if updates.get("status") == TaskStatus.waiting.value:
+        raise HTTPException(422, "Pon cada tarea en espera desde su ficha indicando respuesta, responsable y fecha de revisión")
 
     dependency_snapshot: dict[int, int | None] = {}
     try:
@@ -693,7 +699,12 @@ async def bulk_update_tasks(
         raise HTTPException(409, "La dependencia cambió; vuelve a intentarlo")
     updated = 0
     failed = 0
+    results = []
+    for missing_id in sorted(requested_ids - set(locked)):
+        failed += 1
+        results.append({"id": missing_id, "updated": False, "detail": "La tarea ya no existe"})
     for task in tasks:
+        task_id = task.id
         try:
             async with db.begin_nested():
                 scoped_updates = dict(updates)
@@ -703,11 +714,13 @@ async def bulk_update_tasks(
                     scoped_updates["priority"] = TaskPriority(scoped_updates["priority"])
                 await update_task_write(db, task, scoped_updates, actor=current_user)
             updated += 1
+            results.append({"id": task_id, "updated": True})
         except Exception as e:
             failed += 1
-            logger.warning("bulk_update_tasks: skipped task %s: %s", task.id, e)
+            results.append({"id": task_id, "updated": False, "detail": e.detail if isinstance(e, HTTPException) else "No se ha podido actualizar esta tarea"})
+            logger.warning("bulk_update_tasks: skipped task %s: %s", task_id, e)
     await db.commit()
-    return {"updated": updated, "failed": failed, "requested": len(body.ids)}
+    return {"updated": updated, "failed": failed, "requested": len(requested_ids), "results": results}
 
 
 @router.post("/bulk/delete")

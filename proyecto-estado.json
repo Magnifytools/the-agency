@@ -1,6 +1,6 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-20T21:26:25.698180+00:00",
+  "ultima_actualizacion": "2026-09-20T21:53:51.546682+00:00",
   "estado_general": "produccion_p21_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
@@ -269,6 +269,13 @@
       "estado": "completado",
       "prioridad": "alta",
       "notas": "PR33/6f1c8ff publicada y verificada. 1253 backend (2 omitidas), 382 frontend, build y seis gates CI en PR/main. Recuperación de respuesta perdida y Undo NUMERIC probados con navegador aislado; UI productiva 390/1440. Datos e historial conservados; migración aditiva 20260920_client_onboarding_v1."
+    },
+    {
+      "id": "AUDIT-20260920-P22",
+      "descripcion": "Ciclo de tareas: cinco grupos, esperas completas y revisión opcional por proyecto",
+      "estado": "en_validacion",
+      "prioridad": "alta",
+      "notas": "Backend local verificado:1285pass/2skip, esquema14, Undo67 y carreras permisos26. Migración aditiva defaultfalse, policy en writers/Undo/bulk/comandos y permisos frescos tras locks. Frontend y navegador en curso; pendientes CI/publicación. Producción permanece P21."
     }
   ],
   "bugs": [
@@ -339,7 +346,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "P22: revisar contrato de ciclo de trabajo, espera, revisión opcional y cierre/reapertura de proyectos; conservar estados e historia existentes. Mantener matriz completa y decisiones de canal, histórico y adopción pendientes.",
+  "proximos_pasos": "Cerrar P22 con interfaz, pruebas finales, navegador aislado, CI y publicación. Después cierre/reapertura revisables y archivo de proyectos (P23). Mantener matriz completa y decisiones de canal, histórico y adopción.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,

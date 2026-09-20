@@ -38,6 +38,7 @@ from backend.services.time_budget import (
     is_recurring_project,
 )
 from backend.services.temporal import as_utc_instant, business_today, business_zone
+from backend.services.task_lifecycle import stamp_task_status
 from backend.services.time_entry_dates import manual_time_entry_date, time_entry_civil_period
 from backend.services.time_writes import (
     create_manual_time_entry,
@@ -712,7 +713,9 @@ async def start_timer(
             raise HTTPException(status_code=404, detail="Task not found")
         # Auto-set task to in_progress when starting timer
         if task.status in (TaskStatus.pending, TaskStatus.backlog, TaskStatus.advanced):
+            previous_status = task.status
             task.status = TaskStatus.in_progress
+            stamp_task_status(task, previous_status)
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     entry = TimeEntry(

@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from typing import Any, Optional
+from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, field_serializer
@@ -35,6 +36,7 @@ from backend.db.database import get_db
 from backend.db.models import (
     ChangeLog,
     ClientContact,
+    Project,
     Task,
     TaskChecklist,
     TimeEntry,
@@ -50,6 +52,7 @@ from backend.services.change_journal import (
     serialize,
 )
 from backend.services.temporal import utc_isoformat, utc_now_naive
+from backend.services.write_access import require_current_write
 
 logger = logging.getLogger(__name__)
 
@@ -445,6 +448,66 @@ async def _preflight_retirement(
             raise HTTPException(409, "La dependencia fue retirada o cambió; revísala antes de deshacer")
 
 
+_TASK_LIFECYCLE_FIELDS = (
+    "status", "project_id", "is_recurring", "waiting_for", "follow_up_date", "assigned_to",
+)
+
+
+def _lifecycle_before_undo(operations, locked):
+    """Keep scalar state before applying the conflict-preserving inverse."""
+    return {
+        op["entity_id"]: SimpleNamespace(**{
+            key: getattr(row, key) for key in _TASK_LIFECYCLE_FIELDS
+        }) if (row := locked.get(("task", op["entity_id"]))) is not None else None
+        for op in operations if op.get("entity_type") == "task"
+    }
+
+
+async def _validate_inverse_lifecycle(db, operations, previous, actor):
+    """Validate the actual inverse, including fields skipped after later edits.
+
+    The surrounding transaction rolls back the inverse on conflict. Old dates
+    remain dates of the original decision; Undo must never replace them today.
+    """
+    from backend.services.task_lifecycle import validate_task_waiting
+    from backend.services.task_review import validate_project_review, validate_task_review
+
+    for op in operations:
+        entity, action = op.get("entity_type"), op.get("action")
+        if action == "create":
+            continue  # The inverse removes the row; no task is being completed.
+        if entity == "project":
+            fields = set(op.get("before") or {})
+            if action != "delete" and not fields.intersection({"owner_id", "requires_task_review"}):
+                continue
+            project = await db.scalar(select(Project).where(Project.id == op["entity_id"]).options(noload("*")))
+            if project is not None:
+                await validate_project_review(db, {
+                    "owner_id": project.owner_id,
+                    "requires_task_review": project.requires_task_review,
+                })
+        if entity != "task":
+            continue
+        task = await db.scalar(select(Task).where(Task.id == op["entity_id"]).options(noload("*")))
+        if task is None:
+            continue
+        old = previous.get(task.id)
+        effective = {key: getattr(task, key) for key in _TASK_LIFECYCLE_FIELDS}
+        patch = {key: value for key, value in effective.items() if old is None or getattr(old, key) != value}
+        if not patch:
+            continue
+        try:
+            await validate_task_review(db, patch, actor, existing=old)
+            normalized = dict(patch)
+            await validate_task_waiting(db, normalized, existing=old, allow_past_date=True)
+            # A partial inverse may restore status while preserving another
+            # person's wait fields. Do not erase that newer information.
+            if any(getattr(task, key) != value for key, value in normalized.items() if key in effective):
+                raise HTTPException(409, "La espera cambió después; revisa la tarea antes de deshacer")
+        except HTTPException as exc:
+            raise HTTPException(409, f"No se puede deshacer: {exc.detail}") from exc
+
+
 def _created_children(operations: list[dict]) -> dict[str, set[int]]:
     out: dict[str, set[int]] = {}
     for op in operations:
@@ -673,6 +736,10 @@ async def undo_change(
     try:
         with change_journal.paused():
             locked_rows = await _lock_operation_rows(db, operations)
+            await require_current_write(db, current_user, {
+                SPECS_BY_TYPE[op["entity_type"]].module for op in operations
+            })
+            lifecycle_before = _lifecycle_before_undo(operations, locked_rows)
             await _preflight_contact_primaries(db, operations, locked_rows)
             await _preflight_retirement(db, operations, locked_rows)
             await _preflight_create_removals(db, removals, locked_rows, operations)
@@ -738,6 +805,7 @@ async def undo_change(
                     db, op, warnings, locked_rows.get((op["entity_type"], op["entity_id"])),
                 )
             await db.flush()
+            await _validate_inverse_lifecycle(db, operations, lifecycle_before, current_user)
             if manual_ops:
                 from backend.api.routes.time_entries import _sync_task_actual_minutes
                 for task_id in sorted(task_ids):

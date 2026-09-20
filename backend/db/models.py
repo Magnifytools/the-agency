@@ -492,6 +492,7 @@ class Project(UTCTimestampMixin, Base):
     gsc_url = Column(String(255), nullable=True)
     ga4_property_id = Column(String(50), nullable=True)
     is_recurring = Column(Boolean, nullable=False, default=False)
+    requires_task_review = Column(Boolean, nullable=False, default=False, server_default="false")
     engine_project_id = Column(Integer, nullable=True)
     # Pricing & scope
     pricing_model = Column(String(20), nullable=True)  # monthly, per_piece, hourly, project
