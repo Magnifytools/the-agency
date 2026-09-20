@@ -5,7 +5,7 @@ from typing import Literal, Optional
 
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import and_, select, or_, delete
+from sqlalchemy import and_, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,7 +14,7 @@ from backend.db.models import PMInsight, User, InsightStatus, InsightType, Alert
 from backend.core.modules import is_enabled
 from backend.schemas.insight import InsightResponse, DailyBriefingResponse
 from backend.schemas.alert_settings import AlertSettingsResponse, AlertSettingsUpdate
-from backend.services.insights import generate_insights, get_daily_briefing
+from backend.services.insights import get_daily_briefing
 from backend.schemas.delivery import ManualDeliveryReceipt, ManualSendRequest
 from backend.services.manual_communications import enqueue_request, format_briefing
 from backend.services.temporal import business_today
@@ -105,7 +105,7 @@ async def list_insights(
     Filters out insights whose expires_at has passed — services/insights.py
     sets a relevant TTL on each insight (1-7 days depending on type) and
     expired ones lose their value as suggestions. The row is left in place;
-    physical cleanup happens on the next /generate-insights call.
+    Historical rows are preserved; the old generator is retired.
     """
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     query = select(PMInsight).options(
@@ -139,47 +139,15 @@ async def list_insights(
     return [_to_response(i) for i in result.scalars().all()]
 
 
-@router.post("/generate-insights", response_model=list[InsightResponse])
+@router.post("/generate-insights", status_code=status.HTTP_410_GONE)
 async def trigger_generate_insights(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_module("pm", write=True)),
+    _current_user: User = Depends(require_module("pm", write=True)),
 ):
-    """
-    Generate new insights based on current state.
-    This clears old active insights for THIS USER and creates fresh ones.
-    """
-    ai_limiter.check(current_user.id, max_requests=5, window_seconds=60)
-
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-
-    # F-04: only clear insights belonging to current user.
-    # Sweep both active (about to be regenerated) and any expired rows that
-    # accumulated since the last call — this is the only place expires_at
-    # triggers physical deletion.
-    await db.execute(
-        delete(PMInsight).where(
-            PMInsight.user_id == current_user.id,
-            or_(
-                PMInsight.status == InsightStatus.active,
-                PMInsight.expires_at < now,
-            ),
-        )
+    """Retired writer retained only to give old clients an actionable response."""
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="La generación de insights se ha retirado. Usa /incidents.",
     )
-    try:
-        new_insights = await generate_insights(
-            db,
-            user_id=current_user.id,
-            allow_financial=_can_read_financial_insights(current_user),
-            team_scope=current_user.role == UserRole.admin,
-            commit=False,
-        )
-        await db.commit()
-    except Exception as e:
-        await db.rollback()
-        logger.error(f"Insights generation failed: {e}")
-        raise HTTPException(status_code=502, detail="Error generando insights con IA")
-
-    return [_to_response(i) for i in new_insights]
 
 
 @router.put("/insights/{insight_id}/dismiss", response_model=InsightResponse)

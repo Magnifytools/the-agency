@@ -29,10 +29,19 @@ const toneLabels: Record<DigestTone, string> = {
   equipo: "Equipo",
 }
 
+function validPeriodDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const date = new Date(`${value}T12:00:00Z`)
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+}
+
 export default function DigestsPage() {
   const { user, hasPermission } = useAuth()
+  const [searchParams] = useSearchParams()
   if (!user || !hasPermission("digests")) return null
-  return <DigestList key={`${user.id}:${hasPermission("digests", true)}`} />
+  const linkedPeriodStart = searchParams.get("period_start") || ""
+  const linkedPeriodEnd = searchParams.get("period_end") || ""
+  return <DigestList key={`${user.id}:${hasPermission("digests", true)}:${linkedPeriodStart}:${linkedPeriodEnd}`} />
 }
 
 function DigestList() {
@@ -66,8 +75,14 @@ function DigestList() {
     else next.delete("client_id")
     setSearchParams(next, { replace: true })
   }
-  const [filterPeriodFrom, setFilterPeriodFrom] = useState("")
-  const [filterPeriodTo, setFilterPeriodTo] = useState("")
+  const linkedPeriodStart = searchParams.get("period_start") || ""
+  const linkedPeriodEnd = searchParams.get("period_end") || ""
+  const linkedPeriodIsValid = validPeriodDate(linkedPeriodStart) && validPeriodDate(linkedPeriodEnd) && linkedPeriodStart <= linkedPeriodEnd
+  const [filterPeriodFrom, setFilterPeriodFrom] = useState(() => validPeriodDate(linkedPeriodStart) && (linkedPeriodStart <= linkedPeriodEnd || !linkedPeriodEnd) ? linkedPeriodStart : "")
+  const [filterPeriodTo, setFilterPeriodTo] = useState(() => validPeriodDate(linkedPeriodEnd) && (linkedPeriodStart <= linkedPeriodEnd || !linkedPeriodStart) ? linkedPeriodEnd : "")
+  const expectedPeriod = filterClient && linkedPeriodIsValid
+    ? { start: linkedPeriodStart, end: linkedPeriodEnd }
+    : undefined
   const [previewDigest, setPreviewDigest] = useState<Digest | null>(null)
   const [previewFormat, setPreviewFormat] = useState<"slack" | "email">("slack")
   const [previewContent, setPreviewContent] = useState("")
@@ -106,6 +121,7 @@ function DigestList() {
       queryClient.invalidateQueries({ queryKey: reportPolicyKeys.preview })
       queryClient.invalidateQueries({ queryKey: reportPolicyKeys.external })
       queryClient.invalidateQueries({ queryKey: ["digests"] })
+      queryClient.invalidateQueries({ queryKey: ["incidents"] })
       setGenerateOpen(false)
       toast.success("Resumen generado. Revisa su nueva versión.")
     },
@@ -120,6 +136,7 @@ function DigestList() {
       queryClient.invalidateQueries({ queryKey: reportPolicyKeys.preview })
       queryClient.invalidateQueries({ queryKey: reportPolicyKeys.external })
       queryClient.invalidateQueries({ queryKey: ["digests"] })
+      queryClient.invalidateQueries({ queryKey: ["incidents"] })
       toast.success("Estado actualizado")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar estado")),
@@ -188,6 +205,7 @@ function DigestList() {
       queryClient.invalidateQueries({ queryKey: reportPolicyKeys.preview })
       queryClient.invalidateQueries({ queryKey: reportPolicyKeys.external })
       queryClient.invalidateQueries({ queryKey: ["digests"] })
+      queryClient.invalidateQueries({ queryKey: ["incidents"] })
       toast.success("Resumen eliminado")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar el resumen")),
@@ -259,7 +277,7 @@ function DigestList() {
         </Button>}
       </div>
 
-      <DigestCohort clientId={filterClient || undefined} />
+      <DigestCohort clientId={filterClient || undefined} expectedPeriod={expectedPeriod} />
 
       <div><h2 className="text-lg font-semibold">Historial de versiones</h2><p className="text-sm text-muted-foreground">Abre una versión para revisar su texto y confirmar la entrega al cliente. Discord es distribución interna.</p></div>
       {/* Filters */}

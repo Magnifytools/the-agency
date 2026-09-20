@@ -27,7 +27,7 @@ const severityClasses = {
 const severityLabels = { info: "Información", warning: "Atención", critical: "Crítica" }
 const resolutionLabels: Record<string, string> = {
   condition_cleared: "La condición dejó de cumplirse.",
-  permission_lost: "Ya no tienes acceso a la tarea.",
+  permission_lost: "La fuente ya no está disponible para ti.",
 }
 
 function isConflict(error: unknown) {
@@ -167,7 +167,7 @@ export function IncidentInbox({ userId, compact = false, onNavigate }: { userId:
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 id={headingId} className="text-2xl font-bold">Alertas</h1>
-            <p className="text-sm text-muted-foreground">Revisa condiciones que requieren una decisión. Abrir una tarea no cambia este aviso.</p>
+            <p className="text-sm text-muted-foreground">Revisa condiciones que requieren una decisión. Abrir el detalle no resuelve el aviso.</p>
           </div>
           <div className="flex gap-2">
             <div className="min-w-40">

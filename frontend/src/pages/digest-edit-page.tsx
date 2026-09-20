@@ -95,6 +95,7 @@ export default function DigestEditPage() {
     if (!active.current || Number(liveId.current) !== sourceId || viewEpoch.current !== sourceEpoch) return
     queryClient.setQueryData(["digest", String(saved.id)], saved)
     queryClient.invalidateQueries({ queryKey: ["digests"] })
+    queryClient.invalidateQueries({ queryKey: ["incidents"] })
     queryClient.invalidateQueries({ queryKey: ["digest-generation-preview"] })
     queryClient.invalidateQueries({ queryKey: ["digest-external-delivery"] })
     if (saved.id !== Number(id)) {

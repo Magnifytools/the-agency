@@ -5,7 +5,6 @@ cycle, not today's date: routine aging cannot undo a person's decision.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 import hashlib
 
@@ -16,21 +15,18 @@ from sqlalchemy.orm import noload
 from backend.core.modules import is_enabled
 from backend.db.models import Notification, Task, TaskStatus, User, UserPermission, UserRole
 from backend.schemas.incident import IncidentDecision, IncidentResponse
+from backend.services.incident_conditions import Condition
+from backend.services.incident_project_conditions import (
+    PROJECT_CONDITIONS, collect_project_conditions, project_visibility_clause,
+)
+from backend.services.incident_report_conditions import (
+    REPORT_CONDITIONS, collect_report_conditions, report_visibility_clause,
+)
 from backend.services.temporal import as_utc_instant, business_today, utc_now_naive
 
 TASK_CONDITIONS = ("task_overdue", "task_waiting_followup")
+SUPPORTED_CONDITIONS = TASK_CONDITIONS + PROJECT_CONDITIONS + REPORT_CONDITIONS
 OPEN_STATES = ("active", "snoozed", "dismissed")
-
-
-@dataclass(frozen=True)
-class Condition:
-    key: str
-    kind: str
-    entity_id: int
-    title: str
-    message: str
-    fingerprint: str
-    severity: str = "warning"
 
 
 def task_permission(user_id):
@@ -64,16 +60,30 @@ def live_task_condition_clause():
     )
 
 
-def visible_incident_clause(user_id: int, *, current_only: bool = False):
-    """Apply current source permissions even before the next background pass."""
+def task_visibility_clause(user_id: int, *, current_only: bool = False):
     if not is_enabled("tasks"):
         return false()
     return and_(
-        live_task_condition_clause() if current_only else True,
+        Notification.entity_type == "task",
+        Notification.type.in_(TASK_CONDITIONS),
+        live_task_condition_clause() if current_only else exists().where(
+            Task.id == Notification.entity_id, Task.assigned_to == user_id,
+        ),
+        exists().where(User.id == user_id, User.is_active.is_(True), task_permission(User.id)),
+    )
+
+
+def visible_incident_clause(user_id: int, *, current_only: bool = False):
+    """Apply current source permissions even before the next background pass."""
+    return and_(
         Notification.user_id == user_id,
         Notification.incident_state.is_not(None),
-        Notification.type.in_(TASK_CONDITIONS),
-        exists().where(User.id == user_id, User.is_active.is_(True), task_permission(User.id)),
+        exists().where(User.id == user_id, User.is_active.is_(True)),
+        or_(
+            task_visibility_clause(user_id, current_only=current_only),
+            project_visibility_clause(user_id, current_only=current_only),
+            report_visibility_clause(user_id, current_only=current_only),
+        ),
     )
 
 
@@ -101,7 +111,11 @@ async def collect_task_conditions(db, user_id: int, now: datetime) -> dict[str, 
             key = f"{kind}:task:{task.id}:{cycle.isoformat()}"
             # Copy edits and normal daily aging do not establish a new promise.
             fingerprint = hashlib.sha256(key.encode()).hexdigest()
-            result[key] = Condition(key, kind, task.id, title[:255], message, fingerprint)
+            result[key] = Condition(
+                key, kind, task.id, title[:255], message, fingerprint,
+                entity_key=str(task.id), href=f"/tasks?task={task.id}",
+                legacy_since=datetime.combine(cycle, datetime.min.time()),
+            )
     return result
 
 
@@ -121,17 +135,28 @@ async def reconcile_recipient(db, user_id: int, *, now: datetime | None = None):
         return {"created": 0, "changed": 0}
     allowed = actor.is_active and actor.tasks_read and is_enabled("tasks")
     candidates = await collect_task_conditions(db, user_id, now) if allowed else {}
-    live_ids = {condition.entity_id for condition in candidates.values()}
-    rows = (await db.execute(select(Notification).options(noload("*")).where(
+    if actor.is_active:
+        candidates.update(await collect_project_conditions(db, user_id, now))
+        candidates.update(await collect_report_conditions(db, user_id, now))
+    legacy_sources = [and_(
+        Notification.type == condition.kind,
+        Notification.entity_type == condition.entity_type,
+        Notification.entity_id == condition.entity_id,
+        Notification.created_at >= condition.legacy_since,
+    ) for condition in candidates.values() if condition.legacy_since is not None and condition.entity_id is not None]
+    records = (await db.execute(select(
+        Notification, visible_incident_clause(user_id).label("source_visible"),
+    ).options(noload("*")).where(
         Notification.user_id == user_id,
-        Notification.type.in_(TASK_CONDITIONS),
-        Notification.entity_type == "task",
+        Notification.type.in_(SUPPORTED_CONDITIONS),
         or_(
             Notification.incident_state.in_(OPEN_STATES),
             Notification.dedupe_key.in_(list(candidates)),
-            and_(Notification.incident_state.is_(None), Notification.dedupe_key.is_(None), Notification.entity_id.in_(live_ids)),
+            and_(Notification.incident_state.is_(None), Notification.dedupe_key.is_(None), or_(*legacy_sources) if legacy_sources else false()),
         ),
-    ).order_by(Notification.id))).scalars().all()
+    ).order_by(Notification.id))).all()
+    rows = [record[0] for record in records]
+    source_visible = {record[0].id: record[1] for record in records}
     keyed = {row.dedupe_key: row for row in rows if row.dedupe_key}
     adopted_ids = set()
     created = changed = 0
@@ -139,13 +164,18 @@ async def reconcile_recipient(db, user_id: int, *, now: datetime | None = None):
         row = keyed.get(key)
         if row is None:
             # Adopt only a legacy check that can actually belong to this cycle.
-            cycle = datetime.fromisoformat(key.rsplit(":", 1)[1])
-            row = next((value for value in rows if value.id not in adopted_ids and value.dedupe_key is None and value.type == condition.kind and value.entity_id == condition.entity_id and value.created_at and value.created_at >= cycle), None)
+            row = next((value for value in rows if (
+                condition.legacy_since is not None and value.id not in adopted_ids
+                and value.dedupe_key is None and value.type == condition.kind
+                and value.entity_type == condition.entity_type
+                and value.entity_id == condition.entity_id
+                and value.created_at and value.created_at >= condition.legacy_since
+            )), None)
             if row is not None:
                 adopted_ids.add(row.id)
                 row.dedupe_key = key
             else:
-                row = Notification(user_id=user_id, type=condition.kind, title=condition.title, entity_type="task", entity_id=condition.entity_id, dedupe_key=key, created_at=now, updated_at=now)
+                row = Notification(user_id=user_id, type=condition.kind, title=condition.title, entity_type=condition.entity_type, entity_id=condition.entity_id, dedupe_key=key, created_at=now, updated_at=now)
                 db.add(row)
                 created += 1
         before = _snapshot(row)
@@ -166,8 +196,8 @@ async def reconcile_recipient(db, user_id: int, *, now: datetime | None = None):
         row.incident_fingerprint = condition.fingerprint
         row.incident_severity = condition.severity
         row.title, row.message = condition.title, condition.message
-        row.link_url = f"/tasks?task={condition.entity_id}"
-        row.entity_key = str(condition.entity_id)
+        row.link_url = condition.href
+        row.entity_key = condition.entity_key
         if before != _snapshot(row):
             row.incident_revision = (row.incident_revision or 0) + 1
             row.updated_at = now
@@ -177,7 +207,7 @@ async def reconcile_recipient(db, user_id: int, *, now: datetime | None = None):
             continue
         row.incident_state = "resolved"
         row.incident_resolved_at = now
-        row.incident_resolution_reason = "condition_cleared" if allowed else "permission_lost"
+        row.incident_resolution_reason = "condition_cleared" if source_visible.get(row.id) else "permission_lost"
         row.incident_revision += 1
         row.updated_at = now
         changed += 1
@@ -242,7 +272,7 @@ async def reconcile_all(session_factory, *, now: datetime | None = None):
                 or_(User.is_active.is_(True), exists().where(
                     Notification.user_id == User.id,
                     Notification.incident_state.in_(OPEN_STATES),
-                    Notification.type.in_(TASK_CONDITIONS),
+                    Notification.type.in_(SUPPORTED_CONDITIONS),
                 )),
             ).order_by(User.id).limit(100))).scalars())
         if not ids:

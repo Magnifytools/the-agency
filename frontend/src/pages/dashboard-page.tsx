@@ -14,7 +14,6 @@ import { deliveryToast, ManualDeliveryReceipts } from "@/components/delivery-rec
 import { OverdueTasks } from "@/components/dashboard/overdue-tasks"
 import { DigestTracker } from "@/components/dashboard/digest-tracker"
 import { EngineAlertsWidget } from "@/components/dashboard/engine-alerts-widget"
-import { AlertsWidget } from "@/components/dashboard/alerts-widget"
 import { LeadFollowups } from "@/components/dashboard/lead-followups"
 import { MonthlyCloseChecklist } from "@/components/dashboard/monthly-close-checklist"
 import { TeamSummaryTable } from "@/components/dashboard/team-summary-table"
@@ -730,7 +729,6 @@ export default function DashboardPage() {
 
       <InsightsPanel />
 
-      {isAdmin && <AlertsWidget />}
       {isAdmin && allOverdueTasks && allOverdueTasks.length > 0 && <OverdueTasks tasks={allOverdueTasks} showAssigned />}
       <DigestTracker clientsMissing={clientsMissingDigest} />
       <EngineAlertsWidget clients={allClients || []} />

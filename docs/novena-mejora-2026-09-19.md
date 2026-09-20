@@ -2,12 +2,31 @@
 
 Estado: en implementación; todavía no publicada. Producción conserva la octava entrega.
 
-Las tareas vencidas y las esperas cuyo seguimiento ha llegado generan avisos persistentes por destinatario. La bandeja, Hoy personal y la campana comparten su identidad. Abrir un aviso no lo resuelve; completar o reprogramar su tarea elimina la condición. Posponer y descartar son decisiones explícitas con control de revisión.
+Hoy, la campana, el dashboard y la bandeja de alertas usan la misma incidencia y las mismas decisiones. Abrir un aviso no lo resuelve. Posponer requiere una fecha, descartar requiere un motivo y las acciones comprueban la revisión para evitar sobreescribir una decisión concurrente.
 
-La actividad leída se mantiene separada de las condiciones pendientes. Las decisiones sobreviven al envejecimiento normal y a Deshacer dentro del mismo compromiso. La migración conserva las notificaciones históricas y registra la detección UTC sin reinterpretar sus fechas antiguas.
+## Fuentes reales
 
-La reconciliación bloquea brevemente destinatario y tareas; los escritores de permisos usan el mismo protocolo. Las lecturas no escriben y comprueban la fuente y los permisos actuales. El proceso de detección permanece desactivado por defecto hasta completar el despliegue de esta entrega.
+- Tareas vencidas y esperas cuya fecha de seguimiento ha llegado.
+- Proyectos con responsable explícito: sin próxima tarea planificada, cierre próximo o vencido y consumo de presupuesto de horas. Las tareas atrasadas cuentan como próximas acciones; las plantillas no. Los presupuestos usan tiempo registrado y el período correspondiente.
+- Resúmenes pendientes para clientes con frecuencia y responsable configurados; el enlace conserva cliente y período.
+- Entregas fallidas o inciertas, con enlace al recibo exacto y recuperación según permisos. Los resúmenes diarios, digests y comunicaciones manuales o programadas comparten esa cobertura.
 
-Validación de esta base: 879 pruebas de backend aprobadas, 2 omitidas; 233 de interfaz aprobadas antes del último regresivo de acceso al historial vacío. Las nueve pruebas dirigidas posteriores y el build final también pasan. Recorrido aislado con API y PostgreSQL reales: detección, posposición, reactivación, descarte, enlace exacto y resolución al completar la tarea, en escritorio y móvil.
+Completar, reprogramar o corregir la fuente retira la condición de la lista actual y el detector conserva su resolución. Reasignar o borrar la fuente retira el acceso anterior, también del historial. Leer no reactiva un aviso. Las decisiones sobreviven al envejecimiento normal y a Deshacer dentro del mismo compromiso.
 
-Pendiente antes de publicar: condiciones de proyectos, presupuestos explícitos, resúmenes según política y entregas fallidas o inciertas; consolidación con PM y productores anteriores; configuración de proyección al canal, CI y verificación en producción. Esta base no cierra la auditoría completa.
+## Consolidación
+
+El panel PM y el bloque de avisos independientes del dashboard se sustituyen por la bandeja compartida. El endpoint antiguo de comprobaciones delega a la reconciliación común. El generador antiguo de insights devuelve una respuesta de retirada; conserva los históricos. El resumen diario con IA sigue disponible.
+
+Se retiran las reglas que presumían obligaciones por falta de horas, dailys o actividad, y el job de facturación del módulo retirado. Los registros antiguos se conservan, pero sus condiciones obsoletas dejan de mostrarse como actividad. El historial de actividad y las incidencias pendientes mantienen significados separados.
+
+## Integridad y despliegue
+
+La migración es aditiva y no activa masivamente datos históricos. Registra la detección UTC sin reinterpretar fechas antiguas. La reconciliación serializa destinatarios y ordena los bloqueos de tareas; los escritores de permisos, las operaciones masivas y el reinicio de tareas avanzadas comparten el protocolo correspondiente. Las lecturas no escriben y comprueban los permisos y la fuente actual.
+
+El detector permanece desactivado por defecto. Las pruebas de escritura se realizan con datos sintéticos, servicios externos desactivados y PostgreSQL aislado.
+
+Validación local: la suite completa de backend aprobó 902 pruebas y omitió dos; la única aserción fallida de fixture se corrigió y las 31 pruebas dirigidas finales pasan. La interfaz cuenta con 19 pruebas dirigidas de bandeja/recibos, 23 de resúmenes y 20 de recibos/captura aprobadas, con build correcto. Las ejecuciones completas locales sufrieron timeouts bajo carga; queda pendiente el resultado completo de CI.
+
+El recorrido aislado con API y PostgreSQL reales verifica detección sin sesión abierta, enlaces exactos, recibo incierto en móvil, preparación del período del aviso, retirada inmediata del contador y recuperación de un enlace antiguo sin generar otro período.
+
+Pendiente: decisión sobre proyección de incidencias a Discord, CI y despliegue. Los resúmenes programados existentes son hechos y recordatorios con su propio consentimiento; no se infiere de ellos permiso para reenviar nuevas incidencias. Esta entrega no cierra la auditoría completa.

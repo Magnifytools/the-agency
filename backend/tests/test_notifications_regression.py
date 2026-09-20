@@ -1,18 +1,19 @@
 """Regression tests for notification generation — N+1 elimination + batch queries."""
+
 import sys
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 if "asyncpg" not in sys.modules:
     sys.modules["asyncpg"] = MagicMock()
 
-import pytest  # noqa: E402
-import pytest_asyncio  # noqa: E402
-from httpx import AsyncClient, ASGITransport  # noqa: E402
+import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
 
-from backend.main import app  # noqa: E402
-from backend.api.deps import get_current_user  # noqa: E402
-from backend.db.database import get_db  # noqa: E402
-from backend.db.models import User, UserRole  # noqa: E402
+from backend.api.deps import get_current_user
+from backend.db.database import get_db
+from backend.db.models import User, UserRole
+from backend.main import app
 
 
 def _make_admin():
@@ -69,9 +70,10 @@ class TestNotificationsEndpoints:
         assert resp.json() == {"ok": True}
 
     @pytest.mark.asyncio
-    async def test_generate_checks_returns_created_count(self, client):
+    async def test_generate_checks_returns_canonical_reconciliation_counts(
+        self, client
+    ):
         resp = await client.post("/api/notifications/generate-checks")
         assert resp.status_code == 200
         data = resp.json()
-        assert "created" in data
-        assert isinstance(data["created"], int)
+        assert data == {"created": 0, "changed": 0}

@@ -1,13 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { DeliveryReceipts, ManualDeliveryReceipts, deliveryToast } from "./delivery-receipts"
+import { DeliveryReceipts, ManualDeliveryReceipts, SingleDeliveryReceipt, deliveryToast } from "./delivery-receipts"
 import type { DeliveryReceipt } from "@/lib/types"
 import DailysPage from "@/pages/dailys-page"
 import DigestsPage from "@/pages/digests-page"
 import { MemoryRouter } from "react-router-dom"
 
-const mock = vi.hoisted(() => ({ list: vi.fn(), listManual: vi.fn(), retry: vi.fn(), resend: vi.fn(), cancel: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() }))
+const mock = vi.hoisted(() => ({ get: vi.fn(), list: vi.fn(), listManual: vi.fn(), retry: vi.fn(), resend: vi.fn(), cancel: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() }))
 const daily = vi.hoisted(() => ({ list: vi.fn(), sendDiscord: vi.fn() }))
 const digest = vi.hoisted(() => ({ list: vi.fn(), render: vi.fn(), sendDigest: vi.fn(), sendCustom: vi.fn(), listAll: vi.fn() }))
 vi.mock("@/lib/api", () => ({ deliveriesApi: mock, dailysApi: daily, digestsApi: digest, discordApi: digest, clientsApi: digest }))
@@ -142,4 +142,33 @@ describe("Delivery receipts", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reintentar consulta" }))
     expect(await screen.findByText(/Sin recibos de envío registrados/)).toBeInTheDocument()
   })
+})
+
+it("opens the exact receipt and links its reviewed replacement without querying history", async () => {
+  mock.get.mockResolvedValue(receipt({ status: "uncertain", can_resend: true, can_cancel: false, source_kind: "digest", source_id: 9 }))
+  mock.resend.mockResolvedValue(receipt({ delivery_id: "replacement-2" }))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const invalidate = vi.spyOn(client, "invalidateQueries")
+  render(<QueryClientProvider client={client}><SingleDeliveryReceipt deliveryId="receipt-1" /></QueryClientProvider>)
+  fireEvent.click(await screen.findByRole("button", { name: "Revisar posible reenvío" }))
+  expect(mock.get).toHaveBeenCalledWith("receipt-1")
+  expect(screen.getByRole("link", { name: "Abrir resumen de origen" })).toHaveAttribute("href", "/digests/9/edit")
+  expect(mock.list).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole("checkbox"))
+  fireEvent.click(screen.getByRole("button", { name: "Crear nuevo envío de este texto" }))
+  expect(await screen.findByRole("link", { name: "Ver el nuevo envío" })).toHaveAttribute("href", "/deliveries/replacement-2")
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["incidents"] })
+})
+
+it("clears an unsubmitted review when navigating to another exact receipt", async () => {
+  mock.get.mockResolvedValue(receipt({ status: "uncertain", can_resend: true, can_cancel: false }))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const { rerender } = render(<QueryClientProvider client={client}><SingleDeliveryReceipt deliveryId="receipt-1" /></QueryClientProvider>)
+  fireEvent.click(await screen.findByRole("button", { name: "Revisar posible reenvío" }))
+  fireEvent.click(screen.getByRole("checkbox"))
+  mock.get.mockResolvedValue(receipt({ delivery_id: "receipt-2", status: "failed", can_retry: true }))
+  rerender(<QueryClientProvider client={client}><SingleDeliveryReceipt deliveryId="receipt-2" /></QueryClientProvider>)
+  await screen.findByRole("button", { name: "Reintentar partes pendientes" })
+  expect(screen.queryByRole("group", { name: "Revisar reenvío incierto" })).not.toBeInTheDocument()
+  expect(mock.resend).not.toHaveBeenCalled()
 })

@@ -484,7 +484,10 @@ async def delete_task(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("tasks", write=True)),
 ):
-    result = await db.execute(select(Task).where(Task.id == task_id))
+    result = await db.execute(
+        select(Task).where(Task.id == task_id).with_for_update()
+        .execution_options(populate_existing=True)
+    )
     task = result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -556,7 +559,10 @@ async def bulk_delete_tasks(
 ):
     if not body.ids or len(body.ids) > 100:
         raise HTTPException(400, "Provide 1-100 task IDs")
-    result = await db.execute(select(Task).where(Task.id.in_(body.ids)))
+    result = await db.execute(
+        select(Task).where(Task.id.in_(body.ids)).order_by(Task.id).with_for_update()
+        .execution_options(populate_existing=True)
+    )
     tasks = result.scalars().all()
     deleted = 0
     skipped_ids: list[int] = []

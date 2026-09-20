@@ -1,20 +1,27 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { MemoryRouter } from "react-router-dom"
+import { Link, MemoryRouter } from "react-router-dom"
 import { beforeEach, expect, it, vi } from "vitest"
 import DigestsPage from "./digests-page"
 const mocks = vi.hoisted(() => ({ api: {list: vi.fn(), render: vi.fn(), generate: vi.fn(), updateStatus: vi.fn(), delete: vi.fn()}, clients: vi.fn(), send: vi.fn(), auth: { id: 1, write: true } }))
 vi.mock("@/lib/api", () => ({digestsApi: mocks.api, clientsApi: {listAll: mocks.clients}, discordApi: {sendDigest: mocks.send}}))
 vi.mock("@/context/auth-context", () => ({useAuth: () => ({user: {id: mocks.auth.id}, isAdmin: true, hasPermission: (_module: string, write?: boolean) => !write || mocks.auth.write})}))
-vi.mock("@/components/digests/digest-cohort", () => ({DigestCohort: () => <div>Selección de clientes</div>}))
+vi.mock("@/components/digests/digest-cohort", () => ({DigestCohort: ({clientId, expectedPeriod}: {clientId?: number; expectedPeriod?: {start: string; end: string}}) => expectedPeriod ? <div>Período esperado {expectedPeriod.start} — {expectedPeriod.end} <Link to={`/digests?client_id=${clientId}`}>Ver períodos actuales</Link></div> : <div>Selección de clientes</div>}))
 vi.mock("@/components/delivery-receipts", () => ({DeliveryReceipts: ({sourceId}: {sourceId: number}) => <p>Recibos #{sourceId}</p>, deliveryToast: vi.fn()}))
 const source = {id: 10, client_id: 1, client_name: "Acme", status: "draft", tone: "cercano", period_start: "2026-09-07", period_end: "2026-09-13", generated_at: null, created_by: 1}
-function setup() {
+function setup(route = "/digests") {
   const client = new QueryClient({defaultOptions: {queries: {retry: false}, mutations: {retry: false}}})
-  const node = () => <QueryClientProvider client={client}><MemoryRouter><DigestsPage /></MemoryRouter></QueryClientProvider>
+  const node = () => <QueryClientProvider client={client}><MemoryRouter initialEntries={[route]}><DigestsPage /></MemoryRouter></QueryClientProvider>
   return {...render(node()), node}
 }
 beforeEach(() => {vi.resetAllMocks(); mocks.auth = {id: 1, write: true}; mocks.api.list.mockResolvedValue([source, {...source, id: 20, client_id: 2, client_name: "Other"}]); mocks.clients.mockResolvedValue([{id: 1, name: "Acme", status: "active", is_internal: false}]); mocks.api.render.mockResolvedValue({rendered: "Rendered"}); mocks.api.generate.mockResolvedValue({...source, id: 30}); mocks.send.mockResolvedValue({status: "pending"})})
+it("clears an exact incident period when returning to current periods on the same route", async () => {
+  setup("/digests?client_id=1&period_start=2026-08-01&period_end=2026-08-31")
+  await screen.findByText("Período esperado 2026-08-01 — 2026-08-31")
+  fireEvent.click(screen.getByRole("link", {name: "Ver períodos actuales"}))
+  await screen.findByText("Selección de clientes")
+  expect(mocks.api.list).toHaveBeenLastCalledWith(expect.objectContaining({client_id: 1, period_from: undefined, period_to: undefined}))
+})
 it("keeps individual generation and removes the unreviewed generate-all action", async () => {
   setup()
   await screen.findByRole("cell", {name: "Acme"})
@@ -105,14 +112,14 @@ it("loads beyond 20 versions without duplicate rows and resets pagination when f
   mocks.api.list.mockImplementation(async params => params.status === "reviewed" ? [{...source, id: 99, client_name: "Filtered version", status: "reviewed"}] : params.offset === 0 ? first : [{...source, id: 20, client_name: "Version 20"}, {...source, id: 21, client_name: "Version 21"}])
   setup()
   fireEvent.click(await screen.findByText("Cargar versiones anteriores", {exact: true}))
-  await screen.findByRole("cell", {name: "Version 21"})
-  expect(screen.getAllByRole("cell", {name: "Version 20"})).toHaveLength(1)
+  expect((await screen.findByText("Version 21", {exact: true})).closest("td")).not.toBeNull()
+  expect(screen.getAllByText("Version 20", {exact: true})).toHaveLength(1)
   expect(screen.getByText("Mostrando 21 versiones.")).toBeInTheDocument()
   expect(mocks.api.list).toHaveBeenCalledWith(expect.objectContaining({limit: 20, offset: 20}))
   fireEvent.change(screen.getByLabelText("Filtrar por estado"), {target: {value: "reviewed"}})
-  await screen.findByRole("cell", {name: "Filtered version"})
+  expect((await screen.findByText("Filtered version", {exact: true})).closest("td")).not.toBeNull()
   expect(mocks.api.list).toHaveBeenLastCalledWith(expect.objectContaining({status: "reviewed", offset: 0}))
-  expect(screen.queryByRole("cell", {name: "Version 21"})).not.toBeInTheDocument()
+  expect(screen.queryByText("Version 21", {exact: true})).not.toBeInTheDocument()
   expect(screen.getByText("Mostrando 1 versión.")).toBeInTheDocument()
 })
 it("a failed next page keeps loaded history and offers retry", async () => {

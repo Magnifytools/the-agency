@@ -248,7 +248,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "P9: base canónica de avisos, bandeja, Hoy y campana verificados localmente (879 backend, 233 frontend más regresivos UI). Completar condiciones de proyecto, presupuesto, resúmenes y entregas; consolidar PM y productores antes de publicar. Producción conserva P8. Continuar resto de cobertura; objetivo completo activo.",
+  "proximos_pasos": "P9 local: incidencias de tareas, proyectos, presupuestos, políticas de resumen y entregas integradas; Hoy/campana/PM comparten bandeja. Recibos y períodos exactos verificados con API/PG aislados en móvil/escritorio. Preparar CI y publicación; decisión de canal y resto de cobertura siguen pendientes. Producción conserva P8; objetivo completo activo.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,

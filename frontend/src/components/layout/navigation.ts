@@ -51,7 +51,7 @@ export function activeArea(pathname: string, search: string): AreaId {
     const params = new URLSearchParams(search)
     return params.has("qaFilter") || (params.has("view") && params.get("view") !== "my_day") ? "work" : "today"
   }
-  if (pathname === "/dashboard" || pathname === "/incidents") return "today"
+  if (pathname === "/dashboard" || pathname === "/incidents" || pathname.startsWith("/deliveries/")) return "today"
   if (pathname.startsWith("/clients")) return "clients"
   if (["/dailys", "/digests", "/reports"].some((path) => pathname === path || pathname.startsWith(path + "/"))) return "summaries"
   if (["/projects", "/timesheet", "/inbox", "/my-week", "/leads", "/growth", "/proposals"].some((path) => pathname === path || pathname.startsWith(path + "/"))) return "work"
