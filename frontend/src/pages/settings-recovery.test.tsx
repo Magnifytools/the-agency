@@ -8,6 +8,7 @@ import SettingsPage from "./settings-page"
 const api = vi.hoisted(() => ({ categories: vi.fn(), holidays: vi.fn(), deleteCategory: vi.fn(), deleteHoliday: vi.fn() }))
 vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: { id: 1, role: "admin", preferences: {} }, isAdmin: true, hasPermission: () => true, refreshUser: vi.fn() }) }))
 vi.mock("@/components/communication-schedules", () => ({ CommunicationSchedules: () => <div /> }))
+vi.mock("@/components/admin/operational-usage", () => ({ OperationalUsagePanel: () => <div /> }))
 vi.mock("@/components/job-runtime-status", () => ({ JobRuntimeStatusPanel: () => <div /> }))
 vi.mock("@/lib/api", () => ({
   usersApi: { update: vi.fn() },
