@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Optional
 
 import logging
+import hashlib
 import re
 from datetime import date as date_type, datetime, time, timedelta, timezone
 
@@ -34,6 +35,7 @@ from backend.schemas.discord import (
     DiscordSendCustomRequest,
 )
 from backend.config import settings
+from backend.core.modules import is_enabled
 from backend.api.utils.db_helpers import safe_refresh
 
 router = APIRouter(prefix="/api/discord", tags=["discord"])
@@ -102,32 +104,38 @@ async def _send_discord_message(webhook_url: str, message: str) -> bool:
 # ── Existing endpoints (kept) ─────────────────────────────
 
 
+def _daily_summary_revision(day: date_type, summary: str) -> str:
+    return hashlib.sha256(f"{day.isoformat()}\n{summary}".encode("utf-8")).hexdigest()
+
+
 @router.get("/preview")
 async def preview_summary(
-    date: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    date: date_type | None = Query(None, description="YYYY-MM-DD"),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    if date:
-        d = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    else:
-        d = datetime.now(timezone.utc).replace(tzinfo=None)
-    summary = await generate_daily_summary(db, d)
-    return {"summary": summary, "date": d.strftime("%Y-%m-%d")}
+    day = date or business_today()
+    summary = await generate_daily_summary(db, datetime.combine(day, time.min))
+    return {"summary": summary, "date": day.isoformat(),
+            "revision": _daily_summary_revision(day, summary)}
 
 
-async def _queue_daily_summary(db, actor, day):
+async def _queue_daily_summary(db, actor, day, expected_revision: str | None = None):
     day = day or business_today()
     summary = await generate_daily_summary(db, datetime.combine(day, time.min))
+    if expected_revision is not None and expected_revision != _daily_summary_revision(day, summary):
+        raise HTTPException(409, "El resumen ha cambiado. Revisa la vista previa antes de enviarlo.")
     receipt = await enqueue_request(db, actor, kind="daily_summary", scope="team", period_start=day,
                                    period_end=day, title=f"Resumen del día — {day.isoformat()}", content=summary)
     return dict(receipt, ok=receipt["success"], date=day.isoformat())
 
 
 @router.post("/send", response_model=ManualDeliveryReceipt, status_code=202)
-async def send_summary(date: date_type | None = Query(None), db: AsyncSession = Depends(get_db),
+async def send_summary(date: date_type | None = Query(None),
+                       expected_revision: str | None = Query(None, min_length=64, max_length=64, pattern="^[0-9a-f]{64}$"),
+                       db: AsyncSession = Depends(get_db),
                        current_user: User = Depends(require_admin)):
-    return await _queue_daily_summary(db, current_user, date)
+    return await _queue_daily_summary(db, current_user, date, expected_revision)
 
 
 # ── Settings ──────────────────────────────────────────────
@@ -272,6 +280,11 @@ async def send_weekly_report(week_start: date_type | None = Query(None), db: Asy
     if ws.weekday() != 0:
         raise HTTPException(422, "El inicio de semana debe ser un lunes")
     we = ws + timedelta(days=6)
-    report = await generate_weekly_report(db, period_start=ws, period_end=we)
+    report = await generate_weekly_report(
+        db,
+        period_start=ws,
+        period_end=we,
+        include_financial=is_enabled("finance"),
+    )
     return await enqueue_request(db, current_user, kind="weekly_report", scope="team", period_start=ws,
                                  period_end=we, title=f"Informe semanal — {ws} a {we}", content=report)

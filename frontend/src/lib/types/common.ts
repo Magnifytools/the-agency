@@ -63,14 +63,23 @@ export interface TokenResponse {
 }
 
 export interface DashboardOverview {
-  active_clients: number
-  pending_tasks: number
-  in_progress_tasks: number
-  hours_this_month: number
-  total_budget: number
-  total_cost: number
-  margin: number
-  margin_percent: number
+  active_clients: number | null
+  pending_tasks: number | null
+  in_progress_tasks: number | null
+  hours_this_month: number | null
+  availability: {
+    clients: boolean
+    tasks: boolean
+    timesheet: boolean
+  }
+  hours_scope: "mine" | "team" | "unavailable"
+}
+
+export interface DashboardFinancialOverview {
+  total_budget: number | null
+  total_cost: number | null
+  margin: number | null
+  margin_percent: number | null
 }
 
 /** Estado de rentabilidad. `no_data` = sin tarifa configurada, no se puede
@@ -101,9 +110,9 @@ export interface ProfitabilityResponse {
 export interface TeamMemberSummary {
   user_id: number
   full_name: string
-  hourly_rate: number | null
+  hourly_rate?: number | null
   hours_this_month: number
-  cost: number
+  cost?: number
   task_count: number
   clients_touched: number
 }
@@ -114,8 +123,8 @@ export interface CapacityMember {
   weekly_hours: number
   assigned_minutes: number
   task_count: number
-  load_percent: number
-  status: "available" | "busy" | "overloaded"
+  load_percent: number | null
+  status: "available" | "busy" | "overloaded" | "no_capacity"
 }
 
 export interface CapacityTask {
@@ -211,6 +220,7 @@ export interface MonthlyClose {
   reviewed_debt: boolean
   reviewed_taxes: boolean
   reviewed_personal: boolean
+  reviewed_holded: boolean
   responsible_name: string
   notes: string
   updated_at?: string | null

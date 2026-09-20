@@ -20,6 +20,7 @@ const statusConfig = {
   available: { label: "Disponible", variant: "success" as const, color: "bg-green-500" },
   busy: { label: "Ocupado", variant: "warning" as const, color: "bg-amber-500" },
   overloaded: { label: "Sobrecargado", variant: "destructive" as const, color: "bg-red-500" },
+  no_capacity: { label: "Sin capacidad configurada", variant: "secondary" as const, color: "bg-muted-foreground/40" },
 }
 
 const priorityConfig: Record<string, { label: string; className: string }> = {
@@ -84,7 +85,7 @@ function TaskRow({ task, today }: { task: CapacityTask; today: string }) {
 function MemberCard({ member, today }: { member: CapacityMemberDetail; today: string }) {
   const [expanded, setExpanded] = useState(false)
   const cfg = statusConfig[member.status]
-  const barWidth = Math.min(member.load_percent, 150)
+  const barWidth = member.load_percent == null ? 0 : Math.min(member.load_percent, 150)
   const noEstimate = member.clients.flatMap((c) => c.tasks).filter((t) => t.estimated_minutes === 0).length
 
   return (
@@ -131,8 +132,8 @@ function MemberCard({ member, today }: { member: CapacityMemberDetail; today: st
         </div>
         <div className="flex justify-between mt-0.5">
           <span className="text-[10px] text-muted-foreground">0%</span>
-          <span className={`text-xs font-bold ${member.load_percent > 90 ? "text-red-500" : member.load_percent > 70 ? "text-amber-500" : "text-green-600"}`}>
-            {member.load_percent}%
+          <span className={`text-xs font-bold ${member.load_percent == null ? "text-muted-foreground" : member.load_percent > 90 ? "text-red-500" : member.load_percent > 70 ? "text-amber-500" : "text-green-600"}`}>
+            {member.load_percent == null ? "Sin capacidad" : `${member.load_percent}%`}
           </span>
           <span className="text-[10px] text-muted-foreground">100%</span>
         </div>
@@ -182,7 +183,7 @@ export default function CapacityPage() {
   const available = members.filter((m) => m.status === "available").length
   const totalAssigned = members.reduce((s, m) => s + m.assigned_minutes, 0)
   const totalCapacity = members.reduce((s, m) => s + (m.weekly_hours * 60), 0)
-  const teamLoad = totalCapacity > 0 ? Math.round((totalAssigned / totalCapacity) * 100) : 0
+  const teamLoad = totalCapacity > 0 ? Math.round((totalAssigned / totalCapacity) * 100) : null
 
   return (
     <div className="space-y-6">
@@ -216,7 +217,9 @@ export default function CapacityPage() {
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Carga total</p>
-            <p className={`text-2xl font-bold mt-1 ${teamLoad > 90 ? "text-red-500" : teamLoad > 70 ? "text-amber-500" : "text-green-600"}`}>{teamLoad}%</p>
+            <p className={`text-2xl font-bold mt-1 ${teamLoad == null ? "text-muted-foreground" : teamLoad > 90 ? "text-red-500" : teamLoad > 70 ? "text-amber-500" : "text-green-600"}`}>
+              {teamLoad == null ? "Sin capacidad" : `${teamLoad}%`}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -230,8 +233,8 @@ export default function CapacityPage() {
           </div>
           <div className="h-4 bg-muted rounded-full overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all ${teamLoad > 90 ? "bg-red-500" : teamLoad > 70 ? "bg-amber-500" : "bg-green-500"}`}
-              style={{ width: `${Math.min(teamLoad, 100)}%` }}
+              className={`h-full rounded-full transition-all ${teamLoad == null ? "bg-muted-foreground/40" : teamLoad > 90 ? "bg-red-500" : teamLoad > 70 ? "bg-amber-500" : "bg-green-500"}`}
+              style={{ width: `${teamLoad == null ? 0 : Math.min(teamLoad, 100)}%` }}
             />
           </div>
         </CardContent>

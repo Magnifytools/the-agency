@@ -1,6 +1,6 @@
 from __future__ import annotations
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -15,11 +15,22 @@ class ProfitabilityStatus(str, Enum):
     no_data = "no_data"
 
 
+class DashboardAvailability(BaseModel):
+    clients: bool
+    tasks: bool
+    timesheet: bool
+
+
 class DashboardOverview(BaseModel):
-    active_clients: int
-    pending_tasks: int
-    in_progress_tasks: int
-    hours_this_month: float
+    active_clients: Optional[int]
+    pending_tasks: Optional[int]
+    in_progress_tasks: Optional[int]
+    hours_this_month: Optional[float]
+    availability: DashboardAvailability
+    hours_scope: Literal["mine", "team", "unavailable"]
+
+
+class DashboardFinancialOverview(BaseModel):
     total_budget: float
     total_cost: float
     margin: float
@@ -46,11 +57,11 @@ class ProfitabilityResponse(BaseModel):
 class TeamMemberSummary(BaseModel):
     user_id: int
     full_name: str
-    hourly_rate: Optional[float]
     hours_this_month: float
-    cost: float
     task_count: int
     clients_touched: int
+    hourly_rate: Optional[float] = None
+    cost: Optional[float] = None
 
 
 class MonthlyCloseResponse(BaseModel):

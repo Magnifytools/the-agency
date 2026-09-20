@@ -417,6 +417,12 @@ export type DailyDiscordResponse = DeliveryReceipt
 
 // --- Discord Integration ---
 
+export interface DiscordPreview {
+  summary: string
+  date: string
+  revision: string
+}
+
 export interface DiscordSettings {
   id: number
   webhook_configured: boolean

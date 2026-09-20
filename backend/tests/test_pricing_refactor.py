@@ -212,7 +212,7 @@ _BudgetRow = namedtuple("_BudgetRow", ["id", "project_fee", "monthly_budget"])
 
 @pytest.mark.asyncio
 class TestDashboardBudgetAggregation:
-    """GET /api/dashboard/overview — total_budget calculation."""
+    """GET /api/dashboard/overview/financial — total_budget calculation."""
 
     async def test_budget_from_project_fees_only(self, admin_client):
         """When all clients have active projects with monthly_fee, use project fees."""
@@ -228,24 +228,12 @@ class TestDashboardBudgetAggregation:
             result = MagicMock()
 
             if call_count == 1:
-                # active_clients count
-                result.scalar.return_value = 2
-            elif call_count == 2:
-                # pending tasks
-                result.scalar.return_value = 5
-            elif call_count == 3:
-                # in_progress tasks
-                result.scalar.return_value = 3
-            elif call_count == 4:
-                # hours this month (minutes)
-                result.scalar.return_value = 4800
-            elif call_count == 5:
                 # Budget query: clients with project fees
                 result.all.return_value = [
                     _BudgetRow(id=1, project_fee=2000, monthly_budget=1500),
                     _BudgetRow(id=2, project_fee=3000, monthly_budget=2000),
                 ]
-            elif call_count == 6:
+            elif call_count == 2:
                 # total cost
                 result.scalar.return_value = 2500
             else:
@@ -257,7 +245,7 @@ class TestDashboardBudgetAggregation:
 
         app.dependency_overrides[get_db] = lambda: mock_db
         try:
-            resp = await admin_client.get("/api/dashboard/overview")
+            resp = await admin_client.get("/api/dashboard/overview/financial")
         finally:
             # Don't clear all overrides; admin_client fixture manages auth
             del app.dependency_overrides[get_db]
@@ -281,20 +269,12 @@ class TestDashboardBudgetAggregation:
             result = MagicMock()
 
             if call_count == 1:
-                result.scalar.return_value = 2
-            elif call_count == 2:
-                result.scalar.return_value = 0
-            elif call_count == 3:
-                result.scalar.return_value = 0
-            elif call_count == 4:
-                result.scalar.return_value = 0
-            elif call_count == 5:
                 # Client 1: has project fees; Client 2: no project fees, uses fallback
                 result.all.return_value = [
                     _BudgetRow(id=1, project_fee=2000, monthly_budget=1500),
                     _BudgetRow(id=2, project_fee=0, monthly_budget=1800),
                 ]
-            elif call_count == 6:
+            elif call_count == 2:
                 result.scalar.return_value = 1000
             else:
                 result.scalar.return_value = 0
@@ -305,7 +285,7 @@ class TestDashboardBudgetAggregation:
 
         app.dependency_overrides[get_db] = lambda: mock_db
         try:
-            resp = await admin_client.get("/api/dashboard/overview")
+            resp = await admin_client.get("/api/dashboard/overview/financial")
         finally:
             del app.dependency_overrides[get_db]
 
@@ -328,18 +308,10 @@ class TestDashboardBudgetAggregation:
             result = MagicMock()
 
             if call_count == 1:
-                result.scalar.return_value = 1
-            elif call_count == 2:
-                result.scalar.return_value = 0
-            elif call_count == 3:
-                result.scalar.return_value = 0
-            elif call_count == 4:
-                result.scalar.return_value = 0
-            elif call_count == 5:
                 result.all.return_value = [
                     _BudgetRow(id=1, project_fee=0, monthly_budget=5000),
                 ]
-            elif call_count == 6:
+            elif call_count == 2:
                 result.scalar.return_value = 0
             else:
                 result.scalar.return_value = 0
@@ -350,7 +322,7 @@ class TestDashboardBudgetAggregation:
 
         app.dependency_overrides[get_db] = lambda: mock_db
         try:
-            resp = await admin_client.get("/api/dashboard/overview")
+            resp = await admin_client.get("/api/dashboard/overview/financial")
         finally:
             del app.dependency_overrides[get_db]
 
@@ -372,10 +344,8 @@ class TestDashboardBudgetAggregation:
             result = MagicMock()
 
             if call_count == 1:
-                result.scalar.return_value = 0
-            elif call_count == 5:
                 result.all.return_value = []
-            elif call_count == 6:
+            elif call_count == 2:
                 result.scalar.return_value = 0
             else:
                 result.scalar.return_value = 0
@@ -386,7 +356,7 @@ class TestDashboardBudgetAggregation:
 
         app.dependency_overrides[get_db] = lambda: mock_db
         try:
-            resp = await admin_client.get("/api/dashboard/overview")
+            resp = await admin_client.get("/api/dashboard/overview/financial")
         finally:
             del app.dependency_overrides[get_db]
 
@@ -538,13 +508,12 @@ class TestDashboardOverviewEndpoint:
         resp = await admin_client.get("/api/dashboard/overview")
         assert resp.status_code == 200
 
-    async def test_overview_has_budget_fields(self, admin_client):
+    async def test_financial_fields_are_only_on_financial_overview(self, admin_client):
         resp = await admin_client.get("/api/dashboard/overview")
         data = resp.json()
-        assert "total_budget" in data
-        assert "total_cost" in data
-        assert "margin" in data
-        assert "margin_percent" in data
+        assert {"total_budget", "total_cost", "margin", "margin_percent"}.isdisjoint(data)
+        financial = await admin_client.get("/api/dashboard/overview/financial")
+        assert {"total_budget", "total_cost", "margin", "margin_percent"} == set(financial.json())
 
     async def test_overview_accepts_year_month_params(self, admin_client):
         resp = await admin_client.get(

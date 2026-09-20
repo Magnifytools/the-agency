@@ -32,6 +32,7 @@ import type {
   BalanceSnapshot,
   BalanceSnapshotCreate,
   DashboardOverview,
+  DashboardFinancialOverview,
   ProfitabilityResponse,
   TeamMemberSummary,
   MonthlyClose,
@@ -425,6 +426,8 @@ export const usersApi = {
 export const dashboardApi = {
   overview: (params?: { year?: number; month?: number }) =>
     api.get<DashboardOverview>("/dashboard/overview", { params }).then((r) => r.data),
+  financialOverview: (params?: { year?: number; month?: number }) =>
+    api.get<DashboardFinancialOverview>("/dashboard/overview/financial", { params }).then((r) => r.data),
   profitability: (params?: { year?: number; month?: number }) =>
     api.get<ProfitabilityResponse>("/dashboard/profitability", { params }).then((r) => r.data),
   team: (params?: { year?: number; month?: number }) =>
@@ -519,9 +522,9 @@ export const balanceApi = {
 // Discord
 export const discordApi = {
   preview: (date?: string) =>
-    api.get<{ summary: string; date: string }>("/discord/preview", { params: date ? { date } : {} }).then((r) => r.data),
-  send: (date?: string) =>
-    api.post<import("./types").DeliveryReceipt>("/discord/send", null, { params: date ? { date } : {} }).then((r) => r.data),
+    api.get<import("./types").DiscordPreview>("/discord/preview", { params: date ? { date } : {} }).then((r) => r.data),
+  send: (params: { date: string; expected_revision: string }) =>
+    api.post<import("./types").DeliveryReceipt>("/discord/send", null, { params }).then((r) => r.data),
   settings: () =>
     api.get<import("./types").DiscordSettings>("/discord/settings").then((r) => r.data),
   updateSettings: (data: Partial<import("./types").DiscordSettings>) =>
@@ -631,7 +634,7 @@ export const pmApi = {
 
 // Reports
 export const reportsApi = {
-  list: (params?: { limit?: number; client_id?: number }) =>
+  list: (params?: { limit?: number; client_id?: number; offset?: number }) =>
     api.get<Report[]>("/reports", { params }).then((r) => r.data),
   get: (id: number) =>
     api.get<Report>(`/reports/${id}`).then((r) => r.data),

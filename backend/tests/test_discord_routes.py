@@ -14,7 +14,8 @@ from backend.main import app
 
 
 @pytest.mark.asyncio
-async def test_weekly_sender_passes_explicit_civil_period_to_shared_reader(monkeypatch, admin_user):
+@pytest.mark.parametrize("finance_enabled", [False, True])
+async def test_weekly_sender_passes_explicit_civil_period_to_shared_reader(monkeypatch, admin_user, finance_enabled):
     from datetime import date
     from unittest.mock import AsyncMock
     from backend.api.routes import discord
@@ -24,9 +25,15 @@ async def test_weekly_sender_passes_explicit_civil_period_to_shared_reader(monke
     enqueue = AsyncMock(return_value={"success": False, "status": "pending"})
     monkeypatch.setattr(discord, "generate_weekly_report", generator)
     monkeypatch.setattr(discord, "enqueue_request", enqueue)
+    monkeypatch.setattr(discord, "is_enabled", lambda module: finance_enabled)
     response = await discord.send_weekly_report(week_start=date(2026, 9, 14), db=db, current_user=admin_user)
     assert response["status"] == "pending" and response["success"] is False
-    generator.assert_awaited_once_with(db, period_start=date(2026, 9, 14), period_end=date(2026, 9, 20))
+    generator.assert_awaited_once_with(
+        db,
+        period_start=date(2026, 9, 14),
+        period_end=date(2026, 9, 20),
+        include_financial=finance_enabled,
+    )
     assert enqueue.await_args.kwargs["content"] == "Reviewed weekly report"
 
 

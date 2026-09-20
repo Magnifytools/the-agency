@@ -1,6 +1,6 @@
 # Revisar pendientes conservando su historia
 
-Estado: implementada y validada localmente; pendiente de CI y publicación. Producción continúa en P16.
+Estado: publicada y verificada el 20 de septiembre de 2026. PR29 integrada como `358c30255b3ceab42d15040f7a6f93019468a549`.
 
 Arrastre permite revisar cada tarea: reprogramar, dejar en espera con motivo y fecha, completar o retirar con motivo. Reprogramar cambia la planificación, conservando el plazo: una tarea con plazo vencido sigue apareciendo como atrasada. Las decisiones contrastan la revisión guardada; ante un cambio concurrente se conservan las entradas y se pide revisar la información actual antes de reintentar.
 
@@ -11,5 +11,9 @@ No se puede retirar una plantilla recurrente, una tarea con cronómetro abierto 
 La migración añade dos columnas nullable y un contrato que exige fecha y motivo conjuntamente; no reescribe datos ni modifica migraciones publicadas. La respuesta recarga relaciones después de bloqueos ligeros para conservar nombres y checklist.
 
 Validación local: 1160 pruebas backend aprobadas (2 omitidas), 316 frontend, compilación y Ruff correctos. PostgreSQL cubre upgrade, conservación, concurrencia, dependencias, cronómetros, comandos y Deshacer. El navegador aislado recorrió las cuatro decisiones, restauración, edición de anotaciones y horas, conflicto de revisiones, teclado y permisos de lectura. Las escrituras sólo utilizaron datos sintéticos.
+
+Publicación: los seis controles de CI de rama y main aprobaron. Railway sirve la revisión exacta y el esquema `20260920_task_retirement_v1`; las versiones anteriores permanecen intactas. Los conteos y hashes anteriores de tareas, horas y notas coinciden antes y después. Se verificaron los ámbitos de agenda, búsqueda, historial, horas por proyecto y otras 51 lecturas y seis colectores.
+
+Hoy, el formulario Revisar y el historial se inspeccionaron a 1440 y 390 px en producción, sin errores de consola. No había tareas retiradas, coherente con una migración sin reescritura; las mutaciones quedaron verificadas en el entorno aislado.
 
 El objetivo completo continúa: esta entrega no cierra los demás criterios de la auditoría.
