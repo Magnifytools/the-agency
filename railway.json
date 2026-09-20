@@ -2,6 +2,9 @@
   "$schema": "https://railway.com/railway.schema.json",
   "deploy": {
     "healthcheckPath": "/api/ready",
-    "healthcheckTimeout": 120
+    "healthcheckTimeout": 120,
+    "preDeployCommand": [
+      "python -m backend.scripts.migrate"
+    ]
   }
 }

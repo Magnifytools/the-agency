@@ -64,145 +64,11 @@ from backend.startup.background_tasks import (  # noqa: F401
 
 
 async def lifespan(app: FastAPI):
-    # Create PG enum types before any DDL/INSERT that might depend on them.
-    # SQLAlchemy ``Enum(PyEnumClass)`` casts inserts to ``::<typename>``, so a
-    # missing enum type breaks every INSERT (e.g. vattreatment on clients).
-    try:
-        await _ensure_pg_enums()
-    except Exception as e:
-        logging.warning("_ensure_pg_enums failed (may be expected): %s", e)
-
-    # ...y añadir los valores que falten a los tipos que YA existen. Sin esto,
-    # un miembro nuevo de un enum ya desplegado (vattreatment en su día,
-    # taskstatus.advanced ahora) revienta el primer INSERT en producción.
-    try:
-        await _ensure_enum_values()
-    except Exception as e:
-        logging.warning("_ensure_enum_values failed (may be expected): %s", e)
-
-    # Run idempotent DDL for new columns on startup
-    from sqlalchemy import text
+    # Schema evolution is an explicit release step. A web replica never seeds,
+    # repairs or migrates data and cannot start background work on a partial DB.
     from backend.db.database import engine
-    try:
-        async with engine.begin() as conn:
-            for sql in [
-                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(12,2)",
-                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS invoiced_at TIMESTAMPTZ",
-                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS link_url TEXT",
-                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS advanced_at DATE",
-                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP",
-                "CREATE INDEX IF NOT EXISTS ix_tasks_completed_at ON tasks (completed_at)",
-                "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedupe_key VARCHAR(255)",
-                "CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_user_dedupe ON notifications (user_id, dedupe_key)",
-                "ALTER TABLE clients ADD COLUMN IF NOT EXISTS onboarding_intelligence JSONB",
-                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS billing_day INTEGER",
-                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS billing_amount NUMERIC(12,2)",
-                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS next_billing_date DATE",
-                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS last_billed_date DATE",
-                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS weekly_hours_budget FLOAT",
-                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS monthly_hours_budget FLOAT",
-                # Evidence file columns (were missing due to sentinel skip)
-                "CREATE TABLE IF NOT EXISTS project_evidence (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id), phase_id INTEGER REFERENCES project_phases(id), title VARCHAR(200) NOT NULL, url TEXT, evidence_type VARCHAR(20) DEFAULT 'other', description TEXT, created_by INTEGER REFERENCES users(id), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
-                "ALTER TABLE project_evidence ADD COLUMN IF NOT EXISTS file_name VARCHAR(255)",
-                "ALTER TABLE project_evidence ADD COLUMN IF NOT EXISTS file_mime_type VARCHAR(100)",
-                "ALTER TABLE project_evidence ADD COLUMN IF NOT EXISTS file_size_bytes INTEGER",
-                "ALTER TABLE project_evidence ADD COLUMN IF NOT EXISTS file_content BYTEA",
-                # User profile fields for onboarding + reminders
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS short_name VARCHAR(50)",
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS birthday DATE",
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS job_title VARCHAR(100)",
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS morning_reminder_time VARCHAR(5) DEFAULT '08:00'",
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS evening_reminder_time VARCHAR(5) DEFAULT '18:00'",
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE",
-                "ALTER TABLE clients ADD COLUMN IF NOT EXISTS slack_template JSONB",
-                # Google Calendar integration
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_refresh_token VARCHAR(500)",
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_calendar_id VARCHAR(200)",
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_calendar_connected BOOLEAN DEFAULT FALSE",
-                "ALTER TABLE events ADD COLUMN IF NOT EXISTS google_event_id VARCHAR(300) UNIQUE",
-                "ALTER TABLE events ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'manual'",
-                "ALTER TABLE events ADD COLUMN IF NOT EXISTS alert_sent_at TIMESTAMPTZ",
-                # CFO module — costes reales y fees
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS cost_per_hour NUMERIC(10,2) NOT NULL DEFAULT 0",
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS available_hours_month NUMERIC(5,1) NOT NULL DEFAULT 147",
-                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS fee_is_base BOOLEAN NOT NULL DEFAULT TRUE",
-                "ALTER TABLE clients ADD COLUMN IF NOT EXISTS vat_treatment VARCHAR(30) NOT NULL DEFAULT 'domestic_21'",
-                # Timer pausa/reanudación. Estaban en el modelo pero NO aquí, y
-                # create_all no añade columnas a tablas que ya existen: cualquier
-                # base cuyo time_entries sea anterior a la función devuelve 500 en
-                # GET /api/timer/active — el endpoint más consultado de la
-                # aplicación y el núcleo del producto. Producción funciona porque
-                # se añadieron a mano; una restauración de backup o un entorno
-                # nuevo se quedaba sin cronómetro.
-                "ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS paused_at TIMESTAMP",
-                "ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS accumulated_seconds INTEGER NOT NULL DEFAULT 0",
-                # AuditLog as request analytics sink — original schema was
-                # entity-audit (action/entity_type/entity_id NOT NULL) but the
-                # table was never written to. Relax NOT NULL + add request
-                # fields. SAVEPOINTed in this block so an earlier failure
-                # can't poison these.
-                "ALTER TABLE audit_logs ALTER COLUMN action DROP NOT NULL",
-                "ALTER TABLE audit_logs ALTER COLUMN entity_type DROP NOT NULL",
-                "ALTER TABLE audit_logs ALTER COLUMN entity_id DROP NOT NULL",
-                "ALTER TABLE audit_logs ALTER COLUMN user_id DROP NOT NULL",
-                "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS method VARCHAR(10)",
-                "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS route_template VARCHAR(255)",
-                "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS status_code INTEGER",
-                "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS duration_ms INTEGER",
-                "CREATE INDEX IF NOT EXISTS ix_audit_logs_route_created ON audit_logs (route_template, created_at DESC)",
-                "CREATE INDEX IF NOT EXISTS ix_audit_logs_user_created ON audit_logs (user_id, created_at DESC)",
-                # Undo: journal de cambios (backend/services/change_journal.py).
-                # La tabla se crea AQUÍ, a mano: el lifespan no pasa por
-                # create_all — sólo lo hace init_db — así que una tabla nueva del
-                # ORM no aparece sola en producción.
-                "CREATE TABLE IF NOT EXISTS change_logs ("
-                "id SERIAL PRIMARY KEY, "
-                "user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, "
-                "entity_type VARCHAR(50) NOT NULL, "
-                "entity_id INTEGER, "
-                "action VARCHAR(10) NOT NULL, "
-                "label VARCHAR(255) NOT NULL, "
-                "operations JSONB NOT NULL, "
-                "undone_at TIMESTAMP, "
-                "undone_by INTEGER REFERENCES users(id) ON DELETE SET NULL, "
-                "created_at TIMESTAMP NOT NULL DEFAULT NOW(), "
-                "updated_at TIMESTAMP NOT NULL DEFAULT NOW())",
-                # El acceso real es siempre el mismo: los últimos N de un usuario.
-                "CREATE INDEX IF NOT EXISTS ix_change_logs_user_created ON change_logs (user_id, created_at DESC)",
-            ]:
-                # Each statement runs in its own SAVEPOINT so a single failure
-                # does not abort the whole transaction (PG aborts all subsequent
-                # commands until ROLLBACK after any error). Without this, one
-                # broken seed UPDATE silently rolls back unrelated migrations
-                # and the affected columns never get created.
-                try:
-                    await conn.execute(text("SAVEPOINT ddl_sp"))
-                    await conn.execute(text(sql))
-                    await conn.execute(text("RELEASE SAVEPOINT ddl_sp"))
-                except Exception as sql_err:
-                    await conn.execute(text("ROLLBACK TO SAVEPOINT ddl_sp"))
-                    logging.warning("Startup DDL stmt failed (skipping): %s — %s", sql[:80].replace("\n", " "), sql_err)
-        logging.info("Startup DDL complete.")
-    except Exception as e:
-        logging.warning("Startup DDL failed (may be expected): %s", e)
-
-    # Startup evolves schema only. Legacy cleanup/fee seeds and password resets
-    # must never run implicitly on deployment or infer business data from names.
-
-    from backend.startup.project_schema import ensure_project_owner_schema
-    await ensure_project_owner_schema(engine)
-    from backend.startup.delivery_schema import ensure_delivery_schema
-    await ensure_delivery_schema(engine)
-    from backend.startup.command_schema import ensure_command_schema
-    await ensure_command_schema(engine)
-    from backend.startup.report_policy_schema import ensure_report_policy_schema
-    await ensure_report_policy_schema(engine)
-    from backend.startup.incident_schema import ensure_incident_schema
-    await ensure_incident_schema(engine)
-    from backend.startup.daily_schema import ensure_daily_schema
-    await ensure_daily_schema(engine)
-    from backend.startup.recurrence_schema import ensure_recurrence_schema
-    await ensure_recurrence_schema(engine)
+    from backend.startup.schema_baseline import check_deployment_ready
+    await asyncio.wait_for(check_deployment_ready(engine), timeout=10)
     bg_tasks = start_background_tasks()
     logging.info("Startup ready.")
     yield
@@ -429,13 +295,13 @@ async def health_check():
 @app.get("/api/ready")
 async def readiness_check():
     from backend.db.database import engine
-    from backend.startup.readiness import check_database_ready
+    from backend.startup.schema_baseline import check_deployment_ready, EXPECTED_SCHEMA_VERSION
     try:
-        await check_database_ready(engine)
+        await asyncio.wait_for(check_deployment_ready(engine), timeout=5)
     except Exception:
         logging.exception("Readiness check failed")
         return JSONResponse(status_code=503, content={"status": "unavailable"})
-    return {"status": "ready", "revision": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "local")}
+    return {"status": "ready", "revision": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "local"), "schema_revision": EXPECTED_SCHEMA_VERSION}
 
 
 # Serve frontend static files in production

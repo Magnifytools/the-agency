@@ -1,6 +1,5 @@
 """Exercise the actual additive startup DDL against legacy-shaped tables."""
-import ast
-from pathlib import Path
+from backend.startup.schema_baseline import BASELINE
 
 import pytest
 from sqlalchemy import text
@@ -8,15 +7,12 @@ from sqlalchemy.exc import IntegrityError
 
 
 async def test_phase1_upgrade_is_idempotent_and_preserves_legacy_rows(engine):
-    tree = ast.parse(Path("backend/main.py").read_text())
-    statements = [node.value for node in ast.walk(tree)
-                  if isinstance(node, ast.Constant) and isinstance(node.value, str)
-                  and node.value.startswith((
-                      "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at",
-                      "CREATE INDEX IF NOT EXISTS ix_tasks_completed_at",
-                      "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedupe_key",
-                      "CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_user_dedupe",
-                  ))]
+    statements = [sql for sql in BASELINE["upgrade"] if sql.startswith((
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at",
+        "CREATE INDEX IF NOT EXISTS ix_tasks_completed_at",
+        "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedupe_key",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_user_dedupe",
+    ))]
     assert len(statements) == 4
     async with engine.begin() as conn:
         # Temporary tables shadow public ones only on this connection.
