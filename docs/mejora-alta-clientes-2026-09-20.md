@@ -10,8 +10,10 @@ Deshacer agrupa cliente, contactos y proyecto. Si después aparece trabajo que l
 
 La migración añade únicamente recibos de alta y cancelación. No rellena fechas ni modifica clientes, proyectos, contactos u horas existentes. Cada recibo conserva la clave del intento, su propietario, el resultado mínimo y la referencia a Deshacer; no almacena el contexto del cliente ni una copia de sus contactos.
 
+La revisión permite corregir los datos de cada contacto y del proyecto detectado, excluirlos y elegir el contacto principal. Los campos avanzados se despliegan cuando hacen falta. Los errores de validación aparecen dentro del formulario y conservan lo escrito mientras se confirma que el intento no creó nada.
+
 Límites explícitos: hasta 50 contactos por alta y como máximo uno marcado como principal. Crear un proyecto requiere su permiso de escritura además del de Clientes. El formulario debe permitir corregir los datos antes de enviarlos.
 
-Verificación local: 1.243 pruebas backend aprobadas (2 omitidas), incluidas concurrencia, rollback, recuperación, permisos revocados, Deshacer y migración sobre el esquema anterior. Las 379 pruebas frontend pasan y el build final compila. La revisión del formulario permite excluir contactos y elegir expresamente que ninguno de los detectados sea principal.
+Verificación local: 1.243 pruebas backend aprobadas (2 omitidas), incluidas concurrencia, rollback, recuperación, permisos revocados, Deshacer y migración sobre el esquema anterior. La primera versión pasó 379 pruebas frontend y seis gates de CI. La ampliación de la revisión previa pasa 17 pruebas dirigidas y el typecheck real `tsc -b`; build y suite finales en curso. La revisión del formulario permite excluir contactos y elegir expresamente que ninguno de los detectados sea principal.
 
 Pendiente de publicación: terminar la comprobación del navegador aislado, CI, despliegue y preservación de producción.

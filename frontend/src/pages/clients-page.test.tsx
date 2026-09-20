@@ -163,16 +163,53 @@ describe("ClientsPage recovery states", () => {
     await userEvent.type(screen.getByPlaceholderText(/Pega aquí emails/), "Fuente sin fecha de inicio")
     await userEvent.click(screen.getByRole("button", { name: "Extraer datos con IA" }))
     expect(await screen.findByDisplayValue("Cliente extraído")).toBeInTheDocument()
+    await userEvent.clear(screen.getByLabelText("Nombre", { selector: "#extracted_contact_name_0" }))
+    await userEvent.type(screen.getByLabelText("Nombre", { selector: "#extracted_contact_name_0" }), "Contacto corregido")
+    await userEvent.clear(screen.getByLabelText("Nombre del proyecto"))
+    await userEvent.type(screen.getByLabelText("Nombre del proyecto"), "Proyecto corregido")
+    await userEvent.click(screen.getByText("Campos avanzados"))
+    const monthlyFee = screen.getByLabelText("Cuota mensual")
+    expect(monthlyFee).toHaveAttribute("step", "0.01")
+    await userEvent.type(monthlyFee, "50.5")
     await userEvent.click(screen.getByRole("button", { name: "Crear" }))
 
     await waitFor(() => expect(api.onboard).toHaveBeenCalledTimes(1))
     expect(api.onboard).toHaveBeenCalledWith(expect.objectContaining({
       client: expect.objectContaining({ name: "Cliente extraído" }),
-      contacts: [expect.objectContaining({ name: "Contacto IA", is_primary: true })],
-      project: expect.objectContaining({ name: "Proyecto sin fecha", start_date: null }),
+      contacts: [expect.objectContaining({ name: "Contacto corregido", is_primary: true })],
+      project: expect.objectContaining({ name: "Proyecto corregido", start_date: null, monthly_fee: 50.5 }),
     }), expect.stringMatching(/^[A-Za-z0-9_-]{16,64}$/))
     expect(api.onboard.mock.calls[0][0].project).not.toHaveProperty("client_id")
     expect(api.createClient).not.toHaveBeenCalled()
+  })
+
+  it("allows excluding an extracted project without projects write access", async () => {
+    auth.canWriteProjects = false
+    api.extractContext.mockResolvedValue({ name: "Cliente sin proyecto", project: { name: "No crear" }, contacts: [] })
+    show()
+    await screen.findAllByText("Sin clientes todavía")
+    await userEvent.click(screen.getByRole("button", { name: "Nuevo cliente" }))
+    await userEvent.click(screen.getByRole("button", { name: "Pegar contexto" }))
+    await userEvent.type(screen.getByPlaceholderText(/Pega aquí emails/), "Proyecto opcional")
+    await userEvent.click(screen.getByRole("button", { name: "Extraer datos con IA" }))
+    await userEvent.click(screen.getByRole("checkbox", { name: "Crear proyecto detectado" }))
+    expect(screen.getByLabelText("Nombre del proyecto")).toBeDisabled()
+    await userEvent.click(screen.getByRole("button", { name: "Crear" }))
+
+    await waitFor(() => expect(api.onboard).toHaveBeenCalledTimes(1))
+    expect(api.onboard.mock.calls[0][0].project).toBeNull()
+  })
+
+  it("shows a 422 validation message in the open dialog and recovers the cancelled attempt", async () => {
+    api.onboard.mockRejectedValueOnce(Object.assign(new Error("invalid"), { response: { status: 422, data: { detail: [{ msg: "El nombre ya existe" }] } } }))
+    api.recoverOnboarding.mockResolvedValueOnce({ status: "not_committed", client_id: null, contact_ids: [], project_id: null, replayed: false, undo_state: "unavailable", change_log_id: null })
+    show()
+    await screen.findAllByText("Sin clientes todavía")
+    await userEvent.click(screen.getByRole("button", { name: "Nuevo cliente" }))
+    await userEvent.type(screen.getByLabelText("Nombre *"), "Repetido")
+    await userEvent.click(screen.getByRole("button", { name: "Crear" }))
+    expect(await screen.findByText("El nombre ya existe")).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: "Crear" })).not.toBeDisabled()
   })
 
   it("lets the user choose one principal from ambiguous extracted contacts", async () => {
@@ -223,6 +260,28 @@ describe("ClientsPage recovery states", () => {
     await waitFor(() => expect(api.onboard).toHaveBeenCalledTimes(1))
     const contacts = api.onboard.mock.calls[0][0].contacts
     expect(contacts.filter((contact: { is_primary?: boolean }) => contact.is_primary)).toEqual([expect.objectContaining({ name: "Marta manual" })])
+  })
+
+  it("keeps an explicitly included detected contact even when its name matches the manual contact", async () => {
+    api.extractContext.mockResolvedValue({
+      name: "Cliente duplicado",
+      contacts: [{ name: "Ana", is_primary: false }],
+    })
+    show()
+    await screen.findAllByText("Sin clientes todavía")
+
+    await userEvent.click(screen.getByRole("button", { name: "Nuevo cliente" }))
+    await userEvent.click(screen.getByRole("button", { name: "Pegar contexto" }))
+    await userEvent.type(screen.getByPlaceholderText(/Pega aquí emails/), "Contacto repetido de forma explícita")
+    await userEvent.click(screen.getByRole("button", { name: "Extraer datos con IA" }))
+    await userEvent.type(screen.getByLabelText("Nombre", { selector: "#contact_name" }), "Ana")
+    await userEvent.click(screen.getByRole("button", { name: "Crear" }))
+
+    await waitFor(() => expect(api.onboard).toHaveBeenCalledTimes(1))
+    expect(api.onboard.mock.calls[0][0].contacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "Ana", is_primary: true }),
+      expect.objectContaining({ name: "Ana", is_primary: false }),
+    ]))
   })
 
   it("does not send an onboarding attempt when durable key storage is unavailable", async () => {
@@ -285,7 +344,7 @@ describe("ClientsPage recovery states", () => {
     expect(screen.getByRole("button", { name: "Nuevo cliente" })).toBeDisabled()
 
     resolveRecovery({ status: "not_committed", client_id: null, contact_ids: [], project_id: null, replayed: false, undo_state: "unavailable", change_log_id: null })
-    expect(await screen.findByText("No se confirmó el alta. Revisa los datos y vuelve a intentarlo.")).toBeInTheDocument()
+    expect((await screen.findAllByText("No se confirmó el alta. Revisa los datos y vuelve a intentarlo.")).length).toBeGreaterThan(0)
     expect(screen.getByRole("button", { name: "Crear" })).not.toBeDisabled()
 
     await userEvent.click(screen.getByRole("button", { name: "Crear" }))
@@ -298,13 +357,15 @@ describe("ClientsPage recovery states", () => {
     const keyB = "identity-b-attempt-00000000000000001"
     localStorage.setItem(`agency:client-onboarding:7:${keyA}`, "pending")
     let resolveA!: (value: { status: "confirmed"; client_id: number; contact_ids: []; project_id: null; replayed: false; undo_state: "unavailable"; change_log_id: null }) => void
-    api.recoverOnboarding.mockImplementationOnce(() => new Promise((resolve) => { resolveA = resolve }))
+    const recoveryA = new Promise<{ status: "confirmed"; client_id: number; contact_ids: []; project_id: null; replayed: false; undo_state: "unavailable"; change_log_id: null }>((resolve) => { resolveA = resolve })
+    api.recoverOnboarding.mockImplementation((key: string) => key === keyA
+      ? recoveryA
+      : Promise.resolve({ status: "processing", client_id: null, contact_ids: [], project_id: null, replayed: false, undo_state: "unavailable", change_log_id: null }))
     const queryClient = show()
     await waitFor(() => expect(api.recoverOnboarding).toHaveBeenCalledWith(keyA))
 
     auth.user = { id: 8 }
     localStorage.setItem(`agency:client-onboarding:8:${keyB}`, "pending")
-    api.recoverOnboarding.mockResolvedValueOnce({ status: "processing", client_id: null, contact_ids: [], project_id: null, replayed: false, undo_state: "unavailable", change_log_id: null })
     cleanup()
     show(queryClient)
     await waitFor(() => expect(api.recoverOnboarding).toHaveBeenCalledWith(keyB))
