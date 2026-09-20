@@ -190,7 +190,8 @@ def _observations(
             "Sin comunicaciones registradas · riesgo sólo tras 31 días desde un contacto registrado"
         ),
         "tasks": "Fuente no disponible" if not capabilities.tasks else (
-            f"Histórico no retirado: {completed}/{total_tasks} completadas · {overdue} vencidas hoy"
+            f"Histórico no retirado: {completed}/{total_tasks} completadas · "
+            f"{overdue} atrasadas a fecha de hoy"
             if total_tasks else "Histórico no retirado: sin tareas registradas"
         ),
         "digests": "Fuente no disponible" if not capabilities.digests else (

@@ -79,8 +79,8 @@ export function ProjectLifecycleDialog({
     .map((permission) => `${permission.module}:${permission.can_read ? 1 : 0}:${permission.can_write ? 1 : 0}`)
     .sort()
     .join("|"), [user?.permissions])
-  const scope = `${user?.id ?? "anonymous"}:${permissionSignature}:${project.id}:${action}:${project.updated_at}`
-  const previewKey = ["projects", "lifecycle-preview", user?.id ?? "anonymous", permissionSignature, project.id, action, project.updated_at] as const
+  const scope = `${user?.id ?? "anonymous"}:${user?.role ?? "anonymous"}:${permissionSignature}:${project.id}:${action}:${project.updated_at}`
+  const previewKey = ["projects", "lifecycle-preview", user?.id ?? "anonymous", user?.role ?? "anonymous", permissionSignature, project.id, action, project.updated_at] as const
   const previewQuery = useQuery<LifecyclePreview>({
     queryKey: previewKey,
     queryFn: () => reopening ? projectsApi.reopenPreview(project.id) : projectsApi.closePreview(project.id, action),
@@ -106,10 +106,15 @@ export function ProjectLifecycleDialog({
         : projectsApi.close(project.id, { ...request, target: action })
     },
     onSuccess: async (updated) => {
+      // Unmount first: invalidating the projects family would otherwise refetch
+      // this close preview against the just-archived project and create a
+      // misleading expected 409 after a successful decision.
+      await queryClient.cancelQueries({ queryKey: previewKey, exact: true })
+      queryClient.removeQueries({ queryKey: previewKey, exact: true })
+      onOpenChange(false)
       await invalidateProjectChange(queryClient, { clientId: updated.client_id, projectId: updated.id })
       queryClient.setQueryData(projectKeys.detail(updated.id), updated)
       toast.success(copy.success)
-      onOpenChange(false)
     },
     onError: (error) => {
       const detail = lifecycleError(error)
@@ -127,9 +132,9 @@ export function ProjectLifecycleDialog({
         return
       }
       if (status === 409) {
+        onOpenChange(false)
         void invalidateProjectChange(queryClient, { clientId: project.client_id, projectId: project.id })
         toast.error(getErrorMessage(error, "El proyecto cambió antes de confirmar la decisión. Vuelve a revisar su estado."))
-        onOpenChange(false)
         return
       }
       toast.error(getErrorMessage(error, "No se pudo aplicar el cambio de proyecto"))
