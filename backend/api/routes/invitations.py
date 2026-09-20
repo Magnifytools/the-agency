@@ -8,22 +8,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from backend.db.database import get_db
-from backend.db.models import User, UserRole, UserInvitation, UserPermission
-from backend.core.security import hash_password
-from backend.core.rate_limiter import login_limiter
-from backend.schemas.invitation import (
-    InvitationCreate,
-    InvitationResponse,
-    InvitationCreateResponse,
-    AcceptInvitationRequest,
-    PermissionItem,
-    UserPermissionsUpdate,
-)
-from backend.schemas.auth import UserResponse
-from backend.api.deps import get_current_user, require_admin
-from backend.api.utils.db_helpers import safe_refresh
+from backend.api.deps import require_admin
 from backend.api.middleware.audit_log import log_audit
+from backend.api.utils.db_helpers import safe_refresh
+from backend.core.rate_limiter import login_limiter
+from backend.core.security import hash_password
+from backend.db.database import get_db
+from backend.db.models import User, UserInvitation, UserPermission, UserRole
+from backend.schemas.auth import UserResponse
+from backend.schemas.invitation import (
+    AcceptInvitationRequest,
+    InvitationCreate,
+    InvitationCreateResponse,
+    InvitationResponse,
+)
 
 router = APIRouter(prefix="/api", tags=["invitations"])
 
@@ -177,63 +175,10 @@ async def revoke_invitation(
     log_audit(_user.id, "revoke_invitation", "user", invitation_id)
 
 
-@router.get("/users/{user_id}/permissions", response_model=list[PermissionItem])
-async def get_user_permissions(
-    user_id: int,
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
-):
-    """Get permissions for a user (admin only)."""
-    result = await db.execute(
-        select(UserPermission).where(UserPermission.user_id == user_id)
-    )
-    return [
-        PermissionItem(module=p.module, can_read=p.can_read, can_write=p.can_write)
-        for p in result.scalars().all()
-    ]
-
-
-@router.put("/users/{user_id}/permissions", response_model=list[PermissionItem])
-async def update_user_permissions(
-    user_id: int,
-    body: UserPermissionsUpdate,
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
-):
-    """Update permissions for a user (admin only). Replaces all existing permissions."""
-    # Verify user exists
-    user_result = await db.execute(
-        select(User)
-        .where(User.id == user_id)
-        .with_for_update(key_share=True)
-        .execution_options(populate_existing=True)
-    )
-    target_user = user_result.scalar_one_or_none()
-    if not target_user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # Don't allow changing admin permissions
-    if target_user.role == UserRole.admin:
-        raise HTTPException(status_code=400, detail="Cannot modify admin permissions")
-
-    # Delete existing permissions
-    existing = await db.execute(
-        select(UserPermission).where(UserPermission.user_id == user_id)
-    )
-    for perm in existing.scalars().all():
-        await db.delete(perm)
-
-    # Create new permissions
-    new_perms = []
-    for p in body.permissions:
-        perm = UserPermission(
-            user_id=user_id,
-            module=p.module,
-            can_read=p.can_read,
-            can_write=p.can_write,
-        )
-        db.add(perm)
-        new_perms.append(p)
-
-    await db.commit()
-    return new_perms
+# Compatibility import for callers and concurrency tests that historically
+# imported this writer from the invitations module. The HTTP routes themselves
+# live on the always-registered users router.
+from backend.api.routes.users import (  # noqa: F401
+    get_user_permissions,
+    update_user_permissions,
+)
