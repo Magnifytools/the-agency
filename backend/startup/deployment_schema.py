@@ -3,10 +3,11 @@ from sqlalchemy import text
 
 from backend.startup import schema_baseline
 from backend.startup.job_runtime_schema import MIGRATION as JOB_RUNTIME_MIGRATION
+from backend.startup.inbox_recovery_schema import MIGRATION as INBOX_RECOVERY_MIGRATION
 from backend.startup.schema_runner import run_schema_migrations
 
 
-MIGRATIONS = (*schema_baseline.MIGRATIONS, JOB_RUNTIME_MIGRATION)
+MIGRATIONS = (*schema_baseline.MIGRATIONS, JOB_RUNTIME_MIGRATION, INBOX_RECOVERY_MIGRATION)
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 
 

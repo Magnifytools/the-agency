@@ -20,10 +20,11 @@ Los administradores pueden consultar **Ajustes → Procesos programados**. El pa
 | Avisos programados | 1 minuto | `SCHEDULED_COMMUNICATIONS_ENABLED` |
 | Calendar | 15 minutos | Google configurado y avisos habilitados |
 | Retención | 24 horas | Siempre |
+| Clasificación de Inbox | 30 segundos; hasta 5 notas | Siempre; sólo pendientes de usuarios activos |
 
 Cada barrido, salvo entregas, adquiere un advisory lock de sesión exclusivo por proceso y comprueba después su próxima fecha durable. La segunda instancia no repite un ciclo que acaba de terminar. Un heartbeat verifica que la misma conexión sigue manteniendo el lock; si lo pierde, cancela el trabajo. El cierre cancela todos los workers aunque uno haya fallado previamente y libera sus conexiones.
 
-Al terminar se guardan el resultado y la próxima fecha con el reloj de PostgreSQL. Un fallo programa una nueva revisión en un máximo de 60 segundos; una caída deja el ciclo pendiente para recuperarlo. Las reglas de tareas vencidas esperan hasta las 00:01 en su primera activación, pero recuperan un ciclo existente interrumpido. Los horarios diarios contemplan los cambios de hora de la zona del negocio.
+Al terminar se guardan el resultado y la próxima fecha con el reloj de PostgreSQL. Un fallo programa una nueva revisión en un máximo de 60 segundos para procesos locales; Engine espera 15 minutos y Holded 30 minutos para evitar repetir peticiones costosas cada minuto; una caída deja el ciclo pendiente para recuperarlo. Las reglas de tareas vencidas esperan hasta las 00:01 en su primera activación, pero recuperan un ciclo existente interrumpido. Los horarios diarios contemplan los cambios de hora de la zona del negocio.
 
 Los ciclos tienen un límite: cinco minutos por defecto, quince para Engine/Holded y diez para Calendar. El control SQL está acotado. La cancelación respeta la liberación de recursos de las operaciones; no puede deshacer una petición que un proveedor ya haya aceptado.
 
@@ -35,7 +36,7 @@ Incidencias, Calendar, Holded, Engine y preparación de avisos terminan los elem
 
 Holded conserva su integración configurada aunque su pantalla esté oculta. Ocultar una pantalla no equivale a apagar una dependencia ya utilizada. El monitor no activa capacidades ocultas ni crea programaciones.
 
-El estado conserva el ciclo actual y el último éxito, no un historial ilimitado de cada sondeo. La retención existente sigue limitando los logs y conserva las incidencias canónicas. La clasificación de Inbox iniciada fuera de estos loops y la idempotencia completa de las automatizaciones heredadas siguen siendo asuntos separados; este panel no prueba su recuperación ni autoriza reactivarlas.
+El estado conserva el ciclo actual y el último éxito, no un historial ilimitado de cada sondeo. La retención existente sigue limitando los logs y conserva las incidencias canónicas. Inbox usa sus notas pendientes como cola durable: una respuesta tardía sólo se aplica si el texto, el estado y la revisión siguen vigentes. Los fallos por nota se muestran en Inbox y aplazan cinco minutos su próximo intento; una nota fallida no detiene el lote. Cada consulta al proveedor tiene un límite de 25 segundos y el ciclo de Inbox, tres minutos. Si falta la conexión de IA, se registra un error por nota sin petición externa; la captura y asociación manual siguen disponibles. No se crean tareas automáticamente. La idempotencia completa de las automatizaciones heredadas sigue pendiente; el monitor no autoriza reactivarlas.
 
 ## Esquema y verificación
 

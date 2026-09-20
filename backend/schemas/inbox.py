@@ -1,27 +1,28 @@
 """Inbox note schemas for quick capture system."""
 from __future__ import annotations
-from typing import Optional, Any
+from typing import Literal, Optional
 from datetime import date, datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.db.models import InboxNoteStatus
 
 
 class InboxNoteCreate(BaseModel):
-    raw_text: str
-    source: str = "dashboard"
+    model_config = ConfigDict(extra="forbid")
+
+    raw_text: str = Field(max_length=10_000)
+    source: Literal["dashboard", "quick_capture", "chrome_extension"] = "dashboard"
     project_id: Optional[int] = None
     client_id: Optional[int] = None
     link_url: Optional[str] = None
 
 
 class InboxNoteUpdate(BaseModel):
-    raw_text: Optional[str] = None
-    status: Optional[InboxNoteStatus] = None
+    model_config = ConfigDict(extra="forbid")
+
+    raw_text: Optional[str] = Field(default=None, max_length=10_000)
     project_id: Optional[int] = None
     client_id: Optional[int] = None
-    resolved_as: Optional[str] = None
-    resolved_entity_id: Optional[int] = None
     link_url: Optional[str] = None
 
 
@@ -56,6 +57,8 @@ class InboxNoteResponse(BaseModel):
     resolved_as: Optional[str] = None
     resolved_entity_id: Optional[int] = None
     ai_suggestion: Optional[dict] = None
+    classification_error_code: Optional[str] = None
+    classification_next_attempt_at: Optional[datetime] = None
     link_url: Optional[str] = None
     attachments: list[AttachmentInfo] = []
     created_at: datetime

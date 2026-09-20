@@ -32,6 +32,7 @@ import type { CommandContext, CommandEntity, CommandReceipt } from "@/lib/types"
 import { showUndoResult } from "@/lib/undo-feedback";
 import { getErrorMessage } from "@/lib/utils";
 import { formatCivilDate } from "@/lib/dates";
+import { useAuth } from "@/context/auth-context";
 
 interface Props {
   open: boolean;
@@ -164,6 +165,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   const [activeGeneration, setActiveGeneration] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   const [captureText, setCaptureText] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
@@ -375,8 +377,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
       setLinkUrl("");
       setClientId("");
       setProjectId("");
-      void queryClient.invalidateQueries({ queryKey: inboxKeys.all() });
-      void queryClient.invalidateQueries({ queryKey: inboxKeys.count() });
+      if (user) void queryClient.invalidateQueries({ queryKey: inboxKeys.all(user.id) });
       toast.success("Guardado para aclarar");
       onOpenChange(false);
     },

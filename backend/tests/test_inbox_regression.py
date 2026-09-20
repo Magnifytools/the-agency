@@ -5,6 +5,7 @@ Verifies:
 2. _safe_rel_name handles broken relationships
 """
 import pytest
+from pydantic import ValidationError
 from unittest.mock import MagicMock
 
 from backend.api.routes.inbox import _safe_rel_name
@@ -43,3 +44,18 @@ class TestConvertToTaskSchema:
         from backend.schemas.inbox import ConvertToTaskBody
         body = ConvertToTaskBody(due_date=date(2026, 3, 16))
         assert body.due_date == date(2026, 3, 16)
+
+
+def test_classifier_rejects_boolean_ids_and_non_finite_confidence():
+    from backend.services.inbox_classifier import InboxClassification
+
+    payload = {
+        "suggested_project": {"id": True, "name": "Invalid", "confidence": float("nan")},
+        "suggested_client": None,
+        "suggested_action": "create_task",
+        "suggested_title": "Title",
+        "suggested_priority": "medium",
+        "reasoning": "Reason",
+    }
+    with pytest.raises(ValidationError):
+        InboxClassification.model_validate(payload)

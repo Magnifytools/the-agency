@@ -38,6 +38,7 @@ class JobSpec:
     timeout_seconds: int = 300
     daily: bool = False
     run_on_startup: bool = True
+    retry_seconds: int | None = None
 
     def __post_init__(self) -> None:
         if not self.key or len(self.key) > 64:
@@ -46,12 +47,15 @@ class JobSpec:
             raise ValueError("Job lock_id must be a non-negative PostgreSQL int4")
         if self.interval_seconds <= 0 or self.timeout_seconds <= 0:
             raise ValueError("Job intervals and timeouts must be positive")
+        if self.retry_seconds is not None and self.retry_seconds <= 0:
+            raise ValueError("Job retry interval must be positive")
 
     def next_run(self, now: datetime, failed: bool) -> datetime:
         if now.tzinfo is None:
             now = now.replace(tzinfo=timezone.utc)
         if failed:
-            return now + timedelta(seconds=min(60, self.interval_seconds))
+            return now + timedelta(seconds=(self.retry_seconds if self.retry_seconds is not None
+                                            else min(60, self.interval_seconds)))
         if not self.daily:
             return now + timedelta(seconds=self.interval_seconds)
         local = now.astimezone(business_zone())

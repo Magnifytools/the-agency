@@ -461,6 +461,11 @@ export function TaskPanel({
                 Puedes consultar esta tarea, pero no editarla.
               </p>
             )}
+            {loadedTask?.status === "completed" && !loadedTask.completed_at && (
+              <p role="status" className="rounded-md border border-warning/30 bg-warning/5 p-3 text-sm text-muted-foreground">
+                No se registró la fecha de finalización, así que no se puede atribuir esta finalización a una fecha concreta.
+              </p>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="task-panel-title">Título</Label>
               <Input

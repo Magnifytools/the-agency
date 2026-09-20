@@ -252,6 +252,7 @@ def test_startup_loops_match_enabled_catalog(monkeypatch):
         "scheduled_communications": "scheduled-communications",
         "calendar": "calendar-sync",
         "retention": "retention-cleanup",
+        "inbox_classification": "inbox-classification",
     }
     definitions = {definition.spec.key: definition for definition in job_definitions()}
     expected = {
@@ -262,6 +263,23 @@ def test_startup_loops_match_enabled_catalog(monkeypatch):
         expected.add("manual-deliveries")
     assert set(captured) == expected
     assert definitions["overdue_automations"].spec.run_on_startup is False
+
+
+@pytest.mark.parametrize("failed", [0, 1])
+async def test_inbox_cycle_reports_partial_failure(monkeypatch, failed):
+    from unittest.mock import AsyncMock
+    from backend.services import inbox_processing
+    from backend.services.job_runtime import JobFailure
+    from backend.startup import background_tasks
+
+    worker = AsyncMock(return_value=failed)
+    monkeypatch.setattr(inbox_processing, "run_inbox_classification_once", worker)
+    if failed:
+        with pytest.raises(JobFailure, match="partial_failure"):
+            await background_tasks._inbox_classification_once()
+    else:
+        await background_tasks._inbox_classification_once()
+    worker.assert_awaited_once_with()
 
 @pytest.mark.asyncio
 async def test_holded_cycle_continues_stages_then_reports_partial(monkeypatch):

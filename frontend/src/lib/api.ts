@@ -134,6 +134,7 @@ import type {
   AssetCategory,
   InboxNote,
   InboxNoteCreate,
+  InboxNoteUpdate,
   AutomationRule,
   AutomationRuleCreate,
   AutomationLogEntry,
@@ -1131,7 +1132,7 @@ export const inboxApi = {
     api.get<{ count: number }>("/inbox/count").then((r) => r.data),
   create: (data: InboxNoteCreate) =>
     api.post<InboxNote>("/inbox", data).then((r) => r.data),
-  update: (id: number, data: Partial<InboxNoteCreate> & { status?: string; resolved_as?: string; resolved_entity_id?: number }) =>
+  update: (id: number, data: InboxNoteUpdate) =>
     api.put<InboxNote>(`/inbox/${id}`, data).then((r) => r.data),
   delete: (id: number) =>
     api.delete(`/inbox/${id}`).then((r) => r.data),

@@ -11,6 +11,7 @@ import {
   restoreQuerySnapshot,
   taskKeys,
   myWeekKeys,
+  inboxKeys,
 } from "./query-keys"
 
 describe("shared operational query keys", () => {
@@ -70,5 +71,14 @@ describe("shared operational query keys", () => {
     restoreQuerySnapshot(client, snapshot)
     expect(client.getQueryData(draggedKey)).toEqual(original)
     expect(client.getQueryData(siblingKey)).toEqual(sibling)
+  })
+
+  it("does not share Inbox data between authenticated users", () => {
+    expect(inboxKeys.list(7, "pending,classified")).not.toEqual(inboxKeys.list(8, "pending,classified"))
+    expect(inboxKeys.count(7)).not.toEqual(inboxKeys.count(8))
+  })
+
+  it("keeps an Inbox preview distinct from the paginated list cache", () => {
+    expect(inboxKeys.preview(7, "pending,classified", 5)).not.toEqual(inboxKeys.list(7, "pending,classified", 50))
   })
 })

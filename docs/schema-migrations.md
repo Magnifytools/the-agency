@@ -32,4 +32,6 @@ The contract verifies all 29 ORM uniqueness rules plus the active-timer partial 
 
 P14 adds `schema_versions/job_runtime_v1.json` through `startup/deployment_schema.py`. It creates only the job runtime table, then verifies its columns and primary key. The published P12 artifacts and checksums remain unchanged; their migration records and application timestamps are preserved.
 
+P15 appends `schema_versions/inbox_recovery_v1.json`: two nullable retry fields on `inbox_notes` and a partial index for pending work ordered by its effective next attempt. It preserves note text, status, associations, suggestions and timestamps. Verification checks column shape and the complete index definition. The P12 and P14 artifacts remain unchanged.
+
 The DDL is additive, but an older binary with an exact older ledger check does not accept the new revision on a fresh startup. Do not blindly redeploy that binary after the new ledger commits. Use a forward fix or a reviewed binary that recognizes the current schema contract; do not delete migration records to bypass readiness.

@@ -1,20 +1,19 @@
 """Inbox quick-capture API endpoints."""
 from __future__ import annotations
 
-import asyncio
 import logging
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import Response
-from sqlalchemy import select, func
+from sqlalchemy import DateTime, select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from backend.db.database import get_db, async_session
+from backend.db.database import get_db
 from backend.db.models import (
     InboxNote, InboxNoteStatus, InboxAttachment, Project, ProjectStatus, Client, ClientStatus,
-    Task, TaskStatus, TaskPriority, User,
+    Task, TaskStatus, TaskPriority,
 )
 from backend.api.deps import get_current_user, require_module
 from backend.api.utils.db_helpers import safe_refresh
@@ -24,21 +23,16 @@ from backend.schemas.inbox import (
 from backend.core.rate_limiter import ai_limiter
 from backend.services.task_scope import validate_task_scope
 from backend.services.domain_writes import create_task as create_task_write
+from backend.services.inbox_processing import can_read as _can_read
+from backend.services.temporal import as_utc_instant, business_today
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/inbox", tags=["inbox"])
 
-# Keep references to background tasks to prevent garbage collection
-_background_tasks: set[asyncio.Task] = set()
 
-
-def _fire_and_forget(coro) -> asyncio.Task:
-    task = asyncio.create_task(coro)
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
-    return task
-
+def _updated_clock():
+    return func.clock_timestamp().cast(DateTime(timezone=False))
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -53,21 +47,38 @@ def _safe_rel_name(obj, rel_attr: str) -> str | None:
         return None
 
 
-def _to_response(note: InboxNote) -> InboxNoteResponse:
-    """Convert ORM model to response, populating relationship names."""
+def _visible_suggestion(note: InboxNote, user=None) -> dict | None:
+    suggestion = dict(note.ai_suggestion) if note.ai_suggestion else None
+    if suggestion is not None:
+        required_modules = suggestion.pop("_context_modules", None)
+        if required_modules is None:
+            # Legacy suggestions have no trustworthy record of what context was
+            # sent to the provider, so expose them only with both permissions.
+            required_modules = ["projects", "clients"]
+        if user is not None and any(not _can_read(user, module) for module in required_modules):
+            return None
+    return suggestion
+
+
+def _to_response(note: InboxNote, user=None) -> InboxNoteResponse:
+    """Convert ORM model using the actor's current association permissions."""
+    can_see_projects = user is None or _can_read(user, "projects")
+    can_see_clients = user is None or _can_read(user, "clients")
     return InboxNoteResponse(
         id=note.id,
         user_id=note.user_id,
         raw_text=note.raw_text,
         source=note.source,
         status=note.status,
-        project_id=note.project_id,
-        client_id=note.client_id,
-        project_name=_safe_rel_name(note, "project"),
-        client_name=_safe_rel_name(note, "client"),
+        project_id=note.project_id if can_see_projects else None,
+        client_id=note.client_id if can_see_clients else None,
+        project_name=_safe_rel_name(note, "project") if can_see_projects else None,
+        client_name=_safe_rel_name(note, "client") if can_see_clients else None,
         resolved_as=note.resolved_as,
         resolved_entity_id=note.resolved_entity_id,
-        ai_suggestion=note.ai_suggestion,
+        ai_suggestion=_visible_suggestion(note, user),
+        classification_error_code=note.classification_error_code,
+        classification_next_attempt_at=as_utc_instant(note.classification_next_attempt_at),
         link_url=note.link_url,
         attachments=[
             {"id": a.id, "name": a.name, "mime_type": a.mime_type, "size_bytes": a.size_bytes}
@@ -91,72 +102,26 @@ async def _get_note_or_404(
     return note
 
 
-def _can_read(user, module: str) -> bool:
-    if user.role.value == "admin":
-        return True
-    return any(p.module == module and p.can_read for p in (user.permissions or []))
-
-
-async def _fetch_context(db: AsyncSession, user) -> tuple[list[dict], list[dict]]:
-    """Return entity modules visible to the actor.
-
-    There is no per-client ACL in the data model. Module permissions are the
-    real boundary, so this deliberately does not invent row ownership rules.
-    """
-    projects: list[dict] = []
-    clients: list[dict] = []
-    if _can_read(user, "projects"):
-        proj_result = await db.execute(
-            select(Project.id, Project.name, Client.name.label("client_name"))
-            .join(Client, Project.client_id == Client.id)
-            .where(Project.status == ProjectStatus.active)
-            .order_by(Project.name)
-            .limit(200)
-        )
-        projects = [
-            {"id": r.id, "name": r.name,
-             "client_name": r.client_name if _can_read(user, "clients") else None}
-            for r in proj_result.all()
-        ]
-    if _can_read(user, "clients"):
-        cli_result = await db.execute(
-            select(Client.id, Client.name)
-            .where(Client.status == ClientStatus.active)
-            .order_by(Client.name)
-            .limit(200)
-        )
-        clients = [{"id": r.id, "name": r.name} for r in cli_result.all()]
-    return projects, clients
-
-
-async def _classify_note_background(note_id: int) -> None:
-    """Run AI classification in background (fire-and-forget)."""
-    from backend.services.inbox_classifier import classify_inbox_note
-
-    try:
-        async with async_session() as db:
-            result = await db.execute(select(InboxNote).where(InboxNote.id == note_id))
-            note = result.scalar_one_or_none()
-            if not note or note.status != InboxNoteStatus.pending:
-                return
-
-            user = (await db.execute(
-                select(User).where(User.id == note.user_id).options(selectinload(User.permissions))
-            )).scalar_one_or_none()
-            if user is None:
-                return
-            projects, clients = await _fetch_context(db, user)
-            if not projects and not clients:
-                logger.info("No active projects/clients for classification, skipping note %d", note_id)
-                return
-
-            suggestion = await classify_inbox_note(note.raw_text, projects, clients)
-            note.ai_suggestion = suggestion
-            note.status = InboxNoteStatus.classified
-            await db.commit()
-            logger.info("Classified inbox note %d -> %s", note_id, suggestion.get("suggested_action"))
-    except Exception as e:
-        logger.error("Background classification failed for note %d: %s", note_id, e)
+async def _validate_associations(db, user, project_id, client_id) -> None:
+    project = None
+    client = None
+    if project_id is not None:
+        if not _can_read(user, "projects"):
+            raise HTTPException(status_code=403, detail="Sin permiso para consultar proyectos")
+        project = await db.get(Project, project_id, populate_existing=True)
+        if project is None or project.status != ProjectStatus.active:
+            raise HTTPException(status_code=422, detail="El proyecto no está activo")
+        parent_client = await db.get(Client, project.client_id, populate_existing=True)
+        if parent_client is None or parent_client.status != ClientStatus.active:
+            raise HTTPException(status_code=422, detail="El cliente del proyecto no está activo")
+    if client_id is not None:
+        if not _can_read(user, "clients"):
+            raise HTTPException(status_code=403, detail="Sin permiso para consultar clientes")
+        client = await db.get(Client, client_id, populate_existing=True)
+        if client is None or client.status != ClientStatus.active:
+            raise HTTPException(status_code=422, detail="El cliente no está activo")
+    if project is not None and client is not None and project.client_id != client.id:
+        raise HTTPException(status_code=422, detail="El proyecto no pertenece al cliente indicado")
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +134,7 @@ async def create_inbox_note(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """Capture a quick note. AI classification fires in background."""
+    """Persist a quick note; durable background processing classifies it."""
     text = body.raw_text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="El texto no puede estar vacio")
@@ -177,6 +142,7 @@ async def create_inbox_note(
     # If user already assigned project/client, skip AI classification
     already_assigned = body.project_id is not None or body.client_id is not None
     initial_status = InboxNoteStatus.classified if already_assigned else InboxNoteStatus.pending
+    await _validate_associations(db, user, body.project_id, body.client_id)
 
     note = InboxNote(
         user_id=user.id,
@@ -191,11 +157,7 @@ async def create_inbox_note(
     await db.commit()
     await safe_refresh(db, note, log_context="create_inbox_note")
 
-    # Only run AI classification if user didn't pre-assign
-    if not already_assigned:
-        _fire_and_forget(_classify_note_background(note.id))
-
-    return _to_response(note)
+    return _to_response(note, user)
 
 
 # ---------------------------------------------------------------------------
@@ -205,8 +167,8 @@ async def create_inbox_note(
 @router.get("")
 async def list_inbox_notes(
     status: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ) -> list[InboxNoteResponse]:
@@ -219,9 +181,9 @@ async def list_inbox_notes(
         if valid:
             q = q.where(InboxNote.status.in_(valid))
 
-    q = q.order_by(InboxNote.created_at.desc()).limit(limit).offset(offset)
+    q = q.order_by(InboxNote.created_at.desc(), InboxNote.id.desc()).limit(limit).offset(offset)
     result = await db.execute(q)
-    return [_to_response(n) for n in result.scalars().all()]
+    return [_to_response(n, user) for n in result.scalars().all()]
 
 
 # ---------------------------------------------------------------------------
@@ -255,20 +217,45 @@ async def update_inbox_note(
     user=Depends(get_current_user),
 ):
     """Update an inbox note (text, status, associations)."""
-    note = await _get_note_or_404(note_id, user.id, db)
+    note = (await db.execute(
+        select(InboxNote)
+        .where(InboxNote.id == note_id, InboxNote.user_id == user.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if note is None:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    if note.status in (InboxNoteStatus.processed, InboxNoteStatus.dismissed):
+        raise HTTPException(status_code=409, detail="La nota ya está resuelta")
 
-    _UPDATABLE_NOTE_FIELDS = {
-        "raw_text", "status", "project_id", "client_id",
-        "resolved_as", "resolved_entity_id", "link_url",
-    }
     update_data = body.model_dump(exclude_unset=True)
+    project_id = update_data.get("project_id", note.project_id)
+    client_id = update_data.get("client_id", note.client_id)
+    await _validate_associations(db, user, project_id, client_id)
     for field, value in update_data.items():
-        if field in _UPDATABLE_NOTE_FIELDS:
-            setattr(note, field, value)
+        setattr(note, field, value)
+    classification_input_changed = bool(
+        {"raw_text", "project_id", "client_id"}.intersection(update_data)
+    )
+    if "raw_text" in update_data:
+        text_value = (update_data["raw_text"] or "").strip()
+        if not text_value:
+            raise HTTPException(status_code=400, detail="El texto no puede estar vacío")
+        note.raw_text = text_value
+    if classification_input_changed:
+        note.status = (
+            InboxNoteStatus.classified
+            if note.project_id is not None or note.client_id is not None
+            else InboxNoteStatus.pending
+        )
+        note.ai_suggestion = None
+        note.classification_error_code = None
+        note.classification_next_attempt_at = None
+    note.updated_at = _updated_clock()
 
     await db.commit()
     await safe_refresh(db, note, log_context="update_inbox_note")
-    return _to_response(note)
+    return _to_response(note, user)
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +269,13 @@ async def delete_inbox_note(
     user=Depends(get_current_user),
 ) -> dict:
     """Delete an inbox note."""
-    note = await _get_note_or_404(note_id, user.id, db)
+    note = (await db.execute(
+        select(InboxNote)
+        .where(InboxNote.id == note_id, InboxNote.user_id == user.id)
+        .with_for_update()
+    )).scalar_one_or_none()
+    if note is None:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
     await db.delete(note)
     await db.commit()
     return {"ok": True}
@@ -292,31 +285,32 @@ async def delete_inbox_note(
 # POST /{id}/classify — Trigger AI classification
 # ---------------------------------------------------------------------------
 
-@router.post("/{note_id}/classify", response_model=InboxNoteResponse)
+@router.post("/{note_id}/classify", response_model=InboxNoteResponse, status_code=202)
 async def classify_note(
     note_id: int,
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """Run (or re-run) AI classification on a note."""
-    from backend.services.inbox_classifier import classify_inbox_note
-
+    """Durably enqueue (or re-enqueue) classification without calling AI inline."""
     ai_limiter.check(user.id, max_requests=20, window_seconds=60)
-
-    note = await _get_note_or_404(note_id, user.id, db)
-    projects, clients = await _fetch_context(db, user)
-
-    try:
-        suggestion = await classify_inbox_note(note.raw_text, projects, clients)
-        note.ai_suggestion = suggestion
-        note.status = InboxNoteStatus.classified
-        await db.commit()
-        await safe_refresh(db, note, log_context="inbox")
-    except Exception as e:
-        logger.error("Classification failed for note %d: %s", note_id, e)
-        raise HTTPException(status_code=502, detail="Error al clasificar con IA")
-
-    return _to_response(note)
+    note = (await db.execute(
+        select(InboxNote)
+        .where(InboxNote.id == note_id, InboxNote.user_id == user.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if note is None:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    if note.status in (InboxNoteStatus.processed, InboxNoteStatus.dismissed):
+        raise HTTPException(status_code=409, detail="La nota ya está resuelta")
+    note.status = InboxNoteStatus.pending
+    note.ai_suggestion = None
+    note.classification_error_code = None
+    note.classification_next_attempt_at = None
+    note.updated_at = _updated_clock()
+    await db.commit()
+    await safe_refresh(db, note, log_context="inbox_requeue")
+    return _to_response(note, user)
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +334,8 @@ async def convert_to_task(
     if note is None:
         raise HTTPException(status_code=404, detail="Nota no encontrada")
     body = body or ConvertToTaskBody()
+    if note.status == InboxNoteStatus.dismissed:
+        raise HTTPException(status_code=409, detail="La nota ya fue descartada")
 
     # A retry (including a concurrent waiter) resolves to the task already
     # created by this same actor instead of creating a duplicate.
@@ -347,15 +343,19 @@ async def convert_to_task(
         if note.resolved_as == "task" and note.resolved_entity_id is not None:
             existing_task = await db.get(Task, note.resolved_entity_id)
             if existing_task is not None and existing_task.created_by == user.id:
-                return {"ok": True, "task_id": existing_task.id, "note": _to_response(note).model_dump()}
+                return {"ok": True, "task_id": existing_task.id, "note": _to_response(note, user).model_dump()}
         raise HTTPException(status_code=409, detail="Esta nota ya fue convertida en tarea")
 
     # Resolve fields: explicit > AI suggestion > defaults
-    ai = note.ai_suggestion or {}
+    ai = _visible_suggestion(note, user) or {}
 
     title = body.title or ai.get("suggested_title") or note.raw_text[:200]
-    project_id = body.project_id or note.project_id
-    client_id = body.client_id or note.client_id
+    project_id = body.project_id or (
+        note.project_id if _can_read(user, "projects") else None
+    )
+    client_id = body.client_id or (
+        note.client_id if _can_read(user, "clients") else None
+    )
 
     # Infer client from AI suggestion if not set (defend against malformed AI data)
     suggested_client = ai.get("suggested_client")
@@ -365,6 +365,7 @@ async def convert_to_task(
     suggested_project = ai.get("suggested_project")
     if not project_id and isinstance(suggested_project, dict):
         project_id = suggested_project.get("id")
+    await _validate_associations(db, user, project_id, client_id)
     # Infer client from project
     if project_id and not client_id:
         proj = await db.execute(select(Project.client_id).where(Project.id == project_id))
@@ -389,9 +390,6 @@ async def convert_to_task(
     except ValueError:
         priority = TaskPriority.medium
 
-    from datetime import date as _date
-    today = _date.today()
-
     try:
         # Inbox owns these adapter defaults; the shared writer only enforces
         # domain invariants and attribution.
@@ -404,12 +402,13 @@ async def convert_to_task(
             "project_id": project_id,
             "assigned_to": body.assigned_to or user.id,
             "due_date": body.due_date,
-            "scheduled_date": today,
+            "scheduled_date": business_today(),
             "link_url": note.link_url,
         }, actor=user)
         note.status = InboxNoteStatus.processed
         note.resolved_as = "task"
         note.resolved_entity_id = task.id
+        note.updated_at = _updated_clock()
         await db.commit()
     except IntegrityError as e:
         await db.rollback()
@@ -427,7 +426,7 @@ async def convert_to_task(
         pass  # relationships not critical for response
 
     try:
-        note_data = _to_response(note).model_dump()
+        note_data = _to_response(note, user).model_dump()
     except Exception as e:
         logger.debug("Failed to serialize note after convert-to-task: %s", e)
         note_data = {"id": note_id, "status": "processed"}
@@ -450,18 +449,31 @@ async def dismiss_note(
     user=Depends(get_current_user),
 ):
     """Dismiss an inbox note."""
-    note = await _get_note_or_404(note_id, user.id, db)
+    note = (await db.execute(
+        select(InboxNote)
+        .where(InboxNote.id == note_id, InboxNote.user_id == user.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if note is None:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    if note.status == InboxNoteStatus.processed:
+        raise HTTPException(status_code=409, detail="La nota ya fue convertida en tarea")
     note.status = InboxNoteStatus.dismissed
     note.resolved_as = "dismissed"
+    note.updated_at = _updated_clock()
     await db.commit()
     await safe_refresh(db, note, log_context="dismiss_inbox_note")
-    return _to_response(note)
+    return _to_response(note, user)
 
 
 # ── Attachments ──────────────────────────────────────
 
 MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024  # 10 MB
-ALLOWED_MIME_PREFIXES = ("image/", "application/pdf", "text/", "application/vnd.", "application/msword")
+INLINE_RASTER_MIME_TYPES = frozenset({
+    "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif",
+})
+PDF_MIME_TYPE = "application/pdf"
 
 
 @router.post("/{note_id}/attachments")
@@ -474,7 +486,14 @@ async def upload_attachment(
     """Upload an attachment to an inbox note."""
     note = await _get_note_or_404(note_id, user.id, db)
 
-    content = await file.read()
+    filename = file.filename or "unnamed"
+    mime_type = file.content_type or "application/octet-stream"
+    if len(filename) > 255:
+        raise HTTPException(status_code=400, detail="El nombre del archivo es demasiado largo")
+    if len(mime_type) > 100:
+        raise HTTPException(status_code=400, detail="El tipo del archivo es demasiado largo")
+
+    content = await file.read(MAX_ATTACHMENT_SIZE + 1)
     if len(content) > MAX_ATTACHMENT_SIZE:
         raise HTTPException(status_code=400, detail="El archivo supera el límite de 10 MB")
 
@@ -482,16 +501,16 @@ async def upload_attachment(
     existing = await db.execute(
         select(InboxAttachment).where(
             InboxAttachment.note_id == note_id,
-            InboxAttachment.name == file.filename,
+            InboxAttachment.name == filename,
         )
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail=f"Ya existe un adjunto con el nombre '{file.filename}'")
+        raise HTTPException(status_code=409, detail=f"Ya existe un adjunto con el nombre '{filename}'")
 
     attachment = InboxAttachment(
         note_id=note.id,
-        name=file.filename or "unnamed",
-        mime_type=file.content_type or "application/octet-stream",
+        name=filename,
+        mime_type=mime_type,
         size_bytes=len(content),
         content=content,
         uploaded_by=user.id,
@@ -552,16 +571,24 @@ async def download_attachment(
     if not attachment:
         raise HTTPException(status_code=404, detail="Adjunto no encontrado")
 
-    # Serve inline for images/PDFs, attachment for others
-    disposition = "inline" if attachment.mime_type.startswith("image/") or attachment.mime_type == "application/pdf" else "attachment"
+    # Only formats with a known passive browser representation are rendered
+    # inline. Existing SVG/HTML and unknown uploads remain downloadable without
+    # trusting their stored, client-provided Content-Type.
+    inline = attachment.mime_type in INLINE_RASTER_MIME_TYPES or attachment.mime_type == PDF_MIME_TYPE
+    disposition = "inline" if inline else "attachment"
+    media_type = attachment.mime_type if inline else "application/octet-stream"
+    headers = {
+        "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(attachment.name, safe='')}",
+        "Content-Length": str(attachment.size_bytes),
+        "X-Content-Type-Options": "nosniff",
+    }
+    if attachment.mime_type == PDF_MIME_TYPE:
+        headers["Content-Security-Policy"] = "sandbox; default-src 'none'"
 
     return Response(
         content=attachment.content,
-        media_type=attachment.mime_type,
-        headers={
-            "Content-Disposition": f'{disposition}; filename="{attachment.name}"',
-            "Content-Length": str(attachment.size_bytes),
-        },
+        media_type=media_type,
+        headers=headers,
     )
 
 

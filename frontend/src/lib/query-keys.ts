@@ -154,9 +154,10 @@ export const vaultKeys = {
 }
 
 export const inboxKeys = {
-  all: () => ["inbox-notes"] as const,
-  list: (status?: string) => ["inbox-notes", status ?? "all"] as const,
-  count: () => ["inbox-count"] as const,
+  all: (userId: number) => ["inbox", userId] as const,
+  list: (userId: number, status?: string, pageSize = 50) => ["inbox", userId, "list", status ?? "all", pageSize] as const,
+  preview: (userId: number, status?: string, limit = 5) => ["inbox", userId, "preview", status ?? "all", limit] as const,
+  count: (userId: number) => ["inbox", userId, "count"] as const,
 }
 
 export function isHoldedQueryKey(queryKey: readonly unknown[]): boolean {

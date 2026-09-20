@@ -42,7 +42,7 @@ it("shows active incidents and opens their task without deciding them", async ()
 it("keeps history reachable when the compact inbox has no active incidents", async () => {
   incidentsApi.list.mockResolvedValue({ items: [], next_cursor: null })
   setup(true)
-  expect(await screen.findByText(/No hay alertas/)).toBeInTheDocument()
+  expect((await screen.findByText("No hay alertas pendientes.")).tagName).toBe("P")
   expect(screen.getByRole("link", { name: "Ver todas las alertas" })).toHaveAttribute("href", "/incidents")
 })
 

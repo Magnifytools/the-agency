@@ -14,6 +14,8 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage, formatTimeAgo } from "@/lib/utils"
+import { useAuth } from "@/context/auth-context"
+import { getAgencyTimezone, parseApiInstant } from "@/lib/dates"
 
 
 const priorityColors: Record<string, string> = {
@@ -28,6 +30,19 @@ const priorityLabels: Record<string, string> = {
   high: "Alta",
   medium: "Media",
   low: "Baja",
+}
+
+const classificationMessages = {
+  provider_unavailable: "No se pudo generar una sugerencia.",
+  invalid_response: "La clasificación recibida no se pudo validar.",
+  execution_failed: "La clasificación no se pudo completar.",
+  context_unavailable: "No hay proyectos ni clientes disponibles con tus permisos para generar una sugerencia.",
+} as const
+
+const captureSourceLabels: Record<string, string> = {
+  dashboard: "Panel",
+  quick_capture: "Captura rápida",
+  chrome_extension: "Extensión",
 }
 
 interface Props {
@@ -45,11 +60,14 @@ export function InboxNoteCard({ note }: Props) {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
+  const { user, hasPermission } = useAuth()
+  const canReadProjects = hasPermission("projects")
+  const canReadClients = hasPermission("clients")
+  const canWriteTasks = hasPermission("tasks", true)
   const ai = note.ai_suggestion as AISuggestion | null
 
   const invalidateAll = () => {
-    queryClient.invalidateQueries({ queryKey: inboxKeys.all() })
-    queryClient.invalidateQueries({ queryKey: inboxKeys.count() })
+    if (user) queryClient.invalidateQueries({ queryKey: inboxKeys.all(user.id) })
   }
 
   const uploadMutation = useMutation({
@@ -80,12 +98,14 @@ export function InboxNoteCard({ note }: Props) {
     queryKey: projectKeys.list(["active"]),
     queryFn: () => projectsApi.listAll({ status: "active" }),
     staleTime: 60_000,
+    enabled: canReadProjects,
   })
 
   const { data: clients = [] } = useQuery({
     queryKey: ["clients-active-list"],
     queryFn: () => clientsApi.listAll("active"),
     staleTime: 60_000,
+    enabled: canReadClients,
   })
 
   const updateMutation = useMutation({
@@ -99,9 +119,12 @@ export function InboxNoteCard({ note }: Props) {
     mutationFn: () => inboxApi.classify(note.id),
     onSuccess: () => {
       invalidateAll()
-      toast.success("Reclasificado")
+      toast.success("Clasificación solicitada")
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al clasificar")),
+    onError: (err) => {
+      invalidateAll()
+      toast.error(getErrorMessage(err, "No se pudo confirmar el reintento. Actualiza la nota antes de volver a intentarlo."))
+    },
   })
 
   const dismissMutation = useMutation({
@@ -174,9 +197,12 @@ export function InboxNoteCard({ note }: Props) {
                 <Clock className="w-3 h-3" />
                 {formatTimeAgo(note.created_at)}
               </span>
+              {captureSourceLabels[note.source] && (
+                <span className="text-[10px] text-muted-foreground">Capturada desde {captureSourceLabels[note.source]}</span>
+              )}
               {note.status === "pending" && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/50">
-                  Pendiente IA...
+                  {note.classification_error_code ? "Clasificación pendiente" : "Pendiente de clasificación"}
                 </span>
               )}
               {note.status === "processed" && (
@@ -190,17 +216,27 @@ export function InboxNoteCard({ note }: Props) {
                 </span>
               )}
             </div>
-            {/* Delete button — always visible for any state */}
-            <button
-              className="shrink-0 mt-1 p-1 rounded text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
-              title="Eliminar nota"
-              aria-label="Eliminar nota"
-              onClick={() => setDeleteOpen(true)}
-              disabled={deleteMutation.isPending}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            {note.status === "pending" && note.classification_error_code && (
+              <div role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span>{classificationMessages[note.classification_error_code] ?? "La clasificación no se pudo completar."}</span>
+                <span>La nota está guardada y puedes continuar manualmente. Se reintentará automáticamente.</span>
+                {note.classification_next_attempt_at && <span>Próxima revisión prevista: {parseApiInstant(note.classification_next_attempt_at).toLocaleString("es-ES", { timeZone: getAgencyTimezone(), dateStyle: "short", timeStyle: "short" })}.</span>}
+                <Button size="sm" variant="outline" className="h-7" onClick={() => classifyMutation.mutate()} disabled={classifyMutation.isPending}>
+                  {classifyMutation.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                  Reintentar
+                </Button>
+              </div>
+            )}
           </div>
+          <button
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
+            title="Eliminar nota"
+            aria-label="Eliminar nota"
+            onClick={() => setDeleteOpen(true)}
+            disabled={deleteMutation.isPending}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         </div>
 
         {/* AI Suggestion chips */}
@@ -243,13 +279,16 @@ export function InboxNoteCard({ note }: Props) {
         {(note.status === "classified" || note.status === "pending") && (
           <div className="mt-3 pt-3 border-t border-border/30 space-y-3">
             <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Cliente</label>
+              {canReadClients && <div>
+                <label htmlFor={`inbox-client-${note.id}`} className="text-[10px] font-medium text-muted-foreground mb-1 block">Cliente</label>
                 <Select
+                  id={`inbox-client-${note.id}`}
                   value={String(note.client_id ?? "")}
                   onChange={(e) => {
-                    const val = e.target.value
-                    updateMutation.mutate({ client_id: val ? Number(val) : null })
+                    const clientId = e.target.value ? Number(e.target.value) : null
+                    const keepsProject = note.project_id != null
+                      && projects.some((project) => project.id === note.project_id && project.client_id === clientId)
+                    updateMutation.mutate({ client_id: clientId, project_id: keepsProject ? note.project_id : null })
                   }}
                   className="text-xs"
                 >
@@ -258,14 +297,19 @@ export function InboxNoteCard({ note }: Props) {
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </Select>
-              </div>
-              <div>
-                <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Proyecto</label>
+              </div>}
+              {canReadProjects && <div>
+                <label htmlFor={`inbox-project-${note.id}`} className="text-[10px] font-medium text-muted-foreground mb-1 block">Proyecto</label>
                 <Select
+                  id={`inbox-project-${note.id}`}
                   value={String(note.project_id ?? "")}
                   onChange={(e) => {
-                    const val = e.target.value
-                    updateMutation.mutate({ project_id: val ? Number(val) : null })
+                    const projectId = e.target.value ? Number(e.target.value) : null
+                    const project = projects.find((item) => item.id === projectId)
+                    updateMutation.mutate({
+                      project_id: projectId,
+                      ...(canReadClients ? { client_id: project ? project.client_id : note.client_id } : {}),
+                    })
                   }}
                   className="text-xs"
                 >
@@ -274,7 +318,7 @@ export function InboxNoteCard({ note }: Props) {
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </Select>
-              </div>
+              </div>}
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -282,24 +326,21 @@ export function InboxNoteCard({ note }: Props) {
                 variant="default"
                 className="h-7 text-xs gap-1.5 px-3"
                 onClick={() => setConvertOpen(true)}
+                disabled={!canWriteTasks}
               >
                 <CheckSquare className="w-3 h-3" />
                 Crear tarea
               </Button>
-              <Button
+              {note.status === "classified" && <Button
                 size="sm"
                 variant="ghost"
                 className="h-7 text-xs gap-1.5 px-3"
                 onClick={() => classifyMutation.mutate()}
                 disabled={classifyMutation.isPending}
               >
-                {classifyMutation.isPending ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <RefreshCw className="w-3 h-3" />
-                )}
-                {note.status === "pending" ? "Clasificar IA" : "Reclasificar IA"}
-              </Button>
+                {classifyMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                Reclasificar
+              </Button>}
               <Button
                 size="sm"
                 variant="ghost"
@@ -376,6 +417,10 @@ function ConvertToTaskDialog({
   onConverted: () => void
 }) {
   const queryClient = useQueryClient()
+  const { hasPermission } = useAuth()
+  const canReadProjects = hasPermission("projects")
+  const canReadClients = hasPermission("clients")
+  const canReadUsers = hasPermission("users")
   const ai = note.ai_suggestion as AISuggestion | null
   const [title, setTitle] = useState(ai?.suggested_title ?? note.raw_text.slice(0, 200))
   const [projectId, setProjectId] = useState<string>(
@@ -390,18 +435,21 @@ function ConvertToTaskDialog({
     queryKey: projectKeys.list(["active"]),
     queryFn: () => projectsApi.listAll({ status: "active" }),
     staleTime: 60_000,
+    enabled: canReadProjects,
   })
 
   const { data: clients = [] } = useQuery({
     queryKey: ["clients-active-list"],
     queryFn: () => clientsApi.listAll("active"),
     staleTime: 60_000,
+    enabled: canReadClients,
   })
 
   const { data: users = [] } = useQuery({
     queryKey: ["users-list-all"],
     queryFn: () => usersApi.listAll(),
     staleTime: 60_000,
+    enabled: canReadUsers,
   })
 
   const [assignedTo, setAssignedTo] = useState<string>("")
@@ -411,7 +459,7 @@ function ConvertToTaskDialog({
       inboxApi.convertToTask(note.id, {
         title: title.trim() || undefined,
         project_id: projectId ? Number(projectId) : undefined,
-        client_id: clientId ? Number(clientId) : undefined,
+        client_id: canReadClients && clientId ? Number(clientId) : undefined,
         priority,
         assigned_to: assignedTo ? Number(assignedTo) : undefined,
       }),
@@ -445,8 +493,9 @@ function ConvertToTaskDialog({
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Título</label>
+            <label htmlFor={`inbox-task-title-${note.id}`} className="text-xs font-medium text-muted-foreground mb-1 block">Título</label>
             <Input
+              id={`inbox-task-title-${note.id}`}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Título de la tarea"
@@ -455,29 +504,38 @@ function ConvertToTaskDialog({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Cliente *</label>
-              <Select value={clientId} onChange={(e) => setClientId(e.target.value)} className="text-sm">
+            {canReadClients && <div>
+              <label htmlFor={`inbox-task-client-${note.id}`} className="text-xs font-medium text-muted-foreground mb-1 block">Cliente *</label>
+              <Select id={`inbox-task-client-${note.id}`} value={clientId} onChange={(e) => {
+                const nextClientId = e.target.value
+                setClientId(nextClientId)
+                if (projectId && !projects.some((project) => String(project.id) === projectId && String(project.client_id) === nextClientId)) setProjectId("")
+              }} className="text-sm">
                 <option value="">Sin cliente</option>
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </Select>
-            </div>
+            </div>}
 
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Proyecto</label>
-              <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="text-sm">
+            {canReadProjects && <div>
+              <label htmlFor={`inbox-task-project-${note.id}`} className="text-xs font-medium text-muted-foreground mb-1 block">Proyecto</label>
+              <Select id={`inbox-task-project-${note.id}`} value={projectId} onChange={(e) => {
+                const nextProjectId = e.target.value
+                setProjectId(nextProjectId)
+                const project = projects.find((item) => String(item.id) === nextProjectId)
+                if (project && canReadClients) setClientId(String(project.client_id))
+              }} className="text-sm">
                 <option value="">Sin proyecto</option>
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </Select>
-            </div>
+            </div>}
 
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Prioridad</label>
-              <Select value={priority} onChange={(e) => setPriority(e.target.value as typeof priority)} className="text-sm">
+              <label htmlFor={`inbox-task-priority-${note.id}`} className="text-xs font-medium text-muted-foreground mb-1 block">Prioridad</label>
+              <Select id={`inbox-task-priority-${note.id}`} value={priority} onChange={(e) => setPriority(e.target.value as typeof priority)} className="text-sm">
                 <option value="low">Baja</option>
                 <option value="medium">Media</option>
                 <option value="high">Alta</option>
@@ -485,15 +543,15 @@ function ConvertToTaskDialog({
               </Select>
             </div>
 
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Asignar a</label>
-              <Select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className="text-sm">
+            {canReadUsers && <div>
+              <label htmlFor={`inbox-task-assignee-${note.id}`} className="text-xs font-medium text-muted-foreground mb-1 block">Asignar a</label>
+              <Select id={`inbox-task-assignee-${note.id}`} value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className="text-sm">
                 <option value="">Yo</option>
                 {users.map((u) => (
                   <option key={u.id} value={u.id}>{u.full_name}</option>
                 ))}
               </Select>
-            </div>
+            </div>}
           </div>
         </div>
       </DialogContent>
@@ -504,13 +562,13 @@ function ConvertToTaskDialog({
         </Button>
         <Button
           onClick={() => {
-            if (!clientId) {
-              toast.error("Selecciona un cliente antes de crear la tarea")
+            if (!clientId && !projectId) {
+              toast.error("Selecciona un cliente o un proyecto antes de crear la tarea")
               return
             }
             convertMutation.mutate()
           }}
-          disabled={convertMutation.isPending || !clientId}
+          disabled={convertMutation.isPending || (!clientId && !projectId)}
           className="gap-2"
         >
           {convertMutation.isPending ? (

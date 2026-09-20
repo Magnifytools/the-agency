@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from backend.api.routes.inbox import _fetch_context
+from backend.services.inbox_processing import fetch_context as _fetch_context
 from backend.db.models import (
     Client,
     ClientStatus,

@@ -1798,12 +1798,22 @@ class InboxNote(TimestampMixin, Base):
     resolved_as = Column(String(20), nullable=True)
     resolved_entity_id = Column(Integer, nullable=True)
     ai_suggestion = Column(JSONB, nullable=True)
+    classification_error_code = Column(String(32), nullable=True)
+    classification_next_attempt_at = Column(DateTime, nullable=True)
     link_url = Column(String(500), nullable=True)
 
     user = relationship("User", lazy="selectin")
     project = relationship("Project", lazy="selectin")
     client = relationship("Client", lazy="selectin")
     attachments = relationship("InboxAttachment", back_populates="note", cascade="all, delete-orphan", lazy="selectin")
+
+
+Index(
+    "ix_inbox_pending_attempt",
+    func.coalesce(InboxNote.classification_next_attempt_at, InboxNote.updated_at),
+    InboxNote.id,
+    postgresql_where=InboxNote.status == InboxNoteStatus.pending,
+)
 
 
 class InboxAttachment(TimestampMixin, Base):
