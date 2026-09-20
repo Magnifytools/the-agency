@@ -27,11 +27,11 @@ def job_definitions() -> tuple[JobDefinition, ...]:
         JobDefinition(JobSpec("deliveries", 2, 5), "Procesar entregas",
                       "Comprueba la cola. La confirmación de cada envío figura en su recibo.",
                       None if settings.DELIVERY_WORKER_ENABLED else "El procesamiento de entregas está pausado."),
-        JobDefinition(JobSpec("engine", 3, max(1, settings.ENGINE_SYNC_INTERVAL_HOURS) * 3600, 900),
+        JobDefinition(JobSpec("engine", 3, max(1, settings.ENGINE_SYNC_INTERVAL_HOURS) * 3600, 900, retry_seconds=900),
                       "Actualizar datos de Engine", "Actualiza las métricas, resúmenes y alertas de clientes vinculados.",
                       None if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL and settings.ENGINE_SERVICE_KEY
                       else "La sincronización de Engine está desactivada o falta su conexión."),
-        JobDefinition(JobSpec("holded", 4, 86400, 900), "Actualizar datos de Holded",
+        JobDefinition(JobSpec("holded", 4, 86400, 900, retry_seconds=1800), "Actualizar datos de Holded",
                       "Sincroniza contactos, facturas y gastos de la integración configurada.",
                       None if settings.HOLDED_API_KEY else "Holded no está conectado."),
         JobDefinition(JobSpec("advanced_reset", 5, 86400, daily=True), "Continuar tareas avanzadas",
@@ -50,4 +50,6 @@ def job_definitions() -> tuple[JobDefinition, ...]:
                       else "La sincronización de calendarios no está configurada o los avisos están pausados."),
         JobDefinition(JobSpec("retention", 10, 86400), "Limpiar registros antiguos",
                       "Aplica la retención de logs y notificaciones antiguas; conserva las incidencias actuales."),
+        JobDefinition(JobSpec("inbox_classification", 11, 30, 180), "Clasificar notas de Inbox",
+                      "Recupera notas pendientes y propone asociaciones. Nunca crea tareas sin tu decisión."),
     )

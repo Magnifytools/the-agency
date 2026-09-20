@@ -459,6 +459,8 @@ export interface JobRuntimeResponse {
 // --- Inbox Quick Capture ---
 
 export type InboxNoteStatus = "pending" | "classified" | "processed" | "dismissed"
+export type InboxClassificationErrorCode = "provider_unavailable" | "invalid_response" | "execution_failed" | "context_unavailable"
+export type InboxCaptureSource = "dashboard" | "quick_capture" | "chrome_extension"
 
 export interface AISuggestion {
   suggested_project: { id: number | null; name: string; confidence: number } | null
@@ -489,6 +491,8 @@ export interface InboxNote {
   resolved_as: string | null
   resolved_entity_id: number | null
   ai_suggestion: AISuggestion | null
+  classification_error_code: InboxClassificationErrorCode | null
+  classification_next_attempt_at: string | null
   link_url: string | null
   attachments: InboxAttachment[]
   created_at: string
@@ -497,7 +501,14 @@ export interface InboxNote {
 
 export interface InboxNoteCreate {
   raw_text: string
-  source?: string
+  source?: InboxCaptureSource
+  project_id?: number | null
+  client_id?: number | null
+  link_url?: string | null
+}
+
+export interface InboxNoteUpdate {
+  raw_text?: string
   project_id?: number | null
   client_id?: number | null
   link_url?: string | null

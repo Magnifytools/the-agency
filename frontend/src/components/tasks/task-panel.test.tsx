@@ -501,4 +501,10 @@ describe("TaskPanel", () => {
     expect(mocks.recurrencePreview).toHaveBeenNthCalledWith(1, expect.objectContaining({ recurrence_paused: false }));
     expect(mocks.recurrencePreview).toHaveBeenNthCalledWith(2, expect.objectContaining({ recurrence_paused: false }));
   });
+
+  it("does not invent a completion date for a historical completed task", async () => {
+    mocks.get.mockResolvedValue({ ...task, status: "completed", completed_at: null });
+    setup({ taskId: 9 });
+    expect(await screen.findByText(/No se registró la fecha de finalización/)).toBeInTheDocument();
+  });
 });

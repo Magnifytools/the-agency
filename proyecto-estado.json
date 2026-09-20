@@ -1,6 +1,6 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-20T14:51:29.474892+00:00",
+  "ultima_actualizacion": "2026-09-20T15:25:21.693414+00:00",
   "estado_general": "produccion_decimocuarta_mejora_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
@@ -220,6 +220,13 @@
       "estado": "completado",
       "prioridad": "alta",
       "notas": "PR25 013d5ba publicada y verificada; 1067 backend (2 omitidas), 282 frontend y 46 extensión. CI rama/main, esquema aditivo, datos preservados, 51 lecturas+6colectores y panel390/1440 aprobados. Monitor muestra fallo previo de Engine por timeout, cuya investigación continúa; otros procesos activos comprobados. Objetivo global activo."
+    },
+    {
+      "id": "AUDIT-20260920-P15",
+      "descripcion": "Inbox recuperable, permisos y respuestas tardías; notas paginadas y Hoy más claro",
+      "estado": "verificado_local_pendiente_publicacion",
+      "prioridad": "alta",
+      "notas": "1104 backend (2 omitidas),294 frontend y build correctos. Cola durable con CAS y reintentos visibles; asociaciones y lifecycle protegidos; adjuntos activos descargables. Migración aditiva sin reescritura histórica. Verificación aislada de captura, error, reintento y conversión manual."
     }
   ],
   "bugs": [
@@ -290,7 +297,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "Recuperación de Inbox y defensa ante respuestas tardías/ACL; simplificar Hoy y trazabilidad histórica. Investigar timeout preexistente de Engine y ajustar reintentos según el coste observado. Mantener revisión histórica, canal y demás criterios de auditoría. Objetivo completo activo.",
+  "proximos_pasos": "Publicar y verificar P15. Corregir consulta upstream Engine, continuar revisión histórica, simplificación restante de UX, canal y demás criterios de la matriz. Objetivo completo activo.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,

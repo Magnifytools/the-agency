@@ -278,6 +278,14 @@ async def _scheduled_communications_once():
     await run_scheduler_once(async_session, raise_on_error=True)
 
 
+async def _inbox_classification_once():
+    from backend.services.inbox_processing import run_inbox_classification_once
+    from backend.services.job_runtime import JobFailure
+
+    if await run_inbox_classification_once():
+        raise JobFailure("partial_failure")
+
+
 async def _coordinated_job_loop(definition, operation):
     """Poll durable due state; ``operation`` performs exactly one job cycle."""
     from backend.db.database import engine
@@ -318,6 +326,7 @@ def start_background_tasks() -> list[asyncio.Task]:
         ),
         "calendar": ("calendar-sync", _sync_calendars_once),
         "retention": ("retention-cleanup", _retention_cleanup_once),
+        "inbox_classification": ("inbox-classification", _inbox_classification_once),
     }
 
     for key, (task_name, operation) in operations.items():

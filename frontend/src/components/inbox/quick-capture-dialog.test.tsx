@@ -15,6 +15,10 @@ const mocks = vi.hoisted(() => ({
   getCommand: vi.fn(),
   undo: vi.fn(),
   createInbox: vi.fn(),
+  canReadTasks: true,
+}));
+vi.mock("@/context/auth-context", () => ({
+  useAuth: () => ({ user: { id: 7 }, hasPermission: (module: string) => module !== "tasks" || mocks.canReadTasks }),
 }));
 vi.mock("@/lib/api", () => ({
   commandsApi: {
@@ -70,6 +74,7 @@ function deferred<T>() {
 describe("command entry", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.canReadTasks = true;
     mocks.listCommands.mockResolvedValue({
       items: [],
       total: 0,
@@ -356,6 +361,16 @@ describe("command entry", () => {
         }),
       ),
     );
+  });
+
+  it("keeps personal capture available without tasks permission", async () => {
+    mocks.canReadTasks = false;
+    mocks.createInbox.mockResolvedValue({ id: 3 });
+    show();
+    await userEvent.click(screen.getByRole("tab", { name: "Guardar para aclarar" }));
+    await userEvent.type(screen.getByLabelText("Contenido para aclarar"), "Nota personal");
+    await userEvent.click(screen.getByRole("button", { name: "Guardar para aclarar" }));
+    await waitFor(() => expect(mocks.createInbox).toHaveBeenCalledWith(expect.objectContaining({ raw_text: "Nota personal", source: "quick_capture" })));
   });
 
   it("loads linked query results without inferring the total", async () => {

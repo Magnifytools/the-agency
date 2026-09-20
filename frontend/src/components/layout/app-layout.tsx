@@ -37,9 +37,9 @@ export function AppLayout() {
   })
 
   const { data: inboxCount } = useQuery({
-    queryKey: inboxKeys.count(),
+    queryKey: inboxKeys.count(user?.id ?? 0),
     queryFn: inboxApi.count,
-    refetchInterval: 10_000,
+    enabled: !!user,
     refetchIntervalInBackground: false,
     retry: false,
     staleTime: 10_000,

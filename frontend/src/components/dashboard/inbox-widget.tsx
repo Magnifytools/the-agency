@@ -10,22 +10,26 @@ import { CornerDownLeft, Inbox as InboxIcon, X, Sparkles, FolderKanban, ArrowRig
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { Link } from "react-router-dom"
+import { useAuth } from "@/context/auth-context"
 
 export function InboxWidget() {
     const [newNote, setNewNote] = useState("")
     const queryClient = useQueryClient()
+    const { user } = useAuth()
 
     const { data: inboxNotes = [], isLoading } = useQuery({
-        queryKey: [...inboxKeys.list("pending,classified")],
+        queryKey: inboxKeys.preview(user?.id ?? 0, "pending,classified", 5),
         queryFn: () => inboxApi.list({ status: "pending,classified", limit: 5 }),
+        enabled: !!user,
+        refetchInterval: (query) => query.state.data?.some((note) => note.status === "pending") ? 10_000 : false,
+        refetchIntervalInBackground: false,
     })
 
     const createMutation = useMutation({
         mutationFn: (raw_text: string) => inboxApi.create({ raw_text, source: "dashboard" }),
         onSuccess: () => {
             setNewNote("")
-            queryClient.invalidateQueries({ queryKey: inboxKeys.all() })
-            queryClient.invalidateQueries({ queryKey: inboxKeys.count() })
+            if (user) queryClient.invalidateQueries({ queryKey: inboxKeys.all(user.id) })
             toast.success("Capturado en el Inbox")
         },
         onError: (err) => toast.error(getErrorMessage(err, "Error al guardar en el Inbox")),
@@ -34,8 +38,7 @@ export function InboxWidget() {
     const dismissMutation = useMutation({
         mutationFn: (id: number) => inboxApi.dismiss(id),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: inboxKeys.all() })
-            queryClient.invalidateQueries({ queryKey: inboxKeys.count() })
+            if (user) queryClient.invalidateQueries({ queryKey: inboxKeys.all(user.id) })
         },
     })
 

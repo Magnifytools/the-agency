@@ -261,3 +261,28 @@ async def test_daily_next_run_uses_business_midnight_across_dst():
     due = spec.next_run(before, failed=False)
     assert due.isoformat() == "2026-03-29T22:01:00+00:00"
     assert spec.next_run(before, failed=True) == before + timedelta(seconds=60)
+
+
+@pytest.mark.parametrize("key,delay", [("engine", 900), ("holded", 1800)])
+async def test_external_failure_preserves_retry_delay_across_worker_calls(engine, key, delay):
+    from backend.services.job_catalog import job_definitions
+
+    spec = next(item.spec for item in job_definitions() if item.spec.key == key)
+    calls = 0
+
+    async def failed_provider():
+        nonlocal calls
+        calls += 1
+        raise JobFailure("provider_unavailable")
+
+    with pytest.raises(JobFailure):
+        await run_job(engine, spec, failed_provider)
+    row = await _row(engine, key)
+    assert row["next_run_at"] - row["finished_at"] == timedelta(seconds=delay)
+    assert await run_job(engine, spec, failed_provider) is False
+    assert calls == 1
+    # Even a subsequent process after the old one-minute retry must wait.
+    async with engine.begin() as conn:
+        await conn.execute(text("UPDATE job_runtime SET next_run_at=next_run_at-interval '61 seconds' WHERE key=:key"), {"key": key})
+    assert await run_job(engine, spec, failed_provider) is False
+    assert calls == 1

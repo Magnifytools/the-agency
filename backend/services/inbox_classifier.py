@@ -1,11 +1,56 @@
 """AI-powered classification for inbox notes using Claude."""
 from __future__ import annotations
 
-import logging
+import json
+from typing import Literal
 
-from backend.services.ai_utils import get_anthropic_client, parse_claude_json
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
-logger = logging.getLogger(__name__)
+from backend.services.ai_utils import get_anthropic_client
+
+class InboxProviderUnavailable(RuntimeError):
+    """Sanitized boundary error for provider setup or transport failures."""
+
+
+class SuggestedEntity(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: StrictInt | None = None
+    name: str = Field(default="", max_length=200)
+    confidence: float = Field(ge=0, le=1, strict=True, allow_inf_nan=False)
+
+
+class InboxClassification(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    suggested_project: SuggestedEntity | None
+    suggested_client: SuggestedEntity | None
+    suggested_action: Literal["create_task", "add_communication", "link_to_project"]
+    suggested_title: str = Field(max_length=200)
+    suggested_priority: Literal["low", "medium", "high", "urgent"]
+    reasoning: str = Field(max_length=500)
+
+
+def _parse_provider_json(message) -> dict:
+    """Parse the provider response without logging user or provider text."""
+    if getattr(message, "stop_reason", None) == "refusal" or not message.content:
+        raise ValueError("Invalid provider response")
+    first = message.content[0]
+    if getattr(first, "type", None) != "text" or not getattr(first, "text", None):
+        raise ValueError("Invalid provider response")
+    raw = first.text.strip()
+    if raw.startswith("```"):
+        lines = raw.split("\n")[1:]
+        if lines and lines[-1].strip() == "```":
+            lines.pop()
+        raw = "\n".join(lines)
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ValueError("Invalid provider response") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("Invalid provider response")
+    return parsed
 
 SYSTEM_PROMPT = """\
 Eres un asistente de una agencia de marketing digital (Magnify). Tu trabajo es \
@@ -55,7 +100,10 @@ async def classify_inbox_note(
     Returns:
         Parsed JSON dict with classification suggestion.
     """
-    client = get_anthropic_client()
+    try:
+        client = get_anthropic_client()
+    except Exception as exc:
+        raise InboxProviderUnavailable() from exc
 
     context = "PROYECTOS ACTIVOS:\n"
     for p in projects:
@@ -65,11 +113,15 @@ async def classify_inbox_note(
         context += f"- ID:{c['id']} \"{c['name']}\"\n"
     context += f"\n<user_note>\n{raw_text}\n</user_note>"
 
-    message = await client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=512,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": context}],
-    )
+    try:
+        message = await client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=512,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": context}],
+        )
+    except Exception as exc:
+        raise InboxProviderUnavailable() from exc
 
-    return parse_claude_json(message)
+    parsed = _parse_provider_json(message)
+    return InboxClassification.model_validate(parsed).model_dump()

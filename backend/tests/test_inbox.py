@@ -83,6 +83,8 @@ class TestInboxToResponse:
         mock_note.resolved_as = None
         mock_note.resolved_entity_id = None
         mock_note.ai_suggestion = None
+        mock_note.classification_error_code = None
+        mock_note.classification_next_attempt_at = None
         mock_note.link_url = None
         mock_note.attachments = []
         mock_note.created_at = datetime.now(timezone.utc)
@@ -109,6 +111,8 @@ class TestInboxToResponse:
         mock_note.resolved_as = None
         mock_note.resolved_entity_id = None
         mock_note.ai_suggestion = None
+        mock_note.classification_error_code = None
+        mock_note.classification_next_attempt_at = None
         mock_note.link_url = None
         mock_note.attachments = []
         mock_note.created_at = datetime.now(timezone.utc)
@@ -121,3 +125,37 @@ class TestInboxToResponse:
         result = _to_response(mock_note)
         assert result.project_name == "Project A"
         assert result.client_name == "Client X"
+
+    def test_suggestion_is_hidden_after_required_permission_is_revoked(self):
+        from backend.api.routes.inbox import _to_response
+
+        note = MagicMock()
+        note.id = note.user_id = 1
+        note.raw_text = "Sensitive context"
+        note.source = "dashboard"
+        note.status = "classified"
+        note.project_id = note.client_id = None
+        note.project = note.client = None
+        note.resolved_as = note.resolved_entity_id = None
+        note.ai_suggestion = {
+            "suggested_project": None,
+            "suggested_client": {"id": 9, "name": "Secret Client", "confidence": 1},
+            "suggested_action": "create_task",
+            "suggested_title": "Secret Client follow-up",
+            "suggested_priority": "medium",
+            "reasoning": "Mentions Secret Client",
+            "_context_modules": ["projects", "clients"],
+        }
+        note.classification_error_code = None
+        note.classification_next_attempt_at = None
+        note.link_url = None
+        note.attachments = []
+        note.created_at = note.updated_at = datetime.now(timezone.utc)
+        user = MagicMock()
+        user.role.value = "member"
+        permission = MagicMock(module="projects", can_read=True)
+        user.permissions = [permission]
+
+        result = _to_response(note, user)
+
+        assert result.ai_suggestion is None
