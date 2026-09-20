@@ -9,12 +9,14 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { BarChart3, Search, Save, Globe } from "lucide-react"
 import { getErrorMessage } from "@/lib/utils"
+import { useAuth } from "@/context/auth-context"
 
 interface Props {
   client: Client
 }
 
 export function ClientSettingsTab({ client }: Props) {
+  const { isAdmin } = useAuth()
   const qc = useQueryClient()
   const [ga4, setGa4] = useState(client.ga4_property_id ?? "")
   const [gsc, setGsc] = useState(client.gsc_url ?? "")
@@ -32,6 +34,7 @@ export function ClientSettingsTab({ client }: Props) {
     queryFn: () => engineApi.listProjects(),
     staleTime: 5 * 60_000,
     retry: false,
+    enabled: isAdmin,
   })
 
   const updateMut = useMutation({
@@ -39,7 +42,7 @@ export function ClientSettingsTab({ client }: Props) {
       clientsApi.update(client.id, {
         ga4_property_id: ga4.trim() || null,
         gsc_url: gsc.trim() || null,
-        engine_project_id: engineProjectId.trim() ? parseInt(engineProjectId) : null,
+        ...(isAdmin ? { engine_project_id: engineProjectId.trim() ? parseInt(engineProjectId) : null } : {}),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["client-summary", client.id] })
@@ -97,7 +100,7 @@ export function ClientSettingsTab({ client }: Props) {
             </div>
 
             {/* Engine Integration */}
-            <div>
+            {isAdmin && <div>
               <Label className="flex items-center gap-1.5">
                 <Globe className="h-3.5 w-3.5 text-muted-foreground" />
                 Proyecto Engine
@@ -127,7 +130,7 @@ export function ClientSettingsTab({ client }: Props) {
               <p className="text-[11px] text-muted-foreground mt-1">
                 Vincula este cliente con un proyecto de The Engine para ver metricas SEO
               </p>
-            </div>
+            </div>}
 
             <div className="flex justify-end">
               <Button type="submit" disabled={!isDirty || updateMut.isPending} size="sm">

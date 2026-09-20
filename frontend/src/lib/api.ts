@@ -1124,7 +1124,7 @@ export const engineApi = {
   getConfig: () =>
     api.get<{ engine_frontend_url: string | null }>("/engine/config").then((r) => r.data),
   triggerSync: () =>
-    api.post<{ synced: number; failed: number }>("/engine/sync").then((r) => r.data),
+    api.post<{ synced: number; failed: number; detail?: string }>("/engine/sync").then((r) => r.data),
   analyzeCoreUpdate: (projectId: number, body: {
     period_pre_start: string
     period_pre_end: string

@@ -1,6 +1,6 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-20T18:22:25.241096+00:00",
+  "ultima_actualizacion": "2026-09-20T19:19:23.126527+00:00",
   "estado_general": "produccion_decimoctava_mejora_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
@@ -241,6 +241,20 @@
       "estado": "completado",
       "prioridad": "alta",
       "notas": "PR29/358c302 publicada y verificada.1160backend (2 omitidas),316frontend; CI rama/main, esquema aditivo, hashes de tareas/horas/notas conservados,51GET/6colectores y UI390/1440 correctos. Objetivo global activo."
+    },
+    {
+      "id": "AUDIT-20260920-P18",
+      "descripcion": "Panel y resúmenes con fuentes, períodos y permisos claros",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "PR30/a7a29cd publicada y verificada.1190backend (2 omitidas),337frontend; CI rama/main, contratos financieros/operativos, archivo de informes,51GET/6colectores y UI390/1440 correctos. Producción vigente; objetivo global activo."
+    },
+    {
+      "id": "AUDIT-20260920-P19",
+      "descripcion": "Métricas Engine acotadas a períodos reales, coherentes y recuperables",
+      "estado": "en_progreso",
+      "prioridad": "alta",
+      "notas": "Preparada y verificada localmente, aún no publicada. Engine616tests,6PG,33API/indexación y9handlers readonly; Agency26dirigidas con CAS, ACL y UTC TIMESTAMPTZ. CI/PR/despliegue y navegador final pendientes; report-data legacy queda fuera hasta confirmar consumidor. Objetivo global activo."
     }
   ],
   "bugs": [
@@ -311,7 +325,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "P19: acotar agregados Engine a ventanas reales de30+30d, posición ponderada y última observación por keyword; conservar contrato y autorización. Propuesta privada investigada, sin cambios upstream todavía. Seguir histórico, decisiones de canal y matriz completa; objetivo activo.",
+  "proximos_pasos": "Publicar y verificar P19: CI de Engine y Agency, revisión exacta, sincronización recuperada y navegador final sin datos falsos. Después medir el recorrido completo Agency+red+render y confirmar si report-data conserva consumidor antes de modernizarlo. Seguir histórico, decisiones de canal y matriz completa; objetivo activo.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,

@@ -304,9 +304,24 @@ async def update_client(
     client_id: int,
     body: ClientUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("clients", write=True)),
+    user: User = Depends(require_module("clients", write=True)),
 ):
+    update_data = body.model_dump(exclude_unset=True)
     result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if "engine_project_id" in update_data:
+        if user.role != UserRole.admin:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo administración puede cambiar el proyecto Engine")
+        incoming_project_id = update_data["engine_project_id"]
+        if incoming_project_id is not None and incoming_project_id != client.engine_project_id:
+            from backend.api.routes.engine_integration import validate_link_target
+            await validate_link_target(incoming_project_id)
+
+    result = await db.execute(
+        select(Client).where(Client.id == client_id).with_for_update().execution_options(populate_existing=True)
+    )
     client = result.scalar_one_or_none()
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -318,7 +333,10 @@ async def update_client(
         "conversion_rate", "ltv", "seo_maturity_level", "context",
         "cif", "vat_number", "slack_template",
     }
-    update_data = body.model_dump(exclude_unset=True)
+    if "engine_project_id" in update_data:
+        if update_data["engine_project_id"] != client.engine_project_id:
+            for field in ("engine_content_count", "engine_keyword_count", "engine_avg_position", "engine_clicks_30d", "engine_impressions_30d", "engine_metrics_synced_at", "engine_summary_data", "engine_alerts_data"):
+                setattr(client, field, None)
     for field, value in update_data.items():
         if field in _UPDATABLE_CLIENT_FIELDS:
             setattr(client, field, value)
