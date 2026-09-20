@@ -1,9 +1,17 @@
 from __future__ import annotations
+
+from datetime import date, datetime
 from typing import Literal, Optional
 
-from datetime import datetime, date
-from pydantic import BaseModel, Field, field_serializer, model_validator
-from backend.db.models import TaskStatus, TaskPriority
+from pydantic import (
+    BaseModel,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
+
+from backend.db.models import TaskPriority, TaskStatus
 from backend.services.temporal import civil_date_isoformat, utc_isoformat
 
 
@@ -54,6 +62,7 @@ class TaskUpdate(BaseModel):
     scheduled_date: Optional[date] = None
     waiting_for: Optional[str] = Field(None, max_length=255)
     follow_up_date: Optional[date] = None
+
     is_recurring: Optional[bool] = None
     recurrence_pattern: Optional[str] = None
     recurrence_day: Optional[int] = None
@@ -62,6 +71,13 @@ class TaskUpdate(BaseModel):
     recurrence_paused: Optional[bool] = None
     unit_cost: Optional[float] = None
     link_url: Optional[str] = None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def status_cannot_be_null(cls, value):
+        if value is None:
+            raise ValueError("El estado no puede ser nulo")
+        return value
 
 
 class RecurrenceSummaryResponse(BaseModel):

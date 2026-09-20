@@ -14,7 +14,6 @@ from backend.db.models import (
     AutomationRule,
     AutomationLog,
     Task,
-    Project,
     User,
     TaskStatus,
     ProjectStatus,
@@ -30,6 +29,7 @@ from backend.services.domain_writes import (
     update_task as update_task_write,
 )
 from backend.services.notification_service import create_notification
+from backend.services.project_lifecycle import transition_project_status
 
 router = APIRouter(prefix="/api/automations", tags=["automations"])
 
@@ -422,7 +422,7 @@ async def _execute_action(
     elif action_type == "change_task_status":
         return await _action_change_task_status(action_config, trigger_data, db, actor=actor)
     elif action_type == "change_project_status":
-        return await _action_change_project_status(action_config, trigger_data, db)
+        return await _action_change_project_status(action_config, trigger_data, db, actor=actor)
     elif action_type == "assign_user":
         return await _action_assign_user(action_config, trigger_data, db, actor=actor)
     elif action_type == "send_notification":
@@ -474,20 +474,21 @@ async def _action_change_task_status(config: dict, data: dict, db: AsyncSession,
     return {"skipped": True, "reason": f"Task {task_id} not found"}
 
 
-async def _action_change_project_status(config: dict, data: dict, db: AsyncSession) -> dict:
+async def _action_change_project_status(config: dict, data: dict, db: AsyncSession, *, actor: User | None = None) -> dict:
     """Change project status."""
     project_id = config.get("project_id") or data.get("project_id")
     new_status = ProjectStatus(config.get("new_status", "active"))
     if not project_id:
         return {"skipped": True, "reason": "No project_id"}
 
-    result = await db.execute(select(Project).where(Project.id == project_id))
-    project = result.scalar_one_or_none()
-    if project:
-        old = project.status.value if hasattr(project.status, "value") else str(project.status)
-        project.status = new_status
-        return {"project_id": project_id, "old_status": old, "new_status": new_status}
-    return {"skipped": True, "reason": f"Project {project_id} not found"}
+    try:
+        project = await transition_project_status(db, project_id, new_status, actor)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return {"skipped": True, "reason": f"Project {project_id} not found"}
+        raise
+    old = project.__dict__.get("_lifecycle_previous_status", project.status.value)
+    return {"project_id": project_id, "old_status": old, "new_status": project.status.value}
 
 
 async def _require_active_user(db: AsyncSession, user_id: int) -> None:
