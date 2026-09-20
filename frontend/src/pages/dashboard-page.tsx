@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { dashboardApi, discordApi, tasksApi, timeEntriesApi, timerApi, usersApi, dailysApi, digestsApi, clientsApi, leadsApi, proposalsApi, engineApi, holdedApi } from "@/lib/api"
+import { dashboardApi, discordApi, tasksApi, timeEntriesApi, timerApi, usersApi, clientsApi, leadsApi, proposalsApi, engineApi, holdedApi } from "@/lib/api"
 import { dashboardKeys, holdedKeys, invalidateTaskChange, invalidateTimeChange, taskKeys, timeKeys } from "@/lib/query-keys"
 import { profitabilityStatus } from "@/lib/profitability"
 import { isEnabled } from "@/lib/hidden-modules"
@@ -12,7 +12,6 @@ import { InsightsPanel } from "@/components/pm/insights-panel"
 import { DailyBriefingButton } from "@/components/pm/daily-briefing"
 import { deliveryToast, ManualDeliveryReceipts } from "@/components/delivery-receipts"
 import { OverdueTasks } from "@/components/dashboard/overdue-tasks"
-import { DigestTracker } from "@/components/dashboard/digest-tracker"
 import { EngineAlertsWidget } from "@/components/dashboard/engine-alerts-widget"
 import { LeadFollowups } from "@/components/dashboard/lead-followups"
 import { MonthlyCloseChecklist } from "@/components/dashboard/monthly-close-checklist"
@@ -24,7 +23,7 @@ import { Select } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { InfoTooltip } from "@/components/ui/tooltip"
-import { Users, CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink, Play, Square, Check, UserCog, AlertTriangle, MessageSquare, ChevronLeft, ChevronRight, Newspaper, BarChart3 } from "lucide-react"
+import { Users, CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink, Play, Square, Check, UserCog, AlertTriangle, ChevronLeft, ChevronRight, BarChart3 } from "lucide-react"
 import { toast } from "sonner"
 import { Link } from "react-router-dom"
 import { InboxWidget } from "@/components/dashboard/inbox-widget"
@@ -34,7 +33,7 @@ import { TodayBlock } from "@/components/dashboard/today-block"
 import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
 import { SkeletonCard } from "@/components/ui/skeleton"
-import { addCivilDays, businessHour, formatCivilDate, parseCivilDate } from "@/lib/dates"
+import { addCivilDays, formatCivilDate, parseCivilDate } from "@/lib/dates"
 import { useBusinessDate } from "@/hooks/use-business-date"
 
 const MONTHS = [
@@ -97,12 +96,7 @@ export default function DashboardPage() {
     queryFn: () => dashboardApi.financialSettings(),
     enabled: isAdmin && isEnabled("finance"),
   })
-  const { data: recentDigests } = useQuery({
-    queryKey: ["recent-digests"],
-    queryFn: () => digestsApi.list({ limit: 100 }),
-    enabled: !!user,
-  })
-  const { data: allClients } = useQuery({
+  const { data: allClients, isError: allClientsError, refetch: refetchClients } = useQuery({
     queryKey: ["clients-all-active"],
     queryFn: () => clientsApi.listAll("active"),
     enabled: !!user,
@@ -163,11 +157,6 @@ export default function DashboardPage() {
     queryFn: () => tasksApi.listAll({ assigned_to: user!.id, status: "pending" }),
     enabled: !!user && user.role === "member",
   })
-  const { data: myOverdueTasks } = useQuery({
-    queryKey: taskKeys.assigned("dashboard", user?.id, "overdue"),
-    queryFn: () => tasksApi.listAll({ assigned_to: user!.id, overdue: true }),
-    enabled: !!user && user.role === "member",
-  })
   const { data: weeklyTimesheet } = useQuery({
     queryKey: timeKeys.week(thisMonday),
     queryFn: () => timeEntriesApi.weekly(thisMonday),
@@ -180,15 +169,6 @@ export default function DashboardPage() {
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   })
-  const today = todayStr
-  const { data: todayDailys } = useQuery({
-    queryKey: ["daily-today", user?.id, today],
-    queryFn: () => dailysApi.list({ user_id: user!.id, date_from: today, date_to: today, limit: 1 }),
-    enabled: !!user && user.role === "member",
-  })
-  const todayDaily = todayDailys?.[0]
-  const showDailyReminder = !todayDaily && businessHour() >= 17
-
   // ─── Admin queries ──────────────────────────────────────────
   const { data: allOverdueTasks } = useQuery({
     queryKey: taskKeys.assigned("dashboard", "all", "overdue"),
@@ -281,15 +261,6 @@ export default function DashboardPage() {
     onError: (err) => toast.error(getErrorMessage(err, "Error al parar el timer")),
   })
 
-  const generateDigestsMutation = useMutation({
-    mutationFn: () => digestsApi.generateBatch(),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["digests"] })
-      toast.success(`${data.length} digest(s) generado(s)`)
-    },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al generar digests")),
-  })
-
   const weeklyReportMutation = useMutation({
     mutationFn: () => discordApi.sendWeeklyReport(),
     onSuccess: (data) => {
@@ -300,13 +271,6 @@ export default function DashboardPage() {
   })
 
   // ─── Computed ───────────────────────────────────────────────
-  const clientsWithDigestThisWeek = new Set(
-    (recentDigests || [])
-      .filter((d) => d.period_start >= thisMonday || d.created_at >= thisMonday)
-      .map((d) => d.client_id)
-  )
-  const clientsMissingDigest = (allClients || []).filter((c) => !c.is_internal && !clientsWithDigestThisWeek.has(c.id))
-
   const proposalStats = (() => {
     if (!allProposals) return null
     const drafts = allProposals.filter((p) => p.status === "draft")
@@ -367,17 +331,6 @@ export default function DashboardPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <DailyBriefingButton />
-          {isAdmin && clientsMissingDigest.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={generateDigestsMutation.isPending}
-              onClick={() => generateDigestsMutation.mutate()}
-            >
-              <Newspaper className={`h-4 w-4 mr-1 ${generateDigestsMutation.isPending ? "animate-spin" : ""}`} />
-              {generateDigestsMutation.isPending ? "Generando..." : `Generar digests (${clientsMissingDigest.length})`}
-            </Button>
-          )}
           {isAdmin && (
             <Button
               variant="ghost"
@@ -447,36 +400,6 @@ export default function DashboardPage() {
       {/* Worker Dashboard */}
       {!isAdmin && user && (
         <div className="space-y-4">
-
-          {/* Overdue banner — always at top, impossible to ignore */}
-          {myOverdueTasks && myOverdueTasks.length > 0 && (
-            <div className="flex items-center gap-4 bg-red-500/10 border border-red-500/40 rounded-xl px-5 py-4">
-              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-red-500/20 flex-shrink-0">
-                <span className="text-red-400 font-bold text-lg">{myOverdueTasks.length}</span>
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-red-400">
-                  {myOverdueTasks.length === 1 ? "Tienes 1 tarea vencida" : `Tienes ${myOverdueTasks.length} tareas vencidas`}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {myOverdueTasks.slice(0, 2).map((t) => t.title).join(" · ")}
-                  {myOverdueTasks.length > 2 ? ` · +${myOverdueTasks.length - 2} más` : ""}
-                </p>
-              </div>
-              <Link to="/tasks?qaFilter=overdue" className="text-xs text-red-400 hover:underline flex-shrink-0">Ver todas →</Link>
-            </div>
-          )}
-
-          {/* Daily reminder banner after 17:00 */}
-          {showDailyReminder && (
-            <div className="flex items-center gap-4 bg-amber-500/10 border border-amber-500/40 rounded-xl px-5 py-4">
-              <MessageSquare className="h-5 w-5 text-amber-400 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-amber-400">Aún no has enviado el daily de hoy</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Antes de cerrar, cuéntale al equipo qué has hecho</p>
-              </div>
-            </div>
-          )}
 
           {/* Active timer */}
           {activeTimer && (
@@ -729,9 +652,15 @@ export default function DashboardPage() {
 
       <InsightsPanel />
 
-      {isAdmin && allOverdueTasks && allOverdueTasks.length > 0 && <OverdueTasks tasks={allOverdueTasks} showAssigned />}
-      <DigestTracker clientsMissing={clientsMissingDigest} />
-      <EngineAlertsWidget clients={allClients || []} />
+      {isAdmin && allOverdueTasks && allOverdueTasks.length > 0 && <OverdueTasks tasks={allOverdueTasks} showAssigned title="Tareas vencidas del equipo" />}
+      {allClientsError ? (
+        <Card>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
+            <p role="alert" className="text-sm">No se pudo cargar la relación de clientes para las métricas de Engine.</p>
+            <Button variant="outline" size="sm" onClick={() => void refetchClients()}>Reintentar</Button>
+          </CardContent>
+        </Card>
+      ) : allClients ? <EngineAlertsWidget clients={allClients} /> : null}
       {leadReminders && <LeadFollowups reminders={leadReminders} />}
 
       {/* Proposals pipeline */}
@@ -815,7 +744,7 @@ export default function DashboardPage() {
                 </TableHeader>
                 <TableBody>
                   {profitability.clients.map((c) => {
-                    const linkedClient = (allClients || []).find((cl) => cl.id === c.client_id)
+                    const linkedClient = allClients?.find((cl) => cl.id === c.client_id)
                     const enginePid = linkedClient?.engine_project_id
                     return (
                     <TableRow key={c.client_id}>
