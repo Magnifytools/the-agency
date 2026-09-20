@@ -30,7 +30,7 @@ import { clientKeys, invalidateClientChange } from "@/lib/query-keys"
 import { clientHealthPresentation } from "@/components/dashboard/client-health-presentation"
 
 const STATUS_TABS: { label: string; value: ClientStatus | "all" }[] = [
-  { label: "Todos", value: "all" },
+  { label: "En cartera", value: "all" },
   { label: "Activos", value: "active" },
   { label: "Pausados", value: "paused" },
   { label: "Finalizados", value: "finished" },
@@ -490,7 +490,7 @@ function ClientsPageBody() {
         ))}
       </div>
       <div className="flex flex-wrap items-center gap-2" aria-label="Población de clientes">
-        <span className="text-xs font-medium text-muted-foreground">Población</span>
+        <span className="text-xs font-medium text-muted-foreground">Tipo de cliente</span>
         {COHORTS.map((item) => (
           <Button
             key={item.value}
