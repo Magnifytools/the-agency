@@ -56,7 +56,7 @@ async def test_p14_upgrade_preserves_notes_and_ledger_without_reclassifying(engi
         assert (await conn.execute(text("SELECT id,raw_text,source,status,ai_suggestion,created_at,updated_at FROM inbox_notes ORDER BY id"))).all() == before
         assert (await conn.execute(text("SELECT classification_error_code,classification_next_attempt_at FROM inbox_notes"))).all() == [(None, None)] * 4
         after = (await conn.execute(text("SELECT * FROM agency_schema_versions ORDER BY version"))).all()
-        assert len(after) == len(ledger) + 1
+        assert len(after) == len(deployment_schema.MIGRATIONS)
         assert set(ledger) <= set(after)
 
 

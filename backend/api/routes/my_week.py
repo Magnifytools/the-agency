@@ -84,6 +84,7 @@ async def get_my_week(
     task_q = (
         select(Task)
         .where(
+            Task.retired_at.is_(None),
             Task.assigned_to == user.id,
             Task.status.in_(active_statuses),
         )

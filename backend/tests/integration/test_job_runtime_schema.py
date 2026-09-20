@@ -35,7 +35,9 @@ async def test_upgrade_preserves_published_history_and_repeats(engine):
     async with engine.connect() as conn:
         after = (await conn.execute(text("SELECT * FROM agency_schema_versions ORDER BY version"))).all()
         assert {tuple(row) for row in before} <= {tuple(row) for row in after}
-        assert len(after) == len(before) + 2
+        assert [(row.version, row.checksum) for row in after] == sorted(
+            (step.version, step.checksum) for step in deployment_schema.MIGRATIONS
+        )
         assert await conn.scalar(text("SELECT count(*) FROM job_runtime")) == 0
         assert await conn.scalar(text("SELECT value FROM preserved_external_table")) == "preserved"
 
@@ -45,7 +47,9 @@ async def test_empty_database_runs_all_steps(engine):
     await deployment_schema.migrate_schema(engine)
     await deployment_schema.check_deployment_ready(engine)
     async with engine.connect() as conn:
-        assert await conn.scalar(text("SELECT count(*) FROM agency_schema_versions")) == 4
+        assert (await conn.execute(text("SELECT version,checksum FROM agency_schema_versions ORDER BY version"))).all() == sorted(
+            (step.version, step.checksum) for step in deployment_schema.MIGRATIONS
+        )
         assert await conn.scalar(text("SELECT to_regclass('public.tasks') IS NOT NULL")) is True
 
 

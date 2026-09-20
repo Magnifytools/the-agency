@@ -53,6 +53,8 @@ export interface Task {
   created_at: string
   updated_at: string
   completed_at?: string | null
+  retired_at?: string | null
+  retired_reason?: string | null
   client_name: string | null
   category_name: string | null
   assigned_user_name: string | null
@@ -105,6 +107,7 @@ export interface TaskCreate {
   recurrence_paused?: boolean
   recurring_parent_id?: number | null
   unit_cost?: number | null
+  link_url?: string | null
 }
 
 export type TaskAgendaSection = "planned" | "carryover" | "unplanned" | "completed"

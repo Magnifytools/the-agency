@@ -207,7 +207,7 @@ async def compute_health(
     if capabilities.tasks:
         task_counts = await db.execute(
             select(Task.status, func.count())
-            .where(Task.client_id == client.id)
+            .where(Task.client_id == client.id, Task.retired_at.is_(None))
             .group_by(Task.status)
         )
         task_map = dict(task_counts.all())
@@ -219,6 +219,7 @@ async def compute_health(
         overdue_count_result = await db.execute(
             select(func.count()).select_from(Task).where(
                 Task.client_id == client.id,
+                Task.retired_at.is_(None),
                 Task.status != TaskStatus.completed,
                 cast(Task.due_date, SQLDate) < business_today(),
             )
@@ -364,7 +365,7 @@ async def compute_health_batch(
                 Task.status,
                 func.count(),
             )
-            .where(Task.client_id.in_(client_ids))
+            .where(Task.client_id.in_(client_ids), Task.retired_at.is_(None))
             .group_by(Task.client_id, Task.status)
         )
         for cid, task_status, cnt in task_counts_result.all():
@@ -380,6 +381,7 @@ async def compute_health_batch(
             )
             .where(
                 Task.client_id.in_(client_ids),
+                Task.retired_at.is_(None),
                 Task.status != TaskStatus.completed,
                 cast(Task.due_date, SQLDate) < business_today(),
             )

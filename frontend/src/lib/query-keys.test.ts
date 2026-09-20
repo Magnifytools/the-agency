@@ -33,6 +33,7 @@ describe("shared operational query keys", () => {
       [...briefingKeys.all(), "mine"],
       incidentKeys.count(7),
       incidentKeys.list(7, "active"),
+      searchKeys.results(7, "tasks", "reunión"),
       ["unrelated", "settings"] as const,
     ]
     keys.forEach((key) => client.setQueryData(key, { ok: true }))

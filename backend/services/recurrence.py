@@ -143,6 +143,7 @@ async def generate_recurring_instances(db: AsyncSession, *, target_date: date | 
     await db.execute(text("SELECT pg_advisory_xact_lock(76241317)"))
     templates = list((await db.execute(
         select(Task).where(
+            Task.retired_at.is_(None),
             Task.is_recurring.is_(True),
             Task.recurrence_paused_at.is_(None),
             or_(Task.client_id.is_(None), Task.client.has(Client.status == ClientStatus.active)),

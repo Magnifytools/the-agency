@@ -91,12 +91,16 @@ async def get_overview(
         and_(Task.scheduled_date.is_(None), Task.due_date.isnot(None), Task.due_date >= start, Task.due_date <= end),
     )
     r = await db.execute(
-        select(func.count()).select_from(Task).where(Task.status == TaskStatus.pending, task_date_filter)
+        select(func.count()).select_from(Task).where(
+            Task.retired_at.is_(None), Task.status == TaskStatus.pending, task_date_filter
+        )
     )
     pending_tasks = r.scalar()
 
     r = await db.execute(
-        select(func.count()).select_from(Task).where(Task.status.in_(IN_PROGRESS_TASK_STATUSES), task_date_filter)
+        select(func.count()).select_from(Task).where(
+            Task.retired_at.is_(None), Task.status.in_(IN_PROGRESS_TASK_STATUSES), task_date_filter
+        )
     )
     in_progress_tasks = r.scalar()
 
@@ -214,6 +218,7 @@ async def get_profitability(
         )
         .where(
             Task.client_id.in_(client_ids),
+            Task.retired_at.is_(None),
             Task.created_at >= start,
             Task.created_at <= end,
         )
@@ -510,7 +515,7 @@ async def get_capacity(
             func.coalesce(func.sum(Task.estimated_minutes), 0),
             func.count(),
         )
-        .where(Task.status.in_(ACTIVE_TASK_STATUSES))
+        .where(Task.retired_at.is_(None), Task.status.in_(ACTIVE_TASK_STATUSES))
         .group_by(Task.assigned_to)
     )
     stats_map = {row[0]: (row[1] or 0, row[2] or 0) for row in task_stats_result.all()}
@@ -563,7 +568,11 @@ async def get_capacity_detail(
         select(Task, Client.name.label("client_name"), Project.name.label("project_name"))
         .outerjoin(Client, Task.client_id == Client.id)
         .outerjoin(Project, Task.project_id == Project.id)
-        .where(Task.assigned_to.in_(user_ids), Task.status.in_(active_statuses))
+        .where(
+            Task.retired_at.is_(None),
+            Task.assigned_to.in_(user_ids),
+            Task.status.in_(active_statuses),
+        )
         .order_by(Task.priority.desc(), Task.due_date.asc().nullslast())
     )
 
@@ -716,6 +725,7 @@ async def get_today(
         .options(selectinload(Task.assigned_user), selectinload(Task.client))
         .where(Task.scheduled_date == today)
         .where(Task.status != TaskStatus.completed)
+        .where(Task.retired_at.is_(None))
     )
     if current_user.role != UserRole.admin:
         query = query.where(Task.assigned_to == current_user.id)
@@ -767,6 +777,7 @@ async def alerts_summary(
     # 1. Overdue tasks (all users, for admin view)
     overdue_result = await db.execute(
         select(func.count(Task.id)).where(
+            Task.retired_at.is_(None),
             Task.due_date < today,
             Task.status.notin_([TaskStatus.completed]),
         )
@@ -891,6 +902,7 @@ async def alerts_summary(
             Task.assigned_to,
             func.sum(Task.estimated_minutes).label("total"),
         ).where(
+            Task.retired_at.is_(None),
             Task.assigned_to.isnot(None),
             Task.status.in_([TaskStatus.pending, *IN_PROGRESS_TASK_STATUSES]),
             Task.estimated_minutes.isnot(None),

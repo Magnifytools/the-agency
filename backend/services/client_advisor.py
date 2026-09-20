@@ -59,7 +59,7 @@ async def get_client_advice(
     # Tasks summary
     task_result = await db.execute(
         select(Task.status, func.count(Task.id))
-        .where(Task.client_id == client_id)
+        .where(Task.client_id == client_id, Task.retired_at.is_(None))
         .group_by(Task.status)
     )
     tasks_by_status = {row[0].value: row[1] for row in task_result.all()}
@@ -67,6 +67,7 @@ async def get_client_advice(
     overdue_result = await db.execute(
         select(func.count(Task.id)).where(
             Task.client_id == client_id,
+            Task.retired_at.is_(None),
             Task.due_date < datetime.now(timezone.utc).replace(tzinfo=None),
             Task.status != TaskStatus.completed,
         )

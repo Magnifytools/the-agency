@@ -149,9 +149,11 @@ async def collect_digest_data(
         await db.execute(
             select(
                 Task.project_id,
-                func.count(Task.id).label("task_total"),
                 func.count(Task.id)
-                .filter(Task.status == TaskStatus.completed)
+                .filter(Task.retired_at.is_(None))
+                .label("task_total"),
+                func.count(Task.id)
+                .filter(Task.status == TaskStatus.completed, Task.retired_at.is_(None))
                 .label("completed_all_time"),
                 func.count(Task.id)
                 .filter(
@@ -161,10 +163,10 @@ async def collect_digest_data(
                 )
                 .label("completed_total"),
                 func.count(Task.id)
-                .filter(Task.status.in_(IN_PROGRESS_TASK_STATUSES))
+                .filter(Task.status.in_(IN_PROGRESS_TASK_STATUSES), Task.retired_at.is_(None))
                 .label("in_progress_total"),
                 func.count(Task.id)
-                .filter(Task.status == TaskStatus.pending)
+                .filter(Task.status == TaskStatus.pending, Task.retired_at.is_(None))
                 .label("pending_total"),
             )
             .where(Task.client_id == client_id, Task.is_recurring.is_(False))
@@ -227,13 +229,21 @@ async def collect_digest_data(
         ),
         (
             "in_progress_tasks",
-            (Task.client_id == client_id, Task.status.in_(IN_PROGRESS_TASK_STATUSES)),
+            (
+                Task.client_id == client_id,
+                Task.retired_at.is_(None),
+                Task.status.in_(IN_PROGRESS_TASK_STATUSES),
+            ),
             (Task.due_date.asc().nullslast(), Task.id.asc()),
             False,
         ),
         (
             "pending_tasks",
-            (Task.client_id == client_id, Task.status == TaskStatus.pending),
+            (
+                Task.client_id == client_id,
+                Task.retired_at.is_(None),
+                Task.status == TaskStatus.pending,
+            ),
             (Task.due_date.asc().nullslast(), Task.id.asc()),
             False,
         ),

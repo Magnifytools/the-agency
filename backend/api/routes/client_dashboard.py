@@ -34,7 +34,7 @@ async def client_dashboard(
     # --- Tasks by status ---
     task_result = await db.execute(
         select(Task.status, func.count(Task.id))
-        .where(Task.client_id == client_id)
+        .where(Task.client_id == client_id, Task.retired_at.is_(None))
         .group_by(Task.status)
     )
     tasks_by_status = {row[0].value: row[1] for row in task_result.all()}
@@ -43,6 +43,7 @@ async def client_dashboard(
     overdue_result = await db.execute(
         select(func.count(Task.id)).where(
             Task.client_id == client_id,
+            Task.retired_at.is_(None),
             cast(Task.due_date, SQLDate) < today,
             Task.status != TaskStatus.completed,
         )
@@ -54,6 +55,7 @@ async def client_dashboard(
     due_week_result = await db.execute(
         select(func.count(Task.id)).where(
             Task.client_id == client_id,
+            Task.retired_at.is_(None),
             cast(Task.due_date, SQLDate) <= week_end,
             cast(Task.due_date, SQLDate) >= today,
             Task.status != TaskStatus.completed,

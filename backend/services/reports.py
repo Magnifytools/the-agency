@@ -62,6 +62,7 @@ async def generate_client_status_report(
         .where(Task.client_id == client_id)
         .where(Task.updated_at >= period_start)
         .where(Task.status != TaskStatus.completed)
+        .where(Task.retired_at.is_(None))
     )
     tasks = list(tasks_result.scalars().all())
 
@@ -245,6 +246,7 @@ async def generate_weekly_summary_report(
     pending_result = await db.execute(
         select(Task)
         .where(Task.status != TaskStatus.completed)
+        .where(Task.retired_at.is_(None))
         .where(Task.due_date <= now + timedelta(days=7))
         .order_by(Task.due_date.asc())
         .limit(10)
@@ -302,7 +304,13 @@ async def generate_project_status_report(
     tasks_result = await db.execute(
         select(Task).where(Task.project_id == project_id)
     )
-    tasks = list(tasks_result.scalars().all())
+    all_tasks = list(tasks_result.scalars().all())
+    # A retired completed task remains historical evidence. Retired unfinished
+    # work no longer contributes to the project's operational status.
+    tasks = [
+        task for task in all_tasks
+        if task.retired_at is None or task.status == TaskStatus.completed
+    ]
 
     completed_tasks = [t for t in tasks if t.status == TaskStatus.completed]
     pending_tasks = [t for t in tasks if t.status == TaskStatus.pending]

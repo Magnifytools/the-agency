@@ -23,7 +23,12 @@ from backend.api.deps import get_current_user, require_admin
 from backend.api.utils.db_helpers import safe_refresh
 from backend.core.modules import is_enabled
 from backend.schemas.task import TaskCreate
-from backend.services.domain_writes import create_task as create_task_write, lock_task, update_task as update_task_write
+from backend.services.domain_writes import (
+    create_task as create_task_write,
+    lock_task,
+    lock_task_patch,
+    update_task as update_task_write,
+)
 from backend.services.notification_service import create_notification
 
 router = APIRouter(prefix="/api/automations", tags=["automations"])
@@ -457,7 +462,7 @@ async def _action_change_task_status(config: dict, data: dict, db: AsyncSession,
         return {"skipped": True, "reason": "No task_id"}
 
     try:
-        task = await lock_task(db, task_id)
+        task = await lock_task_patch(db, task_id, {"status": new_status})
     except HTTPException as exc:
         if exc.status_code != 404:
             raise

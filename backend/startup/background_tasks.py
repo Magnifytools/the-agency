@@ -81,6 +81,7 @@ async def _check_overdue_tasks():
     async with async_session() as session:
         result = await session.execute(
             select(Task).where(
+                Task.retired_at.is_(None),
                 Task.status.notin_([TaskStatus.completed]),
                 Task.due_date < today_midnight,
             )
@@ -133,6 +134,7 @@ async def _reset_advanced_tasks():
 
     async with async_session() as session:
         eligible = (
+            Task.retired_at.is_(None),
             Task.status == TaskStatus.advanced,
             (Task.advanced_at.is_(None)) | (Task.advanced_at < today),
         )

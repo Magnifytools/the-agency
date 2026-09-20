@@ -29,6 +29,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import { businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates";
 
 type Defaults = {
   clientId?: number | null;
@@ -68,6 +69,7 @@ const EMPTY: TaskCreate = {
   recurrence_day: null,
   recurrence_end_date: null,
   recurrence_anchor_date: null,
+  link_url: null,
 };
 
 function fromTask(task?: Task, defaults?: Defaults): TaskCreate {
@@ -99,6 +101,7 @@ function fromTask(task?: Task, defaults?: Defaults): TaskCreate {
     recurrence_day: task.recurrence_day,
     recurrence_end_date: task.recurrence_end_date,
     recurrence_anchor_date: task.recurrence_anchor_date,
+    link_url: task.link_url,
   };
 }
 
@@ -143,6 +146,7 @@ export function TaskPanel({
   const [newComment, setNewComment] = useState("");
   const [recurrencePreview, setRecurrencePreview] = useState<RecurrencePreview | null>(null);
   const [legacyComparison, setLegacyComparison] = useState<LegacyComparison | null>(null);
+  const [restoreConflict, setRestoreConflict] = useState<string | null>(null);
   const initializedFor = useRef<string | null>(null);
   const contextKey = `${taskId ?? "new"}:${defaults?.clientId ?? ""}:${defaults?.projectId ?? ""}:${defaults?.phaseId ?? ""}`;
 
@@ -246,7 +250,7 @@ export function TaskPanel({
 
   const save = useMutation({
     mutationFn: () =>
-      taskId ? tasksApi.update(taskId, draft) : tasksApi.create(draft),
+      taskId ? tasksApi.update(taskId, isRetired ? { title: draft.title, description: draft.description, link_url: draft.link_url } : draft) : tasksApi.create(draft),
     onSuccess: (task) => {
       invalidateTaskChange(queryClient, {
         projectId: task.project_id,
@@ -427,6 +431,27 @@ export function TaskPanel({
   };
 
   const loadedTask = taskQuery.data;
+  const isRetired = !!loadedTask?.retired_at;
+  const canOperate = canWrite && !isRetired;
+  const canSave = canWrite && !!draft.title.trim() && (isRetired || !(legacyAnchorChange && !comparisonReady));
+  const restoreTask = useMutation({
+    mutationFn: () => tasksApi.restore(loadedTask!.id, loadedTask!.updated_at),
+    onSuccess: async (task) => {
+      queryClient.setQueryData(taskKeys.detail(task.id), task);
+      await invalidateTaskChange(queryClient, { projectId: task.project_id, clientId: task.client_id });
+      onSaved?.(task);
+      toast.success("Tarea restaurada");
+    },
+    onError: async (error) => {
+      const status = (error as { response?: { status?: number } }).response?.status;
+      if (status === 409) {
+        setRestoreConflict(getErrorMessage(error, "La tarea cambió en otro sitio."));
+        await taskQuery.refetch();
+        return;
+      }
+      toast.error(getErrorMessage(error, "No se pudo restaurar la tarea. Actualiza y vuelve a intentarlo."));
+    },
+  });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogHeader>
@@ -453,13 +478,22 @@ export function TaskPanel({
             className="space-y-4"
             onSubmit={(event) => {
               event.preventDefault();
-              if (canWrite && draft.title.trim() && !(legacyAnchorChange && !comparisonReady)) save.mutate();
+              if (canSave) save.mutate();
             }}
           >
             {!canWrite && (
               <p role="status" className="rounded-md bg-muted p-3 text-sm">
                 Puedes consultar esta tarea, pero no editarla.
               </p>
+            )}
+            {isRetired && loadedTask && (
+              <div role="status" className="space-y-2 rounded-md border border-warning/30 bg-warning/5 p-3 text-sm text-muted-foreground">
+                <p>Retirada el {loadedTask.retired_at ? formatCivilDate(businessDateString(parseApiInstant(loadedTask.retired_at)), { day: "numeric", month: "long", year: "numeric" }) : "—"}. Motivo: {loadedTask.retired_reason}</p>
+                {loadedTask.due_date && <p>Al restaurarla, su fecha límite sigue siendo {formatCivilDate(loadedTask.due_date, { day: "numeric", month: "long", year: "numeric" })}.</p>}
+                {restoreConflict && <p role="alert">{restoreConflict} Revisa la tarea actualizada antes de restaurarla.</p>}
+                {canWrite && <Button type="button" size="sm" variant="outline" disabled={restoreTask.isPending || !!restoreConflict} onClick={() => restoreTask.mutate()}>{restoreTask.isPending ? "Restaurando…" : "Restaurar tarea"}</Button>}
+                {restoreConflict && <Button type="button" size="sm" variant="outline" onClick={() => { setRestoreConflict(null); void taskQuery.refetch() }}>He revisado la tarea</Button>}
+              </div>
             )}
             {loadedTask?.status === "completed" && !loadedTask.completed_at && (
               <p role="status" className="rounded-md border border-warning/30 bg-warning/5 p-3 text-sm text-muted-foreground">
@@ -486,7 +520,7 @@ export function TaskPanel({
                   onChange={(e) =>
                     change("status", e.target.value as TaskStatus)
                   }
-                  disabled={!canWrite}
+                  disabled={!canOperate}
                 >
                   <option value="backlog">Backlog</option>
                   <option value="pending">Pendiente</option>
@@ -505,7 +539,7 @@ export function TaskPanel({
                   onChange={(e) =>
                     change("priority", e.target.value as TaskPriority)
                   }
-                  disabled={!canWrite}
+                  disabled={!canOperate}
                 >
                   <option value="urgent">Urgente</option>
                   <option value="high">Alta</option>
@@ -538,7 +572,7 @@ export function TaskPanel({
                       };
                     });
                   }}
-                  disabled={!canWrite || defaults?.clientId != null}
+                  disabled={!canOperate || defaults?.clientId != null}
                 >
                   <option value="">Sin cliente</option>
                   {clients.map((client) => (
@@ -567,7 +601,7 @@ export function TaskPanel({
                       client_id: project?.client_id ?? current.client_id,
                     }));
                   }}
-                  disabled={!canWrite || defaults?.projectId != null}
+                  disabled={!canOperate || defaults?.projectId != null}
                 >
                   <option value="">Sin proyecto</option>
                   {availableProjects.map((project) => (
@@ -588,7 +622,7 @@ export function TaskPanel({
                       e.target.value ? Number(e.target.value) : null,
                     )
                   }
-                  disabled={!canWrite}
+                  disabled={!canOperate}
                 >
                   <option value="">Sin asignar</option>
                   {users.map((user) => (
@@ -609,7 +643,7 @@ export function TaskPanel({
                       e.target.value ? Number(e.target.value) : null,
                     )
                   }
-                  disabled={!canWrite}
+                  disabled={!canOperate}
                 >
                   <option value="">Sin categoría</option>
                   {categories.map((category) => (
@@ -630,7 +664,7 @@ export function TaskPanel({
                       e.target.value ? Number(e.target.value) : null,
                     )
                   }
-                  disabled={!canWrite || !draft.project_id}
+                  disabled={!canOperate || !draft.project_id}
                 >
                   <option value="">Sin fase</option>
                   {projectQuery.data?.phases?.map((phase) => (
@@ -647,7 +681,7 @@ export function TaskPanel({
                   type="date"
                   value={draft.due_date ?? ""}
                   onChange={(e) => change("due_date", e.target.value || null)}
-                  disabled={!canWrite}
+                  disabled={!canOperate}
                 />
               </div>
               <div>
@@ -659,7 +693,7 @@ export function TaskPanel({
                   onChange={(e) =>
                     change("scheduled_date", e.target.value || null)
                   }
-                  disabled={!canWrite}
+                  disabled={!canOperate}
                 />
               </div>
               <div>
@@ -675,7 +709,7 @@ export function TaskPanel({
                       e.target.value ? Number(e.target.value) : null,
                     )
                   }
-                  disabled={!canWrite}
+                  disabled={!canOperate}
                 />
               </div>
             </div>
@@ -691,6 +725,10 @@ export function TaskPanel({
                 rows={4}
               />
             </details>
+            <div className="space-y-1.5">
+              <Label htmlFor="task-panel-link">Enlace</Label>
+              <Input id="task-panel-link" type="url" value={draft.link_url ?? ""} onChange={(event) => change("link_url", event.target.value || null)} disabled={!canWrite} />
+            </div>
             <details>
               <summary className="cursor-pointer text-sm font-medium">
                 Seguimiento
@@ -704,7 +742,7 @@ export function TaskPanel({
                     onChange={(e) =>
                       change("waiting_for", e.target.value || null)
                     }
-                    disabled={!canWrite}
+                    disabled={!canOperate}
                   />
                 </div>
                 <div>
@@ -716,7 +754,7 @@ export function TaskPanel({
                     onChange={(e) =>
                       change("follow_up_date", e.target.value || null)
                     }
-                    disabled={!canWrite}
+                    disabled={!canOperate}
                   />
                 </div>
               </div>
@@ -742,7 +780,7 @@ export function TaskPanel({
                         e.target.value ? Number(e.target.value) : null,
                       )
                     }
-                    disabled={!canWrite}
+                    disabled={!canOperate}
                   >
                     <option value="">Sin dependencia</option>
                     {dependencyTasks
@@ -778,7 +816,7 @@ export function TaskPanel({
                           : null,
                       })); }
                     }
-                    disabled={!canWrite}
+                    disabled={!canOperate}
                   />
                   Repetir tarea
                 </label>
@@ -803,7 +841,7 @@ export function TaskPanel({
                               : current.recurrence_anchor_date,
                           }));
                         }}
-                        disabled={!canWrite}
+                        disabled={!canOperate}
                       >
                         <option value="daily">Diaria</option>
                         <option value="weekly">Semanal</option>
@@ -820,12 +858,12 @@ export function TaskPanel({
                         max="28"
                         value={draft.recurrence_day ?? 1}
                         onChange={(e) => change("recurrence_day", Number(e.target.value))}
-                        disabled={!canWrite}
+                        disabled={!canOperate}
                       /> : <Select
                         id="task-panel-recurrence-day"
                         value={String(draft.recurrence_day ?? 0)}
                         onChange={(e) => change("recurrence_day", Number(e.target.value))}
-                        disabled={!canWrite || draft.recurrence_pattern === "daily"}
+                        disabled={!canOperate || draft.recurrence_pattern === "daily"}
                       >
                         <option value="0">Lunes</option><option value="1">Martes</option><option value="2">Miércoles</option><option value="3">Jueves</option><option value="4">Viernes</option>
                       </Select>}
@@ -841,7 +879,7 @@ export function TaskPanel({
                         onChange={(e) =>
                           change("recurrence_end_date", e.target.value || null)
                         }
-                        disabled={!canWrite}
+                        disabled={!canOperate}
                       />
                     </div>
                   </div>
@@ -857,7 +895,7 @@ export function TaskPanel({
                         onChange={(e) =>
                           change("recurrence_anchor_date", e.target.value || null)
                         }
-                        disabled={!canWrite}
+                        disabled={!canOperate}
                       />
                       {!draft.recurrence_anchor_date && taskId && (
                         <p className="mt-1 text-xs text-muted-foreground">
@@ -872,7 +910,7 @@ export function TaskPanel({
                       size="sm"
                       variant="outline"
                       onClick={() => previewRecurrence.mutate()}
-                      disabled={!canWrite || previewRecurrence.isPending}
+                      disabled={!canOperate || previewRecurrence.isPending}
                     >
                       Ver próximas fechas
                     </Button>
@@ -882,7 +920,7 @@ export function TaskPanel({
                         size="sm"
                         variant="outline"
                         onClick={() => compareLegacyCalendar.mutate()}
-                        disabled={!canWrite || compareLegacyCalendar.isPending}
+                        disabled={!canOperate || compareLegacyCalendar.isPending}
                       >
                         Comparar calendario actual
                       </Button>
@@ -892,7 +930,7 @@ export function TaskPanel({
                         type="button"
                         size="sm"
                         onClick={() => toggleRecurrencePause.mutate({ id: taskId, paused: !recurrencePaused })}
-                        disabled={!canWrite || toggleRecurrencePause.isPending}
+                        disabled={!canOperate || toggleRecurrencePause.isPending}
                       >
                         {recurrencePaused ? <Play className="mr-1 size-4" /> : <Pause className="mr-1 size-4" />}
                         {recurrencePaused ? "Reanudar recurrencia" : "Pausar recurrencia"}
@@ -913,7 +951,7 @@ export function TaskPanel({
                         <div><p className="font-medium">Calendario actual</p><p className="text-muted-foreground">{legacyComparison.current.next_dates.join(" · ") || "Sin próximas fechas"}</p></div>
                         <div><p className="font-medium">Con este cambio</p><p className="text-muted-foreground">{legacyComparison.proposed.next_dates.join(" · ") || "Sin próximas fechas"}</p></div>
                       </div>
-                      {!draft.recurrence_anchor_date && <Button type="button" size="sm" onClick={() => change("recurrence_anchor_date", legacyComparison.anchor)} disabled={!canWrite}>Aplicar este cambio</Button>}
+                      {!draft.recurrence_anchor_date && <Button type="button" size="sm" onClick={() => change("recurrence_anchor_date", legacyComparison.anchor)} disabled={!canOperate}>Aplicar este cambio</Button>}
                     </div>
                   )}
                   {legacyAnchorChange && !comparisonReady && <p role="alert" className="text-sm text-muted-foreground">Compara el calendario actual y el nuevo antes de guardar este cambio.</p>}
@@ -953,7 +991,7 @@ export function TaskPanel({
                             aria-label={`Completar ${item.text}`}
                             type="checkbox"
                             checked={item.is_done}
-                            disabled={!canWrite || updateChecklist.isPending}
+                            disabled={!canOperate || updateChecklist.isPending}
                             onChange={(event) =>
                               updateChecklist.mutate({
                                 itemId: item.id,
@@ -966,7 +1004,7 @@ export function TaskPanel({
                           >
                             {item.text}
                           </span>
-                          {canWrite && (
+                          {canOperate && (
                             <Button
                               type="button"
                               size="icon"
@@ -983,7 +1021,7 @@ export function TaskPanel({
                           <Textarea
                             aria-label={`Descripción de ${item.text}`}
                             defaultValue={item.description ?? ""}
-                            disabled={!canWrite || updateChecklist.isPending}
+                            disabled={!canOperate || updateChecklist.isPending}
                             onBlur={(event) =>
                               updateChecklist.mutate({
                                 itemId: item.id,
@@ -997,7 +1035,7 @@ export function TaskPanel({
                             <Select
                               aria-label={`Responsable de ${item.text}`}
                               defaultValue={item.assigned_to ?? ""}
-                              disabled={!canWrite || updateChecklist.isPending}
+                              disabled={!canOperate || updateChecklist.isPending}
                               onChange={(event) =>
                                 updateChecklist.mutate({
                                   itemId: item.id,
@@ -1020,7 +1058,7 @@ export function TaskPanel({
                               aria-label={`Fecha de ${item.text}`}
                               type="date"
                               defaultValue={item.due_date?.slice(0, 10) ?? ""}
-                              disabled={!canWrite || updateChecklist.isPending}
+                              disabled={!canOperate || updateChecklist.isPending}
                               onChange={(event) =>
                                 updateChecklist.mutate({
                                   itemId: item.id,
@@ -1034,7 +1072,7 @@ export function TaskPanel({
                         </div>
                       </div>
                     ))}
-                    {canWrite && (
+                    {canOperate && (
                       <div className="flex gap-2">
                         <Input
                           aria-label="Nueva entrada de checklist"
@@ -1181,7 +1219,7 @@ export function TaskPanel({
                   onClick={() => onOpenTime(loadedTask)}
                 >
                   <Clock className="h-4 w-4 mr-1" />
-                  Ver horas y registrar tiempo
+                  {isRetired ? "Ver horas" : "Ver horas y registrar tiempo"}
                 </Button>
               )}
               <Button
@@ -1194,7 +1232,7 @@ export function TaskPanel({
               {canWrite && (
                 <Button
                   type="submit"
-                  disabled={save.isPending || !draft.title.trim() || (legacyAnchorChange && !comparisonReady)}
+                  disabled={save.isPending || !canSave}
                 >
                   {save.isPending ? "Guardando…" : "Guardar"}
                 </Button>

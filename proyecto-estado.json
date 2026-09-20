@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-20T16:30:36.485941+00:00",
-  "estado_general": "produccion_decimosexta_mejora_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-20T17:13:41.163381+00:00",
+  "estado_general": "produccion_P16_P17_en_validacion_final_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -234,6 +234,13 @@
       "estado": "completado",
       "prioridad": "alta",
       "notas": "PR28 / 8a3ba6e publicada y verificada. 1119 backend (2 omitidas), 307 frontend, build y Ruff correctos. CI rama/main, contrato de lectura y pantallas 390/1440 comprobados. Sin migración nueva; datos conservados. Objetivo global activo."
+    },
+    {
+      "id": "AUDIT-20260920-P17",
+      "descripcion": "Decisiones sobre arrastre y retirada reversible con horas e historial conservados",
+      "estado": "en_progreso",
+      "prioridad": "alta",
+      "notas": "Implementación local:1160 backend (2 omitidas),316 frontend. Flujo real aislado validado; ajuste móvil final, CI y publicación pendientes. Producción permanece P16."
     }
   ],
   "bugs": [
@@ -304,7 +311,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "P17: revisar arrastre, reprogramar conservando plazos, esperar con motivo y fecha, completar o retirar de forma reversible conservando horas e historia. Continuar Engine, revisión histórica, canal y todos los criterios pendientes de la matriz. Objetivo completo activo.",
+  "proximos_pasos": "Cerrar validación móvil y publicar P17; después Resúmenes de equipo, Engine, revisión histórica, canal y todos los criterios pendientes de la matriz. Objetivo completo activo.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,

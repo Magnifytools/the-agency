@@ -95,6 +95,8 @@ class TestTaskToResponse:
         mock_task.scheduled_date = None
         mock_task.waiting_for = None
         mock_task.follow_up_date = None
+        mock_task.retired_at = None
+        mock_task.retired_reason = None
         mock_task.created_at = datetime.now(timezone.utc)
         mock_task.updated_at = datetime.now(timezone.utc)
         mock_task.is_recurring = False
@@ -149,6 +151,8 @@ class TestTaskToResponse:
         mock_task.scheduled_date = None
         mock_task.waiting_for = None
         mock_task.follow_up_date = None
+        mock_task.retired_at = None
+        mock_task.retired_reason = None
         mock_task.created_at = datetime.now(timezone.utc)
         mock_task.updated_at = datetime.now(timezone.utc)
         mock_task.is_recurring = False

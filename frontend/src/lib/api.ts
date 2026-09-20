@@ -311,7 +311,7 @@ export const clientsApi = {
 
 // Tasks
 export const tasksApi = {
-  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; search?: string; page?: number; page_size?: number }) =>
+  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; retirement?: "active" | "retired"; search?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params }).then((r) => r.data),
   agenda: (params: { date: string; section: "planned" | "carryover" | "unplanned" | "completed"; assigned_to?: number | "me" | "unassigned" | "all"; timezone_offset_minutes?: number; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks/agenda", { params }).then((r) => r.data),
@@ -321,6 +321,16 @@ export const tasksApi = {
   create: (data: TaskCreate) => api.post<Task>("/tasks", data).then((r) => r.data),
   update: (id: number, data: Partial<TaskCreate>) =>
     api.put<Task>(`/tasks/${id}`, data).then((r) => r.data),
+  carryoverDecision: (id: number, data: {
+    action: "reschedule" | "wait" | "complete" | "retire"
+    expected_updated_at: string
+    scheduled_date?: string
+    waiting_for?: string
+    follow_up_date?: string
+    reason?: string
+  }) => api.post<Task>(`/tasks/${id}/carryover-decision`, data).then((r) => r.data),
+  restore: (id: number, expected_updated_at: string) =>
+    api.post<Task>(`/tasks/${id}/restore`, { expected_updated_at }).then((r) => r.data),
   recurrencePreview: (data: Pick<TaskCreate, "is_recurring" | "recurrence_pattern" | "recurrence_day" | "recurrence_anchor_date" | "recurrence_end_date" | "client_id" | "project_id" | "phase_id" | "recurrence_paused">) =>
     api.post<RecurrenceSummary>("/tasks/recurrence-preview", data).then((r) => r.data),
   delete: (id: number) => api.delete(`/tasks/${id}`).then((r) => r.data),

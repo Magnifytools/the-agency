@@ -2,8 +2,9 @@
 from fastapi import HTTPException
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 
-from backend.db.models import Project, Task, TimeEntry, User
+from backend.db.models import Project, Task, TaskStatus, TimeEntry, User
 from backend.services.change_journal import capture_manual_time
 from backend.services.project_owner import validate_project_owner
 from backend.services.task_lifecycle import stamp_task_status
@@ -20,6 +21,8 @@ UPDATABLE_TASK_FIELDS = {
     "recurrence_day", "recurrence_end_date", "unit_cost",
     "link_url", "recurrence_anchor_date", "recurrence_paused",
 }
+
+RETIRED_TASK_EDITABLE_FIELDS = {"title", "description", "link_url"}
 
 
 def _prepare_recurrence(data: dict, *, existing: Task | None = None) -> None:
@@ -94,10 +97,44 @@ async def create_task(
 
 
 async def lock_task(db: AsyncSession, task_id: int) -> Task:
-    task = (await db.execute(select(Task).where(Task.id == task_id).with_for_update()
+    task = (await db.execute(select(Task).where(Task.id == task_id).options(noload("*")).with_for_update()
              .execution_options(populate_existing=True))).scalar_one_or_none()
     if task is None:
         raise HTTPException(404, "Task not found")
+    return task
+
+
+async def lock_task_dependency_change(
+    db: AsyncSession, task_id: int, dependency_id: int | None,
+) -> Task:
+    """Lock a task and its proposed dependency in deterministic id order."""
+    ids = sorted({value for value in (task_id, dependency_id) if value is not None})
+    rows = (await db.execute(
+        select(Task).where(Task.id.in_(ids)).order_by(Task.id)
+        .options(noload("*")).with_for_update()
+        .execution_options(populate_existing=True)
+    )).scalars().all()
+    by_id = {row.id: row for row in rows}
+    task = by_id.get(task_id)
+    if task is None:
+        raise HTTPException(404, "Task not found")
+    return task
+
+
+async def lock_task_patch(db: AsyncSession, task_id: int, data: dict) -> Task:
+    """Lock every Task row whose lifecycle can affect this patch, in id order."""
+    dependency_id = data.get("depends_on") if "depends_on" in data else None
+    verify_current_dependency = False
+    requested_status = data.get("status")
+    requested_status_value = getattr(requested_status, "value", requested_status)
+    if "depends_on" not in data and requested_status_value not in (None, TaskStatus.completed.value):
+        dependency_id = await db.scalar(select(Task.depends_on).where(Task.id == task_id))
+        verify_current_dependency = True
+    if dependency_id is None:
+        return await lock_task(db, task_id)
+    task = await lock_task_dependency_change(db, task_id, dependency_id)
+    if verify_current_dependency and task.depends_on != dependency_id:
+        raise HTTPException(409, "La dependencia cambió; vuelve a intentarlo")
     return task
 
 
@@ -105,10 +142,29 @@ async def update_task(
     db: AsyncSession, task: Task, data: dict, *, actor: User | None, manual_entry_date=None,
 ) -> Task:
     """Apply a validated task patch; caller owns transaction and response effects."""
+    # The writer is also called by automation/command adapters. Re-lock and
+    # refresh here so no stale ORM instance can bypass retirement invariants.
     data = dict(data)
+    task = await lock_task_patch(db, task.id, data)
     unsupported = sorted(set(data) - UPDATABLE_TASK_FIELDS)
     if unsupported:
         raise HTTPException(422, f"Campos de tarea no editables: {', '.join(unsupported)}")
+    changed_fields = {
+        field for field, value in data.items()
+        if field != "recurrence_paused" and getattr(task, field, None) != value
+    }
+    if "recurrence_paused" in data:
+        requested_paused = data["recurrence_paused"]
+        if requested_paused is None or requested_paused != (task.recurrence_paused_at is not None):
+            changed_fields.add("recurrence_paused")
+    if task.retired_at is not None and changed_fields - RETIRED_TASK_EDITABLE_FIELDS:
+        raise HTTPException(409, "Restaura la tarea antes de cambiar su trabajo operativo")
+    if (
+        "status" in data and data["status"] != TaskStatus.waiting
+        and task.status == TaskStatus.waiting
+    ):
+        data.setdefault("waiting_for", None)
+        data.setdefault("follow_up_date", None)
     _prepare_recurrence(data, existing=task)
     old_status = task.status
     manual_changed = "actual_minutes" in data and data["actual_minutes"] != task.actual_minutes

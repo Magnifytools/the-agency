@@ -68,6 +68,7 @@ async def generate_morning_plan(db: AsyncSession, user: User, *, day: date | Non
         select(Task)
         .where(
             Task.assigned_to == user.id,
+            Task.retired_at.is_(None),
             Task.status.in_([TaskStatus.pending, *IN_PROGRESS_TASK_STATUSES]),
             Task.is_recurring.is_(False),
             or_(cast(Task.due_date, Date) <= today,
@@ -168,6 +169,7 @@ async def generate_evening_recap(db: AsyncSession, user: User, day: date) -> str
     pending_result = await db.execute(
         select(Task).where(
             Task.assigned_to == user.id,
+            Task.retired_at.is_(None),
             Task.status.in_([TaskStatus.pending, *IN_PROGRESS_TASK_STATUSES]),
             Task.is_recurring.is_(False),
         )

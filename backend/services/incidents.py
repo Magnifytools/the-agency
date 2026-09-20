@@ -53,6 +53,7 @@ def live_task_condition_clause():
     return exists().where(
         Task.id == Notification.entity_id, Task.assigned_to == Notification.user_id,
         Task.status != TaskStatus.completed, Task.is_recurring.is_(False),
+        Task.retired_at.is_(None),
         or_(
             and_(Notification.type == "task_overdue", cast(Task.due_date, Date) < today, Notification.dedupe_key == cycle_key(Task.due_date)),
             and_(Notification.type == "task_waiting_followup", Task.status == TaskStatus.waiting, Task.follow_up_date <= today, Notification.dedupe_key == cycle_key(Task.follow_up_date)),
@@ -95,6 +96,7 @@ async def collect_task_conditions(db, user_id: int, now: datetime) -> dict[str, 
         Task.id, Task.title, Task.due_date, Task.status, Task.follow_up_date, Task.waiting_for,
     ).where(
         Task.assigned_to == user_id, Task.status != TaskStatus.completed,
+        Task.retired_at.is_(None),
         Task.is_recurring.is_(False), or_(due, waiting),
     ).order_by(Task.id).with_for_update())).all()
     result = {}

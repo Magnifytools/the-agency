@@ -255,6 +255,7 @@ async def generate_insights(
     # 1. Overdue tasks (due_date < today and not completed)
     overdue_q = (
         select(Task)
+        .where(Task.retired_at.is_(None))
         .where(Task.due_date < now)
         .where(Task.status != TaskStatus.completed)
     )
@@ -292,6 +293,7 @@ async def generate_insights(
     soon_end = now + timedelta(days=thresholds.days_before_deadline)
     upcoming_q = (
         select(Task)
+        .where(Task.retired_at.is_(None))
         .where(Task.due_date >= soon_start)
         .where(Task.due_date <= soon_end)
         .where(Task.status != TaskStatus.completed)
@@ -326,7 +328,7 @@ async def generate_insights(
     if not team_scope and user_id is not None:
         active_clients_query = (
             active_clients_query.join(Task, Task.client_id == Client.id)
-            .where(Task.assigned_to == user_id)
+            .where(Task.assigned_to == user_id, Task.retired_at.is_(None))
             .distinct()
         )
     active_clients = await db.execute(active_clients_query)
@@ -335,7 +337,7 @@ async def generate_insights(
         # Check last task update
         last_task_query = (
             select(Task)
-            .where(Task.client_id == client.id)
+            .where(Task.client_id == client.id, Task.retired_at.is_(None))
             .order_by(Task.updated_at.desc())
             .limit(1)
         )
@@ -394,6 +396,7 @@ async def generate_insights(
 
     this_week_query = (
         select(func.count(Task.id))
+        .where(Task.retired_at.is_(None))
         .where(Task.due_date >= week_start)
         .where(Task.due_date < week_end)
         .where(Task.status != TaskStatus.completed)
@@ -421,6 +424,7 @@ async def generate_insights(
     # 6. Quality Assurance: Tasks without estimation or assignees
     no_estimate_query = (
         select(Task)
+        .where(Task.retired_at.is_(None))
         .where(Task.status == TaskStatus.pending)
         .where(Task.estimated_minutes == None)
         .limit(20)
@@ -432,6 +436,7 @@ async def generate_insights(
 
     unassigned_query = (
         select(Task)
+        .where(Task.retired_at.is_(None))
         .where(Task.status == TaskStatus.pending)
         .where(Task.assigned_to == None)
         .limit(20)
@@ -443,6 +448,7 @@ async def generate_insights(
 
     no_date_query = (
         select(Task)
+        .where(Task.retired_at.is_(None))
         .where(Task.status == TaskStatus.pending)
         .where(Task.due_date == None)
         .limit(20)
@@ -542,6 +548,7 @@ async def get_daily_briefing(
     due_day = cast(Task.due_date, Date)
     today_query = (
         select(Task)
+        .where(Task.retired_at.is_(None))
         .where(Task.is_recurring.is_(False))
         .where(or_(due_day == today, (Task.scheduled_date == today) & or_(Task.due_date.is_(None), due_day > today)))
         .where(Task.status != TaskStatus.completed)
@@ -563,6 +570,7 @@ async def get_daily_briefing(
     # Overdue tasks
     overdue_query = (
         select(Task)
+        .where(Task.retired_at.is_(None))
         .where(cast(Task.due_date, Date) < today)
         .where(Task.status != TaskStatus.completed, Task.is_recurring.is_(False))
         .order_by(Task.due_date.asc(), Task.id)

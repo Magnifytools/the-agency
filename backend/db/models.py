@@ -675,6 +675,9 @@ class Task(TimestampMixin, Base):
     advanced_at = Column(Date, nullable=True)
     # Real completion transition; legacy rows remain unknown rather than using updated_at.
     completed_at = Column(DateTime, nullable=True, index=True)
+    # Withdrawal preserves status, dates and all historical time/source links.
+    retired_at = Column(DateTime, nullable=True)
+    retired_reason = Column(String(500), nullable=True)
     waiting_for = Column(String(255), nullable=True)
     follow_up_date = Column(Date, nullable=True)
     link_url = Column(Text, nullable=True)
@@ -697,6 +700,11 @@ class Task(TimestampMixin, Base):
     recurring_parent_id = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
 
     __table_args__ = (
+        CheckConstraint(
+            "(retired_at IS NULL AND retired_reason IS NULL) OR "
+            "(retired_at IS NOT NULL AND retired_reason IS NOT NULL AND length(btrim(retired_reason)) > 0)",
+            name="ck_tasks_retirement_pair",
+        ),
         Index(
             "uq_task_recurring_occurrence", "recurring_parent_id", "recurrence_occurrence_date",
             unique=True, postgresql_where=recurring_parent_id.is_not(None),

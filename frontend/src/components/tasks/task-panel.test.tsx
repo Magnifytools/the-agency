@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
+  restore: vi.fn(),
   recurrencePreview: vi.fn(),
   list: vi.fn(),
   checklist: vi.fn(),
@@ -58,6 +59,7 @@ vi.mock("@/lib/api", () => ({
     listAll: mocks.listTasks,
     create: mocks.create,
     update: mocks.update,
+    restore: mocks.restore,
     recurrencePreview: mocks.recurrencePreview,
     checklist: {
       list: mocks.checklist,
@@ -506,5 +508,34 @@ describe("TaskPanel", () => {
     mocks.get.mockResolvedValue({ ...task, status: "completed", completed_at: null });
     setup({ taskId: 9 });
     expect(await screen.findByText(/No se registró la fecha de finalización/)).toBeInTheDocument();
+  });
+
+  it("keeps a retired task readable but blocks operational controls until restore", async () => {
+    mocks.get.mockResolvedValue({ ...task, retired_at: "2026-09-20T10:00:00Z", retired_reason: "Ya no aplica", due_date: "2026-09-18T00:00:00Z" });
+    mocks.restore.mockResolvedValue({ ...task, retired_at: null, retired_reason: null });
+    const { onOpenTime } = setup({ taskId: 9 });
+    expect(await screen.findByText(/Motivo: Ya no aplica/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Título")).toBeEnabled();
+    expect(screen.getByLabelText("Estado")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Ver horas" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Restaurar tarea" }));
+    await waitFor(() => expect(mocks.restore).toHaveBeenCalledWith(9, task.updated_at));
+    expect(onOpenTime).not.toHaveBeenCalled();
+  });
+
+  it("saves only editable fields on a retired task", async () => {
+    const retired = { ...task, retired_at: "2026-09-17T23:30:00Z", retired_reason: "Ya no aplica" };
+    mocks.get.mockResolvedValue(retired);
+    mocks.update.mockResolvedValue({ ...retired, title: "Auditar archivo" });
+    setup({ taskId: 9 });
+    const title = await screen.findByLabelText("Título");
+    await userEvent.clear(title);
+    await userEvent.type(title, "Auditar archivo");
+    await userEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(9, {
+      title: "Auditar archivo",
+      description: null,
+      link_url: null,
+    }));
   });
 });

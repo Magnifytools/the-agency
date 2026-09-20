@@ -86,7 +86,7 @@ export default function ProjectDetailPage() {
   const [activeTab, setActiveTab] = useState<"tasks" | "ideas" | "evidence" | "billing">("tasks")
   const [previewTaskId, setPreviewTaskId] = useState<number | null>(null)
   const [showMetrics, setShowMetrics] = useState(false)
-  const [timeLogTask, setTimeLogTask] = useState<{ id: number; title: string } | null>(null)
+  const [timeLogTask, setTimeLogTask] = useState<{ id: number; title: string; retired?: boolean } | null>(null)
   const [filterStatus, setFilterStatus] = useState<TaskStatus | "all">("all")
   const [filterSearch, setFilterSearch] = useState("")
   const [searchParams] = useSearchParams()
@@ -747,10 +747,10 @@ export default function ProjectDetailPage() {
           taskId={previewTaskId}
           open={previewTaskId !== null}
           onOpenChange={(open) => !open && setPreviewTaskId(null)}
-          onOpenTime={(task) => { setPreviewTaskId(null); setTimeLogTask({ id: task.id, title: task.title }) }}
+          onOpenTime={(task) => { setPreviewTaskId(null); setTimeLogTask({ id: task.id, title: task.title, retired: !!task.retired_at }) }}
         />
       )}
-      {timeLogTask && <TimeLogDialog taskId={timeLogTask.id} taskTitle={timeLogTask.title} open onOpenChange={(open) => !open && setTimeLogTask(null)} />}
+      {timeLogTask && <TimeLogDialog taskId={timeLogTask.id} taskTitle={timeLogTask.title} taskRetired={timeLogTask.retired} open onOpenChange={(open) => !open && setTimeLogTask(null)} />}
     </div>
   )
 }

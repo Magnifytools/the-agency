@@ -54,7 +54,7 @@ const ownEntry = {
   client_name: "Acme",
 };
 
-function setup() {
+function setup(taskRetired = false) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -65,6 +65,7 @@ function setup() {
         taskTitle="Auditoría"
         open
         onOpenChange={vi.fn()}
+        taskRetired={taskRetired}
       />
     </QueryClientProvider>,
   );
@@ -139,6 +140,17 @@ describe("TimeLogDialog", () => {
     expect(
       await screen.findByText("No hay entradas de tiempo"),
     ).toBeInTheDocument();
+  });
+
+  it("keeps retired-task hours reviewable and editable without offering a new entry", async () => {
+    setup(true);
+    expect(await screen.findByText("Revisión")).toBeInTheDocument();
+    expect(screen.getByText(/Puedes consultar y corregir sus horas existentes/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Añadir manual" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Editar registro/ }));
+    expect(screen.getByLabelText("Horas")).toHaveValue(0);
+    expect(screen.getByLabelText("Minutos")).toHaveValue(30);
+    expect(screen.getByLabelText("Notas")).toHaveValue("Revisión");
   });
 
   it("sends the chosen civil date once while creation is pending", async () => {

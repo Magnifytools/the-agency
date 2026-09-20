@@ -34,6 +34,8 @@ class TestTaskToResponse:
         task.scheduled_date = None
         task.waiting_for = None
         task.follow_up_date = None
+        task.retired_at = None
+        task.retired_reason = None
         task.created_at = datetime.now()
         task.updated_at = datetime.now()
         task.is_recurring = False
@@ -87,6 +89,8 @@ class TestTaskToResponse:
         task.scheduled_date = None
         task.waiting_for = None
         task.follow_up_date = None
+        task.retired_at = None
+        task.retired_reason = None
         task.created_at = datetime.now()
         task.updated_at = datetime.now()
         task.is_recurring = False

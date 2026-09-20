@@ -191,11 +191,11 @@ export function IncidentInbox({ userId, compact = false, onNavigate }: { userId:
         </div>
       )}
 
-      {compact && <h2 id={headingId} className="text-sm font-semibold">Alertas pendientes</h2>}
+      {compact && incidents.length > 0 && <h2 id={headingId} className="text-sm font-semibold">Alertas pendientes</h2>}
       {incidentsQuery.isLoading ? <p className="text-sm text-muted-foreground">Cargando alertas…</p> : incidentsQuery.isError ? (
         <div role="alert" className="rounded-lg border border-destructive/40 p-4 text-sm">No se pudieron cargar las alertas. <button type="button" className="underline" onClick={() => void refresh()}>Reintentar</button></div>
       ) : incidents.length === 0 ? compact ? (
-        <p className="text-sm text-muted-foreground">No hay alertas pendientes.</p>
+        <p className="text-sm text-muted-foreground">Sin alertas pendientes · <Link to="/incidents" onClick={onNavigate} className="text-brand underline-offset-4 hover:underline">Ver alertas</Link></p>
       ) : (
         <Card><CardContent className="p-5 text-sm text-muted-foreground">No hay alertas en «{stateLabels[state]}».</CardContent></Card>
       ) : (
@@ -259,7 +259,7 @@ export function IncidentInbox({ userId, compact = false, onNavigate }: { userId:
           </>}
         </div>
       )}
-      {compact && <Link to="/incidents" onClick={onNavigate} className="inline-block text-sm text-brand underline-offset-4 hover:underline">Ver todas las alertas</Link>}
+      {compact && incidents.length > 0 && <Link to="/incidents" onClick={onNavigate} className="inline-block text-sm text-brand underline-offset-4 hover:underline">Ver todas las alertas</Link>}
     </section>
   )
 }
