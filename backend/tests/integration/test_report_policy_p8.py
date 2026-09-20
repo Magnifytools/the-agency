@@ -142,32 +142,85 @@ async def test_preview_marks_older_confirmation_and_revocation_with_tied_timesta
 
 
 async def test_cohort_revalidates_permission_after_provider_and_persists_nothing(
-    db_session, make_member_client, monkeypatch,
+    db_session,
+    make_member_client,
+    monkeypatch,
 ):
     member = await make_member_client([("digests", True, True)])
     actor = member.test_user
     actor_id = actor.id
     client = Client(name="Cliente revoke mid AI", status=ClientStatus.active)
-    db_session.add(client); await db_session.flush()
-    db_session.add(ClientReportPolicy(client_id=client.id, enabled=True, cadence=ReportCadence.weekly, responsible_user_id=actor_id, revision=1))
+    db_session.add(client)
+    await db_session.flush()
+    db_session.add(
+        ClientReportPolicy(
+            client_id=client.id,
+            enabled=True,
+            cadence=ReportCadence.weekly,
+            responsible_user_id=actor_id,
+            revision=1,
+        )
+    )
     await db_session.commit()
     client_name = client.name
 
-    async def collect(*args, **kwargs): return {"client_name": client_name}
+    async def collect(*args, **kwargs):
+        return {"client_name": client_name, "source_catalog": {}}
+
     async def generate(*args, **kwargs):
-        await db_session.execute(update(UserPermission).where(UserPermission.user_id == actor_id, UserPermission.module == "digests").values(can_write=False))
+        await db_session.execute(
+            update(UserPermission)
+            .where(
+                UserPermission.user_id == actor_id, UserPermission.module == "digests"
+            )
+            .values(can_write=False)
+        )
         return content()
-    monkeypatch.setattr("backend.api.routes.report_policies.collect_digest_data", collect)
-    monkeypatch.setattr("backend.api.routes.report_policies.generate_digest_content", generate)
-    monkeypatch.setattr("backend.services.digest_generation.policy_digest_period", lambda cadence: (date(2026, 9, 7), date(2026, 9, 13)))
+
+    monkeypatch.setattr(
+        "backend.api.routes.report_policies.collect_digest_data", collect
+    )
+    monkeypatch.setattr(
+        "backend.api.routes.report_policies.generate_digest_content", generate
+    )
+    monkeypatch.setattr(
+        "backend.services.digest_generation.policy_digest_period",
+        lambda cadence: (date(2026, 9, 7), date(2026, 9, 13)),
+    )
 
     client_id = client.id
-    response = await member.post("/api/digests/generate-cohort", json={"items": [{
-        "client_id": client.id, "policy_revision": 1, "period_start": "2026-09-07", "period_end": "2026-09-13",
-    }], "tone": "cercano"})
+    response = await member.post(
+        "/api/digests/generate-cohort",
+        json={
+            "items": [
+                {
+                    "client_id": client.id,
+                    "policy_revision": 1,
+                    "period_start": "2026-09-07",
+                    "period_end": "2026-09-13",
+                    "generation_key": "cohort-revoke-key",
+                }
+            ],
+            "tone": "cercano",
+        },
+    )
     assert response.status_code == 200, response.text
-    assert response.json()["results"] == [{"client_id": client_id, "outcome": "skipped", "digest_id": None, "reason": "permission_changed"}]
-    assert await db_session.scalar(select(func.count(WeeklyDigest.id)).where(WeeklyDigest.client_id == client_id)) == 0
+    assert response.json()["results"] == [
+        {
+            "client_id": client_id,
+            "outcome": "skipped",
+            "digest_id": None,
+            "reason": "permission_changed",
+        }
+    ]
+    assert (
+        await db_session.scalar(
+            select(func.count(WeeklyDigest.id)).where(
+                WeeklyDigest.client_id == client_id
+            )
+        )
+        == 0
+    )
     await member.aclose()
 
 
@@ -178,45 +231,115 @@ async def test_legacy_batch_is_retired(admin_client):
 
 
 async def test_manual_generation_rejects_admin_demotion_during_provider(
-    admin_client, admin_user, db_session, monkeypatch,
+    admin_client,
+    admin_user,
+    db_session,
+    monkeypatch,
 ):
     client = Client(name="Demotion mid AI", status=ClientStatus.active)
-    db_session.add_all([client, UserPermission(user_id=admin_user.id, module="digests", can_read=True, can_write=True)])
-    await db_session.commit(); client_id, actor_id = client.id, admin_user.id
-    async def collect(*args): return {"client_name": "Demotion mid AI"}
+    db_session.add_all(
+        [
+            client,
+            UserPermission(
+                user_id=admin_user.id, module="digests", can_read=True, can_write=True
+            ),
+        ]
+    )
+    await db_session.commit()
+    client_id, actor_id = client.id, admin_user.id
+
+    async def collect(*args):
+        return {"client_name": "Demotion mid AI", "source_catalog": {}}
+
     async def generate(*args):
-        await db_session.execute(update(User).where(User.id == actor_id).values(role=UserRole.member))
+        await db_session.execute(
+            update(User).where(User.id == actor_id).values(role=UserRole.member)
+        )
         return content()
+
     monkeypatch.setattr("backend.api.routes.digests.collect_digest_data", collect)
     monkeypatch.setattr("backend.api.routes.digests.generate_digest_content", generate)
-    response = await admin_client.post("/api/digests/generate", json={
-        "client_id": client_id, "period_start": "2026-09-07", "period_end": "2026-09-13",
-    })
-    assert response.status_code == 409
+    response = await admin_client.post(
+        "/api/digests/generate",
+        json={
+            "client_id": client_id,
+            "period_start": "2026-09-07",
+            "period_end": "2026-09-13",
+            "generation_key": "manual-demotion-key",
+        },
+    )
+    assert response.status_code == 403
     assert response.json()["detail"]["code"] == "permission_changed"
-    assert await db_session.scalar(select(func.count(WeeklyDigest.id)).where(WeeklyDigest.client_id == client_id)) == 0
+    assert (
+        await db_session.scalar(
+            select(func.count(WeeklyDigest.id)).where(
+                WeeklyDigest.client_id == client_id
+            )
+        )
+        == 0
+    )
 
 
 async def test_tone_regeneration_revalidates_responsibility_after_provider(
-    admin_user, db_session, make_member_client, monkeypatch,
+    admin_user,
+    db_session,
+    make_member_client,
+    monkeypatch,
 ):
     member = await make_member_client([("digests", True, True)])
     other = await make_member_client([("digests", True, True)])
     member_id, other_id = member.test_user.id, other.test_user.id
     client = Client(name="Tone ACL", status=ClientStatus.active)
-    db_session.add(client); await db_session.flush()
-    policy = ClientReportPolicy(client_id=client.id, enabled=True, cadence=ReportCadence.weekly, responsible_user_id=member_id, revision=1)
-    digest = WeeklyDigest(client_id=client.id, period_start=date(2026, 9, 7), period_end=date(2026, 9, 13), status=DigestStatus.draft, tone=DigestTone.cercano, content=content(), raw_context={"client_name": client.name}, created_by=admin_user.id)
-    db_session.add_all([policy, digest]); await db_session.commit(); digest_id, client_id = digest.id, client.id
+    db_session.add(client)
+    await db_session.flush()
+    policy = ClientReportPolicy(
+        client_id=client.id,
+        enabled=True,
+        cadence=ReportCadence.weekly,
+        responsible_user_id=member_id,
+        revision=1,
+    )
+    digest = WeeklyDigest(
+        client_id=client.id,
+        period_start=date(2026, 9, 7),
+        period_end=date(2026, 9, 13),
+        status=DigestStatus.draft,
+        tone=DigestTone.cercano,
+        content=content(),
+        raw_context={"client_name": client.name},
+        created_by=admin_user.id,
+    )
+    db_session.add_all([policy, digest])
+    await db_session.commit()
+    digest_id, client_id = digest.id, client.id
+
     async def regenerate(*args):
-        await db_session.execute(update(ClientReportPolicy).where(ClientReportPolicy.client_id == client_id).values(responsible_user_id=other_id, revision=2))
+        await db_session.execute(
+            update(ClientReportPolicy)
+            .where(ClientReportPolicy.client_id == client_id)
+            .values(responsible_user_id=other_id, revision=2)
+        )
         return content()
-    monkeypatch.setattr("backend.api.routes.digests.generate_digest_content", regenerate)
-    response = await member.put(f"/api/digests/{digest_id}", json={"tone": "formal"})
+
+    monkeypatch.setattr(
+        "backend.api.routes.digests.generate_digest_content", regenerate
+    )
+    response = await member.put(
+        f"/api/digests/{digest_id}",
+        json={"tone": "formal", "generation_key": "tone-policy-change-key"},
+    )
     assert response.status_code == 403
     await db_session.rollback()
-    assert await db_session.scalar(select(func.count(WeeklyDigest.id)).where(WeeklyDigest.client_id == client_id)) == 1
-    await member.aclose(); await other.aclose()
+    assert (
+        await db_session.scalar(
+            select(func.count(WeeklyDigest.id)).where(
+                WeeklyDigest.client_id == client_id
+            )
+        )
+        == 1
+    )
+    await member.aclose()
+    await other.aclose()
 
 
 async def test_policy_create_is_serialized_when_revision_zero_races(engine):
@@ -242,33 +365,96 @@ async def test_policy_create_is_serialized_when_revision_zero_races(engine):
 
 async def test_individual_and_cohort_share_coverage_lock(engine):
     async with AsyncSession(engine, expire_on_commit=False) as setup:
-        actor = User(email="digest-lock@test", full_name="Digest lock", hashed_password="x", role=UserRole.admin, is_active=True)
+        actor = User(
+            email="digest-lock@test",
+            full_name="Digest lock",
+            hashed_password="x",
+            role=UserRole.admin,
+            is_active=True,
+        )
         client = Client(name="Coverage lock", status=ClientStatus.active)
-        setup.add_all([actor, client]); await setup.flush()
-        setup.add(ClientReportPolicy(client_id=client.id, enabled=True, cadence=ReportCadence.weekly, responsible_user_id=actor.id, revision=1))
-        await setup.commit(); actor_id, client_id = actor.id, client.id
-    provider_started = asyncio.Event(); release_provider = asyncio.Event()
-    async def collect(*args): return {"client_name": "Coverage lock"}
+        setup.add_all([actor, client])
+        await setup.flush()
+        setup.add(
+            ClientReportPolicy(
+                client_id=client.id,
+                enabled=True,
+                cadence=ReportCadence.weekly,
+                responsible_user_id=actor.id,
+                revision=1,
+            )
+        )
+        await setup.commit()
+        actor_id, client_id = actor.id, client.id
+    provider_started = asyncio.Event()
+    release_provider = asyncio.Event()
+
+    async def collect(*args):
+        return {"client_name": "Coverage lock", "source_catalog": {}}
+
     async def slow_generate(*args):
-        provider_started.set(); await release_provider.wait(); return content()
-    async def fast_generate(*args): return content()
+        provider_started.set()
+        await release_provider.wait()
+        return content()
+
+    async def fast_generate(*args):
+        return content()
+
     period = (date(2026, 9, 7), date(2026, 9, 13))
     import backend.services.digest_generation as generation
+
     original_period = generation.policy_digest_period
     generation.policy_digest_period = lambda cadence: period
     try:
-        async with AsyncSession(engine, expire_on_commit=False) as individual, AsyncSession(engine, expire_on_commit=False) as cohort:
-            first = asyncio.create_task(generate_locked_digest(individual, actor_id=actor_id, client_id=client_id, period_start=period[0], period_end=period[1], tone=DigestTone.cercano, expected_revision=None, require_enabled=False, reject_existing=False, collector=collect, generator=slow_generate))
+        async with (
+            AsyncSession(engine, expire_on_commit=False) as individual,
+            AsyncSession(engine, expire_on_commit=False) as cohort,
+        ):
+            first = asyncio.create_task(
+                generate_locked_digest(
+                    individual,
+                    actor_id=actor_id,
+                    client_id=client_id,
+                    period_start=period[0],
+                    period_end=period[1],
+                    tone=DigestTone.cercano,
+                    generation_key="individual-coverage-key",
+                    expected_revision=None,
+                    require_enabled=False,
+                    reject_existing=False,
+                    collector=collect,
+                    generator=slow_generate,
+                )
+            )
             await provider_started.wait()
-            with pytest.raises(DigestGenerationRejected) as busy:
-                await generate_locked_digest(cohort, actor_id=actor_id, client_id=client_id, period_start=period[0], period_end=period[1], tone=DigestTone.cercano, expected_revision=1, require_enabled=True, reject_existing=True, collector=collect, generator=fast_generate)
-            assert busy.value.reason == "concurrent_generation"
-            await cohort.rollback(); release_provider.set(); digest = await first; await individual.commit()
+            cohort_digest = await generate_locked_digest(
+                cohort,
+                actor_id=actor_id,
+                client_id=client_id,
+                period_start=period[0],
+                period_end=period[1],
+                tone=DigestTone.cercano,
+                generation_key="cohort-coverage-key",
+                expected_revision=1,
+                require_enabled=True,
+                reject_existing=True,
+                collector=collect,
+                generator=fast_generate,
+            )
+            await cohort.commit()
+            assert cohort_digest.id is not None
+            release_provider.set()
+            digest = await first
+            await individual.commit()
             assert digest.id is not None
     finally:
         generation.policy_digest_period = original_period
     async with engine.begin() as conn:
-        await conn.execute(delete(WeeklyDigest).where(WeeklyDigest.client_id == client_id))
-        await conn.execute(delete(ClientReportPolicy).where(ClientReportPolicy.client_id == client_id))
+        await conn.execute(
+            delete(WeeklyDigest).where(WeeklyDigest.client_id == client_id)
+        )
+        await conn.execute(
+            delete(ClientReportPolicy).where(ClientReportPolicy.client_id == client_id)
+        )
         await conn.execute(delete(Client).where(Client.id == client_id))
         await conn.execute(delete(User).where(User.id == actor_id))

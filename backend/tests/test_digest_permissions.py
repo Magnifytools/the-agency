@@ -169,6 +169,7 @@ async def test_member_with_digest_write_can_generate(digest_member_client):
             "/api/digests/generate",
             json={
                 "client_id": 1,
+                "generation_key": "member-generate-key",
                 "period_start": "2026-03-09",
                 "period_end": "2026-03-15",
             },

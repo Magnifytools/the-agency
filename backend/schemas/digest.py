@@ -22,6 +22,7 @@ def _serialize_utc(dt: Optional[datetime]) -> Optional[str]:
 class DigestItem(BaseModel):
     title: str
     description: str
+    source_keys: list[str] = Field(default_factory=list, max_length=8)
 
 
 class DigestSections(BaseModel):
@@ -41,6 +42,7 @@ class DigestContent(BaseModel):
 # --- API schemas ---
 
 class DigestGenerateRequest(BaseModel):
+    generation_key: str = Field(min_length=16, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     client_id: int
     period_start: Optional[date] = None
     period_end: Optional[date] = None
@@ -62,6 +64,7 @@ class DigestGenerateRequest(BaseModel):
 class DigestUpdateRequest(BaseModel):
     content: Optional[DigestContent] = None
     tone: Optional[DigestTone] = None
+    generation_key: Optional[str] = Field(None, min_length=16, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class DigestStatusUpdate(BaseModel):
@@ -176,6 +179,7 @@ class GenerationPreviewResponse(BaseModel):
 
 
 class CohortGenerateItem(BaseModel):
+    generation_key: str = Field(min_length=16, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     client_id: int
     policy_revision: int = Field(ge=1)
     period_start: date
