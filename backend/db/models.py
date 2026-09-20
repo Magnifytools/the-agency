@@ -19,6 +19,7 @@ from sqlalchemy import (
     LargeBinary,
     UniqueConstraint,
     func,
+    literal_column,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship
@@ -1810,7 +1811,7 @@ class InboxNote(TimestampMixin, Base):
 
 Index(
     "ix_inbox_pending_attempt",
-    func.coalesce(InboxNote.classification_next_attempt_at, InboxNote.updated_at),
+    func.coalesce(InboxNote.classification_next_attempt_at, literal_column("TIMESTAMP 'epoch'")),
     InboxNote.id,
     postgresql_where=InboxNote.status == InboxNoteStatus.pending,
 )

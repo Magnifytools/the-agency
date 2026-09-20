@@ -297,7 +297,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "Publicar y verificar P15. Corregir consulta upstream Engine, continuar revisión histórica, simplificación restante de UX, canal y demás criterios de la matriz. Objetivo completo activo.",
+  "proximos_pasos": "Publicar y verificar la corrección P15 v2 tras rollback del predeploy v1. Corregir consulta upstream Engine, continuar revisión histórica, simplificación restante de UX, canal y demás criterios de la matriz. Objetivo completo activo.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,

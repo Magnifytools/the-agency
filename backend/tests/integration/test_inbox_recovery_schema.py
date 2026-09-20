@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import Base, User, UserRole
 from backend.startup import deployment_schema, schema_baseline
-from backend.startup.inbox_recovery_schema import apply
+from backend.startup.inbox_recovery_schema_v2 import apply
 from backend.startup.job_runtime_schema import MIGRATION as JOB_RUNTIME_MIGRATION
 from backend.startup.schema_runner import run_schema_migrations
 
@@ -30,7 +30,11 @@ async def published_schema(engine):
         await conn.execute(text("CREATE UNIQUE INDEX uq_time_entries_active_timer ON time_entries(user_id) WHERE minutes IS NULL"))
 
 
-async def test_p14_upgrade_preserves_notes_and_ledger_without_reclassifying(engine):
+@pytest.mark.parametrize("legacy_tz", [False, True])
+async def test_p14_upgrade_preserves_notes_and_ledger_without_reclassifying(engine, legacy_tz):
+    if legacy_tz:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE inbox_notes ALTER COLUMN created_at TYPE timestamptz USING created_at AT TIME ZONE 'UTC', ALTER COLUMN updated_at TYPE timestamptz USING updated_at AT TIME ZONE 'UTC'"))
     async with AsyncSession(engine) as db:
         actor = User(email="migration@example.test", full_name="Migration", hashed_password="synthetic", role=UserRole.admin)
         db.add(actor)
