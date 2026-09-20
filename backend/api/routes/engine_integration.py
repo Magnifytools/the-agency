@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
 import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from backend.config import settings
 from backend.api.deps import get_current_user, require_admin
+from backend.config import settings
 from backend.db.models import User
 
 router = APIRouter(prefix="/api/engine", tags=["engine-integration"])
@@ -29,8 +29,34 @@ def _engine_url(path: str) -> str:
     return f"{base}/api/integration{path}"
 
 
+async def validate_link_target(project_id: int) -> None:
+    """Validate an Engine project before the caller acquires any Agency row lock."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(_engine_url("/projects"), headers=_engine_headers())
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="Engine request timed out") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="Engine service unavailable") from exc
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail="Engine service unavailable")
+    try:
+        projects = response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Invalid Engine response") from exc
+    if not isinstance(projects, list) or not all(isinstance(item, dict) for item in projects):
+        raise HTTPException(status_code=502, detail="Invalid Engine response")
+    if not any(
+        isinstance(item.get("id"), int)
+        and not isinstance(item.get("id"), bool)
+        and item["id"] == project_id
+        for item in projects
+    ):
+        raise HTTPException(status_code=422, detail="Engine project not found")
+
+
 @router.get("/projects")
-async def list_engine_projects(_: User = Depends(get_current_user)):
+async def list_engine_projects(_: User = Depends(require_admin)):
     """Proxy: list all Engine projects."""
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -47,7 +73,7 @@ async def list_engine_projects(_: User = Depends(get_current_user)):
 
 
 @router.get("/projects/{project_id}/metrics")
-async def get_engine_project_metrics(project_id: int, _: User = Depends(get_current_user)):
+async def get_engine_project_metrics(project_id: int, _: User = Depends(require_admin)):
     """Proxy: get SEO metrics for an Engine project."""
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -71,7 +97,7 @@ async def get_engine_report_data(
     project_id: int,
     from_date: Optional[str] = Query(None),
     to_date: Optional[str] = Query(None),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
 ):
     """Proxy: get structured report data from Engine for monthly report generation."""
     params: dict[str, str] = {}

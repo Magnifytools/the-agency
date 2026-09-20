@@ -3,8 +3,16 @@ export interface EngineSummaryData {
   project_id: number
   project_name: string
   domain: string
+  /** Civil date and 30-day range represented by this immutable snapshot. */
+  as_of?: string
+  period_start?: string
+  previous_period_start?: string
+  ranking_device?: "desktop" | string
   content_count: number
+  keyword_count?: number
   indexed_count: number
+  inspected_count?: number
+  observed_keyword_count?: number
   keywords_top3: number
   keywords_top10: number
   keywords_top20: number
@@ -15,7 +23,7 @@ export interface EngineSummaryData {
   clicks_change_pct: number
   avg_position: number | null
   trend: string
-  seo_health: { score: number; trend: string } | null
+  seo_health: { score: number | null; trend: string } | null
   recent_changes: { severity?: string; type?: string; title: string; detail?: string; detected_at?: string }[]
 }
 

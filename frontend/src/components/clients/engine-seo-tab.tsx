@@ -26,6 +26,10 @@ interface Props {
   client: Client
 }
 
+function formatEngineSyncTime(value: string): string {
+  return formatTimeAgo(value.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`)
+}
+
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
@@ -121,9 +125,11 @@ export function EngineSeoTab({ client }: Props) {
   const handleRefresh = async () => {
     setRefreshing(true)
     try {
-      await engineApi.triggerSync()
+      const result = await engineApi.triggerSync()
       queryClient.invalidateQueries({ queryKey: ["client-summary", client.id] })
-      toast.success("Sincronizado correctamente")
+      if (result.detail === "not configured") toast.error("Engine no está configurado.")
+      else if (result.failed) toast.error(`Sincronización incompleta: ${result.failed} cliente(s) conservaron sus datos anteriores.`)
+      else toast.success(`${result.synced} cliente(s) sincronizados.`)
     } catch {
       toast.error("Error al sincronizar")
     } finally {
@@ -147,7 +153,7 @@ export function EngineSeoTab({ client }: Props) {
   }
 
   const summary: EngineSummaryData | null = client.engine_summary_data
-  const alerts = client.engine_alerts_data?.alerts || []
+  const alerts = client.engine_alerts_data?.alerts
 
   // Linked but no data yet
   if (!summary) {
@@ -157,10 +163,10 @@ export function EngineSeoTab({ client }: Props) {
           <div className="text-center space-y-4 py-8">
             <Globe className="h-12 w-12 mx-auto text-muted-foreground" />
             <p className="text-muted-foreground">Datos pendientes de sincronización</p>
-            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+            {isAdmin && <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
               <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
               Sincronizar ahora
-            </Button>
+            </Button>}
           </div>
         </CardContent>
       </Card>
@@ -188,23 +194,24 @@ export function EngineSeoTab({ client }: Props) {
           )}
         </CardHeader>
         <CardContent>
+          {summary.period_start && summary.as_of && <p className="mb-3 text-xs text-muted-foreground">Datos de {summary.period_start} a {summary.as_of} (30 días).{summary.ranking_device ? ` Posiciones: ${summary.ranking_device === "desktop" ? "escritorio" : summary.ranking_device}, observaciones del período visible.` : ""}</p>}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                 <MousePointerClick className="h-3 w-3" /> Clicks 30d
               </p>
-              <p className="kpi-value mt-1">{formatNumber(summary.clicks_30d || 0)}</p>
+              <p className="kpi-value mt-1">{summary.clicks_30d != null ? formatNumber(summary.clicks_30d) : "-"}</p>
               <DeltaBadge value={summary.clicks_change_pct} />
             </div>
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                 <Eye className="h-3 w-3" /> Impresiones 30d
               </p>
-              <p className="kpi-value mt-1">{formatNumber(summary.impressions_30d || 0)}</p>
+              <p className="kpi-value mt-1">{summary.impressions_30d != null ? formatNumber(summary.impressions_30d) : "-"}</p>
             </div>
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Keywords top 10</p>
-              <p className="kpi-value mt-1">{summary.keywords_top10 ?? "-"}</p>
+              <p className="kpi-value mt-1">{summary.observed_keyword_count === 0 ? "-" : summary.keywords_top10 ?? "-"}</p>
             </div>
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
@@ -213,7 +220,7 @@ export function EngineSeoTab({ client }: Props) {
               <p className="kpi-value mt-1">{summary.avg_position ?? "-"}</p>
             </div>
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">SEO Health</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Indicador SEO</p>
               <div className="flex items-center gap-2 mt-1">
                 <span className={`text-2xl font-bold ${
                   summary.seo_health?.score == null ? "text-muted-foreground" :
@@ -222,31 +229,38 @@ export function EngineSeoTab({ client }: Props) {
                 }`}>
                   {summary.seo_health?.score ?? "-"}
                 </span>
-                <Badge variant={
-                  summary.seo_health?.trend === "improving" ? "success" :
-                  summary.seo_health?.trend === "declining" ? "destructive" : "secondary"
+                {summary.seo_health?.score != null && <Badge variant={
+                  summary.seo_health.trend === "improving" ? "success" :
+                  summary.seo_health.trend === "declining" ? "destructive" : "secondary"
                 }>
-                  {summary.seo_health?.trend === "improving" ? "Mejorando" :
-                   summary.seo_health?.trend === "declining" ? "Bajando" : "Estable"}
-                </Badge>
+                  {summary.seo_health.trend === "improving" ? "Mejorando" : summary.seo_health.trend === "declining" ? "Bajando" : "Estable"}
+                </Badge>}
               </div>
             </div>
           </div>
+          {summary.observed_keyword_count === 0 ? (
+            <p className="mt-3 text-xs text-muted-foreground">Sin observaciones de ranking en este período.</p>
+          ) : summary.observed_keyword_count != null ? (
+            <p className="mt-3 text-xs text-muted-foreground">{summary.observed_keyword_count} de {summary.keyword_count ?? "—"} keywords con observación en el período.</p>
+          ) : null}
+          <p className="mt-2 text-xs text-muted-foreground">Indexadas: {summary.indexed_count ?? "—"} de {summary.inspected_count ?? "—"} inspeccionadas. La salud es orientativa y puede no calcularse sin cobertura suficiente.</p>
         </CardContent>
       </Card>
 
-      {/* Card: Alertas SEO */}
+      {/* Card: Alertas SEO recientes */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4" /> Alertas SEO
+            <AlertTriangle className="h-4 w-4" /> Alertas SEO recientes
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {alerts.length === 0 ? (
+          {!alerts ? (
+            <p className="text-sm text-muted-foreground">Alertas no disponibles en la última sincronización.</p>
+          ) : alerts.length === 0 ? (
             <div className="flex items-center gap-2 text-green-600 text-sm">
               <CheckCircle className="h-4 w-4" />
-              Sin alertas activas
+              No hay alertas SEO en los datos sincronizados
             </div>
           ) : (
             <div className="space-y-2">
@@ -303,13 +317,13 @@ export function EngineSeoTab({ client }: Props) {
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>
           {client.engine_metrics_synced_at
-            ? `Última sincronización: ${formatTimeAgo(client.engine_metrics_synced_at)}`
+            ? `Datos sincronizados: ${formatEngineSyncTime(client.engine_metrics_synced_at)}`
             : "Sin datos de sincronización"}
         </span>
-        <Button variant="ghost" size="sm" onClick={handleRefresh} disabled={refreshing}>
+        {isAdmin && <Button variant="ghost" size="sm" onClick={() => void handleRefresh()} disabled={refreshing}>
           <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${refreshing ? "animate-spin" : ""}`} />
           Sincronizar ahora
-        </Button>
+        </Button>}
       </div>
     </div>
   )

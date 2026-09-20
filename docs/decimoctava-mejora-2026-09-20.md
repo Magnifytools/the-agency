@@ -1,6 +1,6 @@
 # Panel y resúmenes con fuentes y permisos claros
 
-Estado: validada localmente; pendiente de CI y publicación. Producción continúa en P17.
+Estado: publicada y verificada el 20 de septiembre de 2026. [PR30](https://github.com/Magnifytools/the-agency/pull/30) integrada como `a7a29cd2d4f46846529cc9f4f1f5ab35ef449462`.
 
 El panel separa el resumen operativo de los importes financieros. Un miembro ve sus propias horas; las métricas cuyas fuentes no puede consultar quedan indisponibles, en lugar de aparecer como cero. El resumen del equipo exige administración y omite tarifas y costes cuando Finanzas está oculto. Las rutas financieras requieren administración, el módulo financiero y sus fuentes habilitadas.
 
@@ -12,8 +12,10 @@ La vista previa diaria incluye fecha y revisión del texto. Al enviar, el servid
 
 Reports permanece oculto. La auditoría anterior a su ocultación registraba cero usos, mientras los resúmenes diarios, de clientes y Discord sí tenían consumidores. Se retiran los generadores duplicados y la analítica de demostración; sus rutas antiguas responden 410 y señalan Resúmenes de clientes. Los informes guardados permanecen en un archivo paginado con lectura, descarga y eliminación confirmada, respetando permisos de autor y administrador. No hay migración ni borrado de documentos históricos.
 
-Validación local: suite integral backend de 1189 pruebas aprobadas y dos omitidas; la corrección posterior del coste pasa 66 pruebas dirigidas, incluida comparación contra ambos agregados financieros. Frontend: 337 pruebas y compilación correctas; Ruff y revisión de diferencias correctos. La página real cubre permisos, cambio de identidad y mes, errores 403→503→éxito y reintento retenido sin volver a mostrar datos revocados. Las alertas derivadas también dejan de usar datos cuya carga falla.
+Validación: 1190 pruebas backend aprobadas (dos omitidas), 337 frontend, compilación y Ruff correctos. Los seis controles de CI pasaron tanto en la rama como en main. La página real cubre permisos, cambio de identidad y mes, errores 403→503→éxito y reintento retenido sin volver a mostrar datos revocados. Las alertas derivadas también dejan de usar datos cuya carga falla.
 
 El navegador aislado verificó el archivo y su PDF como miembro de lectura, las cifras coherentes del administrador, el guardado del cierre de septiembre sin arrastrar notas a agosto y la vista previa diaria. El recibo local conserva exactamente el texto revisado, queda pendiente y tiene cero intentos de proveedor. Se inspeccionaron vistas a 390 y 1440 píxeles. Las escrituras sólo utilizaron datos sintéticos y no se enviaron comunicaciones a personas.
+
+Producción: Railway sirve la revisión exacta, con el esquema anterior intacto. Los conteos y hashes completos de tareas, horas, notas e informes coinciden antes y después. Se comprobaron los contratos del panel contra SQL, el resumen semanal sin finanzas, 51 lecturas y seis colectores adicionales. Las cinco rutas financieras devuelven 404 con el módulo oculto y el equipo no expone campos de coste o tarifa. La interfaz publicada y la vista previa se inspeccionaron a 1440 y 390 píxeles, sin desbordamiento de página ni errores de consola. Las comprobaciones productivas fueron de lectura.
 
 El objetivo global sigue abierto y mantiene los demás hallazgos de la auditoría.

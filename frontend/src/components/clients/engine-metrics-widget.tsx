@@ -1,13 +1,20 @@
 import { useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { engineApi } from "@/lib/api"
+import { useAuth } from "@/context/auth-context"
 import type { Client } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Globe, FileText, Key, MousePointerClick, Eye, TrendingUp, RefreshCw } from "lucide-react"
+import { formatTimeAgo } from "@/lib/utils"
+import { toast } from "sonner"
 
 interface Props {
   client: Client
+}
+
+function formatEngineSyncTime(value: string): string {
+  return formatTimeAgo(value.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`)
 }
 
 function formatNumber(n: number): string {
@@ -16,16 +23,9 @@ function formatNumber(n: number): string {
   return n.toLocaleString("es-ES")
 }
 
-function timeAgo(isoDate: string): string {
-  const diff = Date.now() - new Date(isoDate).getTime()
-  const hours = Math.floor(diff / 3_600_000)
-  if (hours < 1) return "hace menos de 1h"
-  if (hours < 24) return `hace ${hours}h`
-  const days = Math.floor(hours / 24)
-  return `hace ${days}d`
-}
 
 export function EngineMetricsWidget({ client }: Props) {
+  const { isAdmin } = useAuth()
   const queryClient = useQueryClient()
   const [refreshing, setRefreshing] = useState(false)
 
@@ -36,8 +36,13 @@ export function EngineMetricsWidget({ client }: Props) {
   const handleRefresh = async () => {
     setRefreshing(true)
     try {
-      await engineApi.triggerSync()
-      queryClient.invalidateQueries({ queryKey: ["client-summary"] })
+      const result = await engineApi.triggerSync()
+      await queryClient.invalidateQueries({ queryKey: ["client-summary"] })
+      if (result.detail === "not configured") toast.error("Engine no está configurado.")
+      else if (result.failed) toast.error(`Sincronización incompleta: ${result.failed} cliente(s) conservaron sus datos anteriores.`)
+      else toast.success(`${result.synced} cliente(s) sincronizados.`)
+    } catch {
+      toast.error("No se pudo sincronizar Engine.")
     } finally {
       setRefreshing(false)
     }
@@ -49,15 +54,16 @@ export function EngineMetricsWidget({ client }: Props) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Globe className="h-4 w-4" /> Engine SEO
-            <Button
+            {isAdmin && <Button
               variant="ghost"
               size="icon"
               className="ml-auto h-6 w-6"
-              onClick={handleRefresh}
+              onClick={() => void handleRefresh()}
               disabled={refreshing}
+              aria-label="Sincronizar Engine"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-            </Button>
+            </Button>}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -73,17 +79,18 @@ export function EngineMetricsWidget({ client }: Props) {
         <CardTitle className="flex items-center gap-2 text-base">
           <Globe className="h-4 w-4" /> Engine SEO
           <span className="text-xs font-normal text-muted-foreground ml-auto">
-            {timeAgo(client.engine_metrics_synced_at!)}
+            Datos sincronizados {formatEngineSyncTime(client.engine_metrics_synced_at!)}
           </span>
-          <Button
+          {isAdmin && <Button
             variant="ghost"
             size="icon"
             className="h-6 w-6"
-            onClick={handleRefresh}
+            onClick={() => void handleRefresh()}
             disabled={refreshing}
+            aria-label="Sincronizar Engine"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-          </Button>
+          </Button>}
         </CardTitle>
       </CardHeader>
       <CardContent>

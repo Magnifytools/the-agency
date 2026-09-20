@@ -51,14 +51,9 @@ async def test_engine_cycle_turns_component_failures_into_partial_health(monkeyp
 async def test_engine_summary_and_alert_failures_are_counted(monkeypatch):
     from backend.services import engine_sync_service as service
 
-    client = SimpleNamespace(id=7, engine_project_id=99)
-
     class Result:
-        def scalars(self):
-            return self
-
         def all(self):
-            return [client]
+            return [(7, 99)]
 
     class Session:
         async def execute(self, _statement):
@@ -87,11 +82,11 @@ async def test_engine_summary_and_alert_failures_are_counted(monkeypatch):
             return None
 
         async def get(self, url, **_kwargs):
-            if url.endswith("/metrics"):
-                return Response(200, {"content_count": 4})
             if url.endswith("/summary"):
+                return Response(200, {"project_id": 99, "content_count": 4, "keyword_count": 2, "avg_position": 3.0, "clicks_30d": 5, "impressions_30d": 6, "as_of": "2026-09-20", "period_start": "2026-08-22", "previous_period_start": "2026-07-23", "ranking_device": "desktop"})
+            if url.endswith("/alerts"):
                 return Response(503)
-            raise OSError("synthetic provider outage")
+            raise AssertionError(f"unexpected Engine endpoint: {url}")
 
     monkeypatch.setattr(service, "async_session", session_factory)
     monkeypatch.setattr(service.httpx, "AsyncClient", lambda **_kwargs: Http())
@@ -99,8 +94,7 @@ async def test_engine_summary_and_alert_failures_are_counted(monkeypatch):
     monkeypatch.setattr(service.settings, "ENGINE_SERVICE_KEY", "synthetic")
 
     result = await service.sync_engine_metrics()
-    assert result == {"synced": 1, "failed": 2}
-    assert client.engine_content_count == 4
+    assert result == {"synced": 0, "failed": 1}
 
 
 @pytest.mark.asyncio
