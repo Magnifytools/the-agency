@@ -194,6 +194,7 @@ let taskCreateInFlight = false;
 let captureInFlight = false;
 let commandInFlight = false;
 let currentCommand = null;
+let commandGeneration = 0;
 let commandRequestKey = newRequestKey();
 let commandStepKey = newRequestKey();
 let commandStepPayload = null;
@@ -219,6 +220,10 @@ meetingSettingsSave.addEventListener("click", saveMeetingSettings);
 function newRequestKey() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
   return `extension-${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function isCurrentCommand(target) {
+  return commandGeneration === target.generation && currentCommand?.id === target.receiptId;
 }
 
 // ── Init ──────────────────────────────────────────────────
@@ -255,6 +260,7 @@ function resetSessionUi() {
   captureInFlight = false;
   commandInFlight = false;
   currentCommand = null;
+  commandGeneration++;
   commandRequestKey = newRequestKey();
   commandStepKey = newRequestKey();
   commandStepPayload = null;
@@ -671,6 +677,10 @@ commandText.addEventListener("keydown", (event) => {
 commandSubmit.addEventListener("click", () => submitCommand());
 
 function commandEntityUrl(entity) {
+  if (entity.type === "incident") {
+    const target = typeof entity.href === "string" && entity.href.startsWith("/") && !entity.href.startsWith("//") ? entity.href : "/incidents";
+    return `${API_URL}${target}`;
+  }
   if (entity.type === "task") return `${API_URL}/tasks?id=${entity.id}`;
   if (entity.type === "project") return `${API_URL}/projects/${entity.id}`;
   if (entity.type === "client") return `${API_URL}/clients/${entity.id}`;
@@ -687,6 +697,7 @@ function commandButton(label, handler, variant = "secondary-btn small") {
 }
 
 const appliedFieldLabels = {
+  project_name: "Nuevo proyecto", task_title: "Primera tarea",
   project_id: "Proyecto", client_id: "Cliente", owner_id: "Responsable del proyecto",
   assigned_to: "Responsable de la tarea", scheduled_date: "Fecha planificada",
   target_date: "Fecha objetivo", entry_date: "Fecha del registro",
@@ -697,6 +708,7 @@ const appliedStatusLabels = {
   in_review: "En revisión", advanced: "Avanzada", completed: "Completada",
 };
 const appliedPriorityLabels = { low: "Baja", medium: "Media", high: "Alta", urgent: "Urgente" };
+const reviewFieldOrder = ["project_name", "client_id", "owner_id", "target_date", "task_title", "assigned_to", "scheduled_date"];
 
 function formatAppliedValue(field, value, labels) {
   if (["project_id", "client_id", "owner_id", "assigned_to", "user_id"].includes(field)) {
@@ -718,7 +730,12 @@ function renderApplied(result) {
   if (!result?.applied) return null;
   const list = document.createElement("dl");
   list.className = "command-applied";
-  for (const [field, value] of Object.entries(result.applied)) {
+  const entries = Object.entries(result.applied).sort(([left], [right]) => {
+    const leftIndex = reviewFieldOrder.indexOf(left);
+    const rightIndex = reviewFieldOrder.indexOf(right);
+    return (leftIndex < 0 ? reviewFieldOrder.length : leftIndex) - (rightIndex < 0 ? reviewFieldOrder.length : rightIndex);
+  });
+  for (const [field, value] of entries) {
     const row = document.createElement("div");
     const term = document.createElement("dt");
     const description = document.createElement("dd");
@@ -789,12 +806,25 @@ function renderCommand(data) {
   commandReceipt.append(message);
   const applied = renderApplied(data.result);
   if (applied) commandReceipt.append(applied);
+  if (data.result?.query?.kind === "decisions") {
+    const explanation = document.createElement("p");
+    explanation.textContent = "Avisos activos que requieren atención. Los pospuestos quedan fuera hasta que vuelvan a activarse.";
+    commandReceipt.append(explanation);
+  }
   const entities = data.result?.query?.items || data.result?.entities || [];
   for (const entity of entities) {
     const link = document.createElement("a");
     link.href = commandEntityUrl(entity);
     link.className = "command-entity";
     link.textContent = entity.label;
+    if (entity.type === "incident") {
+      link.classList.add("command-decision");
+      const title = document.createElement("strong");
+      title.textContent = entity.label;
+      link.replaceChildren(title);
+      if (entity.message) { const detail = document.createElement("span"); detail.textContent = entity.message; link.append(detail); }
+      if (entity.recipient_name) { const recipient = document.createElement("small"); recipient.textContent = `Para ${entity.recipient_name}`; link.append(recipient); }
+    }
     link.addEventListener("click", (event) => { event.preventDefault(); chrome.tabs.create({ url: link.href }); });
     commandReceipt.append(link);
   }
@@ -804,13 +834,15 @@ function renderCommand(data) {
   }
   const actions = document.createElement("div");
   actions.className = "command-actions";
-  if (data.status === "needs_review") actions.append(commandButton("Ejecutar", () => executeCommand(), "primary-btn small"));
+  if (data.status === "needs_review") actions.append(commandButton("Crear proyecto y tarea", () => executeCommand(), "primary-btn small"));
   if (data.status === "executed" && data.result?.undo_available && data.change_log_id) actions.append(commandButton("Deshacer", () => undoCommand(data.change_log_id)));
   actions.append(commandButton("Hacer otra cosa", resetCommand));
   commandReceipt.append(actions);
 }
 
 function resetCommand() {
+  commandGeneration++;
+  commandInFlight = false;
   currentCommand = null;
   commandRequestKey = newRequestKey();
   commandStepKey = newRequestKey();
@@ -827,6 +859,8 @@ function resetCommand() {
 }
 
 function editCommand() {
+  commandGeneration++;
+  commandInFlight = false;
   currentCommand = null;
   commandRequestKey = newRequestKey();
   commandStepKey = newRequestKey();
@@ -866,6 +900,7 @@ async function getCommandReceipt(id, session) {
 
 async function submitCommand() {
   const session = captureSession();
+  const generation = commandGeneration;
   const text = commandText.value.trim();
   if (!text || commandInFlight) return;
   commandInFlight = true;
@@ -874,11 +909,11 @@ async function submitCommand() {
   commandError.classList.add("hidden");
   try {
     const data = await commandRequest("/api/commands", { request_key: commandRequestKey, text, channel: "extension" }, session);
-    if (!isCurrentSession(session)) return;
+    if (!isCurrentSession(session) || generation !== commandGeneration) return;
     renderCommand(data);
     commandText.disabled = true;
   } catch (error) {
-    if (!isCurrentSession(session)) return;
+    if (!isCurrentSession(session) || generation !== commandGeneration) return;
     const uncertain = !error.status || error.status >= 500;
     commandText.disabled = uncertain;
     if (!uncertain) commandRequestKey = newRequestKey();
@@ -891,7 +926,7 @@ async function submitCommand() {
       commandReceipt.classList.remove("hidden");
     }
   } finally {
-    if (!isCurrentSession(session)) return;
+    if (!isCurrentSession(session) || generation !== commandGeneration) return;
     commandInFlight = false;
     commandSubmit.textContent = currentCommand ? "Petición recibida" : "Reintentar";
     commandSubmit.disabled = Boolean(currentCommand) || !commandText.value.trim();
@@ -901,26 +936,27 @@ async function submitCommand() {
 async function resolveCommand(answers) {
   const session = captureSession();
   if (!currentCommand || commandInFlight) return;
+  const target = { receiptId: currentCommand.id, revision: currentCommand.revision, generation: commandGeneration };
   commandInFlight = true;
   const payload = commandStepPayload || {
-    receiptId: currentCommand.id,
-    revision: currentCommand.revision,
+    receiptId: target.receiptId,
+    revision: target.revision,
     answers,
   };
   commandStepPayload = payload;
   try {
     const data = await commandRequest(`/api/commands/${payload.receiptId}/resolve`, { request_key: commandStepKey, revision: payload.revision, answers: payload.answers }, session);
-    if (!isCurrentSession(session)) return;
+    if (!isCurrentSession(session) || !isCurrentCommand(target)) return;
     commandStepKey = newRequestKey();
     commandStepPayload = null;
     commandStepUncertain = false;
     renderCommand(data);
   } catch (error) {
-    if (!isCurrentSession(session)) return;
+    if (!isCurrentSession(session) || !isCurrentCommand(target)) return;
     if (error.status === 403 || error.status === 409) {
       try {
         const durable = await getCommandReceipt(payload.receiptId, session);
-        if (!isCurrentSession(session)) return;
+        if (!isCurrentSession(session) || !isCurrentCommand(target)) return;
         commandStepKey = newRequestKey();
         commandStepPayload = null;
         commandStepUncertain = false;
@@ -938,41 +974,54 @@ async function resolveCommand(answers) {
       commandError.textContent = "No hemos recibido respuesta. Reintenta la misma respuesta o recupera el recibo antes de cambiarla.";
     }
     commandError.classList.remove("hidden");
-  } finally { if (isCurrentSession(session)) commandInFlight = false; }
+  } finally { if (isCurrentSession(session) && isCurrentCommand(target)) commandInFlight = false; }
 }
 
 async function executeCommand() {
   const session = captureSession();
   if (!currentCommand || commandInFlight) return;
+  const target = { receiptId: currentCommand.id, revision: currentCommand.revision, generation: commandGeneration };
   commandInFlight = true;
   try {
-    const data = await commandRequest(`/api/commands/${currentCommand.id}/execute`, { request_key: commandStepKey, revision: currentCommand.revision }, session);
-    if (!isCurrentSession(session)) return;
+    const data = await commandRequest(`/api/commands/${target.receiptId}/execute`, { request_key: commandStepKey, revision: target.revision }, session);
+    if (!isCurrentSession(session) || !isCurrentCommand(target)) return;
     commandStepKey = newRequestKey();
     renderCommand(data);
   } catch (error) {
-    if (isCurrentSession(session)) { commandError.textContent = error.message; commandError.classList.remove("hidden"); }
-  } finally { if (isCurrentSession(session)) commandInFlight = false; }
+    if (!isCurrentSession(session) || !isCurrentCommand(target)) return;
+    if (error.status === 403 || error.status === 409) {
+      try {
+        const durable = await getCommandReceipt(target.receiptId, session);
+        if (!isCurrentSession(session) || !isCurrentCommand(target)) return;
+        commandStepKey = newRequestKey();
+        renderCommand(durable);
+        return;
+      } catch (recoveryError) { if (!isCurrentSession(session) || !isCurrentCommand(target)) return; }
+    }
+    commandError.textContent = error.message || "No se ha recibido confirmación. Reintenta sin duplicar el cambio.";
+    commandError.classList.remove("hidden");
+  } finally { if (isCurrentSession(session) && isCurrentCommand(target)) commandInFlight = false; }
 }
 
 async function loadMoreCommandQuery() {
   const session = captureSession();
   const query = currentCommand?.result?.query;
   if (!currentCommand || !query || commandInFlight) return;
+  const target = { receiptId: currentCommand.id, generation: commandGeneration };
   commandInFlight = true;
   try {
     const page = (query.page || 1) + 1;
-    const response = await sessionFetch(session, `${API_URL}/api/commands/${currentCommand.id}/query?page=${page}&page_size=${query.page_size || 25}`, {
+    const response = await sessionFetch(session, `${API_URL}/api/commands/${target.receiptId}/query?page=${page}&page_size=${query.page_size || 25}`, {
       headers: { Authorization: `Bearer ${session.token}` },
     });
     const next = await response.json();
     if (!response.ok) throw new Error(getDetail(next, `Error ${response.status}`));
-    if (!isCurrentSession(session)) return;
+    if (!isCurrentSession(session) || !isCurrentCommand(target)) return;
     currentCommand = { ...currentCommand, result: { ...currentCommand.result, query: { ...next, items: [...query.items, ...next.items] } } };
     renderCommand(currentCommand);
   } catch (error) {
-    if (isCurrentSession(session)) { commandError.textContent = error.message; commandError.classList.remove("hidden"); }
-  } finally { if (isCurrentSession(session)) commandInFlight = false; }
+    if (isCurrentSession(session) && isCurrentCommand(target)) { commandError.textContent = error.message; commandError.classList.remove("hidden"); }
+  } finally { if (isCurrentSession(session) && isCurrentCommand(target)) commandInFlight = false; }
 }
 
 async function undoCommand(changeId) {

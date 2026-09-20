@@ -38,6 +38,17 @@ Crea proyecto "Web nueva" para cliente "Acme" responsable "Nacho" fecha objetivo
 
 El cliente es obligatorio. `responsable` y `fecha objetivo` son opcionales y solo se guardan si aparecen de forma explícita. Este comando no infiere tarifa, presupuesto, alcance ni otros campos comerciales.
 
+### Crear un proyecto con su primera tarea
+
+```text
+Crea proyecto "Web nueva" para cliente "Acme" con primera tarea "Preparar propuesta" para mañana
+Crea proyecto "Web nueva" para cliente "Acme" responsable "David" fecha objetivo 2026-10-02 con primera tarea "Preparar propuesta" asignada a "Nacho" para 2026-09-25
+```
+
+La app y la extensión muestran un plan con ambas altas, cliente, responsables y fechas. `responsable` corresponde al proyecto; `asignada a`, a la tarea. La fecha objetivo pertenece al proyecto y la fecha planificada a la tarea. Los datos omitidos permanecen sin asignar; la tarea pertenece al proyecto nuevo y a su cliente.
+
+Resolver nombres o fechas ambiguos no crea ninguna entidad. Tras revisar se ejecutan las dos altas dentro de una transacción, con un recibo y un Deshacer conjunto. Si falla la tarea, tampoco se guarda el proyecto. Los permisos de proyectos y tareas se comprueban de nuevo al ejecutar. Un cambio relevante en el plan exige volver a revisarlo. Deshacer protege las ediciones y el trabajo añadido posteriormente.
+
 ### Completar, reprogramar y cambiar prioridad
 
 ```text
@@ -68,9 +79,14 @@ La fecha puede escribirse directamente después de la tarea o precedida por `el`
 Consulta prioridades
 Consulta bloqueos
 Consulta prioridades del equipo
+Consulta decisiones pendientes
+¿Qué necesita respuesta mía?
+Consulta decisiones del equipo
 ```
 
 Por defecto se consulta el trabajo asignado al actor. El ámbito `del equipo` es explícito y requiere administración. Se excluyen plantillas recurrentes y el resultado incluye total y paginación real.
+
+Las decisiones son los avisos activos del sistema de incidencias, con sus fuentes y permisos vigentes. Cada resultado enlaza a la fuente y muestra su destinatario. Los avisos pospuestos quedan fuera hasta su reactivación por el detector; leer no los reactiva ni toma una decisión. La consulta de equipo requiere administrador y conserva también las comprobaciones de acceso del destinatario. Las páginas devuelven un total real después de aplicar permisos, sin ofrecer Deshacer para una lectura.
 
 ## Ambigüedad y fechas
 
@@ -113,7 +129,7 @@ Los cambios reversibles enlazan `change_log_id` y exponen `undo_available`. Desh
 
 Estados posibles: `needs_input`, `needs_review`, `executed` y `failed`. `needs_review` se reserva para planes revisables que tengan una ejecución real; las operaciones fuera del alcance no muestran un botón de ejecución ficticio.
 
-`result.applied` guarda los valores realmente aplicados. `result.applied_labels` guarda, dentro de la misma transacción, las etiquetas visibles asociadas a `project_id`, `client_id`, `owner_id`, `assigned_to` y `user_id`. Son un snapshot: renombrar después una entidad no reescribe el recibo ni obliga a la UI a consultar nombres adicionales. `created_at` y `updated_at` se serializan como instantes UTC con sufijo `Z`.
+`result.applied` muestra los valores propuestos durante `needs_review` y los realmente aplicados durante `executed`. `result.applied_labels` guarda, dentro de la misma transacción, las etiquetas visibles asociadas a `project_id`, `client_id`, `owner_id`, `assigned_to` y `user_id`. Son un snapshot: renombrar después una entidad no reescribe el recibo ni obliga a la UI a consultar nombres adicionales. `created_at` y `updated_at` se serializan como instantes UTC con sufijo `Z`.
 
 Endpoints:
 

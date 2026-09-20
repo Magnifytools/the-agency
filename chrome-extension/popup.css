@@ -787,3 +787,9 @@ textarea::placeholder {
 .command-applied dt { color: #aaa; }
 .command-applied dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 .command-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+
+.command-decision { padding: 10px; border: 1px solid #333; border-radius: 8px; color: #eee; text-decoration: none; line-height: 1.45; }
+.command-decision:hover, .command-decision:focus-visible { border-color: #ffd600; }
+.command-decision strong, .command-decision span, .command-decision small { display: block; }
+.command-decision span { margin-top: 5px; color: #bbb; }
+.command-decision small { margin-top: 7px; color: #aaa; }

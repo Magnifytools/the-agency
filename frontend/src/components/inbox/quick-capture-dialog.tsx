@@ -40,11 +40,28 @@ interface Props {
 
 type Mode = "command" | "capture";
 
+type ReceiptTarget = {
+  receiptId: string;
+  revision: number;
+  generation: number;
+};
+
+type CommandTarget = {
+  generation: number;
+  request: {
+    request_key: string;
+    text: string;
+    channel: "app" | "extension";
+    context?: CommandContext;
+  };
+};
+
 function requestKey() {
   return crypto.randomUUID();
 }
 
 function entityHref(entity: CommandEntity) {
+  if (entity.type === "incident") return entity.href?.startsWith("/") && !entity.href.startsWith("//") ? entity.href : "/incidents";
   if (entity.type === "task") return `/tasks?id=${entity.id}`;
   if (entity.type === "project") return `/projects/${entity.id}`;
   if (entity.type === "client") return `/clients/${entity.id}`;
@@ -52,6 +69,8 @@ function entityHref(entity: CommandEntity) {
 }
 
 const appliedFieldLabels: Record<string, string> = {
+  project_name: "Nuevo proyecto",
+  task_title: "Primera tarea",
   project_id: "Proyecto",
   client_id: "Cliente",
   owner_id: "Responsable del proyecto",
@@ -81,6 +100,25 @@ const priorityLabels: Record<string, string> = {
   high: "Alta",
   urgent: "Urgente",
 };
+
+const reviewFieldOrder = [
+  "project_name",
+  "client_id",
+  "owner_id",
+  "target_date",
+  "task_title",
+  "assigned_to",
+  "scheduled_date",
+];
+
+function orderedAppliedEntries(applied: Record<string, string | number | null>) {
+  return Object.entries(applied).sort(([left], [right]) => {
+    const leftIndex = reviewFieldOrder.indexOf(left);
+    const rightIndex = reviewFieldOrder.indexOf(right);
+    return (leftIndex === -1 ? reviewFieldOrder.length : leftIndex) -
+      (rightIndex === -1 ? reviewFieldOrder.length : rightIndex);
+  });
+}
 
 function appliedValue(
   field: string,
@@ -121,6 +159,9 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     revision: number;
     answers: Array<{ field: string; choice_id: string }>;
   } | null>(null);
+  const receiptRef = useRef<CommandReceipt | null>(null);
+  const commandGeneration = useRef(0);
+  const [activeGeneration, setActiveGeneration] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const queryClient = useQueryClient();
 
@@ -148,12 +189,32 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     staleTime: 15_000,
   });
 
-  async function refreshReceipt(result: CommandReceipt) {
+  const isCurrentReceipt = (target: ReceiptTarget) =>
+    commandGeneration.current === target.generation &&
+    receiptRef.current?.id === target.receiptId;
+
+  const replaceReceipt = (next: CommandReceipt | null) => {
+    receiptRef.current = next;
+    setReceipt(next);
+  };
+
+  const invalidateCommand = () => {
+    commandGeneration.current += 1;
+    setActiveGeneration(commandGeneration.current);
+    replaceReceipt(null);
+  };
+
+  async function refreshReceipt(
+    result: CommandReceipt,
+    target?: ReceiptTarget | { generation: number },
+  ) {
+    if (target && commandGeneration.current !== target.generation) return;
+    if (target && "receiptId" in target && !isCurrentReceipt(target)) return;
     setNetworkUncertain(false);
     setStepUncertain(false);
     stepPayload.current = null;
     setUndoneChangeId(null);
-    setReceipt(result);
+    replaceReceipt(result);
     setAnswers({});
     if (result.status !== "executed") return;
     const entities = result.result?.entities ?? [];
@@ -172,15 +233,10 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   }
 
   const commandMutation = useMutation({
-    mutationFn: () =>
-      commandsApi.create({
-        request_key: commandKey.current,
-        text: text.trim(),
-        channel: commandReplayPayload.current?.channel ?? "app",
-        context: commandReplayPayload.current?.context,
-      }),
-    onSuccess: refreshReceipt,
-    onError: (error) => {
+    mutationFn: (target: CommandTarget) => commandsApi.create(target.request),
+    onSuccess: (result, target) => void refreshReceipt(result, target),
+    onError: (error, target) => {
+      if (commandGeneration.current !== target.generation) return;
       const status = (error as { response?: { status?: number } }).response
         ?.status;
       if (status != null && status < 500) {
@@ -195,10 +251,10 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     },
   });
   const resolveMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (target: ReceiptTarget) => {
       const payload = stepPayload.current ?? {
-        receiptId: receipt!.id,
-        revision: receipt!.revision,
+        receiptId: target.receiptId,
+        revision: target.revision,
         answers: Object.entries(answers).map(([field, choice_id]) => ({ field, choice_id })),
       };
       stepPayload.current = payload;
@@ -208,19 +264,23 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
         answers: payload.answers,
       });
     },
-    onSuccess: (result) => {
+    onSuccess: (result, target) => {
+      if (!isCurrentReceipt(target)) return;
       stepKey.current = requestKey();
-      void refreshReceipt(result);
+      void refreshReceipt(result, target);
     },
-    onError: async (error) => {
+    onError: async (error, target) => {
+      if (!isCurrentReceipt(target)) return;
       const status = (error as { response?: { status?: number } }).response?.status;
-      if ((status === 403 || status === 409) && receipt) {
+      if (status === 403 || status === 409) {
         try {
-          const durable = await commandsApi.get(receipt.id);
+          const durable = await commandsApi.get(target.receiptId);
+          if (!isCurrentReceipt(target)) return;
           stepKey.current = requestKey();
-          await refreshReceipt(durable);
+          await refreshReceipt(durable, target);
           return;
         } catch (recoveryError) {
+          if (!isCurrentReceipt(target)) return;
           toast.error(getErrorMessage(recoveryError, "No se pudo recuperar el recibo actual"));
         }
       }
@@ -235,17 +295,33 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     },
   });
   const executeMutation = useMutation({
-    mutationFn: () =>
-      commandsApi.execute(receipt!.id, {
+    mutationFn: (target: ReceiptTarget) =>
+      commandsApi.execute(target.receiptId, {
         request_key: stepKey.current,
-        revision: receipt!.revision,
+        revision: target.revision,
       }),
-    onSuccess: (result) => {
+    onSuccess: (result, target) => {
+      if (!isCurrentReceipt(target)) return;
       stepKey.current = requestKey();
-      void refreshReceipt(result);
+      void refreshReceipt(result, target);
     },
-    onError: (error) =>
-      toast.error(getErrorMessage(error, "No se ha podido ejecutar el cambio")),
+    onError: async (error, target) => {
+      if (!isCurrentReceipt(target)) return;
+      const status = (error as { response?: { status?: number } }).response?.status;
+      if (status === 403 || status === 409) {
+        try {
+          const durable = await commandsApi.get(target.receiptId);
+          if (!isCurrentReceipt(target)) return;
+          stepKey.current = requestKey();
+          await refreshReceipt(durable, target);
+          return;
+        } catch (recoveryError) {
+          if (!isCurrentReceipt(target)) return;
+          toast.error(getErrorMessage(recoveryError, "No se pudo recuperar el recibo actual"));
+        }
+      }
+      toast.error(getErrorMessage(error, "No se ha recibido confirmación. Reintenta para recuperar el resultado sin duplicar el cambio."));
+    },
   });
   const undoMutation = useMutation({
     mutationFn: (id: number) => changesApi.undo(id),
@@ -258,17 +334,18 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
       toast.error(getErrorMessage(error, "No se ha podido deshacer")),
   });
   const queryPageMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (target: ReceiptTarget) =>
       commandsApi.query(
-        receipt!.id,
-        (receipt!.result!.query?.page ?? 1) + 1,
-        receipt!.result!.query?.page_size ?? 25,
+        target.receiptId,
+        (receiptRef.current?.result?.query?.page ?? 1) + 1,
+        receiptRef.current?.result?.query?.page_size ?? 25,
       ),
-    onSuccess: (page) => {
-      setReceipt((current) => {
-        if (!current?.result?.query) return current;
-        return {
-          ...current,
+    onSuccess: (page, target) => {
+      if (!isCurrentReceipt(target)) return;
+      const current = receiptRef.current;
+      if (!current?.result?.query) return;
+      replaceReceipt({
+        ...current,
           result: {
             ...current.result,
             query: {
@@ -276,13 +353,12 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
               items: [...current.result.query.items, ...page.items],
             },
           },
-        };
       });
     },
-    onError: (error) =>
-      toast.error(
-        getErrorMessage(error, "No se pudieron cargar más resultados"),
-      ),
+    onError: (error, target) => {
+      if (!isCurrentReceipt(target)) return;
+      toast.error(getErrorMessage(error, "No se pudieron cargar más resultados"));
+    },
   });
 
   const captureMutation = useMutation({
@@ -315,8 +391,9 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   }, [open]);
 
   const resetCommand = () => {
+    invalidateCommand();
     setText("");
-    setReceipt(null);
+    replaceReceipt(null);
     setAnswers({});
     setNetworkUncertain(false);
     setStepUncertain(false);
@@ -328,7 +405,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     window.setTimeout(() => textareaRef.current?.focus(), 0);
   };
   const editCommand = () => {
-    setReceipt(null);
+    invalidateCommand();
+    replaceReceipt(null);
     setAnswers({});
     setNetworkUncertain(false);
     setStepUncertain(false);
@@ -340,14 +418,15 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     window.setTimeout(() => textareaRef.current?.focus(), 0);
   };
   const isPending =
-    commandMutation.isPending ||
-    resolveMutation.isPending ||
-    executeMutation.isPending;
+    (commandMutation.isPending && commandMutation.variables?.generation === activeGeneration) ||
+    (resolveMutation.isPending && resolveMutation.variables?.generation === activeGeneration) ||
+    (executeMutation.isPending && executeMutation.variables?.generation === activeGeneration);
   const questions = receipt?.prompt?.questions ?? [];
   const allAnswered = questions.every(
     (question) => question.kind === "notice" || answers[question.field],
   );
   const openRecentReceipt = (item: CommandReceipt) => {
+    invalidateCommand();
     setText(item.raw_text);
     commandKey.current = item.request_key;
     commandReplayPayload.current = {
@@ -359,22 +438,58 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     setNetworkUncertain(false);
     setStepUncertain(false);
     setAnswers({});
-    setReceipt(item);
+    replaceReceipt(item);
+  };
+  const submitCommand = () => {
+    const target: CommandTarget = {
+      generation: commandGeneration.current,
+      request: {
+        request_key: commandKey.current,
+        text: text.trim(),
+        channel: commandReplayPayload.current?.channel ?? "app",
+        context: commandReplayPayload.current?.context,
+      },
+    };
+    commandMutation.mutate(target);
+  };
+  const updateCommandText = (next: string) => {
+    if (!receiptRef.current && !networkUncertain && next !== text) {
+      commandKey.current = requestKey();
+      commandReplayPayload.current = null;
+    }
+    setText(next);
+  };
+  const receiptTarget = (): ReceiptTarget | null => {
+    const current = receiptRef.current;
+    if (!current) return null;
+    return {
+      receiptId: current.id,
+      revision: current.revision,
+      generation: commandGeneration.current,
+    };
+  };
+  const switchMode = (next: Mode) => {
+    if (next !== mode) invalidateCommand();
+    setMode(next);
+  };
+  const handleOpenChange = (next: boolean) => {
+    if (!next) invalidateCommand();
+    onOpenChange(next);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogHeader>
         <DialogTitle>¿Qué necesitas hacer?</DialogTitle>
       </DialogHeader>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogContent className="space-y-4">
         <div className="flex gap-2" role="tablist" aria-label="Tipo de entrada">
           <Button
             type="button"
             variant={mode === "command" ? "default" : "outline"}
             role="tab"
             aria-selected={mode === "command"}
-            onClick={() => setMode("command")}
+            onClick={() => switchMode("command")}
           >
             Pedir una acción
           </Button>
@@ -383,7 +498,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
             variant={mode === "capture" ? "default" : "outline"}
             role="tab"
             aria-selected={mode === "capture"}
-            onClick={() => setMode("capture")}
+            onClick={() => switchMode("capture")}
           >
             Guardar para aclarar
           </Button>
@@ -396,15 +511,15 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                 <Textarea
                   ref={textareaRef}
                   value={text}
-                  onChange={(event) => setText(event.target.value)}
+                  onChange={(event) => updateCommandText(event.target.value)}
                   onKeyDown={(event) => {
                     if (
                       (event.metaKey || event.ctrlKey) &&
                       event.key === "Enter" &&
-                      text.trim()
+                      text.trim() && !isPending && !networkUncertain
                     ) {
                       event.preventDefault();
-                      commandMutation.mutate();
+                      submitCommand();
                     }
                   }}
                   placeholder="Ej. Completa la tarea Revisar portada, crea una tarea o consulta bloqueos"
@@ -424,7 +539,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                     <div className="flex flex-wrap gap-2">
                       <Button
                         variant="outline"
-                        onClick={() => commandMutation.mutate()}
+                        onClick={submitCommand}
                         disabled={isPending}
                       >
                         Reintentar la misma petición
@@ -437,11 +552,10 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                 )}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs text-muted-foreground">
-                    Las acciones reversibles se ejecutan directamente y muestran
-                    un recibo.
+                    Las acciones simples muestran un recibo con Deshacer. Si creas un proyecto con su primera tarea, revisarás ambos antes de guardarlos.
                   </p>
                   <Button
-                    onClick={() => commandMutation.mutate()}
+                    onClick={submitCommand}
                     disabled={!text.trim() || isPending || networkUncertain}
                   >
                     {isPending ? (
@@ -452,6 +566,15 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                     Hacer
                   </Button>
                 </div>
+                <details className="rounded-lg border border-border p-3 text-sm">
+                  <summary className="cursor-pointer font-medium">Ver ejemplos de peticiones</summary>
+                  <ul className="mt-2 space-y-2 text-muted-foreground">
+                    <li>Crea proyecto "Web nueva" para cliente "Nombre del cliente" con primera tarea "Preparar propuesta" para mañana</li>
+                    <li>Consulta decisiones pendientes</li>
+                    <li>Completa la tarea "Preparar propuesta"</li>
+                  </ul>
+                  <p className="mt-2 text-xs text-muted-foreground">Sustituye los nombres por los de tu trabajo. Las comillas separan los nombres del resto de la petición.</p>
+                </details>
                 {(recentCommands?.items.length ?? 0) > 0 && (
                   <details className="rounded-lg border border-border p-3">
                     <summary className="cursor-pointer text-sm font-medium">
@@ -530,7 +653,10 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     <Button
-                      onClick={() => resolveMutation.mutate()}
+                      onClick={() => {
+                        const target = receiptTarget();
+                        if (target) resolveMutation.mutate(target);
+                      }}
                       disabled={!allAnswered || isPending}
                     >
                       {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -550,14 +676,27 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                   {receipt.result?.message ??
                     "Revisa el cambio antes de continuar."}
                 </p>
-                <div className="flex gap-2">
+                {receipt.result?.applied && (
+                  <dl className="grid gap-x-4 gap-y-1 rounded-md bg-muted/50 p-3 text-sm sm:grid-cols-[max-content_1fr]">
+                    {orderedAppliedEntries(receipt.result.applied).map(([field, value]) => (
+                      <div className="contents" key={field}>
+                        <dt className="text-muted-foreground">{appliedFieldLabels[field] ?? field}</dt>
+                        <dd className="break-words font-medium">{appliedValue(field, value, receipt.result?.applied_labels ?? {})}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+                <div className="flex flex-wrap gap-2">
                   <Button
-                    onClick={() => executeMutation.mutate()}
+                    onClick={() => {
+                      const target = receiptTarget();
+                      if (target) executeMutation.mutate(target);
+                    }}
                     disabled={isPending}
                   >
-                    Ejecutar
+                    Crear proyecto y tarea
                   </Button>
-                  <Button variant="outline" onClick={resetCommand}>
+                  <Button variant="outline" onClick={resetCommand} disabled={isPending}>
                     Cancelar
                   </Button>
                 </div>
@@ -578,7 +717,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                     Editar petición
                   </Button>
                   <Button
-                    onClick={() => commandMutation.mutate()}
+                    onClick={submitCommand}
                     disabled={isPending}
                   >
                     Reintentar
@@ -596,7 +735,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                 <p className="font-medium">{receipt.result.message}</p>
                 {receipt.result.applied && (
                   <dl className="grid gap-x-4 gap-y-1 rounded-md bg-background/70 p-3 text-sm sm:grid-cols-[max-content_1fr]">
-                    {Object.entries(receipt.result.applied).map(([field, value]) => (
+                    {orderedAppliedEntries(receipt.result.applied).map(([field, value]) => (
                       <div className="contents" key={field}>
                         <dt className="text-muted-foreground">{appliedFieldLabels[field] ?? field}</dt>
                         <dd className="font-medium">{appliedValue(field, value, receipt.result?.applied_labels ?? {})}</dd>
@@ -606,6 +745,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                 )}
                 {receipt.result.query ? (
                   <div className="space-y-2">
+                    {receipt.result.query.kind === "decisions" && <p className="text-sm text-muted-foreground">Avisos activos que requieren atención. Los pospuestos quedan fuera hasta que vuelvan a activarse.</p>}
                     {receipt.result.query.items.map((entity) => (
                       <Link
                         className="block rounded-md border border-border bg-card px-3 py-2 text-sm hover:border-brand"
@@ -613,7 +753,9 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                         to={entityHref(entity)}
                         onClick={() => onOpenChange(false)}
                       >
-                        {entity.label}
+                        <span className="block font-medium">{entity.label}</span>
+                        {entity.type === "incident" && entity.message && <span className="mt-1 block text-muted-foreground">{entity.message}</span>}
+                        {entity.type === "incident" && entity.recipient_name && <span className="mt-1 block text-xs text-muted-foreground">Para {entity.recipient_name}</span>}
                       </Link>
                     ))}
                     {receipt.result.query.has_more && (
@@ -624,7 +766,10 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                         </p>
                         <Button
                           variant="outline"
-                          onClick={() => queryPageMutation.mutate()}
+                          onClick={() => {
+                            const target = receiptTarget();
+                            if (target) queryPageMutation.mutate(target);
+                          }}
                           disabled={queryPageMutation.isPending}
                         >
                           {queryPageMutation.isPending && (

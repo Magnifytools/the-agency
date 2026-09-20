@@ -241,7 +241,7 @@ export default function TasksPage() {
   })
 
   // Recurring templates query (only fetched when tab is active)
-  const { data: recurringTemplates = [] } = useQuery({
+  const { data: recurringTemplates = [], isLoading: isRecurringLoading, isError: isRecurringError, refetch: refetchRecurring } = useQuery({
     queryKey: taskKeys.recurring(),
     queryFn: () => tasksApi.listAll({ is_recurring: true }),
     enabled: view === "recurring",
@@ -358,6 +358,10 @@ export default function TasksPage() {
             <p className="text-sm text-muted-foreground mt-1">
               {agendaData(plannedAgenda).total} para hoy · {agendaData(carryoverAgenda).total} de arrastre · {agendaData(unplannedAgenda).total} sin planificar · {agendaData(completedAgenda).total} completadas hoy
             </p>
+          ) : view === "recurring" ? (
+            <p className="text-sm text-muted-foreground mt-1">
+              {isRecurringLoading ? "Cargando plantillas…" : isRecurringError ? "Plantillas no disponibles" : `${recurringTemplates.length} plantilla${recurringTemplates.length === 1 ? "" : "s"} recurrente${recurringTemplates.length === 1 ? "" : "s"}`}
+            </p>
           ) : tasksData && (
             <p className="text-sm text-muted-foreground mt-1">
               {tasksData.total} tareas
@@ -374,7 +378,7 @@ export default function TasksPage() {
 
       {view === "my_day" && (user?.role === "admin" ? <Select aria-label="Ámbito de Hoy" className="w-full sm:w-48" value={agendaScope} onChange={(event) => setAgendaScope(event.target.value)}><option value="mine">Mi trabajo</option><option value="team">Todo el equipo</option></Select> : <p className="text-sm text-muted-foreground">Mi trabajo</p>)}
       {view === "my_day" && agendaScope === "mine" && user && <IncidentInbox key={user.id} userId={user.id} compact />}
-      {view !== "my_day" && <>
+      {view !== "my_day" && view !== "recurring" && <>
       {/* Search + Filters */}
       <div className="flex flex-wrap gap-3">
         <Input
@@ -546,7 +550,7 @@ export default function TasksPage() {
       </div>}
 
       {/* Table & Planner */}
-      {(isLoading || (view === "my_day" && agendaLoading)) ? (
+      {((view !== "recurring" && isLoading) || (view === "my_day" && agendaLoading)) ? (
         <Table>
           <TableHeader>
             <TableRow>
@@ -566,7 +570,7 @@ export default function TasksPage() {
             {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={10} />)}
           </TableBody>
         </Table>
-      ) : isTasksError && view !== "my_day" ? (
+      ) : isTasksError && view !== "my_day" && view !== "recurring" ? (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center">
           <p className="font-medium">No se pudieron cargar las tareas</p>
           <p className="text-sm text-muted-foreground mt-1">No mostramos un estado vacío porque la información no está disponible.</p>
@@ -781,19 +785,28 @@ export default function TasksPage() {
         />
       )}
 
-      {!isLoading && !isTasksError && view === "recurring" && (
+      {view === "recurring" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold">Plantillas recurrentes</h3>
           </div>
-          {recurringTemplates.length === 0 ? (
+          {isRecurringLoading ? (
+            <p role="status" className="py-8 text-center text-sm text-muted-foreground">Cargando plantillas recurrentes…</p>
+          ) : isRecurringError ? (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center">
+              <p className="font-medium">No se pudieron cargar las plantillas recurrentes</p>
+              <p className="mt-1 text-sm text-muted-foreground">No mostramos una lista vacía porque la información no está disponible.</p>
+              <Button variant="outline" className="mt-3" onClick={() => void refetchRecurring()}>Reintentar</Button>
+            </div>
+          ) : recurringTemplates.length === 0 ? (
             <p className="text-sm text-muted-foreground py-8 text-center">No hay plantillas recurrentes</p>
           ) : (
-            <Table>
+            <div className="overflow-x-auto">
+            <Table className="min-w-[800px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Título</TableHead>
-                  <TableHead>Patrón</TableHead>
+                  <TableHead className="min-w-52">Título</TableHead>
+                  <TableHead className="min-w-64">Patrón</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Asignado</TableHead>
                   <TableHead>Prioridad</TableHead>
@@ -803,13 +816,13 @@ export default function TasksPage() {
               <TableBody>
                 {recurringTemplates.map((t) => (
                   <TableRow key={t.id}>
-                    <TableCell className="font-medium">
+                    <TableCell className="min-w-52 font-medium">
                       <div className="flex items-center gap-1.5">
                         <Repeat className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                         {t.title}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="min-w-64 text-sm">
                       {t.recurrence_pattern === "daily" && "Diaria (L-V)"}
                       {t.recurrence_pattern === "weekly" && `Semanal · ${["Lun", "Mar", "Mié", "Jue", "Vie"][t.recurrence_day ?? 0]}`}
                       {t.recurrence_pattern === "biweekly" && `Cada dos semanas · ${["Lun", "Mar", "Mié", "Jue", "Vie"][t.recurrence_day ?? 0]}`}
@@ -830,10 +843,10 @@ export default function TasksPage() {
                         >
                           {t.recurrence_paused_at ? "Reanudar" : "Pausar"}
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(t)}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(t)} disabled={!canWriteTasks} aria-label={`Editar plantilla ${t.title}`}>
                           <Pencil className="w-3.5 h-3.5" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteId(t.id)}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteId(t.id)} disabled={!canWriteTasks} aria-label={`Eliminar plantilla ${t.title}`}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
@@ -842,6 +855,7 @@ export default function TasksPage() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </div>
       )}

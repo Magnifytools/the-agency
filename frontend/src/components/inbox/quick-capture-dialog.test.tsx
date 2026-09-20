@@ -57,6 +57,16 @@ function show() {
   );
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("command entry", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -389,4 +399,122 @@ describe("command entry", () => {
     ).toBeInTheDocument();
     expect(mocks.queryCommand).toHaveBeenCalledWith("receipt-1", 2, 25);
   });
+  it("does not append an old query page after starting a new command", async () => {
+    const oldPage = deferred<{ kind: string; items: Array<{ type: string; id: number; label: string }>; total: number; page: number; page_size: number; has_more: boolean }>();
+    mocks.createCommand
+      .mockResolvedValueOnce({
+        ...baseReceipt,
+        status: "executed",
+        result: { message: "Consulta A", entities: [], undo_available: false, query: { kind: "blockers", items: [{ type: "task", id: 1, label: "A" }], total: 2, page: 1, page_size: 25, has_more: true } },
+      })
+      .mockResolvedValueOnce({
+        ...baseReceipt,
+        id: "receipt-2",
+        status: "executed",
+        result: { message: "Consulta B", entities: [], undo_available: false },
+      });
+    mocks.queryCommand.mockReturnValueOnce(oldPage.promise);
+    show();
+    await userEvent.type(screen.getByLabelText("Petición"), "Consulta A");
+    await userEvent.click(screen.getByRole("button", { name: "Hacer" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Cargar más" }));
+    await userEvent.click(screen.getByRole("button", { name: "Hacer otra cosa" }));
+    await userEvent.type(screen.getByLabelText("Petición"), "Consulta B");
+    await userEvent.click(screen.getByRole("button", { name: "Hacer" }));
+    expect(await screen.findByText("Consulta B")).toBeInTheDocument();
+    oldPage.resolve({ kind: "blockers", items: [{ type: "task", id: 2, label: "Página antigua" }], total: 2, page: 2, page_size: 25, has_more: false });
+    await waitFor(() => expect(screen.queryByText("Página antigua")).not.toBeInTheDocument());
+    expect(screen.getByText("Consulta B")).toBeInTheDocument();
+  });
+
+  it("ignores a late execution after the command is replaced", async () => {
+    const oldExecution = deferred<typeof baseReceipt & { status: string; result: { message: string; entities: never[]; undo_available: boolean }; change_log_id: null }>();
+    mocks.createCommand
+      .mockResolvedValueOnce({ ...baseReceipt, status: "needs_review", change_log_id: null, result: { message: "Revisar A", entities: [], undo_available: false } })
+      .mockResolvedValueOnce({ ...baseReceipt, id: "receipt-2", status: "executed", change_log_id: null, result: { message: "Comando B", entities: [], undo_available: false } });
+    mocks.executeCommand.mockReturnValueOnce(oldExecution.promise);
+    show();
+    await userEvent.type(screen.getByLabelText("Petición"), "A");
+    await userEvent.click(screen.getByRole("button", { name: "Hacer" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Crear proyecto y tarea" }));
+    await userEvent.click(screen.getByRole("tab", { name: "Guardar para aclarar" }));
+    await userEvent.click(screen.getByRole("tab", { name: "Pedir una acción" }));
+    await userEvent.type(screen.getByLabelText("Petición"), "B");
+    await userEvent.click(screen.getByRole("button", { name: "Hacer" }));
+    expect(await screen.findByText("Comando B")).toBeInTheDocument();
+    expect(mocks.createCommand.mock.calls[1][0].request_key).not.toBe(
+      mocks.createCommand.mock.calls[0][0].request_key,
+    );
+    oldExecution.resolve({ ...baseReceipt, status: "executed", change_log_id: null, result: { message: "Resultado antiguo", entities: [], undo_available: false } });
+    await waitFor(() => expect(screen.queryByText("Resultado antiguo")).not.toBeInTheDocument());
+    expect(screen.getByText("Comando B")).toBeInTheDocument();
+  });
+  it("reviews both entities and keeps the execute key after an uncertain response", async () => {
+    const review = { ...baseReceipt, status: "needs_review", change_log_id: null,
+      intent: { kind: "create_project_with_task" },
+      result: { message: "Revisa el proyecto y su primera tarea", entities: [], undo_available: false,
+        applied: { project_name: "Web nueva", client_id: 12, owner_id: null, target_date: null,
+          task_title: "Preparar propuesta", assigned_to: 8, scheduled_date: "2026-09-25" },
+        applied_labels: { client_id: "Cliente de prueba", assigned_to: "Nacho" } } };
+    mocks.createCommand.mockResolvedValue(review);
+    mocks.executeCommand.mockRejectedValueOnce(new Error("Timeout")).mockResolvedValueOnce({
+      ...review, status: "executed", revision: 2, change_log_id: 4,
+      result: { message: "Proyecto y tarea creados", entities: [{ type: "project", id: 42, label: "Web nueva" }, { type: "task", id: 43, label: "Preparar propuesta" }], undo_available: true },
+    });
+    show();
+    await userEvent.type(screen.getByLabelText("Petición"), 'Crea proyecto "Web nueva" para cliente "Cliente de prueba" con primera tarea "Preparar propuesta"');
+    await userEvent.click(screen.getByRole("button", { name: "Hacer" }));
+    expect(await screen.findByText("Preparar propuesta")).toBeInTheDocument();
+    expect(screen.getByText("Cliente de prueba")).toBeInTheDocument();
+    expect(screen.getByText("Nacho")).toBeInTheDocument();
+    expect(screen.getByText("25 de septiembre de 2026")).toBeInTheDocument();
+    expect([...document.querySelectorAll("dt")].map((element) => element.textContent)).toEqual([
+      "Nuevo proyecto",
+      "Cliente",
+      "Responsable del proyecto",
+      "Fecha objetivo",
+      "Primera tarea",
+      "Responsable de la tarea",
+      "Fecha planificada",
+    ]);
+    expect(mocks.executeCommand).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Deshacer" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Crear proyecto y tarea" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Crear proyecto y tarea" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "Crear proyecto y tarea" }));
+    expect(await screen.findByText("Proyecto y tarea creados")).toBeInTheDocument();
+    expect(mocks.executeCommand.mock.calls[0]).toEqual(mocks.executeCommand.mock.calls[1]);
+    expect(screen.getByRole("link", { name: "Web nueva" })).toHaveAttribute("href", "/projects/42");
+    expect(screen.getByRole("link", { name: "Preparar propuesta" })).toHaveAttribute("href", "/tasks?id=43");
+  });
+
+  it("recovers the current receipt when execution loses permission", async () => {
+    mocks.createCommand.mockResolvedValue({ ...baseReceipt, status: "needs_review", result: { message: "Revisar", entities: [], undo_available: false } });
+    mocks.executeCommand.mockRejectedValueOnce({ response: { status: 403 } });
+    mocks.getCommand.mockResolvedValue({ ...baseReceipt, status: "failed", error: { code: "forbidden", detail: "Permiso retirado" }, result: null });
+    show();
+    await userEvent.type(screen.getByLabelText("Petición"), "Crear proyecto y tarea");
+    await userEvent.click(screen.getByRole("button", { name: "Hacer" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Crear proyecto y tarea" }));
+    expect(await screen.findByText("Permiso retirado")).toBeInTheDocument();
+    expect(mocks.getCommand).toHaveBeenCalledWith("receipt-1");
+    expect(screen.queryByRole("button", { name: "Crear proyecto y tarea" })).not.toBeInTheDocument();
+  });
+
+  it("links decisions to their actual source and explains deferred items", async () => {
+    mocks.createCommand.mockResolvedValue({ ...baseReceipt, status: "executed", change_log_id: null,
+      result: { message: "2 decisiones pendientes", entities: [], undo_available: false,
+        query: { kind: "decisions", total: 2, page: 1, page_size: 25, has_more: false,
+          items: [{ type: "incident", id: 9, label: "Proyecto sin siguiente paso", message: "Define la próxima acción", recipient_name: "Nacho", href: "/projects/21", revision: 2 },
+            { type: "incident", id: 10, label: "Enlace no válido", href: "//external.invalid" }] } } });
+    show();
+    await userEvent.type(screen.getByLabelText("Petición"), "Consulta decisiones pendientes");
+    await userEvent.click(screen.getByRole("button", { name: "Hacer" }));
+    expect(await screen.findByRole("link", { name: /Proyecto sin siguiente paso/ })).toHaveAttribute("href", "/projects/21");
+    expect(screen.getByText("Para Nacho")).toBeInTheDocument();
+    expect(screen.getByText(/Los pospuestos quedan fuera/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Enlace no válido" })).toHaveAttribute("href", "/incidents");
+    expect(screen.queryByRole("button", { name: "Deshacer" })).not.toBeInTheDocument();
+  });
+
 });

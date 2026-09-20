@@ -606,7 +606,7 @@ test('a late undo response never erases a newer command draft', async t => {
   get('command-text').dispatchEvent(new dom.window.Event('input'));
   get('command-submit').click(); await tick();
   [...get('command-receipt').querySelectorAll('button')].find(button => button.textContent === 'Deshacer').click();
-  [...get('command-receipt').querySelectorAll('button')].find(button => button.textContent === 'Hacer otra cosa').click();
+  run('resetCommand()');
   get('command-text').value = 'Petición nueva que debe conservarse';
   get('command-text').dispatchEvent(new dom.window.Event('input'));
   releaseUndo(); await tick(); await tick();
@@ -637,4 +637,100 @@ test('meeting settings conflict reloads revision without losing the local draft'
   assert.equal(get('meeting-settings-error').classList.contains('hidden'), false);
   assert.equal(get('meeting-settings-error').textContent.includes('otro dispositivo'), true);
   assert.equal(run('meetingPolicy.revision'), 4);
+});
+
+
+test('compound command reviews readable fields before execution and retries the same key', async t => {
+  const { state, get, run } = await setup(t);
+  state.commandResponse = { id: 'compound-1', revision: 1, status: 'needs_review', intent: { kind: 'create_project_with_task' },
+    result: { message: 'Revisa el proyecto y su primera tarea', entities: [], undo_available: false,
+      applied: { project_name: 'Web nueva', client_id: 12, task_title: 'Preparar propuesta', assigned_to: 8 },
+      applied_labels: { client_id: 'Cliente de prueba', assigned_to: 'Nacho' } } };
+  state.commandStepStatuses = [503, 200];
+  state.commandStepResponse = { ...state.commandResponse, revision: 2, status: 'executed',
+    result: { message: 'Proyecto y tarea creados', entities: [{ type: 'project', id: 42, label: 'Web nueva' }, { type: 'task', id: 43, label: 'Preparar propuesta' }], undo_available: false } };
+  get('command-text').value = 'Crea proyecto y primera tarea';
+  get('command-text').dispatchEvent(new (get('command-text').ownerDocument.defaultView.Event)('input'));
+  await run('submitCommand()');
+  assert.match(get('command-receipt').textContent, /Nuevo proyecto/);
+  assert.match(get('command-receipt').textContent, /Cliente de prueba/);
+  assert.match(get('command-receipt').textContent, /Primera tarea/);
+  assert.deepEqual([...get('command-receipt').querySelectorAll('.command-applied dt')].map(node => node.textContent), [
+    'Nuevo proyecto', 'Cliente', 'Primera tarea', 'Responsable de la tarea',
+  ]);
+  assert.equal(state.commandStepRequests.length, 0);
+  get('command-receipt').querySelector('.primary-btn').click(); await tick(); await tick();
+  get('command-receipt').querySelector('.primary-btn').click(); await tick(); await tick();
+  assert.deepEqual(state.commandStepRequests[0], state.commandStepRequests[1]);
+  assert.equal(get('command-receipt').querySelectorAll('a').length, 2);
+});
+
+test('late command execution cannot replace a newer command', async t => {
+  const { state, get, dom, run } = await setup(t);
+  const release = deferred();
+  state.commandResponse = { id: 'command-a', revision: 1, status: 'needs_review', intent: { kind: 'create_project_with_task' }, prompt: null,
+    result: { message: 'Revisar A', entities: [], undo_available: false }, change_log_id: null, error: null };
+  state.commandStepResponse = { ...state.commandResponse, status: 'executed', revision: 2,
+    result: { message: 'Resultado antiguo', entities: [], undo_available: false } };
+  const fetch = dom.window.fetch;
+  dom.window.fetch = async (url, options = {}) => {
+    if (new URL(url).pathname === '/api/commands/command-a/execute') await release.promise;
+    return fetch(url, options);
+  };
+  get('command-text').value = 'A'; get('command-text').dispatchEvent(new dom.window.Event('input'));
+  await run('submitCommand()');
+  get('command-receipt').querySelector('.primary-btn').click(); await tick();
+  run('resetCommand()');
+  state.commandResponse = { id: 'command-b', revision: 1, status: 'executed', intent: { kind: 'query_work' }, prompt: null,
+    result: { message: 'Comando B', entities: [], undo_available: false }, change_log_id: null, error: null };
+  get('command-text').value = 'B'; get('command-text').dispatchEvent(new dom.window.Event('input'));
+  await run('submitCommand()');
+  release.resolve(); await tick(); await tick();
+  assert.match(get('command-receipt').textContent, /Comando B/);
+  assert.doesNotMatch(get('command-receipt').textContent, /Resultado antiguo/);
+});
+
+test('late command query page cannot append to a newer command', async t => {
+  const { state, get, dom, run } = await setup(t);
+  const release = deferred();
+  state.commandResponse = { id: 'query-a', revision: 1, status: 'executed', intent: { kind: 'query_work' }, prompt: null,
+    result: { message: 'Consulta A', entities: [], undo_available: false,
+      query: { kind: 'blockers', items: [{ type: 'task', id: 1, label: 'A' }], total: 2, page: 1, page_size: 25, has_more: true } }, change_log_id: null, error: null };
+  const fetch = dom.window.fetch;
+  dom.window.fetch = async (url, options = {}) => {
+    if (new URL(url).pathname === '/api/commands/query-a/query') {
+      await release.promise;
+      return { ok: true, status: 200, json: async () => ({ kind: 'blockers', items: [{ type: 'task', id: 2, label: 'Página antigua' }], total: 2, page: 2, page_size: 25, has_more: false }) };
+    }
+    return fetch(url, options);
+  };
+  get('command-text').value = 'A'; get('command-text').dispatchEvent(new dom.window.Event('input'));
+  await run('submitCommand()');
+  get('command-receipt').querySelector('.secondary-btn').click(); await tick();
+  [...get('command-receipt').querySelectorAll('button')].find(button => button.textContent === 'Hacer otra cosa').click();
+  state.commandResponse = { id: 'query-b', revision: 1, status: 'executed', intent: { kind: 'query_work' }, prompt: null,
+    result: { message: 'Consulta B', entities: [], undo_available: false }, change_log_id: null, error: null };
+  get('command-text').value = 'B'; get('command-text').dispatchEvent(new dom.window.Event('input'));
+  await run('submitCommand()');
+  release.resolve(); await tick(); await tick();
+  assert.match(get('command-receipt').textContent, /Consulta B/);
+  assert.doesNotMatch(get('command-receipt').textContent, /Página antigua/);
+});
+
+test('decision query opens source links and never offers undo', async t => {
+  const { state, get } = await setup(t);
+  state.commandResponse = { id: 'decisions-1', revision: 1, status: 'executed', intent: { kind: 'query_work', query: 'decisions' },
+    result: { message: '2 decisiones pendientes', entities: [], undo_available: false,
+      query: { kind: 'decisions', total: 2, page: 1, has_more: false,
+        items: [{ type: 'incident', id: 7, label: 'Proyecto pendiente', message: 'Define siguiente paso', recipient_name: 'Nacho', href: '/projects/21' },
+          { type: 'incident', id: 8, label: 'Enlace no válido', href: '//external.invalid' }] } } };
+  get('command-text').value = 'Consulta decisiones pendientes';
+  get('command-text').dispatchEvent(new (get('command-text').ownerDocument.defaultView.Event)('input'));
+  get('command-submit').click(); await tick(); await tick();
+  const links = [...get('command-receipt').querySelectorAll('a')];
+  assert.equal(new URL(links[0].href).pathname, '/projects/21');
+  assert.equal(new URL(links[1].href).pathname, '/incidents');
+  assert.match(get('command-receipt').textContent, /Para Nacho/);
+  assert.match(get('command-receipt').textContent, /Los pospuestos quedan fuera/);
+  assert.ok(![...get('command-receipt').querySelectorAll('button')].some(b => b.textContent === 'Deshacer'));
 });
