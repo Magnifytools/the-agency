@@ -21,8 +21,8 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Optional
 from types import SimpleNamespace
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, field_serializer
@@ -449,7 +449,8 @@ async def _preflight_retirement(
 
 
 _TASK_LIFECYCLE_FIELDS = (
-    "status", "project_id", "is_recurring", "waiting_for", "follow_up_date", "assigned_to",
+    "status", "project_id", "retired_at", "is_recurring", "recurrence_paused_at",
+    "waiting_for", "follow_up_date", "assigned_to",
 )
 
 
@@ -469,8 +470,16 @@ async def _validate_inverse_lifecycle(db, operations, previous, actor):
     The surrounding transaction rolls back the inverse on conflict. Old dates
     remain dates of the original decision; Undo must never replace them today.
     """
+    from backend.services.project_lifecycle import (
+        ensure_project_allows_task_state,
+        task_project_state,
+        validate_project_lifecycle_inverse,
+    )
     from backend.services.task_lifecycle import validate_task_waiting
-    from backend.services.task_review import validate_project_review, validate_task_review
+    from backend.services.task_review import (
+        validate_project_review,
+        validate_task_review,
+    )
 
     for op in operations:
         entity, action = op.get("entity_type"), op.get("action")
@@ -478,9 +487,14 @@ async def _validate_inverse_lifecycle(db, operations, previous, actor):
             continue  # The inverse removes the row; no task is being completed.
         if entity == "project":
             fields = set(op.get("before") or {})
+            project = await db.scalar(select(Project).where(Project.id == op["entity_id"]).options(noload("*")))
+            old_status = previous.get(("project", op["entity_id"]))
+            if project is not None and old_status is not None and "status" in fields:
+                await validate_project_lifecycle_inverse(
+                    db, project_id=project.id, previous_status=old_status, actor=actor,
+                )
             if action != "delete" and not fields.intersection({"owner_id", "requires_task_review"}):
                 continue
-            project = await db.scalar(select(Project).where(Project.id == op["entity_id"]).options(noload("*")))
             if project is not None:
                 await validate_project_review(db, {
                     "owner_id": project.owner_id,
@@ -491,9 +505,19 @@ async def _validate_inverse_lifecycle(db, operations, previous, actor):
         task = await db.scalar(select(Task).where(Task.id == op["entity_id"]).options(noload("*")))
         if task is None:
             continue
-        old = previous.get(task.id)
+        old = previous.get(("task", task.id))
         effective = {key: getattr(task, key) for key in _TASK_LIFECYCLE_FIELDS}
         patch = {key: value for key, value in effective.items() if old is None or getattr(old, key) != value}
+        try:
+            await ensure_project_allows_task_state(
+                db,
+                state=task_project_state(task),
+                previous_state=task_project_state(old) if old is not None else None,
+                creating=action == "delete",
+                allow_historical_restore=action == "delete",
+            )
+        except HTTPException as exc:
+            raise HTTPException(409, f"No se puede deshacer: {exc.detail}") from exc
         if not patch:
             continue
         try:
@@ -506,6 +530,32 @@ async def _validate_inverse_lifecycle(db, operations, previous, actor):
                 raise HTTPException(409, "La espera cambió después; revisa la tarea antes de deshacer")
         except HTTPException as exc:
             raise HTTPException(409, f"No se puede deshacer: {exc.detail}") from exc
+
+
+def _project_status_change(operations: list[dict]) -> bool:
+    """Return whether immutable journal data announces a Project status inverse."""
+    return any(
+        op.get("entity_type") == "project"
+        and op.get("action") == "update"
+        and "status" in (op.get("before") or {})
+        and (op.get("before") or {}).get("status") != (op.get("after") or {}).get("status")
+        for op in operations
+    )
+
+
+def _inverse_lifecycle_before(operations, locked):
+    """Capture scalar states that post-flush validation must compare against."""
+    states = {
+        ("task", task_id): value
+        for task_id, value in _lifecycle_before_undo(operations, locked).items()
+    }
+    for op in operations:
+        if op.get("entity_type") != "project" or op.get("action") != "update":
+            continue
+        row = locked.get(("project", op.get("entity_id")))
+        if row is not None:
+            states[("project", row.id)] = row.status
+    return states
 
 
 def _created_children(operations: list[dict]) -> dict[str, set[int]]:
@@ -735,11 +785,16 @@ async def undo_change(
     restored = 0
     try:
         with change_journal.paused():
+            if _project_status_change(operations):
+                from backend.services.project_lifecycle import (
+                    acquire_project_lifecycle_lock,
+                )
+                await acquire_project_lifecycle_lock(db)
             locked_rows = await _lock_operation_rows(db, operations)
             await require_current_write(db, current_user, {
                 SPECS_BY_TYPE[op["entity_type"]].module for op in operations
             })
-            lifecycle_before = _lifecycle_before_undo(operations, locked_rows)
+            lifecycle_before = _inverse_lifecycle_before(operations, locked_rows)
             await _preflight_contact_primaries(db, operations, locked_rows)
             await _preflight_retirement(db, operations, locked_rows)
             await _preflight_create_removals(db, removals, locked_rows, operations)
