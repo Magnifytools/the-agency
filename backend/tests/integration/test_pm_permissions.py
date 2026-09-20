@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
 
 import pytest
 from sqlalchemy import select
@@ -82,11 +82,13 @@ async def test_briefing_defaults_to_mine_and_team_requires_admin(
     admin_client, db_session, make_member_client
 ):
     member = await make_member_client([("pm", True, False)])
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    due = now.replace(hour=12, minute=0, second=0, microsecond=0)
     from backend.services.temporal import business_today
 
+    # At 22:00 UTC the Agency is already on the next civil day. Keep deadline
+    # and planning on that same business date instead of deriving one from UTC.
+    assert business_today(now=datetime(2026, 9, 20, 22, tzinfo=timezone.utc)) == date(2026, 9, 21)
     planned = business_today()
+    due = datetime.combine(planned, time(hour=12))
     mine = Task(
         title="Admin own briefing",
         status=TaskStatus.pending,

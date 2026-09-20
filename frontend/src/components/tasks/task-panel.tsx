@@ -809,7 +809,7 @@ export function TaskPanel({
               <Label htmlFor="task-panel-link">Enlace</Label>
               <Input id="task-panel-link" type="url" value={draft.link_url ?? ""} onChange={(event) => change("link_url", event.target.value || null)} disabled={!canWrite} />
             </div>
-            <details>
+            <details open={draft.status === "waiting"}>
               <summary className="cursor-pointer text-sm font-medium">
                 Espera y seguimiento
               </summary>
