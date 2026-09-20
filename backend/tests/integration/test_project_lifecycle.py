@@ -455,3 +455,70 @@ async def test_permission_revoked_while_waiting_for_advisory_cannot_close(engine
             await cleanup.execute(delete(UserPermission).where(UserPermission.user_id == actor_id))
             await cleanup.execute(delete(User).where(User.id == actor_id))
             await cleanup.commit()
+
+
+async def test_close_reopen_generator_preserves_receipts_and_explicit_pauses(
+    admin_client, db_session,
+):
+    """A reviewed archive suppresses generation; reopening never replays today."""
+    _client, project = await _project(db_session, admin_client.test_user.id)
+    today = date(2026, 9, 21)
+    live = await _task(
+        db_session, project, admin_client.test_user.id,
+        is_recurring=True, recurrence_pattern="weekly", recurrence_day=0,
+    )
+    paused_at = datetime(2026, 9, 20, 12)  # noqa: DTZ001
+    paused = await _task(
+        db_session, project, admin_client.test_user.id,
+        is_recurring=True, recurrence_pattern="weekly", recurrence_day=0,
+        recurrence_paused_at=paused_at,
+    )
+    project_id, live_id, paused_id = project.id, live.id, paused.id
+
+    async def close():
+        preview = await _preview(admin_client, project_id)
+        response = await admin_client.post(f"/api/projects/{project_id}/close", json={
+            "target": "completed",
+            "expected_updated_at": preview["expected_updated_at"],
+            "preview_revision": preview["preview_revision"],
+        })
+        assert response.status_code == 200, response.text
+
+    async def reopen():
+        preview_response = await admin_client.get(f"/api/projects/{project_id}/reopen-preview")
+        assert preview_response.status_code == 200, preview_response.text
+        preview = preview_response.json()
+        response = await admin_client.post(f"/api/projects/{project_id}/reopen", json={
+            "expected_updated_at": preview["expected_updated_at"],
+            "preview_revision": preview["preview_revision"],
+        })
+        assert response.status_code == 200, response.text
+
+    await close()
+    assert await generate_recurring_instances(db_session, target_date=today) == 0
+    await reopen()
+    assert await generate_recurring_instances(db_session, target_date=today) == 1
+    child = await db_session.scalar(select(Task).where(Task.recurring_parent_id == live_id))
+    assert child is not None
+    assert child.scheduled_date == today
+    receipts_before = list((await db_session.execute(
+        select(TaskRecurrenceOccurrence.id, TaskRecurrenceOccurrence.date)
+        .where(TaskRecurrenceOccurrence.template_id.in_([live_id, paused_id]))
+    )).all())
+    assert len(receipts_before) == 1
+
+    completed = await admin_client.put(f"/api/tasks/{child.id}", json={"status": "completed"})
+    assert completed.status_code == 200, completed.text
+    await close()
+    await reopen()
+    assert await generate_recurring_instances(db_session, target_date=today) == 0
+    receipts_after = list((await db_session.execute(
+        select(TaskRecurrenceOccurrence.id, TaskRecurrenceOccurrence.date)
+        .where(TaskRecurrenceOccurrence.template_id.in_([live_id, paused_id]))
+    )).all())
+    assert receipts_after == receipts_before
+    await db_session.refresh(paused)
+    assert paused.recurrence_paused_at == paused_at
+    assert await db_session.scalar(select(func.count()).select_from(Task).where(
+        Task.recurring_parent_id == paused_id,
+    )) == 0
