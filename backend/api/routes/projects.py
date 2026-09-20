@@ -1,6 +1,6 @@
 from __future__ import annotations
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
 import base64
 from datetime import date, datetime, timedelta, timezone
@@ -238,6 +238,7 @@ def _build_project_response(
 async def list_projects(
     client_id: Optional[int] = None,
     status_filter: Optional[str] = Query(None, alias="status"),
+    lifecycle: Optional[Literal["portfolio", "archive"]] = None,
     project_type: Optional[str] = None,
     is_recurring: Optional[bool] = None,
     period_from: Optional[date] = None,
@@ -252,6 +253,14 @@ async def list_projects(
         base = base.where(Project.client_id == client_id)
     if status_filter:
         base = base.where(Project.status == status_filter)
+    if lifecycle == "portfolio":
+        base = base.where(Project.status.in_([
+            ProjectStatus.planning, ProjectStatus.active, ProjectStatus.on_hold,
+        ]))
+    elif lifecycle == "archive":
+        base = base.where(Project.status.in_([
+            ProjectStatus.completed, ProjectStatus.cancelled,
+        ]))
     if project_type:
         base = base.where(Project.project_type == project_type)
 
