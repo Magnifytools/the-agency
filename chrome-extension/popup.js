@@ -818,8 +818,12 @@ function renderCommand(data) {
     link.className = "command-entity";
     link.textContent = entity.label;
     if (entity.type === "incident") {
-      if (entity.message) { const detail = document.createElement("span"); detail.textContent = ` — ${entity.message}`; link.append(detail); }
-      if (entity.recipient_name) { const recipient = document.createElement("small"); recipient.textContent = ` · Para ${entity.recipient_name}`; link.append(recipient); }
+      link.classList.add("command-decision");
+      const title = document.createElement("strong");
+      title.textContent = entity.label;
+      link.replaceChildren(title);
+      if (entity.message) { const detail = document.createElement("span"); detail.textContent = entity.message; link.append(detail); }
+      if (entity.recipient_name) { const recipient = document.createElement("small"); recipient.textContent = `Para ${entity.recipient_name}`; link.append(recipient); }
     }
     link.addEventListener("click", (event) => { event.preventDefault(); chrome.tabs.create({ url: link.href }); });
     commandReceipt.append(link);
