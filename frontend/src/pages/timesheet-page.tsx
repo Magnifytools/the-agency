@@ -9,7 +9,7 @@ import { Select } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Building2, Pencil, Check, X, Play, Square, ChevronLeft, AlertTriangle, User as UserIcon, CheckSquare, CalendarDays } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { EmptyTableState } from "@/components/ui/empty-state"
+import { EmptyState, EmptyTableState } from "@/components/ui/empty-state"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
@@ -310,15 +310,15 @@ function TimerWidget({ tasks, tasksError, canReadTasks, canReadClients, canReadP
             )}
           <div className="flex items-center gap-2 flex-wrap">
             <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
-            <Select value={filterClient} onChange={(e) => { setFilterClient(e.target.value); setFilterProject(""); setSelectedTask("") }} className="h-8 text-xs w-36" disabled={!canReadClients || (clientsQuery.isError && allActiveClients.length === 0)}>
+            <Select aria-label="Cliente del cronómetro" value={filterClient} onChange={(e) => { setFilterClient(e.target.value); setFilterProject(""); setSelectedTask("") }} className="h-8 text-xs w-36" disabled={!canReadClients || (clientsQuery.isError && allActiveClients.length === 0)}>
               <option value="">Cliente...</option>
               {clients.map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
             </Select>
-            <Select value={filterProject} onChange={(e) => { setFilterProject(e.target.value); setSelectedTask("") }} className="h-8 text-xs w-36" disabled={!!filterClient && (!canReadProjects || (projectsQuery.isError && allActiveProjects.length === 0))}>
+            <Select aria-label="Proyecto del cronómetro" value={filterProject} onChange={(e) => { setFilterProject(e.target.value); setSelectedTask("") }} className="h-8 text-xs w-36" disabled={!!filterClient && (!canReadProjects || (projectsQuery.isError && allActiveProjects.length === 0))}>
               <option value="">Proyecto...</option>
               {projects.map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
             </Select>
-            <Select value={selectedTask} onChange={(e) => setSelectedTask(e.target.value)} className="h-8 text-xs flex-1 min-w-[180px]" disabled={!canReadTasks || (tasksError && tasks.length === 0)}>
+            <Select aria-label="Tarea del cronómetro" value={selectedTask} onChange={(e) => setSelectedTask(e.target.value)} className="h-8 text-xs flex-1 min-w-[180px]" disabled={!canReadTasks || (tasksError && tasks.length === 0)}>
               <option value="">Selecciona una tarea...</option>
               {filteredTasks.slice(0, 50).map((t) => (
                 <option key={t.id} value={String(t.id)}>
@@ -382,7 +382,7 @@ function TaskTab({ weeklyData, weekLoading }: TaskTabProps) {
   }, [weeklyData])
 
   if (weekLoading) return <div className="text-sm text-muted-foreground p-4">Cargando...</div>
-  if (!taskMap.length) return <EmptyTableState colSpan={5} icon={CheckSquare} title="Sin datos por tarea" description="Registra tiempo en tareas para ver el desglose." />
+  if (!taskMap.length) return <EmptyState icon={CheckSquare} title="Sin datos por tarea" description="Registra tiempo en tareas para ver el desglose." />
 
   const days = weeklyData?.days || []
 
@@ -796,7 +796,7 @@ export default function TimesheetPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold uppercase tracking-wide">Timesheet</h2>
+          <h2 className="text-2xl font-bold uppercase tracking-wide">Horas</h2>
           <p className="text-sm text-muted-foreground mt-1">{PERIOD_OPTIONS.find(o => o.value === period)?.label} · {todaysEntriesQuery.isPending ? "cargando registros…" : todaysEntriesQuery.isError ? "registros de hoy no disponibles" : `${todaysEntries.length} registros hoy`} · {agencyTimezoneLabel()}</p>
         </div>
         <Button variant="outline" size="sm" onClick={handleExportCsv}>
@@ -859,15 +859,15 @@ export default function TimesheetPage() {
       {/* Today's entries */}
       <Card>
         <CardHeader>
-          <CardTitle>Mis Registros de Hoy</CardTitle>
-          <p className="text-sm text-muted-foreground">Revisa tus tiempos rapidos y asignalos a tareas para facturar.</p>
+          <CardTitle>Mis registros de hoy</CardTitle>
+          <p className="text-sm text-muted-foreground">Revisa las horas de hoy y asígnalas a tareas cuando corresponda.</p>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Registro</TableHead>
-                <TableHead>Duracion</TableHead>
+                <TableHead>Duración</TableHead>
                 <TableHead>Tarea / Proyecto</TableHead>
                 <TableHead className="w-16"></TableHead>
               </TableRow>
@@ -979,6 +979,7 @@ export default function TimesheetPage() {
             <div className="flex items-center gap-1.5">
               <CalendarDays className="h-4 w-4 text-muted-foreground" />
               <Select
+                aria-label="Período de horas"
                 value={period}
                 onChange={(e) => setPeriod(e.target.value as PeriodType)}
                 className="h-9 text-sm w-auto"
@@ -990,7 +991,7 @@ export default function TimesheetPage() {
             </div>
             {isWeekPeriod && (
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                <Button variant="ghost" size="icon" aria-label="Semana anterior" className="h-8 w-8" onClick={() => {
                   const d = parseLocalDate(weekStart)
                   d.setDate(d.getDate() - 7)
                   setWeekStart(toInputDate(getMonday(d)))
@@ -999,6 +1000,7 @@ export default function TimesheetPage() {
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <input
+                  aria-label="Inicio de la semana"
                   type="date"
                   value={weekStart}
                   onChange={(e) => {
@@ -1007,7 +1009,7 @@ export default function TimesheetPage() {
                   }}
                   className="border border-border rounded-md px-3 py-2 text-sm bg-background"
                 />
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                <Button variant="ghost" size="icon" aria-label="Semana siguiente" className="h-8 w-8" onClick={() => {
                   const d = parseLocalDate(weekStart)
                   d.setDate(d.getDate() + 7)
                   setWeekStart(toInputDate(getMonday(d)))
@@ -1020,6 +1022,7 @@ export default function TimesheetPage() {
             {period === "personalizado" && (
               <div className="flex items-center gap-2">
                 <input
+                  aria-label="Desde"
                   type="date"
                   value={customFrom}
                   onChange={(e) => setCustomFrom(e.target.value)}
@@ -1028,6 +1031,7 @@ export default function TimesheetPage() {
                 />
                 <span className="text-muted-foreground text-sm">–</span>
                 <input
+                  aria-label="Hasta"
                   type="date"
                   value={customTo}
                   onChange={(e) => setCustomTo(e.target.value)}
@@ -1168,7 +1172,7 @@ export default function TimesheetPage() {
             ) : <>
               {clientReportQuery.isError && <div className="mb-3"><RecoveryNotice label="el informe por cliente" onRetry={() => void clientReportQuery.refetch()} /></div>}
               {clientReport.length === 0 ? (
-              <EmptyTableState colSpan={5} icon={Building2} title="Sin datos por cliente" description="Asigna tareas a tus registros de tiempo para ver el desglose por cliente." />
+              <EmptyState icon={Building2} title="Sin datos por cliente" description="Asigna tareas a tus registros de tiempo para ver el desglose por cliente." />
             ) : (
               <Table>
                 <TableHeader>
@@ -1209,7 +1213,7 @@ export default function TimesheetPage() {
             ) : <>
               {projectReportQuery.isError && <div className="mb-3"><RecoveryNotice label="el informe por proyecto" onRetry={() => void projectReportQuery.refetch()} /></div>}
               {projectReport.length === 0 ? (
-              <EmptyTableState colSpan={4} icon={FolderKanban} title="Sin datos por proyecto" description="Asigna tareas a tus registros de tiempo para ver el desglose por proyecto." />
+              <EmptyState icon={FolderKanban} title="Sin datos por proyecto" description="Asigna tareas a tus registros de tiempo para ver el desglose por proyecto." />
             ) : (
               <Table>
                 <TableHeader>

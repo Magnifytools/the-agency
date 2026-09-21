@@ -297,7 +297,7 @@ function IntelligenceSection({ client }: { client: Client }) {
     <Card>
       <CardHeader className="flex flex-row items-center gap-2 pb-3">
         <Sparkles className="h-4 w-4 text-yellow-400" />
-        <CardTitle className="text-base">Intelligence Package</CardTitle>
+        <CardTitle className="text-base">Análisis del cliente</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {!intelligence ? (
@@ -305,26 +305,30 @@ function IntelligenceSection({ client }: { client: Client }) {
             <p className="text-sm text-muted-foreground">
               Genera un análisis automático del negocio del cliente con IA.
             </p>
-            <div className="flex gap-2">
-              <input
-                type="url"
-                placeholder="https://ejemplo.com"
-                value={urlInput}
-                onChange={e => setUrlInput(e.target.value)}
-                className="flex-1 h-9 rounded-md border bg-transparent px-3 text-sm"
-              />
-              <Button
-                size="sm"
-                onClick={() => generateMut.mutate()}
-                disabled={generateMut.isPending || !urlInput.trim()}
-              >
-                {generateMut.isPending ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Sparkles className="w-4 h-4 mr-2" />
-                )}
-                Generar
-              </Button>
+            <div className="space-y-1">
+              <label htmlFor={`intelligence-url-${client.id}`} className="text-xs text-muted-foreground">Web del cliente</label>
+              <div className="flex gap-2">
+                <input
+                  id={`intelligence-url-${client.id}`}
+                  type="url"
+                  placeholder="https://ejemplo.com"
+                  value={urlInput}
+                  onChange={e => setUrlInput(e.target.value)}
+                  className="min-w-0 flex-1 h-9 rounded-md border bg-transparent px-3 text-sm"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => generateMut.mutate()}
+                  disabled={generateMut.isPending || !urlInput.trim()}
+                >
+                  {generateMut.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-4 h-4 mr-2" />
+                  )}
+                  Generar
+                </Button>
+              </div>
             </div>
           </div>
         ) : (
@@ -339,7 +343,7 @@ function IntelligenceSection({ client }: { client: Client }) {
                 <p className="text-sm text-muted-foreground">{String(intelligence.industry || "")}</p>
               </div>
               <div>
-                <h4 className="text-sm font-medium mb-1">Target</h4>
+                <h4 className="text-sm font-medium mb-1">Público objetivo</h4>
                 <p className="text-sm text-muted-foreground">{String(intelligence.target_audience || "")}</p>
               </div>
             </div>

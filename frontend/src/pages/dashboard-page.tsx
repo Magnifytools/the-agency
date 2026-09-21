@@ -374,7 +374,7 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold uppercase tracking-wide">Dashboard</h2>
+          <h2 className="text-2xl font-bold uppercase tracking-wide">Visión general</h2>
           {!overviewQuery.isError && overview && overview.pending_tasks != null && overview.in_progress_tasks != null && overview.active_clients != null && (
             <p className="text-sm text-muted-foreground mt-1">
               {MONTHS[month - 1]}: {overview.pending_tasks + overview.in_progress_tasks} tareas activas · {overview.active_clients} clientes externos activos hoy
@@ -397,6 +397,7 @@ export default function DashboardPage() {
           )}
           {isAdmin && memberUsers.length > 0 && (
             <Select
+              aria-label="Persona del dashboard"
               value={viewAsUserId ?? ""}
               onChange={(e) => setViewAsUserId(e.target.value ? Number(e.target.value) : null)}
               className="w-44"
@@ -411,10 +412,10 @@ export default function DashboardPage() {
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goToPrevMonth} title="Mes anterior">
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="w-40">
+            <Select aria-label="Mes del dashboard" value={month} onChange={(e) => setMonth(Number(e.target.value))} className="w-40">
               {MONTHS.map((m, i) => (<option key={i} value={i + 1}>{m}</option>))}
             </Select>
-            <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-24">
+            <Select aria-label="Año del dashboard" value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-24">
               {[businessNow.getFullYear() - 1, businessNow.getFullYear(), businessNow.getFullYear() + 1].map((y) => (<option key={y} value={y}>{y}</option>))}
             </Select>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goToNextMonth} title="Mes siguiente">

@@ -9,6 +9,7 @@ import { dashboardKeys } from "@/lib/query-keys"
 const mocks = vi.hoisted(() => ({
   user: null as null | { id: number; role: "admin" | "member"; permissions: Array<{ module: string; can_read: boolean; can_write: boolean }> },
   financeEnabled: false,
+  usersEnabled: false,
   overview: vi.fn(), financialOverview: vi.fn(), profitability: vi.fn(), team: vi.fn(), utilization: vi.fn(),
   monthlyClose: vi.fn(), financialSettings: vi.fn(), updateMonthlyClose: vi.fn(), updateFinancialSettings: vi.fn(), exportMonthlyClose: vi.fn(),
   preview: vi.fn(), send: vi.fn(), settings: vi.fn(), weekly: vi.fn(),
@@ -24,7 +25,7 @@ vi.mock("@/context/auth-context", () => ({
   }),
 }))
 vi.mock("@/lib/hidden-modules", () => ({
-  isEnabled: (module: string) => module === "finance" ? mocks.financeEnabled : module === "tasks" || module === "timesheet",
+  isEnabled: (module: string) => module === "finance" ? mocks.financeEnabled : module === "users" ? mocks.usersEnabled : module === "tasks" || module === "timesheet",
 }))
 vi.mock("@/hooks/use-business-date", () => ({ useBusinessDate: () => "2026-09-20" }))
 vi.mock("@/lib/api", () => ({
@@ -52,6 +53,7 @@ function show(client = new QueryClient({ defaultOptions: { queries: { retry: fal
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.financeEnabled = false
+  mocks.usersEnabled = false
   mocks.overview.mockResolvedValue(operational)
   mocks.financialOverview.mockResolvedValue({ total_budget: 10, total_cost: 2, margin: 8, margin_percent: 80 })
   mocks.team.mockResolvedValue([]); mocks.utilization.mockResolvedValue({ global_utilization_pct: 0, total_logged_hours: 0, total_available_hours: 0 })
@@ -60,6 +62,17 @@ beforeEach(() => {
 })
 
 describe("DashboardPage", () => {
+  it("names the person and reporting period selectors", async () => {
+    mocks.user = { id: 1, role: "admin", permissions: [] }
+    mocks.usersEnabled = true
+    mocks.users.mockResolvedValue([{ id: 2, full_name: "Nacho", role: "member", is_active: true }])
+    show()
+    expect(screen.getByRole("heading", { name: "Visión general" })).toBeInTheDocument()
+    expect(await screen.findByRole("combobox", { name: "Persona del dashboard" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Mes del dashboard" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Año del dashboard" })).toBeInTheDocument()
+  })
+
   it("does not fetch team, finance, or task sources for a member without those permissions", async () => {
     mocks.user = { id: 4, role: "member", permissions: [] }
     show()
