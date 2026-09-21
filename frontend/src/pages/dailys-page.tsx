@@ -219,7 +219,7 @@ function DailyEditor({ userId, date, onDateChange, serverDaily, serverError, che
       <p>El resumen guardado ya no existe. Tus notas locales siguen aquí.</p>
       <Button variant="outline" onClick={() => { change({ base: null, draft: { ...draft, baseId: null, baseRevision: null } }); setConflict(null) }}>Preparar un nuevo borrador con mis notas</Button>
     </CardContent></Card>}
-    <Card><CardHeader><CardTitle className="text-base">Hechos del día</CardTitle></CardHeader>
+    <Card><CardHeader><CardTitle as="h2" className="text-base">Hechos del día</CardTitle></CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">Elige las fuentes que quieras incluir. Consultar no cambia tareas ni tiempo.</p>
         <p className="text-xs text-muted-foreground">Completados y horas corresponden a la fecha elegida. Las esperas y próximos pasos reflejan el estado actual.</p>
@@ -236,7 +236,7 @@ function DailyEditor({ userId, date, onDateChange, serverDaily, serverError, che
         {(facts.length > 0 || prefill.isSuccess) && <p className="text-xs text-muted-foreground">Las tareas completadas requieren una fecha de finalización fiable; las horas reales se contabilizan de forma independiente.</p>}
       </CardContent>
     </Card>
-    <Card><CardHeader><CardTitle className="text-base">Notas del cierre</CardTitle></CardHeader>
+    <Card><CardHeader><CardTitle as="h2" className="text-base">Notas del cierre</CardTitle></CardHeader>
       <CardContent className="space-y-3">
         {isSent && <p className="text-sm text-muted-foreground">Este resumen ya fue enviado y se conserva en modo lectura.</p>}
         <textarea aria-label="Notas del daily" value={draft.rawText} disabled={isSent} onChange={(event) => editDraft({ rawText: event.target.value })}

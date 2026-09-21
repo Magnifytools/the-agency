@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { invalidateCalendarViews } from "@/lib/calendar-queries"
 import { useAuth } from "@/context/auth-context"
 import { usersApi, categoriesApi, myWeekApi, calendarApi } from "@/lib/api"
-import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS } from "@/hooks/use-keyboard-shortcuts"
+import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS, isShortcutAvailable } from "@/hooks/use-keyboard-shortcuts"
 import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar, FileText } from "lucide-react"
 import { CommunicationSchedules } from "@/components/communication-schedules"
 import { JobRuntimeStatusPanel } from "@/components/job-runtime-status"
@@ -197,7 +197,7 @@ export default function SettingsPage() {
   }
 
   const resetDefaults = () => {
-    setBindings({ ...DEFAULT_SHORTCUTS })
+    setBindings((previous) => ({ ...previous, ...Object.fromEntries(Object.entries(DEFAULT_SHORTCUTS).filter(([key]) => isShortcutAvailable(key))) }))
   }
 
   const handleSave = async () => {
@@ -205,7 +205,7 @@ export default function SettingsPage() {
     setSaving(true)
     try {
       await usersApi.update(user.id, {
-        preferences: { ...(user.preferences ?? {}), shortcuts: bindings },
+        preferences: { ...(user.preferences ?? {}), shortcuts: { ...(user.preferences?.shortcuts ?? {}), ...bindings } },
       })
       await refreshUser()
       toast.success("Atajos guardados")
@@ -282,7 +282,7 @@ export default function SettingsPage() {
     onError: () => toast.error("Error al eliminar. ¿Tiene tareas asociadas?"),
   })
 
-  const shortcutKeys = Object.keys(DEFAULT_SHORTCUTS)
+  const shortcutKeys = Object.keys(DEFAULT_SHORTCUTS).filter(isShortcutAvailable)
 
   const sections = [
     { id: "shortcuts", label: "Atajos de teclado" },
@@ -412,12 +412,14 @@ export default function SettingsPage() {
                   {isEditingThis ? (
                     <div className="flex items-center gap-2 flex-1">
                       <input
+                        aria-label={`Nombre de la categoría ${cat.name}`}
                         className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
                         value={editCatName}
                         onChange={(e) => setEditCatName(e.target.value)}
                         autoFocus
                       />
                       <input
+                        aria-label={`Minutos por defecto de la categoría ${cat.name}`}
                         className="w-20 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-center"
                         type="number"
                         min="1"
@@ -426,12 +428,14 @@ export default function SettingsPage() {
                       />
                       <span className="text-xs text-muted-foreground">min</span>
                       <button
+                        aria-label={`Guardar categoría ${cat.name}`}
                         onClick={() => updateCatMut.mutate({ id: cat.id, data: { name: editCatName, default_minutes: editCatMinutes } })}
                         className="p-1.5 text-green-600 hover:bg-green-50 rounded-md transition-colors"
                       >
                         <Check className="h-3.5 w-3.5" />
                       </button>
                       <button
+                        aria-label={`Cancelar edición de categoría ${cat.name}`}
                         onClick={() => setEditingCatId(null)}
                         className="p-1.5 text-muted-foreground hover:bg-muted rounded-md transition-colors"
                       >
@@ -470,6 +474,7 @@ export default function SettingsPage() {
           {/* Add new category */}
           <fieldset disabled={!categoriesQuery.isSuccess} className="mt-4 flex items-center gap-2">
             <input
+              aria-label="Nombre de la nueva categoría"
               className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
               placeholder="Nueva categoría..."
               value={newCatName}
@@ -482,6 +487,7 @@ export default function SettingsPage() {
               }}
             />
             <input
+              aria-label="Minutos por defecto de la nueva categoría"
               className="w-20 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-center"
               type="number"
               min="1"
@@ -491,6 +497,7 @@ export default function SettingsPage() {
             />
             <span className="text-xs text-muted-foreground">min</span>
             <button
+              aria-label="Añadir categoría"
               onClick={() => newCatName.trim() && createCatMut.mutate({ name: newCatName.trim(), default_minutes: newCatMinutes })}
               disabled={!newCatName.trim() || createCatMut.isPending}
               className="p-1.5 bg-brand text-black rounded-md hover:bg-brand/90 transition-colors disabled:opacity-50"
@@ -512,8 +519,9 @@ export default function SettingsPage() {
         </p>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Comunidad Autónoma</label>
+            <label htmlFor="user-region" className="text-xs font-medium text-muted-foreground mb-1 block">Comunidad Autónoma</label>
             <select
+              id="user-region"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               value={userRegion}
               onChange={(e) => setUserRegion(e.target.value)}
@@ -525,8 +533,9 @@ export default function SettingsPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Localidad</label>
+            <label htmlFor="user-locality" className="text-xs font-medium text-muted-foreground mb-1 block">Localidad</label>
             <input
+              id="user-locality"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               placeholder="Ej: Madrid, Barcelona..."
               value={userLocality}
@@ -557,8 +566,9 @@ export default function SettingsPage() {
 
         <div className="space-y-4">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Tono por defecto</label>
+            <label htmlFor="digest-tone" className="text-xs font-medium text-muted-foreground mb-1 block">Tono por defecto</label>
             <select
+              id="digest-tone"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               value={digestTone}
               onChange={(e) => setDigestTone(e.target.value)}
@@ -570,8 +580,9 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Destinatarios por defecto</label>
+            <label htmlFor="digest-recipients" className="text-xs font-medium text-muted-foreground mb-1 block">Destinatarios por defecto</label>
             <input
+              id="digest-recipients"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               placeholder="email1@ejemplo.com, email2@ejemplo.com"
               value={digestRecipients}
@@ -581,8 +592,9 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Envío automático</label>
+            <label htmlFor="digest-auto-send" className="text-xs font-medium text-muted-foreground mb-1 block">Envío automático</label>
             <select
+              id="digest-auto-send"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               value={digestAutoSend}
               onChange={(e) => setDigestAutoSend(e.target.value)}
@@ -667,24 +679,27 @@ export default function SettingsPage() {
 
           {/* Add new holiday */}
           <fieldset disabled={!holidaysQuery.isSuccess} className="mt-4 pt-4 border-t border-border space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <input
+                aria-label="Fecha del nuevo festivo"
                 type="date"
                 className="rounded-md border border-border bg-background px-3 py-1.5 text-sm"
                 value={newHolidayDate}
                 onChange={(e) => setNewHolidayDate(e.target.value)}
               />
               <input
+                aria-label="Nombre del nuevo festivo"
                 className="rounded-md border border-border bg-background px-3 py-1.5 text-sm"
                 placeholder="Nombre del festivo"
                 value={newHolidayName}
                 onChange={(e) => setNewHolidayName(e.target.value)}
               />
             </div>
-            <div className="grid grid-cols-3 gap-3 items-end">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end">
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Ámbito</label>
+                <label htmlFor="new-holiday-region" className="text-xs text-muted-foreground mb-1 block">Ámbito</label>
                 <select
+                  id="new-holiday-region"
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm"
                   value={newHolidayRegion}
                   onChange={(e) => setNewHolidayRegion(e.target.value)}
@@ -696,8 +711,9 @@ export default function SettingsPage() {
                 </select>
               </div>
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Localidad (opcional)</label>
+                <label htmlFor="new-holiday-locality" className="text-xs text-muted-foreground mb-1 block">Localidad (opcional)</label>
                 <input
+                  id="new-holiday-locality"
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm"
                   placeholder="Dejar vacío = toda la CCAA"
                   value={newHolidayLocality}

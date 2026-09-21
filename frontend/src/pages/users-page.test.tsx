@@ -19,6 +19,12 @@ function show(client = new QueryClient({ defaultOptions: { queries: { retry: fal
 describe("UsersPage safe reads", () => {
   beforeEach(() => { vi.clearAllMocks(); api.list.mockResolvedValue(page([])); api.permissions.mockResolvedValue([]) })
 
+  it("identifies the invitation password as a new password", async () => {
+    show()
+    await userEvent.click(await screen.findByRole("button", { name: /Invitar miembro/i }))
+    expect(screen.getByLabelText("Contraseña inicial")).toHaveAttribute("autocomplete", "new-password")
+  })
+
   it("hides cached users after refresh failure and restores only a fresh result", async () => {
     api.list.mockResolvedValueOnce(page([user(2, "Ana anterior")]))
     const { client } = show()

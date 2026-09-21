@@ -80,6 +80,13 @@ describe("ClientsPage recovery states", () => {
     localStorage.clear()
   })
 
+  it("names the client selection controls in the desktop table", async () => {
+    api.clients.mockResolvedValueOnce({ items: [clientRow], total: 1, page: 1, page_size: 25 })
+    show()
+    expect(await screen.findByRole("checkbox", { name: "Seleccionar cliente Cliente conservado" })).toBeInTheDocument()
+    expect(screen.getByRole("checkbox", { name: "Seleccionar todos los clientes visibles" })).toBeInTheDocument()
+  })
+
   it("offers retry for an initial 503 without claiming the list is empty", async () => {
     api.clients.mockRejectedValueOnce(httpError(503))
     show()
@@ -175,6 +182,16 @@ describe("ClientsPage recovery states", () => {
     expect((await screen.findAllByText("1 riesgo")).length).toBeGreaterThan(0)
     expect(screen.queryByText("95")).not.toBeInTheDocument()
     expect(screen.getAllByText("No evaluado · solo activos").length).toBeGreaterThan(0)
+  })
+
+  it("shows a long intermediary name as wrapping provenance below the client", async () => {
+    const intermediary = "Asociación internacional de agencias colaboradoras"
+    api.clients.mockResolvedValueOnce({ items: [{ ...clientRow, is_intermediary_deal: true, intermediary_name: intermediary }], total: 1, page: 1, page_size: 25 })
+    show()
+
+    const provenance = await screen.findByText(`Vía ${intermediary}`)
+    expect(provenance).toHaveClass("break-words")
+    expect(provenance).toHaveAttribute("title", `Vía ${intermediary}`)
   })
 
   it("creates the client, contacts and optional project in one recoverable request", async () => {
