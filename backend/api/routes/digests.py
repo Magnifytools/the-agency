@@ -278,6 +278,9 @@ def _to_response(
     digest: WeeklyDigest, readable: set[str]
 ) -> DigestResponse:
     """Convert ORM model to response schema."""
+    raw_context = _public_context(digest.raw_context, readable)
+    visible_sources = (raw_context or {}).get("source_catalog", {})
+    visible_source_keys = set(visible_sources) if isinstance(visible_sources, dict) else set()
     content = None
     if digest.content:
         try:
@@ -287,6 +290,11 @@ def _to_response(
                     parsed.model_dump(), digest.period_start, digest.period_end
                 )
             )
+            for section in ("done", "need", "next", "metrics"):
+                for item in getattr(content.sections, section):
+                    item.source_keys = [
+                        key for key in item.source_keys if key in visible_source_keys
+                    ]
         except Exception:
             content = None
 
@@ -299,7 +307,7 @@ def _to_response(
         status=digest.status,
         tone=digest.tone,
         content=content,
-        raw_context=_public_context(digest.raw_context, readable),
+        raw_context=raw_context,
         generated_at=digest.generated_at,
         edited_at=digest.edited_at,
         created_by=digest.created_by,

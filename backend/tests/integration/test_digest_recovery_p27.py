@@ -620,6 +620,7 @@ async def test_digest_source_context_obeys_current_module_read_permissions(
                 "sections": {
                     **generated()["sections"],
                     "done": [{"title": "Tarea privada", "description": "El texto del informe es visible", "source_keys": ["task:9"]}],
+                    "need": [{"title": "Seguimiento privado", "description": "No visible", "source_keys": ["followup:10"]}],
                 },
             },
             raw_context=raw_context,
@@ -637,6 +638,9 @@ async def test_digest_source_context_obeys_current_module_read_permissions(
         assert creator_detail.status_code == creator_listed.status_code == creator_recovered.status_code == 200
         creator_context = creator_detail.json()["raw_context"]
         assert set(creator_context["source_catalog"]) == {"task:9", "aggregate:hours"}
+        assert creator_detail.json()["content"]["sections"]["done"][0]["source_keys"] == ["task:9"]
+        assert creator_recovered.json()["content"]["sections"]["done"][0]["source_keys"] == ["task:9"]
+        assert creator_detail.json()["content"]["sections"]["need"][0]["source_keys"] == []
         assert creator_context["projects"] == [
             {
                 "task_total": 1,
@@ -666,6 +670,11 @@ async def test_digest_source_context_obeys_current_module_read_permissions(
         assert "pending_followups" not in context
         assert context["totals"] == {"project_count": 1}
         assert payload["content"]["sections"]["done"][0]["title"] == "Tarea privada"
+        assert payload["content"]["sections"]["done"][0]["source_keys"] == []
+        assert payload["content"]["sections"]["need"][0]["source_keys"] == []
+        listed_payload = next(item for item in responsible_listed.json() if item["id"] == digest.id)
+        assert listed_payload["content"]["sections"]["done"][0]["source_keys"] == []
+        assert listed_payload["content"]["sections"]["need"][0]["source_keys"] == []
     finally:
         await creator.aclose()
         await responsible.aclose()
