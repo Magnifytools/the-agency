@@ -38,6 +38,7 @@ import { clientKeys, holdedKeys, invalidateClientChange, projectKeys, timeKeys }
 import { formatCurrency } from "@/lib/format"
 import { TaskPanel } from "@/components/tasks/task-panel"
 import { clientHealthPresentation } from "@/components/dashboard/client-health-presentation"
+import { InvoiceStatusBadge } from "@/components/finance/invoice-status-badge"
 
 function formatMinutes(m: number): string {
   const h = Math.floor(m / 60)
@@ -870,9 +871,7 @@ export default function ClientDetailPage() {
                     <TableCell className="mono">{inv.due_date ? new Date(inv.due_date).toLocaleDateString("es-ES") : "-"}</TableCell>
                     <TableCell className="mono font-semibold">{formatCurrency(inv.total, inv.currency || "EUR")}</TableCell>
                     <TableCell>
-                      <Badge variant={inv.status === "paid" ? "success" : inv.status === "overdue" ? "destructive" : "warning"}>
-                        {inv.status === "paid" ? "Pagada" : inv.status === "overdue" ? "Vencida" : "Pendiente"}
-                      </Badge>
+                      <InvoiceStatusBadge status={inv.status} />
                     </TableCell>
                   </TableRow>
                 ))}
