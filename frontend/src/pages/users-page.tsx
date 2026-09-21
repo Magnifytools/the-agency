@@ -53,6 +53,7 @@ export default function UsersPage() {
   const { page, pageSize, setPage } = usePagination(25)
   const { user: currentUser } = useAuth()
   const [editing, setEditing] = useState<User | null>(null)
+  const [deactivationUser, setDeactivationUser] = useState<User | null>(null)
   const [permissionsUser, setPermissionsUser] = useState<User | null>(null)
   const [permissionsState, setPermissionsState] = useState<Record<string, { read: boolean; write: boolean }>>({})
 
@@ -81,6 +82,26 @@ export default function UsersPage() {
       toast.success("Usuario actualizado")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar")),
+  })
+
+  const impactQuery = useQuery({
+    queryKey: ["user-deactivation-impact", deactivationUser?.id],
+    queryFn: () => usersApi.deactivationImpact(deactivationUser!.id),
+    enabled: !!deactivationUser?.is_active,
+  })
+
+  const activeMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) =>
+      usersApi.update(id, { is_active: isActive }),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["users"] })
+      queryClient.invalidateQueries({ queryKey: ["users-all"] })
+      queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      queryClient.invalidateQueries({ queryKey: ["projects"] })
+      setDeactivationUser(null)
+      toast.success(updated.is_active ? "Miembro reactivado" : "Miembro desactivado")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "No se pudo cambiar el acceso")),
   })
 
   const createMutation = useMutation({
@@ -196,11 +217,12 @@ export default function UsersPage() {
               <TableHead>Ciudad</TableHead>
               <TableHead>Rol</TableHead>
               <TableHead>Tarifa/h</TableHead>
+              <TableHead>Estado</TableHead>
               <TableHead>Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {Array.from({ length: 3 }).map((_, i) => <SkeletonTableRow key={i} cols={8} />)}
+            {Array.from({ length: 3 }).map((_, i) => <SkeletonTableRow key={i} cols={9} />)}
           </TableBody>
         </Table>
       ) : usersQuery.isError ? (
@@ -217,8 +239,9 @@ export default function UsersPage() {
                   <TableHead>Puesto</TableHead>
                   <TableHead>Ciudad</TableHead>
                   <TableHead>Rol</TableHead>
+                  <TableHead>Estado</TableHead>
                   <TableHead>Tarifa/h</TableHead>
-                  <TableHead className="w-12"></TableHead>
+                  <TableHead>Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -234,6 +257,7 @@ export default function UsersPage() {
                         {u.role === "admin" ? "Admin" : "Miembro"}
                       </Badge>
                     </TableCell>
+                    <TableCell><Badge variant={u.is_active ? "secondary" : "outline"}>{u.is_active ? "Activo" : "Inactivo"}</Badge></TableCell>
                     <TableCell className="mono">{u.hourly_rate != null ? `${formatCurrency(u.hourly_rate)}/h` : "-"}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
@@ -243,6 +267,11 @@ export default function UsersPage() {
                         {currentUser?.role === "admin" && u.role !== "admin" && (
                           <Button variant="ghost" size="icon" aria-label="Permisos" onClick={() => setPermissionsUser(u)}>
                             <Shield className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {currentUser?.role === "admin" && u.id !== currentUser.id && (
+                          <Button variant="ghost" size="sm" onClick={() => setDeactivationUser(u)}>
+                            {u.is_active ? "Desactivar" : "Reactivar"}
                           </Button>
                         )}
                       </div>
@@ -264,11 +293,12 @@ export default function UsersPage() {
                     {u.role === "admin" ? "Admin" : "Miembro"}
                   </Badge>
                 </div>
+                <Badge variant={u.is_active ? "secondary" : "outline"}>{u.is_active ? "Activo" : "Inactivo"}</Badge>
                 <p className="text-sm text-muted-foreground break-all">{u.email}</p>
                 {u.locality && <p className="text-xs text-muted-foreground">{u.locality}</p>}
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm mono">{u.hourly_rate != null ? `${formatCurrency(u.hourly_rate)}/h` : "-"}</p>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap justify-end gap-2">
                     {currentUser?.role === "admin" && u.role !== "admin" && (
                       <Button variant="outline" size="sm" onClick={() => setPermissionsUser(u)}>
                         <Shield className="h-4 w-4 mr-2" />
@@ -279,6 +309,11 @@ export default function UsersPage() {
                       <Pencil className="h-4 w-4 mr-2" />
                       Editar
                     </Button>
+                    {currentUser?.role === "admin" && u.id !== currentUser.id && (
+                      <Button variant="outline" size="sm" onClick={() => setDeactivationUser(u)}>
+                        {u.is_active ? "Desactivar" : "Reactivar"}
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -288,6 +323,40 @@ export default function UsersPage() {
       )}
 
       <Pagination page={page} pageSize={pageSize} total={data?.total ?? 0} onPageChange={setPage} />
+
+      <Dialog open={!!deactivationUser} onOpenChange={(open) => !open && setDeactivationUser(null)}>
+        <DialogHeader>
+          <DialogTitle>{deactivationUser?.is_active ? "Desactivar acceso" : "Reactivar acceso"} — {deactivationUser?.full_name}</DialogTitle>
+        </DialogHeader>
+        {deactivationUser?.is_active ? (
+          <div className="space-y-4 text-sm">
+            <p>Perderá el acceso a la aplicación. Sus tareas y proyectos conservarán el responsable actual hasta que lo cambiéis.</p>
+            {impactQuery.isPending || impactQuery.isFetching ? <p>Calculando trabajo asignado…</p> : impactQuery.isError ? (
+              <div role="alert" className="space-y-2">
+                <p>No se pudo calcular el trabajo asignado. Reintenta antes de desactivar.</p>
+                <Button variant="outline" size="sm" onClick={() => void impactQuery.refetch()}>Reintentar</Button>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-border p-3 space-y-2">
+                <p><strong>{impactQuery.data.open_tasks}</strong> tareas abiertas y <strong>{impactQuery.data.portfolio_projects}</strong> proyectos en cartera seguirán a su nombre.</p>
+                <p className="text-muted-foreground">Después podrás revisar y reasignar ese trabajo en <a className="underline" href={`/tasks?view=all&assigned=${deactivationUser.id}`}>Tareas</a> y <a className="underline" href={`/projects?owner=${deactivationUser.id}`}>Proyectos</a>.</p>
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeactivationUser(null)}>Cancelar</Button>
+              <Button disabled={!impactQuery.isSuccess || impactQuery.isFetching || activeMutation.isPending} onClick={() => activeMutation.mutate({ id: deactivationUser.id, isActive: false })}>Confirmar desactivación</Button>
+            </div>
+          </div>
+        ) : deactivationUser ? (
+          <div className="space-y-4 text-sm">
+            <p>Recuperará el acceso según sus permisos actuales. Las asignaciones conservadas no cambian.</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeactivationUser(null)}>Cancelar</Button>
+              <Button disabled={activeMutation.isPending} onClick={() => activeMutation.mutate({ id: deactivationUser.id, isActive: true })}>Confirmar reactivación</Button>
+            </div>
+          </div>
+        ) : null}
+      </Dialog>
 
       {/* Edit Dialog */}
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>

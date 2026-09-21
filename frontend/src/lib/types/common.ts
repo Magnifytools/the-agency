@@ -21,6 +21,11 @@ export interface UserPermission {
   can_write: boolean
 }
 
+export interface DeactivationImpact {
+  open_tasks: number
+  portfolio_projects: number
+}
+
 export interface User {
   id: number
   email: string

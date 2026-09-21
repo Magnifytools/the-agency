@@ -4,8 +4,8 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import UsersPage from "./users-page"
 
-const api = vi.hoisted(() => ({ list: vi.fn(), permissions: vi.fn(), updatePermissions: vi.fn() }))
-vi.mock("@/lib/api", () => ({ usersApi: { list: api.list, getPermissions: api.permissions, updatePermissions: api.updatePermissions, update: vi.fn(), create: vi.fn() } }))
+const api = vi.hoisted(() => ({ list: vi.fn(), permissions: vi.fn(), updatePermissions: vi.fn(), impact: vi.fn(), update: vi.fn() }))
+vi.mock("@/lib/api", () => ({ usersApi: { list: api.list, getPermissions: api.permissions, updatePermissions: api.updatePermissions, deactivationImpact: api.impact, update: api.update, create: vi.fn() } }))
 vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: { id: 1, role: "admin" } }) }))
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
@@ -17,7 +17,36 @@ function show(client = new QueryClient({ defaultOptions: { queries: { retry: fal
 }
 
 describe("UsersPage safe reads", () => {
-  beforeEach(() => { vi.clearAllMocks(); api.list.mockResolvedValue(page([])); api.permissions.mockResolvedValue([]) })
+  beforeEach(() => { vi.clearAllMocks(); api.list.mockResolvedValue(page([])); api.permissions.mockResolvedValue([]); api.impact.mockResolvedValue({ open_tasks: 0, portfolio_projects: 0 }) })
+
+  it("shows operational impact and requires confirmation before revoking access", async () => {
+    api.list.mockResolvedValue(page([user(2, "Ana")]))
+    api.impact.mockResolvedValue({ open_tasks: 3, portfolio_projects: 2 })
+    api.update.mockResolvedValue({ ...user(2, "Ana"), is_active: false })
+    show()
+    await screen.findAllByText("Ana")
+    await userEvent.click(screen.getAllByRole("button", { name: "Desactivar" })[0])
+    await waitFor(() => expect(screen.getByRole("dialog")).toHaveTextContent("3 tareas abiertas y 2 proyectos en cartera"))
+    expect(screen.getByRole("link", { name: "Tareas" })).toHaveAttribute("href", "/tasks?view=all&assigned=2")
+    expect(screen.getByRole("link", { name: "Proyectos" })).toHaveAttribute("href", "/projects?owner=2")
+    expect(api.update).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole("button", { name: "Cancelar" }))
+    expect(api.update).not.toHaveBeenCalled()
+    await userEvent.click(screen.getAllByRole("button", { name: "Desactivar" })[0])
+    await userEvent.click(await screen.findByRole("button", { name: "Confirmar desactivación" }))
+    await waitFor(() => expect(api.update).toHaveBeenCalledWith(2, { is_active: false }))
+  })
+
+  it("reactivates an inactive member with an explicit confirmation", async () => {
+    api.list.mockResolvedValue(page([{ ...user(2, "Ana"), is_active: false }]))
+    api.update.mockResolvedValue(user(2, "Ana"))
+    show()
+    await screen.findAllByText("Ana")
+    await userEvent.click(screen.getAllByRole("button", { name: "Reactivar" })[0])
+    expect(api.impact).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole("button", { name: "Confirmar reactivación" }))
+    await waitFor(() => expect(api.update).toHaveBeenCalledWith(2, { is_active: true }))
+  })
 
   it("identifies the invitation password as a new password", async () => {
     show()

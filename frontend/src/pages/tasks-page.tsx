@@ -96,9 +96,15 @@ export default function TasksPage() {
   const [filterCategory, setFilterCategory] = useState<string>("")
   const [filterStatus, setFilterStatus] = useState<string>("backlog,pending,in_progress,advanced,waiting,in_review")
   const [filterPriority, setFilterPriority] = useState<string>("")
-  const [filterAssigned, setFilterAssigned] = useState<string>(() =>
-    user && user.role !== "admin" ? String(user.id) : ""
-  )
+  const requestedAssigned = searchParams.get("assigned")
+  const filterAssigned = requestedAssigned && /^[1-9]\d*$/.test(requestedAssigned)
+    ? requestedAssigned : (user && user.role !== "admin" ? String(user.id) : "")
+  const setFilterAssigned = (value: string) => setSearchParams((previous) => {
+    const next = new URLSearchParams(previous)
+    if (value) next.set("assigned", value)
+    else next.delete("assigned")
+    return next
+  })
   const [filterDateFrom, setFilterDateFrom] = useState<string>("")
   const [filterDateTo, setFilterDateTo] = useState<string>("")
   const [filterDateField, setFilterDateField] = useState<"due_date" | "scheduled_date">("due_date")

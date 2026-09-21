@@ -24,6 +24,7 @@ import type {
   User,
   UserCreate,
   UserPermission,
+  DeactivationImpact,
   TimeEntry,
   TimeEntryCreate,
   ActiveTimer,
@@ -426,6 +427,8 @@ export const usersApi = {
   create: (data: UserCreate) => api.post<User>("/users", data).then((r) => r.data),
   get: (id: number) => api.get<User>(`/users/${id}`).then((r) => r.data),
   update: (id: number, data: Partial<User>) => api.put<User>(`/users/${id}`, data).then((r) => r.data),
+  deactivationImpact: (id: number) =>
+    api.get<DeactivationImpact>(`/users/${id}/deactivation-impact`).then((r) => r.data),
   getPermissions: (id: number) => api.get<UserPermission[]>(`/users/${id}/permissions`).then((r) => r.data),
   updatePermissions: (id: number, permissions: UserPermission[]) =>
     api.put<UserPermission[]>(`/users/${id}/permissions`, { permissions }).then((r) => r.data),
@@ -564,7 +567,7 @@ export const categoriesApi = {
 
 // Projects
 export const projectsApi = {
-  list: (params?: { client_id?: number; status?: string; owner?: "assigned" | "unassigned"; lifecycle?: "portfolio" | "archive"; project_type?: string; is_recurring?: boolean; period_from?: string; period_to?: string; page?: number; page_size?: number }) =>
+  list: (params?: { client_id?: number; status?: string; owner?: string; lifecycle?: "portfolio" | "archive"; project_type?: string; is_recurring?: boolean; period_from?: string; period_to?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<ProjectListItem>>("/projects", { params }).then((r) => r.data),
   unassignedCount: () =>
     api.get<PaginatedResponse<ProjectListItem>>("/projects", { params: { lifecycle: "portfolio", owner: "unassigned", page_size: 1 } }).then((r) => r.data.total),

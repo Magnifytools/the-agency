@@ -51,7 +51,7 @@ export default function ProjectsPage() {
   const statusFilter = requestedStatus
   const typeFilter = searchParams.get("type") || ""
   const requestedOwner = searchParams.get("owner")
-  const ownerFilter = requestedOwner === "assigned" || requestedOwner === "unassigned" ? requestedOwner : ""
+  const ownerFilter = requestedOwner === "assigned" || requestedOwner === "unassigned" || (requestedOwner && /^[1-9]\d*$/.test(requestedOwner)) ? requestedOwner : ""
   const periodFilter = searchParams.get("period") || ""
   const setFilter = (key: string, value: string) => setSearchParams((previous) => {
     const next = new URLSearchParams(previous)
@@ -205,6 +205,11 @@ export default function ProjectsPage() {
           <option value="">Asignación: todas</option>
           <option value="unassigned">Sin responsable</option>
           <option value="assigned">Con responsable</option>
+          {allUsers.map((owner) => (
+            <option key={owner.id} value={owner.id}>
+              {owner.full_name}{owner.is_active ? "" : " (inactivo)"}
+            </option>
+          ))}
         </Select>
         <Select
           value={typeFilter}
