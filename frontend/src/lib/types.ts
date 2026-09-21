@@ -71,16 +71,29 @@ export interface CommandReceipt {
   intent: { kind?: string; [key: string]: unknown } | null
   prompt: { questions?: CommandQuestion[]; kind?: string; plan?: unknown; signature?: string } | null
   result: {
+    kind?: string
     message: string
     entities: CommandEntity[]
     applied?: Record<string, string | number | null>
     applied_labels?: Record<string, string>
     query?: { kind: string; items: CommandEntity[]; total: number; page: number; page_size: number; has_more: boolean }
     undo_available: boolean
+    action?: { kind: "open_project_form"; href: string }
   } | null
   change_log_id: number | null
   error: { code: string; detail?: string | null } | null
   revision: number
   created_at: string
   updated_at: string
+}
+
+export interface OperationalUsage {
+  as_of: string
+  window: { days: number; start: string; end: string }
+  work_context: { total: number; with_project: number; without_project: number; coverage_percent: number | null }
+  work_planning: { total: number; planned_or_waiting: number; unplanned: number; coverage_percent: number | null }
+  incidents: { active: number; snoozed: number; dismissed: number; resolved_in_window: number }
+  dailys: { updates: number; authors: number; user_days: number }
+  commands: { executed: number; failed: number; needs_input: number; needs_review: number; undone: number; terminal_total: number; success_percent: number | null; by_channel: { app: number; extension: number; unknown: number } }
+  deliveries: { sent: number; failed: number; uncertain: number; expired: number; cancelled: number; pending: number; sending: number; terminal_total: number; confirmation_percent: number | null }
 }

@@ -734,6 +734,11 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                 aria-live="polite"
               >
                 <p className="font-medium">{receipt.result.message}</p>
+                {receipt.result.kind === "derivation" && receipt.raw_text && (
+                  <blockquote className="rounded-md border border-border bg-background/70 px-3 py-2 text-sm text-muted-foreground">
+                    {receipt.raw_text}
+                  </blockquote>
+                )}
                 {receipt.result.applied && (
                   <dl className="grid gap-x-4 gap-y-1 rounded-md bg-background/70 p-3 text-sm sm:grid-cols-[max-content_1fr]">
                     {orderedAppliedEntries(receipt.result.applied).map(([field, value]) => (
@@ -794,6 +799,15 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                   ))
                 )}
                 <div className="flex flex-wrap gap-2">
+                  {receipt.result.action?.kind === "open_project_form" && (
+                    <Link
+                      className="inline-flex h-10 items-center justify-center rounded-[10px] bg-brand px-5 py-2 text-sm font-semibold text-primary-foreground shadow hover:bg-brand/90"
+                      to={receipt.result.action.href}
+                      onClick={() => onOpenChange(false)}
+                    >
+                      Revisar proyecto
+                    </Link>
+                  )}
                   {receipt.result.undo_available && receipt.change_log_id && (
                     <Button
                       variant="outline"
