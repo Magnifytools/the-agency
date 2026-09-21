@@ -73,6 +73,8 @@ const taskStatusBadge = (status: TaskStatus) => {
 }
 
 function RevenueIntelligenceCard({ client }: { client: Client }) {
+  const { hasPermission } = useAuth()
+  const canWriteClients = hasPermission("clients", true)
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({
@@ -93,6 +95,7 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
   })
 
   const handleSave = () => {
+    if (!canWriteClients) return
     updateMutation.mutate({
       business_model: form.business_model || null,
       aov: form.aov !== "" ? Number(form.aov) : null,
@@ -121,7 +124,7 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-base">Inteligencia de Negocio</CardTitle>
-        {!editing ? (
+        {!editing && canWriteClients ? (
           <Button variant="ghost" size="sm" aria-label="Editar inteligencia de negocio" onClick={() => {
             setForm({
               business_model: client.business_model || "",
@@ -134,23 +137,23 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
           }}>
             <Pencil className="w-4 h-4" />
           </Button>
-        ) : (
+        ) : editing ? (
           <div className="flex gap-1">
-            <Button variant="ghost" size="sm" aria-label="Guardar inteligencia de negocio" onClick={handleSave} disabled={updateMutation.isPending}>
+            {canWriteClients && <Button variant="ghost" size="sm" aria-label="Guardar inteligencia de negocio" onClick={handleSave} disabled={updateMutation.isPending}>
               <Check className="w-4 h-4" />
-            </Button>
+            </Button>}
             <Button variant="ghost" size="sm" aria-label="Cancelar edición de inteligencia de negocio" onClick={() => setEditing(false)}>
               <X className="w-4 h-4" />
             </Button>
           </div>
-        )}
+        ) : null}
       </CardHeader>
       <CardContent>
         {editing ? (
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="business-model" className="text-xs text-muted-foreground">Modelo de negocio</label>
-              <Select id="business-model" value={form.business_model} onChange={e => setForm(f => ({ ...f, business_model: e.target.value }))}>
+              <Select id="business-model" value={form.business_model} onChange={e => setForm(f => ({ ...f, business_model: e.target.value }))} disabled={!canWriteClients}>
                 <option value="">Seleccionar...</option>
                 <option value="ecommerce">E-commerce</option>
                 <option value="saas">SaaS</option>
@@ -160,19 +163,19 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
             </div>
             <div>
               <label htmlFor="business-aov" className="text-xs text-muted-foreground">AOV (€)</label>
-              <Input id="business-aov" type="number" value={form.aov} onChange={e => setForm(f => ({ ...f, aov: e.target.value }))} placeholder="0" />
+              <Input id="business-aov" type="number" value={form.aov} onChange={e => setForm(f => ({ ...f, aov: e.target.value }))} placeholder="0" disabled={!canWriteClients} />
             </div>
             <div>
               <label htmlFor="business-conversion" className="text-xs text-muted-foreground">Conversión (%)</label>
-              <Input id="business-conversion" type="number" step="0.1" value={form.conversion_rate} onChange={e => setForm(f => ({ ...f, conversion_rate: e.target.value }))} placeholder="0" />
+              <Input id="business-conversion" type="number" step="0.1" value={form.conversion_rate} onChange={e => setForm(f => ({ ...f, conversion_rate: e.target.value }))} placeholder="0" disabled={!canWriteClients} />
             </div>
             <div>
               <label htmlFor="business-ltv" className="text-xs text-muted-foreground">LTV (€)</label>
-              <Input id="business-ltv" type="number" value={form.ltv} onChange={e => setForm(f => ({ ...f, ltv: e.target.value }))} placeholder="0" />
+              <Input id="business-ltv" type="number" value={form.ltv} onChange={e => setForm(f => ({ ...f, ltv: e.target.value }))} placeholder="0" disabled={!canWriteClients} />
             </div>
             <div className="col-span-2">
               <label htmlFor="business-seo-maturity" className="text-xs text-muted-foreground">Madurez SEO</label>
-              <Select id="business-seo-maturity" value={form.seo_maturity_level} onChange={e => setForm(f => ({ ...f, seo_maturity_level: e.target.value }))}>
+              <Select id="business-seo-maturity" value={form.seo_maturity_level} onChange={e => setForm(f => ({ ...f, seo_maturity_level: e.target.value }))} disabled={!canWriteClients}>
                 <option value="">Seleccionar...</option>
                 <option value="none">Sin SEO</option>
                 <option value="basic">Básico</option>

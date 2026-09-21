@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { clientsApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/utils"
+import { useAuth } from "@/context/auth-context"
 
 interface Recommendation {
   priority: "high" | "medium" | "low"
@@ -35,6 +36,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 export function ClientAiAdvisor({ clientId }: Props) {
+  const { hasPermission } = useAuth()
+  const canWriteClients = hasPermission("clients", true)
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
 
   const adviceMut = useMutation({
@@ -52,14 +55,14 @@ export function ClientAiAdvisor({ clientId }: Props) {
         <h3 className="text-lg font-semibold flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-brand" /> Recomendaciones IA
         </h3>
-        <Button
+        {canWriteClients && <Button
           size="sm"
           onClick={() => adviceMut.mutate()}
           disabled={adviceMut.isPending}
         >
           <Sparkles className="h-4 w-4 mr-1" />
           {adviceMut.isPending ? "Analizando..." : "Pedir recomendaciones"}
-        </Button>
+        </Button>}
       </div>
 
       {recommendations.length === 0 && !adviceMut.isPending && (

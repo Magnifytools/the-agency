@@ -12,12 +12,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { getErrorMessage } from "@/lib/utils"
+import { useAuth } from "@/context/auth-context"
 
 interface Props {
   clientId: number
 }
 
 export function ContactList({ clientId }: Props) {
+  const { hasPermission } = useAuth()
+  const canWriteClients = hasPermission("clients", true)
   const qc = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<ClientContact | null>(null)
@@ -65,9 +68,9 @@ export function ContactList({ clientId }: Props) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Contactos</h3>
-        <Button size="sm" onClick={() => { setEditing(null); setShowForm(true) }}>
+        {canWriteClients && <Button size="sm" onClick={() => { setEditing(null); setShowForm(true) }}>
           <Plus className="h-4 w-4 mr-1" /> Nuevo contacto
-        </Button>
+        </Button>}
       </div>
 
       {contacts.length === 0 ? (
@@ -99,12 +102,12 @@ export function ContactList({ clientId }: Props) {
                     </div>
                   </div>
                   <div className="flex gap-1 shrink-0">
-                    <Button variant="ghost" size="icon" aria-label="Editar contacto" className="h-7 w-7" onClick={() => { setEditing(c); setShowForm(true) }}>
+                    {canWriteClients && <Button variant="ghost" size="icon" aria-label="Editar contacto" className="h-7 w-7" onClick={() => { setEditing(c); setShowForm(true) }}>
                       <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" aria-label="Eliminar contacto" className="h-7 w-7 text-destructive" onClick={() => setDeleteTarget(c)}>
+                    </Button>}
+                    {canWriteClients && <Button variant="ghost" size="icon" aria-label="Eliminar contacto" className="h-7 w-7 text-destructive" onClick={() => setDeleteTarget(c)}>
                       <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    </Button>}
                   </div>
                 </div>
                 {(c.department || c.preferred_channel) && (
@@ -160,6 +163,7 @@ export function ContactList({ clientId }: Props) {
         <ContactForm
           initial={editing}
           onSubmit={(data) => {
+            if (!canWriteClients) return
             if (editing) {
               updateMut.mutate({ id: editing.id, data })
             } else {
@@ -168,6 +172,7 @@ export function ContactList({ clientId }: Props) {
           }}
           loading={createMut.isPending || updateMut.isPending}
           onCancel={() => setShowForm(false)}
+          canWrite={canWriteClients}
         />
       </Dialog>
 
@@ -177,7 +182,7 @@ export function ContactList({ clientId }: Props) {
         onOpenChange={(o) => !o && setDeleteTarget(null)}
         title="Eliminar contacto"
         description={`Se eliminará el contacto "${deleteTarget?.name}". Esta acción no se puede deshacer.`}
-        onConfirm={() => deleteTarget && deleteMut.mutate(deleteTarget.id)}
+        onConfirm={() => canWriteClients && deleteTarget && deleteMut.mutate(deleteTarget.id)}
       />
     </div>
   )
@@ -188,11 +193,13 @@ function ContactForm({
   onSubmit,
   loading,
   onCancel,
+  canWrite,
 }: {
   initial: ClientContact | null
   onSubmit: (data: ClientContactCreate) => void
   loading: boolean
   onCancel: () => void
+  canWrite: boolean
 }) {
   const [name, setName] = useState(initial?.name ?? "")
   const [email, setEmail] = useState(initial?.email ?? "")
@@ -207,7 +214,7 @@ function ContactForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim()) return
+    if (!canWrite || !name.trim()) return
     onSubmit({
       name: name.trim(),
       email: email.trim() || null,
@@ -224,6 +231,7 @@ function ContactForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 p-4">
+      <fieldset disabled={!canWrite} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <Label>Nombre *</Label>
@@ -266,11 +274,12 @@ function ContactForm({
         <input type="checkbox" checked={isPrimary} onChange={(e) => setIsPrimary(e.target.checked)} className="rounded" />
         Contacto principal
       </label>
+      </fieldset>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onCancel}>Cancelar</Button>
-        <Button type="submit" disabled={loading || !name.trim()}>
+        {canWrite && <Button type="submit" disabled={loading || !name.trim()}>
           {loading ? "Guardando..." : initial ? "Guardar" : "Crear"}
-        </Button>
+        </Button>}
       </div>
     </form>
   )

@@ -7,6 +7,7 @@ import type { Client, ClientDocument } from "@/lib/types"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { useAuth } from "@/context/auth-context"
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -41,12 +42,15 @@ interface FichaTabProps {
 }
 
 export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
+  const { isAdmin, hasPermission } = useAuth()
+  const canWriteClients = hasPermission("clients", true)
   const queryClient = useQueryClient()
   const [contextValue, setContextValue] = useState(client.context ?? "")
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle")
   const [deleteDocId, setDeleteDocId] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const canWriteRef = useRef(canWriteClients)
 
   // Reset local state only when navigating between clients, never on a same-id
   // refetch — otherwise an inflight query response can blow away the user's
@@ -60,6 +64,15 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client.id])
+
+  useEffect(() => {
+    canWriteRef.current = canWriteClients
+    if (!canWriteClients && saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+      setSaveStatus("idle")
+    }
+  }, [canWriteClients])
 
   const updateMut = useMutation({
     mutationFn: (ctx: string) => clientsApi.update(client.id, { context: ctx }),
@@ -81,11 +94,12 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
   }, [])
 
   const handleContextChange = (v: string) => {
+    if (!canWriteClients) return
     setContextValue(v)
     setSaveStatus("saving")
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
-      updateMut.mutate(v)
+      if (canWriteRef.current) updateMut.mutate(v)
     }, 1500)
   }
 
@@ -141,6 +155,7 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
             value={contextValue}
             onChange={(e) => handleContextChange(e.target.value)}
             placeholder="Cómo llegó el cliente, quién tomó la decisión, qué problemas tenía, qué se ha prometido, hitos importantes, acuerdos especiales, historial de facturación relevante..."
+            readOnly={!canWriteClients}
           />
         </CardContent>
       </Card>
@@ -193,7 +208,7 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
         <CardHeader className="flex flex-row items-center gap-2 pb-3">
           <FileText className="h-4 w-4 text-muted-foreground" />
           <CardTitle className="text-base">Documentos</CardTitle>
-          <div className="ml-auto">
+          {canWriteClients && <div className="ml-auto">
             <input
               ref={fileInputRef}
               type="file"
@@ -209,7 +224,7 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
               <Upload className="h-3.5 w-3.5 mr-1.5" />
               {uploadMut.isPending ? "Subiendo..." : "Subir documento"}
             </Button>
-          </div>
+          </div>}
         </CardHeader>
         <CardContent>
           {docsLoading ? (
@@ -244,7 +259,7 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
                         <Download className="h-3.5 w-3.5" />
                       </Button>
                     </a>
-                    <Button
+                    {canWriteClients && <Button
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 text-destructive hover:text-destructive"
@@ -252,7 +267,7 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
                       title="Eliminar"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    </Button>}
                   </div>
                 </li>
               ))}
@@ -269,18 +284,18 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
         description="¿Seguro que quieres eliminar este documento? Esta acción no se puede deshacer."
         confirmLabel="Eliminar"
         onConfirm={() => {
-          if (deleteDocId !== null) deleteMut.mutate(deleteDocId)
+          if (canWriteClients && deleteDocId !== null) deleteMut.mutate(deleteDocId)
         }}
       />
 
       {/* Intelligence Package */}
-      <IntelligenceSection client={client} />
+      <IntelligenceSection client={client} isAdmin={isAdmin} />
     </div>
   )
 }
 
 
-function IntelligenceSection({ client }: { client: Client }) {
+function IntelligenceSection({ client, isAdmin }: { client: Client; isAdmin: boolean }) {
   const queryClient = useQueryClient()
   const [urlInput, setUrlInput] = useState(client.website || "")
   const intelligence = (client as unknown as Record<string, unknown>).onboarding_intelligence as Record<string, unknown> | null
@@ -308,15 +323,15 @@ function IntelligenceSection({ client }: { client: Client }) {
             <div className="space-y-1">
               <label htmlFor={`intelligence-url-${client.id}`} className="text-xs text-muted-foreground">Web del cliente</label>
               <div className="flex gap-2">
-                <input
+                {isAdmin && <input
                   id={`intelligence-url-${client.id}`}
                   type="url"
                   placeholder="https://ejemplo.com"
                   value={urlInput}
                   onChange={e => setUrlInput(e.target.value)}
                   className="min-w-0 flex-1 h-9 rounded-md border bg-transparent px-3 text-sm"
-                />
-                <Button
+                />}
+                {isAdmin && <Button
                   size="sm"
                   onClick={() => generateMut.mutate()}
                   disabled={generateMut.isPending || !urlInput.trim()}
@@ -327,7 +342,7 @@ function IntelligenceSection({ client }: { client: Client }) {
                     <Sparkles className="w-4 h-4 mr-2" />
                   )}
                   Generar
-                </Button>
+                </Button>}
               </div>
             </div>
           </div>
@@ -383,7 +398,7 @@ function IntelligenceSection({ client }: { client: Client }) {
                 </ul>
               </div>
             )}
-            <Button
+            {isAdmin && <Button
               variant="ghost"
               size="sm"
               onClick={() => generateMut.mutate()}
@@ -391,7 +406,7 @@ function IntelligenceSection({ client }: { client: Client }) {
             >
               {generateMut.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
               Regenerar
-            </Button>
+            </Button>}
           </div>
         )}
       </CardContent>

@@ -9,6 +9,7 @@ import ClientDetailPage from "./client-detail-page"
 const mocks = vi.hoisted(() => ({
   enabled: new Set(["digests", "communications", "reports", "resources", "billing"]),
   permissions: new Set(["tasks", "projects", "digests", "communications", "reports", "billing"]),
+  writePermissions: new Set<string>(),
   summary: vi.fn(),
   projects: vi.fn(),
   time: vi.fn(),
@@ -17,7 +18,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/hidden-modules", () => ({ isEnabled: (module: string) => mocks.enabled.has(module) }))
 vi.mock("@/context/auth-context", () => ({
-  useAuth: () => ({ isAdmin: false, hasPermission: (module: string) => mocks.permissions.has(module) }),
+  useAuth: () => ({ isAdmin: false, hasPermission: (module: string, write = false) => write ? mocks.writePermissions.has(module) : mocks.permissions.has(module) }),
 }))
 vi.mock("@/lib/api", () => ({
   clientsApi: { summary: mocks.summary, recentTimeEntries: mocks.time, whatIf: vi.fn() },
@@ -53,14 +54,15 @@ const summary = {
 
 function show(tab: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const view = render(
+  const tree = () => (
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[`/clients/5?tab=${tab}`]}>
         <Routes><Route path="/clients/:id" element={<ClientDetailPage />} /></Routes>
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
-  return { ...view, client }
+  const view = render(tree())
+  return { ...view, client, refresh: () => view.rerender(tree()) }
 }
 
 describe("client detail areas", () => {
@@ -68,6 +70,7 @@ describe("client detail areas", () => {
     vi.clearAllMocks()
     mocks.enabled = new Set(["digests", "communications", "reports", "resources", "billing"])
     mocks.permissions = new Set(["clients", "tasks", "projects", "digests", "communications", "reports", "billing"])
+    mocks.writePermissions = new Set(["clients", "tasks", "projects", "digests", "communications", "reports", "billing"])
     mocks.summary.mockResolvedValue(summary)
     mocks.projects.mockResolvedValue([])
     mocks.time.mockResolvedValue([])
@@ -126,6 +129,26 @@ describe("client detail areas", () => {
     expect(screen.getByRole("button", { name: "Guardar inteligencia de negocio" })).toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Cancelar edición de inteligencia de negocio" }))
     expect(screen.getByRole("button", { name: "Editar inteligencia de negocio" })).toBeInTheDocument()
+  })
+
+  it("keeps business intelligence read-only for a client reader", async () => {
+    mocks.writePermissions.delete("clients")
+    show("panel")
+
+    expect(await screen.findByText("Inteligencia de Negocio")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Editar inteligencia de negocio" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Guardar inteligencia de negocio" })).not.toBeInTheDocument()
+  })
+
+  it("does not submit business intelligence after client write access is revoked", async () => {
+    const view = show("panel")
+    await userEvent.click(await screen.findByRole("button", { name: "Editar inteligencia de negocio" }))
+    mocks.writePermissions.delete("clients")
+    view.refresh()
+
+    expect(screen.getByRole("combobox", { name: "Modelo de negocio" })).toBeDisabled()
+    expect(screen.getByRole("spinbutton", { name: "AOV (€)" })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: "Guardar inteligencia de negocio" })).not.toBeInTheDocument()
   })
 
   it("falls back safely when a legacy URL points to a hidden module", async () => {
