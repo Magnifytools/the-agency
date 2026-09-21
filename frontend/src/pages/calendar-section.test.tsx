@@ -4,11 +4,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { CalendarSection } from "./settings-page"
 
 const mocks = vi.hoisted(() => ({ status: vi.fn(), sync: vi.fn(), auth: vi.fn(), disconnect: vi.fn() }))
+const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }))
 vi.mock("@/lib/api", () => ({
   calendarApi: { getStatus: mocks.status, sync: mocks.sync, getAuthUrl: mocks.auth, disconnect: mocks.disconnect },
   usersApi: {}, categoriesApi: {}, myWeekApi: {},
 }))
 vi.mock("@/components/communication-schedules", () => ({ CommunicationSchedules: () => null }))
+vi.mock("sonner", () => ({ toast: toasts }))
 const connected = { connected: true, connection_status: "connected", last_synced_at: "2026-09-18T08:00:00Z", calendar_id: "primary" }
 const revoked = { ...connected, connected: false, connection_status: "reconnect_required" }
 function show() { return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><CalendarSection /></QueryClientProvider>) }
@@ -63,4 +65,11 @@ it("offers retry after a status error instead of assuming disconnection", async 
   fireEvent.click(await screen.findByRole("button", { name: "Reintentar" }))
   expect(await screen.findByRole("button", { name: "Reconectar Google Calendar" })).toBeInTheDocument()
   expect(screen.queryByRole("button", { name: "Conectar Google Calendar" })).not.toBeInTheDocument()
+})
+
+it("explains a cancelled Google authorization without treating it as a provider error", async () => {
+  window.history.replaceState({}, "", "/settings?calendar=cancelled")
+  show()
+  await waitFor(() => expect(toasts.info).toHaveBeenCalledWith("Conexión de Google Calendar cancelada"))
+  expect(window.location.pathname + window.location.search).toBe("/settings")
 })

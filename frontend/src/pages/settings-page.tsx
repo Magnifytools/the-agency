@@ -777,6 +777,9 @@ export function CalendarSection() {
       toast.success("Google Calendar conectado")
       window.history.replaceState({}, "", "/settings")
       void invalidateCalendarViews(queryClient)
+    } else if (calendarParam === "cancelled") {
+      toast.info("Conexión de Google Calendar cancelada")
+      window.history.replaceState({}, "", "/settings")
     } else if (calendarParam === "error") {
       toast.error("Error al conectar Google Calendar")
       window.history.replaceState({}, "", "/settings")
