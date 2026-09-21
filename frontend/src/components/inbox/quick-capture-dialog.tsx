@@ -154,6 +154,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     channel: "app" | "extension";
     context?: CommandContext;
   } | null>(null);
+  const failedRetrySource = useRef<string | null>(null);
   const stepKey = useRef<string>(requestKey());
   const stepPayload = useRef<{
     receiptId: string;
@@ -402,6 +403,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     setUndoneChangeId(null);
     commandKey.current = requestKey();
     commandReplayPayload.current = null;
+    failedRetrySource.current = null;
     stepKey.current = requestKey();
     window.setTimeout(() => textareaRef.current?.focus(), 0);
   };
@@ -415,6 +417,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     setUndoneChangeId(null);
     commandKey.current = requestKey();
     commandReplayPayload.current = null;
+    failedRetrySource.current = null;
     stepKey.current = requestKey();
     window.setTimeout(() => textareaRef.current?.focus(), 0);
   };
@@ -430,6 +433,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     invalidateCommand();
     setText(item.raw_text);
     commandKey.current = item.request_key;
+    failedRetrySource.current = null;
     commandReplayPayload.current = {
       channel: item.channel,
       context: item.context ?? undefined,
@@ -452,6 +456,15 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
       },
     };
     commandMutation.mutate(target);
+  };
+  const retryFailedCommand = () => {
+    if (!receipt || isPending) return;
+    if (!networkUncertain && failedRetrySource.current !== receipt.id) {
+      commandKey.current = requestKey();
+      commandReplayPayload.current = null;
+      failedRetrySource.current = receipt.id;
+    }
+    submitCommand();
   };
   const updateCommandText = (next: string) => {
     if (!receiptRef.current && !networkUncertain && next !== text) {
@@ -713,15 +726,20 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                   {receipt.error?.detail ??
                     "No se ha podido realizar la petición."}
                 </p>
+                <p className="text-sm">
+                  {networkUncertain
+                    ? "No hemos recibido respuesta del reintento. Comprueba la misma petición antes de volver a enviarla."
+                    : "Se enviará una petición nueva con el mismo texto."}
+                </p>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={editCommand}>
+                  {!networkUncertain && <Button variant="outline" onClick={editCommand}>
                     Editar petición
-                  </Button>
+                  </Button>}
                   <Button
-                    onClick={submitCommand}
+                    onClick={retryFailedCommand}
                     disabled={isPending}
                   >
-                    Reintentar
+                    {networkUncertain ? "Comprobar el reintento" : "Reintentar"}
                   </Button>
                 </div>
               </div>

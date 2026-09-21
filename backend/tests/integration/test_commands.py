@@ -152,6 +152,46 @@ async def test_member_without_permission_gets_durable_failed_receipt(member_clie
     assert replay.json()["status"] == "failed"
 
 
+async def test_restored_permission_requires_new_key_for_manual_retry(member_client, db_session):
+    original = {"request_key": KEY, "text": "Crea tarea Recuperada", "channel": "app"}
+    denied = await member_client.post("/api/commands", json=original)
+    assert denied.status_code == 403
+    failed = await db_session.scalar(select(CommandReceipt).where(
+        CommandReceipt.user_id == member_client.test_user.id,
+        CommandReceipt.request_key == KEY,
+    ))
+    assert failed.status == "failed"
+
+    db_session.add(UserPermission(
+        user_id=member_client.test_user.id, module="tasks", can_read=True, can_write=True,
+    ))
+    await db_session.commit()
+    await db_session.refresh(member_client.test_user, ["permissions"])
+
+    recovery = await member_client.post("/api/commands", json=original)
+    assert recovery.status_code == 200
+    assert recovery.json()["id"] == failed.id
+    assert recovery.json()["status"] == "failed"
+
+    retried = {**original, "request_key": "command-manual-retry-0001"}
+    success = await member_client.post("/api/commands", json=retried)
+    assert success.status_code == 200, success.text
+    receipt = success.json()
+    assert receipt["status"] == "executed"
+    assert receipt["id"] != failed.id
+    assert receipt["result"]["undo_available"] is True
+    assert len((await db_session.scalars(select(Task).where(Task.title == "Recuperada"))).all()) == 1
+
+    replay = await member_client.post("/api/commands", json=retried)
+    assert replay.status_code == 200
+    assert replay.json()["id"] == receipt["id"]
+    assert len((await db_session.scalars(select(Task).where(Task.title == "Recuperada"))).all()) == 1
+    receipts = (await db_session.scalars(select(CommandReceipt).where(
+        CommandReceipt.user_id == member_client.test_user.id,
+    ))).all()
+    assert {row.id for row in receipts} == {failed.id, receipt["id"]}
+
+
 async def test_project_creation_resolves_client_and_does_not_invent_commercial_fields(admin_client, db_session):
     client = Client(name="Acme CMD", status="active")
     db_session.add(client)
