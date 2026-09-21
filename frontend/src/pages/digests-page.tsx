@@ -496,7 +496,7 @@ function DigestList() {
                         >
                           <MessageCircle className="w-4 h-4" />
                         </Button>
-                        {canWrite && digest.status !== "sent" && (
+                        {canWrite && digest.status !== "sent" && digest.can_delete === true && (
                           <>
                             <span className="w-px h-5 bg-border mx-0.5" />
                             <Button

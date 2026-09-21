@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import delete, event, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import (
@@ -13,6 +13,7 @@ from backend.db.models import (
     ClientReportPolicy,
     ClientStatus,
     DigestExternalDeliveryEvent,
+    Delivery,
     DigestStatus,
     DigestTone,
     ExternalDeliveryAction,
@@ -98,6 +99,8 @@ async def test_external_confirmation_is_versioned_idempotent_revocable_and_block
     db_session.add(client); await db_session.flush()
     digest = WeeklyDigest(client_id=client.id, period_start=date(2026, 9, 7), period_end=date(2026, 9, 13), status=DigestStatus.reviewed, tone=DigestTone.cercano, content=content(), created_by=admin_user.id)
     db_session.add(digest); await db_session.commit()
+    listed = (await admin_client.get("/api/digests", params={"client_id": client.id})).json()
+    assert listed[0]["can_delete"] is True
     key = "evidence-confirm-0001"
     first = await admin_client.post(f"/api/digests/{digest.id}/external-delivery-events", headers={"X-Agency-Request-Key": key}, json={"action": "confirmed"})
     replay = await admin_client.post(f"/api/digests/{digest.id}/external-delivery-events", headers={"X-Agency-Request-Key": key}, json={"action": "confirmed"})
@@ -108,8 +111,43 @@ async def test_external_confirmation_is_versioned_idempotent_revocable_and_block
     revoked = await admin_client.post(f"/api/digests/{digest.id}/external-delivery-events", headers={"X-Agency-Request-Key": "evidence-revoke-0001"}, json={"action": "revoked"})
     assert revoked.status_code == 200
     assert revoked.json()["external_delivery"]["state"] == "unconfirmed"
+    listed = (await admin_client.get("/api/digests", params={"client_id": client.id})).json()
+    assert listed[0]["can_delete"] is False
     assert (await admin_client.delete(f"/api/digests/{digest.id}")).status_code == 409
     assert await db_session.scalar(select(func.count(DigestExternalDeliveryEvent.id)).where(DigestExternalDeliveryEvent.digest_id == digest.id)) == 2
+
+
+async def test_digest_list_delete_capability_respects_internal_delivery_and_read_only_access(
+    admin_client, db_session, admin_user, make_member_client,
+):
+    reader = await make_member_client([("digests", True, False)])
+    client = Client(name="Cliente internal evidence", status=ClientStatus.active)
+    db_session.add(client); await db_session.flush()
+    available = WeeklyDigest(client_id=client.id, period_start=date(2026, 9, 7), period_end=date(2026, 9, 13), status=DigestStatus.draft, tone=DigestTone.cercano, content=content(), created_by=reader.test_user.id)
+    delivered = WeeklyDigest(client_id=client.id, period_start=date(2026, 8, 31), period_end=date(2026, 9, 6), status=DigestStatus.reviewed, tone=DigestTone.cercano, content=content(), created_by=reader.test_user.id)
+    db_session.add_all([available, delivered]); await db_session.flush()
+    db_session.add(Delivery(
+        id="p47-internal-delivery-00000000001", dedupe_key="p47-internal-delivery-key", actor_id=admin_user.id,
+        source_kind="digest", source_id=delivered.id, source_version="v1", destination_key="internal",
+        payload={}, status="failed", available_at=datetime(2026, 9, 21), expires_at=datetime(2026, 9, 22),
+    ))
+    await db_session.commit()
+
+    evidence_queries = []
+    def capture(_conn, _cursor, statement, _parameters, _context, _executemany):
+        if "FROM deliveries" in statement and "digest_external_delivery_events" in statement:
+            evidence_queries.append(statement)
+    event.listen(db_session.bind.sync_engine, "before_cursor_execute", capture)
+    try:
+        admin_rows = (await admin_client.get("/api/digests", params={"client_id": client.id})).json()
+    finally:
+        event.remove(db_session.bind.sync_engine, "before_cursor_execute", capture)
+    assert len(evidence_queries) == 1
+    assert {row["id"]: row["can_delete"] for row in admin_rows} == {available.id: True, delivered.id: False}
+    reader_rows = (await reader.get("/api/digests", params={"client_id": client.id})).json()
+    assert {row["id"]: row["can_delete"] for row in reader_rows} == {available.id: False, delivered.id: False}
+    assert (await admin_client.delete(f"/api/digests/{delivered.id}")).status_code == 409
+    await reader.aclose()
 
 
 async def test_preview_marks_older_confirmation_and_revocation_with_tied_timestamps(

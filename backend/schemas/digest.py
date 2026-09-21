@@ -78,6 +78,7 @@ class DigestResponse(BaseModel):
     period_start: date
     period_end: date
     status: DigestStatus
+    can_delete: Optional[bool] = None
     tone: DigestTone
     content: Optional[DigestContent] = None
     raw_context: Optional[dict] = None
