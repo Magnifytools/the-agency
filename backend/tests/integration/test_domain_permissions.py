@@ -75,6 +75,40 @@ async def test_client_status_update_requires_clients_write(make_member_client):
 
 
 @pytest.mark.asyncio
+async def test_client_reader_cannot_mutate_active_client_detail_surfaces(make_member_client):
+    reader = await make_member_client([("clients", True, False)])
+    try:
+        responses = [
+            await reader.put("/api/clients/999999", json={"context": "No guardar"}),
+            await reader.post("/api/clients/999999/contacts", json={"name": "No crear"}),
+            await reader.put("/api/clients/999999/contacts/999999", json={"name": "No editar"}),
+            await reader.delete("/api/clients/999999/contacts/999999"),
+            await reader.post(
+                "/api/clients/999999/documents",
+                files={"file": ("forbidden.txt", b"forbidden", "text/plain")},
+            ),
+            await reader.delete("/api/clients/999999/documents/999999"),
+            await reader.post("/api/clients/999999/ai-advice"),
+        ]
+        assert [response.status_code for response in responses] == [403] * len(responses)
+    finally:
+        await reader.aclose()
+
+
+@pytest.mark.asyncio
+async def test_client_writer_cannot_generate_onboarding_intelligence(make_member_client):
+    writer = await make_member_client([("clients", True, True)])
+    try:
+        response = await writer.post(
+            "/api/clients/999999/generate-intelligence",
+            json={"url": "https://example.com"},
+        )
+        assert response.status_code == 403
+    finally:
+        await writer.aclose()
+
+
+@pytest.mark.asyncio
 async def test_inbox_conversion_rejects_cross_client_project(
     admin_client, db_session
 ):

@@ -17,7 +17,8 @@ interface Props {
 }
 
 export function ClientSettingsTab({ client }: Props) {
-  const { isAdmin } = useAuth()
+  const { isAdmin, hasPermission } = useAuth()
+  const canWriteClients = hasPermission("clients", true)
   const qc = useQueryClient()
   const [ga4, setGa4] = useState(client.ga4_property_id ?? "")
   const [gsc, setGsc] = useState(client.gsc_url ?? "")
@@ -54,6 +55,7 @@ export function ClientSettingsTab({ client }: Props) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (!canWriteClients) return
     updateMut.mutate()
   }
 
@@ -67,6 +69,7 @@ export function ClientSettingsTab({ client }: Props) {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {!canWriteClients && <p role="status" className="rounded-md bg-muted p-3 text-sm">Puedes consultar estos ajustes, pero no editarlos.</p>}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label className="flex items-center gap-1.5">
@@ -78,6 +81,7 @@ export function ClientSettingsTab({ client }: Props) {
                   onChange={(e) => setGa4(e.target.value)}
                   placeholder="123456789"
                   className="mt-1"
+                  disabled={!canWriteClients}
                 />
                 <p className="text-[11px] text-muted-foreground mt-1">
                   ID numerico de la propiedad de Google Analytics 4
@@ -93,6 +97,7 @@ export function ClientSettingsTab({ client }: Props) {
                   onChange={(e) => setGsc(e.target.value)}
                   placeholder="https://ejemplo.com"
                   className="mt-1"
+                  disabled={!canWriteClients}
                 />
                 <p className="text-[11px] text-muted-foreground mt-1">
                   URL de la propiedad en Search Console
@@ -111,6 +116,7 @@ export function ClientSettingsTab({ client }: Props) {
                   value={engineProjectId}
                   onChange={(e) => setEngineProjectId(e.target.value)}
                   className="mt-1 w-full border border-input bg-background text-foreground rounded-md px-3 py-2 text-sm"
+                  disabled={!canWriteClients}
                 >
                   <option value="">Sin vincular</option>
                   {engineProjects.map((p) => (
@@ -126,6 +132,7 @@ export function ClientSettingsTab({ client }: Props) {
                   onChange={(e) => setEngineProjectId(e.target.value)}
                   placeholder="ID del proyecto en Engine"
                   className="mt-1"
+                  disabled={!canWriteClients}
                 />
               )}
               <p className="text-[11px] text-muted-foreground mt-1">
@@ -133,12 +140,12 @@ export function ClientSettingsTab({ client }: Props) {
               </p>
             </div>}
 
-            <div className="flex justify-end">
+            {canWriteClients && <div className="flex justify-end">
               <Button type="submit" disabled={!isDirty || updateMut.isPending} size="sm">
                 <Save className="h-4 w-4 mr-1" />
                 {updateMut.isPending ? "Guardando..." : "Guardar"}
               </Button>
-            </div>
+            </div>}
           </form>
         </CardContent>
       </Card>
