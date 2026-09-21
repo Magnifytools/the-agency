@@ -77,6 +77,27 @@ describe("client reader controls", () => {
     vi.useRealTimers()
   })
 
+  it("shows authoritative context after a save leaves the debounce timer", async () => {
+    vi.useFakeTimers()
+    mocks.canWrite = true
+    let resolveSave: (() => void) | undefined
+    mocks.update.mockImplementation(() => new Promise<void>((resolve) => { resolveSave = resolve }))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const tree = () => <QueryClientProvider client={queryClient}><FichaTab client={client} /></QueryClientProvider>
+    const view = render(tree())
+    fireEvent.change(screen.getByDisplayValue("Contexto existente"), { target: { value: "Cambio enviado" } })
+
+    await act(async () => { vi.advanceTimersByTime(1_500) })
+    expect(mocks.update).toHaveBeenCalledWith(5, { context: "Cambio enviado" })
+    mocks.canWrite = false
+    view.rerender(tree())
+    expect(screen.getByDisplayValue("Contexto existente")).toHaveAttribute("readonly")
+
+    await act(async () => { resolveSave?.() })
+    expect(screen.queryByText("Guardado ✓")).not.toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
   it("keeps contacts readable while hiding client write actions", async () => {
     show(<ContactList clientId={5} />)
 

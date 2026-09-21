@@ -67,10 +67,14 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
 
   useEffect(() => {
     canWriteRef.current = canWriteClients
-    if (!canWriteClients && saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = null
+    if (!canWriteClients) {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+        setContextValue(client.context ?? "")
+      }
       setSaveStatus("idle")
+    } else {
       setContextValue(client.context ?? "")
     }
   }, [canWriteClients])
@@ -79,6 +83,10 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
     mutationFn: (ctx: string) => clientsApi.update(client.id, { context: ctx }),
     onSuccess: () => {
       void invalidateClientChange(queryClient, [client.id])
+      if (!canWriteRef.current) {
+        setSaveStatus("idle")
+        return
+      }
       setSaveStatus("saved")
       setTimeout(() => setSaveStatus("idle"), 2000)
     },
@@ -100,6 +108,7 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
     setSaveStatus("saving")
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null
       if (canWriteRef.current) updateMut.mutate(v)
     }, 1500)
   }
@@ -153,7 +162,7 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
         <CardContent>
           <textarea
             className="w-full min-h-[220px] text-sm bg-background border border-input rounded-md p-3 resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-            value={contextValue}
+            value={canWriteClients ? contextValue : client.context ?? ""}
             onChange={(e) => handleContextChange(e.target.value)}
             placeholder="Cómo llegó el cliente, quién tomó la decisión, qué problemas tenía, qué se ha prometido, hitos importantes, acuerdos especiales, historial de facturación relevante..."
             readOnly={!canWriteClients}
@@ -321,7 +330,7 @@ function IntelligenceSection({ client, isAdmin }: { client: Client; isAdmin: boo
             <p className="text-sm text-muted-foreground">
               {isAdmin ? "Genera un análisis automático del negocio del cliente con IA." : "No hay análisis automático del cliente todavía."}
             </p>
-            <div className="space-y-1">
+            {isAdmin && <div className="space-y-1">
               <label htmlFor={`intelligence-url-${client.id}`} className="text-xs text-muted-foreground">Web del cliente</label>
               <div className="flex gap-2">
                 {isAdmin && <input
@@ -345,7 +354,7 @@ function IntelligenceSection({ client, isAdmin }: { client: Client; isAdmin: boo
                   Generar
                 </Button>}
               </div>
-            </div>
+            </div>}
           </div>
         ) : (
           <div className="space-y-4">
