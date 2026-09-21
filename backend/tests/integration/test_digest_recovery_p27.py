@@ -7,7 +7,16 @@ import pytest
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import Client, ClientStatus, DigestTone, Task, TaskStatus, User, WeeklyDigest
+from backend.db.models import (
+    Client,
+    ClientReportPolicy,
+    ClientStatus,
+    DigestTone,
+    Task,
+    TaskStatus,
+    User,
+    WeeklyDigest,
+)
 from backend.services.digest_generation import generate_locked_digest, regenerate_digest
 from backend.services.digest_generator import _validate_sources
 
@@ -528,3 +537,135 @@ async def test_human_edit_drops_provenance_only_from_changed_item(
     assert response.json()["content"]["sections"]["metrics"][0]["source_keys"] == [
         "aggregate:hours"
     ]
+
+
+async def test_human_edit_cannot_spoof_sources_for_unchanged_text(
+    admin_client, db_session, admin_user
+):
+    client = await _client(db_session, "Provenance spoof")
+    source = WeeklyDigest(
+        client_id=client.id,
+        period_start=PERIOD[0],
+        period_end=PERIOD[1],
+        tone=DigestTone.cercano,
+        content=generated(),
+        raw_context=facts(),
+        created_by=admin_user.id,
+    )
+    db_session.add(source)
+    await db_session.commit()
+    spoofed = generated()
+    spoofed["sections"]["done"][0]["source_keys"] = ["aggregate:hours"]
+
+    response = await admin_client.put(
+        f"/api/digests/{source.id}", json={"content": spoofed}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["content"]["sections"]["done"][0]["source_keys"] == [
+        "task:1"
+    ]
+
+
+async def test_digest_source_context_obeys_current_module_read_permissions(
+    make_member_client, db_session, admin_user
+):
+    creator = await make_member_client([("digests", True, True), ("tasks", True, False)])
+    responsible = await make_member_client([("digests", True, False)])
+    try:
+        client = Client(name="ACL sources", status=ClientStatus.active)
+        db_session.add(client)
+        await db_session.flush()
+        raw_context = {
+            "context_version": 2,
+            "projects": [
+                {
+                    "project_id": 8,
+                    "project_name": "Proyecto privado",
+                    "resolution": "resolved",
+                    "progress_percent": 60,
+                    "task_total": 1,
+                    "completed_total": 1,
+                    "completed_tasks": [{"id": 9, "title": "Tarea privada"}],
+                    "in_progress_total": 0,
+                    "in_progress_tasks": [],
+                    "pending_total": 0,
+                    "pending_tasks": [],
+                    "total_minutes": 30,
+                    "total_hours": 0.5,
+                    "historical_template_minutes": 0,
+                }
+            ],
+            "unresolved_projects": [],
+            "unassigned": None,
+            "pending_followups": [
+                {"id": 10, "subject": "Seguimiento privado", "summary": "No visible"}
+            ],
+            "totals": {"project_count": 1, "task_total": 1, "total_minutes": 30},
+            "source_catalog": {
+                "task:9": {"kind": "task", "class": "task_completed", "id": 9, "label": "Tarea privada"},
+                "project:8": {"kind": "project", "class": "project", "id": 8, "label": "Proyecto privado"},
+                "followup:10": {"kind": "followup", "class": "followup", "id": 10, "label": "Seguimiento privado"},
+                "aggregate:hours": {"kind": "aggregate", "class": "aggregate", "label": "Tiempo del período"},
+            },
+            "_generation": {"key": "acl-source-context-key", "actor_id": creator.test_user.id},
+        }
+        digest = WeeklyDigest(
+            client_id=client.id,
+            period_start=PERIOD[0],
+            period_end=PERIOD[1],
+            tone=DigestTone.cercano,
+            content={
+                **generated(),
+                "sections": {
+                    **generated()["sections"],
+                    "done": [{"title": "Tarea privada", "description": "El texto del informe es visible", "source_keys": ["task:9"]}],
+                },
+            },
+            raw_context=raw_context,
+            created_by=creator.test_user.id,
+        )
+        db_session.add_all([
+            ClientReportPolicy(client_id=client.id, responsible_user_id=responsible.test_user.id),
+            digest,
+        ])
+        await db_session.commit()
+
+        creator_detail = await creator.get(f"/api/digests/{digest.id}")
+        creator_listed = await creator.get("/api/digests")
+        creator_recovered = await creator.get("/api/digests/generation/acl-source-context-key")
+        assert creator_detail.status_code == creator_listed.status_code == creator_recovered.status_code == 200
+        creator_context = creator_detail.json()["raw_context"]
+        assert set(creator_context["source_catalog"]) == {"task:9", "aggregate:hours"}
+        assert creator_context["projects"] == [
+            {
+                "task_total": 1,
+                "completed_total": 1,
+                "completed_tasks": [{"id": 9, "title": "Tarea privada"}],
+                "in_progress_total": 0,
+                "in_progress_tasks": [],
+                "pending_total": 0,
+                "pending_tasks": [],
+                "total_minutes": 30,
+                "total_hours": 0.5,
+                "historical_template_minutes": 0,
+            }
+        ]
+        listed_digest = next(item for item in creator_listed.json() if item["id"] == digest.id)
+        assert listed_digest["raw_context"]["source_catalog"] == creator_context["source_catalog"]
+
+        responsible_detail = await responsible.get(f"/api/digests/{digest.id}")
+        responsible_listed = await responsible.get("/api/digests")
+        responsible_recovered = await responsible.get("/api/digests/generation/acl-source-context-key")
+        assert responsible_detail.status_code == responsible_listed.status_code == 200
+        assert responsible_recovered.status_code == 404
+        payload = responsible_detail.json()
+        context = payload["raw_context"]
+        assert set(context["source_catalog"]) == {"aggregate:hours"}
+        assert context["projects"] == []
+        assert "pending_followups" not in context
+        assert context["totals"] == {"project_count": 1}
+        assert payload["content"]["sections"]["done"][0]["title"] == "Tarea privada"
+    finally:
+        await creator.aclose()
+        await responsible.aclose()

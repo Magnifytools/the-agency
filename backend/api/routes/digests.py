@@ -27,11 +27,13 @@ from backend.api.middleware.audit_log import log_audit
 from backend.api.utils.db_helpers import safe_refresh
 from backend.core.rate_limiter import ai_limiter
 from backend.db.database import get_db
+from backend.core.modules import is_hidden
 from backend.db.models import (
     Delivery,
     DigestExternalDeliveryEvent,
     DigestStatus,
     User,
+    UserPermission,
     UserRole,
     WeeklyDigest,
 )
@@ -101,12 +103,151 @@ def _human_content(
                     for field in ("title", "description")
                 )
             )
-            keys = item.get("source_keys", []) if unchanged else []
+            # Provenance is server-issued. A client may preserve it by keeping
+            # an assertion intact, but cannot attach another catalog entry to
+            # that same text.
+            keys = old.get("source_keys", []) if unchanged else []
             item["source_keys"] = [key for key in keys if key in catalog][:8]
     return content
 
 
-def _public_context(raw_context: dict | None) -> dict | None:
+async def _readable_modules(db: AsyncSession, actor: User) -> set[str]:
+    if actor.role == UserRole.admin:
+        return {"tasks", "projects", "communications"}
+    readable = set(
+        (
+            await db.scalars(
+                select(UserPermission.module).where(
+                    UserPermission.user_id == actor.id,
+                    UserPermission.can_read.is_(True),
+                    UserPermission.module.in_(("tasks", "projects", "communications")),
+                )
+            )
+        ).all()
+    )
+    if is_hidden("communications"):
+        readable.discard("communications")
+    return readable
+
+
+def _public_task(task: object, readable: set[str]) -> dict | None:
+    if not isinstance(task, dict):
+        return None
+    public = dict(task)
+    if "projects" not in readable:
+        public.pop("project_id", None)
+        public.pop("project_name", None)
+    return public
+
+
+def _public_group(group: object, readable: set[str]) -> dict | None:
+    if not isinstance(group, dict):
+        return None
+    public = dict(group)
+    if "projects" not in readable:
+        public.pop("project_id", None)
+        public.pop("project_name", None)
+        public.pop("resolution", None)
+        public.pop("progress_percent", None)
+    if "tasks" not in readable:
+        for key in (
+            "task_total",
+            "completed_total",
+            "completed_tasks",
+            "in_progress_total",
+            "in_progress_tasks",
+            "pending_total",
+            "pending_tasks",
+            "total_minutes",
+            "total_hours",
+            "historical_template_minutes",
+        ):
+            public.pop(key, None)
+    elif "projects" not in readable:
+        for key in ("completed_tasks", "in_progress_tasks", "pending_tasks"):
+            public[key] = [
+                task
+                for item in public.get(key, [])
+                if (task := _public_task(item, readable)) is not None
+            ]
+    return public if public else None
+
+
+def _public_context(
+    raw_context: dict | None, readable: set[str]
+) -> dict | None:
+    if raw_context is None:
+        return None
+    context = {key: value for key, value in raw_context.items() if key != "_generation"}
+    catalog = context.get("source_catalog")
+    required_module = {
+        "task": "tasks",
+        "project": "projects",
+        "followup": "communications",
+    }
+    if isinstance(catalog, dict):
+        context["source_catalog"] = {
+            key: source
+            for key, source in catalog.items()
+            if isinstance(source, dict)
+            and (
+                source.get("kind") not in required_module
+                or required_module[source.get("kind")] in readable
+            )
+        }
+
+    if "tasks" not in readable:
+        for key in ("completed_tasks", "in_progress_tasks", "pending_tasks"):
+            context.pop(key, None)
+        for key in ("total_minutes", "total_hours", "project_progress"):
+            context.pop(key, None)
+    if "projects" not in readable:
+        context.pop("project_name", None)
+        if "tasks" in readable:
+            for key in ("completed_tasks", "in_progress_tasks", "pending_tasks"):
+                if key in context:
+                    context[key] = [
+                        task
+                        for item in context[key]
+                        if (task := _public_task(item, readable)) is not None
+                    ]
+    elif "tasks" in readable:
+        for key in ("completed_tasks", "in_progress_tasks", "pending_tasks"):
+            if key in context:
+                context[key] = [
+                    task
+                    for item in context[key]
+                    if (task := _public_task(item, readable)) is not None
+                ]
+    if "communications" not in readable:
+        context.pop("pending_followups", None)
+    for key in ("projects", "unresolved_projects"):
+        if key in context:
+            context[key] = [
+                public
+                for group in context[key]
+                if (public := _public_group(group, readable)) is not None
+            ]
+    if "unassigned" in context:
+        context["unassigned"] = _public_group(context["unassigned"], readable)
+    if isinstance(context.get("totals"), dict) and "tasks" not in readable:
+        context["totals"] = {
+            key: value
+            for key, value in context["totals"].items()
+            if key not in {
+                "task_total",
+                "completed_total",
+                "in_progress_total",
+                "pending_total",
+                "total_minutes",
+                "total_hours",
+                "historical_template_minutes",
+            }
+        }
+    return context
+
+
+def _stored_context(raw_context: dict | None) -> dict | None:
     if raw_context is None:
         return None
     return {key: value for key, value in raw_context.items() if key != "_generation"}
@@ -133,7 +274,9 @@ def _generation_rejection(reason: str) -> HTTPException:
     )
 
 
-def _to_response(digest: WeeklyDigest) -> DigestResponse:
+def _to_response(
+    digest: WeeklyDigest, readable: set[str]
+) -> DigestResponse:
     """Convert ORM model to response schema."""
     content = None
     if digest.content:
@@ -156,7 +299,7 @@ def _to_response(digest: WeeklyDigest) -> DigestResponse:
         status=digest.status,
         tone=digest.tone,
         content=content,
-        raw_context=_public_context(digest.raw_context),
+        raw_context=_public_context(digest.raw_context, readable),
         generated_at=digest.generated_at,
         edited_at=digest.edited_at,
         created_by=digest.created_by,
@@ -253,7 +396,9 @@ async def generate_digest(
         .where(WeeklyDigest.id == digest.id)
         .options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
     )
-    return _to_response(result.scalar_one())
+    return _to_response(
+        result.scalar_one(), await _readable_modules(db, current_user)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -318,7 +463,8 @@ async def list_digests(
     )
     result = await db.execute(query)
 
-    return [_to_response(d) for d in result.scalars().all()]
+    readable = await _readable_modules(db, current_user)
+    return [_to_response(digest, readable) for digest in result.scalars().all()]
 
 
 @router.get("/generation/{generation_key}", response_model=DigestResponse)
@@ -341,7 +487,7 @@ async def recover_generation(
             },
         )
     digest = await authorize_digest(db, digest.id, current_user, write=False)
-    return _to_response(digest)
+    return _to_response(digest, await _readable_modules(db, current_user))
 
 
 # ---------------------------------------------------------------------------
@@ -358,7 +504,7 @@ async def get_digest(
     """Get a specific digest by ID."""
     digest = await authorize_digest(db, digest_id, current_user, write=False)
 
-    return _to_response(digest)
+    return _to_response(digest, await _readable_modules(db, current_user))
 
 
 # ---------------------------------------------------------------------------
@@ -404,7 +550,7 @@ async def update_digest(
     content_changed = request.content is not None and next_content != current_content
 
     if not tone_changed and not content_changed:
-        return _to_response(digest)
+        return _to_response(digest, await _readable_modules(db, current_user))
 
     # If tone changed without an explicit content update, regenerate content
     if tone_changed and request.content is None:
@@ -478,7 +624,9 @@ async def update_digest(
                 selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator)
             )
         )
-        return _to_response(version_result.scalar_one())
+        return _to_response(
+            version_result.scalar_one(), await _readable_modules(db, current_user)
+        )
     else:
         generated_at = digest.generated_at
         edited_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -492,7 +640,7 @@ async def update_digest(
         status=DigestStatus.draft,
         tone=next_tone,
         content=next_content,
-        raw_context=_public_context(digest.raw_context),
+        raw_context=_stored_context(digest.raw_context),
         generated_at=generated_at,
         edited_at=edited_at,
         created_by=current_user.id,
@@ -505,7 +653,9 @@ async def update_digest(
         .where(WeeklyDigest.id == version.id)
         .options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
     )
-    return _to_response(version_result.scalar_one())
+    return _to_response(
+        version_result.scalar_one(), await _readable_modules(db, current_user)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -527,7 +677,7 @@ async def update_digest_status(
     await db.commit()
     await safe_refresh(db, digest, log_context="digests")
 
-    return _to_response(digest)
+    return _to_response(digest, await _readable_modules(db, current_user))
 
 
 # ---------------------------------------------------------------------------
