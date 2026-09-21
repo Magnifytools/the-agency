@@ -3,7 +3,7 @@ import type { Task, TaskStatus } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Pencil, Clock, AlertTriangle, User, GripVertical, UserX, CalendarX, Repeat } from "lucide-react"
+import { Pencil, Eye, Clock, AlertTriangle, User, GripVertical, UserX, CalendarX, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { businessDateString, formatCivilDate } from "@/lib/dates"
@@ -13,6 +13,7 @@ interface Props {
   tasks: Task[]
   onStatusChange: (taskId: number, newStatus: TaskStatus) => void
   onOpenEdit: (task: Task, initialStatus?: TaskStatus) => void
+  canWrite?: boolean
 }
 
 const columns: Array<{ status: TaskStatusGroup; label: string; color: string; bgColor: string }> = [
@@ -43,7 +44,7 @@ const formatMinutes = (mins: number) => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
+export function KanbanBoard({ tasks, onStatusChange, onOpenEdit, canWrite = true }: Props) {
   const dragTaskRef = useRef<Task | null>(null)
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatusGroup | null>(null)
 
@@ -108,9 +109,9 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
               col.bgColor,
               isDragOver && "ring-2 ring-brand ring-offset-2 scale-[1.01]"
             )}
-            onDragOver={(e) => handleDragOver(e, col.status)}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDrop(e, col.status)}
+            onDragOver={canWrite ? (e) => handleDragOver(e, col.status) : undefined}
+            onDragLeave={canWrite ? handleDragLeave : undefined}
+            onDrop={canWrite ? (e) => handleDrop(e, col.status) : undefined}
           >
             {/* Column header */}
             <div className="flex items-center justify-between mb-3 px-1">
@@ -134,11 +135,12 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
                 return (
                   <Card
                     key={task.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, task)}
-                    onDragEnd={handleDragEnd}
+                    draggable={canWrite}
+                    onDragStart={canWrite ? (e) => handleDragStart(e, task) : undefined}
+                    onDragEnd={canWrite ? handleDragEnd : undefined}
                     className={cn(
-                      "cursor-grab active:cursor-grabbing hover:shadow-md transition-all group border",
+                      "hover:shadow-md transition-all group border",
+                      canWrite && "cursor-grab active:cursor-grabbing",
                       isOverdue && "border-red-300 bg-red-50/50 text-black [&_.text-muted-foreground]:text-black/60"
                     )}
                   >
@@ -162,9 +164,9 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit }: Props) {
                           size="icon"
                           className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                           onClick={() => onOpenEdit(task)}
-                          aria-label={`Editar tarea ${task.title}`}
+                          aria-label={`${canWrite ? "Editar" : "Ver"} tarea ${task.title}`}
                         >
-                          <Pencil className="h-3 w-3" />
+                          {canWrite ? <Pencil className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                         </Button>
                       </div>
 

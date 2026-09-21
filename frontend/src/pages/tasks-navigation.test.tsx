@@ -41,6 +41,10 @@ describe("tasks URL navigation", () => {
     expect(screen.queryByRole("checkbox", { name: "Seleccionar tarea Preparar informe" })).not.toBeInTheDocument()
     expect(screen.queryByRole("checkbox", { name: "Seleccionar todas las tareas visibles" })).not.toBeInTheDocument()
     expect(screen.queryByText("Estado...")).not.toBeInTheDocument()
+    expect(screen.getAllByText("Pendiente")).toHaveLength(2)
+    expect(screen.queryByRole("button", { name: "Eliminar tarea" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Ver tarea" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Nueva tarea" })).not.toBeInTheDocument()
   })
   it("defaults an administrator to personal work and explicitly switches all cohorts to team", async () => {
     showAgenda("/tasks?view=my_day")

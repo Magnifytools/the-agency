@@ -14,7 +14,7 @@ import {
 } from "@dnd-kit/core"
 import type { Task } from "@/lib/types"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, ChevronDown, Pencil, Clock, Repeat } from "lucide-react"
+import { ChevronLeft, ChevronRight, ChevronDown, Pencil, Eye, Clock, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { addCivilDays, businessDateString, formatCivilDate, parseCivilDate } from "@/lib/dates"
 
@@ -24,6 +24,7 @@ interface Props {
   onWeekOffsetChange: (offset: number) => void
   onScheduleChange: (taskId: number, date: string | null) => void
   onOpenEdit: (task: Task) => void
+  canWrite?: boolean
 }
 
 const DAY_NAMES = ["Lun", "Mar", "Mié", "Jue", "Vie"]
@@ -146,13 +147,16 @@ function DroppableAccordionDay({
 function DraggableTaskCard({
   task,
   onOpenEdit,
+  canWrite,
 }: {
   task: Task
   onOpenEdit: (task: Task) => void
+  canWrite: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `task-${task.id}`,
     data: { task },
+    disabled: !canWrite,
   })
 
   const style: React.CSSProperties = transform
@@ -166,10 +170,11 @@ function DraggableTaskCard({
     <div
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
+      {...(canWrite ? attributes : {})}
+      {...(canWrite ? listeners : {})}
       className={cn(
-        "bg-background border rounded-md p-2 cursor-grab active:cursor-grabbing",
+        "bg-background border rounded-md p-2",
+        canWrite && "cursor-grab active:cursor-grabbing",
         "border-l-4 shadow-sm hover:shadow-md transition-shadow text-xs",
         priorityColors[task.priority] || "border-l-slate-300",
         isDragging && "opacity-0 pointer-events-none",
@@ -180,14 +185,14 @@ function DraggableTaskCard({
           {task.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" />}
           {task.title}
         </span>
-        <button
+        <button aria-label={`${canWrite ? "Editar" : "Ver"} tarea ${task.title}`}
           onClick={(e) => {
             e.stopPropagation()
             onOpenEdit(task)
           }}
           className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
         >
-          <Pencil className="w-3 h-3" />
+          {canWrite ? <Pencil className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
         </button>
       </div>
       <div className="flex items-center gap-1.5 mt-1 text-muted-foreground">
@@ -226,16 +231,14 @@ function TaskCardOverlay({ task }: { task: Task }) {
 }
 
 // ─── Main Component ───────────────────────────────────────────
-export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onScheduleChange, onOpenEdit }: Props) {
+export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onScheduleChange, onOpenEdit, canWrite = true }: Props) {
   const [activeTask, setActiveTask] = useState<Task | null>(null)
-  const [isMobile, setIsMobile] = useState(false)
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches)
   const [openDays, setOpenDays] = useState<Set<string>>(new Set())
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- Media query listener requires effect
   useEffect(() => {
     const mql = window.matchMedia("(max-width: 639px)")
     const handler = (e: MediaQueryListEvent | MediaQueryList) => setIsMobile(e.matches)
-    handler(mql)
     mql.addEventListener("change", handler)
     return () => mql.removeEventListener("change", handler)
   }, [])
@@ -248,10 +251,10 @@ export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onSch
   const { dates, label } = useMemo(() => getWeekDates(weekOffset), [weekOffset])
   const today = businessDateString()
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- Pre-open today's accordion on mobile detection
   useEffect(() => {
     if (isMobile && dates.includes(today)) {
-      setOpenDays(new Set([today]))
+      const frame = requestAnimationFrame(() => setOpenDays(new Set([today])))
+      return () => cancelAnimationFrame(frame)
     }
   }, [isMobile, today, dates])
 
@@ -339,10 +342,10 @@ export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onSch
       </div>
 
       <DndContext
-        sensors={sensors}
+        sensors={canWrite ? sensors : []}
         collisionDetection={closestCenter}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
+        onDragStart={canWrite ? handleDragStart : undefined}
+        onDragEnd={canWrite ? handleDragEnd : undefined}
         onDragCancel={() => setActiveTask(null)}
       >
         {/* Mobile: accordion layout */}
@@ -360,7 +363,7 @@ export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onSch
                 taskCount={(tasksByDate[dateStr] || []).length}
               >
                 {(tasksByDate[dateStr] || []).map((task) => (
-                  <DraggableTaskCard key={task.id} task={task} onOpenEdit={onOpenEdit} />
+                  <DraggableTaskCard key={task.id} task={task} onOpenEdit={onOpenEdit} canWrite={canWrite} />
                 ))}
               </DroppableAccordionDay>
             ))}
@@ -377,7 +380,7 @@ export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onSch
                 isToday={dateStr === today}
               >
                 {(tasksByDate[dateStr] || []).map((task) => (
-                  <DraggableTaskCard key={task.id} task={task} onOpenEdit={onOpenEdit} />
+                  <DraggableTaskCard key={task.id} task={task} onOpenEdit={onOpenEdit} canWrite={canWrite} />
                 ))}
               </DroppableColumn>
             ))}
@@ -388,7 +391,7 @@ export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onSch
         <DroppableColumn id="unscheduled" label="Sin planificar">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
             {(tasksByDate["unscheduled"] || []).map((task) => (
-              <DraggableTaskCard key={task.id} task={task} onOpenEdit={onOpenEdit} />
+              <DraggableTaskCard key={task.id} task={task} onOpenEdit={onOpenEdit} canWrite={canWrite} />
             ))}
           </div>
           {(tasksByDate["unscheduled"] || []).length === 0 && (

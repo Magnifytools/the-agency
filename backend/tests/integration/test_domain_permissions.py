@@ -43,6 +43,18 @@ async def test_task_bulk_update_requires_tasks_write(make_member_client):
 
 
 @pytest.mark.asyncio
+async def test_task_individual_mutations_require_tasks_write(make_member_client):
+    client = await make_member_client([("tasks", True, False)])
+    try:
+        update = await client.put("/api/tasks/999999", json={"status": "completed"})
+        delete = await client.delete("/api/tasks/999999")
+        assert update.status_code == 403
+        assert delete.status_code == 403
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_client_finalization_requires_clients_write(make_member_client):
     client = await make_member_client([("clients", True, False)])
     try:
