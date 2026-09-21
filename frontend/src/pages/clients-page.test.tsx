@@ -87,6 +87,24 @@ describe("ClientsPage recovery states", () => {
     expect(screen.getByRole("checkbox", { name: "Seleccionar todos los clientes visibles" })).toBeInTheDocument()
   })
 
+  it("hides the client finalization menu from read-only users", async () => {
+    auth.canWriteClients = false
+    api.clients.mockResolvedValueOnce({ items: [clientRow], total: 1, page: 1, page_size: 25 })
+    show()
+
+    expect(await screen.findAllByText("Cliente conservado")).not.toHaveLength(0)
+    expect(screen.queryByRole("button", { name: "Más opciones" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Finalizar" })).not.toBeInTheDocument()
+  })
+
+  it("keeps the client finalization menu available to writers", async () => {
+    api.clients.mockResolvedValueOnce({ items: [clientRow], total: 1, page: 1, page_size: 25 })
+    show()
+
+    await userEvent.click(await screen.findByRole("button", { name: "Más opciones" }))
+    expect(screen.getByRole("button", { name: "Finalizar" })).toBeInTheDocument()
+  })
+
   it("offers retry for an initial 503 without claiming the list is empty", async () => {
     api.clients.mockRejectedValueOnce(httpError(503))
     show()

@@ -693,7 +693,7 @@ function ClientsPageBody() {
                     <Button variant="ghost" size="icon" aria-label="Editar cliente" disabled={!canWriteClients || !!onboardingKey || storageReadFailed} onClick={() => openEdit(c)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <div className="relative">
+                    {canWriteClients && <div className="relative">
                       <Button
                         variant="ghost"
                         size="icon"
@@ -720,7 +720,7 @@ function ClientsPageBody() {
                           )}
                         </div>
                       )}
-                    </div>
+                    </div>}
                   </div>
                 </TableCell>
               </TableRow>
