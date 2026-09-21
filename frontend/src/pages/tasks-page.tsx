@@ -207,6 +207,7 @@ export default function TasksPage() {
 
   // Clear bulk selection when switching views
   useEffect(() => { clearTaskSelection(); reset() }, [view, qaFilter, reset, clearTaskSelection])
+  useEffect(() => { if (!canWriteTasks) clearTaskSelection() }, [canWriteTasks, clearTaskSelection])
 
   const bulkUpdateMutation = useMutation({
     mutationFn: async ({ ids, updates }: { ids: number[]; updates: Record<string, unknown> }) =>
@@ -607,7 +608,7 @@ export default function TasksPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10">
+              {canWriteTasks && <TableHead className="w-10">
                 <input
                   type="checkbox"
                   aria-label="Seleccionar todas las tareas visibles"
@@ -615,7 +616,7 @@ export default function TasksPage() {
                   onChange={toggleAllTasks}
                   className="rounded border-border"
                 />
-              </TableHead>
+              </TableHead>}
               <SortableTableHead sortKey="title" currentSort={taskSortConfig} onSort={requestTaskSort}>Título</SortableTableHead>
               <SortableTableHead sortKey="client_name" currentSort={taskSortConfig} onSort={requestTaskSort}>Cliente</SortableTableHead>
               <SortableTableHead sortKey="priority" currentSort={taskSortConfig} onSort={requestTaskSort}>Prioridad</SortableTableHead>
@@ -647,7 +648,7 @@ export default function TasksPage() {
 
               return (
                 <TableRow key={t.id} className={rowHighlight}>
-                  <TableCell>
+                  {canWriteTasks && <TableCell>
                     <input
                       type="checkbox"
                       aria-label={`Seleccionar tarea ${t.title}`}
@@ -655,7 +656,7 @@ export default function TasksPage() {
                       onChange={() => toggleTask(t.id)}
                       className="rounded border-border"
                     />
-                  </TableCell>
+                  </TableCell>}
                   <TableCell className="font-medium">
                     <span className="inline-flex items-center gap-1">
                       {t.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" aria-label="Recurrente" />}
@@ -759,7 +760,7 @@ export default function TasksPage() {
               )
             })}
             {tasks.length === 0 && (
-              <EmptyTableState colSpan={10} icon={CheckSquare} title="Sin tareas" description="Crea tareas, asígnalas y trackea con timer integrado." />
+              <EmptyTableState colSpan={canWriteTasks ? 10 : 9} icon={CheckSquare} title="Sin tareas" description="Crea tareas, asígnalas y trackea con timer integrado." />
             )}
           </TableBody>
         </Table>
@@ -941,7 +942,7 @@ export default function TasksPage() {
       />
 
       {/* Bulk Action Bar */}
-      <BulkActionBar selectedCount={selectedTaskCount} onClear={clearTaskSelection}>
+      {canWriteTasks && <BulkActionBar selectedCount={selectedTaskCount} onClear={clearTaskSelection}>
         <Select
           value={bulkStatus}
           onChange={(e) => {
@@ -988,7 +989,7 @@ export default function TasksPage() {
         >
           Eliminar
         </Button>
-      </BulkActionBar>
+      </BulkActionBar>}
 
       <ConfirmDialog
         open={bulkDeleteOpen}

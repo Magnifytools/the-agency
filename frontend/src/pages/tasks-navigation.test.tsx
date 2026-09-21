@@ -30,6 +30,18 @@ describe("tasks URL navigation", () => {
     expect(await screen.findByRole("checkbox", { name: "Seleccionar tarea Preparar informe" })).toBeInTheDocument()
     expect(screen.getByRole("checkbox", { name: "Seleccionar todas las tareas visibles" })).toBeInTheDocument()
   })
+  it("hides task bulk controls from members without task write permission", async () => {
+    api.user.role = "member"
+    api.canWrite = false
+    api.list.mockResolvedValueOnce({ items: [{ id: 8, title: "Preparar informe", status: "pending", priority: "medium", assigned_to: null, scheduled_date: null, estimated_minutes: null, due_date: null }], total: 1, page: 1, page_size: 25 })
+
+    showAgenda("/tasks?view=all")
+
+    expect(await screen.findByText("Preparar informe")).toBeInTheDocument()
+    expect(screen.queryByRole("checkbox", { name: "Seleccionar tarea Preparar informe" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("checkbox", { name: "Seleccionar todas las tareas visibles" })).not.toBeInTheDocument()
+    expect(screen.queryByText("Estado...")).not.toBeInTheDocument()
+  })
   it("defaults an administrator to personal work and explicitly switches all cohorts to team", async () => {
     showAgenda("/tasks?view=my_day")
     await waitFor(() => expect(api.agenda).toHaveBeenCalledTimes(4))
