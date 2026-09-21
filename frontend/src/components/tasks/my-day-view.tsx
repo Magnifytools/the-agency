@@ -75,6 +75,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
     const isOverdue = task.due_date && task.due_date < today
     const isInProgress = task.status === "in_progress"
     const sendsForReview = !!task.project_requires_task_review && !task.is_recurring && !canCompleteReviewedTask(task)
+    const statusPresentation = taskStatusPresentation(task.status, task.scheduled_date)
 
     return (
       <Card
@@ -87,8 +88,8 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
         onClick={() => onOpenEdit(task)}
       >
         <CardContent className="p-3 grid grid-cols-[minmax(0,1fr)_auto] gap-3 sm:flex sm:items-center">
-          <select
-            value={taskStatusPresentation(task.status, task.scheduled_date).group}
+          {canWrite ? <select
+            value={statusPresentation.group}
             onChange={(e) => {
               e.stopPropagation()
               const next = e.target.value as TaskStatus
@@ -97,7 +98,6 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
             }}
             onClick={(e) => e.stopPropagation()}
             aria-label={`Estado de ${task.title}`}
-            disabled={!canWrite}
             className={cn(
               "col-span-2 row-start-2 w-fit sm:w-auto shrink-0 text-xs sm:text-[10px] rounded-md border px-2 py-1 min-h-9 sm:min-h-7 cursor-pointer font-semibold transition-colors shadow-sm",
               "bg-background text-foreground border-input"
@@ -108,7 +108,9 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
             <option value="waiting">En espera…</option>
             <option value="in_review">En revisión</option>
             <option value="completed">{sendsForReview ? "Enviar a revisión" : "Hecho"}</option>
-          </select>
+          </select> : <span className="col-span-2 row-start-2 w-fit rounded-md border border-border bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground sm:min-h-7 sm:text-[10px]">
+            {statusPresentation.label}
+          </span>}
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
@@ -119,7 +121,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
               {priorityBadge(task.priority)}
             </div>
             <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground flex-wrap">
-              {taskStatusPresentation(task.status, task.scheduled_date).detail && <span>{taskStatusPresentation(task.status, task.scheduled_date).detail}</span>}
+              {statusPresentation.detail && <span>{statusPresentation.detail}</span>}
               {task.client_name && <span>{task.client_name}</span>}
               {task.project_name && <span className="text-muted-foreground">· {task.project_name}</span>}
               {task.estimated_minutes && (

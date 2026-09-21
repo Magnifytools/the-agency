@@ -94,12 +94,37 @@ describe("DashboardPage", () => {
     expect(mocks.tasks).not.toHaveBeenCalled()
   })
 
-  it("shows task data but disables task mutations without write permission", async () => {
+  it("links personal tasks for readers without offering task or timer mutations", async () => {
     mocks.user = { id: 4, role: "member", permissions: [{ module: "tasks", can_read: true, can_write: false }] }
-    mocks.tasks.mockResolvedValue([{ id: 12, title: "Revisar propuesta", status: "in_progress", client_name: null, due_date: null }])
+    mocks.tasks.mockImplementation(({ status }: { status: string }) => Promise.resolve(status === "in_progress"
+      ? [{ id: 12, title: "Revisar propuesta", status, client_name: null, due_date: null }]
+      : [{ id: 13, title: "Preparar cierre", status, client_name: null, due_date: null }]))
     show()
-    expect((await screen.findAllByText("Revisar propuesta")).length).toBeGreaterThan(0)
-    expect(screen.getAllByTitle("Completar").every((button) => button.hasAttribute("disabled"))).toBe(true)
+    expect(await screen.findByRole("link", { name: "Revisar propuesta" })).toHaveAttribute("href", "/tasks?task=12")
+    expect(await screen.findByRole("link", { name: "Preparar cierre" })).toHaveAttribute("href", "/tasks?task=13")
+    expect(screen.queryByRole("button", { name: /Completar:|Enviar a revisión:/ })).not.toBeInTheDocument()
+    expect(screen.queryByTitle("Iniciar timer")).not.toBeInTheDocument()
+  })
+
+  it("uses consultation copy for a reader with no in-progress tasks", async () => {
+    mocks.user = { id: 4, role: "member", permissions: [{ module: "tasks", can_read: true, can_write: false }] }
+    show()
+    expect(await screen.findByText("Sin tareas en curso")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Consulta tus tareas en Trabajo" })).toHaveAttribute("href", "/tasks?view=all")
+  })
+
+  it("keeps the timer available when a task reader can write time entries", async () => {
+    mocks.user = { id: 4, role: "member", permissions: [
+      { module: "tasks", can_read: true, can_write: false },
+      { module: "timesheet", can_read: true, can_write: true },
+    ] }
+    mocks.tasks.mockImplementation(({ status }: { status: string }) => Promise.resolve(status === "in_progress"
+      ? [{ id: 12, title: "Revisar propuesta", status, client_name: null, due_date: null }]
+      : []))
+    show()
+    expect(await screen.findByRole("link", { name: "Revisar propuesta" })).toHaveAttribute("href", "/tasks?task=12")
+    expect(await screen.findByTitle("Iniciar timer")).toBeEnabled()
+    expect(screen.queryByRole("button", { name: /Completar:|Enviar a revisión:/ })).not.toBeInTheDocument()
   })
 
   it("sends a concrete project task to review for a member who is not the owner", async () => {
