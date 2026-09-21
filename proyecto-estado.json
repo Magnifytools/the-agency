@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-21T19:18:25+00:00",
-  "estado_general": "produccion_p47_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-21T20:03:25+00:00",
+  "estado_general": "produccion_p49_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -434,7 +434,9 @@
     "P44: PR64/1caaf20 publicada: el atajo N anunciado abre Añadir, respeta overrides y campos editables. Dos regresiones rojas antes, 479/479 UI verdes después, build/lint y seis gates CI de PR/main; Railway SUCCESS y /api/ready exacto. Falta aceptación humana del recorrido.",
     "P45: PR66/3f821fc publicada: Ajustes captura G seguida de una letra, rechaza atajos inviables o duplicados y el listener aplica el mismo contrato. Suite frontend local 487/487, 16 focales tras el último borde, seis gates CI de PR/main y Railway SUCCESS con /api/ready exacto. Visual sintética 390 sin overflow; aceptación humana pendiente. El ID confirmado del semanal coincide con el destino productivo en lectura de solo lectura.",
     "P46: PR68/11ca162 publicada: Clientes oculta el menú Finalizar a lectores sin clients.write; 23 pruebas UI focales, cinco HTTP PostgreSQL, seis gates PR/main y Railway /api/ready exacto. Visual sintética de lector a 390/1440 sin errores; no se finalizó un cliente real.",
-    "P47: PR69/b898050 publicada: el historial deriva can_delete de permiso y evidencia en lote, conserva oculto el borrado de versiones sent y DELETE mantiene el 409 de trazabilidad. 73 backend relacionadas, 489 UI, seis gates de PR/main y Railway /api/ready exacto. Hash de 37 informes productivos idéntico antes/después, sin envíos ni borrados de prueba."
+    "P47: PR69/b898050 publicada: el historial deriva can_delete de permiso y evidencia en lote, conserva oculto el borrado de versiones sent y DELETE mantiene el 409 de trazabilidad. 73 backend relacionadas, 489 UI, seis gates de PR/main y Railway /api/ready exacto. Hash de 37 informes productivos idéntico antes/después, sin envíos ni borrados de prueba.",
+    "P48: PR71/a16874b publicada: la selección y el cambio masivo de Clientes requieren clients.write; selección pendiente se limpia al revocar permiso y PUT conserva 403. 492 UI, HTTP PostgreSQL focal, seis gates CI PR/main y Railway /api/ready exacto. Visual local sintética 1440/390 sin overflow; ningún cliente real modificado.",
+    "P49: PR72/952e730 publicada: reintentar un recibo failed usa una clave nueva con origen app; si ese intento queda incierto por timeout, conserva esa nueva clave para recuperar sin duplicar. 63 PostgreSQL, 493 UI y seis gates CI de PR; Railway /api/ready exacto. CI main backend aún en curso al corte. Visual sintética 1440/390; ningún comando productivo de prueba."
   ],
   "proximos_pasos": "Comprobar visualmente las vistas autenticadas de cliente y cartera en producción. Validar con David y Nacho seis recorridos reales de uso, incluidos Añadir con N y un atajo de navegación personalizado. Las dos cuentas activas deben reconectar Google Calendar y comprobar una reunión fresca. La política semanal está activa para el ID confirmado de David; comprobar el primer envío ordinario del 26 de septiembre y su recibo, sin mensaje de prueba. Elegir responsables para los tres proyectos activos visibles en el nuevo filtro y resolver decisiones por tarea/digest histórico; decidir si incorporar avisos de cobro, con vínculo factura-cliente y responsable reales, y si hace falta un canal entrante aparte de app/extensión. Véase docs/estado-implantacion-2026-09-21.md.",
   "bloqueadores": "",
@@ -446,7 +448,7 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "b898050a2d128f61c5e795dbf277ce28fe4199d2",
+    "revision": "952e7305481065a3ab35ba3754776cb75fdc54a6",
     "healthcheck": "/api/ready",
     "schema_revision": "20260921_usage_origin_v1"
   },
