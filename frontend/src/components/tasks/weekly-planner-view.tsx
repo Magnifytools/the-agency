@@ -14,7 +14,7 @@ import {
 } from "@dnd-kit/core"
 import type { Task } from "@/lib/types"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, ChevronDown, Pencil, Clock, Repeat } from "lucide-react"
+import { ChevronLeft, ChevronRight, ChevronDown, Pencil, Eye, Clock, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { addCivilDays, businessDateString, formatCivilDate, parseCivilDate } from "@/lib/dates"
 
@@ -156,6 +156,7 @@ function DraggableTaskCard({
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `task-${task.id}`,
     data: { task },
+    disabled: !canWrite,
   })
 
   const style: React.CSSProperties = transform
@@ -191,7 +192,7 @@ function DraggableTaskCard({
           }}
           className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
         >
-          <Pencil className="w-3 h-3" />
+          {canWrite ? <Pencil className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
         </button>
       </div>
       <div className="flex items-center gap-1.5 mt-1 text-muted-foreground">
@@ -232,14 +233,12 @@ function TaskCardOverlay({ task }: { task: Task }) {
 // ─── Main Component ───────────────────────────────────────────
 export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onScheduleChange, onOpenEdit, canWrite = true }: Props) {
   const [activeTask, setActiveTask] = useState<Task | null>(null)
-  const [isMobile, setIsMobile] = useState(false)
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches)
   const [openDays, setOpenDays] = useState<Set<string>>(new Set())
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- Media query listener requires effect
   useEffect(() => {
     const mql = window.matchMedia("(max-width: 639px)")
     const handler = (e: MediaQueryListEvent | MediaQueryList) => setIsMobile(e.matches)
-    handler(mql)
     mql.addEventListener("change", handler)
     return () => mql.removeEventListener("change", handler)
   }, [])
@@ -252,10 +251,10 @@ export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onSch
   const { dates, label } = useMemo(() => getWeekDates(weekOffset), [weekOffset])
   const today = businessDateString()
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- Pre-open today's accordion on mobile detection
   useEffect(() => {
     if (isMobile && dates.includes(today)) {
-      setOpenDays(new Set([today]))
+      const frame = requestAnimationFrame(() => setOpenDays(new Set([today])))
+      return () => cancelAnimationFrame(frame)
     }
   }, [isMobile, today, dates])
 
