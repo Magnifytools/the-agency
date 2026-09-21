@@ -165,6 +165,7 @@ async def test_callback_requires_valid_state_and_active_user(fixture, monkeypatc
     monkeypatch.setattr(route, "exchange_code", lambda code: {"refresh_token":"should-not-store"})
     async with client(fixture) as http:
         assert "invalid_state" in (await http.get("/api/calendar/callback", params={"code":"x", "state":"forged"})).headers["location"]
+        assert "invalid_state" in (await http.get("/api/calendar/callback", params={"error":"access_denied", "state":"forged"})).headers["location"]
         async with maker() as db:
             user = await db.get(User, ids["member"]); user.is_active = False
             await db.commit()
@@ -172,6 +173,29 @@ async def test_callback_requires_valid_state_and_active_user(fixture, monkeypatc
         assert response.headers["location"] == "/settings?calendar=error"
     async with maker() as db:
         assert (await db.get(User, ids["member"])).google_refresh_token == "synthetic-retained-grant"
+
+
+@pytest.mark.parametrize(("callback", "location"), [
+    ({"error": "access_denied", "error_description": "provider-private-cancellation"}, "/settings?calendar=cancelled"),
+    ({"error": "temporarily_unavailable", "error_description": "provider-private-failure"}, "/settings?calendar=error"),
+    ({}, "/settings?calendar=error"),
+])
+async def test_callback_without_code_preserves_saved_connection_after_signed_state(fixture, monkeypatch, callback, location):
+    maker, ids, now = fixture
+    event_id = await connected(fixture)
+    exchanges = []
+    monkeypatch.setattr(route, "exchange_code", lambda code: exchanges.append(code))
+    params = {"state": route._sign_oauth_state(ids["member"]), **callback}
+    async with client(fixture) as http:
+        response = await http.get("/api/calendar/callback", params=params)
+    assert response.status_code == 307 and response.headers["location"] == location
+    assert "provider-private" not in response.text + response.headers["location"]
+    assert exchanges == []
+    async with maker() as db:
+        user = await db.get(User, ids["member"])
+        assert user.google_refresh_token == "synthetic-retained-grant"
+        assert user.google_calendar_id == "primary" and user.google_calendar_synced_at == now[0]
+        assert await db.get(Event, event_id) is not None
 
 
 async def test_sync_and_status_require_authentication_and_active_identity(fixture, monkeypatch):

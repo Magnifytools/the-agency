@@ -117,19 +117,24 @@ def _verify_oauth_state(state: str, max_age: int = 600) -> int:
 
 @router.get("/callback")
 async def calendar_callback(
-    code: str = Query(...),
+    code: str | None = Query(None),
     state: str = Query(""),
+    error: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Handle Google OAuth2 callback. Redirects to settings page."""
-    if not code:
-        raise HTTPException(status_code=400, detail="Authorization code missing")
-
     # Verify signed state BEFORE doing any work (prevents OAuth account-link CSRF)
     try:
         user_id = _verify_oauth_state(state)
     except (ValueError, TypeError, Exception):
         return RedirectResponse(url="/settings?calendar=error&reason=invalid_state")
+
+    # Google returns an error without a code when consent is cancelled or fails.
+    # Keep provider details out of URLs and logs, after validating state first.
+    if error == "access_denied":
+        return RedirectResponse(url="/settings?calendar=cancelled")
+    if error or not code:
+        return RedirectResponse(url="/settings?calendar=error")
 
     try:
         tokens = await anyio.to_thread.run_sync(exchange_code, code)
