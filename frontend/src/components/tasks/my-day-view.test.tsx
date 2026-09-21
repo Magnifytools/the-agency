@@ -97,4 +97,21 @@ describe("MyDayView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reintentar" }))
     expect(retry).toHaveBeenCalledOnce()
   })
+
+  it("labels a reader's task action as view-only while preserving consultation", () => {
+    const onOpenEdit = vi.fn()
+    render(<MyDayView planned={page([task(1, "Consulta")])} carryover={page([])} unplanned={page([])} completed={page([])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={onOpenEdit} onReviewCarryover={vi.fn()} canWrite={false} />)
+
+    expect(screen.getByRole("button", { name: "Ver Consulta" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Editar Consulta" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Ver Consulta" }))
+    expect(onOpenEdit).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }))
+  })
+
+  it("keeps the edit action for a writer", () => {
+    render(<MyDayView planned={page([task(1, "Editable")])} carryover={page([])} unplanned={page([])} completed={page([])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} onReviewCarryover={vi.fn()} canWrite />)
+
+    expect(screen.getByRole("button", { name: "Editar Editable" })).toBeInTheDocument()
+  })
+
 })

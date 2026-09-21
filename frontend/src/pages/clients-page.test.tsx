@@ -460,4 +460,28 @@ describe("ClientsPage recovery states", () => {
     expect(api.onboard).not.toHaveBeenCalled()
     storage.mockRestore()
   })
+
+  it("keeps client detail links but hides client mutations from readers", async () => {
+    auth.canWriteClients = false
+    api.clients.mockResolvedValueOnce({ items: [clientRow], total: 1, page: 1, page_size: 25 })
+    show()
+
+    expect((await screen.findAllByRole("link", { name: "Cliente conservado" })).every((link) => link.getAttribute("href") === "/clients/4")).toBe(true)
+    expect(screen.queryByRole("button", { name: "Nuevo cliente" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Editar cliente" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Más opciones" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Finalizar" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("columnheader", { name: "Acciones" })).not.toBeInTheDocument()
+  })
+
+  it("keeps client creation and editing available to writers", async () => {
+    api.clients.mockResolvedValueOnce({ items: [clientRow], total: 1, page: 1, page_size: 25 })
+    show()
+
+    expect(await screen.findByRole("button", { name: "Nuevo cliente" })).toBeEnabled()
+    await screen.findAllByRole("link", { name: "Cliente conservado" })
+    expect(screen.getAllByRole("button", { name: "Editar cliente" }).every((button) => !button.hasAttribute("disabled"))).toBe(true)
+    expect(screen.getByRole("columnheader", { name: "Acciones" })).toBeInTheDocument()
+  })
+
 })

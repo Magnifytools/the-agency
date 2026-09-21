@@ -458,9 +458,9 @@ function ClientsPageBody() {
             {STATUS_TABS.find((item) => item.value === tab)?.label} · {COHORTS.find((item) => item.value === cohort)?.label} · {data.total} resultados
           </p>}
         </div>
-        <Button onClick={openCreate} disabled={!canWriteClients || !!onboardingKey || storageReadFailed}>
+        {canWriteClients && <Button onClick={openCreate} disabled={!!onboardingKey || storageReadFailed}>
           <Plus className="h-4 w-4 mr-2" /> Nuevo cliente
-        </Button>
+        </Button>}
       </div>
 
       {(onboardingKey || onboardingNotice || storageReadFailed) && (
@@ -520,7 +520,7 @@ function ClientsPageBody() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10" />
+              {canWriteClients && <TableHead className="w-10" />}
               <TableHead>Nombre</TableHead>
               <TableHead>Empresa</TableHead>
               <TableHead>Email</TableHead>
@@ -540,11 +540,11 @@ function ClientsPageBody() {
                   />
                 </span>
               </TableHead>
-              <TableHead className="w-24">Acciones</TableHead>
+              {canWriteClients && <TableHead className="w-24">Acciones</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={isAdmin ? 9 : 8} />)}
+            {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={6 + (canWriteClients ? 2 : 0) + (isAdmin ? 1 : 0)} />)}
           </TableBody>
         </Table>
       ) : clientsDenied ? (
@@ -573,11 +573,11 @@ function ClientsPageBody() {
                     </Link>
                     {c.company && <p className="text-sm text-muted-foreground">{c.company}</p>}
                   </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" aria-label="Editar cliente" disabled={!canWriteClients || !!onboardingKey || storageReadFailed} onClick={() => openEdit(c)}>
+                  {canWriteClients && <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" aria-label="Editar cliente" disabled={!!onboardingKey || storageReadFailed} onClick={() => openEdit(c)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                  </div>
+                  </div>}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {statusBadge(c.status)}
@@ -627,7 +627,7 @@ function ClientsPageBody() {
                   />
                 </span>
               </TableHead>
-              <TableHead className="w-24">Acciones</TableHead>
+              {canWriteClients && <TableHead className="w-24">Acciones</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -692,12 +692,12 @@ function ClientsPageBody() {
                     )
                   })()}
                 </TableCell>
-                <TableCell>
+                {canWriteClients && <TableCell>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" aria-label="Editar cliente" disabled={!canWriteClients || !!onboardingKey || storageReadFailed} onClick={() => openEdit(c)}>
+                    <Button variant="ghost" size="icon" aria-label="Editar cliente" disabled={!!onboardingKey || storageReadFailed} onClick={() => openEdit(c)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    {canWriteClients && <div className="relative">
+                    <div className="relative">
                       <Button
                         variant="ghost"
                         size="icon"
@@ -724,13 +724,13 @@ function ClientsPageBody() {
                           )}
                         </div>
                       )}
-                    </div>}
+                    </div>
                   </div>
-                </TableCell>
+                </TableCell>}
               </TableRow>
             ))}
             {clients.length === 0 && (
-              <EmptyTableState colSpan={9} icon={Users} title="Sin resultados" description={`No hay clientes ${tab === "all" ? "" : STATUS_TABS.find((item) => item.value === tab)?.label.toLowerCase()} ${cohort === "all" ? "" : COHORTS.find((item) => item.value === cohort)?.label.toLowerCase()}.`} />
+              <EmptyTableState colSpan={6 + (canWriteClients ? 2 : 0) + (isAdmin ? 1 : 0)} icon={Users} title="Sin resultados" description={`No hay clientes ${tab === "all" ? "" : STATUS_TABS.find((item) => item.value === tab)?.label.toLowerCase()} ${cohort === "all" ? "" : COHORTS.find((item) => item.value === cohort)?.label.toLowerCase()}.`} />
             )}
           </TableBody>
         </Table>
