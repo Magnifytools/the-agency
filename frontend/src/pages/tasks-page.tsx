@@ -610,6 +610,7 @@ export default function TasksPage() {
               <TableHead className="w-10">
                 <input
                   type="checkbox"
+                  aria-label="Seleccionar todas las tareas visibles"
                   checked={allTasksSelected}
                   onChange={toggleAllTasks}
                   className="rounded border-border"
@@ -649,6 +650,7 @@ export default function TasksPage() {
                   <TableCell>
                     <input
                       type="checkbox"
+                      aria-label={`Seleccionar tarea ${t.title}`}
                       checked={isTaskSelected(t.id)}
                       onChange={() => toggleTask(t.id)}
                       className="rounded border-border"

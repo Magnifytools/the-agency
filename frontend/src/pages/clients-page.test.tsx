@@ -80,6 +80,13 @@ describe("ClientsPage recovery states", () => {
     localStorage.clear()
   })
 
+  it("names the client selection controls in the desktop table", async () => {
+    api.clients.mockResolvedValueOnce({ items: [clientRow], total: 1, page: 1, page_size: 25 })
+    show()
+    expect(await screen.findByRole("checkbox", { name: "Seleccionar cliente Cliente conservado" })).toBeInTheDocument()
+    expect(screen.getByRole("checkbox", { name: "Seleccionar todos los clientes visibles" })).toBeInTheDocument()
+  })
+
   it("offers retry for an initial 503 without claiming the list is empty", async () => {
     api.clients.mockRejectedValueOnce(httpError(503))
     show()

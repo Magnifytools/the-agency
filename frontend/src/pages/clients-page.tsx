@@ -598,6 +598,7 @@ function ClientsPageBody() {
               <TableHead className="w-10">
                 <input
                   type="checkbox"
+                  aria-label="Seleccionar todos los clientes visibles"
                   checked={allClientsSelected}
                   onChange={toggleAllClients}
                   className="rounded border-border"
@@ -631,6 +632,7 @@ function ClientsPageBody() {
                 <TableCell>
                   <input
                     type="checkbox"
+                    aria-label={`Seleccionar cliente ${c.name || 'Sin nombre'}`}
                     checked={isClientSelected(c.id)}
                     onChange={() => toggleClient(c.id)}
                     className="rounded border-border"
