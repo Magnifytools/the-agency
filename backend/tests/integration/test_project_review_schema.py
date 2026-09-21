@@ -58,7 +58,9 @@ async def test_upgrade_is_opt_in_preserves_business_values_and_ledger(engine):
         assert await conn.scalar(text("SELECT to_jsonb(t) FROM tasks t WHERE id=1")) == task
         after = (await conn.execute(text("SELECT * FROM agency_schema_versions ORDER BY version"))).all()
         assert set(ledger) <= set(after)
-        assert len(after) == len(ledger) + 1
+        added = set(after) - set(ledger)
+        pending = deployment_schema.MIGRATIONS[deployment_schema.MIGRATIONS.index(MIGRATION):]
+        assert {(row.version, row.checksum) for row in added} == {(step.version, step.checksum) for step in pending}
 
 
 @pytest.mark.parametrize("damage", ["nullable", "default", "type"])

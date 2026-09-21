@@ -16,7 +16,10 @@ function requireCurrentSession(session) {
 }
 async function sessionFetch(session, url, options) {
   requireCurrentSession(session);
-  const response = await fetch(url, options);
+  const response = await fetch(url, {
+    ...options,
+    headers: { ...(options?.headers || {}), "X-Agency-Client": "extension" },
+  });
   requireCurrentSession(session);
   if (response.status === 401) {
     endSession();
@@ -804,6 +807,12 @@ function renderCommand(data) {
   const message = document.createElement("p");
   message.textContent = data.result?.message || "Petición preparada";
   commandReceipt.append(message);
+  if (data.result?.kind === "derivation" && data.raw_text) {
+    const original = document.createElement("blockquote");
+    original.className = "command-original";
+    original.textContent = data.raw_text;
+    commandReceipt.append(original);
+  }
   const applied = renderApplied(data.result);
   if (applied) commandReceipt.append(applied);
   if (data.result?.query?.kind === "decisions") {
@@ -834,6 +843,11 @@ function renderCommand(data) {
   }
   const actions = document.createElement("div");
   actions.className = "command-actions";
+  if (data.status === "executed" && data.result?.action?.kind === "open_project_form") {
+    actions.append(commandButton("Revisar proyecto", () => {
+      chrome.tabs.create({ url: `${API_URL}${data.result.action.href}` });
+    }, "primary-btn small"));
+  }
   if (data.status === "needs_review") actions.append(commandButton("Crear proyecto y tarea", () => executeCommand(), "primary-btn small"));
   if (data.status === "executed" && data.result?.undo_available && data.change_log_id) actions.append(commandButton("Deshacer", () => undoCommand(data.change_log_id)));
   actions.append(commandButton("Hacer otra cosa", resetCommand));

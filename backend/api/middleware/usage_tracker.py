@@ -24,6 +24,8 @@ from starlette.responses import Response
 
 logger = logging.getLogger(__name__)
 
+CLIENT_ORIGINS = frozenset({"web", "extension"})
+
 
 # Routes that don't produce signal worth tracking. Matched as prefix.
 _SKIP_PREFIXES: tuple[str, ...] = (
@@ -49,6 +51,12 @@ def _route_template(request: Request) -> str | None:
 def _extract_user_id(request: Request) -> int | None:
     """Read the user id exposed by the authentication dependency, if any."""
     return getattr(request.state, "user_id", None)
+
+
+def _client_origin(request: Request) -> str:
+    """Normalize a declared application origin without trusting it for ACL."""
+    value = request.headers.get("X-Agency-Client", "").strip().lower()
+    return value if value in CLIENT_ORIGINS else "unknown"
 
 
 class UsageTrackerMiddleware(BaseHTTPMiddleware):
@@ -80,6 +88,7 @@ class UsageTrackerMiddleware(BaseHTTPMiddleware):
                         route_template=route,
                         status_code=response.status_code,
                         duration_ms=duration_ms,
+                        client_origin=_client_origin(request),
                     ))
                     await db.commit()
             except Exception as e:  # noqa: BLE001 - analytics must never break the response
