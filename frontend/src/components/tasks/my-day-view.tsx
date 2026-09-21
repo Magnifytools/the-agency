@@ -3,7 +3,7 @@ import type { PaginatedResponse, Task, TaskStatus } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Pencil, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat } from "lucide-react"
+import { Pencil, Eye, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { agencyTimezoneLabel, businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates"
 import { taskStatusPresentation } from "@/lib/task-status"
@@ -155,11 +155,11 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
           <Button
             variant="ghost"
             size="icon"
-            aria-label={`Editar ${task.title}`}
+            aria-label={`${canWrite ? "Editar" : "Ver"} ${task.title}`}
             className="h-9 w-9 sm:h-7 sm:w-7 sm:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity shrink-0"
             onClick={(e) => { e.stopPropagation(); onOpenEdit(task) }}
           >
-            <Pencil className="h-3.5 w-3.5" />
+            {canWrite ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
           </Button>
           {carryover && canWrite && (
             <Button variant="outline" size="sm" className="col-span-2 sm:col-span-1" onClick={(event) => { event.stopPropagation(); onReviewCarryover(task) }}>
