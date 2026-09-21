@@ -38,6 +38,33 @@ async def test_weekly_sender_passes_explicit_civil_period_to_shared_reader(monke
 
 
 @pytest.mark.asyncio
+async def test_weekly_sender_default_uses_last_closed_madrid_workweek(monkeypatch, admin_user):
+    from datetime import date
+    from unittest.mock import AsyncMock
+    from backend.api.routes import discord
+
+    db = AsyncMock()
+    generator = AsyncMock(return_value="Reviewed weekly report")
+    enqueue = AsyncMock(return_value={"success": False, "status": "pending"})
+    monkeypatch.setattr(discord, "business_today", lambda: date(2026, 9, 26))  # Saturday in Madrid
+    monkeypatch.setattr(discord, "generate_weekly_report", generator)
+    monkeypatch.setattr(discord, "enqueue_request", enqueue)
+    monkeypatch.setattr(discord, "is_enabled", lambda module: False)
+
+    response = await discord.send_weekly_report(week_start=None, db=db, current_user=admin_user)
+
+    assert response["status"] == "pending"
+    generator.assert_awaited_once_with(
+        db,
+        period_start=date(2026, 9, 21),
+        period_end=date(2026, 9, 25),
+        include_financial=False,
+    )
+    assert enqueue.await_args.kwargs["period_start"] == date(2026, 9, 21)
+    assert enqueue.await_args.kwargs["period_end"] == date(2026, 9, 25)
+
+
+@pytest.mark.asyncio
 class TestDiscordAuth:
     """Auth required for /api/discord"""
 
