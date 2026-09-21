@@ -293,7 +293,7 @@ async def collect_digest_data(
     unassigned = groups[None]
     total_minutes = sum(group["total_minutes"] for group in all_groups)
     total_hours = round(total_minutes / 60, 1)
-    return {
+    result = {
         "context_version": 2,
         "client_id": client_id,
         "client_name": client_name,
@@ -319,3 +319,32 @@ async def collect_digest_data(
         },
         "pending_followups": followups,
     }
+    catalog: dict[str, dict] = {
+        "aggregate:hours": {"kind": "aggregate", "class": "aggregate", "label": "Tiempo del período"},
+        "aggregate:task_totals": {"kind": "aggregate", "class": "aggregate", "label": "Totales de tareas"},
+        "period": {"kind": "period", "class": "period", "label": f"Período {period_start.isoformat()}–{period_end.isoformat()}"},
+    }
+    for group in all_groups:
+        project_id = group.get("project_id")
+        if project_id is not None and group.get("resolution") == "resolved":
+            catalog[f"project:{project_id}"] = {
+                "kind": "project", "class": "project", "id": project_id,
+                "label": group.get("project_name") or "Proyecto",
+            }
+        for field, fact_class in (
+            ("completed_tasks", "task_completed"),
+            ("in_progress_tasks", "task_active"),
+            ("pending_tasks", "task_active"),
+        ):
+            for task in group.get(field, []):
+                catalog[f"task:{task['id']}"] = {
+                    "kind": "task", "class": fact_class, "id": task["id"],
+                    "label": task.get("title") or "Tarea",
+                }
+    for followup in followups:
+        catalog[f"followup:{followup['id']}"] = {
+            "kind": "followup", "class": "followup", "id": followup["id"],
+            "label": followup.get("subject") or "Seguimiento",
+        }
+    result["source_catalog"] = catalog
+    return result

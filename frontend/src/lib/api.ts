@@ -866,6 +866,7 @@ export const digestsApi = {
   list: (params?: { client_id?: number; status?: string; period_from?: string; period_to?: string; limit?: number; offset?: number }) =>
     api.get<Digest[]>("/digests", { params }).then((r) => r.data),
   get: (id: number) => api.get<Digest>(`/digests/${id}`).then((r) => r.data),
+  recoverGeneration: (generationKey: string) => api.get<Digest>(`/digests/generation/${generationKey}`).then((r) => r.data),
   generate: (data: DigestGenerateRequest) =>
     api.post<Digest>("/digests/generate", data, { timeout: 90_000 }).then((r) => r.data),
   generateBatch: (params?: { period_start?: string; period_end?: string; tone?: string }) =>

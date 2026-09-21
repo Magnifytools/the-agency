@@ -4,9 +4,9 @@ import { MemoryRouter, Route, Routes, useLocation, createMemoryRouter, RouterPro
 import { beforeEach, expect, it, vi } from "vitest"
 import DigestEditPage from "./digest-edit-page"
 
-const api = vi.hoisted(() => ({ get: vi.fn(), update: vi.fn(), render: vi.fn() }))
+const api = vi.hoisted(() => ({ get: vi.fn(), recoverGeneration: vi.fn(), update: vi.fn(), render: vi.fn() }))
 const auth = vi.hoisted(() => ({ canWrite: true }))
-vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ hasPermission: () => auth.canWrite }) }))
+vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: { id: 1 }, hasPermission: () => auth.canWrite }) }))
 vi.mock("@/lib/api", () => ({ digestsApi: api }))
 vi.mock("@/components/digests/digest-external-delivery", () => ({ DigestExternalDelivery: ({ unsaved }: { unsaved: boolean }) => <output data-testid="delivery-unsaved">{String(unsaved)}</output> }))
 const source = {
@@ -23,6 +23,7 @@ function setup() {
 }
 beforeEach(() => {
   vi.resetAllMocks()
+  localStorage.clear()
   auth.canWrite = true
   api.get.mockResolvedValue(source)
   api.update.mockImplementation(async (_id, request) => ({ ...source, id: 11, ...request }))
@@ -52,6 +53,23 @@ it("saves metrics and navigates to the returned version without changing the rep
   await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/digests/11/edit"))
   expect(api.update).toHaveBeenCalledWith(10, expect.objectContaining({ content: expect.objectContaining({ greeting: "Hola, equipo", sections: expect.objectContaining({ metrics: source.content.sections.metrics }) }) }))
 })
+it("shows assertion sources and removes their certification when the text is edited", async () => {
+  api.get.mockResolvedValueOnce({
+    ...source,
+    raw_context: { context_version: 2, projects: [], source_catalog: { "task:8": { kind: "task", class: "task_completed", id: 8, label: "Revisar portada" } } },
+    content: { ...source.content, sections: { ...source.content.sections, done: [{ title: "Portada revisada", description: "Lista", source_keys: ["task:8"] }] } },
+  })
+  setup()
+  expect(await screen.findByRole("link", { name: "Revisar portada" })).toHaveAttribute("href", "/tasks?task=8")
+  fireEvent.change(screen.getByLabelText("Hecho: título 1"), { target: { value: "Portada aprobada" } })
+  expect(screen.getAllByText(/Sin referencias verificadas/).length).toBeGreaterThan(0)
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }))
+  await waitFor(() => expect(api.update).toHaveBeenCalledWith(10, expect.objectContaining({ content: expect.objectContaining({ sections: expect.objectContaining({ done: [expect.objectContaining({ source_keys: [] })] }) }) })))
+})
+it("explains that legacy versions have no assertion references", async () => {
+  setup()
+  expect(await screen.findByText(/se creó sin referencias por afirmación/)).toBeInTheDocument()
+})
 it("renders the saved ID, including when switching the preview format", async () => {
   setup()
   await screen.findByLabelText("Saludo")
@@ -79,9 +97,18 @@ it("preserves manual edits before regenerating and keeps the saved version when 
   fireEvent.click(screen.getByRole("button", { name: "Guardar y generar" }))
   await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/digests/11/edit"))
   expect(api.update).toHaveBeenNthCalledWith(1, 10, expect.objectContaining({ content: expect.objectContaining({ greeting: "Trabajo revisado" }) }))
-  expect(api.update).toHaveBeenNthCalledWith(2, 11, { tone: "formal" })
+  expect(api.update).toHaveBeenNthCalledWith(2, 11, { tone: "formal", generation_key: expect.stringMatching(/^[A-Za-z0-9_-]{16,64}$/) })
   expect(screen.getByLabelText("Saludo")).toHaveValue("Trabajo revisado")
   expect(screen.getByLabelText("Tono")).toHaveValue("cercano")
+})
+it("recovers a tone generation persisted before a response was lost", async () => {
+  const key = "tone-recovery-stable-key"
+  localStorage.setItem(`agency:digest-generation:1:${key}`, JSON.stringify({ kind: "tone", operation_key: key, generation_key: key, digest_id: 10, tone: "formal" }))
+  api.recoverGeneration.mockResolvedValueOnce({ ...source, id: 12, tone: "formal" })
+  setup()
+  await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/digests/12/edit"))
+  expect(api.recoverGeneration).toHaveBeenCalledWith(key)
+  expect(localStorage.getItem(`agency:digest-generation:1:${key}`)).toBeNull()
 })
 it("retains unsaved edits after save failure and prevents overlapping operations", async () => {
   let reject!: (error: Error) => void

@@ -6,7 +6,7 @@ beforeEach(() => { vi.resetAllMocks(); for (const fn of Object.values(api)) fn.m
 it("uses scoped preview and submits only the reviewed cohort and exact periods", async () => {
   await reportPolicyApi.generationPreview("mine")
   expect(api.get).toHaveBeenCalledWith("/digests/generation-preview", { params: { scope: "mine" } })
-  const body = { items: [{ client_id: 12, policy_revision: 3, period_start: "2026-08-01", period_end: "2026-08-31" }], tone: "formal" as const }
+  const body = { items: [{ generation_key: "stable-generation-key", client_id: 12, policy_revision: 3, period_start: "2026-08-01", period_end: "2026-08-31" }], tone: "formal" as const }
   await reportPolicyApi.generateCohort(body)
   expect(api.post).toHaveBeenCalledWith("/digests/generate-cohort", body, { timeout: 300_000 })
 })

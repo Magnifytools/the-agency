@@ -182,6 +182,7 @@ async def generate_cohort(
                 period_start=item.period_start,
                 period_end=item.period_end,
                 tone=request.tone,
+                generation_key=item.generation_key,
                 expected_revision=item.policy_revision,
                 require_enabled=True,
                 reject_existing=True,
