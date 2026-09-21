@@ -5,10 +5,10 @@ import { MemoryRouter, useLocation } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import ProjectsPage from "./projects-page"
 
-const api = vi.hoisted(() => ({ list: vi.fn(), templates: vi.fn(), clients: vi.fn(), users: vi.fn(), create: vi.fn(), createFromTemplate: vi.fn(), extractFromPdf: vi.fn(), extractFromText: vi.fn() }))
+const api = vi.hoisted(() => ({ list: vi.fn(), unassignedCount: vi.fn(), templates: vi.fn(), clients: vi.fn(), users: vi.fn(), create: vi.fn(), createFromTemplate: vi.fn(), extractFromPdf: vi.fn(), extractFromText: vi.fn() }))
 const auth = vi.hoisted(() => ({ canWrite: true }))
 vi.mock("@/lib/api", () => ({
-  projectsApi: { list: api.list, templates: api.templates, create: api.create, createFromTemplate: api.createFromTemplate, extractFromPdf: api.extractFromPdf, extractFromText: api.extractFromText },
+  projectsApi: { list: api.list, unassignedCount: api.unassignedCount, templates: api.templates, create: api.create, createFromTemplate: api.createFromTemplate, extractFromPdf: api.extractFromPdf, extractFromText: api.extractFromText },
   clientsApi: { listAll: api.clients },
   usersApi: { listAll: api.users },
 }))
@@ -26,6 +26,7 @@ describe("projects filter navigation", () => {
     vi.clearAllMocks()
     auth.canWrite = true
     api.list.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 })
+    api.unassignedCount.mockResolvedValue(0)
     api.templates.mockResolvedValue({})
     api.clients.mockResolvedValue([{id: 17, name: "Cliente de prueba"}])
     api.users.mockResolvedValue([{id: 8, full_name: "Persona activa", is_active: true}, {id: 9, full_name: "Persona inactiva", is_active: false}])
@@ -51,17 +52,39 @@ describe("projects filter navigation", () => {
   })
   it("uses the server lifecycle cohort for Archivo and keeps its status filter scoped", async () => {
     setup("/projects?view=archive")
+    expect(screen.getByRole("button", { name: "Archivo" })).toHaveAttribute("aria-pressed", "true")
     await waitFor(() => expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ lifecycle: "archive", page: 1, page_size: 25 })))
     expect(await screen.findByText("El archivo está vacío")).toBeInTheDocument()
     await userEvent.selectOptions(screen.getByLabelText("Estado del proyecto"), "cancelled")
     await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ lifecycle: "archive", status: "cancelled" })))
     await userEvent.click(screen.getByRole("button", { name: "Cartera" }))
     await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ lifecycle: "portfolio" })))
+    expect(screen.getByRole("button", { name: "Cartera" })).toHaveAttribute("aria-pressed", "true")
   })
 
   it("treats an archived status deep link as Archivo without fetching the full list", async () => {
     setup("/projects?status=completed")
     await waitFor(() => expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ lifecycle: "archive", status: "completed" })))
+  })
+  it("surfaces unassigned projects and filters them across the server cohort", async () => {
+    api.unassignedCount.mockResolvedValue(3)
+    setup("/projects?status=active&type=recurring&period=month&page=2")
+    expect(await screen.findByText("3 proyectos sin responsable.")).toBeInTheDocument()
+    expect(screen.getByText(/Los avisos de seguimiento requieren/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Filtrar sin responsable" }))
+    await waitFor(() => expect(api.list).toHaveBeenLastCalledWith({ lifecycle: "portfolio", owner: "unassigned", page: 1, page_size: 25 }))
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects?owner=unassigned")
+    await userEvent.selectOptions(screen.getByLabelText("Responsable del proyecto"), "assigned")
+    await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ owner: "assigned", page: 1 })))
+    expect(screen.queryByText("3 proyectos sin responsable.")).not.toBeInTheDocument()
+  })
+  it("keeps the project list usable when the owner count fails and offers retry", async () => {
+    api.unassignedCount.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(2)
+    setup()
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo comprobar si hay proyectos sin responsable")
+    expect(screen.queryByText("2 proyectos sin responsable.")).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Reintentar" }))
+    expect(await screen.findByText("2 proyectos sin responsable.")).toBeInTheDocument()
   })
   it("creates with only name and client, preserves the draft on error and opens the created project", async () => {
     api.create.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({id: 91})
@@ -157,6 +180,7 @@ describe("projects filter navigation", () => {
     await userEvent.type(screen.getByLabelText("Nombre *"), "Sin contexto")
     await userEvent.selectOptions(screen.getByLabelText("Cliente *"), "17")
     expect(screen.getByLabelText("Responsable (opcional)")).toHaveDisplayValue("Sin responsable")
+    expect(screen.getByText(/no recibirá avisos de seguimiento/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", {name: "Crear proyecto"}))
     await waitFor(() => expect(api.create).toHaveBeenCalledWith(expect.objectContaining({owner_id: undefined})))
   })
