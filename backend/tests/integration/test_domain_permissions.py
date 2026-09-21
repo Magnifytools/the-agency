@@ -31,6 +31,18 @@ async def test_inbox_conversion_requires_tasks_write(make_member_client):
 
 
 @pytest.mark.asyncio
+async def test_task_bulk_update_requires_tasks_write(make_member_client):
+    client = await make_member_client([("tasks", True, False)])
+    try:
+        response = await client.patch(
+            "/api/tasks/bulk/update", json={"ids": [999999], "updates": {"status": "completed"}},
+        )
+        assert response.status_code == 403
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_client_finalization_requires_clients_write(make_member_client):
     client = await make_member_client([("clients", True, False)])
     try:
