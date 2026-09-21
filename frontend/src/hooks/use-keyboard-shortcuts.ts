@@ -175,6 +175,11 @@ export function useKeyboardShortcuts({ userOverrides = {}, onSearch, onCapture, 
         onCapture?.()
         return
       }
+      if (matchesShortcut(e, shortcuts.new_entry)) {
+        e.preventDefault()
+        onCapture?.()
+        return
+      }
       if (matchesShortcut(e, shortcuts.show_shortcuts)) {
         e.preventDefault()
         setIsHelpOpen((o) => !o)
