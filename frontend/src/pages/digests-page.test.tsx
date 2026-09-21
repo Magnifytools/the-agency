@@ -8,13 +8,29 @@ vi.mock("@/lib/api", () => ({digestsApi: mocks.api, clientsApi: {listAll: mocks.
 vi.mock("@/context/auth-context", () => ({useAuth: () => ({user: {id: mocks.auth.id}, isAdmin: true, hasPermission: (_module: string, write?: boolean) => !write || mocks.auth.write})}))
 vi.mock("@/components/digests/digest-cohort", () => ({DigestCohort: ({clientId, expectedPeriod}: {clientId?: number; expectedPeriod?: {start: string; end: string}}) => expectedPeriod ? <div>Período esperado {expectedPeriod.start} — {expectedPeriod.end} <Link to={`/digests?client_id=${clientId}`}>Ver períodos actuales</Link></div> : <div>Selección de clientes</div>}))
 vi.mock("@/components/delivery-receipts", () => ({DeliveryReceipts: ({sourceId}: {sourceId: number}) => <p>Recibos #{sourceId}</p>, deliveryToast: vi.fn()}))
-const source = {id: 10, client_id: 1, client_name: "Acme", status: "draft", tone: "cercano", period_start: "2026-09-07", period_end: "2026-09-13", generated_at: null, created_by: 1}
+const source = {id: 10, client_id: 1, client_name: "Acme", status: "draft", can_delete: true, tone: "cercano", period_start: "2026-09-07", period_end: "2026-09-13", generated_at: null, created_by: 1}
 function setup(route = "/digests") {
   const client = new QueryClient({defaultOptions: {queries: {retry: false}, mutations: {retry: false}}})
   const node = () => <QueryClientProvider client={client}><MemoryRouter initialEntries={[route]}><DigestsPage /></MemoryRouter></QueryClientProvider>
   return {...render(node()), node}
 }
 beforeEach(() => {vi.resetAllMocks(); localStorage.clear(); mocks.auth = {id: 1, write: true}; mocks.api.list.mockResolvedValue([source, {...source, id: 20, client_id: 2, client_name: "Other"}]); mocks.clients.mockResolvedValue([{id: 1, name: "Acme", status: "active", is_internal: false}]); mocks.api.render.mockResolvedValue({rendered: "Rendered"}); mocks.api.generate.mockResolvedValue({...source, id: 30}); mocks.send.mockResolvedValue({status: "pending"})})
+it("offers deletion only when the server confirms the version can be deleted", async () => {
+  mocks.api.list.mockResolvedValueOnce([{...source, status: "reviewed", can_delete: false}, {...source, id: 20, client_name: "Other", status: "sent", can_delete: true}, {...source, id: 30, client_name: "Free"}])
+  setup()
+  const acme = (await screen.findByRole("cell", {name: "Acme"})).closest("tr")!
+  const other = screen.getByRole("cell", {name: "Other"}).closest("tr")!
+  const free = screen.getByRole("cell", {name: "Free"}).closest("tr")!
+  expect(within(acme).queryByTitle("Eliminar")).not.toBeInTheDocument()
+  expect(within(other).queryByTitle("Eliminar")).not.toBeInTheDocument()
+  expect(within(free).getByTitle("Eliminar")).toBeInTheDocument()
+})
+it("does not offer deletion to a reader even if a stale list says the version is deletable", async () => {
+  mocks.auth.write = false
+  setup()
+  await screen.findByRole("cell", {name: "Acme"})
+  expect(screen.queryByTitle("Eliminar")).not.toBeInTheDocument()
+})
 it("clears an exact incident period when returning to current periods on the same route", async () => {
   setup("/digests?client_id=1&period_start=2026-08-01&period_end=2026-08-31")
   await screen.findByText("Período esperado 2026-08-01 — 2026-08-31")

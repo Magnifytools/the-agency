@@ -18,7 +18,7 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from sqlalchemy import exists, or_, select
+from sqlalchemy import exists, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -45,7 +45,7 @@ from backend.schemas.digest import (
     DigestStatusUpdate,
     DigestUpdateRequest,
 )
-from backend.services.digest_access import authorize_digest, digest_visibility_clause
+from backend.services.digest_access import authorize_digest, digest_visibility_clause, user_has_digest_permission
 from backend.services.digest_collector import collect_digest_data
 from backend.services.digest_generation import (
     DigestGenerationRejected,
@@ -471,8 +471,26 @@ async def list_digests(
     )
     result = await db.execute(query)
 
+    digests = result.scalars().all()
+    if not digests:
+        return []
+    ids = [digest.id for digest in digests]
+    evidence_ids = set((await db.scalars(union_all(
+        select(Delivery.source_id).where(Delivery.source_kind == "digest", Delivery.source_id.in_(ids)),
+        select(DigestExternalDeliveryEvent.digest_id).where(DigestExternalDeliveryEvent.digest_id.in_(ids)),
+    ))).all())
+    can_write = await user_has_digest_permission(db, current_user.id, write=True)
     readable = await _readable_modules(db, current_user)
-    return [_to_response(digest, readable) for digest in result.scalars().all()]
+    responses = []
+    for digest in digests:
+        response = _to_response(digest, readable)
+        response.can_delete = (
+            can_write
+            and (current_user.role == UserRole.admin or digest.status != DigestStatus.sent)
+            and digest.id not in evidence_ids
+        )
+        responses.append(response)
+    return responses
 
 
 @router.get("/generation/{generation_key}", response_model=DigestResponse)

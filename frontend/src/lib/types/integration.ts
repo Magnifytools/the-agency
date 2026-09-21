@@ -67,6 +67,7 @@ export interface Digest {
   period_start: string
   period_end: string
   status: DigestStatus
+  can_delete?: boolean | null
   tone: DigestTone
   content: DigestContent | null
   raw_context: Record<string, unknown> | null
