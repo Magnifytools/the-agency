@@ -1,6 +1,6 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-21T14:23:00+00:00",
+  "ultima_actualizacion": "2026-09-21T14:46:00+00:00",
   "estado_general": "produccion_p40_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
@@ -331,7 +331,7 @@
       "descripcion": "Estados Holded por saldo y pagos, sin conciliación automática de ingresos",
       "estado": "en_verificacion",
       "prioridad": "media",
-      "notas": "PR44/cc693edd publicada; seis gates CI en PR y main, Railway SUCCESS y /api/ready con revisión exacta. Income preservado tras despliegue. Falta observar la reclasificación del caché en el siguiente ciclo ordinario de Holded; avisos financieros desactivados y decisión operativa pendiente."
+      "notas": "PR44/cc693edd publicada; seis gates CI en PR y main, Railway SUCCESS y /api/ready exacto. Ciclo ordinario 21-09 14:44Z success/32: 22 pagadas, cinco vencidas, cinco pendientes, cero diferencias frente al clasificador de raw_data. Dos Income íntegros antes/después; sólo una de 32 facturas vinculada a cliente. Avisos financieros desactivados y decisión operativa pendiente."
     },
     {
       "id": "AUDIT-20260921-P33",
@@ -417,7 +417,7 @@
     "Stack: React 19 + FastAPI + PostgreSQL + Railway",
     "P29: seis gates CI PR/main correctos y Railway en revisión 3d48fea; 13 rutas activas revisadas 390/1440, producción y preservación verificadas. Validación humana y decisiones externas pendientes.",
     "P30: informe semanal operativo activado para David, sábado 08:00 Madrid; primera entrega real pendiente del 26 de septiembre, sin envíos de prueba.",
-    "P31: PR44/cc693edd publicada, seis gates CI PR/main correctos; Holded ahora clasifica por saldo/pagos con unknown conservador y no concilia Income. Hash de Income intacto tras desplegar; resultado del próximo sync ordinario pendiente.",
+    "P31/P39: PR44/cc693edd publicada y ciclo Holded ordinario del 21-09 verificado: 32 facturas, 22 paid/5 overdue/5 pending, coincidencia 32/32 con el clasificador y hash de dos Income intacto. Sin sincronización manual ni avisos financieros; vínculo factura-cliente y responsable aún pendientes.",
     "P36: PR50/5e131c2 publicada, validación central de asignado activo con bloqueo de concurrencia; PostgreSQL, seis gates CI de PR y /api/ready exacto. Cero tareas abiertas asignadas a inactivos en lectura productiva previa/posterior.",
     "P37: PR52/89c87d5 publicada: la baja de cuenta funciona de verdad, con impacto visible en Equipo, reactivación y filtros por persona. La asignación de responsable de proyecto usa bloqueo de concurrencia; PostgreSQL, seis gates CI de PR y /api/ready exacto. Datos históricos intactos y cero cuentas reales desactivadas durante la verificación.",
     "P38: PR54/1fac44c publicada: cancelar OAuth de Google Calendar vuelve a Ajustes con aviso claro, valida state firmado y conserva credenciales y eventos. 21 pruebas backend focales, siete UI, seis gates CI de PR, Railway SUCCESS y /api/ready exacto; ambas cuentas reales aún necesitan reconectar.",
@@ -429,7 +429,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "Comprobar visualmente las vistas autenticadas de cliente y cartera en producción. Observar el siguiente ciclo ordinario de Holded sin sincronización manual. Validar con David y Nacho seis recorridos reales de uso. Las dos cuentas activas deben reconectar Google Calendar y comprobar una reunión fresca. La política semanal está activa para David; comprobar el primer envío ordinario del 26 de septiembre y su recibo, sin mensaje de prueba. Elegir responsables para los tres proyectos activos visibles en el nuevo filtro y resolver decisiones por tarea/digest histórico; decidir si incorporar avisos de cobro, con vínculo factura-cliente y responsable reales, y si hace falta un canal entrante aparte de app/extensión. Véase docs/estado-implantacion-2026-09-21.md.",
+  "proximos_pasos": "Comprobar visualmente las vistas autenticadas de cliente y cartera en producción. Validar con David y Nacho seis recorridos reales de uso. Las dos cuentas activas deben reconectar Google Calendar y comprobar una reunión fresca. La política semanal está activa para David; comprobar el primer envío ordinario del 26 de septiembre y su recibo, sin mensaje de prueba. Elegir responsables para los tres proyectos activos visibles en el nuevo filtro y resolver decisiones por tarea/digest histórico; decidir si incorporar avisos de cobro, con vínculo factura-cliente y responsable reales, y si hace falta un canal entrante aparte de app/extensión. Véase docs/estado-implantacion-2026-09-21.md.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
