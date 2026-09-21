@@ -20,6 +20,7 @@ it("adds selected facts without replacing notes and saves their opaque keys", as
   fireEvent.change(await notes(), { target: { value: "Nota humana" } })
   fireEvent.click(screen.getByRole("button", { name: "Actualizar hechos" }))
   const fact = await screen.findByRole("checkbox", { name: "Revisar portada" })
+  expect(screen.getByText(/fecha de finalización fiable/)).toBeInTheDocument()
   fireEvent.click(fact)
   fireEvent.click(screen.getByRole("button", { name: "Añadir hechos seleccionados a las notas" }))
   expect(await notes()).toHaveValue("Nota humana\n\n- Revisar portada — Registrado")

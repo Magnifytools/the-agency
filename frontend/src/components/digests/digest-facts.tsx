@@ -97,7 +97,7 @@ function ProjectFacts({ group, canReadTasks, canReadProjects }: { group: Unknown
         </p>
       )}
       <div className="grid gap-4 lg:grid-cols-3">
-        <FactTasks label="Completadas en el período" total={number(group.completed_total)} tasks={completed} canReadTasks={canReadTasks} />
+        <div><FactTasks label="Completadas en el período" total={number(group.completed_total)} tasks={completed} canReadTasks={canReadTasks} /><p className="mt-2 text-xs text-muted-foreground">Sólo incluye finalizaciones con fecha registrada dentro del período.</p></div>
         <FactTasks label="En curso al generar" total={number(group.in_progress_total)} tasks={inProgress} canReadTasks={canReadTasks} />
         <FactTasks label="Pendientes al generar" total={number(group.pending_total)} tasks={pending} canReadTasks={canReadTasks} />
       </div>

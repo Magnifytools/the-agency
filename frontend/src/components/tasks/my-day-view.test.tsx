@@ -19,6 +19,10 @@ const task = (id: number, title: string, overrides: Partial<Task> = {}): Task =>
 const page = (items: Task[], total = items.length): PaginatedResponse<Task> => ({ items, total, page: 1, page_size: 25 })
 
 describe("MyDayView", () => {
+  it("explains the reliable completion-date scope", () => {
+    render(<MyDayView planned={page([])} carryover={page([])} unplanned={page([])} completed={page([task(9, "Terminada")])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} onReviewCarryover={vi.fn()} canWrite={false} />)
+    expect(screen.getByText(/fecha de finalización registrada para hoy/)).toBeInTheDocument()
+  })
   it("separa el arrastre del compromiso de hoy y deja la carga adicional explícita", () => {
     const today = new Date()
     const old = new Date(today)

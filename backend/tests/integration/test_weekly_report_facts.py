@@ -174,6 +174,7 @@ async def test_operational_week_preserves_history_and_has_no_finance_query(
         for statement in statements
     )
     rendered = service.render_weekly_operational(facts)
+    assert "fecha de finalización registrada" in rendered
     assert "90" not in rendered  # rendered as 1.5h, not raw minutes
     assert "€" not in rendered and "Coste" not in rendered
     assert "persona inactiva; actividad histórica" in rendered

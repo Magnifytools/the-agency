@@ -102,13 +102,15 @@ function groupByDate(events: ActivityEvent[]): Map<string, ActivityEvent[]> {
 }
 
 export function ActivityTimeline({ clientId }: Props) {
-  const { data: events = [], isLoading } = useQuery({
+  const activityQuery = useQuery({
     queryKey: ["client-activity", clientId],
     queryFn: () => clientActivityApi.list(clientId),
     enabled: !!clientId,
   })
+  const events = activityQuery.isError ? [] : (activityQuery.data ?? [])
 
-  if (isLoading) return <p className="text-muted-foreground text-sm">Cargando actividad...</p>
+  if (activityQuery.isPending) return <p className="text-muted-foreground text-sm">Cargando actividad...</p>
+  if (activityQuery.isError) return <div role="alert" className="flex items-center justify-between gap-3 py-6"><p className="text-sm">No se pudo cargar la actividad del cliente.</p><button className="text-sm text-brand hover:underline" onClick={() => void activityQuery.refetch()}>Reintentar</button></div>
 
   if (events.length === 0) {
     return (
@@ -124,6 +126,7 @@ export function ActivityTimeline({ clientId }: Props) {
 
   return (
     <div className="space-y-6">
+      <p className="text-xs text-muted-foreground">Las tareas completadas sólo se sitúan en el timeline cuando tienen fecha de finalización registrada.</p>
       {Array.from(grouped.entries()).map(([dateLabel, dayEvents]) => (
         <div key={dateLabel}>
           {/* Date separator */}
