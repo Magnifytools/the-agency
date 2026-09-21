@@ -10,6 +10,7 @@ import { DigestCohort } from "@/components/digests/digest-cohort"
 import { reportPolicyKeys } from "@/lib/report-policy-api"
 import { digestsApi, clientsApi, discordApi } from "@/lib/api"
 import type { Digest, DigestStatus, DigestTone } from "@/lib/types"
+import { clearDigestGeneration, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type IndividualDigestIntent } from "@/lib/digest-generation-recovery"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -46,6 +47,7 @@ export default function DigestsPage() {
 
 function DigestList() {
   const { user, hasPermission } = useAuth()
+  const userId = user!.id
   const canWrite = hasPermission("digests", true)
   const canViewClients = hasPermission("clients")
   const active = useRef(true)
@@ -91,6 +93,11 @@ function DigestList() {
   const [discordPreviewContent, setDiscordPreviewContent] = useState("")
   const [discordIsEditing, setDiscordIsEditing] = useState(false)
   const [digestToDelete, setDigestToDelete] = useState<Digest | null>(null)
+  const initialRecovery = useRef(readDigestGenerations(userId))
+  const [generationStorageFailed] = useState(initialRecovery.current.failed)
+  const [pendingIndividual, setPendingIndividual] = useState<IndividualDigestIntent | null>(() =>
+    initialRecovery.current.intents.find((intent): intent is IndividualDigestIntent => intent.kind === "individual") ?? null,
+  )
 
   const { data: digestPages, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } = useInfiniteQuery({
     queryKey: ["digests", user?.id, filterStatus, filterClient, filterPeriodFrom, filterPeriodTo],
@@ -113,19 +120,55 @@ function DigestList() {
     queryFn: () => clientsApi.listAll(),
   })
 
+  const finishIndividualGeneration = (intent: IndividualDigestIntent) => {
+    clearDigestGeneration(userId, intent.operation_key)
+    setPendingIndividual(null)
+    queryClient.invalidateQueries({ queryKey: reportPolicyKeys.preview })
+    queryClient.invalidateQueries({ queryKey: reportPolicyKeys.external })
+    queryClient.invalidateQueries({ queryKey: ["digests"] })
+    queryClient.invalidateQueries({ queryKey: ["incidents"] })
+  }
+
+  const recoveryQuery = useQuery({
+    queryKey: ["digest-generation-recovery", userId, pendingIndividual?.generation_key],
+    queryFn: () => digestsApi.recoverGeneration(pendingIndividual!.generation_key),
+    enabled: Boolean(pendingIndividual),
+    retry: false,
+  })
+
+  useEffect(() => {
+    if (!pendingIndividual || !recoveryQuery.data) return
+    finishIndividualGeneration(pendingIndividual)
+    setGenerateOpen(false)
+    toast.success(`Resumen recuperado como versión #${recoveryQuery.data.id}.`)
+  // A successful recovery is terminal for this persisted key.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recoveryQuery.dataUpdatedAt])
+
   const generateMutation = useMutation({
-    mutationFn: (data: { client_id: number; tone: DigestTone; period_start?: string; period_end?: string }) =>
-      digestsApi.generate({ client_id: data.client_id, tone: data.tone, period_start: data.period_start, period_end: data.period_end }),
-    onSuccess: () => {
+    mutationFn: (intent: IndividualDigestIntent) => digestsApi.generate({
+      generation_key: intent.generation_key,
+      client_id: intent.client_id,
+      tone: intent.tone,
+      period_start: intent.period_start,
+      period_end: intent.period_end,
+    }),
+    onSuccess: (_digest, intent) => {
       if (!active.current) return
-      queryClient.invalidateQueries({ queryKey: reportPolicyKeys.preview })
-      queryClient.invalidateQueries({ queryKey: reportPolicyKeys.external })
-      queryClient.invalidateQueries({ queryKey: ["digests"] })
-      queryClient.invalidateQueries({ queryKey: ["incidents"] })
+      finishIndividualGeneration(intent)
       setGenerateOpen(false)
       toast.success("Resumen generado. Revisa su nueva versión.")
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al generar el resumen")),
+    onError: (err, intent) => {
+      if (isConfirmedFailure(err)) {
+        clearDigestGeneration(userId, intent.operation_key)
+        setPendingIndividual(null)
+        toast.error(getErrorMessage(err, "No se pudo generar el resumen."))
+      } else {
+        setPendingIndividual(intent)
+        toast.error("No se pudo confirmar el resultado. Conservamos la misma solicitud para comprobarla o reintentarla sin duplicar versiones.")
+      }
+    },
   })
 
   const statusMutation = useMutation({
@@ -216,17 +259,32 @@ function DigestList() {
   }
 
   const handleGenerate = () => {
-    if (!selectedClientId || !canWrite || generateMutation.isPending) return
+    if (!canWrite || generateMutation.isPending) return
+    if (pendingIndividual) {
+      generateMutation.mutate(pendingIndividual)
+      return
+    }
+    if (!selectedClientId) return
     if (Boolean(genPeriodStart) !== Boolean(genPeriodEnd) || (genPeriodStart && genPeriodEnd < genPeriodStart)) {
       toast.error("Indica las dos fechas en orden, o deja ambas vacías para usar la última semana cerrada.")
       return
     }
-    generateMutation.mutate({
+    const generation_key = newDigestGenerationKey()
+    const intent: IndividualDigestIntent = {
+      kind: "individual",
+      operation_key: generation_key,
+      generation_key,
       client_id: selectedClientId as number,
       tone: selectedTone,
       period_start: genPeriodStart || undefined,
       period_end: genPeriodEnd || undefined,
-    })
+    }
+    if (!persistDigestGeneration(userId, intent)) {
+      toast.error("El navegador no pudo guardar la clave de recuperación. No se ha enviado la solicitud.")
+      return
+    }
+    setPendingIndividual(intent)
+    generateMutation.mutate(intent)
   }
 
   const handlePreview = (digest: Digest, fmt: "slack" | "email") => {
@@ -276,6 +334,17 @@ function DigestList() {
           <Sparkles className="w-4 h-4 mr-2" />Preparar uno
         </Button>}
       </div>
+
+      {(pendingIndividual || generationStorageFailed) && <div role="alert" className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4 text-sm space-y-2">
+        {generationStorageFailed ? <p>No se pudo leer el almacenamiento de recuperación. No prepares otro resumen hasta recargar en un navegador que permita almacenamiento local.</p> : <>
+          <p>Hay una preparación individual sin respuesta confirmada. Se conserva su clave para evitar versiones duplicadas.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" disabled={recoveryQuery.isFetching || generateMutation.isPending} onClick={() => void recoveryQuery.refetch()}>{recoveryQuery.isFetching ? "Comprobando…" : "Comprobar resultado"}</Button>
+            <Button size="sm" disabled={!canWrite || recoveryQuery.isFetching || generateMutation.isPending} onClick={() => pendingIndividual && generateMutation.mutate(pendingIndividual)}>Reintentar la misma solicitud</Button>
+          </div>
+          {recoveryQuery.isError && <p>{(recoveryQuery.error as { response?: { status?: number } })?.response?.status === 404 ? "Todavía no hay una versión confirmada. Puedes comprobar de nuevo o reintentar la misma solicitud." : "No se pudo comprobar el resultado. La solicitud sigue guardada."}</p>}
+        </>}
+      </div>}
 
       <DigestCohort clientId={filterClient || undefined} expectedPeriod={expectedPeriod} />
 
@@ -466,7 +535,7 @@ function DigestList() {
         <div className="space-y-4 pt-4">
           <div className="space-y-2">
             <Label htmlFor="individual-client">Cliente</Label>
-            <Select id="individual-client" disabled={generateMutation.isPending} value={String(selectedClientId)} onChange={(e) => setSelectedClientId(e.target.value ? Number(e.target.value) : "")}>
+            <Select id="individual-client" disabled={generateMutation.isPending || !!pendingIndividual} value={String(pendingIndividual?.client_id ?? selectedClientId)} onChange={(e) => setSelectedClientId(e.target.value ? Number(e.target.value) : "")}>
               <option value="">Selecciona cliente...</option>
               {clients.filter(client => client.status === "active" && !client.is_internal).map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -475,7 +544,7 @@ function DigestList() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="individual-tone">Tono</Label>
-            <Select id="individual-tone" disabled={generateMutation.isPending} value={selectedTone} onChange={(e) => setSelectedTone(e.target.value as DigestTone)}>
+            <Select id="individual-tone" disabled={generateMutation.isPending || !!pendingIndividual} value={pendingIndividual?.tone ?? selectedTone} onChange={(e) => setSelectedTone(e.target.value as DigestTone)}>
               <option value="cercano">Cercano</option>
               <option value="formal">Formal</option>
               <option value="equipo">Equipo</option>
@@ -486,8 +555,9 @@ function DigestList() {
             <div className="flex items-center gap-2">
               <Input
                 type="date"
-                value={genPeriodStart}
+                value={pendingIndividual?.period_start ?? genPeriodStart}
                 onChange={(e) => setGenPeriodStart(e.target.value)}
+                disabled={!!pendingIndividual}
                 className="flex-1"
                 aria-label="Inicio del período"
                 placeholder="Desde"
@@ -495,8 +565,9 @@ function DigestList() {
               <span className="text-muted-foreground text-sm">—</span>
               <Input
                 type="date"
-                value={genPeriodEnd}
+                value={pendingIndividual?.period_end ?? genPeriodEnd}
                 onChange={(e) => setGenPeriodEnd(e.target.value)}
+                disabled={!!pendingIndividual}
                 className="flex-1"
                 aria-label="Fin del período"
                 placeholder="Hasta"
@@ -505,11 +576,11 @@ function DigestList() {
           </div>
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="outline" onClick={() => setGenerateOpen(false)}>Cancelar</Button>
-            <Button onClick={handleGenerate} disabled={!selectedClientId || generateMutation.isPending}>
+            <Button onClick={handleGenerate} disabled={(!selectedClientId && !pendingIndividual) || generateMutation.isPending || generationStorageFailed}>
               {generateMutation.isPending ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Generando...</>
               ) : (
-                <><Sparkles className="w-4 h-4 mr-2" />Generar</>
+                <><Sparkles className="w-4 h-4 mr-2" />{pendingIndividual ? "Reintentar misma solicitud" : "Generar"}</>
               )}
             </Button>
           </div>

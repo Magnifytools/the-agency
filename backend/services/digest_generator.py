@@ -3,14 +3,23 @@
 Receives collector data + tone setting, calls Claude API, and returns
 structured JSON content ready for the WeeklyDigest model.
 """
+
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from backend.db.models import DigestTone
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 
 logger = logging.getLogger(__name__)
+
+
+class DigestProviderError(Exception):
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(code)
+
 
 # Tone descriptions for the prompt
 TONE_INSTRUCTIONS = {
@@ -140,7 +149,9 @@ def _format_task_list(tasks: list[dict]) -> str:
         if t.get("due_date"):
             line += f" [Fecha: {t['due_date']}]"
         if t.get("estimated_minutes") and t.get("actual_minutes"):
-            line += f" [Est: {t['estimated_minutes']}min / Real: {t['actual_minutes']}min]"
+            line += (
+                f" [Est: {t['estimated_minutes']}min / Real: {t['actual_minutes']}min]"
+            )
         lines.append(line)
     return "\n".join(lines)
 
@@ -200,7 +211,13 @@ def _build_user_prompt(raw_data: dict, tone: DigestTone) -> str:
         unassigned = raw_data.get("unassigned")
         if unassigned and any(
             unassigned.get(key, 0)
-            for key in ("task_total", "completed_total", "in_progress_total", "pending_total", "total_minutes")
+            for key in (
+                "task_total",
+                "completed_total",
+                "in_progress_total",
+                "pending_total",
+                "total_minutes",
+            )
         ):
             groups.append(unassigned)
         totals = raw_data.get("totals", {})
@@ -209,7 +226,9 @@ def _build_user_prompt(raw_data: dict, tone: DigestTone) -> str:
             period_start=raw_data.get("period_start", ""),
             period_end=raw_data.get("period_end", ""),
             tone_instruction=TONE_INSTRUCTIONS[tone],
-            project_count=totals.get("project_count", len(raw_data.get("projects", []))),
+            project_count=totals.get(
+                "project_count", len(raw_data.get("projects", []))
+            ),
             unresolved_project_count=totals.get(
                 "unresolved_project_count",
                 len(raw_data.get("unresolved_projects", [])),
@@ -219,7 +238,9 @@ def _build_user_prompt(raw_data: dict, tone: DigestTone) -> str:
             pending_total=totals.get("pending_total", 0),
             total_hours=totals.get("total_hours", raw_data.get("total_hours", 0)),
             total_minutes=totals.get("total_minutes", raw_data.get("total_minutes", 0)),
-            project_sections="\n\n".join(_format_project_group(group) for group in groups)
+            project_sections="\n\n".join(
+                _format_project_group(group) for group in groups
+            )
             or "(sin proyectos ni tareas)",
             followup_count=len(raw_data.get("pending_followups", [])),
             followups=_format_followups(raw_data.get("pending_followups", [])),
@@ -244,6 +265,52 @@ def _build_user_prompt(raw_data: dict, tone: DigestTone) -> str:
     )
 
 
+SOURCE_RULES = """Cada item debe incluir source_keys (1-8 claves únicas) tomadas
+literalmente del CATÁLOGO DE FUENTES. done usa task_completed; need usa followup
+o task_active; next usa task_active, project o period; metrics usa aggregate.
+Las claves prueban los hechos consultados, no certifican interpretaciones libres."""
+
+
+def _with_source_contract(prompt: str, raw_data: dict) -> str:
+    catalog = raw_data.get("source_catalog") or {}
+    rendered = "\n".join(
+        f"- {key} [{value.get('class', 'unknown')}]"
+        for key, value in sorted(catalog.items())
+    )
+    return f"{prompt}\n\n{SOURCE_RULES}\nCATÁLOGO DE FUENTES:\n{rendered or '(vacío)'}"
+
+
+def _validate_sources(result: dict, raw_data: dict) -> dict:
+    catalog = raw_data.get("source_catalog") or {}
+    allowed_classes = {
+        "done": {"task_completed", "legacy"},
+        "need": {"followup", "task_active", "legacy"},
+        "next": {"task_active", "project", "period", "legacy"},
+        "metrics": {"aggregate", "legacy"},
+    }
+    for section, items in result["sections"].items():
+        for item in items:
+            keys = item.get("source_keys")
+            if not isinstance(keys, list) or not 1 <= len(keys) <= 8:
+                raise ValueError(
+                    "Cada afirmación generada necesita entre 1 y 8 fuentes"
+                )
+            if any(not isinstance(key, str) for key in keys) or len(keys) != len(
+                set(keys)
+            ):
+                raise ValueError(
+                    "Las fuentes de una afirmación deben ser claves únicas"
+                )
+            if any(key not in catalog for key in keys):
+                raise ValueError("La respuesta contiene una fuente desconocida")
+            if any(
+                catalog[key].get("class") not in allowed_classes[section]
+                for key in keys
+            ):
+                raise ValueError("La fuente no corresponde a la sección indicada")
+    return result
+
+
 async def generate_digest_content(
     raw_data: dict,
     tone: DigestTone = DigestTone.cercano,
@@ -253,11 +320,15 @@ async def generate_digest_content(
     Returns the parsed DigestContent dict:
     {greeting, date, sections: {done, need, next}, closing}
 
-    Raises ValueError if API key is missing or response is invalid.
+    Raises DigestProviderError for provider availability/timeouts and ValueError
+    for invalid generated content.
     """
-    client = get_anthropic_client()
+    try:
+        client = get_anthropic_client().with_options(timeout=35.0, max_retries=0)
+    except ValueError as exc:
+        raise DigestProviderError("provider_unavailable") from exc
 
-    user_prompt = _build_user_prompt(raw_data, tone)
+    user_prompt = _with_source_contract(_build_user_prompt(raw_data, tone), raw_data)
 
     logger.info(
         "Generating digest for client=%s tone=%s",
@@ -265,12 +336,16 @@ async def generate_digest_content(
         tone.value,
     )
 
-    message = await client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2048,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}],
-    )
+    try:
+        async with asyncio.timeout(45):
+            message = await client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=2048,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+    except TimeoutError as exc:
+        raise DigestProviderError("provider_timeout") from exc
 
     content = parse_claude_json(message)
 
@@ -297,10 +372,13 @@ async def generate_digest_content(
         validated = []
         for item in items:
             if isinstance(item, dict) and "title" in item:
-                validated.append({
-                    "title": item["title"],
-                    "description": item.get("description", ""),
-                })
+                validated.append(
+                    {
+                        "title": item["title"],
+                        "description": item.get("description", ""),
+                        "source_keys": item.get("source_keys"),
+                    }
+                )
         result["sections"][section_name] = validated
 
     logger.info(
@@ -311,4 +389,4 @@ async def generate_digest_content(
         len(result["sections"]["metrics"]),
     )
 
-    return result
+    return _validate_sources(result, raw_data)

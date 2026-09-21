@@ -55,6 +55,9 @@ def _make_mock_db():
     execute_result.scalars.return_value.all.return_value = []
     execute_result.scalars.return_value.first.return_value = None
     mock_db.execute.return_value = execute_result
+    readable_result = MagicMock()
+    readable_result.all.return_value = []
+    mock_db.scalars = AsyncMock(return_value=readable_result)
     return mock_db
 
 
@@ -169,6 +172,7 @@ async def test_member_with_digest_write_can_generate(digest_member_client):
             "/api/digests/generate",
             json={
                 "client_id": 1,
+                "generation_key": "member-generate-key",
                 "period_start": "2026-03-09",
                 "period_end": "2026-03-15",
             },

@@ -4,8 +4,9 @@ import { MemoryRouter, useLocation } from "react-router-dom"
 import { beforeEach, expect, it, vi } from "vitest"
 import { DigestCohort } from "./digest-cohort"
 import type { GenerationPreviewItem } from "@/lib/report-policy-api"
-const mocks = vi.hoisted(() => ({ preview: vi.fn(), generate: vi.fn(), auth: { id: 2, admin: false, write: true } }))
+const mocks = vi.hoisted(() => ({ preview: vi.fn(), generate: vi.fn(), recover: vi.fn(), auth: { id: 2, admin: false, write: true } }))
 vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: { id: mocks.auth.id }, isAdmin: mocks.auth.admin, hasPermission: (_module: string, write?: boolean) => !write || mocks.auth.write }) }))
+vi.mock("@/lib/api", () => ({ api: {}, digestsApi: { recoverGeneration: mocks.recover } }))
 vi.mock("@/lib/report-policy-api", async () => { const actual = await vi.importActual<typeof import("@/lib/report-policy-api")>("@/lib/report-policy-api"); return { ...actual, reportPolicyApi: { generationPreview: mocks.preview, generateCohort: mocks.generate } } })
 function item(id: number, overrides: Partial<GenerationPreviewItem> = {}): GenerationPreviewItem {
   return { client_id: id, client_name: `Cliente ${id}`, policy_revision: 3, cadence: "weekly", responsible_user_id: 2, responsible_name: "Responsable", period_start: "2026-09-07", period_end: "2026-09-13", eligible: true, reason: "eligible", latest_digest_id: null, version_count: 0, state: "pending", digest: {latest_digest_id: null, latest_status: null, version_count: 0}, internal_distribution: {digest_id: null, state: null, delivery_id: null, sent_at: null}, external_delivery: {digest_id: null, state: "unconfirmed", actor_name: null, confirmed_at: null}, ...overrides }
@@ -24,7 +25,7 @@ function PeriodLinkHarness() {
   const end = params.get("period_end") || ""
   return <DigestCohort clientId={clientId} expectedPeriod={start && end ? { start, end } : undefined} />
 }
-beforeEach(() => { vi.clearAllMocks(); mocks.auth = {id: 2, admin: false, write: true}; mocks.preview.mockResolvedValue(response([item(1), item(2, {cadence: "monthly", period_start: "2026-08-01", period_end: "2026-08-31"}), item(3, {eligible: false, reason: "policy_missing", policy_revision: null})])); mocks.generate.mockResolvedValue({results: []}) })
+beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); mocks.auth = {id: 2, admin: false, write: true}; mocks.preview.mockResolvedValue(response([item(1), item(2, {cadence: "monthly", period_start: "2026-08-01", period_end: "2026-08-31"}), item(3, {eligible: false, reason: "policy_missing", policy_revision: null})])); mocks.generate.mockResolvedValue({results: []}); mocks.recover.mockRejectedValue({ response: { status: 404 } }) })
 it("starts unselected, explains exclusions, and sends only selected monthly period/revision", async () => {
   setup()
   const monthly = await screen.findByRole("checkbox", {name: "Preparar Cliente 2"})
@@ -35,7 +36,23 @@ it("starts unselected, explains exclusions, and sends only selected monthly peri
   expect(screen.queryByLabelText("Responsabilidad")).not.toBeInTheDocument()
   fireEvent.click(monthly)
   fireEvent.click(screen.getByRole("button", {name: "Preparar selección (1)"}))
-  await waitFor(() => expect(mocks.generate).toHaveBeenCalledWith({items: [{client_id: 2, policy_revision: 3, period_start: "2026-08-01", period_end: "2026-08-31"}], tone: "cercano"}))
+  await waitFor(() => expect(mocks.generate).toHaveBeenCalledWith({items: [{generation_key: expect.stringMatching(/^[A-Za-z0-9_-]{16,64}$/), client_id: 2, policy_revision: 3, period_start: "2026-08-01", period_end: "2026-08-31"}], tone: "cercano"}))
+})
+it("recovers every version from a persisted cohort after reload", async () => {
+  const operationKey = "cohort-operation-key"
+  const firstKey = "cohort-generation-one"
+  const secondKey = "cohort-generation-two"
+  localStorage.setItem(`agency:digest-generation:2:${operationKey}`, JSON.stringify({ kind: "cohort", operation_key: operationKey, tone: "cercano", items: [
+    { generation_key: firstKey, client_id: 1, policy_revision: 3, period_start: "2026-09-07", period_end: "2026-09-13" },
+    { generation_key: secondKey, client_id: 2, policy_revision: 3, period_start: "2026-08-01", period_end: "2026-08-31" },
+  ] }))
+  mocks.recover.mockImplementation(async (key: string) => ({ id: key === firstKey ? 31 : 32 }))
+  setup()
+  expect(await screen.findByRole("link", { name: "Abrir versión #31" })).toBeInTheDocument()
+  expect(screen.getByRole("link", { name: "Abrir versión #32" })).toBeInTheDocument()
+  expect(mocks.recover).toHaveBeenCalledWith(firstKey)
+  expect(mocks.recover).toHaveBeenCalledWith(secondKey)
+  expect(localStorage.getItem(`agency:digest-generation:2:${operationKey}`)).toBeNull()
 })
 it("admin can choose team, and changing scope discards the old selection", async () => {
   mocks.auth.admin = true
@@ -64,7 +81,7 @@ it("network uncertainty requires a fresh preview before another attempt", async 
   setup()
   fireEvent.click(await screen.findByRole("checkbox", {name: "Preparar Cliente 1"}))
   fireEvent.click(screen.getByRole("button", {name: "Preparar selección (1)"}))
-  await screen.findByText(/Puede haber versiones ya guardadas/)
+  await screen.findByText(/No se pudo confirmar toda la selección/)
   expect(screen.getByRole("button", {name: "Preparar selección (1)"})).toBeDisabled()
   mocks.preview.mockResolvedValue(response([existing]))
   fireEvent.click(screen.getByRole("button", {name: "Actualizar selección"}))
@@ -76,6 +93,16 @@ it("read-only users can inspect reasons without preparing anything", async () =>
   setup()
   expect(await screen.findByRole("checkbox", {name: "Preparar Cliente 1"})).toBeDisabled()
   expect(screen.queryByRole("button", {name: /Preparar selección/})).not.toBeInTheDocument()
+})
+it("keeps a persisted cohort visible but cannot retry after write permission is revoked", async () => {
+  const operationKey = "revoked-cohort-operation"
+  localStorage.setItem(`agency:digest-generation:2:${operationKey}`, JSON.stringify({ kind: "cohort", operation_key: operationKey, tone: "cercano", items: [
+    { generation_key: "revoked-cohort-generation", client_id: 1, policy_revision: 3, period_start: "2026-09-07", period_end: "2026-09-13" },
+  ] }))
+  mocks.auth.write = false
+  setup()
+  expect(await screen.findByRole("button", { name: "Reintentar la misma selección" })).toBeDisabled()
+  expect(mocks.generate).not.toHaveBeenCalled()
 })
 it("preview failure remains visible and retry recovers", async () => {
   mocks.preview.mockRejectedValueOnce(new Error("offline"))
@@ -129,7 +156,7 @@ it("prepares the exact monthly period linked by an incident", async () => {
   expect(await screen.findByText(/Período del aviso: 1 ago 2026 — 31 ago 2026/)).toBeInTheDocument()
   fireEvent.click(monthly)
   fireEvent.click(screen.getByRole("button", {name: "Preparar selección (1)"}))
-  await waitFor(() => expect(mocks.generate).toHaveBeenCalledWith({items: [{client_id: 2, policy_revision: 3, period_start: "2026-08-01", period_end: "2026-08-31"}], tone: "cercano"}))
+  await waitFor(() => expect(mocks.generate).toHaveBeenCalledWith({items: [{generation_key: expect.stringMatching(/^[A-Za-z0-9_-]{16,64}$/), client_id: 2, policy_revision: 3, period_start: "2026-08-01", period_end: "2026-08-31"}], tone: "cercano"}))
 })
 it("does not prepare a newer policy period from an old incident link and recovers current periods", async () => {
   mocks.preview.mockResolvedValue(response([item(2, {cadence: "monthly", period_start: "2026-09-01", period_end: "2026-09-30"})]))

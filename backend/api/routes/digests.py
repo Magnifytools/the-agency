@@ -10,14 +10,15 @@ Endpoints:
 - GET  /{id}/render       — render digest as Slack or Email HTML
 - DELETE /{id}            — delete a digest (draft or admin)
 """
+
 from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import exists, func, or_, select, text
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from sqlalchemy import exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -26,15 +27,13 @@ from backend.api.middleware.audit_log import log_audit
 from backend.api.utils.db_helpers import safe_refresh
 from backend.core.rate_limiter import ai_limiter
 from backend.db.database import get_db
+from backend.core.modules import is_hidden
 from backend.db.models import (
-    Client,
-    ClientReportPolicy,
-    ClientStatus,
     Delivery,
     DigestExternalDeliveryEvent,
     DigestStatus,
-    DigestTone,
     User,
+    UserPermission,
     UserRole,
     WeeklyDigest,
 )
@@ -46,10 +45,18 @@ from backend.schemas.digest import (
     DigestStatusUpdate,
     DigestUpdateRequest,
 )
-from backend.services.digest_collector import collect_digest_data
 from backend.services.digest_access import authorize_digest, digest_visibility_clause
-from backend.services.digest_generator import generate_digest_content
-from backend.services.digest_generation import DigestGenerationRejected, generate_locked_digest
+from backend.services.digest_collector import collect_digest_data
+from backend.services.digest_generation import (
+    DigestGenerationRejected,
+    find_generation,
+    generate_locked_digest,
+    regenerate_digest,
+)
+from backend.services.digest_generator import (
+    DigestProviderError,
+    generate_digest_content,
+)
 from backend.services.digest_periods import (
     canonicalize_digest_content,
     resolve_digest_period,
@@ -69,6 +76,7 @@ logger = logging.getLogger(__name__)
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _resolve_period_or_422(
     period_start: date | None, period_end: date | None
 ) -> tuple[date, date]:
@@ -78,15 +86,207 @@ def _resolve_period_or_422(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-def _to_response(digest: WeeklyDigest) -> DigestResponse:
+def _human_content(
+    content: dict, previous: dict | None, raw_context: dict | None
+) -> dict:
+    """Only unchanged assertions may retain validated generated provenance."""
+    previous_sections = (previous or {}).get("sections", {})
+    catalog = (raw_context or {}).get("source_catalog", {})
+    for section, items in content.get("sections", {}).items():
+        old_items = previous_sections.get(section, [])
+        for index, item in enumerate(items):
+            old = old_items[index] if index < len(old_items) else None
+            unchanged = bool(
+                old
+                and all(
+                    item.get(field, "") == old.get(field, "")
+                    for field in ("title", "description")
+                )
+            )
+            # Provenance is server-issued. A client may preserve it by keeping
+            # an assertion intact, but cannot attach another catalog entry to
+            # that same text.
+            keys = old.get("source_keys", []) if unchanged else []
+            item["source_keys"] = [key for key in keys if key in catalog][:8]
+    return content
+
+
+async def _readable_modules(db: AsyncSession, actor: User) -> set[str]:
+    if actor.role == UserRole.admin:
+        return {"tasks", "projects", "communications"}
+    readable = set(
+        (
+            await db.scalars(
+                select(UserPermission.module).where(
+                    UserPermission.user_id == actor.id,
+                    UserPermission.can_read.is_(True),
+                    UserPermission.module.in_(("tasks", "projects", "communications")),
+                )
+            )
+        ).all()
+    )
+    if is_hidden("communications"):
+        readable.discard("communications")
+    return readable
+
+
+def _public_task(task: object, readable: set[str]) -> dict | None:
+    if not isinstance(task, dict):
+        return None
+    public = dict(task)
+    if "projects" not in readable:
+        public.pop("project_id", None)
+        public.pop("project_name", None)
+    return public
+
+
+def _public_group(group: object, readable: set[str]) -> dict | None:
+    if not isinstance(group, dict):
+        return None
+    public = dict(group)
+    if "projects" not in readable:
+        public.pop("project_id", None)
+        public.pop("project_name", None)
+        public.pop("resolution", None)
+        public.pop("progress_percent", None)
+    if "tasks" not in readable:
+        for key in (
+            "task_total",
+            "completed_total",
+            "completed_tasks",
+            "in_progress_total",
+            "in_progress_tasks",
+            "pending_total",
+            "pending_tasks",
+            "total_minutes",
+            "total_hours",
+            "historical_template_minutes",
+        ):
+            public.pop(key, None)
+    elif "projects" not in readable:
+        for key in ("completed_tasks", "in_progress_tasks", "pending_tasks"):
+            public[key] = [
+                task
+                for item in public.get(key, [])
+                if (task := _public_task(item, readable)) is not None
+            ]
+    return public if public else None
+
+
+def _public_context(
+    raw_context: dict | None, readable: set[str]
+) -> dict | None:
+    if raw_context is None:
+        return None
+    context = {key: value for key, value in raw_context.items() if key != "_generation"}
+    catalog = context.get("source_catalog")
+    required_module = {
+        "task": "tasks",
+        "project": "projects",
+        "followup": "communications",
+    }
+    if isinstance(catalog, dict):
+        context["source_catalog"] = {
+            key: source
+            for key, source in catalog.items()
+            if isinstance(source, dict)
+            and (
+                source.get("kind") not in required_module
+                or required_module[source.get("kind")] in readable
+            )
+        }
+
+    if "tasks" not in readable:
+        for key in ("completed_tasks", "in_progress_tasks", "pending_tasks"):
+            context.pop(key, None)
+        for key in ("total_minutes", "total_hours", "project_progress"):
+            context.pop(key, None)
+    if "projects" not in readable:
+        context.pop("project_name", None)
+        if "tasks" in readable:
+            for key in ("completed_tasks", "in_progress_tasks", "pending_tasks"):
+                if key in context:
+                    context[key] = [
+                        task
+                        for item in context[key]
+                        if (task := _public_task(item, readable)) is not None
+                    ]
+    elif "tasks" in readable:
+        for key in ("completed_tasks", "in_progress_tasks", "pending_tasks"):
+            if key in context:
+                context[key] = [
+                    task
+                    for item in context[key]
+                    if (task := _public_task(item, readable)) is not None
+                ]
+    if "communications" not in readable:
+        context.pop("pending_followups", None)
+    for key in ("projects", "unresolved_projects"):
+        if key in context:
+            context[key] = [
+                public
+                for group in context[key]
+                if (public := _public_group(group, readable)) is not None
+            ]
+    if "unassigned" in context:
+        context["unassigned"] = _public_group(context["unassigned"], readable)
+    if isinstance(context.get("totals"), dict) and "tasks" not in readable:
+        context["totals"] = {
+            key: value
+            for key, value in context["totals"].items()
+            if key not in {
+                "task_total",
+                "completed_total",
+                "in_progress_total",
+                "pending_total",
+                "total_minutes",
+                "total_hours",
+                "historical_template_minutes",
+            }
+        }
+    return context
+
+
+def _stored_context(raw_context: dict | None) -> dict | None:
+    if raw_context is None:
+        return None
+    return {key: value for key, value in raw_context.items() if key != "_generation"}
+
+
+def _generation_rejection(reason: str) -> HTTPException:
+    messages = {
+        "generation_key_conflict": "Esta clave de recuperación pertenece a otra intención. Recarga antes de intentarlo de nuevo.",
+        "permission_changed": "Ya no tienes permiso para preparar este resumen.",
+        "already_exists": "Ya existe un resumen para esta cohorte y período.",
+        "source_catalog_missing": "No se pudieron identificar las fuentes del resumen.",
+        "sources_changed": "Los hechos del resumen cambiaron mientras se preparaba. Puedes reintentar con la misma clave.",
+    }
+    status = 403 if reason == "permission_changed" else 409
+    return HTTPException(
+        status,
+        detail={
+            "code": reason,
+            "message": messages.get(
+                reason,
+                "El contexto del resumen ha cambiado. Recarga antes de reintentar.",
+            ),
+        },
+    )
+
+
+def _to_response(
+    digest: WeeklyDigest, readable: set[str]
+) -> DigestResponse:
     """Convert ORM model to response schema."""
     content = None
     if digest.content:
         try:
             parsed = DigestContent(**digest.content)
-            content = DigestContent(**canonicalize_digest_content(
-                parsed.model_dump(), digest.period_start, digest.period_end
-            ))
+            content = DigestContent(
+                **canonicalize_digest_content(
+                    parsed.model_dump(), digest.period_start, digest.period_end
+                )
+            )
         except Exception:
             content = None
 
@@ -99,7 +299,7 @@ def _to_response(digest: WeeklyDigest) -> DigestResponse:
         status=digest.status,
         tone=digest.tone,
         content=content,
-        raw_context=digest.raw_context,
+        raw_context=_public_context(digest.raw_context, readable),
         generated_at=digest.generated_at,
         edited_at=digest.edited_at,
         created_by=digest.created_by,
@@ -112,6 +312,7 @@ def _to_response(digest: WeeklyDigest) -> DigestResponse:
 # ---------------------------------------------------------------------------
 # POST /generate — Generate a new digest for one client
 # ---------------------------------------------------------------------------
+
 
 @router.post("/generate", response_model=DigestResponse)
 async def generate_digest(
@@ -134,6 +335,7 @@ async def generate_digest(
             period_start=period_start,
             period_end=period_end,
             tone=request.tone,
+            generation_key=request.generation_key,
             expected_revision=None,
             require_enabled=False,
             reject_existing=False,
@@ -142,29 +344,67 @@ async def generate_digest(
         )
     except DigestGenerationRejected as exc:
         await db.rollback()
-        raise HTTPException(status_code=409, detail={"code": exc.reason}) from exc
+        raise _generation_rejection(exc.reason) from exc
+    except DigestProviderError as exc:
+        await db.rollback()
+        status = 504 if exc.code == "provider_timeout" else 503
+        raise HTTPException(
+            status_code=status,
+            detail={
+                "code": exc.code,
+                "message": "El proveedor no respondió a tiempo. Puedes reintentar de forma segura con la misma clave."
+                if status == 504
+                else "El proveedor de generación no está disponible.",
+            },
+        ) from exc
     except ValueError:
         await db.rollback()
-        raise HTTPException(status_code=400, detail="No se pudo generar el digest con los datos proporcionados")
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "invalid_provider_response",
+                "message": "El proveedor devolvió un resumen no válido.",
+            },
+        )
     except Exception as exc:
         await db.rollback()
-        logger.error("Digest generation failed for client_id=%s type=%s", request.client_id, type(exc).__name__)
-        raise HTTPException(status_code=502, detail="Error generando digest")
+        logger.error(
+            "Digest generation failed for client_id=%s type=%s",
+            request.client_id,
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "provider_failed",
+                "message": "No se pudo generar el resumen.",
+            },
+        )
     await db.commit()
     await safe_refresh(db, digest, log_context="digests")
 
-    log_audit(current_user.id, "generate", "digest", digest.id, details=f"client_id={request.client_id}")
+    log_audit(
+        current_user.id,
+        "generate",
+        "digest",
+        digest.id,
+        details=f"client_id={request.client_id}",
+    )
     # Reload with relationships for response
     result = await db.execute(
-        select(WeeklyDigest).where(WeeklyDigest.id == digest.id)
+        select(WeeklyDigest)
+        .where(WeeklyDigest.id == digest.id)
         .options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
     )
-    return _to_response(result.scalar_one())
+    return _to_response(
+        result.scalar_one(), await _readable_modules(db, current_user)
+    )
 
 
 # ---------------------------------------------------------------------------
 # POST /generate-batch — Generate digests for all active clients
 # ---------------------------------------------------------------------------
+
 
 @router.post("/generate-batch")
 async def generate_batch_retired(
@@ -173,13 +413,17 @@ async def generate_batch_retired(
     """Retired with the policy cohort UI; never bypass preview/revalidation."""
     raise HTTPException(
         status_code=410,
-        detail={"code": "legacy_batch_retired", "message": "Usa la vista previa de cohorte"},
+        detail={
+            "code": "legacy_batch_retired",
+            "message": "Usa la vista previa de cohorte",
+        },
     )
 
 
 # ---------------------------------------------------------------------------
 # GET / — List digests
 # ---------------------------------------------------------------------------
+
 
 @router.get("", response_model=list[DigestResponse])
 async def list_digests(
@@ -209,16 +453,47 @@ async def list_digests(
     if visibility is not None:
         query = query.where(visibility)
 
-    query = query.options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
-    query = query.order_by(WeeklyDigest.created_at.desc(), WeeklyDigest.id.desc()).limit(limit).offset(offset)
+    query = query.options(
+        selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator)
+    )
+    query = (
+        query.order_by(WeeklyDigest.created_at.desc(), WeeklyDigest.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     result = await db.execute(query)
 
-    return [_to_response(d) for d in result.scalars().all()]
+    readable = await _readable_modules(db, current_user)
+    return [_to_response(digest, readable) for digest in result.scalars().all()]
+
+
+@router.get("/generation/{generation_key}", response_model=DigestResponse)
+async def recover_generation(
+    generation_key: str = Path(
+        min_length=16, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"
+    ),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("digests")),
+):
+    digest = await find_generation(
+        db, actor_id=current_user.id, generation_key=generation_key
+    )
+    if digest is None:
+        raise HTTPException(
+            404,
+            detail={
+                "code": "generation_not_confirmed",
+                "message": "Todavía no hay un resultado confirmado. Comprueba de nuevo o reintenta con la misma clave.",
+            },
+        )
+    digest = await authorize_digest(db, digest.id, current_user, write=False)
+    return _to_response(digest, await _readable_modules(db, current_user))
 
 
 # ---------------------------------------------------------------------------
 # GET /{id} — Get single digest
 # ---------------------------------------------------------------------------
+
 
 @router.get("/{digest_id}", response_model=DigestResponse)
 async def get_digest(
@@ -229,12 +504,13 @@ async def get_digest(
     """Get a specific digest by ID."""
     digest = await authorize_digest(db, digest_id, current_user, write=False)
 
-    return _to_response(digest)
+    return _to_response(digest, await _readable_modules(db, current_user))
 
 
 # ---------------------------------------------------------------------------
 # PUT /{id} — Update digest content/tone
 # ---------------------------------------------------------------------------
+
 
 @router.put("/{digest_id}", response_model=DigestResponse)
 async def update_digest(
@@ -253,8 +529,12 @@ async def update_digest(
     next_tone = request.tone if request.tone is not None else digest.tone
     tone_changed = next_tone != digest.tone
     next_content = (
-        canonicalize_digest_content(
-            request.content.model_dump(), digest.period_start, digest.period_end
+        _human_content(
+            canonicalize_digest_content(
+                request.content.model_dump(), digest.period_start, digest.period_end
+            ),
+            digest.content,
+            digest.raw_context,
         )
         if request.content is not None
         else digest.content
@@ -270,10 +550,18 @@ async def update_digest(
     content_changed = request.content is not None and next_content != current_content
 
     if not tone_changed and not content_changed:
-        return _to_response(digest)
+        return _to_response(digest, await _readable_modules(db, current_user))
 
     # If tone changed without an explicit content update, regenerate content
     if tone_changed and request.content is None:
+        if not request.generation_key:
+            raise HTTPException(
+                422,
+                detail={
+                    "code": "generation_key_required",
+                    "message": "Recarga el resumen y reintenta el cambio de tono para conservar una clave de recuperación.",
+                },
+            )
         if not digest.raw_context:
             raise HTTPException(
                 status_code=400,
@@ -281,21 +569,64 @@ async def update_digest(
             )
         ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
         try:
-            new_content = await generate_digest_content(digest.raw_context, next_tone)
-        except ValueError:
+            version = await regenerate_digest(
+                db,
+                actor_id=current_user.id,
+                source=digest,
+                tone=next_tone,
+                generation_key=request.generation_key,
+                generator=generate_digest_content,
+            )
+        except DigestProviderError as exc:
+            await db.rollback()
+            status = 504 if exc.code == "provider_timeout" else 503
             raise HTTPException(
-                status_code=400,
-                detail="No se pudo regenerar el digest con el nuevo tono",
+                status,
+                detail={
+                    "code": exc.code,
+                    "message": "El proveedor no respondió a tiempo. Reintenta con la misma clave."
+                    if status == 504
+                    else "El proveedor no está disponible.",
+                },
+            ) from exc
+        except DigestGenerationRejected as exc:
+            await db.rollback()
+            raise _generation_rejection(exc.reason) from exc
+        except ValueError:
+            await db.rollback()
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "invalid_provider_response",
+                    "message": "El proveedor devolvió un resumen no válido.",
+                },
             )
         except Exception as exc:
-            logger.error("Digest regeneration failed id=%s type=%s", digest_id, type(exc).__name__)
-            raise HTTPException(status_code=502, detail="Error regenerando digest con nuevo tono")
-        next_content = canonicalize_digest_content(
-            new_content, digest.period_start, digest.period_end
+            await db.rollback()
+            logger.error(
+                "Digest regeneration failed id=%s type=%s",
+                digest_id,
+                type(exc).__name__,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "provider_failed",
+                    "message": "No se pudo regenerar el resumen.",
+                },
+            )
+        await db.commit()
+        await safe_refresh(db, version, log_context="digests")
+        version_result = await db.execute(
+            select(WeeklyDigest)
+            .where(WeeklyDigest.id == version.id)
+            .options(
+                selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator)
+            )
         )
-        digest = await authorize_digest(db, digest_id, current_user, write=True, lock=True)
-        generated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        edited_at = None
+        return _to_response(
+            version_result.scalar_one(), await _readable_modules(db, current_user)
+        )
     else:
         generated_at = digest.generated_at
         edited_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -309,7 +640,7 @@ async def update_digest(
         status=DigestStatus.draft,
         tone=next_tone,
         content=next_content,
-        raw_context=digest.raw_context,
+        raw_context=_stored_context(digest.raw_context),
         generated_at=generated_at,
         edited_at=edited_at,
         created_by=current_user.id,
@@ -322,12 +653,15 @@ async def update_digest(
         .where(WeeklyDigest.id == version.id)
         .options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
     )
-    return _to_response(version_result.scalar_one())
+    return _to_response(
+        version_result.scalar_one(), await _readable_modules(db, current_user)
+    )
 
 
 # ---------------------------------------------------------------------------
 # PATCH /{id}/status — Change digest status
 # ---------------------------------------------------------------------------
+
 
 @router.patch("/{digest_id}/status", response_model=DigestResponse)
 async def update_digest_status(
@@ -343,12 +677,13 @@ async def update_digest_status(
     await db.commit()
     await safe_refresh(db, digest, log_context="digests")
 
-    return _to_response(digest)
+    return _to_response(digest, await _readable_modules(db, current_user))
 
 
 # ---------------------------------------------------------------------------
 # GET /{id}/render — Render digest as Slack or Email
 # ---------------------------------------------------------------------------
+
 
 @router.get("/{digest_id}/render", response_model=DigestRenderResponse)
 async def render_digest(
@@ -377,26 +712,30 @@ async def render_digest(
 
     if format == "slack":
         rendered = render_slack(
-            content, tone=tone,
+            content,
+            tone=tone,
             slack_template=client_template,
             period_start=digest.period_start,
             period_end=digest.period_end,
         )
     elif format == "discord":
         rendered = render_discord(
-            content, tone=tone,
+            content,
+            tone=tone,
             period_start=digest.period_start,
             period_end=digest.period_end,
         )
     elif format == "email_plain":
         rendered = render_email_plain(
-            content, tone=tone,
+            content,
+            tone=tone,
             period_start=digest.period_start,
             period_end=digest.period_end,
         )
     else:
         rendered = render_email(
-            content, tone=tone,
+            content,
+            tone=tone,
             period_start=digest.period_start,
             period_end=digest.period_end,
         )
@@ -415,6 +754,7 @@ async def render_digest(
 # DELETE /{id} — Delete a digest
 # ---------------------------------------------------------------------------
 
+
 @router.delete("/{digest_id}", status_code=204)
 async def delete_digest(
     digest_id: int,
@@ -427,14 +767,28 @@ async def delete_digest(
     is_admin = current_user.role == UserRole.admin
 
     if not is_admin and digest.status == DigestStatus.sent:
-        raise HTTPException(status_code=409, detail="No puedes eliminar digests ya enviados")
+        raise HTTPException(
+            status_code=409, detail="No puedes eliminar digests ya enviados"
+        )
 
-    has_evidence = await db.scalar(select(or_(
-        exists().where(Delivery.source_kind == "digest", Delivery.source_id == digest_id),
-        exists().where(DigestExternalDeliveryEvent.digest_id == digest_id),
-    )))
+    has_evidence = await db.scalar(
+        select(
+            or_(
+                exists().where(
+                    Delivery.source_kind == "digest", Delivery.source_id == digest_id
+                ),
+                exists().where(DigestExternalDeliveryEvent.digest_id == digest_id),
+            )
+        )
+    )
     if has_evidence:
-        raise HTTPException(status_code=409, detail={"code": "traceability_required", "message": "Este resumen tiene evidencia de distribución y no se puede eliminar"})
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "traceability_required",
+                "message": "Este resumen tiene evidencia de distribución y no se puede eliminar",
+            },
+        )
 
     await db.delete(digest)
     await db.commit()

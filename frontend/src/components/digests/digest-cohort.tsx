@@ -4,8 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Loader2, RefreshCw, Sparkles } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
 import { reportPolicyApi, reportPolicyKeys, type CohortGenerateResult, type GenerationPreviewItem, type ReportScope } from "@/lib/report-policy-api"
+import { digestsApi } from "@/lib/api"
 import type { DigestTone } from "@/lib/types"
 import { getErrorMessage } from "@/lib/utils"
+import { clearDigestGeneration, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type CohortDigestIntent } from "@/lib/digest-generation-recovery"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -41,6 +43,11 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedP
   const [needsRefresh, setNeedsRefresh] = useState(false)
   const [submitError, setSubmitError] = useState("")
   const alive = useRef(true)
+  const initialRecovery = useRef(readDigestGenerations(userId))
+  const [generationStorageFailed] = useState(initialRecovery.current.failed)
+  const [pendingCohort, setPendingCohort] = useState<CohortDigestIntent | null>(() =>
+    initialRecovery.current.intents.find((intent): intent is CohortDigestIntent => intent.kind === "cohort") ?? null,
+  )
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   const query = useQuery({ queryKey: [...reportPolicyKeys.preview, userId, scope], queryFn: () => reportPolicyApi.generationPreview(scope) })
   const clientRows = (query.data?.items ?? []).filter(item => !clientId || item.client_id === clientId)
@@ -48,31 +55,83 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedP
   const expectedPeriodChanged = !!expectedPeriod && clientRows.length > 0 && rows.length === 0
   const expectedPeriodUnavailable = !!expectedPeriod && clientRows.length === 0
   const chosen = rows.filter(item => selectable(item) && selected.includes(itemKey(item)))
+  const finishCohort = (intent: CohortDigestIntent) => {
+    clearDigestGeneration(userId, intent.operation_key)
+    setPendingCohort(null)
+    queryClient.invalidateQueries({ queryKey: ["digests"] })
+    queryClient.invalidateQueries({ queryKey: ["incidents"] })
+    queryClient.invalidateQueries({ queryKey: reportPolicyKeys.preview })
+    queryClient.invalidateQueries({ queryKey: reportPolicyKeys.external })
+  }
+  const recovery = useQuery({
+    queryKey: ["digest-cohort-recovery", userId, pendingCohort?.operation_key],
+    queryFn: () => Promise.allSettled(pendingCohort!.items.map(item => digestsApi.recoverGeneration(item.generation_key))),
+    enabled: Boolean(pendingCohort),
+    retry: false,
+  })
+  const recoveredCount = recovery.data?.filter(result => result.status === "fulfilled").length ?? 0
+  useEffect(() => {
+    if (!pendingCohort || !recovery.data || recoveredCount !== pendingCohort.items.length) return
+    setResults(recovery.data.flatMap((result, index) => result.status === "fulfilled" ? [{
+      client_id: pendingCohort.items[index].client_id,
+      outcome: "generated" as const,
+      digest_id: result.value.id,
+      name: clientRows.find(row => row.client_id === pendingCohort.items[index].client_id)?.client_name ?? `Cliente #${pendingCohort.items[index].client_id}`,
+    }] : []))
+    finishCohort(pendingCohort)
+    setSubmitError("")
+  // A full set of recovered rows confirms the persisted cohort operation.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recovery.dataUpdatedAt])
   const mutation = useMutation({
     retry: false,
-    mutationFn: ({ items, tone }: { items: GenerationPreviewItem[]; tone: DigestTone }) => reportPolicyApi.generateCohort({
-      items: items.map(item => ({ client_id: item.client_id, policy_revision: item.policy_revision!, period_start: item.period_start!, period_end: item.period_end! })), tone,
-    }),
-    onSuccess: (data, request) => {
+    mutationFn: (intent: CohortDigestIntent) => reportPolicyApi.generateCohort({ items: intent.items, tone: intent.tone }),
+    onSuccess: (data, intent) => {
       if (!alive.current) return
-      setResults(data.results.map(result => ({ ...result, name: request.items.find(item => item.client_id === result.client_id)?.client_name ?? `Cliente #${result.client_id}` })))
+      setResults(data.results.map(result => ({ ...result, name: clientRows.find(item => item.client_id === result.client_id)?.client_name ?? `Cliente #${result.client_id}` })))
+      finishCohort(intent)
       setSelected([])
       setSubmitError("")
-      queryClient.invalidateQueries({ queryKey: ["digests"] })
-      queryClient.invalidateQueries({ queryKey: ["incidents"] })
-      queryClient.invalidateQueries({ queryKey: reportPolicyKeys.preview })
-      queryClient.invalidateQueries({ queryKey: reportPolicyKeys.external })
     },
-    onError: (error) => {
+    onError: (error, intent) => {
       if (!alive.current) return
+      if (isConfirmedFailure(error)) {
+        clearDigestGeneration(userId, intent.operation_key)
+        setPendingCohort(null)
+      } else {
+        setPendingCohort(intent)
+      }
       setNeedsRefresh(true)
-      setSubmitError(getErrorMessage(error, "No se pudo confirmar el resultado de la generación."))
+      setSubmitError(isConfirmedFailure(error) ? getErrorMessage(error, "No se pudo generar la selección.") : "No se pudo confirmar toda la selección. Conservamos sus claves para comprobarla o reintentarla sin duplicar versiones.")
     },
   })
   const busy = mutation.isPending || query.isFetching
   async function refresh() {
     const next = await query.refetch()
     if (alive.current && !next.isError) { setNeedsRefresh(false); setSubmitError("") }
+  }
+  function submitChosen() {
+    const operation_key = newDigestGenerationKey()
+    const intent: CohortDigestIntent = {
+      kind: "cohort",
+      operation_key,
+      tone,
+      items: chosen.map(item => ({
+        generation_key: newDigestGenerationKey(),
+        client_id: item.client_id,
+        policy_revision: item.policy_revision!,
+        period_start: item.period_start!,
+        period_end: item.period_end!,
+      })),
+    }
+    if (!persistDigestGeneration(userId, intent)) {
+      setSubmitError("El navegador no pudo guardar las claves de recuperación. No se ha enviado la selección.")
+      return
+    }
+    setPendingCohort(intent)
+    setResults([])
+    setSubmitError("")
+    mutation.mutate(intent)
   }
   return <Card>
     <CardContent className="p-4 sm:p-6 space-y-4">
@@ -92,7 +151,7 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedP
         {rows.length === 0 && <p className="text-sm">{scope === "mine" ? "No hay clientes a tu cargo en esta selección. La frecuencia y el responsable se configuran en la ficha del cliente." : "No hay clientes en esta consulta."}</p>}
         <ul className="divide-y rounded-lg border">
           {rows.map(item => <li key={item.client_id} className="p-3 sm:p-4 flex items-start gap-3">
-            <input className="mt-1 shrink-0 size-4" type="checkbox" aria-label={`Preparar ${item.client_name}`} checked={chosen.some(row => row.client_id === item.client_id)} disabled={!canWrite || busy || needsRefresh || !selectable(item) || (chosen.length >= 50 && !selected.includes(itemKey(item)))} onChange={event => setSelected(previous => event.target.checked ? [...previous, itemKey(item)] : previous.filter(key => key !== itemKey(item)))} />
+            <input className="mt-1 shrink-0 size-4" type="checkbox" aria-label={`Preparar ${item.client_name}`} checked={chosen.some(row => row.client_id === item.client_id)} disabled={!canWrite || busy || !!pendingCohort || needsRefresh || !selectable(item) || (chosen.length >= 50 && !selected.includes(itemKey(item)))} onChange={event => setSelected(previous => event.target.checked ? [...previous, itemKey(item)] : previous.filter(key => key !== itemKey(item)))} />
             <div className="min-w-0 flex-1 space-y-1">
               <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><h3 className="font-medium break-words">{item.client_name}</h3><span className="text-xs text-muted-foreground">{item.cadence === "weekly" ? "Semanal" : item.cadence === "monthly" ? "Mensual" : "Sin frecuencia"} · {item.responsible_name || "Sin responsable"}</span></div>
               <p className="text-sm">{item.period_start && item.period_end ? `${civilDate(item.period_start)} — ${civilDate(item.period_end)}` : "Sin período configurado"}</p>
@@ -106,10 +165,20 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedP
           </li>)}
         </ul>
       </>}
-      {submitError && <div role="alert" className="text-sm space-y-1"><p>{submitError}</p><p>Puede haber versiones ya guardadas. Actualiza la selección para comprobarlo antes de volver a generar.</p></div>}
+      {(pendingCohort || generationStorageFailed) && <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm space-y-2">
+        {generationStorageFailed ? <p>No se pudo leer el almacenamiento de recuperación. No prepares una selección desde este navegador.</p> : <>
+          <p>Hay una selección sin respuesta confirmada. {recovery.data ? `${recoveredCount} de ${pendingCohort!.items.length} versiones están confirmadas.` : "Estamos comprobando sus versiones."}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" disabled={recovery.isFetching || mutation.isPending} onClick={() => void recovery.refetch()}>{recovery.isFetching ? "Comprobando…" : "Comprobar resultado"}</Button>
+            <Button size="sm" disabled={!canWrite || recovery.isFetching || mutation.isPending} onClick={() => pendingCohort && mutation.mutate(pendingCohort)}>Reintentar la misma selección</Button>
+          </div>
+          {recovery.isError && <p>No se pudo comprobar el resultado. Las claves siguen guardadas.</p>}
+        </>}
+      </div>}
+      {submitError && <p role="alert" className="text-sm">{submitError}</p>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">{chosen.length} seleccionados · Máximo 50. Preparar no envía nada al cliente ni a Discord.</p>
-        {canWrite && <Button disabled={!chosen.length || busy || query.isError || needsRefresh} onClick={() => { setResults([]); setSubmitError(""); mutation.mutate({ items: chosen, tone }) }}>{mutation.isPending ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Sparkles className="size-4 mr-2" />}{mutation.isPending ? "Preparando…" : `Preparar selección (${chosen.length})`}</Button>}
+        {canWrite && <Button disabled={!chosen.length || busy || !!pendingCohort || query.isError || needsRefresh || generationStorageFailed} onClick={submitChosen}>{mutation.isPending ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Sparkles className="size-4 mr-2" />}{mutation.isPending ? "Preparando…" : `Preparar selección (${chosen.length})`}</Button>}
       </div>
       {results.length > 0 && <section className="rounded-lg bg-muted p-3 space-y-2" aria-label="Resultado de la preparación" aria-live="polite"><h3 className="font-medium">Resultado de la selección</h3><ul className="space-y-2">{results.map(result => <li key={result.client_id} className="text-sm break-words"><strong>{result.name}</strong> · {result.outcome === "generated" ? "Generado" : result.outcome === "skipped" ? "Omitido" : "Fallido"}{result.reason ? ` · ${reasons[result.reason] ?? "Actualiza para comprobar el estado"}` : ""}{result.digest_id && <> · <Link className="text-primary underline underline-offset-2" to={`/digests/${result.digest_id}/edit`}>Abrir versión #{result.digest_id}</Link></>}</li>)}</ul></section>}
     </CardContent>

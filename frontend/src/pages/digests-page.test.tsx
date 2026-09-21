@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { Link, MemoryRouter } from "react-router-dom"
 import { beforeEach, expect, it, vi } from "vitest"
 import DigestsPage from "./digests-page"
-const mocks = vi.hoisted(() => ({ api: {list: vi.fn(), render: vi.fn(), generate: vi.fn(), updateStatus: vi.fn(), delete: vi.fn()}, clients: vi.fn(), send: vi.fn(), auth: { id: 1, write: true } }))
+const mocks = vi.hoisted(() => ({ api: {list: vi.fn(), render: vi.fn(), generate: vi.fn(), recoverGeneration: vi.fn(), updateStatus: vi.fn(), delete: vi.fn()}, clients: vi.fn(), send: vi.fn(), auth: { id: 1, write: true } }))
 vi.mock("@/lib/api", () => ({digestsApi: mocks.api, clientsApi: {listAll: mocks.clients}, discordApi: {sendDigest: mocks.send}}))
 vi.mock("@/context/auth-context", () => ({useAuth: () => ({user: {id: mocks.auth.id}, isAdmin: true, hasPermission: (_module: string, write?: boolean) => !write || mocks.auth.write})}))
 vi.mock("@/components/digests/digest-cohort", () => ({DigestCohort: ({clientId, expectedPeriod}: {clientId?: number; expectedPeriod?: {start: string; end: string}}) => expectedPeriod ? <div>Período esperado {expectedPeriod.start} — {expectedPeriod.end} <Link to={`/digests?client_id=${clientId}`}>Ver períodos actuales</Link></div> : <div>Selección de clientes</div>}))
@@ -14,7 +14,7 @@ function setup(route = "/digests") {
   const node = () => <QueryClientProvider client={client}><MemoryRouter initialEntries={[route]}><DigestsPage /></MemoryRouter></QueryClientProvider>
   return {...render(node()), node}
 }
-beforeEach(() => {vi.resetAllMocks(); mocks.auth = {id: 1, write: true}; mocks.api.list.mockResolvedValue([source, {...source, id: 20, client_id: 2, client_name: "Other"}]); mocks.clients.mockResolvedValue([{id: 1, name: "Acme", status: "active", is_internal: false}]); mocks.api.render.mockResolvedValue({rendered: "Rendered"}); mocks.api.generate.mockResolvedValue({...source, id: 30}); mocks.send.mockResolvedValue({status: "pending"})})
+beforeEach(() => {vi.resetAllMocks(); localStorage.clear(); mocks.auth = {id: 1, write: true}; mocks.api.list.mockResolvedValue([source, {...source, id: 20, client_id: 2, client_name: "Other"}]); mocks.clients.mockResolvedValue([{id: 1, name: "Acme", status: "active", is_internal: false}]); mocks.api.render.mockResolvedValue({rendered: "Rendered"}); mocks.api.generate.mockResolvedValue({...source, id: 30}); mocks.send.mockResolvedValue({status: "pending"})})
 it("clears an exact incident period when returning to current periods on the same route", async () => {
   setup("/digests?client_id=1&period_start=2026-08-01&period_end=2026-08-31")
   await screen.findByText("Período esperado 2026-08-01 — 2026-08-31")
@@ -30,7 +30,26 @@ it("keeps individual generation and removes the unreviewed generate-all action",
   fireEvent.click(screen.getByRole("button", {name: "Preparar uno"}))
   fireEvent.change(screen.getByLabelText("Cliente"), {target: {value: "1"}})
   fireEvent.click(screen.getByRole("button", {name: "Generar"}))
-  await waitFor(() => expect(mocks.api.generate).toHaveBeenCalledWith({client_id: 1, tone: "cercano", period_start: undefined, period_end: undefined}))
+  await waitFor(() => expect(mocks.api.generate).toHaveBeenCalledWith({generation_key: expect.stringMatching(/^[A-Za-z0-9_-]{16,64}$/), client_id: 1, tone: "cercano", period_start: undefined, period_end: undefined}))
+})
+it("recovers an uncertain individual request after reload and retries the same key", async () => {
+  const generationKey = "individual-recovery-key"
+  localStorage.setItem(`agency:digest-generation:1:${generationKey}`, JSON.stringify({ kind: "individual", operation_key: generationKey, generation_key: generationKey, client_id: 1, tone: "formal" }))
+  mocks.api.recoverGeneration.mockRejectedValueOnce({ response: { status: 404 } })
+  setup()
+  expect(await screen.findByText(/Todavía no hay una versión confirmada/)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole("button", { name: "Reintentar la misma solicitud" }))
+  await waitFor(() => expect(mocks.api.generate).toHaveBeenCalledWith({ generation_key: generationKey, client_id: 1, tone: "formal", period_start: undefined, period_end: undefined }))
+  expect(localStorage.getItem(`agency:digest-generation:1:${generationKey}`)).toBeNull()
+})
+it("cannot retry a persisted individual request after write permission is revoked", async () => {
+  const generationKey = "individual-revoked-key"
+  localStorage.setItem(`agency:digest-generation:1:${generationKey}`, JSON.stringify({ kind: "individual", operation_key: generationKey, generation_key: generationKey, client_id: 1, tone: "formal" }))
+  mocks.auth.write = false
+  mocks.api.recoverGeneration.mockRejectedValueOnce({ response: { status: 404 } })
+  setup()
+  expect(await screen.findByRole("button", { name: "Reintentar la misma solicitud" })).toBeDisabled()
+  expect(mocks.api.generate).not.toHaveBeenCalled()
 })
 it("late preview A cannot appear under B and only the current format wins", async () => {
   let old!: (value: unknown) => void
