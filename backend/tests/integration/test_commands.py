@@ -90,6 +90,36 @@ async def test_reschedule_changes_only_scheduled_date(admin_client, db_session):
     assert task.due_date == datetime(2026, 10, 20)
 
 
+@pytest.mark.parametrize("title,preposition", [
+    ("Informe para cliente", "para"),
+    ("Visita al cliente", "al"),
+])
+async def test_reschedule_quoted_title_with_date_preposition_is_undoable(
+    admin_client, db_session, title, preposition,
+):
+    task = Task(title=title, status=TaskStatus.pending)
+    db_session.add(task)
+    await db_session.commit()
+
+    response = await admin_client.post("/api/commands", json={
+        "request_key": f"command-quoted-reschedule-{preposition}",
+        "text": f'Reprograma la tarea "{title}" {preposition} 2026-10-05',
+    })
+    assert response.status_code == 200, response.text
+    receipt = response.json()
+    assert receipt["status"] == "executed"
+    assert receipt["intent"]["task_name"] == title
+    assert receipt["result"]["undo_available"] is True
+    assert receipt["change_log_id"] is not None
+    await db_session.refresh(task)
+    assert task.scheduled_date.isoformat() == "2026-10-05"
+
+    undo = await admin_client.post(f"/api/changes/{receipt['change_log_id']}/undo")
+    assert undo.status_code == 200, undo.text
+    await db_session.refresh(task)
+    assert task.scheduled_date is None
+
+
 async def test_explicit_minutes_create_time_and_undo_together(admin_client, db_session):
     task = Task(title="Cronometrada", status=TaskStatus.pending)
     db_session.add(task)
