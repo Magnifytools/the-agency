@@ -524,17 +524,17 @@ export default function DashboardPage() {
                     key={t.id}
                     className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3 hover:border-brand/30 transition-colors"
                   >
-                    <button
+                    {canWriteTasks && <button
                       onClick={() => markDoneMutation.mutate({ taskId: t.id, status: completion.status })}
-                      disabled={markDoneMutation.isPending || !canWriteTasks}
+                      disabled={markDoneMutation.isPending}
                       className="group w-5 h-5 rounded-full border-2 border-border hover:border-green-400 hover:bg-green-400/10 flex items-center justify-center flex-shrink-0 transition-colors"
                       aria-label={`${completion.label}: ${t.title}`}
                       title={completion.label}
                     >
                       <Check className="h-3 w-3 text-transparent group-hover:text-green-400 transition-colors" />
-                    </button>
+                    </button>}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{t.title}</p>
+                      <p className="text-sm font-medium truncate"><Link to={`/tasks?task=${t.id}`} className="hover:text-brand hover:underline focus-visible:underline">{t.title}</Link></p>
                       {t.client_name && <p className="text-xs text-muted-foreground">{t.client_name}</p>}
                     </div>
                     {t.due_date && (
@@ -546,16 +546,16 @@ export default function DashboardPage() {
                       <span className="text-brand text-xs font-medium flex items-center gap-1 flex-shrink-0">
                         <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />timer
                       </span>
-                    ) : (
+                    ) : canWriteTime ? (
                       <button
                         onClick={() => startTimerMutation.mutate(t.id)}
-                        disabled={startTimerMutation.isPending || timerUnknown || !!activeTimer || !canWriteTime}
+                        disabled={startTimerMutation.isPending || timerUnknown || !!activeTimer}
                         className="p-1.5 text-muted-foreground hover:text-brand hover:bg-brand/10 rounded-lg transition-colors disabled:opacity-40 flex-shrink-0"
                         title="Iniciar timer"
                       >
                         <Play className="h-3.5 w-3.5" />
                       </button>
-                    )}
+                    ) : null}
                   </div>
                   )
                 })}
@@ -564,7 +564,7 @@ export default function DashboardPage() {
               <div className="border border-dashed border-border rounded-xl p-5 text-center">
                 <p className="text-sm text-muted-foreground">Sin tareas en curso</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Ve a <Link to="/tasks" className="text-brand hover:underline">Tareas</Link> y pon en curso las de hoy
+                  {canWriteTasks ? <>Ve a <Link to="/tasks" className="text-brand hover:underline">Tareas</Link> y pon en curso las de hoy</> : <Link to="/tasks?view=all" className="text-brand hover:underline">Consulta tus tareas en Trabajo</Link>}
                 </p>
               </div>
             )}
@@ -582,32 +582,32 @@ export default function DashboardPage() {
                   return (
                   <div key={t.id} className="flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-muted/50 transition-colors group">
                     <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 flex-shrink-0" />
-                    <span className="text-sm flex-1 truncate">{t.title}</span>
+                    <Link to={`/tasks?task=${t.id}`} className="text-sm flex-1 truncate hover:text-brand hover:underline focus-visible:underline">{t.title}</Link>
                     {t.client_name && <span className="text-xs text-muted-foreground hidden group-hover:block">{t.client_name}</span>}
                     {t.due_date && (
                       <span className={`text-xs mono flex-shrink-0 ${t.due_date < todayStr ? "text-red-400" : "text-muted-foreground"}`}>
                         {formatCivilDate(t.due_date, { day: "numeric", month: "short" })}
                       </span>
                     )}
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                      <button
+                    {(canWriteTime || canWriteTasks) && <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex-shrink-0">
+                      {canWriteTime && <button
                         onClick={() => startTimerMutation.mutate(t.id)}
-                        disabled={startTimerMutation.isPending || timerUnknown || !!activeTimer || !canWriteTime}
+                        disabled={startTimerMutation.isPending || timerUnknown || !!activeTimer}
                         className="p-1 text-muted-foreground hover:text-brand rounded transition-colors disabled:opacity-40"
                         title="Iniciar timer"
                       >
                         <Play className="h-3 w-3" />
-                      </button>
-                      <button
+                      </button>}
+                      {canWriteTasks && <button
                         onClick={() => markDoneMutation.mutate({ taskId: t.id, status: completion.status })}
-                        disabled={markDoneMutation.isPending || !canWriteTasks}
+                        disabled={markDoneMutation.isPending}
                         className="p-1 text-muted-foreground hover:text-green-400 rounded transition-colors"
                         aria-label={`${completion.label}: ${t.title}`}
                         title={completion.label}
                       >
                         <Check className="h-3 w-3" />
-                      </button>
-                    </div>
+                      </button>}
+                    </div>}
                   </div>
                   )
                 })}
