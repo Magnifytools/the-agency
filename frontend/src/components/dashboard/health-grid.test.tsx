@@ -28,7 +28,12 @@ describe("HealthGrid", () => {
     render(<HealthGrid data={[noData]} />)
 
     expect(screen.getByText("Información incompleta")).toBeInTheDocument()
-        expect(screen.queryByText("Saludable")).not.toBeInTheDocument()
+    expect(screen.getByText("Comunicación:")).toBeInTheDocument()
+    expect(screen.getByText("Tareas:")).toBeInTheDocument()
+    expect(screen.getByText("Resúmenes:")).toBeInTheDocument()
+    expect(screen.getByText("Presupuesto:")).toBeInTheDocument()
+    expect(screen.getByText("Seguimientos:")).toBeInTheDocument()
+    expect(screen.queryByText("Saludable")).not.toBeInTheDocument()
     expect(screen.queryByText("En riesgo")).not.toBeInTheDocument()
   })
 

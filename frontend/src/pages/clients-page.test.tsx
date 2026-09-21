@@ -177,6 +177,16 @@ describe("ClientsPage recovery states", () => {
     expect(screen.getAllByText("No evaluado · solo activos").length).toBeGreaterThan(0)
   })
 
+  it("shows a long intermediary name as wrapping provenance below the client", async () => {
+    const intermediary = "Asociación internacional de agencias colaboradoras"
+    api.clients.mockResolvedValueOnce({ items: [{ ...clientRow, is_intermediary_deal: true, intermediary_name: intermediary }], total: 1, page: 1, page_size: 25 })
+    show()
+
+    const provenance = await screen.findByText(`Vía ${intermediary}`)
+    expect(provenance).toHaveClass("break-words")
+    expect(provenance).toHaveAttribute("title", `Vía ${intermediary}`)
+  })
+
   it("creates the client, contacts and optional project in one recoverable request", async () => {
     api.extractContext.mockResolvedValue({
       name: "Cliente extraído",

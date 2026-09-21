@@ -637,36 +637,38 @@ function ClientsPageBody() {
                   />
                 </TableCell>
                 <TableCell className="font-medium">
-                  <span className="flex items-center gap-1.5">
-                    <Link to={`/clients/${c.id}`} className="hover:underline text-brand">
-                      {c.name || 'Sin nombre'}
-                    </Link>
-                    {c.is_internal && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-purple-500/50 text-purple-400">
-                        Interno
-                      </Badge>
-                    )}
-                    {c.is_intermediary_deal && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-orange-500/50 text-orange-400">
-                        {c.intermediary_name ? `vía ${c.intermediary_name}` : "Intermediario"}
-                      </Badge>
-                    )}
-                    {c.engine_project_id && engineConfig?.engine_frontend_url && (
-                      <a
-                        href={`${engineConfig.engine_frontend_url}/p/${c.engine_project_id}/dashboard`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Abrir en Engine"
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-0.5"
-                      >
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 gap-0.5">
-                          <ExternalLink className="h-3 w-3" />
-                          Engine
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      <Link to={`/clients/${c.id}`} className="break-words text-brand hover:underline">
+                        {c.name || 'Sin nombre'}
+                      </Link>
+                      {c.is_internal && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-purple-500/50 text-purple-400">
+                          Interno
                         </Badge>
-                      </a>
+                      )}
+                      {c.engine_project_id && engineConfig?.engine_frontend_url && (
+                        <a
+                          href={`${engineConfig.engine_frontend_url}/p/${c.engine_project_id}/dashboard`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Abrir en Engine"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-0.5"
+                        >
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 gap-0.5">
+                            <ExternalLink className="h-3 w-3" />
+                            Engine
+                          </Badge>
+                        </a>
+                      )}
+                    </div>
+                    {c.is_intermediary_deal && (
+                      <p className="mt-1 break-words text-xs font-normal text-muted-foreground" title={c.intermediary_name ? `Vía ${c.intermediary_name}` : "Agencia intermediaria"}>
+                        {c.intermediary_name ? `Vía ${c.intermediary_name}` : "Agencia intermediaria"}
+                      </p>
                     )}
-                  </span>
+                  </div>
                 </TableCell>
                 <TableCell>{c.company || "-"}</TableCell>
                 <TableCell className="hidden md:table-cell">{c.email || "-"}</TableCell>

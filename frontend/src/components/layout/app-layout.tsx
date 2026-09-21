@@ -127,7 +127,10 @@ export function AppLayout() {
         <main id="main-content" role="main" className="flex-1 overflow-auto p-4 md:p-5 lg:p-6 2xl:p-8 bg-background/50 relative">
           {currentLinks.length > 1 && <nav aria-label={`Secciones de ${navigation.find((area) => area.id === currentArea)?.label ?? "esta área"}`} className="flex gap-1 overflow-x-auto border-b border-border mb-5 pb-2">
             {currentLinks.map((link) => <Link key={link.to} to={link.to} aria-current={isActive(link.to) ? "page" : undefined}
-              className={cn("whitespace-nowrap px-3 py-2 min-h-11 rounded-lg text-sm flex items-center", isActive(link.to) ? "bg-muted text-foreground font-semibold" : "text-muted-foreground hover:text-foreground")}>{link.label}</Link>)}
+              className={cn("whitespace-nowrap px-2 sm:px-3 py-2 min-h-11 rounded-lg text-sm flex items-center", isActive(link.to) ? "bg-muted text-foreground font-semibold" : "text-muted-foreground hover:text-foreground")}>
+                <span className="sm:hidden">{link.mobileLabel ?? link.label}</span>
+                <span className="hidden sm:inline">{link.label}</span>
+              </Link>)}
           </nav>}
           <Outlet />
         </main>

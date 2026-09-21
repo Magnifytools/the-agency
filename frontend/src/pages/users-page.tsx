@@ -477,6 +477,7 @@ export default function UsersPage() {
             <Input
               id="new_password"
               type="password"
+              autoComplete="new-password"
               required
               value={inviteData.password}
               onChange={(e) => setInviteData({ ...inviteData, password: e.target.value })}

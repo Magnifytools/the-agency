@@ -510,8 +510,9 @@ export default function SettingsPage() {
         </p>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Comunidad Autónoma</label>
+            <label htmlFor="user-region" className="text-xs font-medium text-muted-foreground mb-1 block">Comunidad Autónoma</label>
             <select
+              id="user-region"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               value={userRegion}
               onChange={(e) => setUserRegion(e.target.value)}
@@ -523,8 +524,9 @@ export default function SettingsPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Localidad</label>
+            <label htmlFor="user-locality" className="text-xs font-medium text-muted-foreground mb-1 block">Localidad</label>
             <input
+              id="user-locality"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               placeholder="Ej: Madrid, Barcelona..."
               value={userLocality}
@@ -555,8 +557,9 @@ export default function SettingsPage() {
 
         <div className="space-y-4">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Tono por defecto</label>
+            <label htmlFor="digest-tone" className="text-xs font-medium text-muted-foreground mb-1 block">Tono por defecto</label>
             <select
+              id="digest-tone"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               value={digestTone}
               onChange={(e) => setDigestTone(e.target.value)}
@@ -568,8 +571,9 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Destinatarios por defecto</label>
+            <label htmlFor="digest-recipients" className="text-xs font-medium text-muted-foreground mb-1 block">Destinatarios por defecto</label>
             <input
+              id="digest-recipients"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               placeholder="email1@ejemplo.com, email2@ejemplo.com"
               value={digestRecipients}
@@ -579,8 +583,9 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Envío automático</label>
+            <label htmlFor="digest-auto-send" className="text-xs font-medium text-muted-foreground mb-1 block">Envío automático</label>
             <select
+              id="digest-auto-send"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               value={digestAutoSend}
               onChange={(e) => setDigestAutoSend(e.target.value)}

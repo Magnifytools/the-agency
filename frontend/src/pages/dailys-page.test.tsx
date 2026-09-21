@@ -15,6 +15,11 @@ const daily = (overrides = {}) => ({ id: 4, user_id: 7, user_name: "Ana", date: 
 function setup() { const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); return { client, ...render(<QueryClientProvider client={client}><MemoryRouter><DailysPage /></MemoryRouter></QueryClientProvider>) } }
 const notes = () => screen.findByLabelText("Notas del daily")
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); mocks.userId = 7; mocks.canReadTasks = true; Element.prototype.scrollIntoView = vi.fn(); mocks.list.mockResolvedValue([]); mocks.forDate.mockResolvedValue(null); mocks.prefill.mockResolvedValue({ date: "2026-09-20", text: "", completed_count: 1, worked_on_count: 1, total_minutes: 25, facts: [{ key: "opaque-1", kind: "time_logged", task_id: 8, title: "Revisar portada", client_name: "Acme", project_name: "Web", minutes: 25, href: "/tasks?task=8", detail: "Registrado" }] }); mocks.submit.mockResolvedValue(daily({ source_facts: [{ key: "opaque-1", kind: "time_logged", task_id: 8, title: "Revisar portada", minutes: 25, href: "/tasks?task=8", detail: null }] })) })
+it("uses level-two headings for the two main daily sections", async () => {
+  setup()
+  expect(await screen.findByRole("heading", { level: 2, name: "Hechos del día" })).toBeInTheDocument()
+  expect(screen.getByRole("heading", { level: 2, name: "Notas del cierre" })).toBeInTheDocument()
+})
 it("adds selected facts without replacing notes and saves their opaque keys", async () => {
   setup()
   fireEvent.change(await notes(), { target: { value: "Nota humana" } })
