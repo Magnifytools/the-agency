@@ -84,6 +84,7 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     if (searchParams.get("new") === "1" && canWriteProjects) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- A route deep link opens this dialog without remounting the page.
       setShowNewDialog(true)
       setSearchParams((previous) => {
         const next = new URLSearchParams(previous)
@@ -144,11 +145,13 @@ export default function ProjectsPage() {
     if (!date) return "—"
     return new Date(date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })
   }
+  const hasActiveFilters = Boolean(statusFilter || ownerFilter || typeFilter || periodFilter)
+  const canCreateHere = canWriteProjects && !archiveView
   let emptyDescription = "Organiza el trabajo en proyectos con fases y tareas. Puedes empezar desde una plantilla o importar una propuesta."
-  if (archiveView) emptyDescription = "Los proyectos terminados o cancelados aparecerán aquí y conservarán su historial."
-  else if (statusFilter || ownerFilter) emptyDescription = canWriteProjects
+  if (hasActiveFilters) emptyDescription = canCreateHere
     ? "No hay proyectos con estos filtros. Prueba a cambiarlos o crea uno nuevo."
     : "No hay proyectos con estos filtros. Prueba a cambiarlos."
+  else if (archiveView) emptyDescription = "Los proyectos terminados o cancelados aparecerán aquí y conservarán su historial."
   else if (!canWriteProjects) emptyDescription = "Los proyectos a los que tengas acceso aparecerán aquí."
 
 
@@ -162,9 +165,9 @@ export default function ProjectsPage() {
             Gestiona proyectos con fases y tareas
           </p>
         </div>
-        <Button disabled={!canWriteProjects} onClick={() => setShowNewDialog(true)}>
+        {canWriteProjects && <Button onClick={() => setShowNewDialog(true)}>
           <Plus className="h-4 w-4 mr-2" /> Nuevo proyecto
-        </Button>
+        </Button>}
       </div>
 
       <div className="flex flex-wrap gap-2" aria-label="Vista de proyectos">
@@ -260,10 +263,10 @@ export default function ProjectsPage() {
       ) : projects.length === 0 ? (
         <EmptyState
           icon={FolderKanban}
-          title={statusFilter || ownerFilter || typeFilter || periodFilter ? "Sin proyectos con estos filtros" : archiveView ? "El archivo está vacío" : "Sin proyectos todavía"}
+          title={hasActiveFilters ? "Sin proyectos con estos filtros" : archiveView ? "El archivo está vacío" : "Sin proyectos todavía"}
           description={emptyDescription}
-          actionLabel={archiveView || !canWriteProjects ? undefined : "Crear un proyecto"}
-          onAction={archiveView || !canWriteProjects ? undefined : () => setShowNewDialog(true)}
+          actionLabel={canCreateHere ? "Crear un proyecto" : undefined}
+          onAction={canCreateHere ? () => setShowNewDialog(true) : undefined}
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

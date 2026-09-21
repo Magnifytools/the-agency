@@ -126,14 +126,14 @@ describe("projects filter navigation", () => {
     setup("/projects?new=1")
     await waitFor(() => expect(api.list).toHaveBeenCalled())
     expect(screen.queryByRole("dialog", { name: "Nuevo proyecto" })).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Nuevo proyecto" })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: "Nuevo proyecto" })).not.toBeInTheDocument()
   })
   it("keeps an empty project list read-only while writers can start creation", async () => {
     auth.canWrite = false
     setup()
     await screen.findByText("Sin proyectos todavía")
     expect(screen.queryByRole("button", { name: "Crear un proyecto" })).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Nuevo proyecto" })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: "Nuevo proyecto" })).not.toBeInTheDocument()
     expect(api.create).not.toHaveBeenCalled()
   })
   it("offers creation from an empty project list to writers", async () => {
