@@ -133,6 +133,30 @@ describe("command entry", () => {
     expect(screen.getByRole("button", { name: "Deshecho" })).toBeDisabled();
   });
 
+  it("offers a reviewable commercial handoff without claiming creation or undo", async () => {
+    mocks.createCommand.mockResolvedValue({
+      ...baseReceipt,
+      raw_text: "Crea SEO con tarifa 500 EUR",
+      status: "executed",
+      change_log_id: null,
+      intent: { kind: "project_commercial_handoff" },
+      result: {
+        kind: "derivation",
+        message: "Esta orden contiene condiciones comerciales. Revísalas en el formulario de proyecto antes de crear.",
+        entities: [],
+        undo_available: false,
+        action: { kind: "open_project_form", href: "/projects?new=1" },
+      },
+    });
+    show();
+    await userEvent.type(screen.getByLabelText("Petición"), "Crea SEO con tarifa 500 EUR");
+    await userEvent.click(screen.getByRole("button", { name: "Hacer" }));
+    expect(await screen.findByRole("link", { name: "Revisar proyecto" })).toHaveAttribute("href", "/projects?new=1");
+    expect(screen.getByText("Crea SEO con tarifa 500 EUR")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Deshacer" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/proyecto creado/i)).not.toBeInTheDocument();
+  });
+
   it("resolves ambiguity with the selected server choice", async () => {
     mocks.createCommand.mockResolvedValue({
       ...baseReceipt,

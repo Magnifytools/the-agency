@@ -25,14 +25,15 @@ class _RecordingSession:
         self.commits += 1
 
 
-def _request(path: str, method: str) -> Request:
+def _request(path: str, method: str, *, origin: str | None = None) -> Request:
+    headers = [] if origin is None else [(b"x-agency-client", origin.encode())]
     return Request({
         "type": "http",
         "method": method,
         "path": path,
         "raw_path": path.encode(),
         "query_string": b"",
-        "headers": [],
+        "headers": headers,
         "scheme": "http",
         "server": ("test", 80),
         "client": ("test", 1),
@@ -40,13 +41,13 @@ def _request(path: str, method: str) -> Request:
     })
 
 
-async def _dispatch(monkeypatch, path: str, method: str = "GET"):
+async def _dispatch(monkeypatch, path: str, method: str = "GET", *, origin: str | None = None):
     from backend.db import database
 
     rows = []
     session = _RecordingSession(rows)
     monkeypatch.setattr(database, "async_session", lambda: session)
-    request = _request(path, method)
+    request = _request(path, method, origin=origin)
 
     async def call_next(req):
         req.state.user_id = 17
@@ -79,3 +80,12 @@ async def test_timer_actions_remain_recorded(monkeypatch, action):
     assert rows[0].route_template == path
     assert rows[0].method == "POST"
     assert rows[0].user_id == 17
+
+
+@pytest.mark.parametrize(("header", "expected"), [
+    ("web", "web"), ("EXTENSION", "extension"), (None, "unknown"),
+    ("assistant", "unknown"),
+])
+async def test_declared_origin_is_allowlisted_and_never_inferred(monkeypatch, header, expected):
+    _, rows, _ = await _dispatch(monkeypatch, "/api/tasks", origin=header)
+    assert rows[0].client_origin == expected

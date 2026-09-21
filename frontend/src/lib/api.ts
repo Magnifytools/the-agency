@@ -145,6 +145,7 @@ import type {
   AutomationTriggerOption,
   AutomationActionOption,
   JobRuntimeResponse,
+  OperationalUsage,
 } from "./types"
 
 export const CSRF_COOKIE_NAME = "agency_csrf_token"
@@ -206,6 +207,7 @@ function getCookie(name: string): string | null {
 
 api.interceptors.request.use((config) => {
   const sessionConfig = config as SessionRequestConfig
+  config.headers["X-Agency-Client"] = "web"
   sessionConfig.agencySessionEpoch = sessionEpoch
   // Logout must keep its own request alive: it clears the cookie that belongs
   // to the session being ended, even while a later login is queued.
@@ -1060,6 +1062,13 @@ export const commandsApi = {
     api.get<NonNullable<NonNullable<CommandReceipt["result"]>["query"]>>(`/commands/${id}/query`, { params: { page, page_size: pageSize } }).then((r) => r.data),
   list: (page = 1, pageSize = 5) =>
     api.get<{ items: CommandReceipt[]; total: number; page: number; page_size: number; has_more: boolean }>("/commands", { params: { page, page_size: pageSize } }).then((r) => r.data),
+}
+
+export const operationalUsageApi = {
+  get: (days = 30) =>
+    api.get<OperationalUsage>("/admin/usage/operational", { params: { days } }).then((response) => response.data),
+  origins: (days = 30) =>
+    api.get<Array<{ origin: "web" | "extension" | "unknown"; hits: number }>>("/admin/usage/origins", { params: { days } }).then((response) => response.data),
 }
 
 // --- Project Evidence ---

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { Plus, FolderKanban, Calendar, Trash2, Repeat, FileUp, FileText, UserRound, Archive } from "lucide-react"
@@ -77,6 +77,17 @@ export default function ProjectsPage() {
   const [showImportDialog, setShowImportDialog] = useState(false)
   const [showImportTextDialog, setShowImportTextDialog] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (searchParams.get("new") === "1" && hasPermission("projects", true)) {
+      setShowNewDialog(true)
+      setSearchParams((previous) => {
+        const next = new URLSearchParams(previous)
+        next.delete("new")
+        return next
+      }, { replace: true })
+    }
+  }, [searchParams, setSearchParams, hasPermission])
 
   const effectiveStatusFilter = archiveView
     ? (["completed", "cancelled"].includes(statusFilter) ? statusFilter : "")

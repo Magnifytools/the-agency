@@ -25,4 +25,5 @@ it("does not render the scheduled-process panel or anchor for a member", async (
   expect(screen.getAllByText("Avisos")).not.toHaveLength(0)
   expect(screen.queryByText("Procesos programados")).not.toBeInTheDocument()
   expect(document.getElementById("scheduled-processes")).toBeNull()
+  expect(document.getElementById("operational-usage")).toBeNull()
 })
