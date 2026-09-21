@@ -295,7 +295,7 @@ export const clientsApi = {
   aiAdvice: (id: number) =>
     api.post<{ recommendations: Array<{ priority: "high" | "medium" | "low"; category: string; title: string; description: string; action: string }> }>(`/clients/${id}/ai-advice`).then((r) => r.data),
   recentTimeEntries: (id: number, limit = 10) =>
-    api.get<Array<{ id: number; date: string; minutes: number; notes: string | null; task_title: string | null; user_name: string | null }>>(`/clients/${id}/recent-time-entries`, { params: { limit } }).then((r) => r.data),
+    api.get<Array<{ id: number; date: string; started_at: string | null; minutes: number; notes: string | null; task_title: string | null; user_name: string | null }>>(`/clients/${id}/recent-time-entries`, { params: { limit } }).then((r) => r.data),
   whatIf: (clientId: number) => api.get(`/clients/${clientId}/what-if`).then((r) => r.data),
   extractContext: (params: { file?: File; rawText?: string }) => {
     const form = new FormData()
