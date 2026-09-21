@@ -237,6 +237,15 @@ def parse_command(raw: str) -> dict[str, Any]:
     match = re.match(r"^(?:completa|completar|marca como completada) (?:la )?tarea (.+)$", text, re.I)
     if match:
         return {"kind": "complete_task", "task_name": match.group(1).strip('" ')}
+    match = re.match(r"^(?:reprograma|reprogramar) (?:la )?tarea (.+)$", text, re.I)
+    if match:
+        quoted, suffix = _quoted_head(match.group(1))
+        if quoted is not None:
+            if suffix.casefold() == "sin fecha":
+                return {"kind": "reschedule_task", "task_name": quoted, "scheduled_date": None}
+            date_match = re.fullmatch(r"(?:para|al)\s+(.+)", suffix, re.I)
+            if date_match:
+                return _date_intent("reschedule_task", quoted, date_match.group(1))
     match = re.match(r"^(?:reprograma|reprogramar) (?:la )?tarea (.+?)\s+sin fecha$", text, re.I)
     if match:
         return {"kind": "reschedule_task", "task_name": match.group(1).strip('" '), "scheduled_date": None}
