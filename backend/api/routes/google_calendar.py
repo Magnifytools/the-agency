@@ -119,8 +119,8 @@ def _verify_oauth_state(state: str, max_age: int = 600) -> int:
 async def calendar_callback(
     code: str | None = Query(None),
     state: str = Query(""),
-    error: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    error: str | None = None,
 ):
     """Handle Google OAuth2 callback. Redirects to settings page."""
     # Verify signed state BEFORE doing any work (prevents OAuth account-link CSRF)
