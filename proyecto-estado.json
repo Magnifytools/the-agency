@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-21T09:45:00+00:00",
-  "estado_general": "produccion_p33_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-21T11:33:00+00:00",
+  "estado_general": "produccion_p36_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -346,6 +346,13 @@
       "estado": "completado",
       "prioridad": "alta",
       "notas": "PR48/36db4ec publicada. Filtro paginado y conteo global reales, sin asignación o avisos supuestos; 16 pruebas PG, 14 UI, seis gates CI de PR y Railway SUCCESS con /api/ready exacto. Once proyectos y 348 notificaciones conservaron huellas idénticas antes/después; tres proyectos activos requieren decisión de responsable. Visual sintética 390/1440 correcta; producción autenticada y aceptación humana pendientes."
+    },
+    {
+      "id": "AUDIT-20260921-P36",
+      "descripcion": "Impedir nuevas asignaciones de tareas a cuentas desactivadas",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "PR50/5e131c2 publicada. Writer común valida cuenta activa en alta o cambio real de asignado; POST/PUT/bulk PG, desasignación y edición legacy probadas. Backend 1397 pass/2 skip, seis gates CI de PR y Railway /api/ready exacto. Lectura productiva: 20 tareas abiertas, 9 sin asignar y 0 asignadas a cuentas inactivas antes/después; ninguna migración ni reasignación. Objetivo global sigue activo."
     }
   ],
   "bugs": [
@@ -411,6 +418,7 @@
     "P29: seis gates CI PR/main correctos y Railway en revisión 3d48fea; 13 rutas activas revisadas 390/1440, producción y preservación verificadas. Validación humana y decisiones externas pendientes.",
     "P30: informe semanal operativo activado para David, sábado 08:00 Madrid; primera entrega real pendiente del 26 de septiembre, sin envíos de prueba.",
     "P31: PR44/cc693edd publicada, seis gates CI PR/main correctos; Holded ahora clasifica por saldo/pagos con unknown conservador y no concilia Income. Hash de Income intacto tras desplegar; resultado del próximo sync ordinario pendiente.",
+    "P36: PR50/5e131c2 publicada, validación central de asignado activo con bloqueo de concurrencia; PostgreSQL, seis gates CI de PR y /api/ready exacto. Cero tareas abiertas asignadas a inactivos en lectura productiva previa/posterior.",
     "CUIDADO: lazy='selectin' esta en ~80 relaciones de models.py. Quitar un selectinload() de .options() NO evita la carga; hace falta noload() explicito",
     "La suite unitaria mockea get_db: cualquier cambio de SQL debe verificarse en tests/integration/",
     "Los estados de rentabilidad viven en services/profitability.py (backend) y lib/profitability.ts (frontend), un unico mapa cada uno",
@@ -428,7 +436,7 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "36db4ecfc635f687547397a03affaaf650cfbb37",
+    "revision": "5e131c2cff012388a0206b9027b0aca2d9e16c95",
     "healthcheck": "/api/ready",
     "schema_revision": "20260921_usage_origin_v1"
   },
