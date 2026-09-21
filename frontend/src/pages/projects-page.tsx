@@ -42,6 +42,7 @@ const STATUS_VARIANTS: Record<ProjectStatus, "default" | "success" | "warning" |
 export default function ProjectsPage() {
   const queryClient = useQueryClient()
   const { hasPermission } = useAuth()
+  const canWriteProjects = hasPermission("projects", true)
   const [searchParams, setSearchParams] = useSearchParams()
   const pageSize = 25
   const rawPage = Number(searchParams.get("page") || 1)
@@ -82,7 +83,8 @@ export default function ProjectsPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null)
 
   useEffect(() => {
-    if (searchParams.get("new") === "1" && hasPermission("projects", true)) {
+    if (searchParams.get("new") === "1" && canWriteProjects) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- A route deep link opens this dialog without remounting the page.
       setShowNewDialog(true)
       setSearchParams((previous) => {
         const next = new URLSearchParams(previous)
@@ -90,7 +92,7 @@ export default function ProjectsPage() {
         return next
       }, { replace: true })
     }
-  }, [searchParams, setSearchParams, hasPermission])
+  }, [searchParams, setSearchParams, canWriteProjects])
 
   const effectiveStatusFilter = archiveView
     ? (["completed", "cancelled"].includes(statusFilter) ? statusFilter : "")
@@ -143,6 +145,14 @@ export default function ProjectsPage() {
     if (!date) return "—"
     return new Date(date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })
   }
+  const hasActiveFilters = Boolean(statusFilter || ownerFilter || typeFilter || periodFilter)
+  const canCreateHere = canWriteProjects && !archiveView
+  let emptyDescription = "Organiza el trabajo en proyectos con fases y tareas. Puedes empezar desde una plantilla o importar una propuesta."
+  if (hasActiveFilters) emptyDescription = canCreateHere
+    ? "No hay proyectos con estos filtros. Prueba a cambiarlos o crea uno nuevo."
+    : "No hay proyectos con estos filtros. Prueba a cambiarlos."
+  else if (archiveView) emptyDescription = "Los proyectos terminados o cancelados aparecerán aquí y conservarán su historial."
+  else if (!canWriteProjects) emptyDescription = "Los proyectos a los que tengas acceso aparecerán aquí."
 
 
   return (
@@ -155,9 +165,9 @@ export default function ProjectsPage() {
             Gestiona proyectos con fases y tareas
           </p>
         </div>
-        <Button disabled={!hasPermission("projects", true)} onClick={() => setShowNewDialog(true)}>
+        {canWriteProjects && <Button onClick={() => setShowNewDialog(true)}>
           <Plus className="h-4 w-4 mr-2" /> Nuevo proyecto
-        </Button>
+        </Button>}
       </div>
 
       <div className="flex flex-wrap gap-2" aria-label="Vista de proyectos">
@@ -253,10 +263,10 @@ export default function ProjectsPage() {
       ) : projects.length === 0 ? (
         <EmptyState
           icon={FolderKanban}
-          title={statusFilter || ownerFilter || typeFilter || periodFilter ? "Sin proyectos con estos filtros" : archiveView ? "El archivo está vacío" : "Sin proyectos todavía"}
-          description={archiveView ? "Los proyectos terminados o cancelados aparecerán aquí y conservarán su historial." : statusFilter || ownerFilter ? "No hay proyectos con estos filtros. Prueba a cambiarlos o crea uno nuevo." : "Organiza el trabajo en proyectos con fases y tareas. Puedes empezar desde una plantilla o importar una propuesta."}
-          actionLabel={archiveView ? undefined : "Crear un proyecto"}
-          onAction={archiveView ? undefined : () => setShowNewDialog(true)}
+          title={hasActiveFilters ? "Sin proyectos con estos filtros" : archiveView ? "El archivo está vacío" : "Sin proyectos todavía"}
+          description={emptyDescription}
+          actionLabel={canCreateHere ? "Crear un proyecto" : undefined}
+          onAction={canCreateHere ? () => setShowNewDialog(true) : undefined}
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -264,7 +274,7 @@ export default function ProjectsPage() {
             <ProjectCard
               key={project.id}
               project={project}
-              onDelete={() => setDeleteId(project.id)}
+              onDelete={canWriteProjects ? () => setDeleteId(project.id) : undefined}
               formatDate={formatDate}
             />
           ))}
@@ -312,11 +322,11 @@ export default function ProjectsPage() {
 
       {/* Delete Confirmation */}
       <ConfirmDialog
-        open={deleteId !== null}
+        open={canWriteProjects && deleteId !== null}
         onOpenChange={(open) => !open && setDeleteId(null)}
         title="Eliminar proyecto"
         description="¿Seguro que quieres eliminar este proyecto? Las tareas no se eliminarán, solo se desvincularán. Las plantillas recurrentes del proyecto quedarán pausadas."
-        onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
+        onConfirm={() => canWriteProjects && deleteId && deleteMutation.mutate(deleteId)}
       />
     </div>
   )
@@ -328,7 +338,7 @@ function ProjectCard({
   formatDate,
 }: {
   project: ProjectListItem
-  onDelete: () => void
+  onDelete?: () => void
   formatDate: (d: string | null) => string
 }) {
   return (
@@ -343,7 +353,7 @@ function ProjectCard({
               <p className="text-sm text-muted-foreground mt-1">{project.client_name}</p>
               <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><UserRound className="h-3 w-3" />{project.owner_name || "Sin responsable"}</p>
             </div>
-            <button
+            {onDelete && <button
               aria-label={`Eliminar proyecto ${project.name}`}
               onClick={(e) => {
                 e.preventDefault()
@@ -353,7 +363,7 @@ function ProjectCard({
               className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
             >
               <Trash2 className="h-4 w-4" />
-            </button>
+            </button>}
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
