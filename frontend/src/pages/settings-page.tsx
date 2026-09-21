@@ -410,12 +410,14 @@ export default function SettingsPage() {
                   {isEditingThis ? (
                     <div className="flex items-center gap-2 flex-1">
                       <input
+                        aria-label={`Nombre de la categoría ${cat.name}`}
                         className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
                         value={editCatName}
                         onChange={(e) => setEditCatName(e.target.value)}
                         autoFocus
                       />
                       <input
+                        aria-label={`Minutos por defecto de la categoría ${cat.name}`}
                         className="w-20 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-center"
                         type="number"
                         min="1"
@@ -424,12 +426,14 @@ export default function SettingsPage() {
                       />
                       <span className="text-xs text-muted-foreground">min</span>
                       <button
+                        aria-label={`Guardar categoría ${cat.name}`}
                         onClick={() => updateCatMut.mutate({ id: cat.id, data: { name: editCatName, default_minutes: editCatMinutes } })}
                         className="p-1.5 text-green-600 hover:bg-green-50 rounded-md transition-colors"
                       >
                         <Check className="h-3.5 w-3.5" />
                       </button>
                       <button
+                        aria-label={`Cancelar edición de categoría ${cat.name}`}
                         onClick={() => setEditingCatId(null)}
                         className="p-1.5 text-muted-foreground hover:bg-muted rounded-md transition-colors"
                       >
@@ -468,6 +472,7 @@ export default function SettingsPage() {
           {/* Add new category */}
           <fieldset disabled={!categoriesQuery.isSuccess} className="mt-4 flex items-center gap-2">
             <input
+              aria-label="Nombre de la nueva categoría"
               className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
               placeholder="Nueva categoría..."
               value={newCatName}
@@ -480,6 +485,7 @@ export default function SettingsPage() {
               }}
             />
             <input
+              aria-label="Minutos por defecto de la nueva categoría"
               className="w-20 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-center"
               type="number"
               min="1"
@@ -489,6 +495,7 @@ export default function SettingsPage() {
             />
             <span className="text-xs text-muted-foreground">min</span>
             <button
+              aria-label="Añadir categoría"
               onClick={() => newCatName.trim() && createCatMut.mutate({ name: newCatName.trim(), default_minutes: newCatMinutes })}
               disabled={!newCatName.trim() || createCatMut.isPending}
               className="p-1.5 bg-brand text-black rounded-md hover:bg-brand/90 transition-colors disabled:opacity-50"
@@ -671,12 +678,14 @@ export default function SettingsPage() {
           <fieldset disabled={!holidaysQuery.isSuccess} className="mt-4 pt-4 border-t border-border space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <input
+                aria-label="Fecha del nuevo festivo"
                 type="date"
                 className="rounded-md border border-border bg-background px-3 py-1.5 text-sm"
                 value={newHolidayDate}
                 onChange={(e) => setNewHolidayDate(e.target.value)}
               />
               <input
+                aria-label="Nombre del nuevo festivo"
                 className="rounded-md border border-border bg-background px-3 py-1.5 text-sm"
                 placeholder="Nombre del festivo"
                 value={newHolidayName}
@@ -685,8 +694,9 @@ export default function SettingsPage() {
             </div>
             <div className="grid grid-cols-3 gap-3 items-end">
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Ámbito</label>
+                <label htmlFor="new-holiday-region" className="text-xs text-muted-foreground mb-1 block">Ámbito</label>
                 <select
+                  id="new-holiday-region"
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm"
                   value={newHolidayRegion}
                   onChange={(e) => setNewHolidayRegion(e.target.value)}
@@ -698,8 +708,9 @@ export default function SettingsPage() {
                 </select>
               </div>
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Localidad (opcional)</label>
+                <label htmlFor="new-holiday-locality" className="text-xs text-muted-foreground mb-1 block">Localidad (opcional)</label>
                 <input
+                  id="new-holiday-locality"
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm"
                   placeholder="Dejar vacío = toda la CCAA"
                   value={newHolidayLocality}
