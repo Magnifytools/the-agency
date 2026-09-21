@@ -676,7 +676,7 @@ export default function SettingsPage() {
 
           {/* Add new holiday */}
           <fieldset disabled={!holidaysQuery.isSuccess} className="mt-4 pt-4 border-t border-border space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <input
                 aria-label="Fecha del nuevo festivo"
                 type="date"
@@ -692,7 +692,7 @@ export default function SettingsPage() {
                 onChange={(e) => setNewHolidayName(e.target.value)}
               />
             </div>
-            <div className="grid grid-cols-3 gap-3 items-end">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end">
               <div>
                 <label htmlFor="new-holiday-region" className="text-xs text-muted-foreground mb-1 block">Ámbito</label>
                 <select
