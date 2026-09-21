@@ -55,6 +55,9 @@ def _make_mock_db():
     execute_result.scalars.return_value.all.return_value = []
     execute_result.scalars.return_value.first.return_value = None
     mock_db.execute.return_value = execute_result
+    readable_result = MagicMock()
+    readable_result.all.return_value = []
+    mock_db.scalars = AsyncMock(return_value=readable_result)
     return mock_db
 
 
