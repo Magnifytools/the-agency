@@ -7,6 +7,8 @@ Covers:
 """
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from httpx import AsyncClient, ASGITransport
 
@@ -38,15 +40,25 @@ async def test_weekly_sender_passes_explicit_civil_period_to_shared_reader(monke
 
 
 @pytest.mark.asyncio
-async def test_weekly_sender_default_uses_last_closed_madrid_workweek(monkeypatch, admin_user):
-    from datetime import date
+@pytest.mark.parametrize(
+    ("today", "period_start", "period_end"),
+    [
+        (date(2026, 9, 21), date(2026, 9, 14), date(2026, 9, 18)),
+        (date(2026, 9, 25), date(2026, 9, 14), date(2026, 9, 18)),
+        (date(2026, 9, 26), date(2026, 9, 21), date(2026, 9, 25)),
+        (date(2026, 9, 27), date(2026, 9, 21), date(2026, 9, 25)),
+    ],
+)
+async def test_weekly_sender_default_uses_last_closed_madrid_workweek(
+    monkeypatch, admin_user, today, period_start, period_end
+):
     from unittest.mock import AsyncMock
     from backend.api.routes import discord
 
     db = AsyncMock()
     generator = AsyncMock(return_value="Reviewed weekly report")
     enqueue = AsyncMock(return_value={"success": False, "status": "pending"})
-    monkeypatch.setattr(discord, "business_today", lambda: date(2026, 9, 26))  # Saturday in Madrid
+    monkeypatch.setattr(discord, "business_today", lambda: today)
     monkeypatch.setattr(discord, "generate_weekly_report", generator)
     monkeypatch.setattr(discord, "enqueue_request", enqueue)
     monkeypatch.setattr(discord, "is_enabled", lambda module: False)
@@ -56,12 +68,12 @@ async def test_weekly_sender_default_uses_last_closed_madrid_workweek(monkeypatc
     assert response["status"] == "pending"
     generator.assert_awaited_once_with(
         db,
-        period_start=date(2026, 9, 21),
-        period_end=date(2026, 9, 25),
+        period_start=period_start,
+        period_end=period_end,
         include_financial=False,
     )
-    assert enqueue.await_args.kwargs["period_start"] == date(2026, 9, 21)
-    assert enqueue.await_args.kwargs["period_end"] == date(2026, 9, 25)
+    assert enqueue.await_args.kwargs["period_start"] == period_start
+    assert enqueue.await_args.kwargs["period_end"] == period_end
 
 
 @pytest.mark.asyncio
