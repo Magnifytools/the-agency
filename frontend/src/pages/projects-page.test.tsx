@@ -6,14 +6,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import ProjectsPage from "./projects-page"
 
 const api = vi.hoisted(() => ({ list: vi.fn(), unassignedCount: vi.fn(), templates: vi.fn(), clients: vi.fn(), users: vi.fn(), create: vi.fn(), createFromTemplate: vi.fn(), extractFromPdf: vi.fn(), extractFromText: vi.fn() }))
-const auth = vi.hoisted(() => ({ canWrite: true }))
+const auth = vi.hoisted(() => ({ canWrite: true, canWriteTasks: true }))
 vi.mock("@/lib/api", () => ({
   projectsApi: { list: api.list, unassignedCount: api.unassignedCount, templates: api.templates, create: api.create, createFromTemplate: api.createFromTemplate, extractFromPdf: api.extractFromPdf, extractFromText: api.extractFromText },
   clientsApi: { listAll: api.clients },
   usersApi: { listAll: api.users },
 }))
 vi.mock("@/context/auth-context", () => ({
-  useAuth: () => ({ hasPermission: () => auth.canWrite }),
+  useAuth: () => ({ hasPermission: (module: string, write = false) => !write || (module === "tasks" ? auth.canWriteTasks : auth.canWrite) }),
 }))
 function Location() { return <output data-testid="location">{useLocation().pathname + useLocation().search}</output> }
 function setup(url = "/projects") {
@@ -25,6 +25,7 @@ describe("projects filter navigation", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     auth.canWrite = true
+    auth.canWriteTasks = true
     api.list.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 })
     api.unassignedCount.mockResolvedValue(0)
     api.templates.mockResolvedValue({})
@@ -160,6 +161,24 @@ describe("projects filter navigation", () => {
     await userEvent.selectOptions(screen.getByLabelText("Plantilla *"), "seo")
     await userEvent.click(screen.getByRole("button", {name: "Crear proyecto"}))
     await waitFor(() => expect(api.createFromTemplate).toHaveBeenCalledWith(17, "seo", undefined, 8))
+  })
+
+  it("explains and blocks a task-bearing template when task writing is unavailable", async () => {
+    auth.canWriteTasks = false
+    api.templates.mockResolvedValue({
+      with_task: {name: "Con primera tarea", phase_count: 0, task_count: 1},
+      empty: {name: "Sin tareas", phase_count: 0, task_count: 0},
+    })
+    setup()
+    await userEvent.click(screen.getByRole("button", {name: "Nuevo proyecto"}))
+    await userEvent.click(screen.getByText("Partir de una plantilla o un documento"))
+    await userEvent.click(screen.getByRole("button", {name: "Usar plantilla"}))
+    await userEvent.selectOptions(screen.getByLabelText("Plantilla *"), "with_task")
+    expect(await screen.findByRole("alert")).toHaveTextContent("Necesitas permiso de escritura en Tareas")
+    expect(screen.getByRole("button", {name: "Crear proyecto"})).toBeDisabled()
+    await userEvent.selectOptions(screen.getByLabelText("Plantilla *"), "empty")
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", {name: "Crear proyecto"})).toBeEnabled()
   })
 
   it("keeps an owner selected by the user when a PDF draft has no owner context", async () => {
