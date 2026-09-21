@@ -276,10 +276,15 @@ async def _send_discord_dm(bot_token: str, user_id: str, message: str) -> bool:
 async def send_weekly_report(week_start: date_type | None = Query(None), db: AsyncSession = Depends(get_db),
                              current_user: User = Depends(require_admin)):
     today = business_today()
-    ws = week_start or today - timedelta(days=today.weekday())
-    if ws.weekday() != 0:
+    if week_start is not None and week_start.weekday() != 0:
         raise HTTPException(422, "El inicio de semana debe ser un lunes")
-    we = ws + timedelta(days=6)
+    if week_start is None:
+        current_monday = today - timedelta(days=today.weekday())
+        ws = current_monday if today.weekday() >= 5 else current_monday - timedelta(days=7)
+        we = ws + timedelta(days=4)
+    else:
+        ws = week_start
+        we = ws + timedelta(days=6)
     report = await generate_weekly_report(
         db,
         period_start=ws,

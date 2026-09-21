@@ -389,10 +389,10 @@ export default function DashboardPage() {
               size="sm"
               disabled={weeklyReportMutation.isPending}
               onClick={() => weeklyReportMutation.mutate()}
-              title="Enviar informe semanal por Discord DM"
+              title="Enviar por Discord DM el último informe laboral cerrado (lunes a viernes)"
             >
               <BarChart3 className={`h-4 w-4 mr-1 ${weeklyReportMutation.isPending ? "animate-spin" : ""}`} />
-              {weeklyReportMutation.isPending ? "Enviando..." : "Informe semanal"}
+              {weeklyReportMutation.isPending ? "Enviando..." : "Enviar informe semanal"}
             </Button>
           )}
           {isAdmin && memberUsers.length > 0 && (

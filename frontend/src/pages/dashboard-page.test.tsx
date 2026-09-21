@@ -73,6 +73,17 @@ describe("DashboardPage", () => {
     expect(screen.getByRole("combobox", { name: "Año del dashboard" })).toBeInTheDocument()
   })
 
+  it("labels the weekly report action as an immediate closed-workweek DM delivery", async () => {
+    mocks.user = { id: 1, role: "admin", permissions: [] }
+    show()
+
+    const button = await screen.findByRole("button", { name: "Enviar informe semanal" })
+    expect(button).toHaveAttribute(
+      "title",
+      "Enviar por Discord DM el último informe laboral cerrado (lunes a viernes)",
+    )
+  })
+
   it("does not fetch team, finance, or task sources for a member without those permissions", async () => {
     mocks.user = { id: 4, role: "member", permissions: [] }
     show()
