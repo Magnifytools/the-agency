@@ -200,6 +200,9 @@ async def generate_evening_recap(db: AsyncSession, user: User, day: date) -> str
             lines.append(f"- {t.title}{suffix}")
     else:
         lines.append("\u2705 Completado hoy: ninguna")
+    lines.append(
+        "Solo se atribuyen a este día las tareas con fecha de finalización registrada."
+    )
 
     lines.append("")
 

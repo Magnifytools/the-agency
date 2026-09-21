@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 from datetime import date as date_type
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.deps import get_current_user, require_admin
+from backend.api.utils.db_helpers import safe_refresh
+from backend.core.security import hash_password
 from backend.db.database import get_db
 from backend.db.models import User, UserPermission, UserRole
-from backend.schemas.user import UserCreate, UserUpdate, UserListResponse
+from backend.schemas.invitation import PermissionItem, UserPermissionsUpdate
 from backend.schemas.pagination import PaginatedResponse
-from backend.api.deps import get_current_user, require_admin
-from backend.core.security import hash_password
-from backend.api.utils.db_helpers import safe_refresh
+from backend.schemas.user import UserCreate, UserListResponse, UserUpdate
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -28,6 +30,22 @@ _VALID_MODULES = frozenset({
     "finance_income", "finance_taxes",
     "growth", "leads", "pm", "projects", "proposals", "reports", "tasks", "timesheet",
 })
+
+
+def _validate_permission_items(items: list[PermissionItem]) -> None:
+    modules = [item.module for item in items]
+    invalid = set(modules) - _VALID_MODULES
+    if invalid:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Módulos no reconocidos: {sorted(invalid)}. Permitidos: {sorted(_VALID_MODULES)}",
+        )
+    duplicates = sorted({module for module in modules if modules.count(module) > 1})
+    if duplicates:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Módulos duplicados: {duplicates}",
+        )
 
 @router.get("", response_model=PaginatedResponse[UserListResponse])
 async def list_users(
@@ -201,6 +219,73 @@ async def sync_user_permissions(
         "added": sorted(added),
         "removed": sorted(removed),
     }
+
+
+@router.get("/{user_id}/permissions", response_model=list[PermissionItem])
+async def get_user_permissions(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_admin),
+):
+    """Return a user's module permissions from the always-on users API."""
+    user_result = await db.execute(select(User.id).where(User.id == user_id))
+    if user_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    result = await db.execute(
+        select(UserPermission)
+        .where(UserPermission.user_id == user_id)
+        .order_by(UserPermission.module, UserPermission.id)
+    )
+    return [
+        PermissionItem(module=p.module, can_read=p.can_read, can_write=p.can_write)
+        for p in result.scalars().all()
+    ]
+
+
+@router.put("/{user_id}/permissions", response_model=list[PermissionItem])
+async def update_user_permissions(
+    user_id: int,
+    body: UserPermissionsUpdate,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_admin),
+):
+    """Replace a member's permissions atomically from the always-on users API."""
+    _validate_permission_items(body.permissions)
+
+    user_result = await db.execute(
+        select(User)
+        .where(User.id == user_id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )
+    target_user = user_result.scalar_one_or_none()
+    if target_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target_user.role == UserRole.admin:
+        raise HTTPException(status_code=400, detail="Cannot modify admin permissions")
+
+    existing = await db.execute(
+        select(UserPermission).where(UserPermission.user_id == user_id)
+    )
+    for permission in existing.scalars().all():
+        await db.delete(permission)
+    # Keep delete-before-insert ordering explicit if the database later gains
+    # the natural (user_id, module) uniqueness constraint.
+    await db.flush()
+
+    new_permissions = [
+        UserPermission(
+            user_id=user_id,
+            module=item.module,
+            can_read=item.can_read,
+            can_write=item.can_write,
+        )
+        for item in body.permissions
+    ]
+    db.add_all(new_permissions)
+    await db.commit()
+    return body.permissions
 
 
 @router.post("/sync-default-permissions", status_code=200)

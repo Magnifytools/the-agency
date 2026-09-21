@@ -87,7 +87,8 @@ export default function TasksPage() {
   })
   const [weekOffset, setWeekOffset] = useState(0)
   const [calMonth, setCalMonth] = useState(() => {
-    const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }
+    const [year, month] = businessToday.split("-").map(Number)
+    return { year, month: month - 1 }
   })
 
   // Filters

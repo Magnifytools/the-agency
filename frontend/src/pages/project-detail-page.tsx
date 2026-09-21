@@ -482,6 +482,7 @@ export default function ProjectDetailPage() {
                 <Line type="monotone" dataKey="ideal" stroke="#6b7280" dot={false} strokeWidth={1} strokeDasharray="4 2" name="ideal" />
               </LineChart>
             </ResponsiveContainer>
+            <p className="mt-2 text-xs text-muted-foreground">Las finalizaciones sin fecha registrada no se sitúan en la curva.</p>
           </CardContent>
         </Card>
       )}
@@ -1291,6 +1292,7 @@ function MonthlyCycleCard({ cycle, month, currentMonth, loading, error, onMonthC
             <CycleMetric label="Horas reales del mes" value={`${cycle.used_hours.toFixed(1)}h`} />
             <CycleMetric label={month === currentMonth ? "Horas restantes" : "Diferencia con presupuesto actual"} value={cycle.remaining_hours == null ? "Sin presupuesto" : `${cycle.remaining_hours.toFixed(1)}h`} />
           </div>
+          <p className="text-xs text-muted-foreground">Finalizadas en el mes sólo cuenta tareas con fecha de finalización registrada dentro del mes.</p>
           {cycle.budget_hours != null && <HoursBudgetCard weeklyBudget={null} monthlyBudget={cycle.budget_hours} usedWeek={0} usedMonth={cycle.used_hours} showWeekly={false} monthLabel={month === currentMonth ? "Este mes" : "Presupuesto actual de referencia"} />}
           <div>
             <p className="mb-2 text-sm font-medium">Tareas planificadas o finalizadas en el mes</p>

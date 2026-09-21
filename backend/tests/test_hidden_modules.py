@@ -154,6 +154,35 @@ class TestRoutersRegistrados:
         ]:
             assert r in rutas, f"la extensión llama a {r} y ya no está registrada"
 
+    def test_permisos_de_usuario_son_core_aunque_invitaciones_este_oculto(self):
+        import json
+        import subprocess
+
+        raiz = Path(__file__).resolve().parents[2]
+        entorno = {k: v for k, v in os.environ.items() if k != "AGENCY_HIDDEN_MODULES"}
+        entorno["PYTHONPATH"] = str(raiz)
+        code = (
+            "import json;from backend.main import app;"
+            "print(json.dumps(sorted((method,r.path) for r in app.router.routes "
+            "for method in getattr(r,'methods',set()) "
+            "if r.path=='/api/users/{user_id}/permissions')))"
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            env=entorno,
+            cwd=str(raiz),
+            timeout=120,
+        )
+        assert proc.returncode == 0, proc.stderr[-2000:]
+        methods = json.loads(proc.stdout.strip().splitlines()[-1])
+        permission_path = "/api/users/{user_id}/permissions"
+        assert methods.count(["GET", permission_path]) == 1
+        assert methods.count(["PUT", permission_path]) == 1
+        # POST is the older module-list sync contract and remains core too.
+        assert methods.count(["POST", permission_path]) == 1
+
 
 class TestOverridePorEntorno:
     """Reactivar en Railway sin desplegar."""

@@ -65,10 +65,11 @@ export default function UsersPage() {
     hourly_rate: null,
   })
 
-  const { data, isLoading } = useQuery({
+  const usersQuery = useQuery({
     queryKey: ["users", page, pageSize],
     queryFn: () => usersApi.list({ page, page_size: pageSize }),
   })
+  const data = usersQuery.isError ? undefined : usersQuery.data
   const users = data?.items ?? []
 
   const updateMutation = useMutation({
@@ -99,6 +100,10 @@ export default function UsersPage() {
     queryFn: () => usersApi.getPermissions(permissionsUser!.id),
     enabled: !!permissionsUser,
   })
+
+  useEffect(() => {
+    setPermissionsState({})
+  }, [permissionsUser?.id])
 
   useEffect(() => {
     if (permissionsQuery.data) {
@@ -180,7 +185,7 @@ export default function UsersPage() {
         )}
       </div>
 
-      {isLoading ? (
+      {usersQuery.isPending ? (
         <Table>
           <TableHeader>
             <TableRow>
@@ -198,6 +203,8 @@ export default function UsersPage() {
             {Array.from({ length: 3 }).map((_, i) => <SkeletonTableRow key={i} cols={8} />)}
           </TableBody>
         </Table>
+      ) : usersQuery.isError ? (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border p-4"><p className="text-sm">No se pudo cargar el equipo.</p><Button variant="outline" size="sm" onClick={() => void usersQuery.refetch()}>Reintentar</Button></div>
       ) : (
         <>
           <div className="hidden md:block">
@@ -384,8 +391,10 @@ export default function UsersPage() {
         <DialogHeader>
           <DialogTitle>Permisos — {permissionsUser?.full_name}</DialogTitle>
         </DialogHeader>
-        {permissionsQuery.isLoading ? (
+        {permissionsQuery.isPending ? (
           <p className="text-sm text-muted-foreground py-4">Cargando permisos...</p>
+        ) : permissionsQuery.isError ? (
+          <div role="alert" className="flex items-center justify-between gap-3 py-4"><p className="text-sm">No se pudieron cargar los permisos de este usuario.</p><Button variant="outline" size="sm" onClick={() => void permissionsQuery.refetch()}>Reintentar</Button></div>
         ) : (
           <div className="space-y-5 pt-4">
             {MODULE_GROUPS.map((group) => (
@@ -428,7 +437,7 @@ export default function UsersPage() {
             ))}
             <div className="flex justify-end gap-2 pt-4 border-t border-border">
               <Button variant="outline" onClick={() => setPermissionsUser(null)}>Cancelar</Button>
-              <Button onClick={handleSavePermissions} disabled={permissionsMutation.isPending}>
+              <Button onClick={handleSavePermissions} disabled={permissionsMutation.isPending || !permissionsQuery.isSuccess}>
                 {permissionsMutation.isPending ? "Guardando..." : "Guardar permisos"}
               </Button>
             </div>

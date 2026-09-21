@@ -53,7 +53,11 @@ async def get_client_activity(
     # 2) Tasks completed
     tasks_q = (
         select(Task)
-        .where(Task.client_id == client_id, Task.status == "completed")
+        .where(
+            Task.client_id == client_id,
+            Task.status == "completed",
+            Task.completed_at.is_not(None),
+        )
         .order_by(desc(Task.completed_at))
         .limit(limit)
     )
@@ -133,7 +137,7 @@ async def get_client_activity(
             "id": f"task-{t.id}",
             "type": "task_completed",
             "subtype": t.priority.value if t.priority else "medium",
-            "timestamp": t.updated_at.isoformat(),
+            "timestamp": t.completed_at.isoformat(),
             "title": "Tarea completada",
             "description": t.title,
             "detail": t.description,

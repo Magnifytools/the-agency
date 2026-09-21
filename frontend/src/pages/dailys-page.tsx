@@ -233,6 +233,7 @@ function DailyEditor({ userId, date, onDateChange, serverDaily, serverError, che
           const text = selected.map((fact) => `- ${fact.title}${fact.detail ? ` — ${fact.detail}` : ""}`).join("\n")
           editDraft({ rawText: `${draft.rawText}${draft.rawText ? "\n\n" : ""}${text}` })
         }}>Añadir hechos seleccionados a las notas</Button>}
+        {(facts.length > 0 || prefill.isSuccess) && <p className="text-xs text-muted-foreground">Las tareas completadas requieren una fecha de finalización fiable; las horas reales se contabilizan de forma independiente.</p>}
       </CardContent>
     </Card>
     <Card><CardHeader><CardTitle className="text-base">Notas del cierre</CardTitle></CardHeader>
