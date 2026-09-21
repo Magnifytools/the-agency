@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { invalidateCalendarViews } from "@/lib/calendar-queries"
 import { useAuth } from "@/context/auth-context"
 import { usersApi, categoriesApi, myWeekApi, calendarApi } from "@/lib/api"
-import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS, isShortcutAvailable } from "@/hooks/use-keyboard-shortcuts"
+import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS, isShortcutAvailable, isValidShortcutBinding, resolveShortcuts, shortcutConflict } from "@/hooks/use-keyboard-shortcuts"
 import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar, FileText } from "lucide-react"
 import { CommunicationSchedules } from "@/components/communication-schedules"
 import { JobRuntimeStatusPanel } from "@/components/job-runtime-status"
@@ -46,6 +46,7 @@ function formatBinding(binding: string): string {
 interface EditingState {
   key: string
   captured: string | null
+  awaitingSecond: boolean
 }
 
 export default function SettingsPage() {
@@ -65,8 +66,7 @@ export default function SettingsPage() {
     { kind: "category" | "holiday"; id: number; name: string } | null
   >(null)
   const [bindings, setBindings] = useState<Record<string, string>>({
-    ...DEFAULT_SHORTCUTS,
-    ...(user?.preferences?.shortcuts ?? {}),
+    ...resolveShortcuts(user?.preferences?.shortcuts),
   })
   const [editing, setEditing] = useState<EditingState | null>(null)
   const [saving, setSaving] = useState(false)
@@ -98,7 +98,7 @@ export default function SettingsPage() {
 
   // Sync with user preferences when they load
   useEffect(() => {
-    setBindings({ ...DEFAULT_SHORTCUTS, ...(user?.preferences?.shortcuts ?? {}) })
+    setBindings(resolveShortcuts(user?.preferences?.shortcuts))
   }, [user?.preferences?.shortcuts])
 
   useEffect(() => {
@@ -151,7 +151,7 @@ export default function SettingsPage() {
   })
 
   const startCapture = useCallback((key: string) => {
-    setEditing({ key, captured: null })
+    setEditing({ key, captured: null, awaitingSecond: false })
   }, [])
 
   const cancelCapture = useCallback(() => {
@@ -167,6 +167,16 @@ export default function SettingsPage() {
 
       if (e.key === "Escape") {
         setEditing(null)
+        return
+      }
+
+      if (editing.key.startsWith("goto_")) {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+        if (!editing.awaitingSecond) {
+          if (e.key.toLowerCase() === "g") setEditing((prev) => prev && { ...prev, awaitingSecond: true })
+          return
+        }
+        if (/^[a-z]$/i.test(e.key)) setEditing((prev) => prev && { ...prev, captured: `G+${e.key.toUpperCase()}` })
         return
       }
 
@@ -188,10 +198,19 @@ export default function SettingsPage() {
 
     window.addEventListener("keydown", handler, { capture: true })
     return () => window.removeEventListener("keydown", handler, { capture: true })
-  }, [editing?.key])
+  }, [editing])
 
   const confirmCapture = () => {
     if (!editing?.captured) return
+    if (!isValidShortcutBinding(editing.key, editing.captured)) {
+      toast.error("Combinación no disponible")
+      return
+    }
+    const conflict = shortcutConflict(editing.key, editing.captured, bindings)
+    if (conflict) {
+      toast.error(`Atajo ya usado por ${SHORTCUT_LABELS[conflict]}`)
+      return
+    }
     setBindings((prev) => ({ ...prev, [editing.key]: editing.captured! }))
     setEditing(null)
   }
@@ -202,6 +221,12 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     if (!user) return
+    for (const key of Object.keys(DEFAULT_SHORTCUTS).filter(isShortcutAvailable)) {
+      if (!isValidShortcutBinding(key, bindings[key]) || shortcutConflict(key, bindings[key], bindings)) {
+        toast.error("Revisa los atajos duplicados o no válidos")
+        return
+      }
+    }
     setSaving(true)
     try {
       await usersApi.update(user.id, {
@@ -346,7 +371,7 @@ export default function SettingsPage() {
                   {isEditing ? (
                     <div className="flex items-center gap-2">
                       <div className="min-w-[140px] px-3 py-1.5 bg-brand/10 border border-brand rounded-lg text-sm font-mono text-center text-brand">
-                        {editing.captured ? formatBinding(editing.captured) : "Presiona una tecla…"}
+                        {editing.captured ? formatBinding(editing.captured) : editing.key.startsWith("goto_") ? (editing.awaitingSecond ? "G, luego una letra…" : "Presiona G…") : "Presiona una tecla…"}
                       </div>
                       {editing.captured && (
                         <button
