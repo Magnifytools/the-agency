@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-21T11:33:00+00:00",
-  "estado_general": "produccion_p36_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-21T12:46:00+00:00",
+  "estado_general": "produccion_p37_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -419,6 +419,7 @@
     "P30: informe semanal operativo activado para David, sábado 08:00 Madrid; primera entrega real pendiente del 26 de septiembre, sin envíos de prueba.",
     "P31: PR44/cc693edd publicada, seis gates CI PR/main correctos; Holded ahora clasifica por saldo/pagos con unknown conservador y no concilia Income. Hash de Income intacto tras desplegar; resultado del próximo sync ordinario pendiente.",
     "P36: PR50/5e131c2 publicada, validación central de asignado activo con bloqueo de concurrencia; PostgreSQL, seis gates CI de PR y /api/ready exacto. Cero tareas abiertas asignadas a inactivos en lectura productiva previa/posterior.",
+    "P37: PR52/89c87d5 publicada: la baja de cuenta funciona de verdad, con impacto visible en Equipo, reactivación y filtros por persona. La asignación de responsable de proyecto usa bloqueo de concurrencia; PostgreSQL, seis gates CI de PR y /api/ready exacto. Datos históricos intactos y cero cuentas reales desactivadas durante la verificación.",
     "CUIDADO: lazy='selectin' esta en ~80 relaciones de models.py. Quitar un selectinload() de .options() NO evita la carga; hace falta noload() explicito",
     "La suite unitaria mockea get_db: cualquier cambio de SQL debe verificarse en tests/integration/",
     "Los estados de rentabilidad viven en services/profitability.py (backend) y lib/profitability.ts (frontend), un unico mapa cada uno",
@@ -436,7 +437,7 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "5e131c2cff012388a0206b9027b0aca2d9e16c95",
+    "revision": "89c87d5d538d86d3d915686427630cb5460ff3b5",
     "healthcheck": "/api/ready",
     "schema_revision": "20260921_usage_origin_v1"
   },
