@@ -81,8 +81,13 @@ export default function ProjectsPage() {
   useEffect(() => {
     if (searchParams.get("new") === "1" && hasPermission("projects", true)) {
       setShowNewDialog(true)
+      setSearchParams((previous) => {
+        const next = new URLSearchParams(previous)
+        next.delete("new")
+        return next
+      }, { replace: true })
     }
-  }, [searchParams, hasPermission])
+  }, [searchParams, setSearchParams, hasPermission])
 
   const effectiveStatusFilter = archiveView
     ? (["completed", "cancelled"].includes(statusFilter) ? statusFilter : "")

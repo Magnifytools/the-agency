@@ -83,6 +83,8 @@ describe("projects filter navigation", () => {
   it("opens an empty review form from the commercial handoff URL", async () => {
     setup("/projects?new=1")
     const dialog = await screen.findByRole("dialog", { name: "Nuevo proyecto" })
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/projects"))
+    expect(screen.getByTestId("location")).not.toHaveTextContent("new=1")
     expect(within(dialog).getByLabelText("Nombre *")).toHaveValue("")
     await userEvent.click(within(dialog).getByText("Alcance, fechas y condiciones económicas"))
     expect(within(dialog).getByLabelText("Modelo de precio")).toHaveValue("")

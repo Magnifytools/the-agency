@@ -69,3 +69,23 @@ async def test_compound_commercial_signal_never_creates_either_entity(admin_clie
     assert response.json()["intent"]["kind"] == "project_commercial_handoff"
     assert await db_session.scalar(select(func.count(Project.id))) == 0
     assert await db_session.scalar(select(func.count(Task.id))) == 0
+
+
+async def test_natural_definite_article_still_hands_commercial_project_to_review(
+    admin_client, db_session,
+):
+    response = await admin_client.post("/api/commands", json={
+        "request_key": "commercial-handoff-definite-article",
+        "text": "Crea el proyecto Lanzamiento con una tarifa de 2.500 € al mes",
+    })
+    assert response.status_code == 200, response.text
+    receipt = response.json()
+    assert receipt["intent"] == {"kind": "project_commercial_handoff"}
+    assert receipt["result"]["action"] == {
+        "kind": "open_project_form", "href": "/projects?new=1",
+    }
+    assert receipt["result"]["entities"] == []
+    assert receipt["result"]["undo_available"] is False
+    assert await db_session.scalar(select(func.count(Project.id))) == 0
+    assert await db_session.scalar(select(func.count(Task.id))) == 0
+    assert await db_session.scalar(select(func.count(ChangeLog.id))) == 0

@@ -142,7 +142,7 @@ def _peel_direct_date(text: str) -> tuple[str, str | None]:
 def parse_command(raw: str) -> dict[str, Any]:
     """Parse a small Spanish allowlist. Page context is deliberately absent."""
     text = " ".join(raw.strip().split())
-    project_match = re.match(r"^(?:crea|crear) (?:un )?proyecto (.+)$", text, re.I)
+    project_match = re.match(r"^(?:crea|crear) (?:(?:un|el) )?proyecto (.+)$", text, re.I)
     if project_match:
         remainder = project_match.group(1).strip()
         if _COMMERCIAL_SIGNAL.search(remainder):
