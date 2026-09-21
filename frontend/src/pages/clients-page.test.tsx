@@ -97,6 +97,17 @@ describe("ClientsPage recovery states", () => {
     expect(screen.queryByRole("button", { name: "Finalizar" })).not.toBeInTheDocument()
   })
 
+  it("hides client bulk selection and status changes from read-only users", async () => {
+    auth.canWriteClients = false
+    api.clients.mockResolvedValueOnce({ items: [clientRow], total: 1, page: 1, page_size: 25 })
+    show()
+
+    expect(await screen.findAllByText("Cliente conservado")).not.toHaveLength(0)
+    expect(screen.queryByRole("checkbox", { name: "Seleccionar todos los clientes visibles" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("checkbox", { name: "Seleccionar cliente Cliente conservado" })).not.toBeInTheDocument()
+    expect(screen.queryByText("Cambiar estado…")).not.toBeInTheDocument()
+  })
+
   it("keeps the client finalization menu available to writers", async () => {
     api.clients.mockResolvedValueOnce({ items: [clientRow], total: 1, page: 1, page_size: 25 })
     show()

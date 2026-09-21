@@ -181,6 +181,10 @@ function ClientsPageBody() {
   const { sortedItems: sortedClients, sortConfig: clientSortConfig, requestSort: requestClientSort } = useTableSort(clients)
   const { selectedIds: selectedClientIds, isSelected: isClientSelected, toggleItem: toggleClient, toggleAll: toggleAllClients, clearSelection: clearClientSelection, selectedCount: selectedClientCount, allSelected: allClientsSelected } = useBulkSelect(clients)
 
+  useEffect(() => {
+    if (!canWriteClients) clearClientSelection()
+  }, [canWriteClients, clearClientSelection])
+
   const bulkClientStatusMutation = useMutation({
     mutationFn: async ({ ids, status }: { ids: number[]; status: string }) => {
       const results = await Promise.allSettled(ids.map((id) => clientsApi.update(id, { status: status as ClientCreate["status"] })))
@@ -595,7 +599,7 @@ function ClientsPageBody() {
         <Table className="hidden sm:table">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10">
+              {canWriteClients && <TableHead className="w-10">
                 <input
                   type="checkbox"
                   aria-label="Seleccionar todos los clientes visibles"
@@ -603,7 +607,7 @@ function ClientsPageBody() {
                   onChange={toggleAllClients}
                   className="rounded border-border"
                 />
-              </TableHead>
+              </TableHead>}
               <SortableTableHead sortKey="name" currentSort={clientSortConfig} onSort={requestClientSort}>Nombre</SortableTableHead>
               <TableHead>Empresa</TableHead>
               <TableHead className="hidden md:table-cell">Email</TableHead>
@@ -629,7 +633,7 @@ function ClientsPageBody() {
           <TableBody>
             {sortedClients.map((c) => (
               <TableRow key={c.id}>
-                <TableCell>
+                {canWriteClients && <TableCell>
                   <input
                     type="checkbox"
                     aria-label={`Seleccionar cliente ${c.name || 'Sin nombre'}`}
@@ -637,7 +641,7 @@ function ClientsPageBody() {
                     onChange={() => toggleClient(c.id)}
                     className="rounded border-border"
                   />
-                </TableCell>
+                </TableCell>}
                 <TableCell className="font-medium">
                   <div className="min-w-0">
                     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -959,7 +963,7 @@ function ClientsPageBody() {
       />
 
       {/* Bulk Actions */}
-      <BulkActionBar selectedCount={selectedClientCount} onClear={clearClientSelection}>
+      {canWriteClients && <BulkActionBar selectedCount={selectedClientCount} onClear={clearClientSelection}>
         <Select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)} className="h-8 text-xs w-36">
           <option value="">Cambiar estado…</option>
           <option value="active">Activo</option>
@@ -969,12 +973,15 @@ function ClientsPageBody() {
         <Button
           size="sm"
           disabled={!bulkStatus || bulkClientStatusMutation.isPending}
-          onClick={() => bulkClientStatusMutation.mutate({ ids: Array.from(selectedClientIds), status: bulkStatus })}
+          onClick={() => {
+            if (!canWriteClients) return
+            bulkClientStatusMutation.mutate({ ids: Array.from(selectedClientIds), status: bulkStatus })
+          }}
         >
           {bulkClientStatusMutation.isPending && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
           Aplicar
         </Button>
-      </BulkActionBar>
+      </BulkActionBar>}
     </div>
   )
 }
