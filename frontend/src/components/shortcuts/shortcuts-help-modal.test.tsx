@@ -8,4 +8,5 @@ it("shows current navigation names and omits hidden Pipeline", () => {
   expect(screen.getByText("Ir a Por aclarar")).toBeInTheDocument()
   expect(screen.getByText("Ir a Horas")).toBeInTheDocument()
   expect(screen.queryByText("Ir a Pipeline")).not.toBeInTheDocument()
+  expect(screen.getByText("Pulsa G y después la letra.")).toBeInTheDocument()
 })

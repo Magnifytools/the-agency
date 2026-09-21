@@ -44,6 +44,43 @@ it("hides the inactive Pipeline shortcut while preserving its saved binding", as
   expect(usersApi.update).toHaveBeenCalledWith(12, expect.objectContaining({ preferences: expect.objectContaining({ shortcuts: expect.objectContaining({ goto_leads: "G+Y" }) }) }))
 })
 
+it("captures a sequential navigation chord and saves the executable binding", async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(<QueryClientProvider client={client}><MemoryRouter><SettingsPage /></MemoryRouter></QueryClientProvider>)
+  await userEvent.click(screen.getAllByRole("button", { name: "Editar" })[2])
+  fireEvent.keyDown(window, { key: "h" })
+  expect(screen.getByText("Presiona G…")).toBeInTheDocument()
+  fireEvent.keyDown(window, { key: "g" })
+  expect(screen.getByText("G, luego una letra…")).toBeInTheDocument()
+  fireEvent.keyDown(window, { key: "h" })
+  await userEvent.click(screen.getByRole("button", { name: "OK" }))
+  expect(screen.getByText("G+H")).toBeInTheDocument()
+  await userEvent.click(screen.getByRole("button", { name: "Guardar cambios" }))
+  expect(usersApi.update).toHaveBeenCalledWith(12, expect.objectContaining({ preferences: expect.objectContaining({ shortcuts: expect.objectContaining({ goto_dashboard: "G+H" }) }) }))
+})
+
+it("rejects a chord already assigned to an active navigation action", async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(<QueryClientProvider client={client}><MemoryRouter><SettingsPage /></MemoryRouter></QueryClientProvider>)
+  await userEvent.click(screen.getAllByRole("button", { name: "Editar" })[2])
+  fireEvent.keyDown(window, { key: "g" })
+  fireEvent.keyDown(window, { key: "a" })
+  await userEvent.click(screen.getByRole("button", { name: "OK" }))
+  expect(screen.getAllByText("G+A")).toHaveLength(2)
+  expect(screen.getByRole("button", { name: "Cancelar" })).toBeInTheDocument()
+})
+
+it("keeps unsupported modifier combinations in edit mode", async () => {
+  vi.mocked(usersApi.update).mockClear()
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(<QueryClientProvider client={client}><MemoryRouter><SettingsPage /></MemoryRouter></QueryClientProvider>)
+  await userEvent.click(screen.getAllByRole("button", { name: "Editar" })[0])
+  fireEvent.keyDown(window, { key: "k", altKey: true })
+  await userEvent.click(screen.getByRole("button", { name: "OK" }))
+  expect(screen.getByRole("button", { name: "Cancelar" })).toBeInTheDocument()
+  expect(usersApi.update).not.toHaveBeenCalled()
+})
+
 it("names the category creation and editing controls", async () => {
   auth.isAdmin = true
   vi.mocked(categoriesApi.list).mockResolvedValue([{ id: 4, name: "SEO", default_minutes: 60, created_at: "2026-09-21T00:00:00Z", updated_at: "2026-09-21T00:00:00Z" }])
