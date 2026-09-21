@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-21T17:38:26+00:00",
-  "estado_general": "produccion_p44_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-21T18:26:56+00:00",
+  "estado_general": "produccion_p45_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -431,9 +431,10 @@
     "Esquema canónico congelado y runner versionado en pre-deploy; la web sólo verifica revisión, columnas, claves y unicidad. El grafo Alembic antiguo no se ejecuta ni se estampa.",
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI",
-    "P44: PR64/1caaf20 publicada: el atajo N anunciado abre Añadir, respeta overrides y campos editables. Dos regresiones rojas antes, 479/479 UI verdes después, build/lint y seis gates CI de PR/main; Railway SUCCESS y /api/ready exacto. Falta aceptación humana del recorrido."
+    "P44: PR64/1caaf20 publicada: el atajo N anunciado abre Añadir, respeta overrides y campos editables. Dos regresiones rojas antes, 479/479 UI verdes después, build/lint y seis gates CI de PR/main; Railway SUCCESS y /api/ready exacto. Falta aceptación humana del recorrido.",
+    "P45: PR66/3f821fc publicada: Ajustes captura G seguida de una letra, rechaza atajos inviables o duplicados y el listener aplica el mismo contrato. Suite frontend local 487/487, 16 focales tras el último borde, seis gates CI de PR/main y Railway SUCCESS con /api/ready exacto. Visual sintética 390 sin overflow; aceptación humana pendiente. El ID confirmado del semanal coincide con el destino productivo en lectura de solo lectura."
   ],
-  "proximos_pasos": "Comprobar visualmente las vistas autenticadas de cliente y cartera en producción. Validar con David y Nacho seis recorridos reales de uso, incluido el atajo N para Añadir. Las dos cuentas activas deben reconectar Google Calendar y comprobar una reunión fresca. La política semanal está activa para David; comprobar el primer envío ordinario del 26 de septiembre y su recibo, sin mensaje de prueba. Elegir responsables para los tres proyectos activos visibles en el nuevo filtro y resolver decisiones por tarea/digest histórico; decidir si incorporar avisos de cobro, con vínculo factura-cliente y responsable reales, y si hace falta un canal entrante aparte de app/extensión. Véase docs/estado-implantacion-2026-09-21.md.",
+  "proximos_pasos": "Comprobar visualmente las vistas autenticadas de cliente y cartera en producción. Validar con David y Nacho seis recorridos reales de uso, incluidos Añadir con N y un atajo de navegación personalizado. Las dos cuentas activas deben reconectar Google Calendar y comprobar una reunión fresca. La política semanal está activa para el ID confirmado de David; comprobar el primer envío ordinario del 26 de septiembre y su recibo, sin mensaje de prueba. Elegir responsables para los tres proyectos activos visibles en el nuevo filtro y resolver decisiones por tarea/digest histórico; decidir si incorporar avisos de cobro, con vínculo factura-cliente y responsable reales, y si hace falta un canal entrante aparte de app/extensión. Véase docs/estado-implantacion-2026-09-21.md.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
@@ -443,7 +444,7 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "1caaf2061e63d5f1532d4b8becebab10d7420611",
+    "revision": "3f821fc85e35c69c76d55abf5f0046582e8197bd",
     "healthcheck": "/api/ready",
     "schema_revision": "20260921_usage_origin_v1"
   },
