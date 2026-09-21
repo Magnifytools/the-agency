@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Path,
 from pydantic import BaseModel
 from fastapi.responses import Response
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, func, delete, update, or_, text
+from sqlalchemy import Date, case, cast, select, func, delete, update, or_, text
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +31,8 @@ from backend.core.modules import is_enabled
 from backend.api.utils.db_helpers import safe_refresh
 from backend.services.client_onboarding import create_onboarding, recover_onboarding
 from backend.services.domain_writes import create_client as create_client_write
+from backend.services.temporal import business_today, utc_isoformat
+from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -659,12 +661,22 @@ async def get_recent_time_entries(
 ):
     """Recent time entries for a client, single query instead of N parallel fetches."""
     from sqlalchemy.orm import selectinload
+    # The legacy column is a civil datetime for manual entries and a UTC
+    # instant for timers. Rank both by the day shown in the client detail UI.
+    timer_business_day = cast(
+        func.timezone(settings.AGENCY_TIMEZONE, func.timezone("UTC", TimeEntry.date)),
+        Date,
+    )
+    work_day = case(
+        (TimeEntry.started_at.isnot(None), timer_business_day),
+        else_=cast(TimeEntry.date, Date),
+    )
     result = await db.execute(
         select(TimeEntry)
         .join(Task, TimeEntry.task_id == Task.id)
         .options(selectinload(TimeEntry.task), selectinload(TimeEntry.user))
         .where(Task.client_id == client_id, TimeEntry.minutes.isnot(None))
-        .order_by(TimeEntry.date.desc())
+        .order_by(work_day.desc(), TimeEntry.id.desc())
         .limit(limit)
     )
     entries = result.scalars().unique().all()
@@ -672,6 +684,7 @@ async def get_recent_time_entries(
         {
             "id": e.id,
             "date": e.date.isoformat() if e.date else None,
+            "started_at": utc_isoformat(e.started_at),
             "minutes": e.minutes,
             "notes": e.notes,
             "task_title": e.task.title if e.task else None,
@@ -800,7 +813,7 @@ async def what_if_lose_client(
     _user = Depends(require_module("clients")),
 ):
     """Estimate financial impact of losing a client."""
-    from datetime import date, timedelta
+    from datetime import timedelta
 
     # Check client exists
     r = await db.execute(select(Client).where(Client.id == client_id))
@@ -809,7 +822,8 @@ async def what_if_lose_client(
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
     # Average monthly revenue from this client (last 6 months)
-    six_months_ago = date.today() - timedelta(days=180)
+    today = business_today()
+    six_months_ago = today - timedelta(days=180)
     r_inc = await db.execute(
         select(func.coalesce(func.sum(Income.amount), 0))
         .where(Income.client_id == client_id, Income.date >= six_months_ago)
@@ -826,7 +840,7 @@ async def what_if_lose_client(
     pct_of_total = round((total_6m / total_company_6m * 100) if total_company_6m > 0 else 0, 1)
 
     # Average monthly burn (last 3 months expenses)
-    three_months_ago = date.today() - timedelta(days=90)
+    three_months_ago = today - timedelta(days=90)
     r_burn = await db.execute(
         select(func.coalesce(func.sum(Expense.amount), 0))
         .where(Expense.date >= three_months_ago)

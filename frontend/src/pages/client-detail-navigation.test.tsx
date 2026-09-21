@@ -91,6 +91,30 @@ describe("client detail areas", () => {
     expect(await screen.findByText("Interno")).toBeInTheDocument()
   })
 
+  it("hides the financial what-if action while finance is disabled", async () => {
+    show("ficha")
+    await screen.findByText("FichaTab")
+    expect(screen.queryByRole("button", { name: "¿Y si pierdo este cliente?" })).not.toBeInTheDocument()
+  })
+
+  it("offers the financial what-if action when finance is enabled", async () => {
+    mocks.enabled.add("finance")
+    show("panel")
+    expect(await screen.findByRole("button", { name: "¿Y si pierdo este cliente?" })).toBeInTheDocument()
+  })
+
+  it("shows timer time on the Madrid civil day and preserves manual dates", async () => {
+    mocks.time.mockResolvedValueOnce([
+      { id: 1, date: "2026-09-21T22:30:00", started_at: "2026-09-21T22:30:00Z", minutes: 30, task_title: "Timer", notes: null, user_name: null },
+      { id: 2, date: "2026-09-21T00:00:00", started_at: null, minutes: 15, task_title: "Manual", notes: null, user_name: null },
+    ])
+    show("tiempo")
+    expect(await screen.findByText("Timer")).toBeInTheDocument()
+    expect(screen.getByText("Manual")).toBeInTheDocument()
+    expect(screen.getByText("22/9/2026")).toBeInTheDocument()
+    expect(screen.getByText("21/9/2026")).toBeInTheDocument()
+  })
+
   it("names business intelligence actions and associates its edit fields", async () => {
     show("panel")
     await userEvent.click(await screen.findByRole("button", { name: "Editar inteligencia de negocio" }))

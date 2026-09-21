@@ -623,7 +623,7 @@ async def create_project_from_template(
     if not tpl:
         raise HTTPException(status_code=400, detail=f"Template '{template_key}' not found")
 
-    base_date = start_date or datetime.now(timezone.utc).replace(tzinfo=None)
+    base_date = start_date or datetime.combine(business_today(), datetime.min.time())
     template_phases = tpl.phases or []
     template_tasks = tpl.default_tasks or []
 
