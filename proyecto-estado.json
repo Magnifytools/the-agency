@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-21T22:00:22+00:00",
-  "estado_general": "produccion_p53_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-21T22:49:49+00:00",
+  "estado_general": "produccion_p55_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -440,9 +440,10 @@
     "P50: PR74/f9236c9 publicada: selección y acciones masivas de Tareas requieren tasks.write; revocación limpia selección y API mantiene 403. 495 UI, siete API focales, seis gates CI PR/main, Railway /api/ready exacto; visual sintética1440/390. Ninguna tarea real modificada.",
     "P51: PR75/cce4c51 publicada: lector ve estado y detalle sin cambio/borrado/alta ni DnD en Tablero/Semana; editor conserva acciones. 497 UI antes del ajuste final, 12 focales después, ocho API focales, seis gates CI PR/main, Railway /api/ready exacto y visual sintética1440/390. Ninguna tarea real modificada.",
     "P52: PR76/4b39294 publicada: alta y borrado de Proyectos ocultos a lectores; vacíos por filtro, cartera y archivo coherentes; GET 200, POST/DELETE 403. 500 UI antes del ajuste final, 21 focales después, seis gates CI PR/main, Railway /api/ready exacto y visual sintética1440/390. Ningún proyecto real modificado.",
-    "P53: PR78/648273e publicada: el detalle de Cliente alinea cinco áreas con clients.write y generación de análisis con admin, conserva lectura y gestiona revocación con autoguardado pendiente. 513 UI, 10 API PostgreSQL, seis gates CI de PR/main y Railway /api/ready exacto. Visual local sintética 1440/390; sin clientes reales modificados ni aceptación visual autenticada en producción."
+    "P53: PR78/648273e publicada: el detalle de Cliente alinea cinco áreas con clients.write y generación de análisis con admin, conserva lectura y gestiona revocación con autoguardado pendiente. 513 UI, 10 API PostgreSQL, seis gates CI de PR/main y Railway /api/ready exacto. Visual local sintética 1440/390; sin clientes reales modificados ni aceptación visual autenticada en producción.",
+    "P55: PR80/e90a2fa publicada: Mi agenda anuncia Ver a lectores, Visión general enlaza la tarea concreta y Clientes oculta alta, edición y columna Acciones sin clients.write. 518 UI, build/lint focal, seis gates de PR/main y Railway /api/ready exacto; visual local sintética 1440/390, sin datos productivos modificados. Aceptación humana pendiente."
   ],
-  "proximos_pasos": "Comprobar visualmente las vistas autenticadas de cliente y cartera en producción. Validar con David y Nacho seis recorridos reales de uso, incluidos Añadir con N y un atajo de navegación personalizado. Las dos cuentas activas deben reconectar Google Calendar y comprobar una reunión fresca. La política semanal está activa para el ID confirmado de David; comprobar el primer envío ordinario del 26 de septiembre y su recibo, sin mensaje de prueba. Elegir responsables para los tres proyectos activos visibles en el nuevo filtro y resolver decisiones por tarea/digest histórico; decidir si incorporar avisos de cobro, con vínculo factura-cliente y responsable reales, y si hace falta un canal entrante aparte de app/extensión. Véase docs/estado-implantacion-2026-09-21.md.",
+  "proximos_pasos": "Validar con David y Nacho seis recorridos reales de uso en cuentas propias, incluida alta, cierre de tarea, captura ambigua y resumen. Las dos cuentas activas deben reconectar Google Calendar y comprobar una reunión fresca. La política semanal está activa para el ID confirmado de David; comprobar el primer envío ordinario del 26 de septiembre y su recibo, sin mensaje de prueba. Elegir responsables para los tres proyectos activos y revisar las 19 tareas candidatas del corte privado 22-09 antes de cambiar datos. Revisar los resúmenes históricos ambiguos con evidencia, decidir si incorporar avisos de cobro con vínculo factura-cliente y responsable reales, y si hace falta un canal entrante aparte de app/extensión. Véase docs/estado-implantacion-2026-09-21.md.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
@@ -452,9 +453,9 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "648273ec293f0ee8f0a1ce963b77ea3305f6ef16",
+    "revision": "e90a2fafd68b2e6bdad9cd7a53dbee36a93ecf00",
     "healthcheck": "/api/ready",
     "schema_revision": "20260921_usage_origin_v1"
   },
-  "pendiente_david": "Cada propietario de las dos cuentas activas debe reconectar y sincronizar Calendar; realizar con Nacho la sesión de tareas reales. Confirmar recepción del informe semanal ordinario el 26 de septiembre y decidir si se quieren avisos de cobro, su responsable y vínculo factura-cliente; revisar canal e históricos. No se han hecho envíos de prueba."
+  "pendiente_david": "Cada propietario de las dos cuentas activas debe reconectar y sincronizar Calendar; realizar con Nacho la sesión de tareas reales. Confirmar recepción del informe semanal ordinario el 26 de septiembre y decidir propietarios de los tres proyectos activos, revisión histórica, avisos de cobro y canal. No se han hecho envíos de prueba."
 }
