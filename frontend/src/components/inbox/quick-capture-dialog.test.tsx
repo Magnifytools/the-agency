@@ -272,6 +272,79 @@ describe("command entry", () => {
     );
   });
 
+  it("recovers an uncertain manual retry with its new key", async () => {
+    mocks.createCommand
+      .mockResolvedValueOnce({
+        ...baseReceipt,
+        status: "failed",
+        change_log_id: null,
+        result: null,
+        error: { code: "forbidden", detail: "Sin permiso" },
+      })
+      .mockRejectedValueOnce(new Error("timeout"))
+      .mockResolvedValueOnce({
+        ...baseReceipt,
+        id: "retried-receipt",
+        status: "executed",
+        change_log_id: 12,
+        error: null,
+        result: { message: "Tarea creada", entities: [], undo_available: true },
+      });
+    show();
+    await userEvent.type(screen.getByLabelText("Petición"), "Crea tarea Recuperada");
+    await userEvent.click(screen.getByRole("button", { name: "Hacer" }));
+    await screen.findByText("Sin permiso");
+    await userEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    await waitFor(() => expect(mocks.createCommand).toHaveBeenCalledTimes(2));
+    const retryKey = mocks.createCommand.mock.calls[1][0].request_key;
+    expect(retryKey).not.toBe(mocks.createCommand.mock.calls[0][0].request_key);
+    expect(await screen.findByRole("button", { name: "Comprobar el reintento" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Editar petición" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Comprobar el reintento" }));
+    await waitFor(() => expect(mocks.createCommand).toHaveBeenCalledTimes(3));
+    expect(mocks.createCommand.mock.calls[2][0].request_key).toBe(retryKey);
+    expect(mocks.createCommand.mock.calls[2][0].text).toBe("Crea tarea Recuperada");
+    expect(await screen.findByText("Tarea creada")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Deshacer" })).toBeInTheDocument();
+  });
+
+  it("starts another new request after a durable retry also fails", async () => {
+    mocks.createCommand
+      .mockResolvedValueOnce({
+        ...baseReceipt,
+        status: "failed",
+        change_log_id: null,
+        result: null,
+        error: { code: "forbidden", detail: "Sin permiso" },
+      })
+      .mockResolvedValueOnce({
+        ...baseReceipt,
+        id: "second-failure",
+        status: "failed",
+        change_log_id: null,
+        result: null,
+        error: { code: "forbidden", detail: "Aún sin permiso" },
+      })
+      .mockResolvedValueOnce({
+        ...baseReceipt,
+        id: "third-attempt",
+        status: "executed",
+        change_log_id: 13,
+        result: { message: "Tarea creada", entities: [], undo_available: true },
+      });
+    show();
+    await userEvent.type(screen.getByLabelText("Petición"), "Crea tarea Recuperada");
+    await userEvent.click(screen.getByRole("button", { name: "Hacer" }));
+    await screen.findByText("Sin permiso");
+    await userEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    await screen.findByText("Aún sin permiso");
+    await userEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    await waitFor(() => expect(mocks.createCommand).toHaveBeenCalledTimes(3));
+    const keys = mocks.createCommand.mock.calls.map(([request]) => request.request_key);
+    expect(new Set(keys).size).toBe(3);
+    expect(await screen.findByText("Tarea creada")).toBeInTheDocument();
+  });
+
   it("rehydrates a recent receipt after reopening", async () => {
     mocks.listCommands.mockResolvedValue({
       items: [
@@ -299,7 +372,7 @@ describe("command entry", () => {
     expect(await screen.findByText("Consulta recuperada")).toBeInTheDocument();
   });
 
-  it("rehydrates the exact historical payload before retrying or editing", async () => {
+  it("retries a terminal failure as a new app request and keeps editing separate", async () => {
     const historical = {
       ...baseReceipt,
       request_key: "historical-request-key",
@@ -312,17 +385,31 @@ describe("command entry", () => {
       error: { code: "forbidden", detail: "Sin permiso" },
     };
     mocks.listCommands.mockResolvedValue({ items: [historical], total: 1, page: 1, page_size: 5, has_more: false });
-    mocks.createCommand.mockResolvedValue(historical);
+    mocks.createCommand.mockResolvedValue({
+      ...historical,
+      id: "successful-retry",
+      status: "executed",
+      request_key: "successful-retry-key",
+      channel: "app",
+      context: null,
+      change_log_id: 9,
+      error: null,
+      result: { message: "Tarea creada", entities: [], undo_available: true },
+    });
     show();
     await userEvent.type(screen.getByLabelText("Petición"), "Borrador distinto");
     await userEvent.click(await screen.findByRole("button", { name: /Orden histórica exacta/ }));
     await userEvent.click(screen.getByRole("button", { name: "Reintentar" }));
     await waitFor(() => expect(mocks.createCommand).toHaveBeenCalledWith(expect.objectContaining({
-      request_key: "historical-request-key",
       text: "Orden histórica exacta",
-      channel: "extension",
-      context: { url: "https://example.test/tarea", title: "Contexto original" },
+      channel: "app",
     })));
+    expect(mocks.createCommand.mock.calls[0][0].request_key).not.toBe("historical-request-key");
+    expect(mocks.createCommand.mock.calls[0][0].context).toBeUndefined();
+    expect(await screen.findByText("Tarea creada")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Deshacer" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Hacer otra cosa" }));
+    await userEvent.click(screen.getByRole("button", { name: /Orden histórica exacta/ }));
     await userEvent.click(screen.getByRole("button", { name: "Editar petición" }));
     expect(screen.getByLabelText("Petición")).toHaveValue("Orden histórica exacta");
     await userEvent.click(screen.getByRole("button", { name: "Hacer" }));
