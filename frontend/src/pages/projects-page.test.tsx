@@ -78,6 +78,11 @@ describe("projects filter navigation", () => {
     await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ owner: "assigned", page: 1 })))
     expect(screen.queryByText("3 proyectos sin responsable.")).not.toBeInTheDocument()
   })
+  it("opens a person-specific portfolio filter even after that person is inactive", async () => {
+    setup("/projects?owner=9")
+    await waitFor(() => expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ lifecycle: "portfolio", owner: "9" })))
+    await waitFor(() => expect(screen.getByLabelText("Responsable del proyecto")).toHaveDisplayValue("Persona inactiva (inactivo)"))
+  })
   it("keeps the project list usable when the owner count fails and offers retry", async () => {
     api.unassignedCount.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(2)
     setup()

@@ -238,7 +238,7 @@ def _build_project_response(
 async def list_projects(
     client_id: Optional[int] = None,
     status_filter: Optional[str] = Query(None, alias="status"),
-    owner_filter: Optional[Literal["assigned", "unassigned"]] = Query(None, alias="owner"),
+    owner_filter: Optional[str] = Query(None, alias="owner"),
     lifecycle: Optional[Literal["portfolio", "archive"]] = None,
     project_type: Optional[str] = None,
     is_recurring: Optional[bool] = None,
@@ -258,6 +258,10 @@ async def list_projects(
         base = base.where(Project.owner_id.is_not(None))
     elif owner_filter == "unassigned":
         base = base.where(Project.owner_id.is_(None))
+    elif owner_filter is not None:
+        if not owner_filter.isdecimal() or not 1 <= int(owner_filter) <= 2_147_483_647:
+            raise HTTPException(422, "Filtro de responsable no válido")
+        base = base.where(Project.owner_id == int(owner_filter))
     if lifecycle == "portfolio":
         base = base.where(Project.status.in_([
             ProjectStatus.planning, ProjectStatus.active, ProjectStatus.on_hold,
@@ -956,7 +960,7 @@ async def update_project(
         project.status.value if hasattr(project.status, "value") else str(project.status),
     )
     await validate_project_review(db, update_data, existing=project)
-    if "owner_id" in update_data:
+    if "owner_id" in update_data and update_data["owner_id"] != project.owner_id:
         await validate_project_owner(db, update_data["owner_id"])
     for field, value in update_data.items():
         if field not in _UPDATABLE_PROJECT_FIELDS:

@@ -10,7 +10,7 @@ from backend.api.deps import get_current_user, require_admin
 from backend.api.utils.db_helpers import safe_refresh
 from backend.core.security import hash_password
 from backend.db.database import get_db
-from backend.db.models import User, UserPermission, UserRole
+from backend.db.models import Project, ProjectStatus, Task, TaskStatus, User, UserPermission, UserRole
 from backend.schemas.invitation import PermissionItem, UserPermissionsUpdate
 from backend.schemas.pagination import PaginatedResponse
 from backend.schemas.user import UserCreate, UserListResponse, UserUpdate
@@ -111,6 +111,30 @@ async def create_user(
     return user
 
 
+@router.get("/{user_id}/deactivation-impact", response_model=dict[str, int])
+async def get_deactivation_impact(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    if await db.scalar(select(User.id).where(User.id == user_id)) is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    tasks = await db.scalar(
+        select(func.count()).select_from(Task).where(
+            Task.assigned_to == user_id,
+            Task.retired_at.is_(None),
+            Task.status != TaskStatus.completed,
+        )
+    )
+    projects = await db.scalar(
+        select(func.count()).select_from(Project).where(
+            Project.owner_id == user_id,
+            Project.status.not_in([ProjectStatus.completed, ProjectStatus.cancelled]),
+        )
+    )
+    return {"open_tasks": tasks or 0, "portfolio_projects": projects or 0}
+
+
 @router.get("/{user_id}", response_model=UserListResponse)
 async def get_user(
     user_id: int,
@@ -144,6 +168,10 @@ async def update_user(
         raise HTTPException(status_code=403, detail="Solo puedes editar tu propio perfil")
 
     data = body.model_dump(exclude_unset=True)
+    if "is_active" in data and current_user.role != UserRole.admin:
+        raise HTTPException(403, "Solo admin puede cambiar el acceso")
+    if data.get("is_active") is False and user_id == current_user.id:
+        raise HTTPException(422, "No puedes desactivar tu propia cuenta")
     allowed = _ADMIN_UPDATABLE if current_user.role == UserRole.admin else _MEMBER_UPDATABLE
 
     # Coerce empty strings to None for date/nullable fields, and convert date strings to date objects
