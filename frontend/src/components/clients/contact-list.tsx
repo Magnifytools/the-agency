@@ -178,7 +178,7 @@ export function ContactList({ clientId }: Props) {
 
       {/* Delete Confirm */}
       <ConfirmDialog
-        open={!!deleteTarget}
+        open={canWriteClients && !!deleteTarget}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
         title="Eliminar contacto"
         description={`Se eliminará el contacto "${deleteTarget?.name}". Esta acción no se puede deshacer.`}

@@ -218,7 +218,7 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
             )}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">Sin datos de negocio. Haz clic en el lápiz para añadir.</p>
+          <p className="text-sm text-muted-foreground">{canWriteClients ? "Sin datos de negocio. Haz clic en el lápiz para añadir." : "No hay datos de negocio registrados."}</p>
         )}
       </CardContent>
     </Card>

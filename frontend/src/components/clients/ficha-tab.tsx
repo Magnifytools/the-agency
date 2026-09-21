@@ -71,6 +71,7 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
       clearTimeout(saveTimerRef.current)
       saveTimerRef.current = null
       setSaveStatus("idle")
+      setContextValue(client.context ?? "")
     }
   }, [canWriteClients])
 
@@ -233,7 +234,7 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
             <div className="text-center py-8 text-muted-foreground text-sm">
               <FileIcon className="h-8 w-8 mx-auto mb-2 opacity-40" />
               <p>No hay documentos adjuntos.</p>
-              <p className="text-xs mt-1">Sube propuestas, contratos, briefs o cualquier archivo relevante.</p>
+              {canWriteClients && <p className="text-xs mt-1">Sube propuestas, contratos, briefs o cualquier archivo relevante.</p>}
             </div>
           ) : (
             <ul className="space-y-2">
@@ -278,7 +279,7 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
 
       {/* Confirm Delete Dialog */}
       <ConfirmDialog
-        open={deleteDocId !== null}
+        open={canWriteClients && deleteDocId !== null}
         onOpenChange={(open) => !open && setDeleteDocId(null)}
         title="Eliminar documento"
         description="¿Seguro que quieres eliminar este documento? Esta acción no se puede deshacer."
@@ -318,7 +319,7 @@ function IntelligenceSection({ client, isAdmin }: { client: Client; isAdmin: boo
         {!intelligence ? (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Genera un análisis automático del negocio del cliente con IA.
+              {isAdmin ? "Genera un análisis automático del negocio del cliente con IA." : "No hay análisis automático del cliente todavía."}
             </p>
             <div className="space-y-1">
               <label htmlFor={`intelligence-url-${client.id}`} className="text-xs text-muted-foreground">Web del cliente</label>

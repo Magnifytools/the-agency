@@ -67,7 +67,7 @@ export function ClientAiAdvisor({ clientId }: Props) {
 
       {recommendations.length === 0 && !adviceMut.isPending && (
         <p className="text-sm text-muted-foreground text-center py-6">
-          Pulsa el botón para que la IA analice los datos del cliente y genere recomendaciones accionables.
+          {canWriteClients ? "Pulsa el botón para que la IA analice los datos del cliente y genere recomendaciones accionables." : "No hay recomendaciones generadas para este cliente."}
         </p>
       )}
 

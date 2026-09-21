@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   isAdmin: false,
   contacts: vi.fn(),
   documents: vi.fn(),
+  update: vi.fn(),
 }))
 
 vi.mock("@/context/auth-context", () => ({
@@ -20,7 +21,7 @@ vi.mock("@/context/auth-context", () => ({
 vi.mock("@/lib/api", () => ({
   api: { post: vi.fn() },
   clientsApi: {
-    update: vi.fn(),
+    update: mocks.update,
     documents: {
       list: mocks.documents,
       upload: vi.fn(),
@@ -56,6 +57,24 @@ describe("client reader controls", () => {
     expect(await screen.findByText("Brief.pdf")).toBeInTheDocument()
     expect(screen.queryByTitle("Eliminar")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Generar" })).not.toBeInTheDocument()
+  })
+
+  it("restores persisted context and cancels its pending autosave when write access is revoked", () => {
+    vi.useFakeTimers()
+    mocks.canWrite = true
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const tree = () => <QueryClientProvider client={queryClient}><FichaTab client={client} /></QueryClientProvider>
+    const view = render(tree())
+    const context = screen.getByDisplayValue("Contexto existente")
+    fireEvent.change(context, { target: { value: "Cambio sin guardar" } })
+
+    mocks.canWrite = false
+    view.rerender(tree())
+    expect(screen.getByDisplayValue("Contexto existente")).toHaveAttribute("readonly")
+
+    act(() => { vi.advanceTimersByTime(1_500) })
+    expect(mocks.update).not.toHaveBeenCalled()
+    vi.useRealTimers()
   })
 
   it("keeps contacts readable while hiding client write actions", async () => {
