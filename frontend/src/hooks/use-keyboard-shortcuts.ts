@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
+import { isHidden } from "@/lib/hidden-modules"
 
 export const DEFAULT_SHORTCUTS: Record<string, string> = {
   search: "Ctrl+K",
@@ -19,9 +20,9 @@ export const DEFAULT_SHORTCUTS: Record<string, string> = {
 export const SHORTCUT_LABELS: Record<string, string> = {
   search: "Buscar",
   capture: "Captura rápida",
-  goto_dashboard: "Ir a Dashboard",
-  goto_inbox: "Ir a Inbox",
-  goto_timesheet: "Ir a Timesheet",
+  goto_dashboard: "Ir a Visión general",
+  goto_inbox: "Ir a Por aclarar",
+  goto_timesheet: "Ir a Horas",
   goto_clients: "Ir a Clientes",
   goto_projects: "Ir a Proyectos",
   goto_tasks: "Ir a Tareas",
@@ -38,8 +39,23 @@ const ACTION_ROUTES: Record<string, string> = {
   goto_timesheet: "/timesheet",
   goto_clients: "/clients",
   goto_projects: "/projects",
-  goto_tasks: "/tasks",
+  goto_tasks: "/tasks?view=all",
   goto_leads: "/leads",
+}
+
+const ACTION_MODULES: Record<string, string> = {
+  goto_dashboard: "dashboard",
+  goto_inbox: "tasks",
+  goto_timesheet: "timesheet",
+  goto_clients: "clients",
+  goto_projects: "projects",
+  goto_tasks: "tasks",
+  goto_leads: "leads",
+}
+
+export function isShortcutAvailable(action: string): boolean {
+  const module = ACTION_MODULES[action]
+  return !module || !isHidden(module)
 }
 
 function isMac() {
@@ -126,7 +142,7 @@ export function useKeyboardShortcuts({ userOverrides = {}, onSearch, onCapture, 
         // Build dynamic map: letter → route, respecting user-customized bindings
         const resolvedMap: Record<string, string> = {}
         for (const [action, binding] of Object.entries(shortcuts)) {
-          if (binding.includes("+") && binding.split("+")[0].toLowerCase() === "g" && ACTION_ROUTES[action]) {
+          if (isShortcutAvailable(action) && binding.includes("+") && binding.split("+")[0].toLowerCase() === "g" && ACTION_ROUTES[action]) {
             resolvedMap[binding.split("+")[1].toLowerCase()] = ACTION_ROUTES[action]
           }
         }
@@ -138,8 +154,8 @@ export function useKeyboardShortcuts({ userOverrides = {}, onSearch, onCapture, 
       }
 
       // --- Chord initiator (G key) ---
-      const hasGChord = Object.values(shortcuts).some(
-        (b) => b.split("+")[0].toLowerCase() === "g" && b.includes("+"),
+      const hasGChord = Object.entries(shortcuts).some(
+        ([action, b]) => isShortcutAvailable(action) && !!ACTION_ROUTES[action] && b.split("+")[0].toLowerCase() === "g" && b.includes("+"),
       )
       if (hasGChord && e.key.toLowerCase() === "g" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault()

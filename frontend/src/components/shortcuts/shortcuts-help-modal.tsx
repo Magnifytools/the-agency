@@ -1,5 +1,5 @@
 import { Dialog, DialogHeader, DialogTitle, DialogContent } from "@/components/ui/dialog"
-import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS } from "@/hooks/use-keyboard-shortcuts"
+import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS, isShortcutAvailable } from "@/hooks/use-keyboard-shortcuts"
 
 interface ShortcutsHelpModalProps {
   open: boolean
@@ -41,7 +41,7 @@ export function ShortcutsHelpModal({ open, onOpenChange, shortcuts = DEFAULT_SHO
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Navegación</p>
             <div className="flex flex-col gap-2">
-              {NAV_SHORTCUTS.map((key) => (
+              {NAV_SHORTCUTS.filter(isShortcutAvailable).map((key) => (
                 <div key={key} className="flex items-center justify-between gap-4">
                   <span className="text-sm text-foreground">{SHORTCUT_LABELS[key]}</span>
                   <KbdSequence binding={shortcuts[key] ?? ""} />

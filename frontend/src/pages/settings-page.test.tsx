@@ -2,11 +2,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import { beforeEach, expect, it, vi } from "vitest"
+import userEvent from "@testing-library/user-event"
 
-import { categoriesApi, myWeekApi } from "@/lib/api"
+import { categoriesApi, myWeekApi, usersApi } from "@/lib/api"
 import SettingsPage from "./settings-page"
 
-const auth = vi.hoisted(() => ({ isAdmin: false, user: { id: 12, role: "member", preferences: {} } }))
+const auth = vi.hoisted(() => ({ isAdmin: false, user: { id: 12, role: "member", preferences: { shortcuts: { goto_leads: "G+Y" } } } }))
 
 beforeEach(() => { auth.isAdmin = false })
 
@@ -29,6 +30,18 @@ it("does not render the scheduled-process panel or anchor for a member", async (
   expect(screen.queryByText("Procesos programados")).not.toBeInTheDocument()
   expect(document.getElementById("scheduled-processes")).toBeNull()
   expect(document.getElementById("operational-usage")).toBeNull()
+})
+
+it("hides the inactive Pipeline shortcut while preserving its saved binding", async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(<QueryClientProvider client={client}><MemoryRouter><SettingsPage /></MemoryRouter></QueryClientProvider>)
+  expect(screen.queryByText("Ir a Pipeline")).not.toBeInTheDocument()
+  expect(screen.getByText("Ir a Visión general")).toBeInTheDocument()
+  expect(screen.getByText("Ir a Por aclarar")).toBeInTheDocument()
+  expect(screen.getByText("Ir a Horas")).toBeInTheDocument()
+  await userEvent.click(screen.getByRole("button", { name: "Restaurar por defecto" }))
+  await userEvent.click(screen.getByRole("button", { name: "Guardar cambios" }))
+  expect(usersApi.update).toHaveBeenCalledWith(12, expect.objectContaining({ preferences: expect.objectContaining({ shortcuts: expect.objectContaining({ goto_leads: "G+Y" }) }) }))
 })
 
 it("names the category creation and editing controls", async () => {

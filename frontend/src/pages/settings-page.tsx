@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { invalidateCalendarViews } from "@/lib/calendar-queries"
 import { useAuth } from "@/context/auth-context"
 import { usersApi, categoriesApi, myWeekApi, calendarApi } from "@/lib/api"
-import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS } from "@/hooks/use-keyboard-shortcuts"
+import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS, isShortcutAvailable } from "@/hooks/use-keyboard-shortcuts"
 import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar, FileText } from "lucide-react"
 import { CommunicationSchedules } from "@/components/communication-schedules"
 import { JobRuntimeStatusPanel } from "@/components/job-runtime-status"
@@ -197,7 +197,7 @@ export default function SettingsPage() {
   }
 
   const resetDefaults = () => {
-    setBindings({ ...DEFAULT_SHORTCUTS })
+    setBindings((previous) => ({ ...previous, ...Object.fromEntries(Object.entries(DEFAULT_SHORTCUTS).filter(([key]) => isShortcutAvailable(key))) }))
   }
 
   const handleSave = async () => {
@@ -205,7 +205,7 @@ export default function SettingsPage() {
     setSaving(true)
     try {
       await usersApi.update(user.id, {
-        preferences: { ...(user.preferences ?? {}), shortcuts: bindings },
+        preferences: { ...(user.preferences ?? {}), shortcuts: { ...(user.preferences?.shortcuts ?? {}), ...bindings } },
       })
       await refreshUser()
       toast.success("Atajos guardados")
@@ -282,7 +282,7 @@ export default function SettingsPage() {
     onError: () => toast.error("Error al eliminar. ¿Tiene tareas asociadas?"),
   })
 
-  const shortcutKeys = Object.keys(DEFAULT_SHORTCUTS)
+  const shortcutKeys = Object.keys(DEFAULT_SHORTCUTS).filter(isShortcutAvailable)
 
   const sections = [
     { id: "shortcuts", label: "Atajos de teclado" },
