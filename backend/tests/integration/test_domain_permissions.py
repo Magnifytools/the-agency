@@ -31,6 +31,16 @@ async def test_inbox_conversion_requires_tasks_write(make_member_client):
 
 
 @pytest.mark.asyncio
+async def test_client_finalization_requires_clients_write(make_member_client):
+    client = await make_member_client([("clients", True, False)])
+    try:
+        response = await client.delete("/api/clients/999999")
+        assert response.status_code == 403
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_inbox_conversion_rejects_cross_client_project(
     admin_client, db_session
 ):
