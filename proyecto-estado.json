@@ -422,6 +422,7 @@
     "P37: PR52/89c87d5 publicada: la baja de cuenta funciona de verdad, con impacto visible en Equipo, reactivación y filtros por persona. La asignación de responsable de proyecto usa bloqueo de concurrencia; PostgreSQL, seis gates CI de PR y /api/ready exacto. Datos históricos intactos y cero cuentas reales desactivadas durante la verificación.",
     "P38: PR54/1fac44c publicada: cancelar OAuth de Google Calendar vuelve a Ajustes con aviso claro, valida state firmado y conserva credenciales y eventos. 21 pruebas backend focales, siete UI, seis gates CI de PR, Railway SUCCESS y /api/ready exacto; ambas cuentas reales aún necesitan reconectar.",
     "P40: PR56/ad0b532 publicada: el JSON de informes filtra source_keys según el catálogo de fuentes permitido al lector, sin reescribir versiones guardadas. Regresión PG roja antes y 30 relacionadas verdes después; seis gates CI PR/main, Railway SUCCESS y /api/ready exacto. Los 37 informes productivos conservaron la misma huella de contenido antes/después; sin generación productiva de prueba.",
+    "P41: PR59/04373bd publicada: el envío semanal manual sin fecha usa el último lunes-viernes cerrado; una fecha explícita conserva lunes-domingo. El botón aclara que envía por Discord DM. 56 pruebas backend focales, 17 UI, build y seis gates CI de PR/main correctos; Railway SUCCESS y /api/ready exacto. Ningún DM de prueba; primer envío ordinario pendiente del 26-09.",
     "CUIDADO: lazy='selectin' esta en ~80 relaciones de models.py. Quitar un selectinload() de .options() NO evita la carga; hace falta noload() explicito",
     "La suite unitaria mockea get_db: cualquier cambio de SQL debe verificarse en tests/integration/",
     "Los estados de rentabilidad viven en services/profitability.py (backend) y lib/profitability.ts (frontend), un unico mapa cada uno",
@@ -439,7 +440,7 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "ad0b5326f467073ab9712512b55b18804acef988",
+    "revision": "04373bde5772571d650864e6733461deb5f9106f",
     "healthcheck": "/api/ready",
     "schema_revision": "20260921_usage_origin_v1"
   },
