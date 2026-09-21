@@ -339,6 +339,13 @@
       "estado": "completado",
       "prioridad": "media",
       "notas": "PR46/0917fc2 publicada. 468 pruebas frontend y regresiones PostgreSQL; seis gates CI de PR correctos, /api/ready exacto y hashes de clientes/proyectos/tareas/horas/Income preservados. La comprobación visual autenticada de producción queda pendiente; no hubo escritura ni mensajes de prueba."
+    },
+    {
+      "id": "AUDIT-20260921-P34",
+      "descripcion": "Triaje visible de proyectos sin responsable en la cartera",
+      "estado": "completado",
+      "prioridad": "alta",
+      "notas": "PR48/36db4ec publicada. Filtro paginado y conteo global reales, sin asignación o avisos supuestos; 16 pruebas PG, 14 UI, seis gates CI de PR y Railway SUCCESS con /api/ready exacto. Once proyectos y 348 notificaciones conservaron huellas idénticas antes/después; tres proyectos activos requieren decisión de responsable. Visual sintética 390/1440 correcta; producción autenticada y aceptación humana pendientes."
     }
   ],
   "bugs": [
@@ -411,7 +418,7 @@
     "bcrypt pinned a 4.1.3 por incompatibilidad de passlib con bcrypt 5.x",
     "Integraciones: Holded, Discord, Engine (metricas SEO), Google Calendar, Claude AI"
   ],
-  "proximos_pasos": "Comprobar visualmente la ficha autenticada de cliente en producción. Observar el siguiente ciclo ordinario de Holded sin sincronización manual. Validar con David y Nacho seis recorridos reales de uso. Las dos cuentas activas deben reconectar Google Calendar y comprobar una reunión fresca. La política semanal está activa para David; comprobar el primer envío ordinario del 26 de septiembre y su recibo, sin mensaje de prueba. Resolver propietarios de tres proyectos activos y decisiones por tarea/digest histórico; decidir si incorporar avisos de cobro, con vínculo factura-cliente y responsable reales, y si hace falta un canal entrante aparte de app/extensión. Véase docs/estado-implantacion-2026-09-21.md.",
+  "proximos_pasos": "Comprobar visualmente las vistas autenticadas de cliente y cartera en producción. Observar el siguiente ciclo ordinario de Holded sin sincronización manual. Validar con David y Nacho seis recorridos reales de uso. Las dos cuentas activas deben reconectar Google Calendar y comprobar una reunión fresca. La política semanal está activa para David; comprobar el primer envío ordinario del 26 de septiembre y su recibo, sin mensaje de prueba. Elegir responsables para los tres proyectos activos visibles en el nuevo filtro y resolver decisiones por tarea/digest histórico; decidir si incorporar avisos de cobro, con vínculo factura-cliente y responsable reales, y si hace falta un canal entrante aparte de app/extensión. Véase docs/estado-implantacion-2026-09-21.md.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
@@ -421,7 +428,7 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "0917fc2b8dc3c24c3bfbd4bea148f31c9fca1539",
+    "revision": "36db4ecfc635f687547397a03affaaf650cfbb37",
     "healthcheck": "/api/ready",
     "schema_revision": "20260921_usage_origin_v1"
   },
