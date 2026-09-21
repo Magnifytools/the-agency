@@ -3,7 +3,7 @@ import type { Task, TaskStatus } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Pencil, Clock, AlertTriangle, User, GripVertical, UserX, CalendarX, Repeat } from "lucide-react"
+import { Pencil, Eye, Clock, AlertTriangle, User, GripVertical, UserX, CalendarX, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { businessDateString, formatCivilDate } from "@/lib/dates"
@@ -139,7 +139,8 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit, canWrite = true
                     onDragStart={canWrite ? (e) => handleDragStart(e, task) : undefined}
                     onDragEnd={canWrite ? handleDragEnd : undefined}
                     className={cn(
-                      "cursor-grab active:cursor-grabbing hover:shadow-md transition-all group border",
+                      "hover:shadow-md transition-all group border",
+                      canWrite && "cursor-grab active:cursor-grabbing",
                       isOverdue && "border-red-300 bg-red-50/50 text-black [&_.text-muted-foreground]:text-black/60"
                     )}
                   >
@@ -165,7 +166,7 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit, canWrite = true
                           onClick={() => onOpenEdit(task)}
                           aria-label={`${canWrite ? "Editar" : "Ver"} tarea ${task.title}`}
                         >
-                          <Pencil className="h-3 w-3" />
+                          {canWrite ? <Pencil className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                         </Button>
                       </div>
 
