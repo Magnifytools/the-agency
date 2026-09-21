@@ -398,9 +398,9 @@ export default function TasksPage() {
             </p>
           )}
         </div>
-        <Button onClick={openCreate}>
+        {canWriteTasks && <Button onClick={openCreate}>
           <Plus className="h-4 w-4 mr-2" /> Nueva tarea
-        </Button>
+        </Button>}
       </div>
 
       {view === "my_day" && (user?.role === "admin" ? <Select aria-label="Ámbito de Hoy" className="w-full sm:w-48" value={agendaScope} onChange={(event) => setAgendaScope(event.target.value)}><option value="mine">Mi trabajo</option><option value="team">Todo el equipo</option></Select> : <p className="text-sm text-muted-foreground">Mi trabajo</p>)}
@@ -690,7 +690,7 @@ export default function TasksPage() {
                       "bg-teal-500": t.status === "advanced",
                       "bg-green-500": t.status === "completed",
                     })} />
-                    <Select
+                    {canWriteTasks ? <Select
                       value={taskStatusPresentation(t.status, t.scheduled_date).group}
                       onChange={(e) => {
                         const next = e.target.value as TaskStatus
@@ -707,7 +707,7 @@ export default function TasksPage() {
                       <option value="waiting">En espera…</option>
                       <option value="in_review">En revisión</option>
                       <option value="completed">{sendsForReview(t) ? "Enviar a revisión" : "Hecho"}</option>
-                    </Select>
+                    </Select> : <span className="text-xs">{taskStatusPresentation(t.status, t.scheduled_date).label}</span>}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs mono">
@@ -748,12 +748,12 @@ export default function TasksPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" aria-label="Editar tarea" onClick={() => openEdit(t)}>
+                      <Button variant="ghost" size="icon" aria-label={canWriteTasks ? "Editar tarea" : "Ver tarea"} onClick={() => openEdit(t)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" aria-label="Eliminar tarea" onClick={() => setDeleteId(t.id)}>
+                      {canWriteTasks && <Button variant="ghost" size="icon" aria-label="Eliminar tarea" onClick={() => setDeleteId(t.id)}>
                         <Trash2 className="h-4 w-4" />
-                      </Button>
+                      </Button>}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -809,6 +809,7 @@ export default function TasksPage() {
             updateMutation.mutate({ id: taskId, data: { status: newStatus === "completed" && task && sendsForReview(task) ? "in_review" : newStatus } })
           }}
           onOpenEdit={openEdit}
+          canWrite={canWriteTasks}
         />
       )}
 
@@ -830,6 +831,7 @@ export default function TasksPage() {
           onWeekOffsetChange={(offset) => { setWeekOffset(offset); reset() }}
           onScheduleChange={(taskId, date) => scheduleMutation.mutate({ id: taskId, scheduled_date: date })}
           onOpenEdit={openEdit}
+          canWrite={canWriteTasks}
         />
       )}
 

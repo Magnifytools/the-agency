@@ -24,6 +24,7 @@ interface Props {
   onWeekOffsetChange: (offset: number) => void
   onScheduleChange: (taskId: number, date: string | null) => void
   onOpenEdit: (task: Task) => void
+  canWrite?: boolean
 }
 
 const DAY_NAMES = ["Lun", "Mar", "Mié", "Jue", "Vie"]
@@ -146,9 +147,11 @@ function DroppableAccordionDay({
 function DraggableTaskCard({
   task,
   onOpenEdit,
+  canWrite,
 }: {
   task: Task
   onOpenEdit: (task: Task) => void
+  canWrite: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `task-${task.id}`,
@@ -166,10 +169,11 @@ function DraggableTaskCard({
     <div
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
+      {...(canWrite ? attributes : {})}
+      {...(canWrite ? listeners : {})}
       className={cn(
-        "bg-background border rounded-md p-2 cursor-grab active:cursor-grabbing",
+        "bg-background border rounded-md p-2",
+        canWrite && "cursor-grab active:cursor-grabbing",
         "border-l-4 shadow-sm hover:shadow-md transition-shadow text-xs",
         priorityColors[task.priority] || "border-l-slate-300",
         isDragging && "opacity-0 pointer-events-none",
@@ -180,7 +184,7 @@ function DraggableTaskCard({
           {task.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" />}
           {task.title}
         </span>
-        <button
+        <button aria-label={`${canWrite ? "Editar" : "Ver"} tarea ${task.title}`}
           onClick={(e) => {
             e.stopPropagation()
             onOpenEdit(task)
@@ -226,7 +230,7 @@ function TaskCardOverlay({ task }: { task: Task }) {
 }
 
 // ─── Main Component ───────────────────────────────────────────
-export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onScheduleChange, onOpenEdit }: Props) {
+export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onScheduleChange, onOpenEdit, canWrite = true }: Props) {
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [openDays, setOpenDays] = useState<Set<string>>(new Set())
@@ -339,10 +343,10 @@ export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onSch
       </div>
 
       <DndContext
-        sensors={sensors}
+        sensors={canWrite ? sensors : []}
         collisionDetection={closestCenter}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
+        onDragStart={canWrite ? handleDragStart : undefined}
+        onDragEnd={canWrite ? handleDragEnd : undefined}
         onDragCancel={() => setActiveTask(null)}
       >
         {/* Mobile: accordion layout */}
@@ -360,7 +364,7 @@ export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onSch
                 taskCount={(tasksByDate[dateStr] || []).length}
               >
                 {(tasksByDate[dateStr] || []).map((task) => (
-                  <DraggableTaskCard key={task.id} task={task} onOpenEdit={onOpenEdit} />
+                  <DraggableTaskCard key={task.id} task={task} onOpenEdit={onOpenEdit} canWrite={canWrite} />
                 ))}
               </DroppableAccordionDay>
             ))}
@@ -377,7 +381,7 @@ export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onSch
                 isToday={dateStr === today}
               >
                 {(tasksByDate[dateStr] || []).map((task) => (
-                  <DraggableTaskCard key={task.id} task={task} onOpenEdit={onOpenEdit} />
+                  <DraggableTaskCard key={task.id} task={task} onOpenEdit={onOpenEdit} canWrite={canWrite} />
                 ))}
               </DroppableColumn>
             ))}
@@ -388,7 +392,7 @@ export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onSch
         <DroppableColumn id="unscheduled" label="Sin planificar">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
             {(tasksByDate["unscheduled"] || []).map((task) => (
-              <DraggableTaskCard key={task.id} task={task} onOpenEdit={onOpenEdit} />
+              <DraggableTaskCard key={task.id} task={task} onOpenEdit={onOpenEdit} canWrite={canWrite} />
             ))}
           </div>
           {(tasksByDate["unscheduled"] || []).length === 0 && (
