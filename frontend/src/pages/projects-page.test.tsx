@@ -5,10 +5,10 @@ import { MemoryRouter, useLocation } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import ProjectsPage from "./projects-page"
 
-const api = vi.hoisted(() => ({ list: vi.fn(), unassignedCount: vi.fn(), templates: vi.fn(), clients: vi.fn(), users: vi.fn(), create: vi.fn(), createFromTemplate: vi.fn(), extractFromPdf: vi.fn(), extractFromText: vi.fn() }))
+const api = vi.hoisted(() => ({ list: vi.fn(), unassignedCount: vi.fn(), templates: vi.fn(), clients: vi.fn(), users: vi.fn(), create: vi.fn(), delete: vi.fn(), createFromTemplate: vi.fn(), extractFromPdf: vi.fn(), extractFromText: vi.fn() }))
 const auth = vi.hoisted(() => ({ canWrite: true, canWriteTasks: true }))
 vi.mock("@/lib/api", () => ({
-  projectsApi: { list: api.list, unassignedCount: api.unassignedCount, templates: api.templates, create: api.create, createFromTemplate: api.createFromTemplate, extractFromPdf: api.extractFromPdf, extractFromText: api.extractFromText },
+  projectsApi: { list: api.list, unassignedCount: api.unassignedCount, templates: api.templates, create: api.create, delete: api.delete, createFromTemplate: api.createFromTemplate, extractFromPdf: api.extractFromPdf, extractFromText: api.extractFromText },
   clientsApi: { listAll: api.clients },
   usersApi: { listAll: api.users },
 }))
@@ -32,6 +32,7 @@ describe("projects filter navigation", () => {
     api.clients.mockResolvedValue([{id: 17, name: "Cliente de prueba"}])
     api.users.mockResolvedValue([{id: 8, full_name: "Persona activa", is_active: true}, {id: 9, full_name: "Persona inactiva", is_active: false}])
     api.create.mockResolvedValue({id: 91, client_id: 17})
+    api.delete.mockResolvedValue(undefined)
     api.createFromTemplate.mockResolvedValue({id: 92, client_id: 17})
     api.extractFromPdf.mockResolvedValue({name: "Extraído"})
     api.extractFromText.mockResolvedValue({name: "Extraído"})
@@ -126,6 +127,42 @@ describe("projects filter navigation", () => {
     await waitFor(() => expect(api.list).toHaveBeenCalled())
     expect(screen.queryByRole("dialog", { name: "Nuevo proyecto" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Nuevo proyecto" })).toBeDisabled()
+  })
+  it("keeps an empty project list read-only while writers can start creation", async () => {
+    auth.canWrite = false
+    setup()
+    await screen.findByText("Sin proyectos todavía")
+    expect(screen.queryByRole("button", { name: "Crear un proyecto" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Nuevo proyecto" })).toBeDisabled()
+    expect(api.create).not.toHaveBeenCalled()
+  })
+  it("offers creation from an empty project list to writers", async () => {
+    setup()
+    await userEvent.click(await screen.findByRole("button", { name: "Crear un proyecto" }))
+    expect(screen.getByRole("dialog", { name: "Nuevo proyecto" })).toBeInTheDocument()
+  })
+  it("does not invite readers to create from a filtered empty list", async () => {
+    auth.canWrite = false
+    setup("/projects?status=active")
+    expect(await screen.findByText("Sin proyectos con estos filtros")).toBeInTheDocument()
+    expect(screen.getByText("No hay proyectos con estos filtros. Prueba a cambiarlos.")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Crear un proyecto" })).not.toBeInTheDocument()
+  })
+  it("shows project cards without deletion for readers", async () => {
+    api.list.mockResolvedValue({ items: [{ id: 7, name: "Proyecto visible", status: "active", client_name: "Cliente de prueba", owner_name: null, is_recurring: false, progress_percent: 0, target_end_date: null, completed_task_count: 0, task_count: 0 }], total: 1, page: 1, page_size: 25 })
+    auth.canWrite = false
+    setup()
+    expect(await screen.findByText("Proyecto visible")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Eliminar proyecto Proyecto visible" })).not.toBeInTheDocument()
+    expect(api.delete).not.toHaveBeenCalled()
+  })
+  it("lets a project writer confirm deletion from a card", async () => {
+    api.list.mockResolvedValue({ items: [{ id: 7, name: "Proyecto visible", status: "active", client_name: "Cliente de prueba", owner_name: null, is_recurring: false, progress_percent: 0, target_end_date: null, completed_task_count: 0, task_count: 0 }], total: 1, page: 1, page_size: 25 })
+    setup()
+    await userEvent.click(await screen.findByRole("button", { name: "Eliminar proyecto Proyecto visible" }))
+    expect(screen.getByRole("dialog", { name: "Eliminar proyecto" })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Confirmar" }))
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(7))
   })
   it("separates monthly pricing and total budget without requiring guessed hours", async () => {
     setup()
