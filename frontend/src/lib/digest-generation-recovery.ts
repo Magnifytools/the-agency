@@ -106,7 +106,15 @@ export function httpStatus(error: unknown) {
   return (error as { response?: { status?: number } })?.response?.status
 }
 
+function errorCode(error: unknown) {
+  return (error as { response?: { data?: { detail?: { code?: unknown } } } })?.response?.data?.detail?.code
+}
+
 export function isConfirmedFailure(error: unknown) {
   const status = httpStatus(error)
+  // A changed source is a definite rejection, but the same persisted intent is
+  // still the safe retry vehicle: the server will collect fresh facts under its
+  // original generation key.
+  if (errorCode(error) === "sources_changed" || errorCode(error) === "source_changed") return false
   return status !== undefined && status >= 400 && status < 500
 }

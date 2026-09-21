@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import Client, ClientStatus, DigestTone, User, WeeklyDigest
+from backend.db.models import Client, ClientStatus, DigestTone, Task, TaskStatus, User, WeeklyDigest
 from backend.services.digest_generation import generate_locked_digest, regenerate_digest
 from backend.services.digest_generator import _validate_sources
 
@@ -252,6 +252,103 @@ async def test_concurrent_same_key_converges_to_one_row(engine):
             )
             == 1
         )
+
+
+async def test_generation_rejects_sources_changed_while_provider_runs(engine):
+    async with AsyncSession(engine, expire_on_commit=False) as setup:
+        actor = User(
+            email="p27-facts-change@test",
+            full_name="Facts actor",
+            hashed_password="x",
+            role="admin",
+            is_active=True,
+        )
+        client = Client(name="Facts change", status=ClientStatus.active)
+        setup.add_all([actor, client])
+        await setup.flush()
+        task = Task(
+            title="Pendiente original",
+            client_id=client.id,
+            status=TaskStatus.pending,
+        )
+        setup.add(task)
+        await setup.commit()
+        actor_id, client_id, task_id = actor.id, client.id, task.id
+
+    async with AsyncSession(engine, expire_on_commit=False) as session:
+        async def provider(*args):
+            async with AsyncSession(engine) as concurrent:
+                await concurrent.execute(
+                    update(Task).where(Task.id == task_id).values(title="Pendiente cambiado")
+                )
+                await concurrent.commit()
+            return generated()
+
+        with pytest.raises(Exception) as rejected:
+            await generate_locked_digest(
+                session,
+                actor_id=actor_id,
+                client_id=client_id,
+                period_start=PERIOD[0],
+                period_end=PERIOD[1],
+                tone=DigestTone.cercano,
+                generation_key="facts-change-generation-key",
+                expected_revision=None,
+                require_enabled=False,
+                reject_existing=False,
+                generator=provider,
+            )
+        assert getattr(rejected.value, "reason", None) == "sources_changed"
+        await session.rollback()
+
+    async with AsyncSession(engine) as verify:
+        assert (
+            await verify.scalar(
+                select(func.count(WeeklyDigest.id)).where(
+                    WeeklyDigest.client_id == client_id
+                )
+            )
+            == 0
+        )
+
+
+async def test_generation_persists_when_final_source_snapshot_is_stable(engine):
+    async with AsyncSession(engine, expire_on_commit=False) as setup:
+        actor = User(
+            email="p27-facts-stable@test",
+            full_name="Stable actor",
+            hashed_password="x",
+            role="admin",
+            is_active=True,
+        )
+        client = Client(name="Facts stable", status=ClientStatus.active)
+        setup.add_all([actor, client])
+        await setup.flush()
+        setup.add(Task(title="Pendiente estable", client_id=client.id, status=TaskStatus.pending))
+        await setup.commit()
+        actor_id, client_id = actor.id, client.id
+
+    async def provider(*args):
+        return generated()
+
+    async with AsyncSession(engine, expire_on_commit=False) as session:
+        digest = await generate_locked_digest(
+            session,
+            actor_id=actor_id,
+            client_id=client_id,
+            period_start=PERIOD[0],
+            period_end=PERIOD[1],
+            tone=DigestTone.cercano,
+            generation_key="facts-stable-generation-key",
+            expected_revision=None,
+            require_enabled=False,
+            reject_existing=False,
+            generator=provider,
+        )
+        await session.commit()
+
+    async with AsyncSession(engine) as verify:
+        assert await verify.scalar(select(func.count(WeeklyDigest.id)).where(WeeklyDigest.id == digest.id)) == 1
 
 
 def test_source_keys_reject_unknown_duplicate_missing_and_wrong_section():

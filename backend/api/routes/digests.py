@@ -118,6 +118,7 @@ def _generation_rejection(reason: str) -> HTTPException:
         "permission_changed": "Ya no tienes permiso para preparar este resumen.",
         "already_exists": "Ya existe un resumen para esta cohorte y período.",
         "source_catalog_missing": "No se pudieron identificar las fuentes del resumen.",
+        "sources_changed": "Los hechos del resumen cambiaron mientras se preparaba. Puedes reintentar con la misma clave.",
     }
     status = 403 if reason == "permission_changed" else 409
     return HTTPException(

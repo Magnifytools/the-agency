@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { clearDigestGeneration, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations } from "./digest-generation-recovery"
+import { clearDigestGeneration, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations } from "./digest-generation-recovery"
 
 describe("digest generation recovery storage", () => {
   beforeEach(() => localStorage.clear())
@@ -20,5 +20,10 @@ describe("digest generation recovery storage", () => {
     const key = newDigestGenerationKey()
     expect(persistDigestGeneration(7, { kind: "tone", operation_key: key, generation_key: key, digest_id: 2, tone: "formal" })).toBe(false)
     spy.mockRestore()
+  })
+
+  it("keeps the recovery key after sources change so the exact intent can retry", () => {
+    expect(isConfirmedFailure({ response: { status: 409, data: { detail: { code: "sources_changed" } } } })).toBe(false)
+    expect(isConfirmedFailure({ response: { status: 409, data: { detail: { code: "generation_key_conflict" } } } })).toBe(true)
   })
 })

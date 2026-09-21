@@ -267,6 +267,13 @@ async def generate_locked_digest(
     ):
         raise DigestGenerationRejected("already_exists")
 
+    # The provider has seen ``raw_data`` rather than live rows. Recollect after
+    # the provider phase so a draft never claims that its source catalog still
+    # represents facts changed while it was being written.
+    final_raw_data = await collector(db, client_id, period_start, period_end)
+    if _hash(final_raw_data) != _hash(raw_data):
+        raise DigestGenerationRejected("sources_changed")
+
     stored_context = dict(raw_data)
     stored_context["_generation"] = {
         "key": generation_key,
