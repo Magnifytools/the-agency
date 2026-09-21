@@ -49,6 +49,7 @@ it("clears a pending chord when typing starts in an input", () => {
 it("normalizes invalid legacy bindings and detects active collisions", () => {
   expect(resolveShortcuts({ goto_dashboard: "H", search: "Alt+K" }).goto_dashboard).toBe("G+D")
   expect(resolveShortcuts({ goto_dashboard: "H", search: "Alt+K" }).search).toBe("Ctrl+K")
+  expect(resolveShortcuts({ new_entry: "G" }).new_entry).toBe("N")
   expect(resolveShortcuts({ goto_dashboard: "G+A" }).goto_dashboard).toBe("G+D")
   expect(shortcutConflict("goto_dashboard", "G+A", { goto_tasks: "G+A" })).toBe("goto_tasks")
   expect(shortcutConflict("goto_dashboard", "G+L", { goto_leads: "G+L" })).toBeNull()

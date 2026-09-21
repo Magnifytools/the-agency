@@ -61,7 +61,8 @@ export function isShortcutAvailable(action: string): boolean {
 /** Navigation uses two successive keys; actions use one keydown with optional modifiers. */
 export function isValidShortcutBinding(action: string, binding: string): boolean {
   if (ACTION_ROUTES[action]) return /^G\+[A-Z]$/i.test(binding)
-  return /^(?:(?:Ctrl|Cmd)\+)?(?:Shift\+)?(?:[A-Z0-9?])$/i.test(binding)
+  // Plain G starts every active navigation chord, so it cannot run an action.
+  return binding.toUpperCase() !== "G" && /^(?:(?:Ctrl|Cmd)\+)?(?:Shift\+)?(?:[A-Z0-9?])$/i.test(binding)
 }
 
 export function resolveShortcuts(overrides: Record<string, string> = {}): Record<string, string> {
