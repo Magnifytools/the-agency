@@ -238,6 +238,7 @@ def _build_project_response(
 async def list_projects(
     client_id: Optional[int] = None,
     status_filter: Optional[str] = Query(None, alias="status"),
+    owner_filter: Optional[Literal["assigned", "unassigned"]] = Query(None, alias="owner"),
     lifecycle: Optional[Literal["portfolio", "archive"]] = None,
     project_type: Optional[str] = None,
     is_recurring: Optional[bool] = None,
@@ -253,6 +254,10 @@ async def list_projects(
         base = base.where(Project.client_id == client_id)
     if status_filter:
         base = base.where(Project.status == status_filter)
+    if owner_filter == "assigned":
+        base = base.where(Project.owner_id.is_not(None))
+    elif owner_filter == "unassigned":
+        base = base.where(Project.owner_id.is_(None))
     if lifecycle == "portfolio":
         base = base.where(Project.status.in_([
             ProjectStatus.planning, ProjectStatus.active, ProjectStatus.on_hold,

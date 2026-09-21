@@ -50,6 +50,8 @@ export default function ProjectsPage() {
   const archiveView = searchParams.get("view") === "archive" || (!searchParams.get("view") && ["completed", "cancelled"].includes(requestedStatus))
   const statusFilter = requestedStatus
   const typeFilter = searchParams.get("type") || ""
+  const requestedOwner = searchParams.get("owner")
+  const ownerFilter = requestedOwner === "assigned" || requestedOwner === "unassigned" ? requestedOwner : ""
   const periodFilter = searchParams.get("period") || ""
   const setFilter = (key: string, value: string) => setSearchParams((previous) => {
     const next = new URLSearchParams(previous)
@@ -58,6 +60,7 @@ export default function ProjectsPage() {
     next.delete("page")
     return next
   })
+  const showUnassignedProjects = () => setSearchParams({ owner: "unassigned" })
   const setPage = (value: number) => setSearchParams((previous) => {
     const next = new URLSearchParams(previous)
     next.set("page", String(value))
@@ -93,10 +96,11 @@ export default function ProjectsPage() {
     ? (["completed", "cancelled"].includes(statusFilter) ? statusFilter : "")
     : (["planning", "active", "on_hold"].includes(statusFilter) ? statusFilter : "")
   const { data: projectsData, isLoading, isError, refetch } = useQuery({
-    queryKey: ["projects", "lifecycle-list", archiveView ? "archive" : "portfolio", effectiveStatusFilter, typeFilter, periodBounds, page, pageSize],
+    queryKey: ["projects", "lifecycle-list", archiveView ? "archive" : "portfolio", effectiveStatusFilter, ownerFilter, typeFilter, periodBounds, page, pageSize],
     queryFn: () => projectsApi.list({
       lifecycle: archiveView ? "archive" : "portfolio",
       ...(effectiveStatusFilter ? { status: effectiveStatusFilter } : {}),
+      ...(ownerFilter ? { owner: ownerFilter } : {}),
       ...(["recurring", "one_time"].includes(typeFilter) ? { is_recurring: typeFilter === "recurring" } : {}),
       ...periodBounds,
       page,
@@ -104,6 +108,11 @@ export default function ProjectsPage() {
     }),
   })
   const projects = projectsData?.items ?? []
+  const { data: unassignedCount = 0, isError: isUnassignedCountError, refetch: refetchUnassignedCount } = useQuery({
+    queryKey: ["projects", "unassigned-count"],
+    queryFn: projectsApi.unassignedCount,
+    enabled: !archiveView,
+  })
 
   const { data: clients = [] } = useQuery({
     queryKey: ["clients-all-active"],
@@ -152,17 +161,30 @@ export default function ProjectsPage() {
       </div>
 
       <div className="flex flex-wrap gap-2" aria-label="Vista de proyectos">
-        <Button size="sm" variant={archiveView ? "outline" : "default"} onClick={() => setView("portfolio")}>Cartera</Button>
-        <Button size="sm" variant={archiveView ? "default" : "outline"} onClick={() => setView("archive")}><Archive className="mr-2 h-4 w-4" />Archivo</Button>
+        <Button size="sm" variant={archiveView ? "outline" : "default"} aria-pressed={!archiveView} onClick={() => setView("portfolio")}>Cartera</Button>
+        <Button size="sm" variant={archiveView ? "default" : "outline"} aria-pressed={archiveView} onClick={() => setView("archive")}><Archive className="mr-2 h-4 w-4" />Archivo</Button>
       </div>
 
+      {!archiveView && isUnassignedCountError && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 text-sm">
+          <p>No se pudo comprobar si hay proyectos sin responsable.</p>
+          <Button size="sm" variant="outline" onClick={() => void refetchUnassignedCount()}>Reintentar</Button>
+        </div>
+      )}
+      {!archiveView && !isUnassignedCountError && unassignedCount > 0 && ownerFilter !== "assigned" && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm">
+          <p><span className="font-medium">{unassignedCount} {unassignedCount === 1 ? "proyecto sin responsable" : "proyectos sin responsable"}.</span> Los avisos de seguimiento requieren elegir una persona responsable.</p>
+          {ownerFilter !== "unassigned" && <Button size="sm" variant="outline" onClick={showUnassignedProjects}>Filtrar sin responsable</Button>}
+        </div>
+      )}
+
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap">
         <Select
           value={effectiveStatusFilter}
           aria-label="Estado del proyecto"
           onChange={(e) => setFilter("status", e.target.value)}
-          className="w-full sm:w-48"
+          className="w-full min-w-0 sm:w-48"
         >
           <option value="">{archiveView ? "Todo el archivo" : "Toda la cartera"}</option>
           {archiveView ? <>
@@ -175,10 +197,20 @@ export default function ProjectsPage() {
           </>}
         </Select>
         <Select
+          value={ownerFilter}
+          aria-label="Responsable del proyecto"
+          onChange={(e) => setFilter("owner", e.target.value)}
+          className="w-full min-w-0 sm:w-48"
+        >
+          <option value="">Asignación: todas</option>
+          <option value="unassigned">Sin responsable</option>
+          <option value="assigned">Con responsable</option>
+        </Select>
+        <Select
           value={typeFilter}
           aria-label="Tipo de proyecto"
           onChange={(e) => setFilter("type", e.target.value)}
-          className="w-full sm:w-48"
+          className="w-full min-w-0 sm:w-48"
         >
           <option value="">Todos los tipos</option>
           <option value="recurring">Recurrentes</option>
@@ -188,9 +220,9 @@ export default function ProjectsPage() {
           value={periodFilter}
           aria-label="Período del proyecto"
           onChange={(e) => setFilter("period", e.target.value)}
-          className="w-full sm:w-48"
+          className="w-full min-w-0 sm:w-48"
         >
-          <option value="">Todos los periodos</option>
+          <option value="">Cualquier período</option>
           <option value="week">Esta semana</option>
           <option value="month">Este mes</option>
           <option value="quarter">Este trimestre</option>
@@ -216,8 +248,8 @@ export default function ProjectsPage() {
       ) : projects.length === 0 ? (
         <EmptyState
           icon={FolderKanban}
-          title={statusFilter || typeFilter || periodFilter ? "Sin proyectos con estos filtros" : archiveView ? "El archivo está vacío" : "Sin proyectos todavía"}
-          description={archiveView ? "Los proyectos terminados o cancelados aparecerán aquí y conservarán su historial." : statusFilter ? "No hay proyectos con este estado. Prueba a cambiar el filtro o crea uno nuevo." : "Organiza el trabajo en proyectos con fases y tareas. Puedes empezar desde una plantilla o importar una propuesta."}
+          title={statusFilter || ownerFilter || typeFilter || periodFilter ? "Sin proyectos con estos filtros" : archiveView ? "El archivo está vacío" : "Sin proyectos todavía"}
+          description={archiveView ? "Los proyectos terminados o cancelados aparecerán aquí y conservarán su historial." : statusFilter || ownerFilter ? "No hay proyectos con estos filtros. Prueba a cambiarlos o crea uno nuevo." : "Organiza el trabajo en proyectos con fases y tareas. Puedes empezar desde una plantilla o importar una propuesta."}
           actionLabel={archiveView ? undefined : "Crear un proyecto"}
           onAction={archiveView ? undefined : () => setShowNewDialog(true)}
         />
@@ -1101,6 +1133,6 @@ function OwnerSelect({ id, value, users, onChange }: { id: string; value: string
       <option value="">Sin responsable</option>
       {users.map((user) => <option key={user.id} value={user.id}>{user.full_name}</option>)}
     </Select>
-    <p className="text-xs text-muted-foreground">Se guarda solo la persona elegida aquí.</p>
+    <p className="text-xs text-muted-foreground">Si lo dejas sin responsable, no recibirá avisos de seguimiento del proyecto.</p>
   </div>
 }
