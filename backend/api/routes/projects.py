@@ -635,6 +635,11 @@ async def create_project_from_template(
     base_date = start_date or datetime.combine(business_today(), datetime.min.time())
     template_phases = tpl.phases or []
     template_tasks = tpl.default_tasks or []
+    await require_current_write(
+        db,
+        _user,
+        {"projects", "tasks"} if template_tasks else {"projects"},
+    )
 
     total_days = sum(p.get("default_days", 7) for p in template_phases)
 

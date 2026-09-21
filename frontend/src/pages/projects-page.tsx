@@ -291,6 +291,7 @@ export default function ProjectsPage() {
         clients={clients}
         users={activeUsers}
         templates={templates}
+        canWriteTasks={hasPermission("tasks", true)}
       />
 
       {/* Import from PDF Dialog */}
@@ -530,12 +531,14 @@ function TemplateDialog({
   clients,
   templates,
   users,
+  canWriteTasks,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   clients: { id: number; name: string }[]
   templates: Record<string, { name: string; description?: string | null; phase_count: number; task_count: number; pricing_model?: string | null; monthly_fee?: number | null; is_recurring?: boolean }>
   users: User[]
+  canWriteTasks: boolean
 }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -561,6 +564,8 @@ function TemplateDialog({
   })
 
   const selectedTemplate = templateKey ? templates[templateKey] : null
+  const selectedTemplateNeedsTaskWrite = !!selectedTemplate && selectedTemplate.task_count > 0
+  const canCreateSelectedTemplate = !selectedTemplateNeedsTaskWrite || canWriteTasks
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -617,6 +622,7 @@ function TemplateDialog({
                 </span>
               )}
             </div>
+            {selectedTemplateNeedsTaskWrite && !canWriteTasks && <p role="alert" className="text-amber-700 dark:text-amber-400">Esta plantilla incluye tareas. Necesitas permiso de escritura en Tareas para crearla.</p>}
             {(selectedTemplate.pricing_model || selectedTemplate.monthly_fee != null) && (
               <div className="flex gap-3 text-muted-foreground">
                 {selectedTemplate.pricing_model && (
@@ -644,7 +650,7 @@ function TemplateDialog({
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={createMutation.isPending}>
+          <Button type="submit" disabled={createMutation.isPending || !canCreateSelectedTemplate}>
             {createMutation.isPending ? "Creando..." : "Crear proyecto"}
           </Button>
         </div>
