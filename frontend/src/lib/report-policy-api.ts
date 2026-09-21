@@ -73,6 +73,7 @@ export interface GenerationPreview {
   counts: { eligible: number; excluded: number }
 }
 export interface CohortGenerateItem {
+  generation_key: string
   client_id: number
   policy_revision: number
   period_start: string
