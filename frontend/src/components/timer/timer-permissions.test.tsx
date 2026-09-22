@@ -79,6 +79,7 @@ it("offers own active work beyond today and puts today's task first", async () =
     assigned_to: "me",
     is_recurring: false,
     status: "backlog,pending,in_progress,advanced,waiting,in_review",
+    timer_eligible: true,
   })
   expect(within(selector).getAllByRole("option").map((option) => option.textContent)).toEqual([
     "Sin tarea",

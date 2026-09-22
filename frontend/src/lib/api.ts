@@ -322,11 +322,11 @@ export const clientsApi = {
 
 // Tasks
 export const tasksApi = {
-  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; retirement?: "active" | "retired"; search?: string; page?: number; page_size?: number }) =>
+  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; timer_eligible?: boolean; retirement?: "active" | "retired"; search?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params }).then((r) => r.data),
   agenda: (params: { date: string; section: "planned" | "carryover" | "unplanned" | "completed"; assigned_to?: number | "me" | "unassigned" | "all"; timezone_offset_minutes?: number; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks/agenda", { params }).then((r) => r.data),
-  listAll: async (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean }) => {
+  listAll: async (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; timer_eligible?: boolean }) => {
     const items: Task[] = []
     let page = 1
     let total = Infinity

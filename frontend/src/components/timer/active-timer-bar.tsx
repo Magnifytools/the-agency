@@ -153,6 +153,7 @@ function TimerBar() {
       assigned_to: "me",
       status: "backlog,pending,in_progress,advanced,waiting,in_review",
       is_recurring: false,
+      timer_eligible: true,
     }),
   })
   const tasks = !canReadTasks || tasksQuery.isError ? [] : (tasksQuery.data ?? [])

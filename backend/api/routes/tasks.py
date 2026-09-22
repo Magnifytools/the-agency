@@ -13,6 +13,7 @@ from sqlalchemy.orm import noload, selectinload
 from backend.db.database import get_db
 from backend.db.models import (
     Project,
+    ProjectStatus,
     Task,
     TaskStatus,
     TaskPriority,
@@ -181,6 +182,7 @@ async def list_tasks(
     scheduled_date_from: Optional[str] = Query(None),
     scheduled_date_to: Optional[str] = Query(None),
     is_recurring: Optional[bool] = Query(None),
+    timer_eligible: bool = Query(False),
     retirement: Literal["active", "retired"] = Query("active"),
     search: Optional[str] = Query(None, description="Search tasks by title or description"),
     page: int = Query(1, ge=1),
@@ -281,6 +283,17 @@ async def list_tasks(
     else:
         # Default + explicit false: hide templates
         base = base.where(Task.is_recurring == False)
+
+    # The timer selector must not offer a task which its write endpoint will
+    # reject because the parent project is archived. Keep this opt-in: ordinary
+    # task views still need to show historical project work.
+    if timer_eligible:
+        base = base.where(or_(
+            Task.project_id.is_(None),
+            Task.project.has(Project.status.not_in([
+                ProjectStatus.completed, ProjectStatus.cancelled,
+            ])),
+        ))
 
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
 
