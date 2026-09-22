@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-22T05:25:10Z",
-  "estado_general": "produccion_p66_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-22T07:26:47Z",
+  "estado_general": "produccion_p69_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -452,7 +452,10 @@
     "P63: PR93/8db80dd publicada: Añadir propone captura y consultas acordes a permisos de proyecto/tarea/tiempo, limpia orden/caché al revocar o cambiar identidad; API conserva 403. 27 UI focales, 536 frontend, build/lint focal, visual sintética 1440/390; seis gates CI PR/main (35681454999/35681959105) verdes. Railway eb6a1117-4e5c-4e05-885c-0b0a45915319 SUCCESS y /api/ready exacto; web 200. Ningún comando productivo de prueba.",
     "P64: PR95/b48e28d publicada: proyectos y horas exigen permisos de sus fuentes; métricas no autorizadas quedan no disponibles en API/UI y caché revocada. 1429 backend/2 skip, 539 frontend, visual sintética 1440/390, seis gates PR/main (35685650208/35686147225) y /api/ready exacto. Ningún dato real modificado.",
     "P65: PR96/996ad5e publicada: ficha, actividad, asesor IA y panel de Cliente respetan fuentes legibles; finanzas exige admin y módulo activo. 1433 backend/2 skip y 545 UI en rama aislada; focal integrada 6 PG/56 UI, build y seis gates PR/main (35686447149/35686870949). Railway d72dce6a-2db7-4efe-b9d4-4d331c4ed64c SUCCESS y /api/ready exacto. Visual sintética 1440/390, sin modificar datos reales.",
-    "P66: PR98/f1ead81 publicada: los filtros de Trabajo tienen nombres accesibles propios y los rangos cambian con el tipo de fecha, sin alterar opciones ni parámetros. Diez pruebas focales finales, seis gates CI PR/main (35689857156/35690446147), Railway 36ff1779-89bd-4ed4-97c3-b653a54ef8de SUCCESS y /api/ready exacto. Aceptación humana con lector de pantalla pendiente. Ninguna tarea real modificada."
+    "P66: PR98/f1ead81 publicada: los filtros de Trabajo tienen nombres accesibles propios y los rangos cambian con el tipo de fecha, sin alterar opciones ni parámetros. Diez pruebas focales finales, seis gates CI PR/main (35689857156/35690446147), Railway 36ff1779-89bd-4ed4-97c3-b653a54ef8de SUCCESS y /api/ready exacto. Aceptación humana con lector de pantalla pendiente. Ninguna tarea real modificada.",
+    "P67: PR100/8dabc70 publicada: GET, listado y replay de recibos de consultas aplican permisos y ámbito vigentes sin reescribir el snapshot durable. Cinco regresiones PostgreSQL nuevas; seis gates CI PR/main 35696024898/35696781369 y Railway d05d859e-67da-4086-99fb-88ffe0a71c2d SUCCESS con /api/ready exacto. Ninguna orden productiva de prueba.",
+    "P68: PR101/f20a9fd publicada: el cronómetro global ofrece backlog, tareas arrastradas, sin fecha y futuras propias activas, con búsqueda, paginación >1000 y revocación de lectura. Doce pruebas focales, seis gates CI PR/main 35694817127/35695758914, Railway 76dc8224-fd98-4661-9227-3c0fae635113 SUCCESS y /api/ready exacto. Visual autenticada y aceptación humana pendientes.",
+    "P69: PR102/de79792 publicada: timer_eligible excluye del selector tareas de proyectos completed/cancelled antes de conteo/paginación; el inicio conserva 409 como guard final. Regresión PostgreSQL y UI, seis gates CI de PR 35698344475, Railway 89353822-6e7b-4c39-aa64-9bf4f26566ab SUCCESS y /api/ready exacto; seis gates CI main 35699016827 verdes. Sin registro productivo de tiempo ni visual autenticada."
   ],
   "proximos_pasos": "Validar con David y Nacho seis recorridos reales de uso en cuentas propias, incluida alta, cierre de tarea, captura ambigua y resumen. Las dos cuentas activas deben reconectar Google Calendar y comprobar una reunión fresca. La política semanal está activa para el ID confirmado de David; comprobar el primer envío ordinario del 26 de septiembre y su recibo, sin mensaje de prueba. Elegir responsables para los tres proyectos activos y revisar las 19 tareas candidatas del corte privado 22-09 antes de cambiar datos. Revisar los resúmenes históricos ambiguos con evidencia, decidir si incorporar avisos de cobro con vínculo factura-cliente y responsable reales, y si hace falta un canal entrante aparte de app/extensión. Véase docs/estado-implantacion-2026-09-21.md.",
   "bloqueadores": "",
@@ -464,7 +467,7 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "f1ead814d2d551eacf8121460fb59a6d0cda45a8",
+    "revision": "de7979276c30c7274e56d08a36e77e12664b49f1",
     "healthcheck": "/api/ready",
     "schema_revision": "20260921_usage_origin_v1"
   },
