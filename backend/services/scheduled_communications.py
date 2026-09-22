@@ -51,6 +51,21 @@ def local_instant(day: date, clock: str) -> datetime:
     raise ValueError("No valid business instant near schedule")
 
 
+def _quiet_end_after(day: date, clock: str, instant: datetime) -> datetime:
+    end = local_instant(day, clock)
+    if end > instant:
+        return end
+    # On a fall-back day, the same wall clock can occur a second time. An
+    # instant inside that second occurrence must wait for its own quiet end.
+    wall = datetime.combine(day, time.fromisoformat(clock))
+    zone = business_zone()
+    second = wall.replace(tzinfo=zone, fold=1).astimezone(timezone.utc)
+    if (second.replace(tzinfo=None) > instant and second.replace(tzinfo=None) > end
+            and second.astimezone(zone).replace(tzinfo=None) == wall):
+        return second.replace(tzinfo=None)
+    return end
+
+
 def quiet_until(policy, instant):
     if not policy.quiet_start or not policy.quiet_end:
         return instant
@@ -58,11 +73,11 @@ def quiet_until(policy, instant):
     clock = local.strftime("%H:%M")
     start, end = policy.quiet_start, policy.quiet_end
     if start < end:
-        return local_instant(local.date(), end) if start <= clock < end else instant
+        return _quiet_end_after(local.date(), end, instant) if start <= clock < end else instant
     if clock >= start:
-        return local_instant(local.date() + timedelta(days=1), end)
+        return _quiet_end_after(local.date() + timedelta(days=1), end, instant)
     if clock < end:
-        return local_instant(local.date(), end)
+        return _quiet_end_after(local.date(), end, instant)
     return instant
 
 

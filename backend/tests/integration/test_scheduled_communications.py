@@ -172,6 +172,27 @@ async def test_quiet_midnight_dst_and_expiry(fixture):
         assert latest.state == "expired"
 
 
+async def test_repeated_hour_does_not_release_in_app_notice_during_quiet(fixture):
+    maker, ids, now = fixture
+    policy_id, _ = await policy(fixture, quiet_start="02:00", quiet_end="02:30")
+    now[0] = datetime(2026, 10, 25, 1, 15)  # Second 02:15 in Madrid.
+    async with maker() as db:
+        occurrence = Occurrence(
+            occurrence_key="quiet-second-fold", schedule_id=policy_id,
+            recipient_id=ids["member"], kind="morning", channel="in_app",
+            period_start=date(2026, 10, 25), period_end=date(2026, 10, 25),
+            due_at=datetime(2026, 10, 25, 1), expires_at=datetime(2026, 10, 25, 1, 45),
+            state="planned",
+        )
+        db.add(occurrence)
+        await db.flush()
+        await svc.prepare_occurrence(db, occurrence, now[0])
+        assert occurrence.state == "planned"
+        assert occurrence.notification_id is None
+        await db.commit()
+    assert await count(maker, Notification) == 0
+
+
 async def test_meeting_without_tasks_legacy_reschedule_and_extension_prefs(fixture):
     maker, ids, now = fixture
     await policy(fixture, "meeting")
