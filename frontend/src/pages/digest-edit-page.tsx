@@ -111,7 +111,7 @@ export default function DigestEditPage() {
   }, [toneRecovery.dataUpdatedAt])
 
   // Populate form when digest loads
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (digest && loadedId.current !== digest.id) {
       loadedId.current = digest.id
       setTone(digest.tone)

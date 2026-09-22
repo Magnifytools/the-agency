@@ -71,6 +71,12 @@ const PHASE_STATUS_ICONS: Record<PhaseStatus, typeof Circle> = {
   completed: CheckCircle2,
 }
 
+const PHASE_STATUS_LABELS: Record<PhaseStatus, string> = {
+  pending: "Pendiente",
+  in_progress: "En curso",
+  completed: "Completada",
+}
+
 function errorStatus(error: unknown) {
   return (error as { response?: { status?: number } })?.response?.status
 }
@@ -222,6 +228,8 @@ export default function ProjectDetailPage() {
 
   const isArchived = project.status === "completed" || project.status === "cancelled"
   const canWriteProjects = hasPermission("projects", true)
+  const canWriteTasks = hasPermission("tasks", true)
+  const canAddTasks = canWriteTasks && !isArchived
   const primaryHoursUsed = project.is_recurring ? (project.hours_used_month ?? 0) : (project.hours_used ?? 0)
   const primaryHoursBudget = project.is_recurring ? project.effective_monthly_hours_budget : project.budget_hours
 
@@ -257,9 +265,9 @@ export default function ProjectDetailPage() {
           </p>
           <p className="mt-1 text-sm text-muted-foreground">Responsable: {project.owner_name || "Sin responsable"}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {hasPermission("tasks", true) && !isArchived && <Button onClick={() => setShowAddTaskDialog(0)}><Plus className="h-4 w-4 mr-2" />Añadir tarea</Button>}
-          {!isArchived && <Select
+        {(canAddTasks || canWriteProjects) && <div className="flex flex-wrap gap-2">
+          {canAddTasks && <Button onClick={() => setShowAddTaskDialog(0)}><Plus className="h-4 w-4 mr-2" />Añadir tarea</Button>}
+          {canWriteProjects && !isArchived && <Select
             aria-label="Estado operativo del proyecto"
             value={project.status}
             onChange={(e) => updateStatusMutation.mutate(e.target.value)}
@@ -270,33 +278,35 @@ export default function ProjectDetailPage() {
             <option value="active">Activo</option>
             <option value="on_hold">Pausado</option>
           </Select>}
-          {isArchived ? (
-            <Button disabled={!canWriteProjects} onClick={() => setLifecycleAction("reopen")}>Reabrir proyecto</Button>
-          ) : (
-            <>
-              <Button variant="outline" disabled={!canWriteProjects} onClick={() => setLifecycleAction("completed")}>Cerrar como terminado</Button>
-              <Button variant="outline" disabled={!canWriteProjects} onClick={() => setLifecycleAction("cancelled")}>Cancelar y archivar</Button>
-            </>
-          )}
-          <Button variant="outline" disabled={!canWriteProjects} onClick={() => setShowSaveTemplateDialog(true)}>
-            <Copy className="h-4 w-4 mr-2" />
-            Guardar plantilla
-          </Button>
-          <Button variant="outline" disabled={!canWriteProjects} onClick={() => setShowEditDialog(true)}>
-            <Edit2 className="h-4 w-4 mr-2" />
-            Editar
-          </Button>
-        </div>
+          {canWriteProjects && <>
+            {isArchived ? (
+              <Button onClick={() => setLifecycleAction("reopen")}>Reabrir proyecto</Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setLifecycleAction("completed")}>Cerrar como terminado</Button>
+                <Button variant="outline" onClick={() => setLifecycleAction("cancelled")}>Cancelar y archivar</Button>
+              </>
+            )}
+            <Button variant="outline" onClick={() => setShowSaveTemplateDialog(true)}>
+              <Copy className="h-4 w-4 mr-2" />
+              Guardar plantilla
+            </Button>
+            <Button variant="outline" onClick={() => setShowEditDialog(true)}>
+              <Edit2 className="h-4 w-4 mr-2" />
+              Editar
+            </Button>
+          </>}
+        </div>}
       </div>
 
-      {searchParams.get("created") === "1" && <div role="status" className="border-l-2 border-brand pl-4 py-2"><p className="font-medium">Proyecto creado</p><p className="text-sm text-muted-foreground">{project.task_count ? "Revisa las tareas y concreta el próximo paso." : "Añade la primera tarea para concretar el próximo paso."}</p></div>}
+      {searchParams.get("created") === "1" && <div role="status" className="border-l-2 border-brand pl-4 py-2"><p className="font-medium">Proyecto creado</p><p className="text-sm text-muted-foreground">{project.task_count ? "Revisa las tareas y concreta el próximo paso." : canAddTasks ? "Añade la primera tarea para concretar el próximo paso." : "Consulta el proyecto y sus tareas cuando estén disponibles."}</p></div>}
       {projectError && <div role="alert" className="text-sm">No se pudo actualizar. Se muestran los últimos datos recibidos. <Button variant="ghost" onClick={() => retryProject()}>Reintentar</Button></div>}
       {tasksData && !tasksError && <ProjectWorkSummary
         tasks={[...tasksData.phases.flatMap(group => group.tasks), ...tasksData.unassigned_tasks]}
         today={businessToday}
-        canWrite={hasPermission("tasks", true) && !isArchived}
+        canWrite={canAddTasks}
         onOpen={setPreviewTaskId}
-        onAdd={() => !isArchived && setShowAddTaskDialog(0)}
+        onAdd={() => canAddTasks && setShowAddTaskDialog(0)}
       />}
 
       {project.is_recurring && <MonthlyCycleCard
@@ -628,7 +638,7 @@ export default function ProjectDetailPage() {
           <p>{tasksData ? "No se pudieron actualizar las tareas. Se muestran los últimos datos recibidos." : "No se pudieron cargar las tareas del proyecto."}</p>
           <Button variant="outline" onClick={() => retryTasks()}>Reintentar tareas</Button>
         </div>}
-        {tasksData && !tasksError && !hasActiveFilters && !filteredPhases.some((group: ProjectTaskGroup) => group.tasks.length) && !filteredUnassigned.length && <p className="text-sm text-muted-foreground">Aún no hay tareas. Añade la primera cuando tengas claro el próximo paso.</p>}
+        {tasksData && !tasksError && !hasActiveFilters && !filteredPhases.some((group: ProjectTaskGroup) => group.tasks.length) && !filteredUnassigned.length && <p className="text-sm text-muted-foreground">Aún no hay tareas.{canAddTasks && " Añade la primera cuando tengas claro el próximo paso."}</p>}
         {tasksData && hasActiveFilters && filteredPhases.length === 0 && filteredUnassigned.length === 0 && <p className="text-sm text-muted-foreground">No hay tareas que coincidan con estos filtros.</p>}
 
         {viewMode === "gantt" && project && tasksData && (
@@ -678,28 +688,29 @@ export default function ProjectDetailPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Select
-                      value={phase.status}
-                      onChange={(e) =>
-                        updatePhaseMutation.mutate({ phaseId: phase.id, status: e.target.value })
-                      }
-                      aria-label={`Estado de la fase ${phase.name}`}
-                      disabled={!hasPermission("projects", true) || isArchived || updatePhaseMutation.isPending}
-                      className="w-32 h-8 text-xs"
-                    >
-                      <option value="pending">Pendiente</option>
-                      <option value="in_progress">En curso</option>
-                      <option value="completed">Completada</option>
-                    </Select>
-                    <Button
+                    {canWriteProjects && !isArchived ? (
+                      <Select
+                        value={phase.status}
+                        onChange={(e) =>
+                          updatePhaseMutation.mutate({ phaseId: phase.id, status: e.target.value })
+                        }
+                        aria-label={`Estado de la fase ${phase.name}`}
+                        disabled={updatePhaseMutation.isPending}
+                        className="w-32 h-8 text-xs"
+                      >
+                        <option value="pending">Pendiente</option>
+                        <option value="in_progress">En curso</option>
+                        <option value="completed">Completada</option>
+                      </Select>
+                    ) : <span className="text-xs text-muted-foreground">Estado: {PHASE_STATUS_LABELS[phase.status as PhaseStatus]}</span>}
+                    {canAddTasks && <Button
                       variant="ghost"
                       size="sm"
                       aria-label={`Añadir tarea a ${phase.name}`}
-                      disabled={!hasPermission("tasks", true) || isArchived}
                       onClick={() => setShowAddTaskDialog(phase.id)}
                     >
                       <Plus className="h-4 w-4" />
-                    </Button>
+                    </Button>}
                   </div>
                 </div>
               </CardHeader>
@@ -708,7 +719,7 @@ export default function ProjectDetailPage() {
                   <p className="text-sm text-muted-foreground py-2">Sin tareas en esta fase</p>
                 ) : (
                   <ProjectTaskList tasks={tasks} showCompleted={hasActiveFilters}
-                    canWrite={hasPermission("tasks", true) && !isArchived}
+                    canWrite={canAddTasks}
                     requiresReview={!!project?.requires_task_review}
                     canCompleteReviewedTask={!!(isAdmin || (user?.id && project?.owner_id === user.id))}
                     pendingTaskId={updateTaskMutation.isPending ? updateTaskMutation.variables.taskId : undefined}
