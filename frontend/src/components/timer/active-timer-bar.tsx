@@ -147,10 +147,11 @@ function TimerBar() {
 
   // Fetch user's tasks for selector
   const tasksQuery = useQuery({
-    queryKey: taskKeys.assigned("timer", "me", businessToday),
+    queryKey: taskKeys.assigned("timer", "me", "assigned_or_created", businessToday),
     enabled: canReadTasks,
     queryFn: () => tasksApi.listAll({
       assigned_to: "me",
+      timer_scope: "assigned_or_created",
       status: "backlog,pending,in_progress,advanced,waiting,in_review",
       is_recurring: false,
       timer_eligible: true,

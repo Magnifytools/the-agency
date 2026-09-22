@@ -15,7 +15,7 @@ async function setup(t) {
   const dom = new JSDOM(fs.readFileSync(path.join(extension, 'popup.html'), 'utf8'), { runScripts: 'outside-only', url: 'https://extension.invalid/popup.html' });
   t.after(() => dom.window.close());
   const requests = [];
-  const state = { failPath: null, failPage: 2, status: 503, posted: null, commandRequests: [], commandStepRequests: [], scheduleRevision: 3 };
+  const state = { failPath: null, failPage: 2, status: 503, posted: null, taskCreateRequests: [], commandRequests: [], commandStepRequests: [], scheduleRevision: 3 };
   dom.window.chrome = {
     storage: { local: { get: async () => ({}), set: async () => {}, remove: async () => {} } },
     runtime: { sendMessage: () => {} }, tabs: { create: () => {} },
@@ -30,6 +30,10 @@ async function setup(t) {
       state.posted = JSON.parse(options.body);
       status = state.captureStatus || 201;
       data = { id: 1, detail: 'Captura no disponible' };
+    } else if (options.method === 'POST' && u.pathname === '/api/tasks') {
+      const body = JSON.parse(options.body); state.taskCreateRequests.push(body);
+      status = state.taskCreateStatus || 201;
+      data = state.taskCreateResponse || { id: 901, title: body.title };
     } else if (options.method === 'POST' && u.pathname === '/api/commands') {
       const body = JSON.parse(options.body); state.commandRequests.push(body);
       status = state.commandStatus || 200;
@@ -191,9 +195,10 @@ test('failed Inbox capture retains the draft and assignment for retry', async t 
 });
 
 test('timer and manual task selectors load all pages and preserve selection on a page error', async t => {
-  const { run, get, state } = await setup(t);
+  const { run, get, state, requests } = await setup(t);
   await run('loadTimerTasks()');
   assert.equal(get('timer-task-select').options.length, tasks.length + 1);
+  assert.equal(requests.some(request => request.url.pathname === '/api/tasks' && request.url.searchParams.get('timer_scope') === 'assigned_or_created'), true);
   get('timer-task-select').value = '126';
   get('manual-task-select').value = '125';
   state.failPath = '/api/tasks';
@@ -487,6 +492,20 @@ test('reconnected task drafts cannot submit unavailable assignments before selec
   assert.equal(h.requests.some(r => r.url.pathname === '/api/tasks' && r.options.method === 'POST'), false);
   assert.equal(h.get('task-create-btn').disabled, true);
   assert.equal(h.get('task-title').value, 'Task draft');
+});
+
+test('direct capture explicitly assigns the new task to its authenticated creator', async t => {
+  const h = await setup(t);
+  await h.run('loadProjectsAndClients()');
+  h.get('task-title').value = 'Preparar propuesta';
+  h.get('task-client-select').value = '1';
+
+  await h.run('createTaskDirect()');
+
+  assert.equal(h.state.taskCreateRequests.length, 1);
+  assert.deepEqual(h.state.taskCreateRequests[0], {
+    title: 'Preparar propuesta', client_id: 1, status: 'in_progress', assign_to_current_user: true,
+  });
 });
 
 test('command mode sends through shared endpoint and renders a linked receipt', async t => {

@@ -5,7 +5,7 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import select, func, or_
+from sqlalchemy import and_, select, func, or_
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload, selectinload
@@ -183,6 +183,7 @@ async def list_tasks(
     scheduled_date_to: Optional[str] = Query(None),
     is_recurring: Optional[bool] = Query(None),
     timer_eligible: bool = Query(False),
+    timer_scope: Literal["assigned", "assigned_or_created"] = Query("assigned"),
     retirement: Literal["active", "retired"] = Query("active"),
     search: Optional[str] = Query(None, description="Search tasks by title or description"),
     page: int = Query(1, ge=1),
@@ -222,12 +223,24 @@ async def list_tasks(
         if assigned_to == "unassigned":
             base = base.where(Task.assigned_to.is_(None))
         elif assigned_to == "me":
-            base = base.where(Task.assigned_to == current_user.id)
+            if timer_scope == "assigned_or_created":
+                # Legacy direct captures were created by their author but left
+                # unassigned. A Timer selector may resume only that author's
+                # unassigned work; tasks assigned to or created by others stay
+                # outside this personal scope.
+                base = base.where(or_(
+                    Task.assigned_to == current_user.id,
+                    and_(Task.assigned_to.is_(None), Task.created_by == current_user.id),
+                ))
+            else:
+                base = base.where(Task.assigned_to == current_user.id)
         else:
             try:
                 base = base.where(Task.assigned_to == int(assigned_to))
             except ValueError:
                 raise HTTPException(status_code=422, detail="assigned_to must be 'unassigned', 'me', or a valid user ID")
+    if timer_scope == "assigned_or_created" and assigned_to != "me":
+        raise HTTPException(422, detail="timer_scope=assigned_or_created requires assigned_to=me")
     if priority is not None:
         base = base.where(Task.priority == priority)
     if overdue:
@@ -404,7 +417,9 @@ async def create_task(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("tasks", write=True)),
 ):
-    data = body.model_dump()
+    data = body.model_dump(exclude={"assign_to_current_user"})
+    if body.assign_to_current_user and data.get("assigned_to") is None:
+        data["assigned_to"] = current_user.id
     try:
         task = await create_task_write(
             db, data, actor=current_user, manual_entry_date=manual_time_entry_date(),
