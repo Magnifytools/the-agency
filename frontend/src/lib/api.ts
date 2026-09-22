@@ -326,8 +326,20 @@ export const tasksApi = {
     api.get<PaginatedResponse<Task>>("/tasks", { params }).then((r) => r.data),
   agenda: (params: { date: string; section: "planned" | "carryover" | "unplanned" | "completed"; assigned_to?: number | "me" | "unassigned" | "all"; timezone_offset_minutes?: number; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks/agenda", { params }).then((r) => r.data),
-  listAll: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean }) =>
-    api.get<PaginatedResponse<Task>>("/tasks", { params: { ...params, page_size: 1000 } }).then((r) => r.data.items),
+  listAll: async (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean }) => {
+    const items: Task[] = []
+    let page = 1
+    let total = Infinity
+    while (items.length < total) {
+      const response = await api.get<PaginatedResponse<Task>>("/tasks", { params: { ...params, page, page_size: 1000 } })
+      const batch = response.data.items
+      items.push(...batch)
+      total = response.data.total
+      if (batch.length === 0) break
+      page += 1
+    }
+    return items
+  },
   get: (id: number) => api.get<Task>(`/tasks/${id}`).then((r) => r.data),
   create: (data: TaskCreate) => api.post<Task>("/tasks", data).then((r) => r.data),
   update: (id: number, data: Partial<TaskCreate>) =>

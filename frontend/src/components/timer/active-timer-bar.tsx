@@ -14,6 +14,87 @@ import { elapsedSeconds, formatElapsedSeconds } from "@/lib/timer"
 import { useAuth } from "@/context/auth-context"
 import { useBusinessDate } from "@/hooks/use-business-date"
 
+const TIMER_OPTION_INITIAL_LIMIT = 100
+
+function orderTimerTasks(tasks: Task[], today: string) {
+  return [...tasks].sort((left, right) => {
+    const rank = (task: Task) => {
+      if (task.scheduled_date === today) return 0
+      if (task.scheduled_date && task.scheduled_date < today) return 1
+      if (!task.scheduled_date) return 2
+      return 3
+    }
+    const rankDifference = rank(left) - rank(right)
+    if (rankDifference) return rankDifference
+    if (left.scheduled_date !== right.scheduled_date) {
+      return (left.scheduled_date ?? "").localeCompare(right.scheduled_date ?? "")
+    }
+    return left.title.localeCompare(right.title, "es")
+  })
+}
+
+function TimerTaskSelector({
+  tasks,
+  today,
+  value,
+  onChange,
+  ariaLabel,
+  emptyLabel,
+  loading,
+  disabled,
+}: {
+  tasks: Task[]
+  today: string
+  value: string
+  onChange: (value: string) => void
+  ariaLabel: string
+  emptyLabel: string
+  loading: boolean
+  disabled: boolean
+}) {
+  const [search, setSearch] = useState("")
+  const orderedTasks = useMemo(() => orderTimerTasks(tasks, today), [tasks, today])
+  const normalizedSearch = search.trim().toLocaleLowerCase("es")
+  const matches = normalizedSearch
+    ? orderedTasks.filter((task) => task.title.toLocaleLowerCase("es").includes(normalizedSearch))
+    : orderedTasks
+  const selected = orderedTasks.find((task) => String(task.id) === value)
+  const visible = normalizedSearch || orderedTasks.length <= TIMER_OPTION_INITIAL_LIMIT
+    ? matches
+    : matches.slice(0, TIMER_OPTION_INITIAL_LIMIT)
+  const options = selected && !visible.some((task) => task.id === selected.id)
+    ? [...visible, selected]
+    : visible
+  const needsSearch = orderedTasks.length > TIMER_OPTION_INITIAL_LIMIT
+
+  return <div className="min-w-0 flex-1 space-y-1">
+    {needsSearch && <Input
+      type="search"
+      aria-label={`${ariaLabel}: buscar`}
+      value={search}
+      onChange={(event) => setSearch(event.target.value)}
+      placeholder={`Buscar entre ${orderedTasks.length} tareas…`}
+      className="h-8 text-xs"
+    />}
+    <Select
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      aria-label={ariaLabel}
+      className="h-9 w-full text-xs"
+      disabled={disabled || loading}
+    >
+      <option value="">{loading ? "Cargando tareas…" : emptyLabel}</option>
+      {options.map((task) => (
+        <option key={task.id} value={task.id}>
+          {task.title.length > 50 ? `${task.title.slice(0, 50)}…` : task.title}
+        </option>
+      ))}
+    </Select>
+    {needsSearch && !normalizedSearch && <p className="text-xs text-muted-foreground">Mostramos las 100 tareas prioritarias. Busca por nombre para ver las demás.</p>}
+    {normalizedSearch && options.length === 0 && <p className="text-xs text-muted-foreground">No hay tareas que coincidan.</p>}
+  </div>
+}
+
 export function ActiveTimerBar() {
   const { user, hasPermission } = useAuth()
   if (!hasPermission("timesheet") || !hasPermission("timesheet", true)) return null
@@ -30,6 +111,7 @@ function TimerBar() {
   const [elapsed, setElapsed] = useState("")
   const [omniInput, setOmniInput] = useState("")
   const [selectedTaskId, setSelectedTaskId] = useState<string>("")
+  const [recentlyCreatedTask, setRecentlyCreatedTask] = useState<Task | null>(null)
   const [reminderShown, setReminderShown] = useState(false)
   const businessToday = useBusinessDate()
 
@@ -67,9 +149,27 @@ function TimerBar() {
   const tasksQuery = useQuery({
     queryKey: taskKeys.assigned("timer", "me", businessToday),
     enabled: canReadTasks,
-    queryFn: () => tasksApi.listAll({ assigned_to: "me", status: "pending,in_progress,advanced,waiting,in_review", scheduled_date: businessToday }),
+    queryFn: () => tasksApi.listAll({
+      assigned_to: "me",
+      status: "backlog,pending,in_progress,advanced,waiting,in_review",
+      is_recurring: false,
+    }),
   })
   const tasks = !canReadTasks || tasksQuery.isError ? [] : (tasksQuery.data ?? [])
+  const selectableTasks = canReadTasks && recentlyCreatedTask && !tasks.some((task) => task.id === recentlyCreatedTask.id)
+    ? [recentlyCreatedTask, ...tasks]
+    : tasks
+
+  useEffect(() => {
+    if (canReadTasks) return
+    // Preserve a typed unlinked note, but discard task IDs that are no longer readable.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelectedTaskId("")
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRecentlyCreatedTask(null)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAssignTaskId("")
+  }, [canReadTasks])
 
   // Fetch clients for quick create
   const clientsQuery = useQuery<Client[]>({
@@ -149,6 +249,7 @@ function TimerBar() {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       setOmniInput("")
       setSelectedTaskId("")
+      setRecentlyCreatedTask(null)
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al iniciar timer")),
   })
@@ -227,6 +328,7 @@ function TimerBar() {
       }),
     onSuccess: (task: Task) => {
       invalidateTaskChange(queryClient, { projectId: task.project_id, clientId: task.client_id })
+      setRecentlyCreatedTask(task)
       setSelectedTaskId(String(task.id))
       setShowQuickCreate(false)
       setQcTitle("")
@@ -264,20 +366,18 @@ function TimerBar() {
         <div className="bg-card border-b px-4 py-2 flex justify-center items-center">
           <form onSubmit={handleOmniSubmit} className="flex items-center gap-2 w-full max-w-2xl">
             {canReadTasks && tasksQuery.isError && <span role="alert" className="sr-only">No se pudieron cargar las tareas del cronómetro.</span>}
-            <Select
-              value={selectedTaskId}
-              onChange={(e) => setSelectedTaskId(e.target.value)}
-              aria-label="Tarea del cronómetro"
-              className="w-36 sm:w-48 shrink-0 h-9 text-xs"
-              disabled={!canReadTasks || tasksQuery.isError}
-            >
-              <option value="">Sin tarea</option>
-              {tasks.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.title.length > 35 ? t.title.slice(0, 35) + "..." : t.title}
-                </option>
-              ))}
-            </Select>
+            <div className="w-36 shrink-0 sm:w-48">
+              <TimerTaskSelector
+                tasks={selectableTasks}
+                today={businessToday}
+                value={selectedTaskId}
+                onChange={setSelectedTaskId}
+                ariaLabel="Tarea del cronómetro"
+                emptyLabel="Sin tarea"
+                loading={tasksQuery.isLoading}
+                disabled={!canReadTasks || tasksQuery.isError}
+              />
+            </div>
             <button
               type="button"
               onClick={() => setShowQuickCreate(true)}
@@ -463,14 +563,16 @@ function TimerBar() {
           <p className="text-sm text-muted-foreground">
             El tiempo registrado no tiene tarea asignada. Selecciona una tarea para asociarlo:
           </p>
-          {canReadTasks && !tasksQuery.isError ? <Select value={assignTaskId} onChange={(e) => setAssignTaskId(e.target.value)}>
-            <option value="">Selecciona tarea</option>
-            {tasks.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.title.length > 50 ? t.title.slice(0, 50) + "..." : t.title}
-              </option>
-            ))}
-          </Select> : <p role="alert" className="text-sm text-muted-foreground">No se pudieron cargar las tareas disponibles para asignar este registro.</p>}
+          {canReadTasks && !tasksQuery.isError ? <TimerTaskSelector
+            tasks={selectableTasks}
+            today={businessToday}
+            value={assignTaskId}
+            onChange={setAssignTaskId}
+            ariaLabel="Tarea para asignar el registro"
+            emptyLabel="Selecciona tarea"
+            loading={tasksQuery.isLoading}
+            disabled={false}
+          /> : <p role="alert" className="text-sm text-muted-foreground">No se pudieron cargar las tareas disponibles para asignar este registro.</p>}
         </DialogContent>
         <DialogFooter>
           <Button variant="ghost" onClick={() => { setShowAssignDialog(false); setStoppedEntryId(null) }}>
@@ -482,7 +584,7 @@ function TimerBar() {
                 assignMutation.mutate({ entryId: stoppedEntryId, taskId: parseInt(assignTaskId, 10) })
               }
             }}
-            disabled={!assignTaskId || assignMutation.isPending}
+            disabled={!assignTaskId || tasksQuery.isLoading || assignMutation.isPending}
           >
             {assignMutation.isPending ? "Asignando..." : "Asignar"}
           </Button>}
