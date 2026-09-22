@@ -159,7 +159,7 @@ def render_snapshot(kind, source, custom_content=None):
             original_tasks = original.get("general", []) + [
                 task for project in original.get("projects", []) for task in project.get("tasks", [])
             ]
-            has_provenance = bool(source.source_facts) or any(task.get("fact_keys") for task in original_tasks)
+            has_provenance = bool(source.source_facts) or any("fact_keys" in task for task in original_tasks)
             text = format_daily_for_discord(
                 parsed, name, source.date.isoformat(), max_length=None,
                 source_facts=(source.source_facts or []) if has_provenance else None,

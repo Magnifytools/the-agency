@@ -30,7 +30,7 @@ class TaskCreate(BaseModel):
     assigned_to: Optional[int] = None
     # Intent-only field for personal capture flows. The route resolves it from
     # the authenticated actor; it is never persisted as task data.
-    assign_to_current_user: bool = False
+    assign_to_current_user: bool = Field(default=False, exclude=True)
     project_id: Optional[int] = None
     phase_id: Optional[int] = None
     depends_on: Optional[int] = None

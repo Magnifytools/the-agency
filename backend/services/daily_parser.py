@@ -256,7 +256,7 @@ def format_daily_for_discord(
     source_facts: list[dict] | None = None,
 ) -> str:
     """Format a reviewed closing recap; canonical facts decide grouping and time."""
-    if source_facts is not None and all(fact.get("title") for fact in source_facts):
+    if source_facts and all(fact.get("title") for fact in source_facts):
         lines = [f"🌙 Cierre del día — **{user_name}** — {date_str}", ""]
         grouped = grouped_recap(source_facts)
         if grouped:
