@@ -9,10 +9,12 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, exists, false, or_, select
 from sqlalchemy.orm import noload
 
-from backend.db.models import Notification, User
+from backend.core.modules import is_enabled
+from backend.db.models import Notification, Project, Task, User, WeeklyDigest
+from backend.services.incident_conditions import module_permission
 
 # These rows came from the retired ``/notifications/generate-checks`` writer.
 # They remain stored as history, but the activity feed must not present stale
@@ -30,12 +32,39 @@ RETIRED_CHECK_TYPES = (
     "task_overdue",
     "timesheet_incomplete",
 )
+UNSCOPED_RETIRED_TYPES = ("automation",)
 
 
-def visible_notification_condition():
-    hidden_types = list(RETIRED_CHECK_TYPES)
+def visible_notification_condition(user_id: int):
+    """Scope activity before pagination, counting or read-state mutations.
+
+    Source-backed notifications require both a valid source and the current
+    module permission. Scheduled task summaries have no source ID and cannot
+    be redacted after rendering, so loss of task access hides the whole row.
+    """
+    # The retired automation writer stored arbitrary text without a source ID.
+    # Its historical rows cannot be safely scoped to a current entity.
+    hidden_types = (*RETIRED_CHECK_TYPES, *UNSCOPED_RETIRED_TYPES)
+    task_read = module_permission(user_id, "tasks") if is_enabled("tasks") else false()
+    project_read = module_permission(user_id, "projects") if is_enabled("projects") else false()
+    digest_read = module_permission(user_id, "digests") if is_enabled("digests") else false()
+    task_activity = ("task_assigned",)
+    project_activity = ("phase_completed",)
+    digest_activity = ("digest_generated",)
+    task_summaries = ("scheduled_morning", "scheduled_evening")
     return and_(
-        Notification.incident_state.is_(None), Notification.type.notin_(hidden_types)
+        Notification.incident_state.is_(None),
+        Notification.type.notin_(hidden_types),
+        or_(
+            and_(Notification.type.in_(task_activity), Notification.entity_type == "task",
+                 task_read, exists().where(Task.id == Notification.entity_id)),
+            and_(Notification.type.in_(project_activity), Notification.entity_type == "project",
+                 project_read, exists().where(Project.id == Notification.entity_id)),
+            and_(Notification.type.in_(digest_activity), Notification.entity_type == "digest",
+                 digest_read, exists().where(WeeklyDigest.id == Notification.entity_id)),
+            and_(Notification.type.in_(task_summaries), task_read),
+            Notification.type.notin_((*task_activity, *project_activity, *digest_activity, *task_summaries)),
+        ),
     )
 
 

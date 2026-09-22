@@ -36,7 +36,7 @@ async def list_notifications(
     """List notifications for the current user."""
     try:
         q = select(Notification).where(
-            Notification.user_id == user.id, visible_notification_condition()
+            Notification.user_id == user.id, visible_notification_condition(user.id)
         )
         if unread_only:
             q = q.where(Notification.is_read.is_(False))
@@ -64,7 +64,7 @@ async def unread_count(
             select(func.count(Notification.id)).where(
                 Notification.user_id == user.id,
                 Notification.is_read.is_(False),
-                visible_notification_condition(),
+                visible_notification_condition(user.id),
             )
         )
         count = result.scalar() or 0
@@ -90,7 +90,7 @@ async def mark_read(
         select(Notification).where(
             Notification.id == notification_id,
             Notification.user_id == user.id,
-            visible_notification_condition(),
+            visible_notification_condition(user.id),
         )
     )
     notif = result.scalar_one_or_none()
@@ -117,7 +117,7 @@ async def mark_all_read(
         .where(
             Notification.user_id == user.id,
             Notification.is_read.is_(False),
-            visible_notification_condition(),
+            visible_notification_condition(user.id),
         )
         .values(is_read=True)
     )
