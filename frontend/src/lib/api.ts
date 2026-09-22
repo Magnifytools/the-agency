@@ -322,11 +322,11 @@ export const clientsApi = {
 
 // Tasks
 export const tasksApi = {
-  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; timer_eligible?: boolean; retirement?: "active" | "retired"; search?: string; page?: number; page_size?: number }) =>
+  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; timer_eligible?: boolean; timer_scope?: "assigned" | "assigned_or_created"; retirement?: "active" | "retired"; search?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params }).then((r) => r.data),
   agenda: (params: { date: string; section: "planned" | "carryover" | "unplanned" | "completed"; assigned_to?: number | "me" | "unassigned" | "all"; timezone_offset_minutes?: number; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks/agenda", { params }).then((r) => r.data),
-  listAll: async (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; timer_eligible?: boolean }) => {
+  listAll: async (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; timer_eligible?: boolean; timer_scope?: "assigned" | "assigned_or_created" }) => {
     const items: Task[] = []
     let page = 1
     let total = Infinity
@@ -951,8 +951,10 @@ export const dailysApi = {
   forDate: (date: string) => api.get<DailyUpdate | null>("/dailys/for-date", { params: { date } }).then((r) => r.data),
   reparse: (id: number, revision: number) =>
     api.post<DailyUpdate>(`/dailys/${id}/reparse`, { revision }, { timeout: 90_000 }).then((r) => r.data),
-  sendDiscord: (id: number) =>
-    api.post<DailyDiscordResponse>(`/dailys/${id}/send-discord`).then((r) => r.data),
+  previewDiscord: (id: number) =>
+    api.get<{ revision: number; content: string }>(`/dailys/${id}/preview`).then((r) => r.data),
+  sendDiscord: (id: number, data?: { revision: number; content: string }) =>
+    api.post<DailyDiscordResponse>(`/dailys/${id}/send-discord`, data).then((r) => r.data),
   edit: (id: number, data: { raw_text?: string; parsed_data?: DailyUpdate["parsed_data"]; revision: number; source_fact_keys?: string[] }) =>
     api.put<DailyUpdate>(`/dailys/${id}`, data).then((r) => r.data),
   delete: (id: number, revision: number) => api.delete(`/dailys/${id}`, { params: { revision } }).then((r) => r.data),

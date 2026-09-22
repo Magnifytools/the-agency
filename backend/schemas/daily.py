@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional
 from datetime import date as date_type, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from backend.db.models import DailyUpdateStatus
 
@@ -45,6 +45,22 @@ class DailyEditRequest(BaseModel):
 
 class DailyEnrichRequest(BaseModel):
     revision: int = Field(ge=1)
+
+
+class DailySendRequest(BaseModel):
+    revision: int | None = Field(default=None, ge=1)
+    content: str | None = Field(default=None, min_length=1, max_length=50000)
+
+    @model_validator(mode="after")
+    def require_revision_for_custom_content(self):
+        if self.content is not None and self.revision is None:
+            raise ValueError("La edición del mensaje requiere la revisión previsualizada")
+        return self
+
+
+class DailyPreviewResponse(BaseModel):
+    revision: int
+    content: str
 
 
 class DailyUpdateResponse(BaseModel):

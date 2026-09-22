@@ -1204,6 +1204,9 @@ async function createTaskDirect() {
       title,
       client_id: parseInt(clientId, 10),
       status: "in_progress",
+      // Una tarea iniciada desde Captura es trabajo propio: así sigue estando
+      // en los selectores personales del Timer después de detenerlo.
+      assign_to_current_user: true,
     };
     const projectId = taskProjectSelect.value;
     if (projectId) body.project_id = parseInt(projectId, 10);
@@ -1557,7 +1560,7 @@ async function loadTimerTasks() {
   timerTasksRetry.disabled = true;
   try {
     const tasks = await fetchAllPages("/api/tasks", {
-      assigned_to: "me", status: "pending,in_progress,waiting,in_review",
+      assigned_to: "me", timer_scope: "assigned_or_created", status: "pending,in_progress,waiting,in_review",
     }, session);
     if (!isCurrentSession(session)) return;
     if (loadId !== timerTasksLoadId || !isCurrentSession(session)) return;

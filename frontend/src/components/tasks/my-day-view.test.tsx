@@ -19,6 +19,17 @@ const task = (id: number, title: string, overrides: Partial<Task> = {}): Task =>
 const page = (items: Task[], total = items.length): PaginatedResponse<Task> => ({ items, total, page: 1, page_size: 25 })
 
 describe("MyDayView", () => {
+  it("distinguishes task statuses with labeled, tinted controls", () => {
+    render(<MyDayView planned={page([task(1, "Por empezar"), task(2, "En marcha", { status: "in_progress" })])} carryover={page([])} unplanned={page([])} completed={page([])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} onReviewCarryover={vi.fn()} canWrite />)
+
+    const pending = screen.getByRole("combobox", { name: "Estado de Por empezar" })
+    const inProgress = screen.getByRole("combobox", { name: "Estado de En marcha" })
+    expect(pending).toHaveValue("pending")
+    expect(pending).toHaveClass("bg-amber-500/10")
+    expect(inProgress).toHaveValue("in_progress")
+    expect(inProgress).toHaveClass("bg-sky-500/10")
+  })
+
   it("explains the reliable completion-date scope", () => {
     render(<MyDayView planned={page([])} carryover={page([])} unplanned={page([])} completed={page([task(9, "Terminada")])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} onReviewCarryover={vi.fn()} canWrite={false} />)
     expect(screen.getByText(/fecha de finalización registrada para hoy/)).toBeInTheDocument()

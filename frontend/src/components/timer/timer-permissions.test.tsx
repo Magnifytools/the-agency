@@ -38,7 +38,7 @@ it("drops cached task choices immediately when task read access is revoked", asy
   await screen.findByRole("option", { name: "Tarea privada" })
 
   mocks.tasks.mockRejectedValueOnce({ response: { status: 403 } })
-  await view.client.invalidateQueries({ queryKey: taskKeys.assigned("timer", "me", "2026-09-19") })
+  await view.client.invalidateQueries({ queryKey: taskKeys.assigned("timer", "me", "assigned_or_created", "2026-09-19") })
   await waitFor(() => expect(screen.queryByRole("option", { name: "Tarea privada" })).not.toBeInTheDocument())
 
   canReadTasks = false
@@ -79,6 +79,7 @@ it("offers own active work beyond today and puts today's task first", async () =
     assigned_to: "me",
     is_recurring: false,
     status: "backlog,pending,in_progress,advanced,waiting,in_review",
+    timer_scope: "assigned_or_created",
     timer_eligible: true,
   })
   expect(within(selector).getAllByRole("option").map((option) => option.textContent)).toEqual([
