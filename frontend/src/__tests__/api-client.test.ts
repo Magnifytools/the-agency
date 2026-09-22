@@ -1,6 +1,6 @@
 import axios, { type InternalAxiosRequestConfig } from "axios"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { api, beginApiSessionTransition, CSRF_COOKIE_NAME, discordApi } from "@/lib/api"
+import { api, beginApiSessionTransition, CSRF_COOKIE_NAME, discordApi, tasksApi } from "@/lib/api"
 
 // Mock sonner before importing api
 vi.mock("sonner", () => ({
@@ -85,6 +85,41 @@ describe("API Client", () => {
     }
     await api.get("/auth/me")
     expect(request?.headers.get("X-Agency-Client")).toBe("web")
+  })
+
+  it("paginates task listAll beyond 1,000 rows without dropping the final task", async () => {
+    const requests: InternalAxiosRequestConfig[] = []
+    api.defaults.adapter = async (config) => {
+      requests.push(config)
+      const page = Number(config.params?.page)
+      const data = page === 1
+        ? { items: Array.from({ length: 1000 }, (_, index) => ({ id: index + 1, title: `Tarea ${index + 1}` })), total: 1001, page: 1, page_size: 1000 }
+        : { items: [{ id: 1001, title: "Tarea 1001" }], total: 1001, page: 2, page_size: 1000 }
+      return { data, status: 200, statusText: "OK", headers: {}, config }
+    }
+
+    const tasks = await tasksApi.listAll({ assigned_to: "me" })
+    expect(tasks).toHaveLength(1001)
+    expect(tasks.at(-1)).toEqual({ id: 1001, title: "Tarea 1001" })
+    expect(requests.map((request) => request.params)).toEqual([
+      { assigned_to: "me", page: 1, page_size: 1000 },
+      { assigned_to: "me", page: 2, page_size: 1000 },
+    ])
+  })
+
+  it("stops task listAll when a later page is empty despite a stale total", async () => {
+    const requests: InternalAxiosRequestConfig[] = []
+    api.defaults.adapter = async (config) => {
+      requests.push(config)
+      const page = Number(config.params?.page)
+      const data = page === 1
+        ? { items: [{ id: 1, title: "Primera" }], total: 1001, page: 1, page_size: 1000 }
+        : { items: [], total: 1001, page: 2, page_size: 1000 }
+      return { data, status: 200, statusText: "OK", headers: {}, config }
+    }
+
+    await expect(tasksApi.listAll({ assigned_to: "me" })).resolves.toEqual([{ id: 1, title: "Primera" }])
+    expect(requests).toHaveLength(2)
   })
 
   it("request interceptor adds CSRF header when cookie exists", () => {
