@@ -35,11 +35,16 @@ async def list_manual_deliveries(kind: str, scope: str | None = None, limit: int
                       owner_id=actor.id, destination_kind="owner_dm" if kind == "weekly_report" else "team_webhook"), actor, write=False)
     if kind not in KINDS:
         raise HTTPException(404, "Fuente no encontrada")
+    expected_destination = "owner_dm" if kind == "weekly_report" else "team_webhook"
     query = select(Delivery, CommunicationRequest).join(CommunicationRequest,
         (Delivery.source_kind == "communication") & (Delivery.source_id == CommunicationRequest.id)
-    ).where(CommunicationRequest.owner_id == actor.id, CommunicationRequest.kind == kind)
+    ).where(CommunicationRequest.owner_id == actor.id, CommunicationRequest.kind == kind,
+            CommunicationRequest.scope.in_(("mine", "team")),
+            CommunicationRequest.destination_kind == expected_destination)
     if scope is not None:
         query = query.where(CommunicationRequest.scope == scope)
+    elif actor.role != UserRole.admin:
+        query = query.where(CommunicationRequest.scope == "mine")
     rows = (await db.execute(query.order_by(Delivery.created_at.desc(), Delivery.id).limit(limit))).all()
     return [await service.receipt(db, row, source, writable=await writable(db, actor, "communication", source)) for row, source in rows]
 
