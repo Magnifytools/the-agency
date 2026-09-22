@@ -15,10 +15,17 @@ const mocks = vi.hoisted(() => ({
   getCommand: vi.fn(),
   undo: vi.fn(),
   createInbox: vi.fn(),
+  userId: 7,
   canReadTasks: true,
+  canReadClients: true,
+  canReadProjects: true,
 }));
 vi.mock("@/context/auth-context", () => ({
-  useAuth: () => ({ user: { id: 7 }, hasPermission: (module: string) => module !== "tasks" || mocks.canReadTasks }),
+  useAuth: () => ({ user: { id: mocks.userId }, hasPermission: (module: string) => ({
+    tasks: mocks.canReadTasks,
+    clients: mocks.canReadClients,
+    projects: mocks.canReadProjects,
+  })[module] ?? true }),
 }));
 vi.mock("@/lib/api", () => ({
   commandsApi: {
@@ -74,7 +81,10 @@ function deferred<T>() {
 describe("command entry", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.userId = 7;
     mocks.canReadTasks = true;
+    mocks.canReadClients = true;
+    mocks.canReadProjects = true;
     mocks.listCommands.mockResolvedValue({
       items: [],
       total: 0,
@@ -457,6 +467,8 @@ describe("command entry", () => {
     await userEvent.click(
       screen.getByRole("tab", { name: "Guardar para aclarar" }),
     );
+    expect(screen.getByLabelText("Cliente").parentElement).toHaveClass("sm:grid-cols-2");
+    expect(screen.getByLabelText("Proyecto").parentElement).toHaveClass("sm:grid-cols-2");
     await userEvent.type(
       screen.getByLabelText("Contenido para aclarar"),
       "Idea pendiente de ordenar",
@@ -482,6 +494,87 @@ describe("command entry", () => {
     await userEvent.type(screen.getByLabelText("Contenido para aclarar"), "Nota personal");
     await userEvent.click(screen.getByRole("button", { name: "Guardar para aclarar" }));
     await waitFor(() => expect(mocks.createInbox).toHaveBeenCalledWith(expect.objectContaining({ raw_text: "Nota personal", source: "quick_capture" })));
+  });
+
+  it.each([
+    { canReadClients: false, canReadProjects: true, hidden: "Cliente", visible: "Proyecto" },
+    { canReadClients: true, canReadProjects: false, hidden: "Proyecto", visible: "Cliente" },
+  ])("does not query or offer unavailable context", async ({ canReadClients, canReadProjects, hidden, visible }) => {
+    mocks.canReadClients = canReadClients;
+    mocks.canReadProjects = canReadProjects;
+    mocks.createInbox.mockResolvedValue({ id: 3 });
+    const { clientsApi, projectsApi } = await import("@/lib/api");
+    show();
+    await userEvent.click(screen.getByRole("tab", { name: "Guardar para aclarar" }));
+
+    expect(await screen.findByLabelText(visible)).toBeInTheDocument();
+    expect(screen.queryByLabelText(hidden)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(visible).parentElement).toHaveClass(
+      canReadClients && canReadProjects ? "sm:grid-cols-2" : "sm:grid-cols-1",
+    );
+    expect(clientsApi.listAll).toHaveBeenCalledTimes(canReadClients ? 1 : 0);
+    expect(projectsApi.listAll).toHaveBeenCalledTimes(canReadProjects ? 1 : 0);
+    await userEvent.type(screen.getByLabelText("Contenido para aclarar"), "Nota personal");
+    await userEvent.click(screen.getByRole("button", { name: "Guardar para aclarar" }));
+    await waitFor(() => expect(mocks.createInbox).toHaveBeenCalled());
+  });
+
+  it("removes inaccessible context after permissions are revoked while capture is open", async () => {
+    mocks.createInbox.mockResolvedValue({ id: 3 });
+    const { clientsApi, projectsApi } = await import("@/lib/api");
+    vi.mocked(clientsApi.listAll).mockResolvedValue([{ id: 12, name: "Cliente visible" }] as never);
+    vi.mocked(projectsApi.listAll).mockResolvedValue([{ id: 31, name: "Proyecto visible", client_id: 12 }] as never);
+    const view = show();
+    await userEvent.click(screen.getByRole("tab", { name: "Guardar para aclarar" }));
+    await screen.findByRole("option", { name: "Cliente visible" });
+    await userEvent.selectOptions(screen.getByLabelText("Cliente"), "12");
+    await userEvent.selectOptions(screen.getByLabelText("Proyecto"), "31");
+
+    mocks.canReadClients = false;
+    mocks.canReadProjects = false;
+    view.rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter><QuickCaptureDialog open onOpenChange={vi.fn()} /></MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Cliente")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Proyecto")).not.toBeInTheDocument();
+    });
+    expect(clientsApi.listAll).toHaveBeenCalledTimes(1);
+    expect(projectsApi.listAll).toHaveBeenCalledTimes(1);
+    await userEvent.type(screen.getByLabelText("Contenido para aclarar"), "Nota personal");
+    await userEvent.click(screen.getByRole("button", { name: "Guardar para aclarar" }));
+    await waitFor(() => expect(mocks.createInbox).toHaveBeenCalled());
+    expect(mocks.createInbox.mock.calls.at(-1)?.[0]).not.toHaveProperty("client_id");
+    expect(mocks.createInbox.mock.calls.at(-1)?.[0]).not.toHaveProperty("project_id");
+  });
+
+  it("clears selected context when the active identity changes", async () => {
+    mocks.createInbox.mockResolvedValue({ id: 3 });
+    const { clientsApi, projectsApi } = await import("@/lib/api");
+    vi.mocked(clientsApi.listAll).mockResolvedValue([{ id: 12, name: "Cliente de la sesión" }] as never);
+    vi.mocked(projectsApi.listAll).mockResolvedValue([{ id: 31, name: "Proyecto de la sesión", client_id: 12 }] as never);
+    const view = show();
+    await userEvent.click(screen.getByRole("tab", { name: "Guardar para aclarar" }));
+    await screen.findByRole("option", { name: "Cliente de la sesión" });
+    await userEvent.selectOptions(screen.getByLabelText("Cliente"), "12");
+    await userEvent.selectOptions(screen.getByLabelText("Proyecto"), "31");
+
+    mocks.userId = 8;
+    view.rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter><QuickCaptureDialog open onOpenChange={vi.fn()} /></MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Cliente")).toHaveValue("");
+      expect(screen.getByLabelText("Proyecto")).toHaveValue("");
+    });
+    expect(clientsApi.listAll).toHaveBeenCalledTimes(2);
+    expect(projectsApi.listAll).toHaveBeenCalledTimes(2);
   });
 
   it("loads linked query results without inferring the total", async () => {
