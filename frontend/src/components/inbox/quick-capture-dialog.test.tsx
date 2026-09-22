@@ -17,14 +17,18 @@ const mocks = vi.hoisted(() => ({
   createInbox: vi.fn(),
   userId: 7,
   canReadTasks: true,
+  canWriteTasks: true,
+  canWriteProjects: true,
+  canWriteTime: true,
   canReadClients: true,
   canReadProjects: true,
 }));
 vi.mock("@/context/auth-context", () => ({
-  useAuth: () => ({ user: { id: mocks.userId }, hasPermission: (module: string) => ({
-    tasks: mocks.canReadTasks,
+  useAuth: () => ({ user: { id: mocks.userId }, hasPermission: (module: string, write?: boolean) => ({
+    tasks: write ? mocks.canWriteTasks : mocks.canReadTasks,
+    projects: write ? mocks.canWriteProjects : mocks.canReadProjects,
+    timesheet: write ? mocks.canWriteTime : true,
     clients: mocks.canReadClients,
-    projects: mocks.canReadProjects,
   })[module] ?? true }),
 }));
 vi.mock("@/lib/api", () => ({
@@ -83,6 +87,9 @@ describe("command entry", () => {
     vi.clearAllMocks();
     mocks.userId = 7;
     mocks.canReadTasks = true;
+    mocks.canWriteTasks = true;
+    mocks.canWriteProjects = true;
+    mocks.canWriteTime = true;
     mocks.canReadClients = true;
     mocks.canReadProjects = true;
     mocks.listCommands.mockResolvedValue({
@@ -382,6 +389,44 @@ describe("command entry", () => {
     expect(await screen.findByText("Consulta recuperada")).toBeInTheDocument();
   });
 
+  it("does not show a previous identity's recent commands while the identity changes", async () => {
+    mocks.listCommands.mockImplementation(() => Promise.resolve({
+      items: [{
+        ...baseReceipt,
+        id: `receipt-${mocks.userId}`,
+        status: "executed",
+        change_log_id: null,
+        result: {
+          message: mocks.userId === 7 ? "Consulta de la sesión anterior" : "Consulta de la sesión actual",
+          entities: [],
+          undo_available: false,
+        },
+      }],
+      total: 1,
+      page: 1,
+      page_size: 5,
+      has_more: false,
+    }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter><QuickCaptureDialog open onOpenChange={vi.fn()} /></MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await screen.findByText("Consulta de la sesión anterior");
+
+    mocks.userId = 8;
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <MemoryRouter><QuickCaptureDialog open onOpenChange={vi.fn()} /></MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("Consulta de la sesión actual");
+    expect(screen.queryByText("Consulta de la sesión anterior")).not.toBeInTheDocument();
+    expect(mocks.listCommands).toHaveBeenCalledTimes(2);
+  });
+
   it("retries a terminal failure as a new app request and keeps editing separate", async () => {
     const historical = {
       ...baseReceipt,
@@ -486,14 +531,78 @@ describe("command entry", () => {
     );
   });
 
+  it("starts a task reader in capture, while retaining authorized work queries", async () => {
+    mocks.canReadTasks = true;
+    mocks.canWriteTasks = false;
+    mocks.canWriteProjects = false;
+    mocks.canWriteTime = false;
+    mocks.createInbox.mockResolvedValue({ id: 3 });
+    show();
+    expect(screen.getByRole("tab", { name: "Guardar para aclarar" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText("Contenido para aclarar")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "Pedir una acción" }));
+    expect(screen.getByLabelText("Petición")).toHaveAttribute("placeholder", "Ej. Consulta prioridades o consulta bloqueos");
+    expect(screen.queryByText('Completa la tarea "Preparar propuesta"')).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Petición"), "Completa la tarea Prohibida");
+    expect(screen.getByRole("button", { name: "Consultar" })).toBeDisabled();
+    await userEvent.clear(screen.getByLabelText("Petición"));
+    await userEvent.type(screen.getByLabelText("Petición"), "Consulta prioridades");
+    expect(screen.getByRole("button", { name: "Consultar" })).toBeEnabled();
+    await userEvent.clear(screen.getByLabelText("Petición"));
+    await userEvent.type(screen.getByLabelText("Petición"), "Consulta decisiones pendientes");
+    expect(screen.getByRole("button", { name: "Consultar" })).toBeEnabled();
+  });
+
+  it("clears a write command and returns to capture when writing is revoked", async () => {
+    const view = show();
+    await userEvent.type(screen.getByLabelText("Petición"), "Completa la tarea Prohibida");
+    mocks.canWriteTasks = false;
+    mocks.canWriteProjects = false;
+    mocks.canWriteTime = false;
+    view.rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter><QuickCaptureDialog open onOpenChange={vi.fn()} /></MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByLabelText("Contenido para aclarar")).toBeInTheDocument());
+    expect(screen.queryByLabelText("Petición")).not.toBeInTheDocument();
+  });
+
+  it("describes project-only commands without promising task changes", () => {
+    mocks.canReadTasks = true;
+    mocks.canWriteTasks = false;
+    mocks.canWriteProjects = true;
+    mocks.canWriteTime = false;
+    show();
+    expect(screen.getByLabelText("Petición")).toHaveAttribute("placeholder", 'Ej. Crea proyecto "Web nueva" para cliente "Nombre del cliente"');
+    expect(screen.getByText("Puedes crear proyectos. Las tareas y el tiempo requieren sus permisos de escritura.")).toBeInTheDocument();
+  });
+
   it("keeps personal capture available without tasks permission", async () => {
     mocks.canReadTasks = false;
+    mocks.canWriteTasks = false;
+    mocks.canWriteProjects = false;
+    mocks.canWriteTime = false;
     mocks.createInbox.mockResolvedValue({ id: 3 });
     show();
     await userEvent.click(screen.getByRole("tab", { name: "Guardar para aclarar" }));
     await userEvent.type(screen.getByLabelText("Contenido para aclarar"), "Nota personal");
     await userEvent.click(screen.getByRole("button", { name: "Guardar para aclarar" }));
     await waitFor(() => expect(mocks.createInbox).toHaveBeenCalledWith(expect.objectContaining({ raw_text: "Nota personal", source: "quick_capture" })));
+  });
+
+  it("keeps the decisions query available without task access", async () => {
+    mocks.canReadTasks = false;
+    mocks.canWriteTasks = false;
+    mocks.canWriteProjects = false;
+    mocks.canWriteTime = false;
+    show();
+    await userEvent.click(screen.getByRole("tab", { name: "Pedir una acción" }));
+    await userEvent.type(screen.getByLabelText("Petición"), "Consulta decisiones pendientes");
+    expect(screen.getByRole("button", { name: "Consultar" })).toBeEnabled();
+    await userEvent.clear(screen.getByLabelText("Petición"));
+    await userEvent.type(screen.getByLabelText("Petición"), "Crea tarea Prohibida");
+    expect(screen.getByRole("button", { name: "Consultar" })).toBeDisabled();
   });
 
   it.each([

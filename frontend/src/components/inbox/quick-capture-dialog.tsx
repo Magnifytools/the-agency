@@ -142,7 +142,13 @@ function appliedValue(
 }
 
 export function QuickCaptureDialog({ open, onOpenChange }: Props) {
-  const [mode, setMode] = useState<Mode>("command");
+  const { user, hasPermission } = useAuth();
+  const canReadTasks = isEnabled("tasks") && hasPermission("tasks");
+  const canWriteTasks = isEnabled("tasks") && hasPermission("tasks", true);
+  const canWriteProjects = isEnabled("projects") && hasPermission("projects", true);
+  const canWriteTime = isEnabled("timesheet") && hasPermission("timesheet", true);
+  const canUseMutatingCommands = canWriteTasks || canWriteProjects || (canWriteTime && canReadTasks);
+  const [mode, setMode] = useState<Mode>(() => canUseMutatingCommands ? "command" : "capture");
   const [text, setText] = useState("");
   const [receipt, setReceipt] = useState<CommandReceipt | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -166,7 +172,6 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   const [activeGeneration, setActiveGeneration] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const queryClient = useQueryClient();
-  const { user, hasPermission } = useAuth();
   const canReadClients = isEnabled("clients") && hasPermission("clients");
   const canReadProjects = isEnabled("projects") && hasPermission("projects");
 
@@ -191,7 +196,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     enabled: open && mode === "capture" && canReadProjects,
   });
   const { data: recentCommands } = useQuery({
-    queryKey: ["commands", "recent"],
+    queryKey: ["commands", "recent", user?.id ?? 0],
     queryFn: () => commandsApi.list(1, 5),
     enabled: open && mode === "command" && !receipt,
     staleTime: 15_000,
@@ -401,10 +406,23 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     if (previousCaptureAccessKey.current === captureAccessKey) return;
     previousCaptureAccessKey.current = captureAccessKey;
     selectedContextOwnerId.current = user?.id;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- A revoked permission or changed identity invalidates local entity IDs.
     setClientId("");
     setProjectId("");
   }, [captureAccessKey, user?.id]);
+
+  const commandAccessKey = `${user?.id ?? "anonymous"}:${canReadTasks}:${canWriteTasks}:${canWriteProjects}:${canWriteTime}`;
+  const previousCommandAccessKey = useRef(commandAccessKey);
+  useEffect(() => {
+    if (previousCommandAccessKey.current === commandAccessKey) return;
+    previousCommandAccessKey.current = commandAccessKey;
+    invalidateCommand();
+    setText("");
+    // A revoked write permission returns people to their personal capture; the
+    // command tab remains available for their authorized queries.
+    if (!canUseMutatingCommands) setMode("capture");
+    // `invalidateCommand` intentionally uses the current generation/ref state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commandAccessKey, canUseMutatingCommands]);
 
   const resetCommand = () => {
     invalidateCommand();
@@ -460,6 +478,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     replaceReceipt(item);
   };
   const submitCommand = () => {
+    if (!canSubmitCommand) return;
     const target: CommandTarget = {
       generation: commandGeneration.current,
       request: {
@@ -501,9 +520,42 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     setMode(next);
   };
   const handleOpenChange = (next: boolean) => {
-    if (!next) invalidateCommand();
+    if (!next) {
+      invalidateCommand();
+      setMode(canUseMutatingCommands ? "command" : "capture");
+    }
     onOpenChange(next);
   };
+
+  const normalizedCommand = text.trim().replace(/^¿\s*/, "").toLocaleLowerCase("es");
+  // Readers get a deliberately small query-only entry point. Mutation parsing
+  // stays on the server, which remains the authority for every write.
+  const isDecisionQuery = /^(?:consulta|muestra|qué|que).*\bdecisiones\b/.test(normalizedCommand)
+    || ["qué necesita respuesta mía", "que necesita respuesta mía", "qué necesita mi respuesta", "que necesita mi respuesta"].includes(normalizedCommand);
+  const isTaskQuery = /^(?:consulta|muestra|qué|que).*\b(?:prioridades|prioridad|bloqueos|bloqueadas|esperando)\b/.test(normalizedCommand);
+  const canSubmitCommand = canUseMutatingCommands || isDecisionQuery || (canReadTasks && isTaskQuery);
+  const commandPlaceholder = canWriteProjects && canWriteTasks
+    ? "Ej. Completa la tarea Revisar portada, crea una tarea o consulta bloqueos"
+    : canWriteTasks
+    ? "Ej. Completa la tarea Revisar portada o crea una tarea"
+    : canWriteProjects
+    ? "Ej. Crea proyecto \"Web nueva\" para cliente \"Nombre del cliente\""
+    : canWriteTime && canReadTasks
+    ? "Ej. Registra 30 minutos en la tarea Revisar portada"
+    : canReadTasks
+    ? "Ej. Consulta prioridades o consulta bloqueos"
+    : "Ej. Consulta decisiones pendientes";
+  const commandHelp = canWriteProjects && canWriteTasks
+    ? "Las acciones simples muestran un recibo con Deshacer. Si creas un proyecto con su primera tarea, revisarás ambos antes de guardarlos."
+    : canWriteTasks
+    ? "Puedes crear y actualizar tareas. Los proyectos y el tiempo requieren sus permisos de escritura."
+    : canWriteProjects
+    ? "Puedes crear proyectos. Las tareas y el tiempo requieren sus permisos de escritura."
+    : canWriteTime && canReadTasks
+    ? "Puedes registrar tiempo en tareas que puedas consultar. Crear o actualizar tareas requiere su permiso de escritura."
+    : canReadTasks
+    ? "Puedes consultar prioridades y bloqueos. Para cambiar trabajo, guarda una nota para aclarar o pide acceso de escritura."
+    : "Puedes consultar tus decisiones pendientes. Para cambiar trabajo, guarda una nota para aclarar o pide acceso de escritura.";
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -550,7 +602,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                       submitCommand();
                     }
                   }}
-                  placeholder="Ej. Completa la tarea Revisar portada, crea una tarea o consulta bloqueos"
+                  placeholder={commandPlaceholder}
                   className="min-h-28 resize-none"
                   disabled={isPending || networkUncertain}
                   aria-label="Petición"
@@ -580,26 +632,27 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                 )}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs text-muted-foreground">
-                    Las acciones simples muestran un recibo con Deshacer. Si creas un proyecto con su primera tarea, revisarás ambos antes de guardarlos.
+                    {commandHelp}
                   </p>
                   <Button
                     onClick={submitCommand}
-                    disabled={!text.trim() || isPending || networkUncertain}
+                    disabled={!text.trim() || !canSubmitCommand || isPending || networkUncertain}
                   >
                     {isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <Zap className="h-4 w-4" />
                     )}
-                    Hacer
+                    {canUseMutatingCommands ? "Hacer" : "Consultar"}
                   </Button>
                 </div>
                 <details className="rounded-lg border border-border p-3 text-sm">
                   <summary className="cursor-pointer font-medium">Ver ejemplos de peticiones</summary>
                   <ul className="mt-2 space-y-2 text-muted-foreground">
-                    <li>Crea proyecto "Web nueva" para cliente "Nombre del cliente" con primera tarea "Preparar propuesta" para mañana</li>
                     <li>Consulta decisiones pendientes</li>
-                    <li>Completa la tarea "Preparar propuesta"</li>
+                    {canReadTasks && <><li>Consulta prioridades</li><li>Consulta bloqueos</li></>}
+                    {canWriteProjects && <li>Crea proyecto "Web nueva" para cliente "Nombre del cliente"</li>}
+                    {canWriteTasks && <li>Completa la tarea "Preparar propuesta"</li>}
                   </ul>
                   <p className="mt-2 text-xs text-muted-foreground">Sustituye los nombres por los de tu trabajo. Las comillas separan los nombres del resto de la petición.</p>
                 </details>
