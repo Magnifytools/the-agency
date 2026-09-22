@@ -1,6 +1,6 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-22T13:31:36Z",
+  "ultima_actualizacion": "2026-09-22T14:50:50Z",
   "estado_general": "produccion_p73_p77_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
@@ -459,9 +459,10 @@
     "P70: PR105/cb2f260 publicada: el silencio horario elige la segunda ocurrencia válida de 02:30 Madrid cuando el reloj retrocede, sin liberar un aviso a las segundas 02:15. Dos regresiones puras rojas antes; cinco focales puras/PostgreSQL verdes después. Seis gates CI PR/main 35702072989/35706791876, Railway c49392c0-1024-462a-9c2d-a1d9bb61c21c SUCCESS, /api/ready exacto y web 200. Ningún mensaje de prueba enviado.",
     "P71: PR104/2e79a2e publicada: Título, Cliente y Proyecto de Crear tarea rápida tienen nombre programático asociado al control. Regresión DOM, seis gates CI PR/main 35701953415/35702635344, Railway 983920f2-a003-4766-b54e-7e2eee226ee5 SUCCESS y /api/ready exacto. Visual autenticada con lector de pantalla pendiente; sin tarea productiva de prueba.",
     "P72: PR107/73b3f2e publicada: un error reconocido al cargar un módulo lazy ofrece Recargar página y recarga el documento; excepciones normales conservan Reintentar local. Siete regresiones focales y seis gates CI PR/main 35724408853/35725140409 verdes. Railway 4c6f68f5-e274-4903-9fa1-b15059eee54e SUCCESS, /api/ready exacto con esquema 20260921_usage_origin_v1 y web 200. La captura autenticada anterior mostró un error transitorio, pero no existe traza JS que lo atribuya a un módulo; falta aceptación interactiva posterior. Sin escritura productiva de prueba.",
-    "P73–P77: PR109/17895d5 publicada. Timer recupera capturas directas propias, cierre diario agrupa y admite edición previa al envío, estados con color, y digest explica política ausente de FG. Extensión firmada 2.2.3 conserva ID. Seis gates CI PR/main 35732414555/35733216968, Railway 5a66ed2c-9d4b-4e0f-8f5f-18cc6439a4bc SUCCESS, /api/ready exacto y web 200. FG requiere elección de responsable para crear política sin activación periódica; aceptación humana pendiente. Sin mensajes ni trabajo productivo de prueba."
+    "P73–P77: PR109/17895d5 publicada. Timer recupera capturas directas propias, cierre diario agrupa y admite edición previa al envío, estados con color, y digest explica política ausente de FG. Extensión firmada 2.2.3 conserva ID. Seis gates CI PR/main 35732414555/35733216968, Railway 5a66ed2c-9d4b-4e0f-8f5f-18cc6439a4bc SUCCESS, /api/ready exacto y web 200. Al publicarse aún faltaba configurar la política FG; la asignación posterior a Nacho consta en la nota siguiente. Aceptación humana pendiente. Sin mensajes ni trabajo productivo de prueba.",
+    "P74: David eligió a Nacho para FG. Política semanal revisión 1 creada en producción con Nacho responsable y preparación periódica desactivada. Cuenta activa y permiso digests.write verificados; versiones históricas conservadas. La generación individual queda elegible, pendiente de su primer uso real. No se creó un digest ni se envió mensaje de prueba."
   ],
-  "proximos_pasos": "Asignar responsable del digest de FG (Nacho o David) y comprobar generación con uso real, sin crear digest de prueba. Validar con David y Nacho seis recorridos reales, incluida captura directa, edición de tarea/horas y cierre del día. Las dos cuentas deben reconectar Google Calendar y comprobar una reunión fresca. Observar el primer informe semanal ordinario del 26 de septiembre y su recibo, sin mensaje de prueba. Elegir propietarios de tres proyectos activos y revisar 19 tareas candidatas antes de cambiar datos. Revisar resúmenes históricos ambiguos y decidir avisos de cobro y canal entrante según uso. Véase docs/estado-implantacion-2026-09-21.md.",
+  "proximos_pasos": "Comprobar con Nacho la primera generación real del digest de FG, sin crear digest de prueba. Validar con David y Nacho seis recorridos reales, incluida captura directa, edición de tarea/horas y cierre del día. Las dos cuentas deben reconectar Google Calendar y comprobar una reunión fresca. Observar el primer informe semanal ordinario del 26 de septiembre y su recibo, sin mensaje de prueba. Elegir propietarios de tres proyectos activos y revisar 19 tareas candidatas antes de cambiar datos. Revisar resúmenes históricos ambiguos y decidir avisos de cobro y canal entrante según uso. Véase docs/estado-implantacion-2026-09-21.md.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
@@ -475,5 +476,5 @@
     "healthcheck": "/api/ready",
     "schema_revision": "20260921_usage_origin_v1"
   },
-  "pendiente_david": "Elegir responsable para los resúmenes de FG; cada propietario debe reconectar Calendar; realizar con Nacho la sesión de tareas reales. Confirmar recepción del informe semanal ordinario el 26 de septiembre y decidir propietarios de tres proyectos, revisión histórica, avisos de cobro y canal. No se han hecho envíos de prueba."
+  "pendiente_david": "Comprobar con Nacho la primera generación real de FG; cada propietario debe reconectar Calendar; realizar con Nacho la sesión de tareas reales. Confirmar recepción del informe semanal ordinario el 26 de septiembre y decidir propietarios de tres proyectos, revisión histórica, avisos de cobro y canal. No se han hecho envíos de prueba."
 }
