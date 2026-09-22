@@ -64,7 +64,8 @@ it("cannot retry a persisted individual request after write permission is revoke
   mocks.auth.write = false
   mocks.api.recoverGeneration.mockRejectedValueOnce({ response: { status: 404 } })
   setup()
-  expect(await screen.findByRole("button", { name: "Reintentar la misma solicitud" })).toBeDisabled()
+  expect(await screen.findByText(/Todavía no hay una versión confirmada/)).toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Reintentar la misma solicitud" })).not.toBeInTheDocument()
   expect(mocks.api.generate).not.toHaveBeenCalled()
 })
 it("late preview A cannot appear under B and only the current format wins", async () => {
@@ -118,13 +119,15 @@ it("an old session cannot put its render in the new user's dialog", async () => 
   await act(async () => {old({rendered: "Old identity"})})
   expect(screen.queryByText("Old identity")).not.toBeInTheDocument()
 })
-it("read-only history allows copying but disables writes and internal sharing", async () => {
+it("read-only history allows consultation and copying without dead write controls", async () => {
   mocks.auth.write = false
   setup(); await screen.findByRole("cell", {name: "Acme"})
   expect(screen.queryByRole("button", {name: "Preparar uno"})).not.toBeInTheDocument()
   expect(screen.getAllByTitle("Consultar versión")[0]).not.toBeDisabled()
-  expect(screen.getAllByTitle("Discord (interno)")[0]).toBeDisabled()
-  expect(screen.getByLabelText("Estado histórico de versión #10")).toBeDisabled()
+  expect(screen.queryByTitle("Discord (interno)")).not.toBeInTheDocument()
+  expect(screen.queryByLabelText("Estado histórico de versión #10")).not.toBeInTheDocument()
+  expect(within(screen.getAllByRole("cell", {name: "Acme"})[0].closest("tr")!).getByText("Borrador")).toBeInTheDocument()
+  expect(screen.getByText("Abre una versión para consultar su texto y sus fuentes.")).toBeInTheDocument()
   fireEvent.click(screen.getAllByTitle("Vista previa")[0])
   await screen.findByText("Rendered")
   expect(within(screen.getByRole("dialog")).getByRole("button", {name: "Copiar"})).not.toBeDisabled()
