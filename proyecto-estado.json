@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-22T02:19:36Z",
-  "estado_general": "produccion_p61_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-22T03:14:00Z",
+  "estado_general": "produccion_p63_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -447,7 +447,9 @@
     "P58: PR86/3c4f191 publicada: Actividad aplica una condición SQL compartida de permiso actual y entidad existente antes de paginar en lista, contador y marcado de lectura. 25 pruebas PostgreSQL/API dirigidas y 1426 backend (2 omitidas); seis gates CI de PR/main (35673700274/35674593547) y Railway 65c24185-b15b-4eb7-8956-04cd975d4f16 con /api/ready exacto. Ningún dato real modificado.",
     "P59: PR87/338122f publicada: Resúmenes presenta contenido y vista previa de consulta a digests.read, sin mutaciones ni controles de cohorte inertes; el escritor conserva su flujo. 527 pruebas frontend, 46 focales tras rebase, build/lint y visual sintética de lector/editor 1440/390 correctos, sin escritura productiva. Seis gates de CI de PR/main (35674776530/35675225852) correctos. Railway 74cb6b8a-cf0b-4bb3-88f4-bef59bd9001a SUCCESS y /api/ready exacto con esquema 20260921_usage_origin_v1; frontend HTTP 200.",
     "P60: PR89/645d111 publicada: historial manual filtra el ámbito de origen según permiso actual antes de LIMIT y no revela antiguos briefings de equipo a un administrador degradado. Regresión PostgreSQL roja antes y 19 focales/1427 backend (2 omitidas) después; seis gates CI de PR/main (35677041454/35677492213) verdes. Railway 92db96a6-9da8-415d-ac70-3d7f0d2acc58 SUCCESS y /api/ready exacto. Sin envíos ni cambios de datos productivos de prueba.",
-    "P61: PR90/b8ceee0 publicada: captura para aclarar consulta y muestra sólo Clientes/Proyectos legibles, limpia selecciones al revocar permiso o cambiar identidad y omite IDs sin acceso. 22 pruebas UI focales, 531 frontend antes del ajuste visual final, build/lint focal y visual sintética 1440/390 correctos. Seis gates CI de PR/main (35678160581/35678600204) verdes. Railway 43597428-8d58-427c-9442-101acbf8db66 SUCCESS y /api/ready exacto con esquema vigente; web HTTP 200. Ninguna nota real creada para la prueba."
+    "P61: PR90/b8ceee0 publicada: captura para aclarar consulta y muestra sólo Clientes/Proyectos legibles, limpia selecciones al revocar permiso o cambiar identidad y omite IDs sin acceso. 22 pruebas UI focales, 531 frontend antes del ajuste visual final, build/lint focal y visual sintética 1440/390 correctos. Seis gates CI de PR/main (35678160581/35678600204) verdes. Railway 43597428-8d58-427c-9442-101acbf8db66 SUCCESS y /api/ready exacto con esquema vigente; web HTTP 200. Ninguna nota real creada para la prueba.",
+    "P62: PR92/789045a publicada: avisos task_assigned reflejan responsable vigente y último ciclo sin borrar historial. 11 PostgreSQL/API focales, 1428 backend (2 omitidas), seis gates PR/main (35680880321/35681255521), Railway 5ff9d70f-0f44-40cb-864f-9d733cf7e599 SUCCESS y /api/ready exacto. Ninguna tarea real reasignada para probar.",
+    "P63: PR93/8db80dd publicada: Añadir propone captura y consultas acordes a permisos de proyecto/tarea/tiempo, limpia orden/caché al revocar o cambiar identidad; API conserva 403. 27 UI focales, 536 frontend, build/lint focal, visual sintética 1440/390; seis gates CI PR/main (35681454999/35681959105) verdes. Railway eb6a1117-4e5c-4e05-885c-0b0a45915319 SUCCESS y /api/ready exacto; web 200. Ningún comando productivo de prueba."
   ],
   "proximos_pasos": "Validar con David y Nacho seis recorridos reales de uso en cuentas propias, incluida alta, cierre de tarea, captura ambigua y resumen. Las dos cuentas activas deben reconectar Google Calendar y comprobar una reunión fresca. La política semanal está activa para el ID confirmado de David; comprobar el primer envío ordinario del 26 de septiembre y su recibo, sin mensaje de prueba. Elegir responsables para los tres proyectos activos y revisar las 19 tareas candidatas del corte privado 22-09 antes de cambiar datos. Revisar los resúmenes históricos ambiguos con evidencia, decidir si incorporar avisos de cobro con vínculo factura-cliente y responsable reales, y si hace falta un canal entrante aparte de app/extensión. Véase docs/estado-implantacion-2026-09-21.md.",
   "bloqueadores": "",
@@ -459,7 +461,7 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "b8ceee07507d4407e2630b115e2e9fa7db5e519d",
+    "revision": "8db80dd5a49350122c276a7f23a65278ecf1acc0",
     "healthcheck": "/api/ready",
     "schema_revision": "20260921_usage_origin_v1"
   },
