@@ -129,6 +129,58 @@ async def test_archived_project_blocks_restore_template_activation_and_timer(
     )) == 0
 
 
+async def test_timer_eligible_list_hides_own_tasks_in_archived_projects(
+    admin_client, db_session,
+):
+    active_client, active_project = await _project(db_session)
+    _completed_client, completed_project = await _project(
+        db_session, status=ProjectStatus.completed,
+    )
+    _cancelled_client, cancelled_project = await _project(
+        db_session, status=ProjectStatus.cancelled,
+    )
+    actor_id = admin_client.test_user.id
+    active_task = await _task(db_session, active_project, actor_id, assigned_to=actor_id)
+    completed_task = await _task(db_session, completed_project, actor_id, assigned_to=actor_id)
+    cancelled_task = await _task(db_session, cancelled_project, actor_id, assigned_to=actor_id)
+    projectless_task = Task(
+        title=f"Projectless timer task {uuid4().hex[:8]}",
+        client_id=active_client.id,
+        created_by=actor_id,
+        assigned_to=actor_id,
+        status=TaskStatus.pending,
+        priority=TaskPriority.medium,
+    )
+    db_session.add(projectless_task)
+    await db_session.flush()
+
+    selector_params = {
+        "assigned_to": "me",
+        "status": "backlog,pending,in_progress,advanced,waiting,in_review",
+        "is_recurring": "false",
+        "timer_eligible": "true",
+        "page_size": 100,
+    }
+    eligible = await admin_client.get("/api/tasks", params=selector_params)
+    assert eligible.status_code == 200, eligible.text
+    assert {item["id"] for item in eligible.json()["items"]} == {
+        active_task.id, projectless_task.id,
+    }
+    assert eligible.json()["total"] == 2
+
+    unfiltered = await admin_client.get("/api/tasks", params={
+        key: value for key, value in selector_params.items() if key != "timer_eligible"
+    })
+    assert unfiltered.status_code == 200, unfiltered.text
+    assert {item["id"] for item in unfiltered.json()["items"]} == {
+        active_task.id, completed_task.id, cancelled_task.id, projectless_task.id,
+    }
+
+    blocked = await admin_client.post("/api/timer/start", json={"task_id": completed_task.id})
+    assert blocked.status_code == 409
+    assert "Reabre el proyecto" in blocked.json()["detail"]
+
+
 async def test_closed_time_correction_remains_allowed_in_archived_project(
     admin_client, db_session,
 ):
