@@ -389,6 +389,44 @@ describe("command entry", () => {
     expect(await screen.findByText("Consulta recuperada")).toBeInTheDocument();
   });
 
+  it("does not show a previous identity's recent commands while the identity changes", async () => {
+    mocks.listCommands.mockImplementation(() => Promise.resolve({
+      items: [{
+        ...baseReceipt,
+        id: `receipt-${mocks.userId}`,
+        status: "executed",
+        change_log_id: null,
+        result: {
+          message: mocks.userId === 7 ? "Consulta de la sesión anterior" : "Consulta de la sesión actual",
+          entities: [],
+          undo_available: false,
+        },
+      }],
+      total: 1,
+      page: 1,
+      page_size: 5,
+      has_more: false,
+    }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter><QuickCaptureDialog open onOpenChange={vi.fn()} /></MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await screen.findByText("Consulta de la sesión anterior");
+
+    mocks.userId = 8;
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <MemoryRouter><QuickCaptureDialog open onOpenChange={vi.fn()} /></MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("Consulta de la sesión actual");
+    expect(screen.queryByText("Consulta de la sesión anterior")).not.toBeInTheDocument();
+    expect(mocks.listCommands).toHaveBeenCalledTimes(2);
+  });
+
   it("retries a terminal failure as a new app request and keeps editing separate", async () => {
     const historical = {
       ...baseReceipt,
