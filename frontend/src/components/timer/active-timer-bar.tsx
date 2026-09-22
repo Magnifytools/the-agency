@@ -416,8 +416,9 @@ function TimerBar() {
           </DialogHeader>
           <DialogContent>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Título *</label>
+              <label htmlFor="timer-quick-create-title" className="text-sm text-muted-foreground mb-1 block">Título *</label>
               <Input
+                id="timer-quick-create-title"
                 value={qcTitle}
                 onChange={(e) => setQcTitle(e.target.value)}
                 placeholder="Nombre de la tarea"
@@ -425,8 +426,8 @@ function TimerBar() {
               />
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Cliente *</label>
-              <Select value={qcClientId} onChange={(e) => setQcClientId(e.target.value)}>
+              <label htmlFor="timer-quick-create-client" className="text-sm text-muted-foreground mb-1 block">Cliente *</label>
+              <Select id="timer-quick-create-client" value={qcClientId} onChange={(e) => setQcClientId(e.target.value)}>
                 <option value="">Selecciona cliente</option>
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -437,7 +438,7 @@ function TimerBar() {
             </div>
             {qcClientId && (
               <div>
-                <label className="text-sm text-muted-foreground mb-1 block">
+                <label htmlFor="timer-quick-create-project" className="text-sm text-muted-foreground mb-1 block">
                   Proyecto
                   {qcProjects.length === 0 && (
                     <span className="ml-1 text-xs text-muted-foreground/70">
@@ -449,6 +450,7 @@ function TimerBar() {
                   )}
                 </label>
                 <Select
+                  id="timer-quick-create-project"
                   value={qcProjectId}
                   onChange={(e) => setQcProjectId(e.target.value)}
                   disabled={qcProjects.length === 0}

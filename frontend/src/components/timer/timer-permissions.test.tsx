@@ -7,11 +7,11 @@ import { TimerButton } from "./timer-button"
 import { taskKeys } from "@/lib/query-keys"
 
 const mocks = vi.hoisted(() => ({
-  active: vi.fn(), start: vi.fn(), stop: vi.fn(), create: vi.fn(), tasks: vi.fn(), clients: vi.fn(), permission: vi.fn(),
+  active: vi.fn(), start: vi.fn(), stop: vi.fn(), create: vi.fn(), tasks: vi.fn(), clients: vi.fn(), projects: vi.fn(), permission: vi.fn(),
 }))
 vi.mock("@/context/auth-context", () => ({useAuth: () => ({user: {id: 2}, hasPermission: mocks.permission})}))
 vi.mock("@/lib/api", () => ({
-  timerApi: {active: mocks.active, start: mocks.start, stop: mocks.stop}, tasksApi: {listAll: mocks.tasks, create: mocks.create}, clientsApi: {listAll: mocks.clients}, projectsApi: {listAll: vi.fn().mockResolvedValue([])}, timeEntriesApi: {},
+  timerApi: {active: mocks.active, start: mocks.start, stop: mocks.stop}, tasksApi: {listAll: mocks.tasks, create: mocks.create}, clientsApi: {listAll: mocks.clients}, projectsApi: {listAll: mocks.projects}, timeEntriesApi: {},
 }))
 vi.mock("@/hooks/use-business-date", () => ({useBusinessDate: () => "2026-09-19"}))
 function setup() {
@@ -19,7 +19,7 @@ function setup() {
   const view = render(<QueryClientProvider client={client}><ActiveTimerBar /><TimerButton taskId={1} /></QueryClientProvider>)
   return { ...view, client }
 }
-beforeEach(() => {vi.resetAllMocks(); mocks.active.mockResolvedValue(null); mocks.tasks.mockResolvedValue([]); mocks.clients.mockResolvedValue([])})
+beforeEach(() => {vi.resetAllMocks(); mocks.active.mockResolvedValue(null); mocks.tasks.mockResolvedValue([]); mocks.clients.mockResolvedValue([]); mocks.projects.mockResolvedValue([])})
 it.each([false, true])("does not poll or offer timer writes without timesheet write permission (read=%s)", async read => {
   mocks.permission.mockImplementation((module, write) => module === "timesheet" && read && !write)
   const view = setup()
@@ -104,6 +104,21 @@ it("distinguishes a loading task selector from an empty one", async () => {
   const selector = await screen.findByRole("combobox", { name: "Tarea del cronómetro" })
   expect(selector).toBeDisabled()
   expect(within(selector).getByRole("option", { name: "Cargando tareas…" })).toBeInTheDocument()
+})
+
+it("labels quick-create fields for assistive technology", async () => {
+  mocks.permission.mockReturnValue(true)
+  mocks.clients.mockResolvedValue([{ id: 7, name: "Cliente" }])
+
+  setup()
+  await userEvent.click(await screen.findByRole("button", { name: "Crear tarea rápida" }))
+
+  const dialog = screen.getByRole("dialog", { name: "Crear tarea rápida" })
+  expect(within(dialog).getByLabelText("Título *")).toHaveAttribute("placeholder", "Nombre de la tarea")
+  const client = within(dialog).getByLabelText("Cliente *")
+  expect(client).toHaveValue("")
+  await userEvent.selectOptions(client, "7")
+  expect(await within(dialog).findByLabelText(/^Proyecto/)).toBeDisabled()
 })
 
 it("uses the same eligible task choices after stopping an unassigned timer", async () => {
