@@ -7,7 +7,7 @@ import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle, Tr
 import { DeliveryReceipts, deliveryToast } from "@/components/delivery-receipts"
 import { useAuth } from "@/context/auth-context"
 import { DigestCohort } from "@/components/digests/digest-cohort"
-import { reportPolicyKeys } from "@/lib/report-policy-api"
+import { reportPolicyApi, reportPolicyKeys } from "@/lib/report-policy-api"
 import { digestsApi, clientsApi, discordApi } from "@/lib/api"
 import type { Digest, DigestStatus, DigestTone } from "@/lib/types"
 import { clearDigestGeneration, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type IndividualDigestIntent } from "@/lib/digest-generation-recovery"
@@ -51,7 +51,7 @@ export default function DigestsPage() {
 }
 
 function DigestList() {
-  const { user, hasPermission } = useAuth()
+  const { user, isAdmin, hasPermission } = useAuth()
   const userId = user!.id
   const canWrite = hasPermission("digests", true)
   const canViewClients = hasPermission("clients")
@@ -124,6 +124,14 @@ function DigestList() {
     enabled: canViewClients,
     queryFn: () => clientsApi.listAll(),
   })
+
+  const selectedPolicy = useQuery({
+    queryKey: [...reportPolicyKeys.all, userId, selectedClientId],
+    queryFn: () => reportPolicyApi.getPolicy(Number(selectedClientId)),
+    enabled: generateOpen && !isAdmin && Boolean(selectedClientId) && !pendingIndividual,
+    retry: false,
+  })
+  const canGenerateForSelectedClient = isAdmin || Boolean(selectedPolicy.data?.configured && selectedPolicy.data.responsible_user_id === userId)
 
   const finishIndividualGeneration = (intent: IndividualDigestIntent) => {
     clearDigestGeneration(userId, intent.operation_key)
@@ -269,7 +277,7 @@ function DigestList() {
       generateMutation.mutate(pendingIndividual)
       return
     }
-    if (!selectedClientId) return
+    if (!selectedClientId || !canGenerateForSelectedClient) return
     if (Boolean(genPeriodStart) !== Boolean(genPeriodEnd) || (genPeriodStart && genPeriodEnd < genPeriodStart)) {
       toast.error("Indica las dos fechas en orden, o deja ambas vacías para usar la última semana cerrada.")
       return
@@ -545,6 +553,13 @@ function DigestList() {
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </Select>
+            {!isAdmin && selectedClientId && !pendingIndividual && (
+              selectedPolicy.isPending ? <p role="status" className="text-sm text-muted-foreground">Comprobando quién prepara este resumen…</p> :
+              !canGenerateForSelectedClient ? <div role="status" className="space-y-2 text-sm text-muted-foreground">
+                <p>{selectedPolicy.isError ? "No tienes asignada la preparación de este cliente, o no se pudo consultar su configuración." : "Este cliente necesita una política de resúmenes con tu usuario como responsable."} Pide a un administrador que lo revise en Cliente → Resúmenes.</p>
+                <Button size="sm" variant="outline" onClick={() => void selectedPolicy.refetch()}>Comprobar configuración de nuevo</Button>
+              </div> : null
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="individual-tone">Tono</Label>
@@ -580,7 +595,7 @@ function DigestList() {
           </div>
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="outline" onClick={() => setGenerateOpen(false)}>Cancelar</Button>
-            <Button onClick={handleGenerate} disabled={(!selectedClientId && !pendingIndividual) || generateMutation.isPending || generationStorageFailed}>
+            <Button onClick={handleGenerate} disabled={(!selectedClientId && !pendingIndividual) || (!pendingIndividual && !canGenerateForSelectedClient) || generateMutation.isPending || generationStorageFailed}>
               {generateMutation.isPending ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Generando...</>
               ) : (

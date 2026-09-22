@@ -15,6 +15,8 @@ from backend.db.models import (
     Task,
     TaskStatus,
     User,
+    UserPermission,
+    UserRole,
     WeeklyDigest,
 )
 from backend.services.digest_generation import generate_locked_digest, regenerate_digest
@@ -99,6 +101,76 @@ async def test_same_key_replays_and_new_key_creates_a_legitimate_version(
     assert first.json()["id"] == replay.json()["id"] != second.json()["id"]
     assert provider.await_count == 2
     assert "_generation" not in first.json()["raw_context"]
+
+
+async def test_member_can_generate_after_explicit_policy_setup(
+    admin_client, db_session, make_member_client
+):
+    member = await make_member_client([("digests", True, True)])
+    client = Client(name="Policy setup", status=ClientStatus.active)
+    db_session.add(client)
+    await db_session.flush()
+    client_id = client.id
+    member_id = member.test_user.id
+    await db_session.commit()
+    payload = {
+        "client_id": client_id,
+        "period_start": str(PERIOD[0]),
+        "period_end": str(PERIOD[1]),
+    }
+    missing = await member.post("/api/digests/generate", json={**payload, "generation_key": "missing-policy-key"})
+    assert missing.status_code == 409
+    assert missing.json()["detail"]["code"] == "policy_missing"
+    assert "administrador" in missing.json()["detail"]["message"]
+
+    configured = await admin_client.put(f"/api/digests/policies/{client_id}", json={
+        "enabled": True, "cadence": "weekly", "responsible_user_id": member_id, "revision": 0,
+    })
+    assert configured.status_code == 200, configured.text
+    assert configured.json()["revision"] == 1
+
+    with (
+        patch("backend.api.routes.digests.collect_digest_data", new_callable=AsyncMock, return_value=facts()),
+        patch("backend.api.routes.digests.generate_digest_content", new_callable=AsyncMock, return_value=generated()),
+    ):
+        created = await member.post("/api/digests/generate", json={**payload, "generation_key": "configured-policy-key"})
+    assert created.status_code == 200, created.text
+    assert created.json()["client_id"] == client_id
+    await member.aclose()
+
+
+async def test_individual_generation_rechecks_policy_revision_after_provider(engine):
+    async with AsyncSession(engine, expire_on_commit=False) as setup:
+        actor = User(email="digest-policy-race@test", full_name="Policy race", hashed_password="x", role=UserRole.member, is_active=True)
+        client = Client(name="Policy race", status=ClientStatus.active)
+        setup.add_all([actor, client])
+        await setup.flush()
+        setup.add_all([
+            UserPermission(user_id=actor.id, module="digests", can_read=True, can_write=True),
+            ClientReportPolicy(client_id=client.id, enabled=True, responsible_user_id=actor.id, revision=1),
+        ])
+        await setup.commit()
+        actor_id, client_id = actor.id, client.id
+
+    async def provider(*_args):
+        async with AsyncSession(engine) as concurrent:
+            await concurrent.execute(update(ClientReportPolicy).where(ClientReportPolicy.client_id == client_id).values(revision=2))
+            await concurrent.commit()
+        return generated()
+
+    async with AsyncSession(engine, expire_on_commit=False) as session:
+        with pytest.raises(Exception) as rejected:
+            await generate_locked_digest(
+                session, actor_id=actor_id, client_id=client_id,
+                period_start=PERIOD[0], period_end=PERIOD[1], tone=DigestTone.cercano,
+                generation_key="individual-policy-race-key", expected_revision=None,
+                require_enabled=False, reject_existing=False,
+                collector=AsyncMock(return_value=facts()), generator=provider,
+            )
+        assert getattr(rejected.value, "reason", None) == "policy_changed"
+        await session.rollback()
+    async with AsyncSession(engine) as verify:
+        assert await verify.scalar(select(func.count(WeeklyDigest.id)).where(WeeklyDigest.client_id == client_id)) == 0
 
 
 async def test_key_conflict_and_recovery_before_and_after_confirmation(

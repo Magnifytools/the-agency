@@ -3,9 +3,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { Link, MemoryRouter } from "react-router-dom"
 import { beforeEach, expect, it, vi } from "vitest"
 import DigestsPage from "./digests-page"
-const mocks = vi.hoisted(() => ({ api: {list: vi.fn(), render: vi.fn(), generate: vi.fn(), recoverGeneration: vi.fn(), updateStatus: vi.fn(), delete: vi.fn()}, clients: vi.fn(), send: vi.fn(), auth: { id: 1, write: true } }))
+const mocks = vi.hoisted(() => ({ api: {list: vi.fn(), render: vi.fn(), generate: vi.fn(), recoverGeneration: vi.fn(), updateStatus: vi.fn(), delete: vi.fn()}, clients: vi.fn(), policy: vi.fn(), send: vi.fn(), auth: { id: 1, write: true, admin: true } }))
 vi.mock("@/lib/api", () => ({digestsApi: mocks.api, clientsApi: {listAll: mocks.clients}, discordApi: {sendDigest: mocks.send}}))
-vi.mock("@/context/auth-context", () => ({useAuth: () => ({user: {id: mocks.auth.id}, isAdmin: true, hasPermission: (_module: string, write?: boolean) => !write || mocks.auth.write})}))
+vi.mock("@/lib/report-policy-api", () => ({reportPolicyApi: {getPolicy: mocks.policy}, reportPolicyKeys: {all: ["report-policy"], preview: ["digest-generation-preview"], external: ["digest-external-delivery"]}}))
+vi.mock("@/context/auth-context", () => ({useAuth: () => ({user: {id: mocks.auth.id}, isAdmin: mocks.auth.admin, hasPermission: (_module: string, write?: boolean) => !write || mocks.auth.write})}))
 vi.mock("@/components/digests/digest-cohort", () => ({DigestCohort: ({clientId, expectedPeriod}: {clientId?: number; expectedPeriod?: {start: string; end: string}}) => expectedPeriod ? <div>Período esperado {expectedPeriod.start} — {expectedPeriod.end} <Link to={`/digests?client_id=${clientId}`}>Ver períodos actuales</Link></div> : <div>Selección de clientes</div>}))
 vi.mock("@/components/delivery-receipts", () => ({DeliveryReceipts: ({sourceId}: {sourceId: number}) => <p>Recibos #{sourceId}</p>, deliveryToast: vi.fn()}))
 const source = {id: 10, client_id: 1, client_name: "Acme", status: "draft", can_delete: true, tone: "cercano", period_start: "2026-09-07", period_end: "2026-09-13", generated_at: null, created_by: 1}
@@ -14,7 +15,21 @@ function setup(route = "/digests") {
   const node = () => <QueryClientProvider client={client}><MemoryRouter initialEntries={[route]}><DigestsPage /></MemoryRouter></QueryClientProvider>
   return {...render(node()), node}
 }
-beforeEach(() => {vi.resetAllMocks(); localStorage.clear(); mocks.auth = {id: 1, write: true}; mocks.api.list.mockResolvedValue([source, {...source, id: 20, client_id: 2, client_name: "Other"}]); mocks.clients.mockResolvedValue([{id: 1, name: "Acme", status: "active", is_internal: false}]); mocks.api.render.mockResolvedValue({rendered: "Rendered"}); mocks.api.generate.mockResolvedValue({...source, id: 30}); mocks.send.mockResolvedValue({status: "pending"})})
+beforeEach(() => {vi.resetAllMocks(); localStorage.clear(); mocks.auth = {id: 1, write: true, admin: true}; mocks.api.list.mockResolvedValue([source, {...source, id: 20, client_id: 2, client_name: "Other"}]); mocks.clients.mockResolvedValue([{id: 1, name: "Acme", status: "active", is_internal: false}]); mocks.policy.mockResolvedValue({configured: true, responsible_user_id: 1}); mocks.api.render.mockResolvedValue({rendered: "Rendered"}); mocks.api.generate.mockResolvedValue({...source, id: 30}); mocks.send.mockResolvedValue({status: "pending"})})
+it("explains missing member policy and allows generation after configuration is rechecked", async () => {
+  mocks.auth.admin = false
+  mocks.policy.mockRejectedValueOnce({response: {status: 403}}).mockResolvedValue({configured: true, responsible_user_id: 1})
+  setup()
+  fireEvent.click(await screen.findByRole("button", {name: "Preparar uno"}))
+  fireEvent.change(screen.getByLabelText("Cliente"), {target: {value: "1"}})
+  expect(await screen.findByText(/Pide a un administrador que lo revise/)).toBeInTheDocument()
+  expect(screen.getByRole("button", {name: "Generar"})).toBeDisabled()
+  expect(mocks.api.generate).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole("button", {name: "Comprobar configuración de nuevo"}))
+  await waitFor(() => expect(screen.getByRole("button", {name: "Generar"})).toBeEnabled())
+  fireEvent.click(screen.getByRole("button", {name: "Generar"}))
+  await waitFor(() => expect(mocks.api.generate).toHaveBeenCalledWith(expect.objectContaining({client_id: 1})))
+}, 15000)
 it("offers deletion only when the server confirms the version can be deleted", async () => {
   mocks.api.list.mockResolvedValueOnce([{...source, status: "reviewed", can_delete: false}, {...source, id: 20, client_name: "Other", status: "sent", can_delete: true}, {...source, id: 30, client_name: "Free"}])
   setup()

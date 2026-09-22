@@ -255,6 +255,9 @@ def _stored_context(raw_context: dict | None) -> dict | None:
 
 def _generation_rejection(reason: str) -> HTTPException:
     messages = {
+        "policy_missing": "Este cliente no tiene configurada la preparación de resúmenes. Pide a un administrador que asigne frecuencia y responsable en Cliente → Resúmenes.",
+        "policy_changed": "La configuración de este resumen cambió. Actualiza la selección antes de reintentar.",
+        "responsible_unavailable": "El responsable configurado ya no puede preparar resúmenes. Revisa la configuración del cliente.",
         "generation_key_conflict": "Esta clave de recuperación pertenece a otra intención. Recarga antes de intentarlo de nuevo.",
         "permission_changed": "Ya no tienes permiso para preparar este resumen.",
         "already_exists": "Ya existe un resumen para esta cohorte y período.",

@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 interface ApiErrorResponse {
-  detail: string | { msg: string; type: string }[]
+  detail: string | { msg: string; type: string }[] | { message?: string; code?: string }
 }
 
 /**
@@ -38,6 +38,9 @@ export function getErrorMessage(error: unknown, fallback = "Error inesperado"): 
     }
     // Handle object detail (e.g. {detail: {key: "value"}})
     if (data.detail && typeof data.detail === "object") {
+      if ("message" in data.detail && typeof data.detail.message === "string") {
+        return data.detail.message
+      }
       return JSON.stringify(data.detail)
     }
   }
