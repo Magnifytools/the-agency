@@ -4,8 +4,8 @@ import { MemoryRouter } from "react-router-dom"
 import { beforeEach, expect, it, vi } from "vitest"
 import DailysPage from "./dailys-page"
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), forDate: vi.fn(), prefill: vi.fn(), submit: vi.fn(), edit: vi.fn(), reparse: vi.fn(), del: vi.fn(), send: vi.fn(), toastError: vi.fn(), userId: 7, canReadTasks: true }))
-vi.mock("@/lib/api", () => ({ dailysApi: { list: mocks.list, forDate: mocks.forDate, prefill: mocks.prefill, submit: mocks.submit, edit: mocks.edit, reparse: mocks.reparse, delete: mocks.del, sendDiscord: mocks.send } }))
+const mocks = vi.hoisted(() => ({ list: vi.fn(), forDate: vi.fn(), prefill: vi.fn(), submit: vi.fn(), edit: vi.fn(), reparse: vi.fn(), del: vi.fn(), preview: vi.fn(), send: vi.fn(), toastError: vi.fn(), userId: 7, canReadTasks: true }))
+vi.mock("@/lib/api", () => ({ dailysApi: { list: mocks.list, forDate: mocks.forDate, prefill: mocks.prefill, submit: mocks.submit, edit: mocks.edit, reparse: mocks.reparse, delete: mocks.del, previewDiscord: mocks.preview, sendDiscord: mocks.send } }))
 vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: { id: mocks.userId, role: "member" }, hasPermission: (permission: string) => permission !== "tasks" || mocks.canReadTasks }) }))
 vi.mock("@/hooks/use-business-date", () => ({ useBusinessDate: () => "2026-09-20" }))
 vi.mock("@/components/delivery-receipts", () => ({ DeliveryReceipts: () => <div>Recibos</div>, deliveryToast: vi.fn() }))
@@ -14,24 +14,40 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: mocks.toastError } 
 const daily = (overrides = {}) => ({ id: 4, user_id: 7, user_name: "Ana", date: "2026-09-20", raw_text: "Guardado", parsed_data: null, status: "draft", discord_sent_at: null, revision: 3, source_facts: [], created_at: "2026-09-20T10:00:00Z", updated_at: "2026-09-20T10:00:00Z", ...overrides })
 function setup() { const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); return { client, ...render(<QueryClientProvider client={client}><MemoryRouter><DailysPage /></MemoryRouter></QueryClientProvider>) } }
 const notes = () => screen.findByLabelText("Notas del daily")
-beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); mocks.userId = 7; mocks.canReadTasks = true; Element.prototype.scrollIntoView = vi.fn(); mocks.list.mockResolvedValue([]); mocks.forDate.mockResolvedValue(null); mocks.prefill.mockResolvedValue({ date: "2026-09-20", text: "", completed_count: 1, worked_on_count: 1, total_minutes: 25, facts: [{ key: "opaque-1", kind: "time_logged", task_id: 8, title: "Revisar portada", client_name: "Acme", project_name: "Web", minutes: 25, href: "/tasks?task=8", detail: "Registrado" }] }); mocks.submit.mockResolvedValue(daily({ source_facts: [{ key: "opaque-1", kind: "time_logged", task_id: 8, title: "Revisar portada", minutes: 25, href: "/tasks?task=8", detail: null }] })) })
+beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); mocks.userId = 7; mocks.canReadTasks = true; Element.prototype.scrollIntoView = vi.fn(); mocks.list.mockResolvedValue([]); mocks.forDate.mockResolvedValue(null); mocks.preview.mockResolvedValue({ revision: 3, content: "🌙 Cierre del día — Ana" }); mocks.prefill.mockResolvedValue({ date: "2026-09-20", text: "", completed_count: 1, worked_on_count: 1, total_minutes: 25, facts: [{ key: "opaque-1", kind: "time_logged", task_id: 8, title: "Revisar portada", client_name: "Acme", project_name: "Web", minutes: 25, href: "/tasks?task=8", detail: "Registrado" }] }); mocks.submit.mockResolvedValue(daily({ source_facts: [{ key: "opaque-1", kind: "time_logged", task_id: 8, title: "Revisar portada", minutes: 25, href: "/tasks?task=8", detail: null }] })) })
 it("uses level-two headings for the two main daily sections", async () => {
   setup()
   expect(await screen.findByRole("heading", { level: 2, name: "Hechos del día" })).toBeInTheDocument()
   expect(screen.getByRole("heading", { level: 2, name: "Notas del cierre" })).toBeInTheDocument()
 })
-it("adds selected facts without replacing notes and saves their opaque keys", async () => {
+it("keeps selected facts separate from editable notes and saves their opaque keys", async () => {
   setup()
   fireEvent.change(await notes(), { target: { value: "Nota humana" } })
   fireEvent.click(screen.getByRole("button", { name: "Actualizar hechos" }))
   const fact = await screen.findByRole("checkbox", { name: "Revisar portada" })
   expect(screen.getByText(/fecha de finalización fiable/)).toBeInTheDocument()
   fireEvent.click(fact)
-  fireEvent.click(screen.getByRole("button", { name: "Añadir hechos seleccionados a las notas" }))
-  expect(await notes()).toHaveValue("Nota humana\n\n- Revisar portada — Registrado")
+  expect(screen.getByText(/Los hechos seleccionados se agruparán/)).toBeInTheDocument()
+  expect(await notes()).toHaveValue("Nota humana")
   fireEvent.click(screen.getByRole("button", { name: "Guardar borrador" }))
   await waitFor(() => expect(mocks.submit).toHaveBeenCalledWith({ raw_text: expect.stringContaining("Nota humana"), date: "2026-09-20", source_fact_keys: ["opaque-1"] }))
   expect(mocks.reparse).not.toHaveBeenCalled()
+})
+it("allows a facts-only closing and reviews editable wording before queueing", async () => {
+  const saved = daily({ raw_text: "", source_facts: [{ key: "opaque-1", kind: "time_logged", task_id: 8, title: "Revisar portada", minutes: 25, href: "/tasks?task=8", detail: null }] })
+  mocks.forDate.mockResolvedValue(saved)
+  mocks.list.mockResolvedValue([saved])
+  mocks.send.mockResolvedValue({ status: "pending", content: "Mensaje retocado" })
+  setup()
+  expect(await notes()).toHaveValue("")
+  expect(screen.getByRole("button", { name: "Guardar borrador" })).toBeEnabled()
+  fireEvent.click(await screen.findByRole("button", { name: "Revisar y enviar a Discord" }))
+  const message = await screen.findByLabelText("Mensaje para Discord")
+  expect(message).toHaveValue("🌙 Cierre del día — Ana")
+  fireEvent.change(message, { target: { value: "Mensaje retocado" } })
+  fireEvent.click(screen.getByRole("button", { name: "Enviar a Discord" }))
+  await waitFor(() => expect(mocks.send).toHaveBeenCalledWith(4, { revision: 3, content: "Mensaje retocado" }))
+  expect(mocks.edit).not.toHaveBeenCalled()
 })
 it("keeps text edited during an uncertain save and offers conflict recovery", async () => {
   let reject!: (reason: unknown) => void
@@ -147,7 +163,7 @@ it("blocks current history actions until a local draft chooses between it and an
   setup()
   await screen.findByText("Texto guardado · revisión 5")
   expect(screen.getByRole("button", { name: "Guardar borrador" })).toBeDisabled()
-  expect(await screen.findByRole("button", { name: "Enviar a Discord" })).toBeDisabled()
+  expect(await screen.findByRole("button", { name: "Revisar y enviar a Discord" })).toBeDisabled()
   expect(screen.getByRole("button", { name: "Eliminar" })).toBeDisabled()
 })
 it("unblocks a saved version only after a successful check following an uncertain AI request", async () => {
@@ -158,9 +174,9 @@ it("unblocks a saved version only after a successful check following an uncertai
   setup()
   fireEvent.click(await screen.findByRole("button", { name: "Estructurar con IA" }))
   const retry = await screen.findByRole("button", { name: "Reintentar" })
-  expect(await screen.findByRole("button", { name: "Enviar a Discord" })).toBeDisabled()
+  expect(await screen.findByRole("button", { name: "Revisar y enviar a Discord" })).toBeDisabled()
   fireEvent.click(retry)
-  await waitFor(() => expect(screen.getByRole("button", { name: "Enviar a Discord" })).toBeEnabled())
+  await waitFor(() => expect(screen.getByRole("button", { name: "Revisar y enviar a Discord" })).toBeEnabled())
 })
 it("keeps the saved version blocked when the uncertainty check fails", async () => {
   const saved = daily({ revision: 5 })
@@ -172,7 +188,7 @@ it("keeps the saved version blocked when the uncertainty check fails", async () 
   await screen.findByRole("button", { name: "Reintentar" })
   mocks.forDate.mockRejectedValue(new Error("offline"))
   fireEvent.click(screen.getByRole("button", { name: "Reintentar" }))
-  await waitFor(() => expect(screen.getByRole("button", { name: "Enviar a Discord" })).toBeDisabled())
+  await waitFor(() => expect(screen.getByRole("button", { name: "Revisar y enviar a Discord" })).toBeDisabled())
 })
 it("does not accept a late save response that would downgrade a newer refetched revision", async () => {
   let resolve!: (value: ReturnType<typeof daily>) => void

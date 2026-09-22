@@ -951,8 +951,10 @@ export const dailysApi = {
   forDate: (date: string) => api.get<DailyUpdate | null>("/dailys/for-date", { params: { date } }).then((r) => r.data),
   reparse: (id: number, revision: number) =>
     api.post<DailyUpdate>(`/dailys/${id}/reparse`, { revision }, { timeout: 90_000 }).then((r) => r.data),
-  sendDiscord: (id: number) =>
-    api.post<DailyDiscordResponse>(`/dailys/${id}/send-discord`).then((r) => r.data),
+  previewDiscord: (id: number) =>
+    api.get<{ revision: number; content: string }>(`/dailys/${id}/preview`).then((r) => r.data),
+  sendDiscord: (id: number, data?: { revision: number; content: string }) =>
+    api.post<DailyDiscordResponse>(`/dailys/${id}/send-discord`, data).then((r) => r.data),
   edit: (id: number, data: { raw_text?: string; parsed_data?: DailyUpdate["parsed_data"]; revision: number; source_fact_keys?: string[] }) =>
     api.put<DailyUpdate>(`/dailys/${id}`, data).then((r) => r.data),
   delete: (id: number, revision: number) => api.delete(`/dailys/${id}`, { params: { revision } }).then((r) => r.data),

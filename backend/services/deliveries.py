@@ -34,6 +34,7 @@ from backend.db.models import (
 from backend.schemas.daily import ParsedDailyData
 from backend.schemas.digest import DigestContent
 from backend.services.daily_parser import format_daily_for_discord
+from backend.services.daily_recap import render_unstructured_recap
 from backend.services.digest_renderer import render_discord
 from backend.services.temporal import utc_isoformat, utc_now_naive
 
@@ -144,7 +145,7 @@ def render_snapshot(kind, source, custom_content=None):
         return source.title, source.content
     if kind == "daily":
         name = source.user.full_name
-        header = f"{name} — {source.date.isoformat()}"
+        header = f"Cierre del día — {name} — {source.date.isoformat()}"
         try:
             parsed = ParsedDailyData.model_validate(source.parsed_data).model_dump() if source.parsed_data else None
         except Exception:
@@ -158,13 +159,15 @@ def render_snapshot(kind, source, custom_content=None):
             original_tasks = original.get("general", []) + [
                 task for project in original.get("projects", []) for task in project.get("tasks", [])
             ]
-            has_provenance = bool(source.source_facts) or any("fact_keys" in task for task in original_tasks)
+            has_provenance = bool(source.source_facts) or any(task.get("fact_keys") for task in original_tasks)
             text = format_daily_for_discord(
                 parsed, name, source.date.isoformat(), max_length=None,
                 source_facts=(source.source_facts or []) if has_provenance else None,
             )
         else:
-            text = f"{header}\nSin estructurar\n\n{source.raw_text.strip()}"
+            text = f"{header}\n\n{render_unstructured_recap(source.raw_text, source.source_facts or [])}"
+        if custom_content is not None:
+            text = custom_content.strip()
     else:
         if not source.content:
             raise HTTPException(400, "El digest no tiene contenido")
@@ -210,15 +213,20 @@ def plan_steps(kind, header, text, *, threaded):
     return [dict(step, status="pending") for step in steps]
 
 
-async def enqueue(db, kind, source_id, actor, *, custom_content=None):
-    delivery = await stage_delivery(db, kind, source_id, actor, custom_content=custom_content)
+async def enqueue(db, kind, source_id, actor, *, custom_content=None, expected_revision=None):
+    delivery = await stage_delivery(db, kind, source_id, actor, custom_content=custom_content,
+                                    expected_revision=expected_revision)
     await db.commit()
     return delivery
 
 
-async def stage_delivery(db, kind, source_id, actor, *, custom_content=None):
+async def stage_delivery(db, kind, source_id, actor, *, custom_content=None, expected_revision=None):
     """Stage only; caller owns the transaction. No provider effects or commit."""
     source = await authorize_source(db, kind, source_id, actor, lock=True)
+    if kind == "daily" and expected_revision is not None and source.revision != expected_revision:
+        raise HTTPException(409, "El cierre cambió. Revisa la versión actual antes de enviarla")
+    if kind == "daily" and custom_content is not None and source.status == DailyUpdateStatus.sent:
+        raise HTTPException(409, "Este cierre ya se envió. Conserva la versión enviada")
     target, bot, destination = await destination_config(db, kind, source)
     version = source_version(kind, source)
     header, text = render_snapshot(kind, source, custom_content)

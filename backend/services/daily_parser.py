@@ -13,6 +13,7 @@ import json
 import logging
 
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
+from backend.services.daily_recap import grouped_recap
 
 logger = logging.getLogger(__name__)
 
@@ -254,7 +255,24 @@ def format_daily_for_discord(
     max_length: int | None = 2000,
     source_facts: list[dict] | None = None,
 ) -> str:
-    """Format parsed daily data into a clean Discord message (one line per task)."""
+    """Format a reviewed closing recap; canonical facts decide grouping and time."""
+    if source_facts is not None and all(fact.get("title") for fact in source_facts):
+        lines = [f"🌙 Cierre del día — **{user_name}** — {date_str}", ""]
+        grouped = grouped_recap(source_facts)
+        if grouped:
+            lines.append(grouped)
+        free_notes = [task["description"] for task in parsed_data.get("general", [])
+                      if not task.get("fact_keys") and task.get("description")]
+        free_notes.extend(task["description"] for project in parsed_data.get("projects", [])
+                          for task in project.get("tasks", [])
+                          if not task.get("fact_keys") and task.get("description"))
+        if free_notes:
+            lines.extend(["", "**Notas del cierre**", *[f"- {note}" for note in free_notes]])
+        if parsed_data.get("tomorrow"):
+            lines.extend(["", "**📅 Próximos pasos**", *[f"- {item}" for item in parsed_data["tomorrow"]]])
+        result = "\n".join(lines).strip()
+        return result if max_length is None or len(result) <= max_length else result[:max_length - 3] + "..."
+
     facts_by_key = {
         str(fact["key"]): fact for fact in (source_facts or []) if "key" in fact
     }
@@ -278,7 +296,7 @@ def format_daily_for_discord(
         }.get(next(iter(kinds)), "•")
 
     lines = []
-    lines.append(f"**{user_name}** — {date_str}")
+    lines.append(f"🌙 Cierre del día — **{user_name}** — {date_str}")
     lines.append("")
 
     for proj in parsed_data.get("projects", []):

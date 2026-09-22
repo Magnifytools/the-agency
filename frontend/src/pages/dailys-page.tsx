@@ -10,6 +10,7 @@ import { DailyFactPicker } from "@/components/dailys/daily-fact-picker"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useAuth } from "@/context/auth-context"
 import { useBusinessDate } from "@/hooks/use-business-date"
 import { dailysApi } from "@/lib/api"
@@ -228,11 +229,7 @@ function DailyEditor({ userId, date, onDateChange, serverDaily, serverError, che
         </Button>
         {(facts.length > 0 || prefill.isSuccess) && <DailyFactPicker facts={facts} selected={draft.sourceFactKeys} canOpenSources={canOpenSources} readOnly={isSent}
           onSelectedChange={(keys) => editDraft({ sourceFactKeys: keys, sourceFacts: facts.filter((fact) => keys.includes(fact.key)) })} />}
-        {facts.length > 0 && <Button variant="outline" size="sm" disabled={isSent || !draft.sourceFactKeys.length} onClick={() => {
-          const selected = facts.filter((fact) => draft.sourceFactKeys.includes(fact.key))
-          const text = selected.map((fact) => `- ${fact.title}${fact.detail ? ` — ${fact.detail}` : ""}`).join("\n")
-          editDraft({ rawText: `${draft.rawText}${draft.rawText ? "\n\n" : ""}${text}` })
-        }}>Añadir hechos seleccionados a las notas</Button>}
+        {draft.sourceFactKeys.length > 0 && <p className="text-xs text-muted-foreground">Los hechos seleccionados se agruparán por cliente, proyecto y tarea en la vista previa. Los minutos de una misma tarea se sumarán.</p>}
         {(facts.length > 0 || prefill.isSuccess) && <p className="text-xs text-muted-foreground">Las tareas completadas requieren una fecha de finalización fiable; las horas reales se contabilizan de forma independiente.</p>}
       </CardContent>
     </Card>
@@ -240,12 +237,12 @@ function DailyEditor({ userId, date, onDateChange, serverDaily, serverError, che
       <CardContent className="space-y-3">
         {isSent && <p className="text-sm text-muted-foreground">Este resumen ya fue enviado y se conserva en modo lectura.</p>}
         <textarea aria-label="Notas del daily" value={draft.rawText} disabled={isSent} onChange={(event) => editDraft({ rawText: event.target.value })}
-          placeholder="Qué se completó, qué está en espera y cuál es el siguiente paso…"
+          placeholder="Añade aquí contexto o matices que no consten en los hechos seleccionados…"
           className="min-h-48 w-full resize-y rounded-xl border border-border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand/20" />
         {draft.rawText.length > 50_000 && <p role="alert" className="text-sm">Las notas superan 50.000 caracteres. Redúcelas antes de guardar.</p>}
         <p className="text-xs text-muted-foreground">{draft.sourceFactKeys.length} fuentes seleccionadas · máximo 500</p>
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => save.mutate(editorRef.current)} disabled={blocked || !draft.rawText.trim() || draft.rawText.length > 50_000 || draft.sourceFactKeys.length > 500}>
+          <Button onClick={() => save.mutate(editorRef.current)} disabled={blocked || (!draft.rawText.trim() && !draft.sourceFactKeys.length) || draft.rawText.length > 50_000 || draft.sourceFactKeys.length > 500}>
             {save.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}Guardar borrador
           </Button>
           {base && !isSent && <Button variant="outline" onClick={() => enrich.mutate(base)} disabled={blocked || dirty}>
@@ -288,9 +285,11 @@ function DailyCard({ daily, userId, canOpenSources, disableSend, onDelete, onEdi
   const live = useLiveInstance()
   const [expanded, setExpanded] = useState(false)
   const [showReceipts, setShowReceipts] = useState(false)
+  const [preview, setPreview] = useState<{ revision: number; content: string } | null>(null)
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ["dailys", userId] })
   const enrich = useMutation({ mutationFn: () => dailysApi.reparse(daily.id, daily.revision), onSuccess: () => { refresh(); if (live.current) toast.success("Estructura actualizada") }, onError: (error) => live.current && toast.error(dailyError(error, "No se pudo estructurar este borrador")) })
-  const send = useMutation({ mutationFn: () => dailysApi.sendDiscord(daily.id), onSuccess: (receipt) => { refresh(); if (live.current) { setShowReceipts(true); deliveryToast(receipt) } }, onError: (error) => live.current && toast.error(getErrorMessage(error, "No se pudo confirmar el envío")) })
+  const loadPreview = useMutation({ mutationFn: () => dailysApi.previewDiscord(daily.id), onSuccess: (result) => { if (live.current) setPreview(result) }, onError: (error) => live.current && toast.error(getErrorMessage(error, "No se pudo preparar la vista previa")) })
+  const send = useMutation({ mutationFn: (reviewed: { revision: number; content: string }) => dailysApi.sendDiscord(daily.id, reviewed), onSuccess: (receipt) => { refresh(); if (live.current) { setPreview(null); setShowReceipts(true); deliveryToast(receipt) } }, onError: (error) => { refresh(); if (live.current) toast.error(getErrorMessage(error, "El cierre cambió. Revisa la versión actual antes de enviar")) } })
   return <Card>
     <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
       <button className="min-w-0 flex-1 text-left" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>
@@ -300,7 +299,7 @@ function DailyCard({ daily, userId, canOpenSources, disableSend, onDelete, onEdi
       <div className="flex flex-wrap gap-1">
         {daily.user_id === userId && daily.status === "draft" && <Button title="Editar" aria-label="Editar" variant="ghost" size="icon" onClick={onEdit}><Pencil className="size-4" /></Button>}
         {daily.status === "draft" && <Button title="Estructurar con IA" aria-label="Estructurar resumen guardado con IA" variant="ghost" size="icon" disabled={enrich.isPending || disableSend} onClick={() => enrich.mutate()}><Wand2 className="size-4" /></Button>}
-        <Button title="Enviar a Discord" aria-label="Enviar a Discord" variant="ghost" size="icon" disabled={send.isPending || disableSend} onClick={() => send.mutate()}><MessageCircle className="size-4" /></Button>
+        {daily.status === "draft" && <Button title="Revisar y enviar a Discord" aria-label="Revisar y enviar a Discord" variant="ghost" size="icon" disabled={send.isPending || loadPreview.isPending || disableSend} onClick={() => loadPreview.mutate()}><MessageCircle className="size-4" /></Button>}
         {daily.user_id === userId && daily.status === "draft" && <Button title="Eliminar" aria-label="Eliminar" variant="ghost" size="icon" disabled={disableSend} onClick={onDelete}><Trash2 className="size-4" /></Button>}
       </div>
     </div>
@@ -308,6 +307,15 @@ function DailyCard({ daily, userId, canOpenSources, disableSend, onDelete, onEdi
       <DeliveryReceipts sourceKind="daily" sourceId={daily.id} />
       {expanded && <><p className="whitespace-pre-wrap break-words text-sm">{daily.raw_text}</p><SourceFacts facts={daily.source_facts ?? []} canOpenSources={canOpenSources} />{daily.parsed_data && <ParsedDaily daily={daily} canOpenSources={canOpenSources} />}</>}
     </CardContent>}
+    <Dialog open={!!preview} onOpenChange={(open) => !open && setPreview(null)}>
+      <DialogHeader><DialogTitle>Revisar el cierre antes de enviarlo</DialogTitle></DialogHeader>
+      {preview && <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">Puedes retocar el texto que verá el equipo. Para corregir una tarea o sus horas, abre la fuente y edítala allí; este texto no cambia esos datos.</p>
+        <label htmlFor={`daily-discord-preview-${daily.id}`} className="text-sm font-medium">Mensaje para Discord</label>
+        <textarea id={`daily-discord-preview-${daily.id}`} className="min-h-72 w-full resize-y rounded-lg border border-border bg-background p-3 text-sm" value={preview.content} onChange={(event) => setPreview({ ...preview, content: event.target.value })} />
+        <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setPreview(null)}>Cancelar</Button><Button disabled={!preview.content.trim() || send.isPending} onClick={() => send.mutate(preview)}>{send.isPending ? "Preparando envío…" : "Enviar a Discord"}</Button></div>
+      </div>}
+    </Dialog>
   </Card>
 }
 function SourceFacts({ facts, canOpenSources }: { facts: DailyFact[]; canOpenSources: boolean }) {
