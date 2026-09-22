@@ -7,9 +7,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import ClientDetailPage from "./client-detail-page"
 
 const mocks = vi.hoisted(() => ({
-  enabled: new Set(["digests", "communications", "reports", "resources", "billing"]),
-  permissions: new Set(["tasks", "projects", "digests", "communications", "reports", "billing"]),
+  enabled: new Set(["tasks", "timesheet", "digests", "communications", "reports", "resources", "billing"]),
+  permissions: new Set(["tasks", "timesheet", "projects", "digests", "communications", "reports", "billing"]),
   writePermissions: new Set<string>(),
+  admin: false,
   summary: vi.fn(),
   projects: vi.fn(),
   time: vi.fn(),
@@ -18,7 +19,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/hidden-modules", () => ({ isEnabled: (module: string) => mocks.enabled.has(module) }))
 vi.mock("@/context/auth-context", () => ({
-  useAuth: () => ({ isAdmin: false, hasPermission: (module: string, write = false) => write ? mocks.writePermissions.has(module) : mocks.permissions.has(module) }),
+  useAuth: () => ({ isAdmin: mocks.admin, hasPermission: (module: string, write = false) => write ? mocks.writePermissions.has(module) : mocks.permissions.has(module) }),
 }))
 vi.mock("@/lib/api", () => ({
   clientsApi: { summary: mocks.summary, recentTimeEntries: mocks.time, whatIf: vi.fn() },
@@ -68,9 +69,10 @@ function show(tab: string) {
 describe("client detail areas", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.enabled = new Set(["digests", "communications", "reports", "resources", "billing"])
-    mocks.permissions = new Set(["clients", "tasks", "projects", "digests", "communications", "reports", "billing"])
-    mocks.writePermissions = new Set(["clients", "tasks", "projects", "digests", "communications", "reports", "billing"])
+    mocks.enabled = new Set(["tasks", "timesheet", "digests", "communications", "reports", "resources", "billing"])
+    mocks.permissions = new Set(["clients", "tasks", "timesheet", "projects", "digests", "communications", "reports", "billing"])
+    mocks.writePermissions = new Set(["clients", "tasks", "timesheet", "projects", "digests", "communications", "reports", "billing"])
+    mocks.admin = false
     mocks.summary.mockResolvedValue(summary)
     mocks.projects.mockResolvedValue([])
     mocks.time.mockResolvedValue([])
@@ -101,6 +103,7 @@ describe("client detail areas", () => {
   })
 
   it("offers the financial what-if action when finance is enabled", async () => {
+    mocks.admin = true
     mocks.enabled.add("finance")
     show("panel")
     expect(await screen.findByRole("button", { name: "¿Y si pierdo este cliente?" })).toBeInTheDocument()
@@ -167,6 +170,54 @@ describe("client detail areas", () => {
     expect(screen.queryByRole("option", { name: "Proyectos" })).not.toBeInTheDocument()
   })
 
+  it("keeps the client ficha while task and time projections are unavailable", async () => {
+    mocks.permissions.delete("tasks")
+    mocks.permissions.delete("timesheet")
+    mocks.summary.mockResolvedValue({
+      ...summary, tasks: null, total_tasks: null,
+      total_tracked_minutes: null, total_estimated_minutes: null, total_actual_minutes: null,
+    })
+    show("tiempo")
+
+    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Acme" })).toBeInTheDocument()
+    expect(screen.queryByText("Total tareas")).not.toBeInTheDocument()
+    expect(screen.queryByText("Tiempo tracked")).not.toBeInTheDocument()
+    expect(screen.queryByRole("option", { name: "Tiempo" })).not.toBeInTheDocument()
+    expect(mocks.time).not.toHaveBeenCalled()
+  })
+
+  it("hides cached task and time details as soon as permissions change", async () => {
+    mocks.summary.mockResolvedValue({
+      ...summary,
+      tasks: [{ id: 8, title: "Trabajo privado", status: "pending" }],
+      total_tasks: 1, total_tracked_minutes: 30,
+    })
+    const view = show("tareas")
+    expect(await screen.findByRole("button", { name: "Trabajo privado" })).toBeInTheDocument()
+
+    mocks.permissions.delete("tasks")
+    mocks.permissions.delete("timesheet")
+    view.refresh()
+
+    expect(screen.getByText("FichaTab")).toBeInTheDocument()
+    expect(screen.queryByText("Trabajo privado")).not.toBeInTheDocument()
+    expect(screen.queryByText("Total tareas")).not.toBeInTheDocument()
+    expect(screen.queryByText("Tiempo tracked")).not.toBeInTheDocument()
+  })
+
+  it("shows the financial client panel only for an admin while finance is enabled", async () => {
+    mocks.admin = true
+    mocks.enabled.add("finance")
+    const view = show("panel")
+    expect(await screen.findByText("Dashboard")).toBeInTheDocument()
+
+    mocks.admin = false
+    view.refresh()
+    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "¿Y si pierdo este cliente?" })).not.toBeInTheDocument()
+  })
+
   it("shows a retry when the client summary fails", async () => {
     mocks.summary.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(summary)
     show("ficha")
@@ -204,9 +255,46 @@ describe("client detail areas", () => {
     mocks.health.mockResolvedValue({ score: 99 })
     show("ficha")
 
-    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(screen.getByRole("alert")).toHaveTextContent("No tienes acceso a este cliente.")
+    expect(mocks.summary).not.toHaveBeenCalled()
     expect(mocks.health).not.toHaveBeenCalled()
     expect(screen.queryByText("99 puntos; no sustituye las condiciones anteriores.")).not.toBeInTheDocument()
+  })
+
+  it("removes cached client details immediately when client read access is revoked", async () => {
+    const view = show("ficha")
+    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    mocks.permissions.delete("clients")
+    view.refresh()
+
+    expect(screen.getByRole("alert")).toHaveTextContent("No tienes acceso a este cliente.")
+    expect(screen.queryByText("FichaTab")).not.toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Acme" })).not.toBeInTheDocument()
+    expect(mocks.summary).toHaveBeenCalledTimes(1)
+  })
+
+  it("removes cached task health observations after task access is revoked", async () => {
+    const fullHealth = {
+      score: 70, risk_level: "warning", enough_information: true,
+      available_source_count: 1, available_weight: 20,
+      factors: { communication: null, tasks: 10, digests: null, profitability: null, followups: null },
+      observations: { communication: "Fuente no disponible", tasks: "Tres tareas vencidas", digests: "Fuente no disponible", profitability: "Fuente no disponible", followups: "Fuente no disponible" },
+      risk_signals: ["Tres tareas vencidas"],
+    }
+    const redactedHealth = {
+      ...fullHealth, score: null, available_source_count: 0, available_weight: 0,
+      factors: { ...fullHealth.factors, tasks: null },
+      observations: { ...fullHealth.observations, tasks: "Fuente no disponible" },
+      risk_signals: [],
+    }
+    mocks.health.mockResolvedValueOnce(fullHealth).mockResolvedValueOnce(redactedHealth)
+    const view = show("ficha")
+    expect(await screen.findAllByText("Tres tareas vencidas")).not.toHaveLength(0)
+
+    mocks.permissions.delete("tasks")
+    view.refresh()
+    expect(screen.queryByText("Tres tareas vencidas")).not.toBeInTheDocument()
+    await waitFor(() => expect(mocks.health).toHaveBeenCalledTimes(2))
   })
 
   it("keeps summaries useful when optional output modules are hidden", async () => {

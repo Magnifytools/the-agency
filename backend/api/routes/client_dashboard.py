@@ -13,7 +13,7 @@ from backend.db.models import (
 )
 from backend.schemas.dashboard import ClientDashboardResponse
 from backend.services.profitability import classify_profitability
-from backend.api.deps import get_current_user, require_module
+from backend.services.dashboard_access import ensure_source_access, require_financial_dashboard_access
 from backend.services.temporal import business_today
 from backend.services.time_entry_dates import time_entry_business_date, time_entry_civil_period
 
@@ -24,8 +24,9 @@ router = APIRouter(prefix="/api/clients/{client_id}/dashboard", tags=["client-da
 async def client_dashboard(
     client_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_module("clients")),
+    current_user: User = Depends(require_financial_dashboard_access),
 ):
+    ensure_source_access(current_user, "tasks", "timesheet")
     today = business_today()
     first_of_month = today.replace(day=1)
     first_of_last_month = (first_of_month - timedelta(days=1)).replace(day=1)

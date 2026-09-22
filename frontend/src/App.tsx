@@ -107,8 +107,8 @@ export default function App() {
               <Route path="/pipeline" element={<Navigate to="/leads" replace />} />
               <Route path="/leads" element={<PermissionRoute module="growth"><ErrorBoundary section="Leads"><Suspense fallback={<PageLoader />}><LeadsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/leads/:id" element={<PermissionRoute module="growth"><ErrorBoundary section="LeadDetail"><Suspense fallback={<PageLoader />}><LeadDetailPage /></Suspense></ErrorBoundary></PermissionRoute>} />
-              <Route path="/clients" element={<ErrorBoundary section="Clients"><Suspense fallback={<PageLoader />}><ClientsPage /></Suspense></ErrorBoundary>} />
-              <Route path="/clients/:id" element={<ErrorBoundary section="ClientDetail"><Suspense fallback={<PageLoader />}><ClientDetailPage /></Suspense></ErrorBoundary>} />
+              <Route path="/clients" element={<PermissionRoute module="clients"><ErrorBoundary section="Clients"><Suspense fallback={<PageLoader />}><ClientsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/clients/:id" element={<PermissionRoute module="clients"><ErrorBoundary section="ClientDetail"><Suspense fallback={<PageLoader />}><ClientDetailPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/tasks" element={<ErrorBoundary section="Tasks"><Suspense fallback={<PageLoader />}><TasksPage /></Suspense></ErrorBoundary>} />
               <Route path="/projects" element={<ErrorBoundary section="Projects"><Suspense fallback={<PageLoader />}><ProjectsPage /></Suspense></ErrorBoundary>} />
               <Route path="/projects/:id" element={<ErrorBoundary section="ProjectDetail"><Suspense fallback={<PageLoader />}><ProjectDetailPage /></Suspense></ErrorBoundary>} />

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { clientsApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
+import { isEnabled } from "@/lib/hidden-modules"
 
 interface Recommendation {
   priority: "high" | "medium" | "low"
@@ -36,15 +37,21 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 export function ClientAiAdvisor({ clientId }: Props) {
-  const { hasPermission } = useAuth()
+  const { user, hasPermission } = useAuth()
   const canWriteClients = hasPermission("clients", true)
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([])
+  const accessScope = [
+    user?.id ?? "anonymous", clientId, canWriteClients,
+    ...(["tasks", "communications", "timesheet", "billing"] as const)
+      .map((module) => hasPermission(module) && isEnabled(module)),
+  ].join(":")
+  const [result, setResult] = useState<{ scope: string; recommendations: Recommendation[] } | null>(null)
+  const recommendations = canWriteClients && result?.scope === accessScope ? result.recommendations : []
 
   const adviceMut = useMutation({
-    mutationFn: () => clientsApi.aiAdvice(clientId),
+    mutationFn: async () => ({ scope: accessScope, data: await clientsApi.aiAdvice(clientId) }),
     onSuccess: (data) => {
-      setRecommendations(data.recommendations)
-      toast.success(`${data.recommendations.length} recomendaciones generadas`)
+      setResult({ scope: data.scope, recommendations: data.data.recommendations })
+      if (data.scope === accessScope) toast.success(`${data.data.recommendations.length} recomendaciones generadas`)
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   })
