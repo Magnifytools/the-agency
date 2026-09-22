@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { MemoryRouter, useNavigate } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import TasksPage from "./tasks-page"
-const api = vi.hoisted(() => ({ list: vi.fn(), listAll: vi.fn(), empty: vi.fn(), agenda: vi.fn(), canWrite: true, user: {id: 1, role: "admin"} }))
+const api = vi.hoisted(() => ({ list: vi.fn(), listAll: vi.fn(), clients: vi.fn(), categories: vi.fn(), users: vi.fn(), agenda: vi.fn(), canWrite: true, user: {id: 1, role: "admin"} }))
 const clock = vi.hoisted(() => ({ today: "2026-10-01" }))
 vi.mock("@/hooks/use-business-date", () => ({ useBusinessDate: () => clock.today }))
 vi.mock("@/components/incidents/incident-inbox", () => ({ IncidentInbox: () => <div>Alertas personales</div> }))
@@ -12,13 +12,13 @@ vi.mock("@/components/tasks/next-meeting", () => ({ NextMeeting: () => <div>Pró
 vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: api.user, hasPermission: () => api.canWrite }) }))
 vi.mock("@/lib/api", () => ({
   tasksApi: { list: api.list, listAll: api.listAll, agenda: api.agenda },
-  clientsApi: { listAll: api.empty }, categoriesApi: { list: api.empty },
-  usersApi: { listAll: api.empty }, projectsApi: { listAll: api.empty }, timeEntriesApi: {},
+  clientsApi: { listAll: api.clients }, categoriesApi: { list: api.categories },
+  usersApi: { listAll: api.users }, projectsApi: { listAll: vi.fn() }, timeEntriesApi: {},
 }))
 function Back() { const navigate = useNavigate(); return <button onClick={() => navigate(-1)}>Atrás navegador</button> }
 
 describe("tasks URL navigation", () => {
-  beforeEach(() => { vi.clearAllMocks(); api.user.role = "admin"; api.canWrite = true; api.agenda.mockResolvedValue({items:[], total:0, page:1, page_size:25}); api.list.mockResolvedValue({items:[],total:0,page:1,page_size:25}); api.listAll.mockResolvedValue([]); api.empty.mockResolvedValue([]) })
+  beforeEach(() => { vi.clearAllMocks(); api.user.role = "admin"; api.canWrite = true; api.agenda.mockResolvedValue({items:[], total:0, page:1, page_size:25}); api.list.mockResolvedValue({items:[],total:0,page:1,page_size:25}); api.listAll.mockResolvedValue([]); api.clients.mockResolvedValue([]); api.categories.mockResolvedValue([]); api.users.mockResolvedValue([]) })
   function showAgenda(url: string) {
     const client = new QueryClient({defaultOptions:{queries:{retry:false}}})
     const tree = <QueryClientProvider client={client}><MemoryRouter initialEntries={[url]}><TasksPage /><Back /></MemoryRouter></QueryClientProvider>
@@ -29,6 +29,29 @@ describe("tasks URL navigation", () => {
     showAgenda("/tasks?view=all")
     expect(await screen.findByRole("checkbox", { name: "Seleccionar tarea Preparar informe" })).toBeInTheDocument()
     expect(screen.getByRole("checkbox", { name: "Seleccionar todas las tareas visibles" })).toBeInTheDocument()
+  })
+  it("names work filters and applies the selected client and status", async () => {
+    api.clients.mockResolvedValue([{ id: 7, name: "Acme" }])
+    showAgenda("/tasks?view=all")
+
+    expect(await screen.findByRole("searchbox", { name: "Buscar tareas" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Filtrar por cliente" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Filtrar por categoría" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Filtrar por estado" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Filtrar por prioridad" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Filtrar por responsable" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Tipo de fecha para filtrar" })).toBeInTheDocument()
+    expect(screen.getByLabelText("Fecha límite desde")).toBeInTheDocument()
+    expect(screen.getByLabelText("Fecha límite hasta")).toBeInTheDocument()
+
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Tipo de fecha para filtrar" }), "scheduled_date")
+    expect(screen.getByLabelText("Fecha planificada desde")).toBeInTheDocument()
+    expect(screen.getByLabelText("Fecha planificada hasta")).toBeInTheDocument()
+
+    await screen.findByRole("option", { name: "Acme" })
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Filtrar por cliente" }), "7")
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Filtrar por estado" }), "completed")
+    await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ client_id: 7, status: "completed" })))
   })
   it("hides task bulk controls from members without task write permission", async () => {
     api.user.role = "member"
@@ -70,7 +93,9 @@ describe("tasks URL navigation", () => {
   it("removes the actual QA query on view change and restores it with browser Back", async () => {
     api.list.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 })
     api.listAll.mockResolvedValue([])
-    api.empty.mockResolvedValue([])
+    api.clients.mockResolvedValue([])
+    api.categories.mockResolvedValue([])
+    api.users.mockResolvedValue([])
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/tasks?qaFilter=overdue"]}><TasksPage /><Back /></MemoryRouter></QueryClientProvider>)
     await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ overdue: true })))

@@ -411,12 +411,13 @@ export default function TasksPage() {
       <div className="flex flex-wrap gap-3">
         <Input
           type="search"
+          aria-label="Buscar tareas"
           placeholder="Buscar tareas..."
           value={searchQuery}
           onChange={(e) => { setSearchQuery(e.target.value); reset() }}
           className="w-64"
         />
-        <Select value={filterClient} onChange={(e) => { setFilterClient(e.target.value); reset() }} className="w-48">
+        <Select aria-label="Filtrar por cliente" value={filterClient} onChange={(e) => { setFilterClient(e.target.value); reset() }} className="w-48">
           <option value="">Todos los clientes</option>
           {clients.map((c) => (
             <option key={c.id} value={c.id}>
@@ -424,7 +425,7 @@ export default function TasksPage() {
             </option>
           ))}
         </Select>
-        <Select value={filterCategory} onChange={(e) => { setFilterCategory(e.target.value); reset() }} className="w-48">
+        <Select aria-label="Filtrar por categoría" value={filterCategory} onChange={(e) => { setFilterCategory(e.target.value); reset() }} className="w-48">
           <option value="">Todas las categorias</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
@@ -432,7 +433,7 @@ export default function TasksPage() {
             </option>
           ))}
         </Select>
-        <Select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); reset() }} className="w-48">
+        <Select aria-label="Filtrar por estado" value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); reset() }} className="w-48">
           <option value="">Todos (incl. completadas)</option>
           <option value="backlog,pending,in_progress,advanced,waiting,in_review">Activas</option>
           <option value="pending,backlog">Pendiente</option>
@@ -443,14 +444,14 @@ export default function TasksPage() {
           <option value="backlog">Pendiente · backlog</option>
           <option value="advanced">En curso · avance registrado</option>
         </Select>
-        <Select value={filterPriority} onChange={(e) => { setFilterPriority(e.target.value); reset() }} className="w-48">
+        <Select aria-label="Filtrar por prioridad" value={filterPriority} onChange={(e) => { setFilterPriority(e.target.value); reset() }} className="w-48">
           <option value="">Todas las prioridades</option>
           <option value="urgent">Urgente</option>
           <option value="high">Alta</option>
           <option value="medium">Media</option>
           <option value="low">Baja</option>
         </Select>
-        <Select value={filterAssigned} onChange={(e) => { setFilterAssigned(e.target.value); reset() }} className="w-48">
+        <Select aria-label="Filtrar por responsable" value={filterAssigned} onChange={(e) => { setFilterAssigned(e.target.value); reset() }} className="w-48">
           <option value="">Todos los asignados</option>
           {users.map((u) => (
             <option key={u.id} value={u.id}>
@@ -458,12 +459,13 @@ export default function TasksPage() {
             </option>
           ))}
         </Select>
-        <Select value={filterDateField} onChange={(e) => { setFilterDateField(e.target.value as "due_date" | "scheduled_date"); reset() }} className="w-40">
+        <Select aria-label="Tipo de fecha para filtrar" value={filterDateField} onChange={(e) => { setFilterDateField(e.target.value as "due_date" | "scheduled_date"); reset() }} className="w-40">
           <option value="due_date">Fecha límite</option>
           <option value="scheduled_date">Fecha planificada</option>
         </Select>
         <Input
           type="date"
+          aria-label={`${filterDateField === "due_date" ? "Fecha límite" : "Fecha planificada"} desde`}
           value={filterDateFrom}
           onChange={(e) => { setFilterDateFrom(e.target.value); reset() }}
           placeholder="Desde"
@@ -472,6 +474,7 @@ export default function TasksPage() {
         />
         <Input
           type="date"
+          aria-label={`${filterDateField === "due_date" ? "Fecha límite" : "Fecha planificada"} hasta`}
           value={filterDateTo}
           onChange={(e) => { setFilterDateTo(e.target.value); reset() }}
           placeholder="Hasta"
