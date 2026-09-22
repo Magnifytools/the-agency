@@ -226,7 +226,11 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
 }
 
 export default function ClientDetailPage() {
-  const { isAdmin, hasPermission } = useAuth()
+  const { user, isAdmin, hasPermission } = useAuth()
+  const canReadClient = hasPermission("clients")
+  const canReadTasks = hasPermission("tasks") && isEnabled("tasks")
+  const canReadTime = canReadTasks && hasPermission("timesheet") && isEnabled("timesheet")
+  const canReadFinancialPanel = isAdmin && isEnabled("finance")
   const { id } = useParams<{ id: string }>()
   const clientId = Number(id)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -259,6 +263,7 @@ export default function ClientDetailPage() {
     informes: "reports",
   }
   const isTabVisible = (tab: Tab) => {
+    if (tab === "tiempo") return canReadTime
     const mod = TAB_MODULE[tab]
     const permission = TAB_PERMISSION[tab]
     return (!mod || isEnabled(mod)) && (!permission || hasPermission(permission))
@@ -272,14 +277,14 @@ export default function ClientDetailPage() {
   const summaryQuery = useQuery({
     queryKey: clientKeys.summary(clientId),
     queryFn: () => clientsApi.summary(clientId),
-    enabled: !!clientId,
+    enabled: !!clientId && canReadClient,
   })
   const { data: summary, isLoading } = summaryQuery
 
   const projectsQuery = useQuery({
     queryKey: projectKeys.client(clientId),
     queryFn: () => projectsApi.listAll({ client_id: clientId }),
-    enabled: !!clientId && activeTab === "proyectos" && hasPermission("projects"),
+    enabled: !!clientId && canReadClient && activeTab === "proyectos" && hasPermission("projects"),
   })
   const projects = projectsQuery.data ?? []
 
@@ -306,9 +311,14 @@ export default function ClientDetailPage() {
     staleTime: 10 * 60_000,
   })
 
-  const canReadClientHealth = hasPermission("clients")
+  const canReadClientHealth = canReadClient
+  const healthAccessScope = [
+    user?.id ?? "anonymous", isAdmin,
+    ...(["tasks", "communications", "digests", "finance", "billing"] as const)
+      .map((module) => hasPermission(module) && isEnabled(module)),
+  ].join(":")
   const healthQuery = useQuery({
-    queryKey: ["client-health", clientId],
+    queryKey: ["client-health", clientId, healthAccessScope],
     queryFn: () => clientHealthApi.get(clientId),
     enabled: !!clientId && canReadClientHealth,
     staleTime: 60_000,
@@ -318,16 +328,17 @@ export default function ClientDetailPage() {
   const recentEntriesQuery = useQuery({
     queryKey: timeKeys.client(clientId),
     queryFn: () => clientsApi.recentTimeEntries(clientId),
-    enabled: !!clientId && activeTab === "tiempo",
+    enabled: !!clientId && canReadClient && canReadTime && activeTab === "tiempo",
   })
-  const recentEntries = recentEntriesQuery.data ?? []
+  const recentEntries = canReadTime ? recentEntriesQuery.data ?? [] : []
 
   const { data: whatIfData, isLoading: whatIfLoading } = useQuery({
     queryKey: ["client-what-if", clientId],
     queryFn: () => clientsApi.whatIf(clientId),
-    enabled: whatIfOpen && !!clientId,
+    enabled: whatIfOpen && !!clientId && canReadClient && canReadFinancialPanel,
   })
 
+  if (!canReadClient) return <p role="alert">No tienes acceso a este cliente.</p>
   if (isLoading) return (
     <div className="space-y-6">
       <Skeleton className="h-5 w-48" />
@@ -348,7 +359,10 @@ export default function ClientDetailPage() {
   )
   if (!summary) return <p className="text-muted-foreground">Cliente no encontrado</p>
 
-  const { client, tasks } = summary
+  const { client } = summary
+  // The same summary query can remain cached after permissions are refreshed.
+  // Gate cached projections with the current permissions before rendering.
+  const tasks = canReadTasks ? summary.tasks ?? [] : []
   const activeTasks = tasks.filter((task) => task.status !== "completed")
   const completedTasks = tasks.filter((task) => task.status === "completed")
 
@@ -360,15 +374,15 @@ export default function ClientDetailPage() {
       <TableCell role="cell" className="mono row-start-3 block px-0 py-1 text-xs md:table-cell md:px-4 md:py-3 md:text-sm"><span className="md:hidden">Registrado: </span>{t.actual_minutes ? formatMinutes(t.actual_minutes) : "-"}</TableCell>
       <TableCell role="cell" className="col-start-2 row-start-2 block px-0 py-1 md:table-cell md:px-4 md:py-3">
         <div className="flex justify-end gap-1 md:justify-start">
-          <TimerButton taskId={t.id} />
-          <Button
+          {canReadTime && <TimerButton taskId={t.id} />}
+          {canReadTime && <Button
             variant="ghost"
             size="icon"
             aria-label={`Ver horas de ${t.title}`}
             onClick={() => setTimeLogTaskId({ id: t.id, title: t.title, retired: !!t.retired_at })}
           >
             <Clock className="h-4 w-4" />
-          </Button>
+          </Button>}
         </div>
       </TableCell>
     </TableRow>
@@ -420,7 +434,7 @@ export default function ClientDetailPage() {
           </div>
           {client.company && <p className="text-muted-foreground">{client.company}</p>}
         </div>
-        {isEnabled("finance") && (activeTab === "ficha" || activeTab === "panel") && <Button variant="outline" size="sm" onClick={() => setWhatIfOpen(true)}>
+        {canReadFinancialPanel && (activeTab === "ficha" || activeTab === "panel") && <Button variant="outline" size="sm" onClick={() => setWhatIfOpen(true)}>
           ¿Y si pierdo este cliente?
         </Button>}
       </div>
@@ -442,7 +456,7 @@ export default function ClientDetailPage() {
             tabs: [
               ...(isTabVisible("tareas") ? (["tareas"] as TabKey[]) : []),
               ...(isTabVisible("proyectos") ? (["proyectos"] as TabKey[]) : []),
-              "tiempo",
+              ...(canReadTime ? (["tiempo"] as TabKey[]) : []),
             ],
           },
           {
@@ -557,13 +571,13 @@ export default function ClientDetailPage() {
       {/* Summary Cards — Tracked es la métrica canónica.
           Estimado/Real quedan como subtexto secundario (datos declarados vs fichados). */}
       {(activeTab === "ficha" || activeTab === "panel") && <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
+        {canReadTasks && <Card>
           <CardContent className="p-4">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total tareas</p>
-            <p className="kpi-value mt-1">{summary.total_tasks}</p>
+            <p className="kpi-value mt-1">{summary.total_tasks ?? "—"}</p>
           </CardContent>
-        </Card>
-        <Card
+        </Card>}
+        {canReadTime && <Card
           className="lg:col-span-2"
           title="Tiempo tracked: suma del timer real del equipo. Estimado: lo previsto al crear la tarea. Declarado: lo que el responsable apuntó al cerrarla."
         >
@@ -572,20 +586,20 @@ export default function ClientDetailPage() {
               Tiempo tracked
               <span className="text-muted-foreground/60 cursor-help">ⓘ</span>
             </p>
-            <p className="kpi-value mt-1">{formatMinutes(summary.total_tracked_minutes)}</p>
+            <p className="kpi-value mt-1">{summary.total_tracked_minutes == null ? "—" : formatMinutes(summary.total_tracked_minutes)}</p>
             <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
               <span>
-                Estimado: <span className="mono">{formatMinutes(summary.total_estimated_minutes)}</span>
+                Estimado: <span className="mono">{summary.total_estimated_minutes == null ? "—" : formatMinutes(summary.total_estimated_minutes)}</span>
               </span>
               <span className="text-muted-foreground/40">·</span>
               <span>
-                Declarado: <span className="mono">{formatMinutes(summary.total_actual_minutes)}</span>
+                Declarado: <span className="mono">{summary.total_actual_minutes == null ? "—" : formatMinutes(summary.total_actual_minutes)}</span>
               </span>
             </div>
           </CardContent>
-        </Card>
+        </Card>}
         {canReadClientHealth && healthQuery.isError && (
-          <Card>
+          <Card className={!canReadTasks && !canReadTime ? "col-span-2 lg:col-span-2" : undefined}>
             <CardContent className="flex h-full flex-col items-start justify-center gap-2 p-4" role="alert">
               <p className="text-sm">No se pudo cargar la salud del cliente.</p>
               <Button variant="outline" size="sm" disabled={healthQuery.isFetching} onClick={() => void healthQuery.refetch()}>Reintentar salud</Button>
@@ -596,7 +610,7 @@ export default function ClientDetailPage() {
           const presentation = clientHealthPresentation(health)
           const measuredFactors = (Object.keys(health.factors) as Array<keyof typeof health.factors>).filter((factor) => health.factors[factor] != null)
           const unavailableFactors = (Object.keys(health.factors) as Array<keyof typeof health.factors>).filter((factor) => health.factors[factor] == null)
-          return <Card className={health.risk_signals.length ? "border-red-500/40" : ""}>
+          return <Card className={`${!canReadTasks && !canReadTime ? "col-span-2 lg:col-span-2 " : ""}${health.risk_signals.length ? "border-red-500/40" : ""}`}>
             <CardContent className="p-4">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                 <Heart className="h-3 w-3 flex-shrink-0" /> <span className="truncate">Salud</span>
@@ -746,7 +760,7 @@ export default function ClientDetailPage() {
         <div className="space-y-6">
           <EngineMetricsWidget client={client} />
           <RevenueIntelligenceCard client={client} />
-          <ClientDashboardTab client={client} />
+          {canReadFinancialPanel && canReadTime && <ClientDashboardTab client={client} />}
         </div>
       )}
 
@@ -897,7 +911,7 @@ export default function ClientDetailPage() {
       )}
 
       {/* Time Log Dialog */}
-      {timeLogTaskId && (
+      {canReadTime && timeLogTaskId && (
         <TimeLogDialog
           taskId={timeLogTaskId.id}
           taskTitle={timeLogTaskId.title}
@@ -907,15 +921,15 @@ export default function ClientDetailPage() {
         />
       )}
       <TaskPanel
-        open={taskPanelId !== null || creatingTask}
+        open={canReadTasks && (taskPanelId !== null || creatingTask)}
         taskId={taskPanelId}
         defaults={creatingTask ? { clientId } : undefined}
         onOpenChange={(open) => { if (!open) { setTaskPanelId(null); setCreatingTask(false) } }}
-        onOpenTime={(task) => { setTaskPanelId(null); setTimeLogTaskId({ id: task.id, title: task.title, retired: !!task.retired_at }) }}
+        onOpenTime={(task) => { if (canReadTime) { setTaskPanelId(null); setTimeLogTaskId({ id: task.id, title: task.title, retired: !!task.retired_at }) } }}
       />
 
       {/* What-If Modal */}
-      <Dialog open={whatIfOpen} onOpenChange={setWhatIfOpen}>
+      <Dialog open={canReadFinancialPanel && whatIfOpen} onOpenChange={setWhatIfOpen}>
         <DialogHeader>
           <DialogTitle>Impacto financiero — {client?.name}</DialogTitle>
         </DialogHeader>

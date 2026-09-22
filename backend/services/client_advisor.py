@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import timedelta
 
 from sqlalchemy import Date as SQLDate
@@ -51,9 +52,18 @@ Responde con un JSON asi:
 }"""
 
 
+@dataclass(frozen=True)
+class AdviceSources:
+    tasks: bool
+    communications: bool
+    timesheet: bool
+    billing: bool
+
+
 async def get_client_advice(
     db: AsyncSession,
     client_id: int,
+    sources: AdviceSources,
 ) -> list[dict]:
     """Gather client context and call Claude for recommendations."""
     # Gather context
@@ -64,57 +74,54 @@ async def get_client_advice(
 
     today = business_today()
 
-    # Tasks summary
-    task_result = await db.execute(
-        select(Task.status, func.count(Task.id))
-        .where(Task.client_id == client_id, Task.retired_at.is_(None))
-        .group_by(Task.status)
-    )
-    tasks_by_status = {row[0].value: row[1] for row in task_result.all()}
-
-    overdue_result = await db.execute(
-        select(func.count(Task.id)).where(
-            Task.client_id == client_id,
-            Task.retired_at.is_(None),
-            cast(Task.due_date, SQLDate) < today,
-            Task.status != TaskStatus.completed,
+    if sources.tasks:
+        task_result = await db.execute(
+            select(Task.status, func.count(Task.id))
+            .where(Task.client_id == client_id, Task.retired_at.is_(None))
+            .group_by(Task.status)
         )
-    )
-    tasks_overdue = overdue_result.scalar() or 0
+        tasks_by_status = {row[0].value: row[1] for row in task_result.all()}
 
-    # Recent communications count
-    comm_result = await db.execute(
-        select(func.count(CommunicationLog.id)).where(
-            CommunicationLog.client_id == client_id,
+        overdue_result = await db.execute(
+            select(func.count(Task.id)).where(
+                Task.client_id == client_id,
+                Task.retired_at.is_(None),
+                cast(Task.due_date, SQLDate) < today,
+                Task.status != TaskStatus.completed,
+            )
         )
-    )
-    total_comms = comm_result.scalar() or 0
+        tasks_overdue = overdue_result.scalar() or 0
 
-    # Last communication date
-    last_comm_result = await db.execute(
-        select(func.max(CommunicationLog.occurred_at)).where(
-            CommunicationLog.client_id == client_id,
+    if sources.communications:
+        comm_result = await db.execute(
+            select(func.count(CommunicationLog.id)).where(
+                CommunicationLog.client_id == client_id,
+            )
         )
-    )
-    last_comm_date = last_comm_result.scalar()
-
-    # Hours this month (subquery avoids fetching IDs into Python)
-    first_of_month = today.replace(day=1)
-    next_month = (first_of_month.replace(day=28) + timedelta(days=4)).replace(day=1)
-    task_subq = select(Task.id).where(Task.client_id == client_id).scalar_subquery()
-
-    hours_result = await db.execute(
-        select(func.sum(TimeEntry.minutes)).where(
-            TimeEntry.task_id.in_(task_subq),
-            TimeEntry.minutes.isnot(None),
-            time_entry_civil_period(first_of_month, next_month),
+        total_comms = comm_result.scalar() or 0
+        last_comm_result = await db.execute(
+            select(func.max(CommunicationLog.occurred_at)).where(
+                CommunicationLog.client_id == client_id,
+            )
         )
-    )
-    hours_this_month = round((hours_result.scalar() or 0) / 60, 1)
+        last_comm_date = last_comm_result.scalar()
+
+    if sources.tasks and sources.timesheet:
+        first_of_month = today.replace(day=1)
+        next_month = (first_of_month.replace(day=28) + timedelta(days=4)).replace(day=1)
+        task_subq = select(Task.id).where(Task.client_id == client_id).scalar_subquery()
+        hours_result = await db.execute(
+            select(func.sum(TimeEntry.minutes)).where(
+                TimeEntry.task_id.in_(task_subq),
+                TimeEntry.minutes.isnot(None),
+                time_entry_civil_period(first_of_month, next_month),
+            )
+        )
+        hours_this_month = round((hours_result.scalar() or 0) / 60, 1)
 
     # Billing info
     billing_info = ""
-    if client.billing_cycle:
+    if sources.billing and client.billing_cycle:
         billing_info = f"Ciclo: {client.billing_cycle.value}"
         if client.next_invoice_date:
             days_until = (client.next_invoice_date - today).days
@@ -129,21 +136,21 @@ async def get_client_advice(
         f"CLIENTE: {client.name}",
         f"Estado: {client.status.value}",
     ]
-    if client.monthly_fee is not None:
+    if sources.billing and client.monthly_fee is not None:
         context_parts.append(f"Fee mensual: {client.monthly_fee} {client.currency}")
-    if client.monthly_budget is not None:
+    if sources.billing and client.monthly_budget is not None:
         context_parts.append(
             f"Presupuesto mensual: {client.monthly_budget} {client.currency}"
         )
-    context_parts.extend(
-        [
-            f"Tareas: {tasks_by_status}",
-            f"Tareas vencidas: {tasks_overdue}",
+    if sources.tasks:
+        context_parts.extend([f"Tareas: {tasks_by_status}", f"Tareas vencidas: {tasks_overdue}"])
+    if sources.communications:
+        context_parts.extend([
             f"Total comunicaciones: {total_comms}",
             f"Ultima comunicacion: {last_comm_date or 'nunca'}",
-            f"Horas este mes: {hours_this_month}h",
-        ]
-    )
+        ])
+    if sources.tasks and sources.timesheet:
+        context_parts.append(f"Horas este mes: {hours_this_month}h")
     if billing_info:
         context_parts.append(f"Facturacion: {billing_info}")
     if client.notes:

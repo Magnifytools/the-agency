@@ -272,11 +272,11 @@ export type ClientCohort = "all" | "external" | "internal"
 // Client Summary
 export interface ClientSummary {
   client: Client
-  tasks: Task[]
-  total_tasks: number
-  total_estimated_minutes: number
-  total_actual_minutes: number
-  total_tracked_minutes: number
+  tasks: Task[] | null
+  total_tasks: number | null
+  total_estimated_minutes: number | null
+  total_actual_minutes: number | null
+  total_tracked_minutes: number | null
 }
 
 export interface ClientTeamBreakdown {

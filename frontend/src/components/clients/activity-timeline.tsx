@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { clientActivityApi } from "@/lib/api"
+import { useAuth } from "@/context/auth-context"
+import { isEnabled } from "@/lib/hidden-modules"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -102,13 +104,26 @@ function groupByDate(events: ActivityEvent[]): Map<string, ActivityEvent[]> {
 }
 
 export function ActivityTimeline({ clientId }: Props) {
+  const { hasPermission } = useAuth()
+  const canReadClient = hasPermission("clients")
+  const readableTypes = new Set<string>()
+  if (hasPermission("communications") && isEnabled("communications")) readableTypes.add("communication")
+  if (hasPermission("tasks") && isEnabled("tasks")) {
+    readableTypes.add("task_completed")
+    readableTypes.add("task_created")
+  }
+  if (hasPermission("digests") && isEnabled("digests")) readableTypes.add("digest")
+  if (hasPermission("proposals") && isEnabled("proposals")) readableTypes.add("proposal")
+  const accessScope = [...readableTypes].sort().join(",")
   const activityQuery = useQuery({
-    queryKey: ["client-activity", clientId],
+    queryKey: ["client-activity", clientId, accessScope],
     queryFn: () => clientActivityApi.list(clientId),
-    enabled: !!clientId,
+    enabled: !!clientId && canReadClient && readableTypes.size > 0,
   })
-  const events = activityQuery.isError ? [] : (activityQuery.data ?? [])
+  // Filter even a previously cached response before painting after a permission change.
+  const events = activityQuery.isError ? [] : (activityQuery.data ?? []).filter((event: ActivityEvent) => readableTypes.has(event.type))
 
+  if (!canReadClient || readableTypes.size === 0) return <p className="text-muted-foreground text-sm">No hay fuentes de actividad disponibles para tu acceso.</p>
   if (activityQuery.isPending) return <p className="text-muted-foreground text-sm">Cargando actividad...</p>
   if (activityQuery.isError) return <div role="alert" className="flex items-center justify-between gap-3 py-6"><p className="text-sm">No se pudo cargar la actividad del cliente.</p><button className="text-sm text-brand hover:underline" onClick={() => void activityQuery.refetch()}>Reintentar</button></div>
 
@@ -126,7 +141,7 @@ export function ActivityTimeline({ clientId }: Props) {
 
   return (
     <div className="space-y-6">
-      <p className="text-xs text-muted-foreground">Las tareas completadas sólo se sitúan en el timeline cuando tienen fecha de finalización registrada.</p>
+      {readableTypes.has("task_completed") && <p className="text-xs text-muted-foreground">Las tareas completadas sólo se sitúan en el timeline cuando tienen fecha de finalización registrada.</p>}
       {Array.from(grouped.entries()).map(([dateLabel, dayEvents]) => (
         <div key={dateLabel}>
           {/* Date separator */}
