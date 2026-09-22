@@ -29,6 +29,11 @@ const toneLabels: Record<DigestTone, string> = {
   cercano: "Cercano",
   equipo: "Equipo",
 }
+const statusLabels: Record<DigestStatus, string> = {
+  draft: "Borrador",
+  reviewed: "Revisado",
+  sent: "Marcado como enviado",
+}
 
 function validPeriodDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
@@ -340,7 +345,7 @@ function DigestList() {
           <p>Hay una preparación individual sin respuesta confirmada. Se conserva su clave para evitar versiones duplicadas.</p>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={recoveryQuery.isFetching || generateMutation.isPending} onClick={() => void recoveryQuery.refetch()}>{recoveryQuery.isFetching ? "Comprobando…" : "Comprobar resultado"}</Button>
-            <Button size="sm" disabled={!canWrite || recoveryQuery.isFetching || generateMutation.isPending} onClick={() => pendingIndividual && generateMutation.mutate(pendingIndividual)}>Reintentar la misma solicitud</Button>
+            {canWrite && <Button size="sm" disabled={recoveryQuery.isFetching || generateMutation.isPending} onClick={() => pendingIndividual && generateMutation.mutate(pendingIndividual)}>Reintentar la misma solicitud</Button>}
           </div>
           {recoveryQuery.isError && <p>{(recoveryQuery.error as { response?: { status?: number } })?.response?.status === 404 ? "Todavía no hay una versión confirmada. Puedes comprobar de nuevo o reintentar la misma solicitud." : "No se pudo comprobar el resultado. La solicitud sigue guardada."}</p>}
         </>}
@@ -348,7 +353,7 @@ function DigestList() {
 
       <DigestCohort clientId={filterClient || undefined} expectedPeriod={expectedPeriod} />
 
-      <div><h2 className="text-lg font-semibold">Historial de versiones</h2><p className="text-sm text-muted-foreground">Abre una versión para revisar su texto y confirmar la entrega al cliente. Discord es distribución interna.</p></div>
+      <div><h2 className="text-lg font-semibold">Historial de versiones</h2><p className="text-sm text-muted-foreground">{canWrite ? "Abre una versión para revisar su texto y confirmar la entrega al cliente. Discord es distribución interna." : "Abre una versión para consultar su texto y sus fuentes."}</p></div>
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <div className="w-48">
@@ -431,17 +436,17 @@ function DigestList() {
                     </TableCell>
                     <TableCell>{toneLabels[digest.tone]}</TableCell>
                     <TableCell>
-                      <Select
+                      {canWrite ? <Select
                         value={digest.status}
                         aria-label={`Estado histórico de versión #${digest.id}`}
-                        disabled={!canWrite || statusMutation.isPending}
+                        disabled={statusMutation.isPending}
                         onChange={(e) => statusMutation.mutate({ id: digest.id, status: e.target.value as DigestStatus })}
                         className="w-48 h-8 text-sm"
                       >
                         <option value="draft">Borrador</option>
                         <option value="reviewed">Revisado</option>
                         <option value="sent" disabled>Marcado como enviado (histórico)</option>
-                      </Select>
+                      </Select> : <span className="text-sm">{statusLabels[digest.status]}</span>}
                     </TableCell>
                     <TableCell>
                       {digest.generated_at
@@ -457,7 +462,7 @@ function DigestList() {
                           title={canWrite ? "Editar y revisar entrega" : "Consultar versión"}
                           onClick={() => navigate(`/digests/${digest.id}/edit`)}
                         >
-                          <Pencil className="w-4 h-4" />
+                          {canWrite ? <Pencil className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </Button>
                         <Button
                           variant="ghost"
@@ -485,17 +490,16 @@ function DigestList() {
                         >
                           <FileText className="w-3.5 h-3.5" />
                         </Button>
-                        <span className="w-px h-5 bg-border mx-0.5" />
+                        {canWrite && <><span className="w-px h-5 bg-border mx-0.5" />
                         {/* Discord (interno) */}
                         <Button
                           variant="ghost"
                           size="sm"
                           title="Discord (interno)"
                           onClick={() => handleDiscordPreview(digest)}
-                          disabled={!canWrite}
                         >
                           <MessageCircle className="w-4 h-4" />
-                        </Button>
+                        </Button></>}
                         {canWrite && digest.status !== "sent" && digest.can_delete === true && (
                           <>
                             <span className="w-px h-5 bg-border mx-0.5" />

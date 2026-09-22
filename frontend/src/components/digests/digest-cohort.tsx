@@ -136,12 +136,12 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedP
   return <Card>
     <CardContent className="p-4 sm:p-6 space-y-4">
       <div className="flex flex-wrap justify-between gap-3">
-        <div><h2 className="font-semibold text-lg">Preparar resúmenes pendientes</h2><p className="text-sm text-muted-foreground">Selecciona los clientes que quieres preparar. Cada uno usa su frecuencia y último período cerrado.</p>{expectedPeriod && <p className="mt-1 text-sm font-medium">Período del aviso: {civilDate(expectedPeriod.start)} — {civilDate(expectedPeriod.end)}</p>}</div>
-        <Button variant="outline" size="sm" disabled={busy} onClick={() => void refresh()}><RefreshCw className="size-4 mr-2" />Actualizar selección</Button>
+        <div><h2 className="font-semibold text-lg">{canWrite ? "Preparar resúmenes pendientes" : "Resúmenes pendientes"}</h2><p className="text-sm text-muted-foreground">{canWrite ? "Selecciona los clientes que quieres preparar. Cada uno usa su frecuencia y último período cerrado." : "Consulta el período y el motivo de cada cliente."}</p>{expectedPeriod && <p className="mt-1 text-sm font-medium">Período del aviso: {civilDate(expectedPeriod.start)} — {civilDate(expectedPeriod.end)}</p>}</div>
+        <Button variant="outline" size="sm" disabled={busy} onClick={() => void refresh()}><RefreshCw className="size-4 mr-2" />{canWrite ? "Actualizar selección" : "Actualizar datos"}</Button>
       </div>
       <div className="flex flex-wrap items-end gap-3">
         {isAdmin ? <div className="space-y-1"><Label htmlFor="cohort-scope">Responsabilidad</Label><Select id="cohort-scope" value={scope} disabled={mutation.isPending} onChange={event => { setScope(event.target.value as ReportScope); setSelected([]); setResults([]); setNeedsRefresh(false); setSubmitError("") }}><option value="mine">A mi cargo</option><option value="team">Todo el equipo</option></Select></div> : <p className="text-sm">Clientes a mi cargo</p>}
-        <div className="space-y-1"><Label htmlFor="cohort-tone">Tono de los nuevos resúmenes</Label><Select id="cohort-tone" value={tone} disabled={!canWrite || mutation.isPending} onChange={event => setTone(event.target.value as DigestTone)}><option value="cercano">Cercano</option><option value="formal">Formal</option><option value="equipo">Equipo</option></Select></div>
+        {canWrite && <div className="space-y-1"><Label htmlFor="cohort-tone">Tono de los nuevos resúmenes</Label><Select id="cohort-tone" value={tone} disabled={mutation.isPending} onChange={event => setTone(event.target.value as DigestTone)}><option value="cercano">Cercano</option><option value="formal">Formal</option><option value="equipo">Equipo</option></Select></div>}
       </div>
       {!canWrite && <p className="text-sm text-muted-foreground">Tienes acceso de lectura. Necesitas permiso para preparar resúmenes.</p>}
       {query.isPending ? <p role="status" className="text-sm flex items-center gap-2"><Loader2 className="size-4 animate-spin" />Consultando los períodos pendientes…</p> : query.isError ? <div role="alert" className="text-sm">No se pudo consultar qué clientes necesitan un resumen. <Button size="sm" variant="outline" disabled={query.isFetching} onClick={() => void refresh()}>Reintentar consulta</Button></div> : <>
@@ -151,7 +151,7 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedP
         {rows.length === 0 && <p className="text-sm">{scope === "mine" ? "No hay clientes a tu cargo en esta selección. La frecuencia y el responsable se configuran en la ficha del cliente." : "No hay clientes en esta consulta."}</p>}
         <ul className="divide-y rounded-lg border">
           {rows.map(item => <li key={item.client_id} className="p-3 sm:p-4 flex items-start gap-3">
-            <input className="mt-1 shrink-0 size-4" type="checkbox" aria-label={`Preparar ${item.client_name}`} checked={chosen.some(row => row.client_id === item.client_id)} disabled={!canWrite || busy || !!pendingCohort || needsRefresh || !selectable(item) || (chosen.length >= 50 && !selected.includes(itemKey(item)))} onChange={event => setSelected(previous => event.target.checked ? [...previous, itemKey(item)] : previous.filter(key => key !== itemKey(item)))} />
+            {canWrite && <input className="mt-1 shrink-0 size-4" type="checkbox" aria-label={`Preparar ${item.client_name}`} checked={chosen.some(row => row.client_id === item.client_id)} disabled={busy || !!pendingCohort || needsRefresh || !selectable(item) || (chosen.length >= 50 && !selected.includes(itemKey(item)))} onChange={event => setSelected(previous => event.target.checked ? [...previous, itemKey(item)] : previous.filter(key => key !== itemKey(item)))} />}
             <div className="min-w-0 flex-1 space-y-1">
               <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><h3 className="font-medium break-words">{item.client_name}</h3><span className="text-xs text-muted-foreground">{item.cadence === "weekly" ? "Semanal" : item.cadence === "monthly" ? "Mensual" : "Sin frecuencia"} · {item.responsible_name || "Sin responsable"}</span></div>
               <p className="text-sm">{item.period_start && item.period_end ? `${civilDate(item.period_start)} — ${civilDate(item.period_end)}` : "Sin período configurado"}</p>
@@ -170,14 +170,14 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedP
           <p>Hay una selección sin respuesta confirmada. {recovery.data ? `${recoveredCount} de ${pendingCohort!.items.length} versiones están confirmadas.` : "Estamos comprobando sus versiones."}</p>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={recovery.isFetching || mutation.isPending} onClick={() => void recovery.refetch()}>{recovery.isFetching ? "Comprobando…" : "Comprobar resultado"}</Button>
-            <Button size="sm" disabled={!canWrite || recovery.isFetching || mutation.isPending} onClick={() => pendingCohort && mutation.mutate(pendingCohort)}>Reintentar la misma selección</Button>
+            {canWrite && <Button size="sm" disabled={recovery.isFetching || mutation.isPending} onClick={() => pendingCohort && mutation.mutate(pendingCohort)}>Reintentar la misma selección</Button>}
           </div>
           {recovery.isError && <p>No se pudo comprobar el resultado. Las claves siguen guardadas.</p>}
         </>}
       </div>}
       {submitError && <p role="alert" className="text-sm">{submitError}</p>}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">{chosen.length} seleccionados · Máximo 50. Preparar no envía nada al cliente ni a Discord.</p>
+        {canWrite && <p className="text-sm text-muted-foreground">{chosen.length} seleccionados · Máximo 50. Preparar no envía nada al cliente ni a Discord.</p>}
         {canWrite && <Button disabled={!chosen.length || busy || !!pendingCohort || query.isError || needsRefresh || generationStorageFailed} onClick={submitChosen}>{mutation.isPending ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Sparkles className="size-4 mr-2" />}{mutation.isPending ? "Preparando…" : `Preparar selección (${chosen.length})`}</Button>}
       </div>
       {results.length > 0 && <section className="rounded-lg bg-muted p-3 space-y-2" aria-label="Resultado de la preparación" aria-live="polite"><h3 className="font-medium">Resultado de la selección</h3><ul className="space-y-2">{results.map(result => <li key={result.client_id} className="text-sm break-words"><strong>{result.name}</strong> · {result.outcome === "generated" ? "Generado" : result.outcome === "skipped" ? "Omitido" : "Fallido"}{result.reason ? ` · ${reasons[result.reason] ?? "Actualiza para comprobar el estado"}` : ""}{result.digest_id && <> · <Link className="text-primary underline underline-offset-2" to={`/digests/${result.digest_id}/edit`}>Abrir versión #{result.digest_id}</Link></>}</li>)}</ul></section>}

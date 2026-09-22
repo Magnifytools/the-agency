@@ -91,7 +91,12 @@ it("network uncertainty requires a fresh preview before another attempt", async 
 it("read-only users can inspect reasons without preparing anything", async () => {
   mocks.auth.write = false
   setup()
-  expect(await screen.findByRole("checkbox", {name: "Preparar Cliente 1"})).toBeDisabled()
+  expect(await screen.findByText("Falta configurar la frecuencia y el responsable")).toBeInTheDocument()
+  expect(screen.getByRole("heading", {name: "Resúmenes pendientes"})).toBeInTheDocument()
+  expect(screen.getByRole("button", {name: "Actualizar datos"})).not.toBeDisabled()
+  expect(screen.queryByRole("checkbox", {name: "Preparar Cliente 1"})).not.toBeInTheDocument()
+  expect(screen.queryByLabelText("Tono de los nuevos resúmenes")).not.toBeInTheDocument()
+  expect(screen.queryByText(/seleccionados · Máximo 50/)).not.toBeInTheDocument()
   expect(screen.queryByRole("button", {name: /Preparar selección/})).not.toBeInTheDocument()
 })
 it("keeps a persisted cohort visible but cannot retry after write permission is revoked", async () => {
@@ -101,7 +106,8 @@ it("keeps a persisted cohort visible but cannot retry after write permission is 
   ] }))
   mocks.auth.write = false
   setup()
-  expect(await screen.findByRole("button", { name: "Reintentar la misma selección" })).toBeDisabled()
+  expect(await screen.findByText(/Hay una selección sin respuesta confirmada/)).toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Reintentar la misma selección" })).not.toBeInTheDocument()
   expect(mocks.generate).not.toHaveBeenCalled()
 })
 it("preview failure remains visible and retry recovers", async () => {
