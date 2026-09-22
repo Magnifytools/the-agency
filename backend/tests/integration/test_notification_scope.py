@@ -18,12 +18,13 @@ async def test_task_activity_is_hidden_without_and_after_read_permission(
     denied = await make_member_client([])
     reader = await make_member_client([("tasks", True, False)])
     task = Task(title=f"Private task {uuid4().hex}", assigned_to=denied.test_user.id)
-    db_session.add(task)
+    reader_task = Task(title=f"Readable task {uuid4().hex}", assigned_to=reader.test_user.id)
+    db_session.add_all([task, reader_task])
     await db_session.flush()
     hidden = Notification(user_id=denied.test_user.id, type="task_assigned",
                           title=f"Assigned: {task.title}", entity_type="task", entity_id=task.id)
     visible = Notification(user_id=reader.test_user.id, type="task_assigned",
-                           title=f"Assigned: {task.title}", entity_type="task", entity_id=task.id)
+                           title=f"Assigned: {reader_task.title}", entity_type="task", entity_id=reader_task.id)
     independent = Notification(user_id=denied.test_user.id, type="scheduled_meeting",
                                title="Own meeting")
     db_session.add_all([hidden, visible, independent])
@@ -44,7 +45,7 @@ async def test_task_activity_is_hidden_without_and_after_read_permission(
     ))
     permission.can_read = False
     await db_session.commit()
-    assert (await reader.get(f"/api/tasks/{task.id}")).status_code == 403
+    assert (await reader.get(f"/api/tasks/{reader_task.id}")).status_code == 403
     assert (await reader.get("/api/notifications")).json() == []
     assert (await reader.get("/api/notifications/unread-count")).json() == {"count": 0}
     assert (await reader.put(f"/api/notifications/{visible.id}/read")).status_code == 404

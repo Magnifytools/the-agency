@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from sqlalchemy import and_, exists, false, or_, select
-from sqlalchemy.orm import noload
+from sqlalchemy.orm import aliased, noload
 
 from backend.core.modules import is_enabled
 from backend.db.models import Notification, Project, Task, User, WeeklyDigest
@@ -52,12 +52,23 @@ def visible_notification_condition(user_id: int):
     project_activity = ("phase_completed",)
     digest_activity = ("digest_generated",)
     task_summaries = ("scheduled_morning", "scheduled_evening")
+    newer_assignment = aliased(Notification)
     return and_(
         Notification.incident_state.is_(None),
         Notification.type.notin_(hidden_types),
         or_(
             and_(Notification.type.in_(task_activity), Notification.entity_type == "task",
-                 task_read, exists().where(Task.id == Notification.entity_id)),
+                 task_read, exists().where(
+                     Task.id == Notification.entity_id, Task.assigned_to == user_id,
+                 ),
+                 ~exists().where(
+                     newer_assignment.user_id == Notification.user_id,
+                     newer_assignment.type == "task_assigned",
+                     newer_assignment.incident_state.is_(None),
+                     newer_assignment.entity_type == "task",
+                     newer_assignment.entity_id == Notification.entity_id,
+                     newer_assignment.id > Notification.id,
+                 )),
             and_(Notification.type.in_(project_activity), Notification.entity_type == "project",
                  project_read, exists().where(Project.id == Notification.entity_id)),
             and_(Notification.type.in_(digest_activity), Notification.entity_type == "digest",
