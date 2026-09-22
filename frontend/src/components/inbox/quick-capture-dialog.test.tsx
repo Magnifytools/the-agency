@@ -467,6 +467,8 @@ describe("command entry", () => {
     await userEvent.click(
       screen.getByRole("tab", { name: "Guardar para aclarar" }),
     );
+    expect(screen.getByLabelText("Cliente").parentElement).toHaveClass("sm:grid-cols-2");
+    expect(screen.getByLabelText("Proyecto").parentElement).toHaveClass("sm:grid-cols-2");
     await userEvent.type(
       screen.getByLabelText("Contenido para aclarar"),
       "Idea pendiente de ordenar",
@@ -507,6 +509,9 @@ describe("command entry", () => {
 
     expect(await screen.findByLabelText(visible)).toBeInTheDocument();
     expect(screen.queryByLabelText(hidden)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(visible).parentElement).toHaveClass(
+      canReadClients && canReadProjects ? "sm:grid-cols-2" : "sm:grid-cols-1",
+    );
     expect(clientsApi.listAll).toHaveBeenCalledTimes(canReadClients ? 1 : 0);
     expect(projectsApi.listAll).toHaveBeenCalledTimes(canReadProjects ? 1 : 0);
     await userEvent.type(screen.getByLabelText("Contenido para aclarar"), "Nota personal");

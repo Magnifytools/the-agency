@@ -880,7 +880,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                 placeholder="Enlace de referencia (opcional)"
               />
             </div>
-            {(canReadClients || canReadProjects) && <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {(canReadClients || canReadProjects) && <div className={`grid grid-cols-1 gap-2 ${canReadClients && canReadProjects ? "sm:grid-cols-2" : "sm:grid-cols-1"}`}>
               {canReadClients && <Select
                 aria-label="Cliente"
                 value={clientId}
