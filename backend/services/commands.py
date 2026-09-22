@@ -805,6 +805,92 @@ def response_dict(row: CommandReceipt) -> dict:
             "revision": row.revision, "created_at": row.created_at, "updated_at": row.updated_at}
 
 
+async def visible_response_dict(
+    db: AsyncSession, row: CommandReceipt, actor: User,
+    query_cache: dict[tuple[str, str], dict | None] | None = None,
+) -> dict:
+    """Project a durable receipt through the actor's current source access.
+
+    Stored snapshots remain untouched for idempotency and Undo. A query receipt
+    gets a fresh first page because even a still-authorized incident can have
+    lost its source, assignee, or recipient permission since it was created.
+    """
+    response = response_dict(row)
+    intent = row.intent or {}
+    kind = intent.get("kind")
+    if kind == "query_work" and row.status == STATUS_EXECUTED:
+        query_kind = intent.get("query")
+        scope = intent.get("scope", "mine")
+        key = (query_kind, scope)
+        if query_cache is not None and key in query_cache:
+            page = query_cache[key]
+        else:
+            try:
+                if query_kind == "decisions":
+                    from backend.services.command_decisions import query_decisions
+                    page = await query_decisions(db, actor, scope=scope, page=1, page_size=25)
+                else:
+                    require_permission(actor, "tasks", write=False)
+                    page = await query_work(db, query_kind, actor=actor, scope=scope,
+                                            page=1, page_size=25)
+            except HTTPException as exc:
+                if exc.status_code != 403:
+                    raise
+                page = None
+            if query_cache is not None:
+                query_cache[key] = page
+        if page is None:
+            response["result"] = {
+                "message": "Consulta no disponible con los permisos actuales",
+                "entities": [], "undo_available": False,
+            }
+        else:
+            noun = "decisiones" if query_kind == "decisions" else "tareas"
+            response["result"] = {
+                "message": f"{page['total']} {noun}", "entities": [],
+                "query": page, "undo_available": False,
+            }
+        return response
+
+    # Choices, review plans, result messages, entity labels/IDs and error
+    # details can all contain names from a source resolved by the server.
+    # Check every module whose data entered this receipt before returning any
+    # of those fields. Raw text and extension context came from this actor.
+    required = set()
+    if kind in {"create_task", "complete_task", "reschedule_task", "set_priority", "log_time", "create_project_with_task"}:
+        required.add("tasks")
+    if kind in {"create_project", "create_project_with_task"}:
+        required.add("projects")
+    if kind == "log_time":
+        required.add("timesheet")
+    applied = (row.result or {}).get("applied") or {}
+    entities = (row.result or {}).get("entities") or []
+    if any(intent.get(field) is not None or applied.get(field) is not None
+           for field in ("client_id", "client_name")):
+        required.add("clients")
+    if any(intent.get(field) is not None or applied.get(field) is not None
+           for field in ("project_id", "project_name")) or any(
+        entity.get("project_id") is not None for entity in entities
+    ):
+        required.add("projects")
+    questions = (row.prompt or {}).get("questions") or []
+    if any(
+        choice.get("subtitle") not in (None, "Sin proyecto") and choice.get("id", "").startswith("task:")
+        for question in questions for choice in question.get("choices", [])
+    ):
+        required.add("projects")
+    if required and any(not _permission(actor, module, write=False) for module in required):
+        response["intent"] = {"kind": kind}
+        response["prompt"] = None
+        response["result"] = {
+            "message": "Contenido no disponible con los permisos actuales",
+            "entities": [], "undo_available": False,
+        } if row.result is not None else None
+        if response["error"] is not None:
+            response["error"] = {"code": row.error_code, "detail": "Contenido no disponible con los permisos actuales"}
+    return response
+
+
 def step_hash(kind: str, revision: int, payload: Any) -> str:
     return canonical_hash({"kind": kind, "revision": revision, "payload": payload})
 
