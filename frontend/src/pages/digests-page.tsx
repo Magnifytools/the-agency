@@ -131,7 +131,11 @@ function DigestList() {
     enabled: generateOpen && !isAdmin && Boolean(selectedClientId) && !pendingIndividual,
     retry: false,
   })
-  const canGenerateForSelectedClient = isAdmin || Boolean(selectedPolicy.data?.configured && selectedPolicy.data.responsible_user_id === userId)
+  const canGenerateForSelectedClient = isAdmin || Boolean(
+    selectedPolicy.data?.configured &&
+    selectedPolicy.data.responsible_user_id === userId &&
+    selectedPolicy.data.responsible_can_prepare === true,
+  )
 
   const finishIndividualGeneration = (intent: IndividualDigestIntent) => {
     clearDigestGeneration(userId, intent.operation_key)
@@ -556,7 +560,7 @@ function DigestList() {
             {!isAdmin && selectedClientId && !pendingIndividual && (
               selectedPolicy.isPending ? <p role="status" className="text-sm text-muted-foreground">Comprobando quién prepara este resumen…</p> :
               !canGenerateForSelectedClient ? <div role="status" className="space-y-2 text-sm text-muted-foreground">
-                <p>{selectedPolicy.isError ? "No tienes asignada la preparación de este cliente, o no se pudo consultar su configuración." : "Este cliente necesita una política de resúmenes con tu usuario como responsable."} Pide a un administrador que lo revise en Cliente → Resúmenes.</p>
+                <p>{selectedPolicy.isError ? "No tienes asignada la preparación de este cliente, o no se pudo consultar su configuración." : selectedPolicy.data?.responsible_user_id === userId && !selectedPolicy.data.responsible_can_prepare ? "Ya no puedes preparar resúmenes para este cliente. Comprueba que tu cuenta esté activa y conserve el permiso de edición de Resúmenes." : "Este cliente necesita una política de resúmenes con tu usuario como responsable."} Pide a un administrador que lo revise en Cliente → Resúmenes.</p>
                 <Button size="sm" variant="outline" onClick={() => void selectedPolicy.refetch()}>Comprobar configuración de nuevo</Button>
               </div> : null
             )}

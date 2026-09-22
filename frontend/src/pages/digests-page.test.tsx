@@ -15,10 +15,10 @@ function setup(route = "/digests") {
   const node = () => <QueryClientProvider client={client}><MemoryRouter initialEntries={[route]}><DigestsPage /></MemoryRouter></QueryClientProvider>
   return {...render(node()), node}
 }
-beforeEach(() => {vi.resetAllMocks(); localStorage.clear(); mocks.auth = {id: 1, write: true, admin: true}; mocks.api.list.mockResolvedValue([source, {...source, id: 20, client_id: 2, client_name: "Other"}]); mocks.clients.mockResolvedValue([{id: 1, name: "Acme", status: "active", is_internal: false}]); mocks.policy.mockResolvedValue({configured: true, responsible_user_id: 1}); mocks.api.render.mockResolvedValue({rendered: "Rendered"}); mocks.api.generate.mockResolvedValue({...source, id: 30}); mocks.send.mockResolvedValue({status: "pending"})})
+beforeEach(() => {vi.resetAllMocks(); localStorage.clear(); mocks.auth = {id: 1, write: true, admin: true}; mocks.api.list.mockResolvedValue([source, {...source, id: 20, client_id: 2, client_name: "Other"}]); mocks.clients.mockResolvedValue([{id: 1, name: "Acme", status: "active", is_internal: false}]); mocks.policy.mockResolvedValue({configured: true, enabled: false, responsible_user_id: 1, responsible_can_prepare: true}); mocks.api.render.mockResolvedValue({rendered: "Rendered"}); mocks.api.generate.mockResolvedValue({...source, id: 30}); mocks.send.mockResolvedValue({status: "pending"})})
 it("explains missing member policy and allows generation after configuration is rechecked", async () => {
   mocks.auth.admin = false
-  mocks.policy.mockRejectedValueOnce({response: {status: 403}}).mockResolvedValue({configured: true, responsible_user_id: 1})
+  mocks.policy.mockRejectedValueOnce({response: {status: 403}}).mockResolvedValue({configured: true, enabled: false, responsible_user_id: 1, responsible_can_prepare: true})
   setup()
   fireEvent.click(await screen.findByRole("button", {name: "Preparar uno"}))
   fireEvent.change(screen.getByLabelText("Cliente"), {target: {value: "1"}})
@@ -29,6 +29,16 @@ it("explains missing member policy and allows generation after configuration is 
   await waitFor(() => expect(screen.getByRole("button", {name: "Generar"})).toBeEnabled())
   fireEvent.click(screen.getByRole("button", {name: "Generar"}))
   await waitFor(() => expect(mocks.api.generate).toHaveBeenCalledWith(expect.objectContaining({client_id: 1})))
+}, 15000)
+it("blocks an assigned member whose digest permission is unavailable", async () => {
+  mocks.auth.admin = false
+  mocks.policy.mockResolvedValue({configured: true, enabled: true, responsible_user_id: 1, responsible_can_prepare: false})
+  setup()
+  fireEvent.click(await screen.findByRole("button", {name: "Preparar uno"}))
+  fireEvent.change(screen.getByLabelText("Cliente"), {target: {value: "1"}})
+  expect(await screen.findByText(/Ya no puedes preparar resúmenes/)).toBeInTheDocument()
+  expect(screen.getByRole("button", {name: "Generar"})).toBeDisabled()
+  expect(mocks.api.generate).not.toHaveBeenCalled()
 }, 15000)
 it("offers deletion only when the server confirms the version can be deleted", async () => {
   mocks.api.list.mockResolvedValueOnce([{...source, status: "reviewed", can_delete: false}, {...source, id: 20, client_name: "Other", status: "sent", can_delete: true}, {...source, id: 30, client_name: "Free"}])
