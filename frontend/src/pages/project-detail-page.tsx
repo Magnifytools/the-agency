@@ -2,7 +2,7 @@ import { ProjectWorkSummary } from "@/components/projects/project-work-summary"
 import type { ProjectTaskItem, ProjectTaskGroup } from "@/lib/project-work"
 import { useBusinessDate } from "@/hooks/use-business-date"
 import { businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates"
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
 import { useAuth } from "@/context/auth-context"
@@ -27,7 +27,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { projectsApi, tasksApi, usersApi } from "@/lib/api"
-import type { Project, ProjectStatus, PhaseStatus, TaskStatus, ProjectClosingStatus, ProjectMonthlyCycle } from "@/lib/types"
+import type { Project, ProjectPhase, ProjectStatus, PhaseStatus, TaskStatus, ProjectClosingStatus, ProjectMonthlyCycle } from "@/lib/types"
 import { isEnabled } from "@/lib/hidden-modules"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -105,6 +105,8 @@ export default function ProjectDetailPage() {
   const cycleMonth = selectedCycleMonth ?? currentMonth
   const projectId = id ? parseInt(id) : NaN
   const validId = !isNaN(projectId)
+  const canReadTasks = hasPermission("tasks")
+  const canReadTime = hasPermission("timesheet")
 
   const { data: project, isLoading, isError: projectError, error: projectLoadError, refetch: retryProject } = useQuery({
     queryKey: projectKeys.detail(projectId),
@@ -115,13 +117,13 @@ export default function ProjectDetailPage() {
   const { data: tasksData, isLoading: tasksLoading, isError: tasksError, refetch: retryTasks } = useQuery({
     queryKey: taskKeys.project(projectId),
     queryFn: () => projectsApi.tasks(projectId),
-    enabled: validId,
+    enabled: validId && canReadTasks,
   })
 
   const burndownQuery = useQuery({
     queryKey: projectKeys.burndown(projectId),
     queryFn: () => projectsApi.burndown(projectId),
-    enabled: validId && showMetrics && project?.is_recurring === false,
+    enabled: validId && canReadTasks && showMetrics && project?.is_recurring === false,
   })
 
   const burndown = burndownQuery.isError ? undefined : burndownQuery.data
@@ -129,8 +131,30 @@ export default function ProjectDetailPage() {
   const cycleQuery = useQuery({
     queryKey: ["projects", projectId, "monthly-cycle", cycleMonth],
     queryFn: () => projectsApi.monthlyCycle(projectId, cycleMonth),
-    enabled: validId && project?.is_recurring === true,
+    enabled: validId && canReadTasks && project?.is_recurring === true,
   })
+
+  useEffect(() => {
+    if (canReadTasks || !validId) return
+
+    const taskQueryKey = taskKeys.project(projectId)
+    const burndownQueryKey = projectKeys.burndown(projectId)
+    const cycleQueryKey = ["projects", projectId, "monthly-cycle"]
+    let current = true
+
+    void Promise.all([
+      queryClient.cancelQueries({ queryKey: taskQueryKey, exact: true }),
+      queryClient.cancelQueries({ queryKey: burndownQueryKey, exact: true }),
+      queryClient.cancelQueries({ queryKey: cycleQueryKey }),
+    ]).then(() => {
+      if (!current) return
+      queryClient.removeQueries({ queryKey: taskQueryKey, exact: true })
+      queryClient.removeQueries({ queryKey: burndownQueryKey, exact: true })
+      queryClient.removeQueries({ queryKey: cycleQueryKey })
+    })
+
+    return () => { current = false }
+  }, [canReadTasks, projectId, queryClient, validId])
 
   const updateStatusMutation = useMutation({
     mutationFn: (status: string) => projectsApi.update(projectId, { status }),
@@ -168,20 +192,24 @@ export default function ProjectDetailPage() {
     return true
   }, [filterSearch, filterStatus])
 
+  const visibleTasksData = canReadTasks ? tasksData : undefined
+  const visibleBurndown = canReadTasks ? burndown : undefined
+  const visibleCycle = canReadTasks ? cycleQuery.data : undefined
+
   const filteredPhases = useMemo(() => {
-    if (!tasksData?.phases) return []
-    return tasksData.phases
+    if (!visibleTasksData?.phases) return []
+    return visibleTasksData.phases
       .map((pg: ProjectTaskGroup) => ({
         ...pg,
         tasks: pg.tasks.filter(filterTask),
       }))
       .filter((pg: ProjectTaskGroup) => pg.tasks.length > 0)
-  }, [tasksData, filterTask])
+  }, [visibleTasksData, filterTask])
 
   const filteredUnassigned = useMemo(() => {
-    if (!tasksData?.unassigned_tasks) return []
-    return tasksData.unassigned_tasks.filter(filterTask)
-  }, [tasksData, filterTask])
+    if (!visibleTasksData?.unassigned_tasks) return []
+    return visibleTasksData.unassigned_tasks.filter(filterTask)
+  }, [visibleTasksData, filterTask])
 
   const hasActiveFilters = filterStatus !== "all" || filterSearch !== ""
 
@@ -230,7 +258,18 @@ export default function ProjectDetailPage() {
   const canWriteProjects = hasPermission("projects", true)
   const canWriteTasks = hasPermission("tasks", true)
   const canAddTasks = canWriteTasks && !isArchived
-  const primaryHoursUsed = project.is_recurring ? (project.hours_used_month ?? 0) : (project.hours_used ?? 0)
+  const canManageLifecycle = canWriteProjects && canReadTasks
+  const hasTaskMetrics = canReadTasks
+    && project.progress_percent != null
+    && project.task_count != null
+    && project.completed_task_count != null
+  const hasTimeMetrics = canReadTasks && canReadTime
+    && project.hours_used != null
+    && project.hours_used_week != null
+    && project.hours_used_month != null
+  const primaryHoursUsed = hasTimeMetrics
+    ? (project.is_recurring ? project.hours_used_month : project.hours_used)
+    : null
   const primaryHoursBudget = project.is_recurring ? project.effective_monthly_hours_budget : project.budget_hours
 
   const formatDate = (date: string | null) => {
@@ -280,9 +319,9 @@ export default function ProjectDetailPage() {
           </Select>}
           {canWriteProjects && <>
             {isArchived ? (
-              <Button onClick={() => setLifecycleAction("reopen")}>Reabrir proyecto</Button>
+              canManageLifecycle && <Button onClick={() => setLifecycleAction("reopen")}>Reabrir proyecto</Button>
             ) : (
-              <>
+              canManageLifecycle && <>
                 <Button variant="outline" onClick={() => setLifecycleAction("completed")}>Cerrar como terminado</Button>
                 <Button variant="outline" onClick={() => setLifecycleAction("cancelled")}>Cancelar y archivar</Button>
               </>
@@ -299,18 +338,18 @@ export default function ProjectDetailPage() {
         </div>}
       </div>
 
-      {searchParams.get("created") === "1" && <div role="status" className="border-l-2 border-brand pl-4 py-2"><p className="font-medium">Proyecto creado</p><p className="text-sm text-muted-foreground">{project.task_count ? "Revisa las tareas y concreta el próximo paso." : canAddTasks ? "Añade la primera tarea para concretar el próximo paso." : "Consulta el proyecto y sus tareas cuando estén disponibles."}</p></div>}
+      {searchParams.get("created") === "1" && <div role="status" className="border-l-2 border-brand pl-4 py-2"><p className="font-medium">Proyecto creado</p><p className="text-sm text-muted-foreground">{project.task_count != null && project.task_count > 0 ? "Revisa las tareas y concreta el próximo paso." : canAddTasks ? "Añade la primera tarea para concretar el próximo paso." : "Consulta el proyecto y sus tareas cuando estén disponibles."}</p></div>}
       {projectError && <div role="alert" className="text-sm">No se pudo actualizar. Se muestran los últimos datos recibidos. <Button variant="ghost" onClick={() => retryProject()}>Reintentar</Button></div>}
-      {tasksData && !tasksError && <ProjectWorkSummary
-        tasks={[...tasksData.phases.flatMap(group => group.tasks), ...tasksData.unassigned_tasks]}
+      {visibleTasksData && !tasksError && <ProjectWorkSummary
+        tasks={[...visibleTasksData.phases.flatMap(group => group.tasks), ...visibleTasksData.unassigned_tasks]}
         today={businessToday}
         canWrite={canAddTasks}
         onOpen={setPreviewTaskId}
         onAdd={() => canAddTasks && setShowAddTaskDialog(0)}
       />}
 
-      {project.is_recurring && <MonthlyCycleCard
-        cycle={cycleQuery.data}
+      {canReadTasks && project.is_recurring && <MonthlyCycleCard
+        cycle={visibleCycle}
         month={cycleMonth}
         currentMonth={currentMonth}
         loading={cycleQuery.isLoading}
@@ -361,7 +400,7 @@ export default function ProjectDetailPage() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Progreso</p>
-                <p className="font-semibold">{project.progress_percent}%</p>
+                <p className="font-semibold">{hasTaskMetrics ? `${project.progress_percent}%` : "No disponible"}</p>
               </div>
             </div>
           </CardContent>
@@ -375,7 +414,7 @@ export default function ProjectDetailPage() {
               <div>
                 <p className="text-xs text-muted-foreground">Tareas</p>
                 <p className="font-semibold">
-                  {project.completed_task_count}/{project.task_count}
+                  {hasTaskMetrics ? `${project.completed_task_count}/${project.task_count}` : "No disponible"}
                 </p>
               </div>
             </div>
@@ -384,7 +423,7 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* Progress Bar */}
-      <Card>
+      {hasTaskMetrics ? <Card>
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium">Progreso general</span>
@@ -397,7 +436,7 @@ export default function ProjectDetailPage() {
             />
           </div>
         </CardContent>
-      </Card>
+      </Card> : <p className="text-sm text-muted-foreground">El progreso de tareas no está disponible con tus permisos.</p>}
 
       {/* Hours Consumption — tiempo tracked desde timesheet de tareas vinculadas */}
       <Card>
@@ -413,11 +452,12 @@ export default function ProjectDetailPage() {
               </span>
             </div>
             <span className="text-sm text-muted-foreground">
-              {primaryHoursUsed}h
-              {primaryHoursBudget != null && primaryHoursBudget > 0 ? ` / ${primaryHoursBudget}h` : " · sin presupuesto"}
+              {primaryHoursUsed == null
+                ? "No disponible con tus permisos"
+                : `${primaryHoursUsed}h${primaryHoursBudget != null && primaryHoursBudget > 0 ? ` / ${primaryHoursBudget}h` : " · sin presupuesto"}`}
             </span>
           </div>
-          {primaryHoursBudget != null && primaryHoursBudget > 0 ? (
+          {primaryHoursUsed != null && primaryHoursBudget != null && primaryHoursBudget > 0 ? (
             <div className="h-2 bg-secondary rounded-full overflow-hidden">
               <div
                 className={`h-full transition-all ${
@@ -430,54 +470,54 @@ export default function ProjectDetailPage() {
                 style={{ width: `${Math.min(100, (primaryHoursUsed / primaryHoursBudget) * 100)}%` }}
               />
             </div>
-          ) : (
+          ) : primaryHoursUsed != null ? (
             <p className="text-xs text-muted-foreground">Configura las horas presupuestadas en la edición del proyecto para ver el consumo.</p>
-          )}
+          ) : null}
         </CardContent>
       </Card>
 
       {/* Alerta de presupuesto de horas — semanal (guía) + mensual (techo que dispara la notificación).
           Usa los techos EFECTIVOS: en retainers mensuales cae a budget_hours ("Presupuesto horas/mes"). */}
-      {((project.effective_weekly_hours_budget ?? 0) > 0 || (project.effective_monthly_hours_budget ?? 0) > 0) && (
+      {hasTimeMetrics && ((project.effective_weekly_hours_budget ?? 0) > 0 || (project.effective_monthly_hours_budget ?? 0) > 0) && (
         <HoursBudgetCard
           weeklyBudget={project.effective_weekly_hours_budget}
           monthlyBudget={project.effective_monthly_hours_budget}
-          usedWeek={project.hours_used_week ?? 0}
-          usedMonth={project.hours_used_month ?? 0}
+          usedWeek={project.hours_used_week!}
+          usedMonth={project.hours_used_month!}
         />
       )}
 
       {/* Aviso de cierre para proyectos puntuales (fecha final + horas vs tiempo restante) */}
-      {project.closing_status && (
+      {hasTimeMetrics && project.closing_status && (
         <ProjectClosingCard closing={project.closing_status} />
       )}
 
       {/* Burndown Chart — solo en proyectos no-recurrentes. En recurrentes el
           concepto no aplica porque las tareas se reinician cada ciclo. */}
-      {!project.is_recurring && burndownQuery.isLoading && <p role="status" className="text-sm text-muted-foreground">Cargando progreso de tareas…</p>}
-      {!project.is_recurring && burndownQuery.isError && (
+      {canReadTasks && !project.is_recurring && burndownQuery.isLoading && <p role="status" className="text-sm text-muted-foreground">Cargando progreso de tareas…</p>}
+      {canReadTasks && !project.is_recurring && burndownQuery.isError && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3">
           <p role="alert" className="text-sm">No se pudo actualizar el progreso de tareas.</p>
           <Button variant="outline" size="sm" disabled={burndownQuery.isFetching} onClick={() => void burndownQuery.refetch()}>Reintentar progreso</Button>
         </div>
       )}
-      {!project.is_recurring && burndown && burndown.total_tasks > 0 && burndown.points.length <= 1 && (
+      {canReadTasks && !project.is_recurring && visibleBurndown && visibleBurndown.total_tasks > 0 && visibleBurndown.points.length <= 1 && (
         <p className="text-sm text-muted-foreground">Aún no hay suficientes días para mostrar la evolución de tareas.</p>
       )}
-      {!project.is_recurring && burndown && burndown.total_tasks === 0 && (
+      {canReadTasks && !project.is_recurring && visibleBurndown && visibleBurndown.total_tasks === 0 && (
         <Card>
           <CardContent className="p-4 text-center text-sm text-muted-foreground">
             Añade tareas al proyecto para ver el burndown.
           </CardContent>
         </Card>
       )}
-      {!project.is_recurring && burndown && burndown.total_tasks > 0 && burndown.points.length > 1 && (
+      {canReadTasks && !project.is_recurring && visibleBurndown && visibleBurndown.total_tasks > 0 && visibleBurndown.points.length > 1 && (
         <Card>
           <CardContent className="p-4">
             <p className="text-sm font-medium mb-3">Burndown de tareas</p>
             <ResponsiveContainer width="100%" height={160}>
               <LineChart
-                data={burndown.points.filter((_: unknown, i: number) => i % Math.max(1, Math.floor(burndown.points.length / 30)) === 0)}
+                data={visibleBurndown.points.filter((_: unknown, i: number) => i % Math.max(1, Math.floor(visibleBurndown.points.length / 30)) === 0)}
                 margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
               >
                 <XAxis dataKey="date" fontSize={9} tick={{ fill: "#8a8a80" }}
@@ -555,8 +595,10 @@ export default function ProjectDetailPage() {
         <ProjectBillingTab projectId={project.id} project={project} />
       )}
 
+      {!canReadTasks && activeTab === "tasks" && <ProjectPhaseReadOnly phases={project.phases} />}
+
       {/* View Toggle + Phases and Tasks */}
-      {activeTab === "tasks" && <div className="space-y-4">
+      {canReadTasks && activeTab === "tasks" && <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Trabajo del proyecto</h2>
@@ -635,21 +677,21 @@ export default function ProjectDetailPage() {
 
         {tasksLoading && <p role="status" className="text-sm text-muted-foreground">Cargando tareas…</p>}
         {tasksError && <div role="alert" className="text-sm space-y-2">
-          <p>{tasksData ? "No se pudieron actualizar las tareas. Se muestran los últimos datos recibidos." : "No se pudieron cargar las tareas del proyecto."}</p>
+          <p>{visibleTasksData ? "No se pudieron actualizar las tareas. Se muestran los últimos datos recibidos." : "No se pudieron cargar las tareas del proyecto."}</p>
           <Button variant="outline" onClick={() => retryTasks()}>Reintentar tareas</Button>
         </div>}
-        {tasksData && !tasksError && !hasActiveFilters && !filteredPhases.some((group: ProjectTaskGroup) => group.tasks.length) && !filteredUnassigned.length && <p className="text-sm text-muted-foreground">Aún no hay tareas.{canAddTasks && " Añade la primera cuando tengas claro el próximo paso."}</p>}
-        {tasksData && hasActiveFilters && filteredPhases.length === 0 && filteredUnassigned.length === 0 && <p className="text-sm text-muted-foreground">No hay tareas que coincidan con estos filtros.</p>}
+        {visibleTasksData && !tasksError && !hasActiveFilters && !filteredPhases.some((group: ProjectTaskGroup) => group.tasks.length) && !filteredUnassigned.length && <p className="text-sm text-muted-foreground">Aún no hay tareas.{canAddTasks && " Añade la primera cuando tengas claro el próximo paso."}</p>}
+        {visibleTasksData && hasActiveFilters && filteredPhases.length === 0 && filteredUnassigned.length === 0 && <p className="text-sm text-muted-foreground">No hay tareas que coincidan con estos filtros.</p>}
 
-        {viewMode === "gantt" && project && tasksData && (
+        {viewMode === "gantt" && project && visibleTasksData && (
           <GanttChart project={project} tasksData={{
-            ...tasksData,
+            ...visibleTasksData,
             phases: filteredPhases,
             unassigned_tasks: filteredUnassigned,
           }} />
         )}
 
-        {viewMode === "kanban" && tasksData && (
+        {viewMode === "kanban" && visibleTasksData && (
           <ProjectPhaseKanban
             phases={filteredPhases}
             canWrite={hasPermission("projects", true) && !isArchived}
@@ -1275,6 +1317,25 @@ function BudgetRow({
   )
 }
 
+function ProjectPhaseReadOnly({ phases }: { phases: ProjectPhase[] }) {
+  return (
+    <section className="space-y-3" aria-label="Fases del proyecto">
+      <div>
+        <h2 className="text-lg font-semibold">Fases del proyecto</h2>
+        <p className="text-sm text-muted-foreground">No tienes acceso a las tareas de este proyecto.</p>
+      </div>
+      {phases.length === 0 ? <p className="text-sm text-muted-foreground">No hay fases configuradas.</p> : (
+        <ul className="divide-y rounded-lg border">
+          {phases.map((phase) => <li key={phase.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+            <span className="min-w-0 break-words font-medium">{phase.name}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">Estado: {PHASE_STATUS_LABELS[phase.status]}</span>
+          </li>)}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 function MonthlyCycleCard({ cycle, month, currentMonth, loading, error, onMonthChange, onRetry, canOpenTasks }: {
   cycle?: ProjectMonthlyCycle
   month: string
@@ -1300,11 +1361,11 @@ function MonthlyCycleCard({ cycle, month, currentMonth, loading, error, onMonthC
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <CycleMetric label="Planificadas en el mes" value={String(cycle.planned_count)} />
             <CycleMetric label="Finalizadas en el mes" value={String(cycle.completed_in_month_count)} />
-            <CycleMetric label="Horas reales del mes" value={`${cycle.used_hours.toFixed(1)}h`} />
+            <CycleMetric label="Horas reales del mes" value={cycle.used_hours == null ? "No disponible" : `${cycle.used_hours.toFixed(1)}h`} />
             <CycleMetric label={month === currentMonth ? "Horas restantes" : "Diferencia con presupuesto actual"} value={cycle.remaining_hours == null ? "Sin presupuesto" : `${cycle.remaining_hours.toFixed(1)}h`} />
           </div>
           <p className="text-xs text-muted-foreground">Finalizadas en el mes sólo cuenta tareas con fecha de finalización registrada dentro del mes.</p>
-          {cycle.budget_hours != null && <HoursBudgetCard weeklyBudget={null} monthlyBudget={cycle.budget_hours} usedWeek={0} usedMonth={cycle.used_hours} showWeekly={false} monthLabel={month === currentMonth ? "Este mes" : "Presupuesto actual de referencia"} />}
+          {cycle.budget_hours != null && cycle.used_hours != null && <HoursBudgetCard weeklyBudget={null} monthlyBudget={cycle.budget_hours} usedWeek={0} usedMonth={cycle.used_hours} showWeekly={false} monthLabel={month === currentMonth ? "Este mes" : "Presupuesto actual de referencia"} />}
           <div>
             <p className="mb-2 text-sm font-medium">Tareas planificadas o finalizadas en el mes</p>
             {cycle.tasks.length ? <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border">

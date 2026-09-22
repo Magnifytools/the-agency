@@ -23,7 +23,7 @@ export interface Project {
   target_end_date: string | null
   actual_end_date: string | null
   status: ProjectStatus
-  progress_percent: number
+  progress_percent: number | null
   budget_hours: number | null
   weekly_hours_budget: number | null
   monthly_hours_budget: number | null
@@ -46,8 +46,8 @@ export interface Project {
   owner_name: string | null
   requires_task_review: boolean
   phases: ProjectPhase[]
-  task_count: number
-  completed_task_count: number
+  task_count: number | null
+  completed_task_count: number | null
   hours_used: number | null
   hours_used_week: number | null
   hours_used_month: number | null
@@ -136,8 +136,8 @@ export interface ProjectMonthlyCycle {
   period_end: string
   planned_count: number
   completed_in_month_count: number
-  total_minutes: number
-  used_hours: number
+  total_minutes: number | null
+  used_hours: number | null
   budget_hours: number | null
   remaining_hours: number | null
   tasks: ProjectCycleTask[]
@@ -150,7 +150,7 @@ export interface ProjectListItem {
   start_date: string | null
   target_end_date: string | null
   status: ProjectStatus
-  progress_percent: number
+  progress_percent: number | null
   client_id: number
   client_name: string | null
   owner_id: number | null
@@ -162,8 +162,8 @@ export interface ProjectListItem {
   pricing_model: string | null
   monthly_fee: number | null
   phase_count: number
-  task_count: number
-  completed_task_count: number
+  task_count: number | null
+  completed_task_count: number | null
 }
 
 export interface ProjectCreate {

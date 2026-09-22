@@ -341,6 +341,10 @@ function ProjectCard({
   onDelete?: () => void
   formatDate: (d: string | null) => string
 }) {
+  const hasTaskMetrics = project.progress_percent != null
+    && project.completed_task_count != null
+    && project.task_count != null
+
   return (
     <Link to={`/projects/${project.id}`}>
       <Card className="hover:border-brand/40 transition-colors cursor-pointer group">
@@ -379,17 +383,17 @@ function ProjectCard({
               )}
             </div>
             <span className="text-sm text-muted-foreground">
-              {project.progress_percent}% completado
+              {hasTaskMetrics ? `${project.progress_percent}% completado` : "Progreso no disponible"}
             </span>
           </div>
 
           {/* Progress bar */}
-          <div role="progressbar" aria-label="Tareas completadas" aria-valuenow={project.progress_percent} aria-valuemin={0} aria-valuemax={100} className="h-1.5 bg-secondary rounded-full overflow-hidden">
+          {hasTaskMetrics && <div role="progressbar" aria-label="Tareas completadas" aria-valuenow={project.progress_percent!} aria-valuemin={0} aria-valuemax={100} className="h-1.5 bg-secondary rounded-full overflow-hidden">
             <div
               className="h-full bg-brand transition-all"
               style={{ width: `${project.progress_percent}%` }}
             />
-          </div>
+          </div>}
 
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <div className="flex items-center gap-1">
@@ -397,7 +401,7 @@ function ProjectCard({
               {formatDate(project.target_end_date)}
             </div>
             <div>
-              {project.completed_task_count}/{project.task_count} tareas
+              {hasTaskMetrics ? `${project.completed_task_count}/${project.task_count} tareas` : "Tareas no disponibles"}
             </div>
           </div>
         </CardContent>

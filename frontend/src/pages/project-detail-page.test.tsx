@@ -3,10 +3,10 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event"
 import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { projectKeys } from "@/lib/query-keys"
+import { projectKeys, taskKeys } from "@/lib/query-keys"
 import ProjectDetailPage from "./project-detail-page"
 
-const api = vi.hoisted(() => ({ get: vi.fn(), update: vi.fn(), tasks: vi.fn(), monthlyCycle: vi.fn(), burndown: vi.fn(), today: "2026-09-18", canReadTasks: true, canWriteTasks: true, canWriteProjects: true }))
+const api = vi.hoisted(() => ({ get: vi.fn(), update: vi.fn(), tasks: vi.fn(), monthlyCycle: vi.fn(), burndown: vi.fn(), today: "2026-09-18", canReadTasks: true, canReadTime: true, canWriteTasks: true, canWriteProjects: true }))
 
 vi.mock("@/lib/api", () => ({
   projectsApi: {
@@ -26,6 +26,7 @@ vi.mock("@/context/auth-context", () => ({
     hasPermission: (module: string, write = false) => {
       if (module === "projects") return write ? api.canWriteProjects : true
       if (module === "tasks") return write ? api.canWriteTasks : api.canReadTasks
+      if (module === "timesheet") return api.canReadTime
       return true
     },
   }),
@@ -51,6 +52,7 @@ vi.mock("recharts", () => ({
 
 beforeEach(() => {
   api.canReadTasks = true
+  api.canReadTime = true
   api.canWriteTasks = true
   api.canWriteProjects = true
 })
@@ -298,17 +300,72 @@ describe("recurring project monthly cycle", () => {
     expect(screen.getByRole("link", { name: "Ver plantillas recurrentes" })).toHaveAttribute("href", "/tasks?view=recurring")
   })
 
-  it("keeps task links permission-aware and retries a failed cycle", async () => {
+  it("does not request or render task cycles for a projects-only reader", async () => {
     api.canReadTasks = false
-    api.monthlyCycle.mockRejectedValueOnce(new Error("network"))
+    api.get.mockResolvedValue({ ...staleProject, is_recurring: true, phases: [{ id: 8, name: "Diseño", status: "pending" }], progress_percent: null, task_count: null, completed_task_count: null, hours_used: null, hours_used_week: null, hours_used_month: null })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(taskKeys.project(42), {
+      phases: [{ phase: { id: 8, name: "Diseño", status: "pending", due_date: null }, tasks: [{ id: 9, title: "Boceto", status: "pending", is_recurring: false }] }],
+      unassigned_tasks: [],
+    })
+    client.setQueryData(["projects", 42, "monthly-cycle", "2026-09"], {
+      project_id: 42, month: "2026-09", period_start: "2026-09-01", period_end: "2026-10-01",
+      planned_count: 1, completed_in_month_count: 1, total_minutes: 30, used_hours: 0.5,
+      budget_hours: null, remaining_hours: null, tasks: [{ id: 8, title: "Informe mensual", status: "completed", scheduled_date: null, completed_at: null }],
+    })
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/42"]}><Routes><Route path="/projects/:id" element={<ProjectDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
+
+    expect(await screen.findByText("No tienes acceso a las tareas de este proyecto.")).toBeInTheDocument()
+    expect(screen.getByText("Diseño")).toBeInTheDocument()
+    expect(screen.queryByText("Boceto")).not.toBeInTheDocument()
+    expect(screen.queryByText("Informe mensual")).not.toBeInTheDocument()
+    expect(screen.queryByText(/Ciclo de septiembre/)).not.toBeInTheDocument()
+    await userEvent.click(screen.getByText(/Plazos, horas y progreso/))
+    expect(screen.getByText("El progreso de tareas no está disponible con tus permisos.")).toBeInTheDocument()
+    expect(screen.getByText("No disponible con tus permisos")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Cerrar como terminado" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Cancelar y archivar" })).not.toBeInTheDocument()
+    expect(api.tasks).not.toHaveBeenCalled()
+    expect(api.monthlyCycle).not.toHaveBeenCalled()
+    await waitFor(() => expect(client.getQueryData(taskKeys.project(42))).toBeUndefined())
+    expect(client.getQueryData(["projects", 42, "monthly-cycle", "2026-09"])).toBeUndefined()
+  })
+
+  it("removes task content immediately when task access is revoked and refetches after a grant", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const view = render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/42"]}><Routes><Route path="/projects/:id" element={<ProjectDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
+
+    expect(await screen.findByText("Informe mensual")).toBeInTheDocument()
+    api.canReadTasks = false
+    view.rerender(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/42"]}><Routes><Route path="/projects/:id" element={<ProjectDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
+
+    expect(screen.queryByText("Informe mensual")).not.toBeInTheDocument()
+    expect(screen.getByText("No tienes acceso a las tareas de este proyecto.")).toBeInTheDocument()
+    await waitFor(() => expect(client.getQueryData(taskKeys.project(42))).toBeUndefined())
+
+    api.canReadTasks = true
+    view.rerender(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/42"]}><Routes><Route path="/projects/:id" element={<ProjectDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
+    expect(await screen.findByText("Informe mensual")).toBeInTheDocument()
+    expect(api.tasks).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not render unavailable cycle time as zero for a task reader without timesheet access", async () => {
+    api.canReadTime = false
+    api.get.mockResolvedValue({ ...staleProject, progress_percent: 50, completed_task_count: 1, hours_used: null, hours_used_week: null, hours_used_month: null })
+    api.tasks.mockResolvedValue({ phases: [], unassigned_tasks: [] })
+    api.monthlyCycle.mockResolvedValue({
+      project_id: 42, month: "2026-09", period_start: "2026-09-01", period_end: "2026-10-01",
+      planned_count: 1, completed_in_month_count: 1, total_minutes: null, used_hours: null,
+      budget_hours: 10, remaining_hours: null, tasks: [],
+    })
+
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/42"]}><Routes><Route path="/projects/:id" element={<ProjectDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo cargar este ciclo")
-    await userEvent.click(screen.getByRole("button", { name: "Reintentar" }))
-    expect(await screen.findByText("Informe mensual")).toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: "Informe mensual" })).not.toBeInTheDocument()
-    expect(api.monthlyCycle).toHaveBeenCalledTimes(2)
+    await screen.findByText("No disponible")
+    expect(screen.getByText("Horas reales del mes")).toBeInTheDocument()
+    expect(screen.getAllByText("No disponible").length).toBeGreaterThan(0)
+    expect(screen.queryByText("0.0h")).not.toBeInTheDocument()
   })
 
   it("advances the default cycle when the business month changes", async () => {

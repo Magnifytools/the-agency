@@ -45,6 +45,7 @@ from backend.services.domain_writes import create_project as create_project_writ
 from backend.services.temporal import as_utc_instant, business_today, business_zone, utc_now_naive
 from backend.services.time_entry_dates import time_entry_civil_period
 from backend.services.project_cycles import collect_project_monthly_cycle
+from backend.services.dashboard_access import has_module_read
 from backend.services.project_lifecycle import (
     close_project as close_project_lifecycle,
     get_close_preview,
@@ -99,7 +100,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
-def _project_load_options():
+def _project_load_options(*, include_tasks: bool = True):
     """Eager loading options for Project queries that need tasks/phases/client.
 
     Solo para fetches de UN proyecto (detalle, respuesta tras crear/editar),
@@ -112,12 +113,12 @@ def _project_load_options():
         selectinload(Project.client),
         selectinload(Project.owner),
         selectinload(Project.phases),
-        selectinload(Project.tasks).selectinload(Task.assigned_user),
+        selectinload(Project.tasks).selectinload(Task.assigned_user) if include_tasks else noload(Project.tasks),
         with_loader_criteria(Task, Task.retired_at.is_(None)),
     ]
 
 
-async def _list_counts(db: AsyncSession, project_ids: list[int]):
+async def _list_counts(db: AsyncSession, project_ids: list[int], *, include_tasks: bool = True):
     """Contadores de tareas y fases por proyecto, agregados en la base de datos.
 
     Devuelve ``(task_counts, phase_counts)`` donde ``task_counts[pid]`` es
@@ -127,20 +128,22 @@ async def _list_counts(db: AsyncSession, project_ids: list[int]):
         return {}, {}
 
     # case() de sqlalchemy, no func.case(): func.case genera SQL inválido.
-    task_rows = await db.execute(
-        select(
-            Task.project_id,
-            func.count().label("total"),
-            func.coalesce(
-                func.sum(case((Task.status == TaskStatus.completed, 1), else_=0)), 0
-            ).label("completed"),
+    task_counts = {}
+    if include_tasks:
+        task_rows = await db.execute(
+            select(
+                Task.project_id,
+                func.count().label("total"),
+                func.coalesce(
+                    func.sum(case((Task.status == TaskStatus.completed, 1), else_=0)), 0
+                ).label("completed"),
+            )
+            .where(Task.project_id.in_(project_ids), Task.retired_at.is_(None))
+            .group_by(Task.project_id)
         )
-        .where(Task.project_id.in_(project_ids), Task.retired_at.is_(None))
-        .group_by(Task.project_id)
-    )
-    task_counts = {
-        row.project_id: (int(row.total), int(row.completed)) for row in task_rows.all()
-    }
+        task_counts = {
+            row.project_id: (int(row.total), int(row.completed)) for row in task_rows.all()
+        }
 
     phase_rows = await db.execute(
         select(ProjectPhase.project_id, func.count().label("total"))
@@ -162,6 +165,8 @@ def calculate_progress(tasks: list) -> int:
 
 def _build_project_response(
     project: Project,
+    *,
+    actor: User,
     hours_used: Optional[float] = None,
     hours_used_week: Optional[float] = None,
     hours_used_month: Optional[float] = None,
@@ -169,10 +174,12 @@ def _build_project_response(
 ) -> ProjectResponse:
     """Build a ProjectResponse from a Project model with eagerly loaded relationships."""
     eff_weekly, eff_monthly = effective_budgets(project)
-    task_count = len(project.tasks) if project.tasks else 0
+    can_read_tasks = has_module_read(actor, "tasks")
+    can_read_hours = can_read_tasks and has_module_read(actor, "timesheet")
+    task_count = len(project.tasks) if can_read_tasks else None
     completed_count = (
         sum(1 for t in project.tasks if t.status == TaskStatus.completed)
-        if project.tasks else 0
+        if can_read_tasks else None
     )
     return ProjectResponse(
         id=project.id,
@@ -185,7 +192,7 @@ def _build_project_response(
         target_end_date=project.target_end_date,
         actual_end_date=project.actual_end_date,
         status=project.status.value,
-        progress_percent=calculate_progress(project.tasks),
+        progress_percent=calculate_progress(project.tasks) if can_read_tasks else None,
         budget_hours=project.budget_hours,
         weekly_hours_budget=project.weekly_hours_budget,
         monthly_hours_budget=project.monthly_hours_budget,
@@ -223,12 +230,12 @@ def _build_project_response(
         ],
         task_count=task_count,
         completed_task_count=completed_count,
-        hours_used=hours_used,
-        hours_used_week=hours_used_week,
-        hours_used_month=hours_used_month,
+        hours_used=hours_used if can_read_hours else None,
+        hours_used_week=hours_used_week if can_read_hours else None,
+        hours_used_month=hours_used_month if can_read_hours else None,
         effective_weekly_hours_budget=eff_weekly,
         effective_monthly_hours_budget=eff_monthly,
-        closing_status=closing_status,
+        closing_status=closing_status if can_read_hours else None,
         created_at=project.created_at,
         updated_at=project.updated_at,
     )
@@ -305,11 +312,19 @@ async def list_projects(
     result = await db.execute(query)
     projects = result.scalars().unique().all()
 
-    task_counts, phase_counts = await _list_counts(db, [p.id for p in projects])
+    can_read_tasks = has_module_read(_user, "tasks")
+    task_counts, phase_counts = await _list_counts(
+        db, [p.id for p in projects], include_tasks=can_read_tasks,
+    )
 
     items = []
     for p in projects:
-        task_count, completed_count = task_counts.get(p.id, (0, 0))
+        task_count, completed_count = (
+            task_counts.get(p.id, (0, 0)) if can_read_tasks else (None, None)
+        )
+        progress = None
+        if can_read_tasks:
+            progress = int(completed_count * 100 / task_count) if task_count else 0
         items.append(
             ProjectListResponse(
                 id=p.id,
@@ -320,7 +335,7 @@ async def list_projects(
                 start_date=p.start_date,
                 target_end_date=p.target_end_date,
                 status=p.status.value,
-                progress_percent=int(completed_count * 100 / task_count) if task_count else 0,
+                progress_percent=progress,
                 pricing_model=p.pricing_model,
                 monthly_fee=float(p.monthly_fee) if p.monthly_fee is not None else None,
                 client_id=p.client_id,
@@ -425,7 +440,7 @@ async def create_project(
     project = result.scalar_one()
 
     log_audit(_user.id if hasattr(_user, "id") else "-", "create", "project", project.id, details=f"name={project.name}")
-    return _build_project_response(project)
+    return _build_project_response(project, actor=_user)
 
 
 @router.get("/templates")
@@ -689,7 +704,7 @@ async def create_project_from_template(
     )
     project = result.scalar_one()
 
-    return _build_project_response(project)
+    return _build_project_response(project, actor=_user)
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
@@ -698,8 +713,10 @@ async def get_project(
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_module("projects")),
 ):
+    can_read_tasks = has_module_read(_user, "tasks")
+    can_read_hours = can_read_tasks and has_module_read(_user, "timesheet")
     result = await db.execute(
-        select(Project).options(*_project_load_options()).where(Project.id == project_id)
+        select(Project).options(*_project_load_options(include_tasks=can_read_tasks)).where(Project.id == project_id)
     )
     project = result.scalar_one_or_none()
     if not project:
@@ -722,18 +739,19 @@ async def get_project(
         r = await db.execute(q)
         return float(r.scalar() or 0)
 
-    total_minutes = await _project_minutes()
-    hours_used = round(total_minutes / 60, 2)
-    hours_used_week = round(await _project_minutes(week_start, week_start + timedelta(days=7)) / 60, 2)
-    hours_used_month = round(await _project_minutes(month_start, next_month) / 60, 2)
+    total_minutes = await _project_minutes() if can_read_hours else None
+    hours_used = round(total_minutes / 60, 2) if total_minutes is not None else None
+    hours_used_week = round(await _project_minutes(week_start, week_start + timedelta(days=7)) / 60, 2) if can_read_hours else None
+    hours_used_month = round(await _project_minutes(month_start, next_month) / 60, 2) if can_read_hours else None
 
     # Closing status for puntual (non-recurring) projects with an end date
     closing_status = None
-    if not is_recurring_project(project):
+    if can_read_hours and not is_recurring_project(project):
         closing_status = build_closing_status(project, total_minutes, today)
 
     return _build_project_response(
         project,
+        actor=_user,
         hours_used=hours_used,
         hours_used_week=hours_used_week,
         hours_used_month=hours_used_month,
@@ -746,6 +764,7 @@ async def project_burndown(
     project_id: int,
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_module("projects")),
+    _tasks_user=Depends(require_module("tasks")),
 ):
     """Return burndown data: completed tasks per day since project start."""
     # Verify project exists and get start date + total task count
@@ -818,10 +837,13 @@ async def project_monthly_cycle(
     month: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}$"),
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_module("projects")),
+    _tasks_user=Depends(require_module("tasks")),
 ):
     """Return one real civil-month cycle for a recurring project."""
     try:
-        cycle = await collect_project_monthly_cycle(db, project_id, month)
+        cycle = await collect_project_monthly_cycle(
+            db, project_id, month, include_hours=has_module_read(_user, "timesheet"),
+        )
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     except TypeError as exc:
@@ -890,6 +912,7 @@ async def project_close_preview(
     target: str = Query(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("projects", write=True)),
+    _tasks_user: User = Depends(require_module("tasks")),
 ):
     return await get_close_preview(db, project_id, target, current_user)
 
@@ -910,7 +933,7 @@ async def project_close(
     await db.commit()
     project = await _load_project_response(db, project.id)
     await _after_project_status_change(db, project, current_user, old_status)
-    return _build_project_response(project)
+    return _build_project_response(project, actor=current_user)
 
 
 @router.get("/{project_id}/reopen-preview", response_model=ProjectReopenPreview)
@@ -918,6 +941,7 @@ async def project_reopen_preview(
     project_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("projects", write=True)),
+    _tasks_user: User = Depends(require_module("tasks")),
 ):
     return await get_reopen_preview(db, project_id, current_user)
 
@@ -937,7 +961,7 @@ async def project_reopen(
     await db.commit()
     project = await _load_project_response(db, project.id)
     await _after_project_status_change(db, project, current_user, old_status)
-    return _build_project_response(project)
+    return _build_project_response(project, actor=current_user)
 
 
 @router.put("/{project_id}", response_model=ProjectResponse)
@@ -980,7 +1004,7 @@ async def update_project(
     # Automation hook: project_status_changed
     await _after_project_status_change(db, project, _user, old_status)
 
-    return _build_project_response(project)
+    return _build_project_response(project, actor=_user)
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -1178,6 +1202,7 @@ async def get_project_tasks(
     project_id: int,
     db: AsyncSession = Depends(get_db),
     _user=Depends(require_module("projects")),
+    _tasks_user=Depends(require_module("tasks")),
 ):
     """Get all tasks for a project, grouped by phase."""
     result = await db.execute(

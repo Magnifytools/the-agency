@@ -156,6 +156,17 @@ describe("projects filter navigation", () => {
     expect(screen.queryByRole("button", { name: "Eliminar proyecto Proyecto visible" })).not.toBeInTheDocument()
     expect(api.delete).not.toHaveBeenCalled()
   })
+  it("does not render unavailable task metrics as zero for a projects-only reader", async () => {
+    api.list.mockResolvedValue({ items: [{ id: 7, name: "Proyecto visible", status: "active", client_name: "Cliente de prueba", owner_name: null, is_recurring: false, progress_percent: null, target_end_date: null, completed_task_count: null, task_count: null }], total: 1, page: 1, page_size: 25 })
+    auth.canWrite = false
+    setup()
+
+    expect(await screen.findByText("Proyecto visible")).toBeInTheDocument()
+    expect(screen.getByText("Progreso no disponible")).toBeInTheDocument()
+    expect(screen.getByText("Tareas no disponibles")).toBeInTheDocument()
+    expect(screen.queryByRole("progressbar", { name: "Tareas completadas" })).not.toBeInTheDocument()
+    expect(screen.queryByText("0% completado")).not.toBeInTheDocument()
+  })
   it("lets a project writer confirm deletion from a card", async () => {
     api.list.mockResolvedValue({ items: [{ id: 7, name: "Proyecto visible", status: "active", client_name: "Cliente de prueba", owner_name: null, is_recurring: false, progress_percent: 0, target_end_date: null, completed_task_count: 0, task_count: 0 }], total: 1, page: 1, page_size: 25 })
     setup()
