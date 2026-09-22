@@ -416,7 +416,6 @@
   "notas_tecnicas": [
     "Stack: React 19 + FastAPI + PostgreSQL + Railway",
     "P29: seis gates CI PR/main correctos y Railway en revisión 3d48fea; 13 rutas activas revisadas 390/1440, producción y preservación verificadas. Validación humana y decisiones externas pendientes.",
-    "P30: informe semanal operativo activado para David, sábado 08:00 Madrid; primera entrega real pendiente del 26 de septiembre, sin envíos de prueba.",
     "P31/P39: PR44/cc693edd publicada y ciclo Holded ordinario del 21-09 verificado: 32 facturas, 22 paid/5 overdue/5 pending, coincidencia 32/32 con el clasificador y hash de dos Income intacto. Sin sincronización manual ni avisos financieros; vínculo factura-cliente y responsable aún pendientes.",
     "P36: PR50/5e131c2 publicada, validación central de asignado activo con bloqueo de concurrencia; PostgreSQL, seis gates CI de PR y /api/ready exacto. Cero tareas abiertas asignadas a inactivos en lectura productiva previa/posterior.",
     "P37: PR52/89c87d5 publicada: la baja de cuenta funciona de verdad, con impacto visible en Equipo, reactivación y filtros por persona. La asignación de responsable de proyecto usa bloqueo de concurrencia; PostgreSQL, seis gates CI de PR y /api/ready exacto. Datos históricos intactos y cero cuentas reales desactivadas durante la verificación.",
@@ -462,7 +461,7 @@
     "P73–P77: PR109/17895d5 publicada. Timer recupera capturas directas propias, cierre diario agrupa y admite edición previa al envío, estados con color, y digest explica política ausente de FG. Extensión firmada 2.2.3 conserva ID. Seis gates CI PR/main 35732414555/35733216968, Railway 5a66ed2c-9d4b-4e0f-8f5f-18cc6439a4bc SUCCESS, /api/ready exacto y web 200. Al publicarse aún faltaba configurar la política FG; la asignación posterior a Nacho consta en la nota siguiente. Aceptación humana pendiente. Sin mensajes ni trabajo productivo de prueba.",
     "P74: David eligió a Nacho para FG. Política semanal revisión 1 creada en producción con Nacho responsable y preparación periódica desactivada. Cuenta activa y permiso digests.write verificados; versiones históricas conservadas. La generación individual queda elegible, pendiente de su primer uso real. No se creó un digest ni se envió mensaje de prueba."
   ],
-  "proximos_pasos": "Comprobar con Nacho la primera generación real del digest de FG, sin crear digest de prueba. Validar con David y Nacho seis recorridos reales, incluida captura directa, edición de tarea/horas y cierre del día. Las dos cuentas deben reconectar Google Calendar y comprobar una reunión fresca. Observar el primer informe semanal ordinario del 26 de septiembre y su recibo, sin mensaje de prueba. Elegir propietarios de tres proyectos activos y revisar 19 tareas candidatas antes de cambiar datos. Revisar resúmenes históricos ambiguos y decidir avisos de cobro y canal entrante según uso. Véase docs/estado-implantacion-2026-09-21.md.",
+  "proximos_pasos": "Comprobar con Nacho la primera generación real del digest de FG, sin crear digest de prueba. Validar con David y Nacho seis recorridos reales, incluida captura directa, edición de tarea/horas y cierre del día. Las dos cuentas deben reconectar Google Calendar y comprobar una reunión fresca. Elegir propietarios de tres proyectos activos y revisar 19 tareas candidatas antes de cambiar datos. Revisar resúmenes históricos ambiguos y decidir avisos de cobro y canal entrante según uso. Véase docs/estado-implantacion-2026-09-21.md.",
   "bloqueadores": "",
   "puertos": {
     "frontend": 5177,
@@ -476,5 +475,5 @@
     "healthcheck": "/api/ready",
     "schema_revision": "20260921_usage_origin_v1"
   },
-  "pendiente_david": "Comprobar con Nacho la primera generación real de FG; cada propietario debe reconectar Calendar; realizar con Nacho la sesión de tareas reales. Confirmar recepción del informe semanal ordinario el 26 de septiembre y decidir propietarios de tres proyectos, revisión histórica, avisos de cobro y canal. No se han hecho envíos de prueba."
+  "pendiente_david": "Comprobar con Nacho la primera generación real de FG; cada propietario debe reconectar Calendar; realizar con Nacho la sesión de tareas reales. Decidir propietarios de tres proyectos, revisión histórica, avisos de cobro y canal. No se han hecho envíos de prueba."
 }
