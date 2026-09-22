@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-22T02:06:27Z",
-  "estado_general": "produccion_p60_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-22T02:19:36Z",
+  "estado_general": "produccion_p61_publicada_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -446,7 +446,8 @@
     "P57: PR84/fb5ae9a publicada: ficha de Proyecto sin controles inoperantes para lectores, tasks.write independiente de projects.write y copy de consulta. La carga de informes entre clientes se hidrata antes de pintar para no mostrar texto del cliente anterior. 525 UI locales, build/lint focal, seis gates CI de PR/main (35670640903/35671155882) y Railway SUCCESS con /api/ready exacto. Visual sintética 1440/390 y semilla eliminada; sin datos productivos modificados ni aceptación humana autenticada.",
     "P58: PR86/3c4f191 publicada: Actividad aplica una condición SQL compartida de permiso actual y entidad existente antes de paginar en lista, contador y marcado de lectura. 25 pruebas PostgreSQL/API dirigidas y 1426 backend (2 omitidas); seis gates CI de PR/main (35673700274/35674593547) y Railway 65c24185-b15b-4eb7-8956-04cd975d4f16 con /api/ready exacto. Ningún dato real modificado.",
     "P59: PR87/338122f publicada: Resúmenes presenta contenido y vista previa de consulta a digests.read, sin mutaciones ni controles de cohorte inertes; el escritor conserva su flujo. 527 pruebas frontend, 46 focales tras rebase, build/lint y visual sintética de lector/editor 1440/390 correctos, sin escritura productiva. Seis gates de CI de PR/main (35674776530/35675225852) correctos. Railway 74cb6b8a-cf0b-4bb3-88f4-bef59bd9001a SUCCESS y /api/ready exacto con esquema 20260921_usage_origin_v1; frontend HTTP 200.",
-    "P60: PR89/645d111 publicada: historial manual filtra el ámbito de origen según permiso actual antes de LIMIT y no revela antiguos briefings de equipo a un administrador degradado. Regresión PostgreSQL roja antes y 19 focales/1427 backend (2 omitidas) después; seis gates CI de PR/main (35677041454/35677492213) verdes. Railway 92db96a6-9da8-415d-ac70-3d7f0d2acc58 SUCCESS y /api/ready exacto. Sin envíos ni cambios de datos productivos de prueba."
+    "P60: PR89/645d111 publicada: historial manual filtra el ámbito de origen según permiso actual antes de LIMIT y no revela antiguos briefings de equipo a un administrador degradado. Regresión PostgreSQL roja antes y 19 focales/1427 backend (2 omitidas) después; seis gates CI de PR/main (35677041454/35677492213) verdes. Railway 92db96a6-9da8-415d-ac70-3d7f0d2acc58 SUCCESS y /api/ready exacto. Sin envíos ni cambios de datos productivos de prueba.",
+    "P61: PR90/b8ceee0 publicada: captura para aclarar consulta y muestra sólo Clientes/Proyectos legibles, limpia selecciones al revocar permiso o cambiar identidad y omite IDs sin acceso. 22 pruebas UI focales, 531 frontend antes del ajuste visual final, build/lint focal y visual sintética 1440/390 correctos. Seis gates CI de PR/main (35678160581/35678600204) verdes. Railway 43597428-8d58-427c-9442-101acbf8db66 SUCCESS y /api/ready exacto con esquema vigente; web HTTP 200. Ninguna nota real creada para la prueba."
   ],
   "proximos_pasos": "Validar con David y Nacho seis recorridos reales de uso en cuentas propias, incluida alta, cierre de tarea, captura ambigua y resumen. Las dos cuentas activas deben reconectar Google Calendar y comprobar una reunión fresca. La política semanal está activa para el ID confirmado de David; comprobar el primer envío ordinario del 26 de septiembre y su recibo, sin mensaje de prueba. Elegir responsables para los tres proyectos activos y revisar las 19 tareas candidatas del corte privado 22-09 antes de cambiar datos. Revisar los resúmenes históricos ambiguos con evidencia, decidir si incorporar avisos de cobro con vínculo factura-cliente y responsable reales, y si hace falta un canal entrante aparte de app/extensión. Véase docs/estado-implantacion-2026-09-21.md.",
   "bloqueadores": "",
@@ -458,7 +459,7 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "645d1111535bfa8b3751526eef8a8ab1addd1f64",
+    "revision": "b8ceee07507d4407e2630b115e2e9fa7db5e519d",
     "healthcheck": "/api/ready",
     "schema_revision": "20260921_usage_origin_v1"
   },
