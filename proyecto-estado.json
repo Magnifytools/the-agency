@@ -1,7 +1,7 @@
 {
   "proyecto": "the-agency",
-  "ultima_actualizacion": "2026-09-22T07:26:47Z",
-  "estado_general": "produccion_p69_publicada_objetivo_en_curso",
+  "ultima_actualizacion": "2026-09-22T08:56:46Z",
+  "estado_general": "produccion_p70_p71_publicadas_objetivo_en_curso",
   "progreso_estimado": null,
   "tareas": [
     {
@@ -455,7 +455,9 @@
     "P66: PR98/f1ead81 publicada: los filtros de Trabajo tienen nombres accesibles propios y los rangos cambian con el tipo de fecha, sin alterar opciones ni parámetros. Diez pruebas focales finales, seis gates CI PR/main (35689857156/35690446147), Railway 36ff1779-89bd-4ed4-97c3-b653a54ef8de SUCCESS y /api/ready exacto. Aceptación humana con lector de pantalla pendiente. Ninguna tarea real modificada.",
     "P67: PR100/8dabc70 publicada: GET, listado y replay de recibos de consultas aplican permisos y ámbito vigentes sin reescribir el snapshot durable. Cinco regresiones PostgreSQL nuevas; seis gates CI PR/main 35696024898/35696781369 y Railway d05d859e-67da-4086-99fb-88ffe0a71c2d SUCCESS con /api/ready exacto. Ninguna orden productiva de prueba.",
     "P68: PR101/f20a9fd publicada: el cronómetro global ofrece backlog, tareas arrastradas, sin fecha y futuras propias activas, con búsqueda, paginación >1000 y revocación de lectura. Doce pruebas focales, seis gates CI PR/main 35694817127/35695758914, Railway 76dc8224-fd98-4661-9227-3c0fae635113 SUCCESS y /api/ready exacto. Visual autenticada y aceptación humana pendientes.",
-    "P69: PR102/de79792 publicada: timer_eligible excluye del selector tareas de proyectos completed/cancelled antes de conteo/paginación; el inicio conserva 409 como guard final. Regresión PostgreSQL y UI, seis gates CI de PR 35698344475, Railway 89353822-6e7b-4c39-aa64-9bf4f26566ab SUCCESS y /api/ready exacto; seis gates CI main 35699016827 verdes. Sin registro productivo de tiempo ni visual autenticada."
+    "P69: PR102/de79792 publicada: timer_eligible excluye del selector tareas de proyectos completed/cancelled antes de conteo/paginación; el inicio conserva 409 como guard final. Regresión PostgreSQL y UI, seis gates CI de PR 35698344475, Railway 89353822-6e7b-4c39-aa64-9bf4f26566ab SUCCESS y /api/ready exacto; seis gates CI main 35699016827 verdes. Sin registro productivo de tiempo ni visual autenticada.",
+    "P70: PR105/cb2f260 publicada: el silencio horario elige la segunda ocurrencia válida de 02:30 Madrid cuando el reloj retrocede, sin liberar un aviso a las segundas 02:15. Dos regresiones puras rojas antes; cinco focales puras/PostgreSQL verdes después. Seis gates CI PR/main 35702072989/35706791876, Railway c49392c0-1024-462a-9c2d-a1d9bb61c21c SUCCESS, /api/ready exacto y web 200. Ningún mensaje de prueba enviado.",
+    "P71: PR104/2e79a2e publicada: Título, Cliente y Proyecto de Crear tarea rápida tienen nombre programático asociado al control. Regresión DOM, seis gates CI PR/main 35701953415/35702635344, Railway 983920f2-a003-4766-b54e-7e2eee226ee5 SUCCESS y /api/ready exacto. Visual autenticada con lector de pantalla pendiente; sin tarea productiva de prueba."
   ],
   "proximos_pasos": "Validar con David y Nacho seis recorridos reales de uso en cuentas propias, incluida alta, cierre de tarea, captura ambigua y resumen. Las dos cuentas activas deben reconectar Google Calendar y comprobar una reunión fresca. La política semanal está activa para el ID confirmado de David; comprobar el primer envío ordinario del 26 de septiembre y su recibo, sin mensaje de prueba. Elegir responsables para los tres proyectos activos y revisar las 19 tareas candidatas del corte privado 22-09 antes de cambiar datos. Revisar los resúmenes históricos ambiguos con evidencia, decidir si incorporar avisos de cobro con vínculo factura-cliente y responsable reales, y si hace falta un canal entrante aparte de app/extensión. Véase docs/estado-implantacion-2026-09-21.md.",
   "bloqueadores": "",
@@ -467,7 +469,7 @@
     "plataforma": "Railway",
     "url": "https://agency.magnifytools.com",
     "estado": "produccion",
-    "revision": "de7979276c30c7274e56d08a36e77e12664b49f1",
+    "revision": "cb2f260d6c06ea43ffcad2c4ab99381ad23367dd",
     "healthcheck": "/api/ready",
     "schema_revision": "20260921_usage_origin_v1"
   },
