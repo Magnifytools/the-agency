@@ -695,7 +695,11 @@ export default function ClientDetailPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {projects.map((p) => (
+                {projects.map((p) => {
+                  const hasTaskMetrics = p.progress_percent != null
+                    && p.completed_task_count != null
+                    && p.task_count != null
+                  return (
                   <TableRow key={p.id}>
                     <TableCell className="font-medium">
                       <Link to={`/projects/${p.id}`} className="text-brand hover:underline">
@@ -709,7 +713,7 @@ export default function ClientDetailPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      {hasTaskMetrics ? <div className="flex items-center gap-2">
                         <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
                           <div
                             className="h-full bg-brand rounded-full"
@@ -717,11 +721,12 @@ export default function ClientDetailPage() {
                           />
                         </div>
                         <span className="text-xs mono">{p.progress_percent}%</span>
-                      </div>
+                      </div> : <span className="text-sm text-muted-foreground">No disponible</span>}
                     </TableCell>
-                    <TableCell className="mono">{p.completed_task_count}/{p.task_count}</TableCell>
+                    <TableCell className="mono">{hasTaskMetrics ? `${p.completed_task_count}/${p.task_count}` : "No disponible"}</TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
                 {projects.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
