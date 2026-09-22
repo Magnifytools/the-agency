@@ -66,12 +66,12 @@ async def test_existing_read_legacy_check_is_adopted(db_session, admin_user):
 async def test_retired_checks_hidden_without_deleting(
     db_session, admin_user, admin_client
 ):
-    for kind in (*RETIRED_CHECK_TYPES, "task_assigned"):
+    for kind in (*RETIRED_CHECK_TYPES, "scheduled_meeting"):
         db_session.add(Notification(user_id=admin_user.id, type=kind, title=kind))
     await db_session.commit()
     response = await admin_client.get("/api/notifications")
     assert response.status_code == 200
-    assert [n["type"] for n in response.json()] == ["task_assigned"]
+    assert [n["type"] for n in response.json()] == ["scheduled_meeting"]
     assert (await admin_client.get("/api/notifications/unread-count")).json() == {
         "count": 1
     }
