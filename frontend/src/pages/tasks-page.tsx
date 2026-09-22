@@ -38,7 +38,7 @@ import { invalidateTaskChange, optimisticallyUpdateExactQuery, restoreQuerySnaps
 import type { OperationalImpact } from "@/lib/query-keys"
 import { addCivilDays, formatCivilDate } from "@/lib/dates"
 import { useBusinessDate } from "@/hooks/use-business-date"
-import { taskStatusPresentation } from "@/lib/task-status"
+import { taskStatusPresentation, taskStatusSelectClass } from "@/lib/task-status"
 
 const priorityBadge = (priority: TaskPriority) => {
   const map: Record<TaskPriority, { label: string; variant: "destructive" | "warning" | "secondary" | "outline" }> = {
@@ -695,6 +695,7 @@ export default function TasksPage() {
                     })} />
                     {canWriteTasks ? <Select
                       value={taskStatusPresentation(t.status, t.scheduled_date).group}
+                      className={cn("h-7 text-xs w-32 py-0", taskStatusSelectClass(t.status, t.scheduled_date))}
                       onChange={(e) => {
                         const next = e.target.value as TaskStatus
                         if (next === "waiting") {
@@ -703,14 +704,13 @@ export default function TasksPage() {
                         }
                         updateMutation.mutate({ id: t.id, data: { status: next === "completed" && sendsForReview(t) ? "in_review" : next } })
                       }}
-                      className="h-7 text-xs w-32 py-0"
                     >
                       <option value="pending">Pendiente</option>
                       <option value="in_progress">En curso</option>
                       <option value="waiting">En espera…</option>
                       <option value="in_review">En revisión</option>
                       <option value="completed">{sendsForReview(t) ? "Enviar a revisión" : "Hecho"}</option>
-                    </Select> : <span className="text-xs">{taskStatusPresentation(t.status, t.scheduled_date).label}</span>}
+                    </Select> : <span className={cn("rounded-md border px-2 py-1 text-xs", taskStatusSelectClass(t.status, t.scheduled_date))}>{taskStatusPresentation(t.status, t.scheduled_date).label}</span>}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs mono">

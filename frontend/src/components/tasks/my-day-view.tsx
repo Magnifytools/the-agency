@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Pencil, Eye, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { agencyTimezoneLabel, businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates"
-import { taskStatusPresentation } from "@/lib/task-status"
+import { taskStatusPresentation, taskStatusSelectClass } from "@/lib/task-status"
 
 
 interface Props {
@@ -100,7 +100,8 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
             aria-label={`Estado de ${task.title}`}
             className={cn(
               "col-span-2 row-start-2 w-fit sm:w-auto shrink-0 text-xs sm:text-[10px] rounded-md border px-2 py-1 min-h-9 sm:min-h-7 cursor-pointer font-semibold transition-colors shadow-sm",
-              "bg-background text-foreground border-input"
+              "text-foreground",
+              taskStatusSelectClass(task.status, task.scheduled_date)
             )}
           >
             <option value="pending">Pendiente</option>
