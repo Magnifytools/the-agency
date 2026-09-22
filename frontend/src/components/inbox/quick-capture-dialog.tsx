@@ -26,13 +26,13 @@ import {
   invalidateProjectChange,
   invalidateTaskChange,
   invalidateTimeChange,
-  projectKeys,
 } from "@/lib/query-keys";
 import type { CommandContext, CommandEntity, CommandReceipt } from "@/lib/types";
 import { showUndoResult } from "@/lib/undo-feedback";
 import { getErrorMessage } from "@/lib/utils";
 import { formatCivilDate } from "@/lib/dates";
 import { useAuth } from "@/context/auth-context";
+import { isEnabled } from "@/lib/hidden-modules";
 
 interface Props {
   open: boolean;
@@ -166,24 +166,29 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   const [activeGeneration, setActiveGeneration] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const canReadClients = isEnabled("clients") && hasPermission("clients");
+  const canReadProjects = isEnabled("projects") && hasPermission("projects");
 
   const [captureText, setCaptureText] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [clientId, setClientId] = useState("");
   const [projectId, setProjectId] = useState("");
+  const captureAccessKey = `${user?.id ?? "anonymous"}:${canReadClients}:${canReadProjects}`;
+  const previousCaptureAccessKey = useRef(captureAccessKey);
+  const selectedContextOwnerId = useRef(user?.id);
 
   const { data: clients = [] } = useQuery({
-    queryKey: ["clients-active-list"],
+    queryKey: ["quick-capture", user?.id, "clients-active"],
     queryFn: () => clientsApi.listAll("active"),
     staleTime: 60_000,
-    enabled: open && mode === "capture",
+    enabled: open && mode === "capture" && canReadClients,
   });
   const { data: projects = [] } = useQuery({
-    queryKey: projectKeys.list(["active"]),
+    queryKey: ["quick-capture", user?.id, "projects-active"],
     queryFn: () => projectsApi.listAll({ status: "active" }),
     staleTime: 60_000,
-    enabled: open && mode === "capture",
+    enabled: open && mode === "capture" && canReadProjects,
   });
   const { data: recentCommands } = useQuery({
     queryKey: ["commands", "recent"],
@@ -369,8 +374,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
       inboxApi.create({
         raw_text: captureText.trim(),
         source: "quick_capture",
-        client_id: clientId ? Number(clientId) : undefined,
-        project_id: projectId ? Number(projectId) : undefined,
+        ...(canReadClients && selectedContextOwnerId.current === user?.id && clientId ? { client_id: Number(clientId) } : {}),
+        ...(canReadProjects && selectedContextOwnerId.current === user?.id && projectId ? { project_id: Number(projectId) } : {}),
         link_url: linkUrl.trim() || undefined,
       }),
     onSuccess: () => {
@@ -391,6 +396,15 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     const id = window.setTimeout(() => textareaRef.current?.focus(), 100);
     return () => window.clearTimeout(id);
   }, [open]);
+
+  useEffect(() => {
+    if (previousCaptureAccessKey.current === captureAccessKey) return;
+    previousCaptureAccessKey.current = captureAccessKey;
+    selectedContextOwnerId.current = user?.id;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- A revoked permission or changed identity invalidates local entity IDs.
+    setClientId("");
+    setProjectId("");
+  }, [captureAccessKey, user?.id]);
 
   const resetCommand = () => {
     invalidateCommand();
@@ -866,8 +880,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                 placeholder="Enlace de referencia (opcional)"
               />
             </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Select
+            {(canReadClients || canReadProjects) && <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {canReadClients && <Select
                 aria-label="Cliente"
                 value={clientId}
                 onChange={(event) => {
@@ -881,8 +895,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                     {client.name}
                   </option>
                 ))}
-              </Select>
-              <Select
+              </Select>}
+              {canReadProjects && <Select
                 aria-label="Proyecto"
                 value={projectId}
                 onChange={(event) => setProjectId(event.target.value)}
@@ -898,8 +912,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                       {project.name}
                     </option>
                   ))}
-              </Select>
-            </div>
+              </Select>}
+            </div>}
             <div className="flex justify-end">
               <Button
                 onClick={() => captureMutation.mutate()}
