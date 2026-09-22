@@ -7,7 +7,14 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import Notification, Task, TaskStatus, User, UserRole
+from backend.db.models import (
+    Notification,
+    Task,
+    TaskStatus,
+    User,
+    UserPermission,
+    UserRole,
+)
 from backend.services.notification_checks import RETIRED_CHECK_TYPES, NotificationChecks
 from backend.services.temporal import business_today
 
@@ -78,6 +85,64 @@ async def test_retired_checks_hidden_without_deleting(
     assert (
         await db_session.execute(select(func.count(Notification.id)))
     ).scalar() == len(RETIRED_CHECK_TYPES) + 1
+
+
+async def test_assignment_activity_tracks_current_recipient_and_latest_cycle(
+    db_session, admin_user, member_user, admin_client, member_client,
+):
+    db_session.add(UserPermission(
+        user_id=member_user.id, module="tasks", can_read=True, can_write=False,
+    ))
+    task = Task(title="Private assignment", status=TaskStatus.pending, assigned_to=admin_user.id)
+    db_session.add(task)
+    await db_session.flush()
+    first = Notification(
+        user_id=admin_user.id, type="task_assigned", title=f"Assigned: {task.title}",
+        entity_type="task", entity_id=task.id,
+    )
+    db_session.add(first)
+    await db_session.commit()
+
+    async def reassign(recipient):
+        response = await admin_client.put(
+            f"/api/tasks/{task.id}", json={"assigned_to": recipient.id if recipient else None},
+        )
+        assert response.status_code == 200, response.text
+        if recipient is None:
+            return None
+        return await db_session.scalar(
+            select(Notification).where(
+                Notification.user_id == recipient.id,
+                Notification.type == "task_assigned",
+                Notification.entity_id == task.id,
+            ).order_by(Notification.id.desc()).limit(1)
+        )
+
+    assert [n["id"] for n in (await admin_client.get("/api/notifications")).json()] == [first.id]
+    assert (await admin_client.get("/api/notifications/unread-count")).json() == {"count": 1}
+
+    second = await reassign(member_user)
+    assert (await admin_client.get("/api/notifications")).json() == []
+    assert (await admin_client.get("/api/notifications/unread-count")).json() == {"count": 0}
+    assert (await admin_client.put(f"/api/notifications/{first.id}/read")).status_code == 404
+    assert [n["id"] for n in (await member_client.get("/api/notifications")).json()] == [second.id]
+    assert (await member_client.get("/api/notifications/unread-count")).json() == {"count": 1}
+
+    latest = await reassign(admin_user)
+    assert [n["id"] for n in (await admin_client.get("/api/notifications")).json()] == [latest.id]
+    assert (await admin_client.get("/api/notifications/unread-count")).json() == {"count": 1}
+    assert (await member_client.get("/api/notifications")).json() == []
+    assert (await admin_client.put("/api/notifications/read-all")).status_code == 200
+    assert (await admin_client.get("/api/notifications/unread-count")).json() == {"count": 0}
+    await db_session.refresh(first)
+    await db_session.refresh(latest)
+    assert first.is_read is False
+    assert latest.is_read is True
+
+    await reassign(None)
+    assert (await admin_client.get("/api/notifications")).json() == []
+    assert (await admin_client.get("/api/notifications/unread-count")).json() == {"count": 0}
+    assert (await db_session.execute(select(func.count(Notification.id)))).scalar() == 3
 
 
 async def test_generate_checks_delegates_to_canonical_incident_without_legacy_duplicate(
