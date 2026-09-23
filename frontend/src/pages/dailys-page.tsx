@@ -175,7 +175,22 @@ function DailyEditor({ userId, date, onDateChange, serverDaily, serverError, che
     onError: onSaveError,
   })
   const enrich = useMutation({
-    mutationFn: (daily: DailyUpdate) => dailysApi.reparse(daily.id, daily.revision),
+    mutationFn: async (submitted: Editor) => {
+      const savedFacts = (submitted.base?.source_facts ?? []).map((fact) => fact.key)
+      const needsSave = !submitted.base || submitted.draft.rawText !== submitted.base.raw_text ||
+        JSON.stringify(submitted.draft.sourceFactKeys) !== JSON.stringify(savedFacts)
+      let daily: DailyUpdate
+      if (submitted.base && !needsSave) daily = submitted.base
+      else if (submitted.base) daily = await dailysApi.edit(submitted.base.id, {
+        raw_text: submitted.draft.rawText,
+        source_fact_keys: submitted.draft.sourceFactKeys,
+        revision: submitted.base.revision,
+      })
+      else daily = await dailysApi.submit({ raw_text: submitted.draft.rawText, date, source_fact_keys: submitted.draft.sourceFactKeys })
+      // Keep a successfully persisted version even if the following AI request fails.
+      acceptSaved(daily)
+      return dailysApi.reparse(daily.id, daily.revision)
+    },
     onSuccess: (daily) => { acceptSaved(daily); if (live.current) toast.success("Estructura actualizada. Tus notas se conservan.") },
     onError: onSaveError,
   })
@@ -245,12 +260,12 @@ function DailyEditor({ userId, date, onDateChange, serverDaily, serverError, che
           <Button onClick={() => save.mutate(editorRef.current)} disabled={blocked || (!draft.rawText.trim() && !draft.sourceFactKeys.length) || draft.rawText.length > 50_000 || draft.sourceFactKeys.length > 500}>
             {save.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}Guardar borrador
           </Button>
-          {base && !isSent && <Button variant="outline" onClick={() => enrich.mutate(base)} disabled={blocked || dirty}>
+          {!isSent && <Button variant="outline" onClick={() => enrich.mutate(editorRef.current)} disabled={blocked || (!draft.rawText.trim() && !draft.sourceFactKeys.length) || draft.rawText.length > 50_000 || draft.sourceFactKeys.length > 500}>
             {enrich.isPending ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Wand2 className="mr-2 size-4" />}Estructurar con IA
           </Button>}
-          <span role="status" className="text-xs text-muted-foreground">{save.isPending ? "Guardando…" : enrich.isPending ? "Estructurando la versión guardada…" : dirty ? "Notas locales sin guardar" : "Versión guardada"}</span>
+          <span role="status" className="text-xs text-muted-foreground">{save.isPending ? "Guardando…" : enrich.isPending ? "Guardando y estructurando…" : dirty ? "Notas locales sin guardar" : "Versión guardada"}</span>
         </div>
-        {dirty && base && !isSent && <p className="text-xs text-muted-foreground">Guarda los cambios antes de estructurar.</p>}
+        {!isSent && <p className="text-xs text-muted-foreground">Al estructurar con IA, guardaremos primero tus notas y fuentes. Podrás revisar el resultado antes de compartirlo.</p>}
         {base?.parsed_data && <ParsedDaily daily={base} canOpenSources={canOpenSources} />}
       </CardContent>
     </Card>
