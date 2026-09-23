@@ -777,8 +777,16 @@ textarea::placeholder {
 .selector-load-error button { margin-top: 8px; }
 
 .command-heading { margin: 0; padding: 12px 16px 0; font-size: 15px; font-weight: 700; }
+.command-intro { margin-bottom: 8px; color: #a1a1aa; font-size: 12px; line-height: 1.45; }
 .command-result { margin-top: 10px; padding: 10px; border: 1px solid var(--border, #333); border-radius: 8px; font-size: 12px; }
 .command-result button, .command-result a { min-height: 36px; }
+.command-examples summary { cursor: pointer; font-weight: 600; }
+.command-example-list { display: grid; gap: 10px; margin-top: 10px; list-style: none; }
+.command-example-list li { padding-left: 9px; border-left: 2px solid #3f3f46; }
+.command-example-list strong, .command-example-list span { display: block; line-height: 1.4; }
+.command-example-list strong { margin-bottom: 2px; color: #f4f4f5; font-size: 11px; }
+.command-example-list span { color: #a1a1aa; overflow-wrap: anywhere; }
+.command-example-note { margin-top: 10px; padding-top: 9px; border-top: 1px solid #27272a; color: #a1a1aa; line-height: 1.45; }
 .command-choice { display: flex; width: 100%; gap: 8px; align-items: flex-start; margin-top: 6px; padding: 8px; text-align: left; border: 1px solid #444; border-radius: 7px; background: transparent; color: inherit; }
 .command-choice.selected { border-color: #ffd600; background: rgba(255, 214, 0, .08); }
 .command-entity { display: block; margin-top: 6px; color: #ffd600; overflow-wrap: anywhere; }

@@ -40,4 +40,8 @@ Las pruebas ejecutan el HTML y el JavaScript reales del popup en un DOM con Chro
 
 No hay compilación de JavaScript: Chrome carga los archivos de esta carpeta directamente. `build.sh` copia únicamente manifest, popup, background e iconos a un directorio temporal y firma el CRX con la clave externa existente. No incluir claves en esta carpeta ni generar una identidad nueva para actualizar instalaciones existentes.
 
-Cambiar el código fuente no actualiza automáticamente los archivos CRX o ZIP ya distribuidos. Para una publicación hay que aumentar la versión del manifiesto, regenerar el CRX con la identidad existente y preparar el ZIP desde los mismos archivos fuente; comprobar que ambos contienen esa misma versión y contenido antes de distribuirlos. Esta corrección de fuentes deja esos pasos de publicación pendientes y conserva los paquetes anteriores.
+Cambiar el código fuente no actualiza automáticamente los archivos CRX o ZIP ya distribuidos. Para una publicación hay que aumentar la versión del manifiesto, regenerar el CRX con la identidad existente y preparar el ZIP desde los mismos archivos fuente; comprobar que ambos contienen esa misma versión y contenido antes de distribuirlos.
+
+### Actualizar una instalación cargada como carpeta descomprimida
+
+El equipo usa **Cargar descomprimida**: publicar `update.xml` y el CRX no actualiza esa instalación. Entrega el ZIP de la versión nueva, descomprímelo y sustituye los archivos dentro de **la misma carpeta** que Chrome ya tiene cargada. Después, en `chrome://extensions`, pulsa **Recargar** en The Agency y comprueba el número de versión. Mantener la ruta de la carpeta evita crear otra instalación y conserva el almacenamiento local de la extensión.
