@@ -702,6 +702,7 @@ function ClientsPageBody() {
                         variant="ghost"
                         size="icon"
                         aria-label="Más opciones"
+                        aria-description={`Acciones para ${c.name || "este cliente"}`}
                         onClick={() => setOpenMenuId(openMenuId === c.id ? null : c.id)}
                       >
                         <MoreVertical className="h-4 w-4" />
@@ -730,7 +731,7 @@ function ClientsPageBody() {
               </TableRow>
             ))}
             {clients.length === 0 && (
-              <EmptyTableState colSpan={6 + (canWriteClients ? 2 : 0) + (isAdmin ? 1 : 0)} icon={Users} title="Sin resultados" description={`No hay clientes ${tab === "all" ? "" : STATUS_TABS.find((item) => item.value === tab)?.label.toLowerCase()} ${cohort === "all" ? "" : COHORTS.find((item) => item.value === cohort)?.label.toLowerCase()}.`} />
+              <EmptyTableState colSpan={6 + (canWriteClients ? 2 : 0) + (isAdmin ? 1 : 0)} icon={Users} title="Sin resultados" description={tab === "all" && cohort === "all" ? (canWriteClients ? "Aún no hay clientes. Crea uno para empezar." : "Aún no hay clientes.") : "No hay clientes con estos filtros. Prueba a cambiarlos."} />
             )}
           </TableBody>
         </Table>
@@ -926,7 +927,7 @@ function ClientsPageBody() {
               Cancelar
             </Button>
             <Button type="submit" disabled={!canWriteClients || !!onboardingKey || storageReadFailed || createMutation.isPending || updateMutation.isPending}>
-              {editing ? "Guardar" : createMutation.isPending ? "Creando…" : "Crear"}
+              {editing ? "Guardar cambios" : createMutation.isPending ? "Creando…" : "Crear"}
             </Button>
           </div>
         </form>
@@ -979,7 +980,7 @@ function ClientsPageBody() {
           }}
         >
           {bulkClientStatusMutation.isPending && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
-          Aplicar
+          Aplicar estado
         </Button>
       </BulkActionBar>}
     </div>

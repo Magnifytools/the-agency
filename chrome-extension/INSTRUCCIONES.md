@@ -11,15 +11,11 @@
 ## Uso
 
 1. Haz clic en el icono **A** en la barra de herramientas
-2. La primera vez: introduce tu email y contraseña de Agency Manager y pulsa **Conectar**
-3. Escribe tu nota en el campo de texto
-4. Pulsa **Capturar** (o `Cmd+Enter`)
+2. La primera vez: introduce tu correo y contraseña de The Agency y pulsa **Iniciar sesión**.
+3. En **Hacer**, elige **Pedir** para hacer una petición o consulta, **Aclarar** para guardar una nota en el Inbox, o **Tarea directa** para crear una tarea asignada a ti.
+4. En **Timer**, inicia o registra tiempo para una tarea. En **Tareas**, consulta tus tareas asignadas, complétalas o inicia el timer.
 
-La IA clasifica la nota automáticamente y la asigna al cliente/proyecto correspondiente.
-
-## La casilla "Incluir URL"
-
-Cuando está marcada (por defecto), la extensión adjunta a la nota la URL y el título de la pestaña que tienes abierta en ese momento. Útil si estás viendo algo en el navegador y quieres guardar contexto de dónde vino la idea. Si no quieres que se incluya, desmarcarla.
+Las notas sin cliente o proyecto elegido se clasifican automáticamente. Puedes añadirles un enlace relacionado de forma opcional. **Avisos de reuniones** permite activar notificaciones de Chrome y elegir su antelación, siempre que los avisos generales estén activos.
 
 ## Listas y asignación
 

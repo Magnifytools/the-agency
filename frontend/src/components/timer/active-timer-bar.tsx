@@ -384,7 +384,8 @@ function TimerBar() {
               type="button"
               onClick={() => setShowQuickCreate(true)}
               className="shrink-0 p-1.5 text-muted-foreground hover:text-brand transition-colors rounded"
-              title="Crear tarea rápida"
+              title="Crear tarea rápida. El cronómetro seguirá detenido."
+              aria-label="Crear tarea rápida"
               disabled={!canCreateTask}
             >
               <Plus className="h-4 w-4" />
@@ -394,6 +395,7 @@ function TimerBar() {
                 value={omniInput}
                 onChange={(e) => setOmniInput(e.target.value)}
                 placeholder="¿En qué estás trabajando?"
+                aria-label="Describe el trabajo que vas a registrar"
                 className="w-full bg-background border-muted pr-10 h-9 text-sm"
               />
               <Button
@@ -416,6 +418,7 @@ function TimerBar() {
             <DialogTitle>Crear tarea rápida</DialogTitle>
           </DialogHeader>
           <DialogContent>
+            <p className="text-sm text-muted-foreground">Crea una tarea para organizarla después. El cronómetro seguirá detenido.</p>
             <div>
               <label htmlFor="timer-quick-create-title" className="text-sm text-muted-foreground mb-1 block">Título *</label>
               <Input
@@ -565,7 +568,7 @@ function TimerBar() {
         </DialogHeader>
         <DialogContent>
           <p className="text-sm text-muted-foreground">
-            El tiempo registrado no tiene tarea asignada. Selecciona una tarea para asociarlo:
+            El tiempo registrado no tiene tarea asignada. Selecciona una para incluirlo en sus métricas. Si lo guardas sin asignar, podrás asociarlo más tarde.
           </p>
           {canReadTasks && !tasksQuery.isError ? <TimerTaskSelector
             tasks={selectableTasks}
@@ -580,7 +583,7 @@ function TimerBar() {
         </DialogContent>
         <DialogFooter>
           <Button variant="ghost" onClick={() => { setShowAssignDialog(false); setStoppedEntryId(null) }}>
-            Omitir
+            Guardar sin asignar
           </Button>
           {canReadTasks && !tasksQuery.isError && <Button
             onClick={() => {

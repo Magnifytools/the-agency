@@ -174,6 +174,7 @@ export default function ProjectsPage() {
         <Button size="sm" variant={archiveView ? "outline" : "default"} aria-pressed={!archiveView} onClick={() => setView("portfolio")}>Cartera</Button>
         <Button size="sm" variant={archiveView ? "default" : "outline"} aria-pressed={archiveView} onClick={() => setView("archive")}><Archive className="mr-2 h-4 w-4" />Archivo</Button>
       </div>
+      <p className="text-xs text-muted-foreground">{archiveView ? "Proyectos terminados o cancelados. Puedes consultar su historial y reabrirlos si tienes permiso." : "Proyectos en planificación, activos o pausados. El archivo muestra los terminados y cancelados."}</p>
 
       {!archiveView && isUnassignedCountError && (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 text-sm">
@@ -529,6 +530,7 @@ function NewProjectDialog({
       </form>
       <details className="border-t mt-4 pt-3">
         <summary className="cursor-pointer py-2 text-sm">Partir de una plantilla o un documento</summary>
+        <p className="text-xs text-muted-foreground">Una plantilla reutiliza fases y tareas. Si importas un PDF o texto, podrás revisar la propuesta antes de crear el proyecto.</p>
         <div className="flex flex-wrap gap-2 pt-2">
           <Button type="button" variant="outline" onClick={onTemplate}><FolderKanban className="h-4 w-4 mr-2" />Usar plantilla</Button>
           <Button type="button" variant="outline" onClick={onPdf}><FileUp className="h-4 w-4 mr-2" />Importar PDF</Button>
@@ -586,6 +588,7 @@ function TemplateDialog({
       <DialogHeader>
         <DialogTitle>Crear desde plantilla</DialogTitle>
       </DialogHeader>
+      <p className="text-sm text-muted-foreground">Se creará un proyecto nuevo con las fases y tareas de la plantilla. Podrás ajustarlas después.</p>
       <form
         onSubmit={(e) => {
           e.preventDefault()

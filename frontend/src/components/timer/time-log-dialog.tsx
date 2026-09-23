@@ -172,6 +172,7 @@ export function TimeLogDialog({
         </p>
       ) : (
         <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">Consulta el tiempo registrado en esta tarea o añade una entrada manual.</p>
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               Total:{" "}
@@ -233,7 +234,7 @@ export function TimeLogDialog({
               </div>
               <div className="space-y-1">
                 <Label htmlFor="notes">Notas</Label>
-                <Textarea id="notes" name="notes" rows={2} />
+                <Textarea id="notes" name="notes" rows={2} placeholder="Qué hiciste (opcional)" />
               </div>
               <Button
                 type="submit"

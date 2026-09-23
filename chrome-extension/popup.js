@@ -185,6 +185,7 @@ const tasksFilter = document.getElementById("tasks-filter");
 const tasksRefresh = document.getElementById("tasks-refresh");
 const tasksList = document.getElementById("tasks-list");
 const tasksEmpty = document.getElementById("tasks-empty");
+const tasksActionError = document.getElementById("tasks-action-error");
 
 // ── State ─────────────────────────────────────────────────
 let token = "";
@@ -280,8 +281,8 @@ function resetSessionUi() {
   timerAccumulatedSeconds = 0;
   draftFields.forEach(element => { element.value = element.type === "number" ? "0" : ""; });
   commandText.disabled = false;
-  commandSubmit.textContent = "Hacer";
-  [successMsg, captureError, taskCaptureError, commandError, commandPrompt, commandReceipt, timerError, timerSuccess, inboxBar,
+  commandSubmit.textContent = "Enviar petición";
+  [successMsg, captureError, taskCaptureError, commandError, commandPrompt, commandReceipt, timerError, timerSuccess, tasksActionError, inboxBar,
    headerTimer, timerActive, timerBudget, qcTimerForm, qcManualForm].forEach(el => el.classList.add("hidden"));
   [timerIdle, qcTimerLink, qcManualLink, btnText, taskBtnText].forEach(el => el.classList.remove("hidden"));
   [btnLoading, taskBtnLoading].forEach(el => el.classList.add("hidden"));
@@ -348,7 +349,7 @@ function showMainView() {
   const session = captureSession();
   loginView.classList.add("hidden");
   mainView.classList.remove("hidden");
-  noteText.focus();
+  commandText.focus();
 
   openInbox.href = `${API_URL}/inbox`;
 
@@ -365,8 +366,9 @@ function showMainView() {
 
 function switchToTab(target) {
   tabs.forEach((t) => {
-    if (t.dataset.tab === target) t.classList.add("active");
-    else t.classList.remove("active");
+    const active = t.dataset.tab === target;
+    t.classList.toggle("active", active);
+    t.setAttribute("aria-selected", String(active));
   });
   Object.entries(tabContents).forEach(([key, el]) => {
     if (key === target) el.classList.remove("hidden");
@@ -379,18 +381,13 @@ tabs.forEach((tab) => {
   tab.addEventListener("click", () => {
     const target = tab.dataset.tab;
 
-    // Update active tab
-    tabs.forEach((t) => t.classList.remove("active"));
-    tab.classList.add("active");
-
-    // Show target content, hide others
-    Object.entries(tabContents).forEach(([key, el]) => {
-      if (key === target) el.classList.remove("hidden");
-      else el.classList.add("hidden");
-    });
+    switchToTab(target);
 
     // Focus on relevant element
-    if (target === "capture") noteText.focus();
+    if (target === "capture") {
+      const mode = document.querySelector(".mode-btn.active")?.dataset.mode;
+      (mode === "note" ? noteText : mode === "task" ? taskTitle : commandText).focus();
+    }
     if (target === "tasks") loadTasks();
   });
 });
@@ -763,6 +760,8 @@ function renderCommand(data) {
   if (data.status === "needs_input") {
     commandPrompt.classList.remove("hidden");
     const answers = new Map();
+    const actionable = (data.prompt?.questions || []).filter(question => question.kind !== "notice");
+    let continueButton = null;
     for (const question of data.prompt?.questions || []) {
       const label = document.createElement("p");
       label.textContent = question.label;
@@ -770,27 +769,38 @@ function renderCommand(data) {
       for (const choice of question.choices || []) {
         const choiceButton = commandButton(choice.label, () => {
           answers.set(question.field, choice.id);
-          commandPrompt.querySelectorAll(`[data-field="${question.field}"]`).forEach(node => node.classList.remove("selected"));
+          commandPrompt.querySelectorAll(`[data-field="${question.field}"]`).forEach(node => {
+            node.classList.remove("selected");
+            node.setAttribute("aria-pressed", "false");
+          });
           choiceButton.classList.add("selected");
+          choiceButton.setAttribute("aria-pressed", "true");
+          if (continueButton) continueButton.disabled = !actionable.every(item => answers.has(item.field));
         }, "command-choice");
         choiceButton.dataset.field = question.field;
         choiceButton.disabled = commandStepUncertain;
-        if (choice.subtitle) choiceButton.title = choice.subtitle;
+        choiceButton.setAttribute("aria-pressed", "false");
+        if (choice.subtitle) {
+          const subtitle = document.createElement("small");
+          subtitle.textContent = choice.subtitle;
+          choiceButton.append(subtitle);
+        }
         commandPrompt.append(choiceButton);
       }
     }
-    const actionable = (data.prompt?.questions || []).filter(question => question.kind !== "notice");
     if (actionable.length) {
       const actions = document.createElement("div");
       actions.className = "command-actions";
-      actions.append(commandButton(commandStepUncertain ? "Reintentar la misma respuesta" : "Continuar", () => {
+      continueButton = commandButton(commandStepUncertain ? "Reintentar la misma respuesta" : "Continuar", () => {
         if (commandStepUncertain) {
           resolveCommand(null);
           return;
         }
         if (!actionable.every(question => answers.has(question.field))) return;
         resolveCommand([...answers].map(([field, choice_id]) => ({ field, choice_id })));
-      }, "primary-btn small"));
+      }, "primary-btn small");
+      continueButton.disabled = !commandStepUncertain;
+      actions.append(continueButton);
       actions.append(commandButton("Escribir otra petición", resetCommand));
       commandPrompt.append(actions);
     }
@@ -867,7 +877,7 @@ function resetCommand() {
   commandText.value = "";
   commandText.disabled = false;
   commandSubmit.disabled = true;
-  commandSubmit.textContent = "Hacer";
+  commandSubmit.textContent = "Enviar petición";
   commandPrompt.classList.add("hidden");
   commandReceipt.classList.add("hidden");
   commandError.classList.add("hidden");
@@ -884,7 +894,7 @@ function editCommand() {
   commandStepUncertain = false;
   commandText.disabled = false;
   commandSubmit.disabled = !commandText.value.trim();
-  commandSubmit.textContent = "Hacer";
+  commandSubmit.textContent = "Enviar petición";
   commandReceipt.classList.add("hidden");
   commandError.classList.add("hidden");
   commandText.focus();
@@ -944,7 +954,7 @@ async function submitCommand() {
   } finally {
     if (!isCurrentSession(session) || generation !== commandGeneration) return;
     commandInFlight = false;
-    commandSubmit.textContent = currentCommand ? "Petición recibida" : "Reintentar";
+    commandSubmit.textContent = currentCommand ? "Petición recibida" : "Reintentar petición";
     commandSubmit.disabled = Boolean(currentCommand) || !commandText.value.trim();
   }
 }
@@ -1077,7 +1087,9 @@ async function loadMeetingSettings({ preserveDraft = false } = {}) {
     }
     meetingSettingsState.textContent = data.scheduler_enabled === false
       ? "Avisos pausados en la configuración general"
-      : meetingPolicy?.reason || (meetingPolicy?.state === "ready" ? "Configurado" : "Revisa esta preferencia");
+      : meetingPolicy?.reason || (meetingPolicy?.state === "ready"
+        ? (meetingPolicy.channels.includes("extension") ? "Avisos de Chrome activados" : "Avisos de Chrome desactivados")
+        : "Revisa esta preferencia");
     meetingSettingsError.classList.add("hidden");
   } catch (error) {
     if (!isCurrentSession(session)) return;
@@ -1116,7 +1128,9 @@ async function saveMeetingSettings() {
     if (!response.ok) throw new Error(getDetail(policy, `Error ${response.status}`));
     if (!isCurrentSession(session)) return;
     meetingPolicy = policy;
-    meetingSettingsState.textContent = "Configuración guardada";
+    meetingSettingsState.textContent = meetingExtensionEnabled.checked
+      ? "Preferencias guardadas. Los próximos avisos usarán esta antelación."
+      : "Preferencias guardadas. Avisos de Chrome desactivados.";
   } catch (error) {
     if (!isCurrentSession(session)) return;
     meetingSettingsError.textContent = error.message || "No se pudo guardar la configuración.";
@@ -1233,25 +1247,30 @@ async function createTaskDirect() {
     if (!isCurrentSession(session)) return;
 
     // 2. Optionally start timer
+    let timerStarted = false;
     if (taskStartTimer.checked) {
-      const timerRes = await sessionFetch(session, `${API_URL}/api/timer/start`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.token}`,
-        },
-        body: JSON.stringify({ task_id: task.id }),
-      });
-      if (!isCurrentSession(session)) return;
-
-      if (timerRes.ok) {
+      try {
+        const timerRes = await sessionFetch(session, `${API_URL}/api/timer/start`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.token}`,
+          },
+          body: JSON.stringify({ task_id: task.id }),
+        });
+        if (!isCurrentSession(session)) return;
+        if (!timerRes.ok) {
+          const timerErr = await timerRes.json().catch(() => ({}));
+          if (!isCurrentSession(session)) return;
+          throw new Error(getDetail(timerErr, `Error ${timerRes.status}`));
+        }
         const timerData = await timerRes.json();
         if (!isCurrentSession(session)) return;
         showActiveTimer(timerData);
-      } else {
-        const timerErr = await timerRes.json().catch(() => ({}));
+        timerStarted = true;
+      } catch (timerErr) {
         if (!isCurrentSession(session)) return;
-        taskCaptureError.textContent = "Tarea creada, pero error al iniciar timer: " + getDetail(timerErr, `Error ${timerRes.status}`);
+        taskCaptureError.textContent = `Tarea creada, pero no se pudo iniciar el timer. Puedes iniciarlo desde Timer. ${timerErr.message}`;
         taskCaptureError.classList.remove("hidden");
       }
     }
@@ -1262,12 +1281,12 @@ async function createTaskDirect() {
     taskProjectSelect.value = "";
     updateTaskCreateBtn();
 
-    if (taskStartTimer.checked) {
+    if (timerStarted) {
       successText.textContent = "Tarea creada — timer iniciado";
       successMsg.classList.remove("hidden");
       // Switch to timer tab after brief delay
       scheduleForSession(() => switchToTab("timer"), 1200);
-    } else {
+    } else if (!taskStartTimer.checked) {
       successText.textContent = "Tarea creada";
       successMsg.classList.remove("hidden");
     }
@@ -1676,7 +1695,7 @@ timerStopBtn.addEventListener("click", async () => {
   } finally {
     if (!isCurrentSession(session)) return;
     timerStopBtn.disabled = false;
-    timerStopBtn.textContent = "Detener";
+    timerStopBtn.textContent = "Detener y registrar";
   }
 });
 
@@ -1847,6 +1866,7 @@ async function loadTasks() {
   const session = captureSession();
   const loadId = ++taskListLoadId;
   tasksList.querySelector(".tasks-error")?.remove();
+  tasksActionError.classList.add("hidden");
   if (!tasksList.children.length) tasksList.innerHTML = '<div class="tasks-loading">Cargando tareas...</div>';
   tasksEmpty.classList.add("hidden");
   const filters = { assigned_to: "me" };
@@ -1889,8 +1909,8 @@ async function loadTasks() {
           loadTasks(); // Reload task list
         } catch (err) {
           if (!isCurrentSession(session)) return;
-          timerError.textContent = err.message;
-          timerError.classList.remove("hidden");
+          tasksActionError.textContent = `No se pudo cambiar el estado de la tarea. ${err.message}`;
+          tasksActionError.classList.remove("hidden");
         } finally {
           if (!isCurrentSession(session)) return;
           btn.disabled = false;
@@ -1937,8 +1957,8 @@ async function loadTasks() {
           switchToTab("timer");
         } catch (err) {
           if (!isCurrentSession(session)) return;
-          timerError.textContent = err.message;
-          timerError.classList.remove("hidden");
+          tasksActionError.textContent = `No se pudo iniciar el timer. ${err.message}`;
+          tasksActionError.classList.remove("hidden");
         } finally {
           if (!isCurrentSession(session)) return;
           btn.disabled = false;
@@ -1964,18 +1984,19 @@ function renderTaskCard(task) {
   return `
     <div class="task-card ${isCompleted ? "task-completed" : ""}" data-id="${task.id}">
       <div class="task-header">
-        <button class="task-check-btn ${isCompleted ? "checked" : ""}" data-task-id="${task.id}" data-status="${task.status}" title="${isCompleted ? "Reabrir" : "Completar"}">
+        <button class="task-check-btn ${isCompleted ? "checked" : ""}" data-task-id="${task.id}" data-status="${task.status}" title="${isCompleted ? "Reabrir tarea" : "Completar tarea"}" aria-label="${isCompleted ? "Reabrir" : "Completar"} ${escapeAttribute(task.title)}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         </button>
         <span class="task-title">${escapeHtml(task.title)}</span>
         ${priorityIcon ? `<span class="task-priority task-priority-${priority}">${priorityIcon}</span>` : ""}
-        <button class="task-play-btn" data-task-id="${task.id}" title="Iniciar timer">
+        <button class="task-play-btn" data-task-id="${task.id}" title="Iniciar timer" aria-label="Iniciar timer para ${escapeAttribute(task.title)}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
         </button>
       </div>
       <div class="task-meta">
         <span class="task-status-label" style="color:${statusColor}">${statusLabel}</span>
         ${projectName}
+        <button class="task-open-btn" type="button" aria-label="Abrir ${escapeAttribute(task.title)} en la web">Abrir</button>
       </div>
     </div>
   `;
@@ -1985,6 +2006,10 @@ function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
+}
+
+function escapeAttribute(text) {
+  return escapeHtml(text).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 // Task filter change

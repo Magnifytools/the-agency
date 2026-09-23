@@ -217,6 +217,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
             Sin planificar ({unplanned.total})
           </p>
+          <p className="mb-2 text-sm text-muted-foreground">Tareas activas que todavía no tienen fecha planificada.</p>
           <div className="space-y-2">
             {unplannedTasks.map((task) => renderTaskCard(task))}
           </div>
@@ -243,6 +244,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
                 {task.client_name && <span className="text-[10px] shrink-0">{task.client_name}</span>}
                 {canWrite && <button
                   title="Reabrir tarea"
+                  aria-label={`Reabrir ${task.title}`}
                   className="opacity-0 group-hover/done:opacity-100 transition-opacity shrink-0 text-muted-foreground hover:text-amber-600"
                   onClick={() => onStatusChange(task.id, "pending")}
                 >

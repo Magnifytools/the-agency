@@ -14,10 +14,12 @@
       <h1>The Agency</h1>
     </div>
     <form id="login-form">
-      <input type="email" id="email" placeholder="Email" required>
-      <input type="password" id="password" placeholder="Password" required>
-      <button type="submit" id="login-btn">Conectar</button>
-      <p id="login-error" class="error hidden"></p>
+      <label for="email">Correo electrónico</label>
+      <input type="email" id="email" autocomplete="username" required>
+      <label for="password">Contraseña</label>
+      <input type="password" id="password" autocomplete="current-password" required>
+      <button type="submit" id="login-btn">Iniciar sesión</button>
+      <p id="login-error" class="error hidden" role="alert"></p>
     </form>
   </div>
 
@@ -27,13 +29,14 @@
       <div class="header-left">
         <div class="logo-sm">A</div>
         <span class="title">The Agency</span>
-        <span id="header-timer" class="header-timer hidden">
+        <button id="header-timer" type="button" class="header-timer hidden" aria-label="Ver timer activo">
           <span class="timer-dot"></span>
           <span id="header-timer-text">0:00</span>
-        </span>
+        </button>
       </div>
-      <button id="settings-btn" class="icon-btn" title="Cerrar sesion">
+      <button id="settings-btn" class="icon-btn" type="button" title="Cerrar sesión" aria-label="Cerrar sesión">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        <span>Cerrar sesión</span>
       </button>
     </div>
 
@@ -43,34 +46,34 @@
     </div>
 
     <!-- Tab bar -->
-    <div class="tab-bar">
-      <button class="tab active" data-tab="capture">
+      <div class="tab-bar" role="tablist" aria-label="Secciones de la extensión">
+      <button class="tab active" data-tab="capture" role="tab" aria-selected="true" aria-controls="tab-capture">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
         Hacer
       </button>
-      <button class="tab" data-tab="timer">
+      <button class="tab" data-tab="timer" role="tab" aria-selected="false" aria-controls="tab-timer">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         Timer
       </button>
-      <button class="tab" data-tab="tasks">
+      <button class="tab" data-tab="tasks" role="tab" aria-selected="false" aria-controls="tab-tasks">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
         Tareas
       </button>
     </div>
 
     <!-- ═══ CAPTURE TAB ═══ -->
-    <div id="tab-capture" class="tab-content">
+    <div id="tab-capture" class="tab-content" role="tabpanel">
       <h2 class="command-heading">¿Qué necesitas hacer?</h2>
       <!-- Command first; explicit forms remain available. -->
       <div class="capture-mode-toggle" role="tablist" aria-label="Tipo de entrada">
-        <button class="mode-btn active" data-mode="command" role="tab" aria-selected="true">Pedir</button>
-        <button class="mode-btn" data-mode="note" role="tab" aria-selected="false">Aclarar</button>
-        <button class="mode-btn" data-mode="task" role="tab" aria-selected="false">Tarea directa</button>
+        <button class="mode-btn active" data-mode="command" role="tab" aria-selected="true" aria-controls="capture-command-mode">Pedir</button>
+        <button class="mode-btn" data-mode="note" role="tab" aria-selected="false" aria-controls="capture-note-mode">Aclarar</button>
+        <button class="mode-btn" data-mode="task" role="tab" aria-selected="false" aria-controls="capture-task-mode">Tarea directa</button>
       </div>
 
-      <div id="capture-command-mode" class="capture-area">
-        <p class="command-intro">Escribe lo que quieres que haga la app o pregúntale por tus pendientes.</p>
-        <textarea id="command-text" placeholder="Ej. Completa la tarea Revisar portada o consulta bloqueos" rows="4" autofocus></textarea>
+      <div id="capture-command-mode" class="capture-area" role="tabpanel">
+        <p class="command-intro">Escribe una petición o pregunta. Las órdenes claras pueden aplicarse al enviarlas; si falta un dato, la app te pedirá aclararlo.</p>
+        <textarea id="command-text" aria-label="Petición o pregunta" placeholder="Ej. Completa la tarea Revisar portada o consulta bloqueos" rows="4" autofocus></textarea>
         <details class="command-result command-examples">
           <summary>Qué puedes pedir</summary>
           <ul class="command-example-list">
@@ -84,41 +87,49 @@
         <div id="command-receipt" class="command-result hidden" role="status"></div>
         <div class="actions">
           <span class="hint">Cmd+Enter</span>
-          <button id="command-submit" class="primary-btn" disabled>Hacer</button>
+          <button id="command-submit" class="primary-btn" disabled>Enviar petición</button>
         </div>
       </div>
 
       <!-- NOTE mode (inbox) -->
-      <div id="capture-note-mode" class="capture-area hidden">
-        <textarea id="note-text" placeholder="Escribe tu nota rapida... (Cmd+Enter para enviar)" rows="4" autofocus></textarea>
-        <p id="capture-error" class="error hidden"></p>
+      <div id="capture-note-mode" class="capture-area hidden" role="tabpanel">
+        <p class="mode-intro">Guarda una idea o duda en el Inbox para aclararla después. Puedes asignarla ahora o dejar que la app la clasifique.</p>
+        <label for="note-text" class="field-label">Nota</label>
+        <textarea id="note-text" placeholder="¿Qué necesitas aclarar?" rows="4" autofocus></textarea>
+        <p id="capture-error" class="error hidden" role="alert"></p>
         <div class="field-row">
-          <input type="url" id="link-url" placeholder="Enlace Drive, Docs... (opcional)" class="field-input">
+          <label for="link-url" class="field-label">Enlace relacionado (opcional)</label>
+          <input type="url" id="link-url" placeholder="https://..." class="field-input">
         </div>
         <div class="field-row">
+          <label for="assign-select" class="field-label">Cliente o proyecto (opcional)</label>
           <select id="assign-select" class="field-select">
-            <option value="">Sin asignar (IA adivinara)</option>
+            <option value="">Clasificar automáticamente</option>
           </select>
         </div>
         <div class="actions">
           <span class="hint">Cmd+Enter</span>
           <button id="capture-btn" class="primary-btn" disabled>
-            <span id="btn-text">Capturar</span>
+            <span id="btn-text">Guardar nota</span>
             <span id="btn-loading" class="hidden">Enviando...</span>
           </button>
         </div>
       </div>
 
       <!-- TASK mode (direct task creation) -->
-      <div id="capture-task-mode" class="capture-area hidden">
-        <input type="text" id="task-title" placeholder="Titulo de la tarea *" class="field-input" autofocus>
-        <p id="task-capture-error" class="error hidden"></p>
+      <div id="capture-task-mode" class="capture-area hidden" role="tabpanel">
+        <p class="mode-intro">Crea una tarea en curso para ti. Puedes empezar a contar el tiempo al crearla.</p>
+        <label for="task-title" class="field-label">Título de la tarea</label>
+        <input type="text" id="task-title" class="field-input" autofocus>
+        <p id="task-capture-error" class="error hidden" role="alert"></p>
         <div class="field-row">
+          <label for="task-client-select" class="field-label">Cliente</label>
           <select id="task-client-select" class="field-select">
             <option value="">Cliente *</option>
           </select>
         </div>
         <div class="field-row">
+          <label for="task-project-select" class="field-label">Proyecto (opcional)</label>
           <select id="task-project-select" class="field-select">
             <option value="">Proyecto (opcional)</option>
           </select>
@@ -143,15 +154,16 @@
         <span id="success-text">Nota capturada</span>
       </div>
       <div id="inbox-bar" class="inbox-bar hidden">
-        <span>Inbox: <strong id="inbox-count">0</strong> pendientes</span>
-        <a id="open-inbox" href="#" class="link">Abrir inbox</a>
+        <span>Notas por aclarar: <strong id="inbox-count">0</strong></span>
+        <a id="open-inbox" href="#" class="link">Ver Inbox</a>
       </div>
       <details id="meeting-settings" class="timer-section">
         <summary>Avisos de reuniones</summary>
-        <p id="meeting-settings-state" class="hint">Cargando configuración…</p>
+        <p class="mode-intro">Recibe un aviso en Chrome antes de tus reuniones del calendario conectado. Esta preferencia depende de que los avisos generales estén activos.</p>
+        <p id="meeting-settings-state" class="hint" role="status">Cargando preferencias…</p>
         <label class="checkbox-row">
           <input type="checkbox" id="meeting-extension-enabled">
-          <span>Avisarme en esta extensión</span>
+          <span>Mostrar avisos en Chrome</span>
         </label>
         <label class="field-row">
           <span class="section-label">Antelación</span>
@@ -161,12 +173,12 @@
           </select>
         </label>
         <p id="meeting-settings-error" class="error hidden" role="alert"></p>
-        <button id="meeting-settings-save" type="button" class="secondary-btn full-width">Guardar avisos</button>
+        <button id="meeting-settings-save" type="button" class="secondary-btn full-width">Guardar preferencias</button>
       </details>
     </div>
 
     <!-- ═══ TIMER TAB ═══ -->
-    <div id="tab-timer" class="tab-content hidden">
+    <div id="tab-timer" class="tab-content hidden" role="tabpanel">
       <!-- Active timer display -->
       <div id="timer-active" class="timer-section hidden">
         <div class="timer-display">
@@ -176,11 +188,12 @@
         <div class="timer-actions">
           <button id="timer-pause-btn" class="pause-btn">⏸ Pausa</button>
           <button id="timer-resume-btn" class="resume-btn hidden">▶ Reanudar</button>
-          <button id="timer-stop-btn" class="stop-btn">Detener</button>
+          <button id="timer-stop-btn" class="stop-btn">Detener y registrar</button>
         </div>
         <!-- Presupuesto de horas del proyecto (semanal + alerta) -->
         <div id="timer-budget" class="timer-budget hidden">
           <div class="budget-project" id="budget-project"></div>
+          <p class="budget-explanation">Horas usadas / presupuesto del proyecto</p>
           <div class="budget-row" id="budget-week-row">
             <span class="budget-label" id="budget-week-label">Esta semana</span>
             <span class="budget-value" id="budget-week"></span>
@@ -196,6 +209,8 @@
       <!-- No timer state -->
       <div id="timer-idle" class="timer-section">
         <div class="section-label">Iniciar timer</div>
+        <p class="mode-intro">Elige una tarea para contar el tiempo. Al detenerlo, se guarda el registro.</p>
+        <label for="timer-task-select" class="field-label">Tarea</label>
         <select id="timer-task-select" class="field-select">
           <option value="">Selecciona tarea *</option>
         </select>
@@ -203,7 +218,9 @@
           <a href="#" id="quick-create-timer-link" class="link small">+ Crear tarea</a>
         </div>
         <div id="quick-create-timer-form" class="quick-create-form hidden">
-          <input type="text" id="qc-timer-title" placeholder="Titulo de la tarea *" class="field-input">
+          <label for="qc-timer-title" class="field-label">Título de la tarea</label>
+          <input type="text" id="qc-timer-title" class="field-input">
+          <label for="qc-timer-client" class="field-label">Cliente</label>
           <select id="qc-timer-client" class="field-select">
             <option value="">Cliente *</option>
           </select>
@@ -218,6 +235,8 @@
       <!-- Manual time entry -->
       <div class="timer-section">
         <div class="section-label">Registro manual</div>
+        <p class="mode-intro">Añade tiempo que ya trabajaste sin iniciar el timer.</p>
+        <label for="manual-task-select" class="field-label">Tarea</label>
         <select id="manual-task-select" class="field-select">
           <option value="">Selecciona tarea *</option>
         </select>
@@ -225,7 +244,9 @@
           <a href="#" id="quick-create-manual-link" class="link small">+ Crear tarea</a>
         </div>
         <div id="quick-create-manual-form" class="quick-create-form hidden">
-          <input type="text" id="qc-manual-title" placeholder="Titulo de la tarea *" class="field-input">
+          <label for="qc-manual-title" class="field-label">Título de la tarea</label>
+          <input type="text" id="qc-manual-title" class="field-input">
+          <label for="qc-manual-client" class="field-label">Cliente</label>
           <select id="qc-manual-client" class="field-select">
             <option value="">Cliente *</option>
           </select>
@@ -236,15 +257,16 @@
         </div>
         <div class="time-inputs">
           <div class="time-field">
-            <input type="number" id="manual-hours" min="0" max="23" value="0" class="field-input time-input">
-            <span class="time-label">h</span>
+            <input type="number" id="manual-hours" min="0" max="23" value="0" class="field-input time-input" aria-label="Horas">
+            <span class="time-label" aria-hidden="true">h</span>
           </div>
           <div class="time-field">
-            <input type="number" id="manual-mins" min="0" max="59" value="0" class="field-input time-input">
-            <span class="time-label">m</span>
+            <input type="number" id="manual-mins" min="0" max="59" value="0" class="field-input time-input" aria-label="Minutos">
+            <span class="time-label" aria-hidden="true">m</span>
           </div>
         </div>
-        <input type="text" id="manual-notes" placeholder="Notas (opcional)" class="field-input">
+        <label for="manual-notes" class="field-label">Nota del registro (opcional)</label>
+        <input type="text" id="manual-notes" class="field-input">
         <button id="manual-save-btn" class="secondary-btn full-width">Guardar registro</button>
         <p id="timer-error" class="error hidden" role="alert"></p>
         <button id="timer-tasks-retry" type="button" class="secondary-btn small hidden">Reintentar lista de tareas</button>
@@ -253,8 +275,10 @@
     </div>
 
     <!-- ═══ TASKS TAB ═══ -->
-    <div id="tab-tasks" class="tab-content hidden">
+    <div id="tab-tasks" class="tab-content hidden" role="tabpanel">
+      <p class="tasks-intro">Tus tareas asignadas. Ábrelas para ver detalles o usa los iconos para completarlas y contar tiempo.</p>
       <div class="tasks-header">
+        <label for="tasks-filter" class="sr-only">Filtrar tareas por estado</label>
         <select id="tasks-filter" class="field-select compact">
           <option value="pending,in_progress,waiting,in_review" selected>Activas</option>
           <option value="in_progress">En curso</option>
@@ -263,14 +287,15 @@
           <option value="waiting">En espera</option>
           <option value="backlog">Backlog</option>
         </select>
-        <button id="tasks-refresh" class="icon-btn" title="Refrescar">
+        <button id="tasks-refresh" class="icon-btn" title="Actualizar tareas" aria-label="Actualizar tareas">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         </button>
       </div>
+      <p id="tasks-action-error" class="error tasks-action-error hidden" role="alert"></p>
       <div id="tasks-list" class="tasks-list">
         <div class="tasks-loading">Cargando tareas...</div>
       </div>
-      <div id="tasks-empty" class="tasks-empty hidden">Sin tareas</div>
+      <div id="tasks-empty" class="tasks-empty hidden">No tienes tareas con este estado. Prueba otro filtro.</div>
     </div>
   </div>
 
