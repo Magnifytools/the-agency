@@ -265,11 +265,13 @@ function TimerWidget({ tasks, tasksError, canReadTasks, canReadClients, canReadP
 
   const handleStop = async () => {
     try {
-      await timerApi.stop()
+      if (!activeTimer) return
+      await timerApi.stop(activeTimer.id)
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       onTimerChange()
       toast.success("Timer detenido")
     } catch (err) {
+      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       toast.error(getErrorMessage(err, "Error al detener timer"))
     }
   }

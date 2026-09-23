@@ -412,6 +412,7 @@ test('late timer stop cannot hide a newer account timer or reset its pending but
     if (new URL(url).pathname === '/api/timer/stop') { reached.resolve(); await response.promise; return { ok: true, status: 200 }; }
     return fetch(url, options);
   };
+  h.run('showActiveTimer({id: 42, started_at:"2026-09-17T09:00:00Z", task_title:"Old timer"})');
   h.get('timer-stop-btn').click(); await reached.promise;
   h.get('settings-btn').click(); await loginAs(h, 'session-b', 'b@example.test');
   h.run('showActiveTimer({started_at:"2026-09-17T10:00:00Z", task_title:"New timer"})');
@@ -420,6 +421,41 @@ test('late timer stop cannot hide a newer account timer or reset its pending but
   assert.equal(h.get('timer-task-name').textContent, 'New timer');
   assert.equal(h.get('timer-active').classList.contains('hidden'), false);
   assert.equal(h.get('timer-stop-btn').disabled, true);
+});
+
+test('stop sends the displayed timer id and refreshes after a stale stop', async t => {
+  const h = await setup(t);
+  await loginAs(h, 'session-a', 'a@example.test');
+  let sentId;
+  const fetch = h.dom.window.fetch;
+  h.dom.window.fetch = async (url, options = {}) => {
+    const pathname = new URL(url).pathname;
+    if (pathname === '/api/timer/stop') {
+      sentId = JSON.parse(options.body).timer_id;
+      return { ok: false, status: 409, json: async () => ({ detail: 'El timer cambió' }) };
+    }
+    if (pathname === '/api/timer/active') {
+      return { ok: true, status: 200, json: async () => ({ id: 88, started_at: '2026-09-17T10:00:00Z', task_title: 'Current timer' }) };
+    }
+    return fetch(url, options);
+  };
+  h.run('showActiveTimer({id: 42, started_at:"2026-09-17T09:00:00Z", task_title:"Old timer"})');
+  h.get('timer-stop-btn').click();
+  await tick(); await tick();
+  assert.equal(sentId, 42);
+  assert.equal(h.run('activeTimerId'), 88);
+  assert.equal(h.get('timer-task-name').textContent, 'Current timer');
+});
+
+test('failed active timer check does not show an idle timer', async t => {
+  const h = await setup(t);
+  await loginAs(h, 'session-a', 'a@example.test');
+  h.run('showActiveTimer({id: 42, started_at:"2026-09-17T09:00:00Z", task_title:"Running"})');
+  h.dom.window.fetch = async () => ({ ok: false, status: 503, json: async () => ({ detail: 'Temporalmente no disponible' }) });
+  await h.run('loadActiveTimer()');
+  assert.equal(h.get('timer-active').classList.contains('hidden'), false);
+  assert.equal(h.run('activeTimerId'), 42);
+  assert.equal(h.get('timer-error').classList.contains('hidden'), false);
 });
 
 test('drafts stay with their authenticated email and restore safely after reconnecting', async t => {

@@ -257,7 +257,7 @@ function TimerBar() {
   })
 
   const stopMutation = useMutation({
-    mutationFn: () => timerApi.stop(),
+    mutationFn: (timerId: number) => timerApi.stop(timerId),
     onSuccess: (entry: TimeEntry) => {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       invalidateTimeChange(queryClient)
@@ -544,7 +544,7 @@ function TimerBar() {
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => stopMutation.mutate()}
+              onClick={() => stopMutation.mutate(timer.id)}
             disabled={stopMutation.isPending}
             className="bg-background text-foreground hover:bg-background/90 font-semibold min-h-9"
           >

@@ -300,13 +300,16 @@ export default function DashboardPage() {
     onError: (err) => toast.error(getErrorMessage(err, "Error al iniciar el timer")),
   })
   const stopTimerMutation = useMutation({
-    mutationFn: () => timerApi.stop(),
+    mutationFn: (timerId: number) => timerApi.stop(timerId),
     onSuccess: () => {
       toast.success("Timer parado")
       queryClient.invalidateQueries({ queryKey: dashboardKeys.all() })
       invalidateTimeChange(queryClient)
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al parar el timer")),
+    onError: (err) => {
+      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
+      toast.error(getErrorMessage(err, "Error al parar el timer"))
+    },
   })
 
   const weeklyReportMutation = useMutation({
@@ -480,7 +483,7 @@ export default function DashboardPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => stopTimerMutation.mutate()}
+                    onClick={() => stopTimerMutation.mutate(activeTimer.id)}
                     disabled={stopTimerMutation.isPending || !canWriteTime}
                   >
                     <Square className="h-3 w-3 mr-1.5" />

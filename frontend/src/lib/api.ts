@@ -420,7 +420,7 @@ export const timeEntriesApi = {
 export const timerApi = {
   start: (data: { task_id?: number | null; notes?: string }) =>
     api.post<ActiveTimer>("/timer/start", data).then((r) => r.data),
-  stop: (notes?: string) => api.post<TimeEntry>("/timer/stop", { notes }).then((r) => r.data),
+  stop: (timerId: number, notes?: string) => api.post<TimeEntry>("/timer/stop", { timer_id: timerId, notes }).then((r) => r.data),
   pause: () => api.post<ActiveTimer>("/timer/pause").then((r) => r.data),
   resume: () => api.post<ActiveTimer>("/timer/resume").then((r) => r.data),
   active: () =>

@@ -63,13 +63,16 @@ function PermittedTimerButton({ taskId }: TimerButtonProps) {
   })
 
   const stopMutation = useMutation({
-    mutationFn: () => timerApi.stop(),
+    mutationFn: (timerId: number) => timerApi.stop(timerId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       invalidateTimeChange(queryClient)
       toast.success("Timer detenido")
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al detener timer")),
+    onError: (err) => {
+      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
+      toast.error(getErrorMessage(err, "Error al detener timer"))
+    },
   })
 
   if (isThisTaskRunning) {
@@ -81,7 +84,7 @@ function PermittedTimerButton({ taskId }: TimerButtonProps) {
         <Button
           variant="destructive"
           size="icon"
-          onClick={() => stopMutation.mutate()}
+          onClick={() => stopMutation.mutate(timer!.id)}
           disabled={stopMutation.isPending}
           title="Detener timer"
         >
