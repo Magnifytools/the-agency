@@ -731,7 +731,7 @@ function ClientsPageBody() {
               </TableRow>
             ))}
             {clients.length === 0 && (
-              <EmptyTableState colSpan={6 + (canWriteClients ? 2 : 0) + (isAdmin ? 1 : 0)} icon={Users} title="Sin resultados" description={`Prueba a cambiar los filtros o crea un cliente nuevo.${tab === "all" && cohort === "all" ? "" : ` No hay clientes ${tab === "all" ? "" : STATUS_TABS.find((item) => item.value === tab)?.label.toLowerCase()} ${cohort === "all" ? "" : COHORTS.find((item) => item.value === cohort)?.label.toLowerCase()}.`}`} />
+              <EmptyTableState colSpan={6 + (canWriteClients ? 2 : 0) + (isAdmin ? 1 : 0)} icon={Users} title="Sin resultados" description={tab === "all" && cohort === "all" ? (canWriteClients ? "Aún no hay clientes. Crea uno para empezar." : "Aún no hay clientes.") : "No hay clientes con estos filtros. Prueba a cambiarlos."} />
             )}
           </TableBody>
         </Table>
