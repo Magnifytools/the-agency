@@ -118,6 +118,19 @@ test('popup paused timer freezes at accumulated time and renders the pause indic
   assert.equal(h.get('header-timer-text').textContent, '⏸ 1:01');
 });
 
+test('both popup tab groups expose the selected panel after switching', async t => {
+  const { get, dom, run } = await setup(t);
+  get('tab-capture').querySelector('[data-mode="note"]').click();
+  const noteTab = get('tab-capture').querySelector('[data-mode="note"]');
+  assert.equal(noteTab.getAttribute('aria-selected'), 'true');
+  assert.equal(dom.window.document.getElementById(noteTab.getAttribute('aria-controls')).classList.contains('hidden'), false);
+  run('switchToTab("timer")');
+  const timerTab = dom.window.document.querySelector('[data-tab="timer"]');
+  assert.equal(timerTab.getAttribute('aria-selected'), 'true');
+  assert.equal(dom.window.document.getElementById(timerTab.getAttribute('aria-controls')).classList.contains('hidden'), false);
+  assert.equal(dom.window.document.querySelector('[data-tab="capture"]').getAttribute('aria-selected'), 'false');
+});
+
 test('all selector pages use page/page_size, including clients/projects beyond 25 and 100', async t => {
   const { run, get, requests } = await setup(t);
   await run('loadProjectsAndClients()');
@@ -267,6 +280,24 @@ test('task tab paginates and retains previously rendered cards on intermediate f
   assert.ok(get('tasks-list').querySelector('.tasks-error[role="alert"]'));
 });
 
+test('task action failure appears beside the task list, with a named control', async t => {
+  const h = await setup(t);
+  const fetch = h.dom.window.fetch;
+  h.dom.window.fetch = async (url, options = {}) => {
+    if (options.method === 'PUT' && /\/api\/tasks\/1$/.test(new URL(url).pathname)) {
+      return { ok: false, status: 403, json: async () => ({ detail: 'Sin permiso para completar' }) };
+    }
+    return fetch(url, options);
+  };
+  await h.run('loadTasks()');
+  const button = h.get('tasks-list').querySelector('.task-check-btn');
+  assert.match(button.getAttribute('aria-label'), /Completar Tarea 1/);
+  button.click(); await tick();
+  assert.match(h.get('tasks-action-error').textContent, /Sin permiso para completar/);
+  assert.equal(h.get('tasks-action-error').classList.contains('hidden'), false);
+  assert.equal(h.get('timer-error').classList.contains('hidden'), true);
+});
+
 test('capture finishing does not erase a draft or assignment edited while sending', async t => {
   const { run, get, state, dom } = await setup(t);
   run('showMainView()');
@@ -395,7 +426,7 @@ test('late timer JSON from previous login cannot replace the new active timer', 
   h.get('settings-btn').click();
   await loginAs(h, 'session-b', 'b@example.test');
   assert.equal(h.get('command-text').disabled, false);
-  assert.equal(h.get('command-submit').textContent, 'Hacer');
+  assert.equal(h.get('command-submit').textContent, 'Enviar petición');
   await h.run('loadActiveTimer()');
   body.resolve(); await pending;
   assert.equal(h.get('timer-task-name').textContent, 'New timer');
@@ -542,6 +573,8 @@ test('direct capture explicitly assigns the new task to its authenticated creato
   assert.deepEqual(h.state.taskCreateRequests[0], {
     title: 'Preparar propuesta', client_id: 1, status: 'in_progress', assign_to_current_user: true,
   });
+  assert.match(h.get('task-capture-error').textContent, /Tarea creada, pero no se pudo iniciar el timer/);
+  assert.equal(h.get('success-msg').classList.contains('hidden'), true);
 });
 
 test('command mode sends through shared endpoint and renders a linked receipt', async t => {
@@ -581,7 +614,7 @@ test('command choices preserve semantic date, literal title and user fields', as
     id: 'cmd-choice', request_key: 'request-command-choice', raw_text: 'Crea tarea', channel: 'extension', context: null,
     status: 'needs_input', intent: { kind: 'create_task' }, result: null, change_log_id: null, error: null, revision: 1,
     prompt: { questions: [
-      { field: 'scheduled_date', label: '¿Qué viernes?', kind: 'choice', choices: [{ id: 'date:2026-09-25', label: '25 de septiembre' }] },
+      { field: 'scheduled_date', label: '¿Qué viernes?', kind: 'choice', choices: [{ id: 'date:2026-09-25', label: '25 de septiembre', subtitle: 'Antes del cierre' }] },
       { field: 'literal_title', label: '¿Conservar?', kind: 'choice', choices: [{ id: 'literal_title:confirm', label: 'Sí' }] },
       { field: 'assigned_to', label: '¿Quién?', kind: 'choice', choices: [{ id: 'user:8', label: 'María' }] },
     ] },
@@ -589,7 +622,11 @@ test('command choices preserve semantic date, literal title and user fields', as
   get('command-text').value = 'Crea tarea';
   get('command-text').dispatchEvent(new dom.window.Event('input'));
   get('command-submit').click(); await tick();
+  assert.equal(get('command-prompt').querySelector('.primary-btn').disabled, true);
+  assert.match(get('command-prompt').textContent, /Antes del cierre/);
   for (const button of get('command-prompt').querySelectorAll('.command-choice')) button.click();
+  assert.equal(get('command-prompt').querySelector('.primary-btn').disabled, false);
+  assert.equal(get('command-prompt').querySelector('.command-choice').getAttribute('aria-pressed'), 'true');
   get('command-prompt').querySelector('.primary-btn').click(); await tick();
   const resolve = state.commandStepRequests.find(request => request.path.endsWith('/resolve'));
   assert.deepEqual(resolve?.body?.answers, [
