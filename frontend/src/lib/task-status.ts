@@ -17,11 +17,11 @@ export const taskStatusGroups: Array<{ status: TaskStatusGroup; label: string; r
 ]
 
 const statusSelectClasses: Record<TaskStatusGroup, string> = {
-  pending: "border-amber-500/60 bg-amber-500/10",
-  in_progress: "border-sky-500/60 bg-sky-500/10",
-  waiting: "border-orange-500/60 bg-orange-500/10",
-  in_review: "border-violet-500/60 bg-violet-500/10",
-  completed: "border-emerald-500/60 bg-emerald-500/10",
+  pending: "task-status-select border-amber-500/60 bg-amber-500/10",
+  in_progress: "task-status-select border-sky-500/60 bg-sky-500/10",
+  waiting: "task-status-select border-orange-500/60 bg-orange-500/10",
+  in_review: "task-status-select border-violet-500/60 bg-violet-500/10",
+  completed: "task-status-select border-emerald-500/60 bg-emerald-500/10",
 }
 
 export function taskStatusSelectClass(status: TaskStatus, scheduledDate?: string | null) {

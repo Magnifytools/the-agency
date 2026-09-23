@@ -182,3 +182,15 @@
 /* Hide scrollbar for horizontal scroll containers */
 .scrollbar-none::-webkit-scrollbar { display: none; }
 .scrollbar-none { scrollbar-width: none; }
+
+/* Los menús de select nativos no siempre heredan el fondo oscuro de la app.
+   Declarar el esquema y los colores en las opciones evita texto claro sobre
+   un menú claro en Chromium, Safari y Firefox. */
+.task-status-select {
+  color-scheme: dark;
+}
+
+.task-status-select option {
+  background-color: #1C1C1C;
+  color: #FFFFFF;
+}
