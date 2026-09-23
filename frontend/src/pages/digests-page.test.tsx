@@ -23,11 +23,11 @@ it("explains missing member policy and allows generation after configuration is 
   fireEvent.click(await screen.findByRole("button", {name: "Preparar uno"}))
   fireEvent.change(screen.getByLabelText("Cliente"), {target: {value: "1"}})
   expect(await screen.findByText(/Pide a un administrador que lo revise/)).toBeInTheDocument()
-  expect(screen.getByRole("button", {name: "Generar"})).toBeDisabled()
+  expect(screen.getByRole("button", {name: "Generar borrador"})).toBeDisabled()
   expect(mocks.api.generate).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole("button", {name: "Comprobar configuración de nuevo"}))
-  await waitFor(() => expect(screen.getByRole("button", {name: "Generar"})).toBeEnabled())
-  fireEvent.click(screen.getByRole("button", {name: "Generar"}))
+  await waitFor(() => expect(screen.getByRole("button", {name: "Generar borrador"})).toBeEnabled())
+  fireEvent.click(screen.getByRole("button", {name: "Generar borrador"}))
   await waitFor(() => expect(mocks.api.generate).toHaveBeenCalledWith(expect.objectContaining({client_id: 1})))
 }, 15000)
 it("blocks an assigned member whose digest permission is unavailable", async () => {
@@ -37,7 +37,7 @@ it("blocks an assigned member whose digest permission is unavailable", async () 
   fireEvent.click(await screen.findByRole("button", {name: "Preparar uno"}))
   fireEvent.change(screen.getByLabelText("Cliente"), {target: {value: "1"}})
   expect(await screen.findByText(/Ya no puedes preparar resúmenes/)).toBeInTheDocument()
-  expect(screen.getByRole("button", {name: "Generar"})).toBeDisabled()
+  expect(screen.getByRole("button", {name: "Generar borrador"})).toBeDisabled()
   expect(mocks.api.generate).not.toHaveBeenCalled()
 }, 15000)
 it("offers deletion only when the server confirms the version can be deleted", async () => {
@@ -49,6 +49,17 @@ it("offers deletion only when the server confirms the version can be deleted", a
   expect(within(acme).queryByTitle("Eliminar")).not.toBeInTheDocument()
   expect(within(other).queryByTitle("Eliminar")).not.toBeInTheDocument()
   expect(within(free).getByTitle("Eliminar")).toBeInTheDocument()
+})
+it("names each summary action and explains that generation creates a draft", async () => {
+  setup()
+  const acme = (await screen.findByRole("cell", {name: "Acme"})).closest("tr")!
+  expect(within(acme).getByRole("button", {name: "Editar resumen de Acme, versión #10"})).toBeInTheDocument()
+  expect(within(acme).getByRole("button", {name: "Ver vista previa del resumen de Acme, versión #10"})).toBeInTheDocument()
+  expect(within(acme).getByRole("button", {name: "Copiar para Slack el resumen de Acme, versión #10"})).toBeInTheDocument()
+  expect(within(acme).getByRole("button", {name: "Copiar para email el resumen de Acme, versión #10"})).toBeInTheDocument()
+  expect(within(acme).getByRole("button", {name: "Revisar y compartir en Discord interno el resumen de Acme, versión #10"})).toBeInTheDocument()
+  fireEvent.click(screen.getByRole("button", {name: "Preparar uno"}))
+  expect(screen.getByText(/generar no envía ningún mensaje/i)).toBeInTheDocument()
 })
 it("does not offer deletion to a reader even if a stale list says the version is deletable", async () => {
   mocks.auth.write = false
@@ -70,7 +81,7 @@ it("keeps individual generation and removes the unreviewed generate-all action",
   expect(screen.queryByTitle("Marcar como enviado (histórico)")).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole("button", {name: "Preparar uno"}))
   fireEvent.change(screen.getByLabelText("Cliente"), {target: {value: "1"}})
-  fireEvent.click(screen.getByRole("button", {name: "Generar"}))
+  fireEvent.click(screen.getByRole("button", {name: "Generar borrador"}))
   await waitFor(() => expect(mocks.api.generate).toHaveBeenCalledWith({generation_key: expect.stringMatching(/^[A-Za-z0-9_-]{16,64}$/), client_id: 1, tone: "cercano", period_start: undefined, period_end: undefined}))
 })
 it("recovers an uncertain individual request after reload and retries the same key", async () => {

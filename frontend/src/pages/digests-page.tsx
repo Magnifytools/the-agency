@@ -345,7 +345,7 @@ function DigestList() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Resúmenes de clientes</h1>
-          <p className="text-muted-foreground">Resúmenes semanales o mensuales según cada cliente</p>
+          <p className="text-muted-foreground">Prepara, revisa y comparte resúmenes del trabajo de cada cliente.</p>
         </div>
         {canWrite && <Button onClick={() => setGenerateOpen(true)} disabled={!canViewClients} title={!canViewClients ? "Necesitas acceso a clientes para elegir una generación individual" : undefined}>
           <Sparkles className="w-4 h-4 mr-2" />Preparar uno
@@ -472,6 +472,7 @@ function DigestList() {
                           variant="ghost"
                           size="sm"
                           title={canWrite ? "Editar y revisar entrega" : "Consultar versión"}
+                          aria-label={`${canWrite ? "Editar" : "Consultar"} resumen de ${digest.client_name}, versión #${digest.id}`}
                           onClick={() => navigate(`/digests/${digest.id}/edit`)}
                         >
                           {canWrite ? <Pencil className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -480,6 +481,7 @@ function DigestList() {
                           variant="ghost"
                           size="sm"
                           title="Vista previa"
+                          aria-label={`Ver vista previa del resumen de ${digest.client_name}, versión #${digest.id}`}
                           onClick={() => handlePreview(digest, "slack")}
                         >
                           <Eye className="w-4 h-4" />
@@ -490,6 +492,7 @@ function DigestList() {
                           variant="ghost"
                           size="sm"
                           title="Copiar Slack"
+                          aria-label={`Copiar para Slack el resumen de ${digest.client_name}, versión #${digest.id}`}
                           onClick={() => handleQuickCopy(digest, "slack")}
                         >
                           <ClipboardCopy className="w-4 h-4" />
@@ -498,6 +501,7 @@ function DigestList() {
                           variant="ghost"
                           size="sm"
                           title="Copiar Email (texto plano)"
+                          aria-label={`Copiar para email el resumen de ${digest.client_name}, versión #${digest.id}`}
                           onClick={() => handleQuickCopy(digest, "email_plain")}
                         >
                           <FileText className="w-3.5 h-3.5" />
@@ -508,6 +512,7 @@ function DigestList() {
                           variant="ghost"
                           size="sm"
                           title="Discord (interno)"
+                          aria-label={`Revisar y compartir en Discord interno el resumen de ${digest.client_name}, versión #${digest.id}`}
                           onClick={() => handleDiscordPreview(digest)}
                         >
                           <MessageCircle className="w-4 h-4" />
@@ -519,6 +524,7 @@ function DigestList() {
                               variant="ghost"
                               size="sm"
                               title="Eliminar"
+                              aria-label={`Eliminar resumen de ${digest.client_name}, versión #${digest.id}`}
                               className="text-destructive hover:text-destructive"
                               onClick={() => handleDelete(digest)}
                               disabled={deleteMutation.isPending}
@@ -549,6 +555,7 @@ function DigestList() {
           <DialogTitle>Preparar un resumen</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-4">
+          <p className="text-sm text-muted-foreground">Se creará un borrador con el trabajo del período elegido. Podrás revisarlo antes de compartirlo; generar no envía ningún mensaje.</p>
           <div className="space-y-2">
             <Label htmlFor="individual-client">Cliente</Label>
             <Select id="individual-client" disabled={generateMutation.isPending || !!pendingIndividual} value={String(pendingIndividual?.client_id ?? selectedClientId)} onChange={(e) => setSelectedClientId(e.target.value ? Number(e.target.value) : "")}>
@@ -603,7 +610,7 @@ function DigestList() {
               {generateMutation.isPending ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Generando...</>
               ) : (
-                <><Sparkles className="w-4 h-4 mr-2" />{pendingIndividual ? "Reintentar misma solicitud" : "Generar"}</>
+                <><Sparkles className="w-4 h-4 mr-2" />{pendingIndividual ? "Reintentar misma solicitud" : "Generar borrador"}</>
               )}
             </Button>
           </div>

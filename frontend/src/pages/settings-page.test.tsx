@@ -44,6 +44,13 @@ it("hides the inactive Pipeline shortcut while preserving its saved binding", as
   expect(usersApi.update).toHaveBeenCalledWith(12, expect.objectContaining({ preferences: expect.objectContaining({ shortcuts: expect.objectContaining({ goto_leads: "G+Y" }) }) }))
 })
 
+it("does not offer digest automation preferences that no sending flow reads", () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(<QueryClientProvider client={client}><MemoryRouter><SettingsPage /></MemoryRouter></QueryClientProvider>)
+  expect(screen.queryByLabelText("Envío automático")).not.toBeInTheDocument()
+  expect(screen.queryByText("Preferencias de digest")).not.toBeInTheDocument()
+})
+
 it("captures a sequential navigation chord and saves the executable binding", async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter><SettingsPage /></MemoryRouter></QueryClientProvider>)

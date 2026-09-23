@@ -6,7 +6,7 @@ import { invalidateCalendarViews } from "@/lib/calendar-queries"
 import { useAuth } from "@/context/auth-context"
 import { usersApi, categoriesApi, myWeekApi, calendarApi } from "@/lib/api"
 import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS, isShortcutAvailable, isValidShortcutBinding, resolveShortcuts, shortcutConflict } from "@/hooks/use-keyboard-shortcuts"
-import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar, FileText } from "lucide-react"
+import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar } from "lucide-react"
 import { CommunicationSchedules } from "@/components/communication-schedules"
 import { JobRuntimeStatusPanel } from "@/components/job-runtime-status"
 import { OperationalUsagePanel } from "@/components/admin/operational-usage"
@@ -90,22 +90,10 @@ export default function SettingsPage() {
   const [newHolidayLocality, setNewHolidayLocality] = useState("")
   const currentYear = new Date().getFullYear()
 
-  // Digest settings state
-  const [digestTone, setDigestTone] = useState(user?.preferences?.digest_default_tone ?? "cercano")
-  const [digestRecipients, setDigestRecipients] = useState(user?.preferences?.digest_default_recipients ?? "")
-  const [digestAutoSend, setDigestAutoSend] = useState(user?.preferences?.digest_auto_send ?? "manual")
-  const [savingDigest, setSavingDigest] = useState(false)
-
   // Sync with user preferences when they load
   useEffect(() => {
     setBindings(resolveShortcuts(user?.preferences?.shortcuts))
   }, [user?.preferences?.shortcuts])
-
-  useEffect(() => {
-    setDigestTone(user?.preferences?.digest_default_tone ?? "cercano")
-    setDigestRecipients(user?.preferences?.digest_default_recipients ?? "")
-    setDigestAutoSend(user?.preferences?.digest_auto_send ?? "manual")
-  }, [user?.preferences])
 
   useEffect(() => {
     setUserRegion(user?.region ?? "")
@@ -241,27 +229,6 @@ export default function SettingsPage() {
     }
   }
 
-  const handleSaveDigestSettings = async () => {
-    if (!user) return
-    setSavingDigest(true)
-    try {
-      await usersApi.update(user.id, {
-        preferences: {
-          ...(user.preferences ?? {}),
-          digest_default_tone: digestTone,
-          digest_default_recipients: digestRecipients,
-          digest_auto_send: digestAutoSend,
-        },
-      })
-      await refreshUser()
-      toast.success("Preferencias de digest guardadas")
-    } catch {
-      toast.error("Error al guardar preferencias de digest")
-    } finally {
-      setSavingDigest(false)
-    }
-  }
-
   // Categories queries & mutations
   const categoriesQuery = useQuery({
     queryKey: ["task-categories"],
@@ -313,7 +280,6 @@ export default function SettingsPage() {
     { id: "shortcuts", label: "Atajos de teclado" },
     ...(canManageCategories ? [{ id: "categories", label: "Categorías de tareas" }] : []),
     { id: "location", label: "Ubicación" },
-    { id: "digest", label: "Preferencias de digest" },
     { id: "notifications", label: "Avisos" },
     ...(isAdmin ? [{ id: "scheduled-processes", label: "Procesos programados" }] : []),
     ...(isAdmin ? [{ id: "operational-usage", label: "Señales operativas" }] : []),
@@ -348,7 +314,7 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-base font-semibold text-foreground">Atajos de teclado</h2>
-            <p className="text-sm text-muted-foreground mt-0.5">Haz clic en Editar para capturar un nuevo atajo</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Elige Editar y pulsa la nueva combinación. Guarda los cambios para aplicarlos, también después de restaurar los valores por defecto.</p>
           </div>
           <button
             onClick={resetDefaults}
@@ -575,70 +541,6 @@ export default function SettingsPage() {
             className="px-4 py-2 bg-brand text-black text-sm font-semibold rounded-xl hover:bg-brand/90 transition-colors disabled:opacity-50"
           >
             {savingLocation ? "Guardando…" : "Guardar ubicación"}
-          </button>
-        </div>
-      </div>
-
-      {/* Digest settings */}
-      <div id="digest" className="bg-card border border-border rounded-2xl p-6 scroll-mt-8">
-        <div className="flex items-center gap-2 mb-4">
-          <FileText className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-base font-semibold text-foreground">Preferencias de digest</h2>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">
-          Configura los valores por defecto para la generación y envío de digests
-        </p>
-
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="digest-tone" className="text-xs font-medium text-muted-foreground mb-1 block">Tono por defecto</label>
-            <select
-              id="digest-tone"
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-              value={digestTone}
-              onChange={(e) => setDigestTone(e.target.value)}
-            >
-              <option value="cercano">Cercano</option>
-              <option value="formal">Formal</option>
-              <option value="equipo">Equipo</option>
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="digest-recipients" className="text-xs font-medium text-muted-foreground mb-1 block">Destinatarios por defecto</label>
-            <input
-              id="digest-recipients"
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-              placeholder="email1@ejemplo.com, email2@ejemplo.com"
-              value={digestRecipients}
-              onChange={(e) => setDigestRecipients(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground mt-1">Separa múltiples emails con comas</p>
-          </div>
-
-          <div>
-            <label htmlFor="digest-auto-send" className="text-xs font-medium text-muted-foreground mb-1 block">Envío automático</label>
-            <select
-              id="digest-auto-send"
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-              value={digestAutoSend}
-              onChange={(e) => setDigestAutoSend(e.target.value)}
-            >
-              <option value="manual">Manual (requiere confirmación)</option>
-              <option value="weekly_monday">Semanal — Lunes por la mañana</option>
-              <option value="weekly_friday">Semanal — Viernes por la tarde</option>
-              <option value="biweekly">Quincenal</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="mt-4 flex justify-end">
-          <button
-            onClick={handleSaveDigestSettings}
-            disabled={savingDigest}
-            className="px-4 py-2 bg-brand text-black text-sm font-semibold rounded-xl hover:bg-brand/90 transition-colors disabled:opacity-50"
-          >
-            {savingDigest ? "Guardando…" : "Guardar preferencias"}
           </button>
         </div>
       </div>

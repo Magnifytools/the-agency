@@ -342,6 +342,7 @@ export default function DigestEditPage() {
           </Button>}
         </div>
       </div>
+      {canWrite && <p className="text-sm text-muted-foreground">Guardar conserva una nueva versión si hay cambios. No envía el resumen: revisa la vista previa antes de compartirlo.</p>}
 
       {/* Tone selector */}
       <div className="flex gap-4 items-center">
@@ -396,7 +397,7 @@ export default function DigestEditPage() {
                   {sections[sectionKey].length} {sections[sectionKey].length === 1 ? "elemento" : "elementos"}
                 </span>
               </div>
-              {canWrite && <Button variant="outline" size="sm" onClick={() => addItem(sectionKey)}>
+              {canWrite && <Button variant="outline" size="sm" aria-label={`Añadir elemento a ${sectionLabels[sectionKey].title}`} onClick={() => addItem(sectionKey)}>
                 <Plus className="w-4 h-4 mr-1" />
                 Añadir
               </Button>}
@@ -462,7 +463,7 @@ export default function DigestEditPage() {
 
       </fieldset>
       {previewUnavailable && <p role="alert" className="text-sm text-muted-foreground">Esta versión no tiene contenido para previsualizar.</p>}
-      <p className="text-sm text-muted-foreground">Versión #{digest.id} · {canWrite ? "Guardar crea una versión si hay cambios. " : ""}Las anteriores siguen disponibles en Resúmenes.</p>
+      <p className="text-sm text-muted-foreground">Versión #{digest.id} · Las anteriores siguen disponibles en Resúmenes.</p>
       <ConfirmDialog open={pendingTone !== null && canWrite} onOpenChange={(open) => { if (!open) setPendingTone(null) }} title="Crear una versión con otro tono" description="Se guardará tu borrador actual y se generará otra versión. Podrás volver a la anterior desde Resúmenes." confirmLabel="Guardar y generar" onConfirm={() => { if (pendingTone && canWrite) toneChangeMutation.mutate({ sourceId: Number(id), epoch: viewEpoch.current, newTone: pendingTone, content: draftContent(), tone }) }} />
 
       {digest.raw_context && <DigestFacts context={digest.raw_context} />}
