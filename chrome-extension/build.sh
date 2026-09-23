@@ -13,7 +13,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PARENT_DIR="$(dirname "$SCRIPT_DIR")"
 # Key must live OUTSIDE the extension folder (Chrome rejects if key is inside)
-KEY="$PARENT_DIR/.agency-extension-key.pem"
+KEY="${AGENCY_EXTENSION_KEY:-$PARENT_DIR/.agency-extension-key.pem}"
 CRX="$SCRIPT_DIR/dist/agency-manager.crx"
 EXT_DIR="$SCRIPT_DIR"
 

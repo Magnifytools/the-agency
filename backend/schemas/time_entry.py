@@ -48,6 +48,9 @@ class TimerStartRequest(BaseModel):
 
 class TimerStopRequest(BaseModel):
     notes: Optional[str] = None
+    # Older extension versions omit this; current clients must identify the
+    # timer they displayed so a stale Stop cannot end a newer timer.
+    timer_id: Optional[int] = None
 
 
 class ActiveTimerResponse(BaseModel):

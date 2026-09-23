@@ -204,6 +204,7 @@ let commandStepPayload = null;
 let commandStepUncertain = false;
 let meetingPolicy = null;
 let timerInterval = null;
+let activeTimerId = null;
 let activeTimerStart = null;
 let timerIsPaused = false;
 let timerAccumulatedSeconds = 0;
@@ -273,6 +274,7 @@ function resetSessionUi() {
   sessionTimeouts.clear();
   clearInterval(timerInterval);
   timerInterval = null;
+  activeTimerId = null;
   activeTimerStart = null;
   timerIsPaused = false;
   timerAccumulatedSeconds = 0;
@@ -1341,26 +1343,29 @@ async function loadActiveTimer() {
     });
     if (!isCurrentSession(session)) return;
 
-    if (res.ok) {
-      const data = await res.json();
-      if (!isCurrentSession(session)) return;
-      if (data && data.started_at) {
-        showActiveTimer(data);
-        return;
-      }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(getDetail(err, "No se pudo comprobar el Timer"));
     }
-  } catch {
+    const data = await res.json();
     if (!isCurrentSession(session)) return;
-    // no active timer
+    if (data && data.started_at) {
+      showActiveTimer(data);
+    } else {
+      showIdleTimer();
+    }
+  } catch (err) {
+    if (!isCurrentSession(session)) return;
+    timerError.textContent = err.message || "No se pudo comprobar el Timer";
+    timerError.classList.remove("hidden");
   }
-
-  showIdleTimer();
 }
 
 function showActiveTimer(data) {
   timerActive.classList.remove("hidden");
   timerIdle.classList.add("hidden");
 
+  activeTimerId = data.id;
   activeTimerStart = parseApiInstant(data.started_at);
   timerAccumulatedSeconds = data.accumulated_seconds || 0;
   timerIsPaused = data.is_paused || false;
@@ -1533,6 +1538,7 @@ function showIdleTimer() {
   timerIdle.classList.remove("hidden");
   if (timerBudget) timerBudget.classList.add("hidden");
 
+  activeTimerId = null;
   activeTimerStart = null;
   headerTimer.classList.add("hidden");
   if (timerInterval) {
@@ -1635,6 +1641,11 @@ timerStartBtn.addEventListener("click", async () => {
 // Stop timer
 timerStopBtn.addEventListener("click", async () => {
   const session = captureSession();
+  const timerId = activeTimerId;
+  if (!timerId) {
+    await loadActiveTimer();
+    return;
+  }
   timerStopBtn.disabled = true;
   timerStopBtn.textContent = "Deteniendo...";
 
@@ -1645,7 +1656,7 @@ timerStopBtn.addEventListener("click", async () => {
         "Content-Type": "application/json",
         Authorization: `Bearer ${session.token}`,
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ timer_id: timerId }),
     });
     if (!isCurrentSession(session)) return;
 
@@ -1661,6 +1672,7 @@ timerStopBtn.addEventListener("click", async () => {
     if (!isCurrentSession(session)) return;
     timerError.textContent = err.message;
     timerError.classList.remove("hidden");
+    await loadActiveTimer();
   } finally {
     if (!isCurrentSession(session)) return;
     timerStopBtn.disabled = false;
