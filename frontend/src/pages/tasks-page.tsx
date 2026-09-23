@@ -491,7 +491,7 @@ export default function TasksPage() {
           onClick={() => { setQaFilter(qaFilter === "unassigned" ? "none" : "unassigned"); reset() }}
           className="text-xs h-8 bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 border-orange-500/20"
         >
-          ⚠️ Sin Asignar
+          ⚠️ Sin responsable
         </Button>
         <Button
           variant={qaFilter === "no_date" ? "secondary" : "outline"}
@@ -499,7 +499,7 @@ export default function TasksPage() {
           onClick={() => { setQaFilter(qaFilter === "no_date" ? "none" : "no_date"); reset() }}
           className="text-xs h-8 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border-blue-500/20"
         >
-          ⚠️ Sin Fechas
+          ⚠️ Sin fecha límite ni plan
         </Button>
         <Button
           variant={qaFilter === "no_estimate" ? "secondary" : "outline"}
@@ -507,7 +507,7 @@ export default function TasksPage() {
           onClick={() => { setQaFilter(qaFilter === "no_estimate" ? "none" : "no_estimate"); reset() }}
           className="text-xs h-8 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 border-purple-500/20"
         >
-          ⚠️ Sin Estimación
+          ⚠️ Sin estimación de tiempo
         </Button>
         <Button
           variant={qaFilter === "no_project" ? "secondary" : "outline"}
@@ -516,7 +516,7 @@ export default function TasksPage() {
           className="text-xs h-8 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 border-amber-500/20"
           title="Tareas sin proyecto asignado (no cuentan en métricas de proyecto)"
         >
-          ⚠️ Sin Proyecto
+          ⚠️ Sin proyecto
         </Button>
         <Button
           variant={qaFilter === "overdue" ? "secondary" : "outline"}
@@ -524,7 +524,7 @@ export default function TasksPage() {
           onClick={() => { setQaFilter(qaFilter === "overdue" ? "none" : "overdue"); reset() }}
           className="text-xs h-8 bg-red-500/10 hover:bg-red-500/20 text-red-600 border-red-500/20"
         >
-          🔥 Atrasadas
+          🔥 Vencidas
         </Button>
         {qaFilter !== "none" && (
           <Button variant="ghost" size="sm" onClick={() => { setQaFilter("none"); reset() }} className="text-xs h-8 text-muted-foreground">
