@@ -69,12 +69,15 @@
       </div>
 
       <div id="capture-command-mode" class="capture-area">
+        <p class="command-intro">Escribe lo que quieres que haga la app o pregúntale por tus pendientes.</p>
         <textarea id="command-text" placeholder="Ej. Completa la tarea Revisar portada o consulta bloqueos" rows="4" autofocus></textarea>
-        <details class="command-result">
-          <summary>Ver ejemplos de peticiones</summary>
-          <p>Crea proyecto "Web nueva" para cliente "Nombre del cliente" con primera tarea "Preparar propuesta" para mañana</p>
-          <p>Consulta decisiones pendientes</p>
-          <p>Sustituye los nombres por los de tu trabajo. Revisarás el proyecto y su primera tarea antes de guardarlos.</p>
+        <details class="command-result command-examples">
+          <summary>Qué puedes pedir</summary>
+          <ul class="command-example-list">
+            <li><strong>Consultar pendientes</strong><span>Consulta decisiones pendientes</span></li>
+            <li><strong>Crear un proyecto</strong><span>Crea proyecto "Web nueva" para cliente "Nombre del cliente" con primera tarea "Preparar propuesta"</span></li>
+          </ul>
+          <p class="command-example-note">Abrir estos ejemplos no hace nada. Si pides un proyecto, revisarás sus datos antes de guardarlo.</p>
         </details>
         <p id="command-error" class="error hidden" role="alert"></p>
         <div id="command-prompt" class="command-result hidden" role="status"></div>
