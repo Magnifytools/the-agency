@@ -10,8 +10,12 @@ import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 
 const REGIONES = [
-  "MAD", "CAT", "AND", "VAL", "GAL", "PV", "CYL", "CLM",
-  "ARA", "EXT", "MUR", "NAV", "AST", "CAN", "BAL", "RIO", "CANT", "CEU", "MEL",
+  ["MAD", "Comunidad de Madrid"], ["CAT", "Cataluña"], ["AND", "Andalucía"],
+  ["VAL", "Comunitat Valenciana"], ["GAL", "Galicia"], ["PV", "País Vasco"],
+  ["CYL", "Castilla y León"], ["CLM", "Castilla-La Mancha"], ["ARA", "Aragón"],
+  ["EXT", "Extremadura"], ["MUR", "Región de Murcia"], ["NAV", "Navarra"],
+  ["AST", "Asturias"], ["CAN", "Canarias"], ["BAL", "Illes Balears"],
+  ["RIO", "La Rioja"], ["CANT", "Cantabria"], ["CEU", "Ceuta"], ["MEL", "Melilla"],
 ] as const
 
 export function OnboardingModal() {
@@ -63,7 +67,7 @@ export function OnboardingModal() {
             Completa tu perfil
           </h2>
           <p className="text-sm text-muted-foreground">
-            Necesitamos algunos datos para personalizar tu experiencia
+            Elige cómo quieres aparecer en la agencia y la hora que prefieres para tus avisos. Indicar una hora no activa los avisos.
           </p>
         </div>
 
@@ -71,6 +75,7 @@ export function OnboardingModal() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="ob_short_name">Nombre corto</Label>
+              <p className="text-xs text-muted-foreground">Así aparecerás en avisos y resúmenes.</p>
               <Input
                 id="ob_short_name"
                 required
@@ -98,7 +103,7 @@ export function OnboardingModal() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ob_birthday">Cumpleanos</Label>
+              <Label htmlFor="ob_birthday">Cumpleaños</Label>
               <Input
                 id="ob_birthday"
                 type="date"
@@ -116,20 +121,20 @@ export function OnboardingModal() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ob_region">Comunidad Autonoma</Label>
+              <Label htmlFor="ob_region">Comunidad autónoma</Label>
               <Select
                 id="ob_region"
                 value={form.region}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => update("region", e.target.value)}
               >
-                <option value="">Seleccionar...</option>
-                {REGIONES.map((r) => (
-                  <option key={r} value={r}>{r}</option>
+                <option value="">Selecciona una comunidad</option>
+                {REGIONES.map(([code, name]) => (
+                  <option key={code} value={code}>{name}</option>
                 ))}
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ob_morning">Hora sugerida de mañana (sin activar avisos)</Label>
+              <Label htmlFor="ob_morning">Hora preferida para el aviso de la mañana</Label>
               <Input
                 id="ob_morning"
                 type="time"
@@ -138,7 +143,7 @@ export function OnboardingModal() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ob_evening">Hora sugerida de recap (sin activar avisos)</Label>
+              <Label htmlFor="ob_evening">Hora preferida para el aviso de cierre</Label>
               <Input
                 id="ob_evening"
                 type="time"
