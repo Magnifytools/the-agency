@@ -298,6 +298,18 @@ test('task action failure appears beside the task list, with a named control', a
   assert.equal(h.get('timer-error').classList.contains('hidden'), true);
 });
 
+test('task names cannot break action labels into HTML attributes', async t => {
+  const h = await setup(t);
+  const title = 'Informe " onmouseover="alert(1) & revisión';
+  const markup = h.run(`renderTaskCard(${JSON.stringify({ id: 12, title, status: 'pending' })})`);
+  const container = h.dom.window.document.createElement('div');
+  container.innerHTML = markup;
+  for (const button of container.querySelectorAll('.task-check-btn, .task-play-btn, .task-open-btn')) {
+    assert.equal(button.getAttribute('onmouseover'), null);
+    assert.match(button.getAttribute('aria-label'), /Informe " onmouseover="alert\(1\) & revisión/);
+  }
+});
+
 test('capture finishing does not erase a draft or assignment edited while sending', async t => {
   const { run, get, state, dom } = await setup(t);
   run('showMainView()');

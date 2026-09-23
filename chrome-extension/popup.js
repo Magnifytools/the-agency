@@ -1984,19 +1984,19 @@ function renderTaskCard(task) {
   return `
     <div class="task-card ${isCompleted ? "task-completed" : ""}" data-id="${task.id}">
       <div class="task-header">
-        <button class="task-check-btn ${isCompleted ? "checked" : ""}" data-task-id="${task.id}" data-status="${task.status}" title="${isCompleted ? "Reabrir tarea" : "Completar tarea"}" aria-label="${isCompleted ? "Reabrir" : "Completar"} ${escapeHtml(task.title)}">
+        <button class="task-check-btn ${isCompleted ? "checked" : ""}" data-task-id="${task.id}" data-status="${task.status}" title="${isCompleted ? "Reabrir tarea" : "Completar tarea"}" aria-label="${isCompleted ? "Reabrir" : "Completar"} ${escapeAttribute(task.title)}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         </button>
         <span class="task-title">${escapeHtml(task.title)}</span>
         ${priorityIcon ? `<span class="task-priority task-priority-${priority}">${priorityIcon}</span>` : ""}
-        <button class="task-play-btn" data-task-id="${task.id}" title="Iniciar timer" aria-label="Iniciar timer para ${escapeHtml(task.title)}">
+        <button class="task-play-btn" data-task-id="${task.id}" title="Iniciar timer" aria-label="Iniciar timer para ${escapeAttribute(task.title)}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
         </button>
       </div>
       <div class="task-meta">
         <span class="task-status-label" style="color:${statusColor}">${statusLabel}</span>
         ${projectName}
-        <button class="task-open-btn" type="button" aria-label="Abrir ${escapeHtml(task.title)} en la web">Abrir</button>
+        <button class="task-open-btn" type="button" aria-label="Abrir ${escapeAttribute(task.title)} en la web">Abrir</button>
       </div>
     </div>
   `;
@@ -2006,6 +2006,10 @@ function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
+}
+
+function escapeAttribute(text) {
+  return escapeHtml(text).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 // Task filter change
