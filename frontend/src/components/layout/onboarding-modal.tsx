@@ -22,14 +22,14 @@ export function OnboardingModal() {
   const { user, refreshUser } = useAuth()
 
   const [form, setForm] = useState({
-    short_name: "",
+    short_name: user?.short_name ?? "",
     full_name: user?.full_name ?? "",
-    job_title: "",
-    birthday: "",
+    job_title: user?.job_title ?? "",
+    birthday: user?.birthday ?? "",
     locality: user?.locality ?? "",
-    region: "",
-    morning_reminder_time: "09:00",
-    evening_reminder_time: "18:00",
+    region: user?.region ?? "",
+    morning_reminder_time: user?.morning_reminder_time ?? "09:00",
+    evening_reminder_time: user?.evening_reminder_time ?? "18:00",
   })
 
   const mutation = useMutation({
