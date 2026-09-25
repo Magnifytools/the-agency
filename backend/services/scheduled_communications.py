@@ -13,10 +13,11 @@ from backend.db.models import (CommunicationSchedule as Schedule, CommunicationO
 from backend.services import deliveries
 from backend.services.temporal import business_zone, utc_now_naive, utc_isoformat
 
-KINDS = ("morning", "evening", "meeting", "weekly")
+KINDS = ("morning", "evening", "meeting", "weekly", "team_morning")
 CHANNELS = {"morning": {"in_app", "team_webhook"}, "evening": {"in_app", "team_webhook"},
-            "meeting": {"in_app", "extension"}, "weekly": {"owner_dm"}}
-TITLES = {"morning": "Plan de la mañana", "evening": "Resumen del día", "meeting": "Reunión próxima", "weekly": "Informe semanal"}
+            "meeting": {"in_app", "extension"}, "weekly": {"owner_dm"}, "team_morning": {"team_webhook"}}
+TITLES = {"morning": "Plan de la mañana", "evening": "Resumen del día", "meeting": "Reunión próxima", "weekly": "Informe semanal", "team_morning": "Plan del equipo para hoy"}
+TEAM_KINDS = ("weekly", "team_morning")
 SCHEDULER_STARTED_AT = utc_now_naive()
 CALENDAR_FRESHNESS = timedelta(minutes=20)
 EXTENSION_MIN_VERSION = "2.2.0"
@@ -24,7 +25,7 @@ EXTENSION_DOWNLOAD_URL = "/extension/agency-manager.crx"
 
 
 def policy_key(kind, user_id):
-    return "team:weekly" if kind == "weekly" else f"user:{user_id}:{kind}"
+    return "team:morning" if kind == "team_morning" else "team:weekly" if kind == "weekly" else f"user:{user_id}:{kind}"
 
 
 def require_actor(actor, kind):
@@ -32,8 +33,8 @@ def require_actor(actor, kind):
         raise HTTPException(403, "Usuario desactivado")
     if kind not in KINDS:
         raise HTTPException(404, "Tipo de aviso desconocido")
-    if kind == "weekly" and actor.role != UserRole.admin:
-        raise HTTPException(403, "El informe del equipo requiere administrador")
+    if kind in TEAM_KINDS and actor.role != UserRole.admin:
+        raise HTTPException(403, "Este aviso del equipo requiere administrador")
     if kind in ("morning", "evening") and actor.role != UserRole.admin:
         if not any(p.module == "tasks" and p.can_read for p in actor.permissions):
             raise HTTPException(403, "Sin permiso para leer tareas")
@@ -104,7 +105,7 @@ async def policy_view(db, policy, actor, kind):
     if policy is None:
         old = (actor.preferences or {}).get("meeting_alerts", {})
         return dict(kind=kind, revision=0, enabled=False, channels=[], destination_id=settings.DISCORD_OWNER_USER_ID or None if kind == "weekly" else None,
-                    time=(actor.morning_reminder_time or "08:00") if kind == "morning" else (actor.evening_reminder_time or "18:00") if kind == "evening" else "08:00" if kind == "weekly" else None,
+                    time=(actor.morning_reminder_time or "08:00") if kind == "morning" else (actor.evening_reminder_time or "18:00") if kind == "evening" else "08:00" if kind in TEAM_KINDS else None,
                     minutes_before=old.get("minutes_before", 30) if kind == "meeting" else None,
                     quiet_start=None, quiet_end=None, state="needs_review", reason="Elige los canales y guarda tu consentimiento; los valores antiguos no activan avisos", effective_from=None)
     owner = await load_actor(db, policy.approved_by)
@@ -118,7 +119,7 @@ async def policy_view(db, policy, actor, kind):
 async def catalog(db, actor):
     policies = []
     for kind in KINDS:
-        if kind == "weekly" and actor.role != UserRole.admin:
+        if kind in TEAM_KINDS and actor.role != UserRole.admin:
             continue
         policy = await db.scalar(select(Schedule).where(Schedule.policy_key == policy_key(kind, actor.id)))
         policies.append(await policy_view(db, policy, actor, kind))
@@ -128,12 +129,12 @@ async def catalog(db, actor):
 
 async def save_policy(db, actor, kind, body):
     # Serializes first creation too, including concurrent admins adopting singleton.
-    if kind not in KINDS or (kind == "weekly" and actor.role != UserRole.admin):
+    if kind not in KINDS or (kind in TEAM_KINDS and actor.role != UserRole.admin):
         raise HTTPException(403, "No puedes configurar este aviso")
     await db.execute(select(User.id).where(User.id == actor.id).with_for_update())
-    if kind == "weekly":
+    if kind in ("weekly", "team_morning", "morning"):
         from sqlalchemy import text
-        await db.execute(text("SELECT pg_advisory_xact_lock(76241310)"))
+        await db.execute(text("SELECT pg_advisory_xact_lock(76241310)" if kind == "weekly" else "SELECT pg_advisory_xact_lock(76241312)"))
     key = policy_key(kind, actor.id)
     policy = await db.scalar(select(Schedule).where(Schedule.policy_key == key).with_for_update().execution_options(populate_existing=True))
     if body.revision != (policy.revision if policy else 0):
@@ -149,8 +150,18 @@ async def save_policy(db, actor, kind, body):
         raise HTTPException(422, "Este aviso requiere hora fija")
     if kind == "weekly" and body.time != "08:00":
         raise HTTPException(422, "El informe semanal se prepara el sábado a las 08:00")
+    if kind == "team_morning" and (body.time != "08:00" or channels != ["team_webhook"] or body.quiet_start or body.quiet_end):
+        raise HTTPException(422, "El plan compartido se envía por Discord a las 08:00")
     if bool(body.quiet_start) != bool(body.quiet_end) or (body.quiet_start and body.quiet_start == body.quiet_end):
         raise HTTPException(422, "Indica inicio y fin distintos para el silencio")
+    if body.enabled and kind == "team_morning":
+        duplicate = await db.scalar(select(Schedule.id).where(Schedule.kind == "morning", Schedule.enabled.is_(True), Schedule.channels.contains(["team_webhook"])).limit(1))
+        if duplicate:
+            raise HTTPException(409, "Ya hay un plan personal en Discord compartido. Desactívalo antes de activar el plan del equipo")
+    if body.enabled and kind == "morning" and "team_webhook" in channels:
+        duplicate = await db.scalar(select(Schedule.id).where(Schedule.policy_key == "team:morning", Schedule.enabled.is_(True)).limit(1))
+        if duplicate:
+            raise HTTPException(409, "El plan del equipo ya usa Discord compartido. Elige el aviso en la app")
     now = utc_now_naive()
     if policy is None:
         policy = Schedule(policy_key=key, kind=kind, approved_by=actor.id, recipient_id=actor.id,
@@ -198,7 +209,7 @@ async def occurrence_problem(db, occurrence, policy, actor):
 async def authorize_scheduled(db, source, actor, *, write=True):
     occurrence = await db.scalar(select(Occurrence).where(Occurrence.request_id == source.id).execution_options(populate_existing=True))
     if (not occurrence or source.kind != f"scheduled_{occurrence.kind}" or source.destination_kind != occurrence.channel
-        or source.scope != ("team" if occurrence.kind == "weekly" else "mine")
+        or source.scope != ("team" if occurrence.kind in TEAM_KINDS else "mine")
         or source.period_start != occurrence.period_start or source.period_end != occurrence.period_end
         or source.owner_id != occurrence.recipient_id):
         raise HTTPException(404, "Ocurrencia no encontrada")
@@ -267,15 +278,18 @@ async def plan_policy(db, policy, now):
     local = now.replace(tzinfo=timezone.utc).astimezone(business_zone())
     today = local.date()
     actor = await load_actor(db, policy.approved_by)
-    if policy.kind in ("morning", "evening"):
+    if policy.kind in ("morning", "evening", "team_morning"):
         from backend.services.daily_reminders import is_working_day
         for day in (today - timedelta(days=1), today):
-            if not await is_working_day(db, day, actor.region if actor else None):
+            # A shared plan follows company-wide holidays, not the owner's
+            # regional calendar; individual sections handle regional days off.
+            region = None if policy.kind == "team_morning" else actor.region if actor else None
+            if not await is_working_day(db, day, region):
                 continue
             due = local_instant(day, policy.time)
             expires = local_instant(day + timedelta(days=1), "00:00")
-            if policy.kind == "morning":
-                evening = await db.scalar(select(Schedule).where(Schedule.policy_key == policy_key("evening", policy.recipient_id)))
+            if policy.kind in ("morning", "team_morning"):
+                evening = await db.scalar(select(Schedule).where(Schedule.policy_key == policy_key("evening", policy.recipient_id))) if policy.kind == "morning" else None
                 end_clock = evening.time if evening and evening.enabled else "18:00"
                 recap_at = local_instant(day, end_clock)
                 expires = recap_at if recap_at > due else expires
@@ -307,6 +321,9 @@ async def render_occurrence(db, occurrence, actor):
     if occurrence.kind == "morning":
         from backend.services.daily_reminders import generate_morning_plan
         return await generate_morning_plan(db, actor, day=occurrence.period_start)
+    if occurrence.kind == "team_morning":
+        from backend.services.daily_reminders import generate_team_morning_plan
+        return await generate_team_morning_plan(db, occurrence.period_start)
     if occurrence.kind == "evening":
         from backend.services.daily_reminders import generate_evening_recap
         return await generate_evening_recap(db, actor, occurrence.period_start)
@@ -346,7 +363,7 @@ async def prepare_occurrence(db, occurrence, now):
         occurrence.reason = "Disponible en la app; no implica que se haya leído"
         return
     source = CommunicationRequest(request_key=occurrence.occurrence_key, owner_id=actor.id, kind=f"scheduled_{occurrence.kind}",
-        scope="team" if occurrence.kind == "weekly" else "mine", period_start=occurrence.period_start,
+        scope="team" if occurrence.kind in TEAM_KINDS else "mine", period_start=occurrence.period_start,
         period_end=occurrence.period_end, title=TITLES[occurrence.kind], content=content, destination_kind=occurrence.channel)
     db.add(source)
     await db.flush()
