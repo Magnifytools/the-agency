@@ -30,7 +30,8 @@ function PolicyEditor({ policy, refresh }: { policy: Policy; refresh: () => void
   return <details className="rounded-xl border p-4" open={policy.state === "blocked" ? true : undefined}>
     <summary className="cursor-pointer min-h-11 py-2"><span className="font-medium">{titles[policy.kind]}</span><span role="status" className="block mt-1 text-sm text-muted-foreground">{states[policy.state] || policy.state}</span></summary>
     <form onSubmit={e => { e.preventDefault(); mutation.mutate() }} className="space-y-3 pt-3">
-    {policy.reason && policy.state !== "needs_review" && <p className="text-sm">{policy.reason}</p>}
+    {policy.reason && <p className="text-sm">{policy.reason}</p>}
+    {policy.kind === "morning" && <p className="text-sm text-muted-foreground">Cada persona recibe su plan de Hoy: tareas para hoy, arrastres y tareas sin planificar. Las tareas sin responsable aparecen en el plan de cada persona; si ambos lo enviáis al canal del equipo, se repetirán en cada mensaje.</p>}
     {policy.kind === "weekly" && <p className="text-sm text-muted-foreground">Se envía el sábado a las 08:00 con el trabajo del lunes al viernes. Al guardarlo, te encargas de este aviso del equipo.</p>}
     {policy.kind === "weekly" && <label className="block text-sm">ID Discord del destinatario técnico<input className="block rounded border p-2 bg-background w-full" inputMode="numeric" pattern="[0-9]{5,30}" value={draft.destination_id ?? ""} onChange={e => setDraft({ ...draft, destination_id: e.target.value || null })} /><span className="text-xs text-muted-foreground">Se enviará a este ID. No vincula la cuenta de ninguna persona de Agency.</span></label>}
     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.enabled} onChange={e => setDraft({ ...draft, enabled: e.target.checked })} /> Activar {titles[policy.kind].toLowerCase()}</label>

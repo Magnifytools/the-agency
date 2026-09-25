@@ -226,6 +226,39 @@ async def test_meeting_without_tasks_legacy_reschedule_and_extension_prefs(fixtu
         assert (await http.get("/api/communication-schedules/extension-upcoming")).json()["occurrences"] == []
 
 
+async def test_morning_plan_includes_today_carryover_and_unplanned_without_mislabeling_waiting(fixture):
+    maker, ids, _ = fixture
+    day = date(2026, 9, 14)
+    async with maker() as db:
+        db.add_all([
+            Task(title="Assigned due today", assigned_to=ids["member"], status=TaskStatus.backlog,
+                 due_date=datetime(2026, 9, 14, 17), is_recurring=False),
+            Task(title="Shared carryover", assigned_to=None, status=TaskStatus.in_progress,
+                 scheduled_date=day - timedelta(days=1), is_recurring=False),
+            Task(title="Own unplanned", assigned_to=ids["member"], status=TaskStatus.in_progress,
+                 is_recurring=False),
+            Task(title="Waiting due today", assigned_to=ids["member"], status=TaskStatus.waiting,
+                 due_date=datetime(2026, 9, 14, 12), is_recurring=False),
+            Task(title="Future plan", assigned_to=ids["member"], status=TaskStatus.pending,
+                 scheduled_date=day + timedelta(days=1), is_recurring=False),
+            Task(title="Recurring template", assigned_to=ids["member"], status=TaskStatus.pending,
+                 scheduled_date=day, is_recurring=True),
+            Task(title="Other person's task", assigned_to=ids["admin"], status=TaskStatus.pending,
+                 due_date=datetime(2026, 9, 14, 12), is_recurring=False),
+        ])
+        await db.commit()
+        from backend.services.daily_reminders import generate_morning_plan
+        message = await generate_morning_plan(db, await svc.load_actor(db, ids["member"]), day=day)
+    assert "Para hoy" in message and "Assigned due today" in message
+    assert "Arrastre" in message and "Shared carryover" in message
+    assert "Shared carryover (sin responsable)" in message
+    assert "Sin planificar" in message and "Own unplanned" in message
+    assert "En espera" in message and "Waiting due today" in message
+    assert "Future plan" not in message
+    assert "Recurring template" not in message
+    assert "Other person's task" not in message
+
+
 async def test_weekly_delayed_snapshot_closed_period_and_explicit_recipient(fixture, monkeypatch):
     maker, ids, now = fixture
     now[0] = datetime(2026, 9, 19, 7)
