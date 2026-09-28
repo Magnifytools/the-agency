@@ -107,7 +107,7 @@ Responde SOLO con un JSON válido con los campos que puedas extraer (omite los q
   "project": {
     "name": "nombre del proyecto/servicio activo o más reciente (breve, máx 60 chars)",
     "description": "resumen del alcance en 2-3 frases",
-    "project_type": "uno de: seo_audit | content_strategy | linkbuilding | technical_seo | custom",
+    "project_type": "uno de: seo_audit | content_strategy | linkbuilding | technical_seo | local_seo | custom",
     "is_recurring": true si es servicio recurrente/mensual,
     "pricing_model": "uno de: monthly | per_piece | hourly | project (o null)",
     "unit_price": precio por unidad numérico o null,

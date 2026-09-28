@@ -797,6 +797,7 @@ function ImportFromPdfDialog({
                 <option value="content_strategy">Estrategia de contenido</option>
                 <option value="linkbuilding">Link building</option>
                 <option value="technical_seo">SEO técnico</option>
+                <option value="local_seo">SEO local</option>
                 <option value="custom">Personalizado</option>
               </Select>
             </div>
@@ -1037,6 +1038,7 @@ function ImportFromTextDialog({
                 <option value="content_strategy">Estrategia de contenido</option>
                 <option value="linkbuilding">Link building</option>
                 <option value="technical_seo">SEO técnico</option>
+                <option value="local_seo">SEO local</option>
                 <option value="custom">Personalizado</option>
               </Select>
             </div>
