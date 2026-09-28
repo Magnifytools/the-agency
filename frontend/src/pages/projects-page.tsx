@@ -20,6 +20,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { EmptyState } from "@/components/ui/empty-state"
 import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
+import { projectTypeLabels } from "@/lib/constants"
 import { useAuth } from "@/context/auth-context"
 
 
@@ -793,12 +794,9 @@ function ImportFromPdfDialog({
                 onChange={(e) => setFormData({ ...formData, project_type: e.target.value })}
               >
                 <option value="">Sin tipo</option>
-                <option value="seo_audit">Auditoría SEO</option>
-                <option value="content_strategy">Estrategia de contenido</option>
-                <option value="linkbuilding">Link building</option>
-                <option value="technical_seo">SEO técnico</option>
-                <option value="local_seo">SEO local</option>
-                <option value="custom">Personalizado</option>
+                {Object.entries(projectTypeLabels).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </Select>
             </div>
             <div className="space-y-2">
@@ -1034,12 +1032,9 @@ function ImportFromTextDialog({
                 onChange={(e) => setFormData({ ...formData, project_type: e.target.value })}
               >
                 <option value="">Sin tipo</option>
-                <option value="seo_audit">Auditoría SEO</option>
-                <option value="content_strategy">Estrategia de contenido</option>
-                <option value="linkbuilding">Link building</option>
-                <option value="technical_seo">SEO técnico</option>
-                <option value="local_seo">SEO local</option>
-                <option value="custom">Personalizado</option>
+                {Object.entries(projectTypeLabels).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </Select>
             </div>
             <div className="space-y-2">

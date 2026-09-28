@@ -36,6 +36,7 @@ import { FichaTab } from "@/components/clients/ficha-tab"
 import { useAuth } from "@/context/auth-context"
 import { clientKeys, holdedKeys, invalidateClientChange, projectKeys, timeKeys } from "@/lib/query-keys"
 import { formatCurrency } from "@/lib/format"
+import { projectTypeLabel } from "@/lib/constants"
 import { TaskPanel } from "@/components/tasks/task-panel"
 import { clientHealthPresentation } from "@/components/dashboard/client-health-presentation"
 import { InvoiceStatusBadge } from "@/components/finance/invoice-status-badge"
@@ -720,7 +721,7 @@ export default function ClientDetailPage() {
                         {p.name}
                       </Link>
                     </TableCell>
-                    <TableCell>{p.project_type || "-"}</TableCell>
+                    <TableCell>{p.project_type ? projectTypeLabel(p.project_type) : "-"}</TableCell>
                     <TableCell>
                       <Badge variant={p.status === "active" ? "success" : p.status === "completed" ? "secondary" : "warning"}>
                         {{ planning: "Planificación", active: "Activo", on_hold: "Pausado", completed: "Completado", cancelled: "Cancelado" }[p.status]}
