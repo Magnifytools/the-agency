@@ -479,7 +479,7 @@ class Project(UTCTimestampMixin, Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
-    project_type = Column(String(50), nullable=True)  # seo_audit, content_strategy, linkbuilding, technical_seo, custom
+    project_type = Column(String(50), nullable=True)  # seo_audit, content_strategy, linkbuilding, technical_seo, local_seo, custom
     start_date = Column(DateTime, nullable=True)
     target_end_date = Column(DateTime, nullable=True)
     actual_end_date = Column(DateTime, nullable=True)
