@@ -423,6 +423,53 @@ async def test_morning_plan_surfaces_dragging_tasks_first_with_their_age(fixture
     assert team.index("Llevan tiempo arrastrándose") < team.index("Overdue three weeks")
 
 
+async def test_morning_plan_counts_deliberate_postponements(fixture):
+    from backend.db.models import ChangeLog
+    from backend.services import change_journal as cj
+    from backend.services.daily_reminders import generate_morning_plan
+
+    maker, ids, _ = fixture
+    day = date(2026, 9, 14)
+    recent = datetime(2026, 9, 10, 9)
+    async with maker() as db:
+        pushed = Task(title="Pushed three times", assigned_to=ids["member"], status=TaskStatus.pending,
+                      scheduled_date=date(2026, 9, 1), created_at=recent, is_recurring=False)
+        twice = Task(title="Pushed twice", assigned_to=ids["member"], status=TaskStatus.pending,
+                     due_date=datetime(2026, 9, 10, 12), created_at=recent, is_recurring=False)
+        pulled = Task(title="Moved earlier", assigned_to=ids["member"], status=TaskStatus.pending,
+                      scheduled_date=date(2026, 9, 30), created_at=recent, is_recurring=False)
+        db.add_all([pushed, twice, pulled]); await db.commit()
+    try:
+        cj.set_actor(ids["member"])
+        for plan in (date(2026, 9, 3), date(2026, 9, 7), day):
+            async with maker() as db:
+                task = await db.get(Task, pushed.id); task.scheduled_date = plan; await db.commit()
+        for due in (datetime(2026, 9, 12, 12), datetime(2026, 9, 14, 12)):
+            async with maker() as db:
+                task = await db.get(Task, twice.id); task.due_date = due; await db.commit()
+        for plan in (date(2026, 9, 20), day):  # earlier, earlier: not postponements
+            async with maker() as db:
+                task = await db.get(Task, pulled.id); task.scheduled_date = plan; await db.commit()
+    finally:
+        cj.set_actor(None)
+
+    async with maker() as db:
+        before_undo = await generate_morning_plan(db, await svc.load_actor(db, ids["member"]), day=day)
+        # Undoing the last push takes it back: two left, below the threshold.
+        last = await db.scalar(select(ChangeLog).where(ChangeLog.entity_id == pushed.id)
+                               .order_by(ChangeLog.id.desc()).limit(1))
+        last.undone_at = datetime(2026, 9, 14, 7); await db.commit()
+        after_undo = await generate_morning_plan(db, await svc.load_actor(db, ids["member"]), day=day)
+
+    stale = before_undo[before_undo.index("Llevan tiempo arrastrándose"):before_undo.index("Para hoy")]
+    assert "Pushed three times" in stale and "(aplazada 3 veces)" in stale
+    today_block = before_undo[before_undo.index("Para hoy"):]
+    assert "Pushed twice (vence hoy) (aplazada 2 veces)" in today_block
+    assert "Moved earlier" in today_block and "Moved earlier (aplazada" not in before_undo
+    assert "Llevan tiempo arrastrándose" not in after_undo
+    assert "Pushed three times (aplazada 2 veces)" in after_undo
+
+
 async def test_weekly_delayed_snapshot_closed_period_and_explicit_recipient(fixture, monkeypatch):
     maker, ids, now = fixture
     now[0] = datetime(2026, 9, 19, 7)
