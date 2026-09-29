@@ -381,6 +381,48 @@ async def test_morning_plan_includes_today_carryover_and_unplanned_without_misla
     assert "Other person's task" not in message
 
 
+async def test_morning_plan_surfaces_dragging_tasks_first_with_their_age(fixture):
+    maker, ids, _ = fixture
+    day = date(2026, 9, 14)
+    old = datetime(2026, 8, 1, 9)  # 44 days before ``day``
+    recent = datetime(2026, 9, 10, 9)
+    async with maker() as db:
+        db.add_all([
+            Task(title="Overdue three weeks", assigned_to=ids["member"], status=TaskStatus.pending,
+                 due_date=datetime(2026, 8, 24, 12), created_at=recent, is_recurring=False),
+            Task(title="Open for weeks", assigned_to=ids["member"], status=TaskStatus.in_progress,
+                 scheduled_date=day, created_at=old, is_recurring=False),
+            Task(title="Overdue two days", assigned_to=ids["member"], status=TaskStatus.pending,
+                 due_date=datetime(2026, 9, 12, 12), created_at=recent, is_recurring=False),
+            Task(title="Old idea in backlog", assigned_to=ids["member"], status=TaskStatus.backlog,
+                 created_at=old, is_recurring=False),
+            Task(title="Old but waiting", assigned_to=ids["member"], status=TaskStatus.waiting,
+                 due_date=datetime(2026, 8, 24, 12), created_at=old, is_recurring=False),
+            Task(title="Rescheduled no due", assigned_to=ids["member"], status=TaskStatus.pending,
+                 scheduled_date=day - timedelta(days=5), created_at=recent, is_recurring=False),
+        ])
+        await db.commit()
+        from backend.services.daily_reminders import generate_morning_plan, generate_team_morning_plan
+        message = await generate_morning_plan(db, await svc.load_actor(db, ids["member"]), day=day)
+        team = await generate_team_morning_plan(db, day)
+
+    stale_at = message.index("Llevan tiempo arrastrándose")
+    assert stale_at < message.index("Arrastre pendiente")
+    stale_block = message[stale_at:message.index("Arrastre pendiente")]
+    # Longest wait first (44 days open before 21 days overdue); each line says why.
+    assert stale_block.index("Open for weeks") < stale_block.index("Overdue three weeks")
+    assert "(vencida hace 21 días)" in stale_block
+    assert "Open for weeks" in stale_block and "(abierta hace 44 días)" in stale_block
+    assert message.count("Open for weeks") == 1 and message.count("Overdue three weeks") == 1
+    # Recent carry-over stays below, now with its age, and undated reschedules no longer sink.
+    carry = message[message.index("Arrastre pendiente"):]
+    assert "Overdue two days" in carry and "(vencida hace 2 días)" in carry
+    assert carry.index("Rescheduled no due") < carry.index("Overdue two days")
+    # Backlog ideas and waiting tasks are not "dragging" actions.
+    assert "Old idea in backlog" not in stale_block and "Old but waiting" not in stale_block
+    assert team.index("Llevan tiempo arrastrándose") < team.index("Overdue three weeks")
+
+
 async def test_weekly_delayed_snapshot_closed_period_and_explicit_recipient(fixture, monkeypatch):
     maker, ids, now = fixture
     now[0] = datetime(2026, 9, 19, 7)
