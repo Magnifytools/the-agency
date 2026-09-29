@@ -17,7 +17,7 @@ from backend.services.temporal import utc_now_naive
 from backend.services.commands import (
     STATUS_EXECUTED, STATUS_FAILED, STATUS_INPUT, STATUS_REVIEW, apply_answers,
     check_step_replay, execute_or_prompt, parse_command, record_step, request_hash,
-    query_work, require_permission, response_dict, step_hash,
+    query_work, require_permission, visible_response_dict, step_hash,
 )
 
 router = APIRouter(prefix="/api/commands", tags=["commands"])
@@ -80,7 +80,7 @@ async def create_command(payload: CommandCreate, db: AsyncSession = Depends(get_
             CommandReceipt.user_id == actor.id, CommandReceipt.request_key == payload.request_key))
         if row.request_hash != digest:
             raise HTTPException(409, "La clave idempotente ya se usó con otro contenido")
-        return response_dict(row)
+        return await visible_response_dict(db, row, actor)
     row = await _owned_locked(db, receipt_id, actor.id)
     try:
         await _execute_atomically(db, row, actor)
@@ -96,7 +96,7 @@ async def create_command(payload: CommandCreate, db: AsyncSession = Depends(get_
         await db.commit()
         raise
     await db.refresh(row)
-    return response_dict(row)
+    return await visible_response_dict(db, row, actor)
 
 
 @router.post("/{receipt_id}/resolve", response_model=CommandReceiptResponse)
@@ -106,7 +106,7 @@ async def resolve_command(receipt_id: str, payload: CommandResolve,
     body = payload.model_dump(exclude_none=True)
     digest = step_hash("resolve", payload.revision, body["answers"])
     if check_step_replay(row, payload.request_key, digest):
-        return response_dict(row)
+        return await visible_response_dict(db, row, actor)
     if row.status != STATUS_INPUT:
         raise HTTPException(409, "El recibo ya no espera una respuesta")
     if row.revision != payload.revision:
@@ -125,7 +125,7 @@ async def resolve_command(receipt_id: str, payload: CommandResolve,
             await db.rollback()
         raise
     await db.refresh(row)
-    return response_dict(row)
+    return await visible_response_dict(db, row, actor)
 
 
 @router.post("/{receipt_id}/execute", response_model=CommandReceiptResponse)
@@ -134,7 +134,7 @@ async def execute_reviewed_command(receipt_id: str, payload: CommandExecute,
     row = await _owned_locked(db, receipt_id, actor.id)
     digest = step_hash("execute", payload.revision, {})
     if check_step_replay(row, payload.request_key, digest):
-        return response_dict(row)
+        return await visible_response_dict(db, row, actor)
     if row.status != STATUS_REVIEW:
         raise HTTPException(409, "El recibo no tiene una revisión ejecutable")
     if row.revision != payload.revision:
@@ -152,7 +152,7 @@ async def execute_reviewed_command(receipt_id: str, payload: CommandExecute,
             await db.rollback()
         raise
     await db.refresh(row)
-    return response_dict(row)
+    return await visible_response_dict(db, row, actor)
 
 
 @router.get("/{receipt_id}", response_model=CommandReceiptResponse)
@@ -162,7 +162,7 @@ async def get_command(receipt_id: str, db: AsyncSession = Depends(get_db),
         CommandReceipt.id == receipt_id, CommandReceipt.user_id == actor.id))
     if row is None:
         raise HTTPException(404, "Command receipt not found")
-    return response_dict(row)
+    return await visible_response_dict(db, row, actor)
 
 
 @router.get("/{receipt_id}/query")
@@ -195,5 +195,6 @@ async def list_commands(status: str | None = None, page: int = Query(1, ge=1),
     total = await db.scalar(select(func.count()).select_from(query.subquery())) or 0
     rows = list((await db.execute(query.order_by(CommandReceipt.created_at.desc())
                                   .offset((page - 1) * page_size).limit(page_size))).scalars().all())
-    return {"items": [response_dict(row) for row in rows], "total": total,
+    query_cache = {}
+    return {"items": [await visible_response_dict(db, row, actor, query_cache) for row in rows], "total": total,
             "page": page, "page_size": page_size, "has_more": page * page_size < total}

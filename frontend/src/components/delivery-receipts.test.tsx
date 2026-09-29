@@ -16,6 +16,7 @@ const daily = vi.hoisted(() => ({
   edit: vi.fn(),
   reparse: vi.fn(),
   delete: vi.fn(),
+  previewDiscord: vi.fn(),
   sendDiscord: vi.fn(),
 }))
 const digest = vi.hoisted(() => ({ list: vi.fn(), render: vi.fn(), sendDigest: vi.fn(), sendCustom: vi.fn(), listAll: vi.fn() }))
@@ -49,11 +50,15 @@ beforeEach(() => {
 describe("Delivery receipts", () => {
   it("shows the receipt for a daily without AI data after queuing", async () => {
     daily.list.mockResolvedValue([{ id: 1, user_id: 7, user_name: "Test", date: "2026-09-17", raw_text: "Texto sin parsear", parsed_data: null, status: "draft", revision: 1, source_facts: [] }])
+    daily.previewDiscord.mockResolvedValue({ revision: 1, content: "Cierre del día — Test — 2026-09-17\n\nTexto sin parsear" })
     daily.sendDiscord.mockResolvedValue(receipt())
     mock.list.mockResolvedValue([receipt()])
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={client}><DailysPage /></QueryClientProvider>)
-    fireEvent.click(await screen.findByTitle("Enviar a Discord"))
+    fireEvent.click(await screen.findByTitle("Revisar y enviar a Discord"))
+    expect(await screen.findByRole("dialog", { name: "Revisar el cierre antes de enviarlo" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Enviar a Discord" }))
+    await waitFor(() => expect(daily.sendDiscord).toHaveBeenCalledWith(1, { revision: 1, content: "Cierre del día — Test — 2026-09-17\n\nTexto sin parsear" }))
     expect(await screen.findByRole("region", { name: "Recibos de Discord" })).toBeInTheDocument()
     expect(mock.info).toHaveBeenCalled()
     expect(mock.success).not.toHaveBeenCalled()

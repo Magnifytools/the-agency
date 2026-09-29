@@ -104,7 +104,7 @@ def _delivery_source_clause(user_id: int):
             CommunicationOccurrence.kind.in_(SCHEDULED_KINDS),
             CommunicationRequest.kind == ("scheduled_" + CommunicationOccurrence.kind),
             CommunicationRequest.destination_kind == CommunicationOccurrence.channel,
-            CommunicationRequest.scope == case((CommunicationOccurrence.kind == "weekly", "team"), else_="mine"),
+            CommunicationRequest.scope == case((CommunicationOccurrence.kind.in_(("weekly", "team_morning")), "team"), else_="mine"),
             CommunicationRequest.period_start == CommunicationOccurrence.period_start,
             CommunicationRequest.period_end == CommunicationOccurrence.period_end,
             CommunicationRequest.owner_id == CommunicationOccurrence.recipient_id,
@@ -112,7 +112,7 @@ def _delivery_source_clause(user_id: int):
                 admin,
                 and_(
                     CommunicationRequest.owner_id == user_id,
-                    CommunicationOccurrence.kind != "weekly",
+                    CommunicationOccurrence.kind.not_in(("weekly", "team_morning")),
                     or_(
                         CommunicationOccurrence.kind == "meeting",
                         module_permission(user_id, "tasks"),

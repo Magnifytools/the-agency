@@ -40,6 +40,23 @@ describe("TimesheetPage recovery", () => {
     api.projects.mockResolvedValue([])
   })
 
+  it("names the timer selectors and weekly and custom period controls", async () => {
+    show()
+    expect(await screen.findByRole("combobox", { name: "Cliente del cronómetro" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Proyecto del cronómetro" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Tarea del cronómetro" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Período de horas" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Semana anterior" })).toBeInTheDocument()
+    expect(screen.getByLabelText("Inicio de la semana")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Semana siguiente" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Horas" })).toBeInTheDocument()
+    expect(screen.getByText("Revisa las horas de hoy y asígnalas a tareas cuando corresponda.")).toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Período de horas" }), { target: { value: "personalizado" } })
+    expect(screen.getByLabelText("Desde")).toBeInTheDocument()
+    expect(screen.getByLabelText("Hasta")).toBeInTheDocument()
+  })
+
   it("does not present a failed today query as zero records", async () => {
     api.list.mockRejectedValueOnce(new Error("offline"))
     show()
@@ -60,6 +77,7 @@ describe("TimesheetPage recovery", () => {
     api[method].mockResolvedValueOnce([])
     fireEvent.click(screen.getByRole("button", { name: "Reintentar" }))
     await screen.findByText(empty)
+    expect(document.querySelector("div > tr")).toBeNull()
   })
 
   it("does not render timer or entry editing actions for a timesheet reader", async () => {

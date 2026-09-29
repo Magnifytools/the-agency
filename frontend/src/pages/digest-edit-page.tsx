@@ -1,10 +1,10 @@
 import { useState, useEffect, useLayoutEffect, useRef } from "react"
 import DOMPurify from "dompurify"
-import { useParams, useNavigate, useLocation } from "react-router-dom"
+import { Link, useParams, useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, Save, Eye, Copy, Loader2, Plus, Trash2 } from "lucide-react"
 import { digestsApi } from "@/lib/api"
-import type { Digest, DigestContent, DigestItem, DigestTone, DigestSections } from "@/lib/types"
+import type { Digest, DigestContent, DigestTone, DigestSections } from "@/lib/types"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -20,6 +20,7 @@ import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
+import { clearDigestGeneration, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type ToneDigestIntent } from "@/lib/digest-generation-recovery"
 
 const sectionLabels: Record<keyof DigestSections, { title: string; color: string }> = {
   done: { title: "Hecho", color: "bg-green-100 text-green-800" },
@@ -27,10 +28,35 @@ const sectionLabels: Record<keyof DigestSections, { title: string; color: string
   next: { title: "Próximamente", color: "bg-blue-100 text-blue-800" },
   metrics: { title: "Métricas", color: "bg-slate-100 text-slate-800" },
 }
+const toneLabels: Record<DigestTone, string> = { cercano: "Cercano", formal: "Formal", equipo: "Equipo" }
+
+type SourceRecord = { kind?: unknown; id?: unknown; label?: unknown }
+
+function sourceCatalog(context: Record<string, unknown> | null) {
+  const value = context?.source_catalog
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, SourceRecord> : null
+}
+
+function AssertionSources({ keys, catalog, canReadTasks, canReadProjects }: { keys: string[]; catalog: Record<string, SourceRecord> | null; canReadTasks: boolean; canReadProjects: boolean }) {
+  if (!catalog) return null
+  if (!keys.length) return <p className="text-xs text-amber-500">Sin referencias verificadas: texto nuevo o editado manualmente.</p>
+  return <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"><span>Fuentes:</span>{keys.map(key => {
+    const source = catalog[key]
+    if (!source) return null
+    const label = typeof source.label === "string" ? source.label : "Fuente"
+    const sourceId = typeof source.id === "number" ? source.id : null
+    if (source.kind === "task" && sourceId && canReadTasks) return <Link key={key} className="rounded-full border px-2 py-0.5 text-brand hover:underline" to={`/tasks?task=${sourceId}`}>{label}</Link>
+    if (source.kind === "project" && sourceId && canReadProjects) return <Link key={key} className="rounded-full border px-2 py-0.5 text-brand hover:underline" to={`/projects/${sourceId}`}>{label}</Link>
+    return <span key={key} className="rounded-full border px-2 py-0.5">{label}</span>
+  })}</div>
+}
 
 export default function DigestEditPage() {
-  const { hasPermission } = useAuth()
+  const { user, hasPermission } = useAuth()
+  const userId = user!.id
   const canWrite = hasPermission("digests", true)
+  const canReadTasks = hasPermission("tasks")
+  const canReadProjects = hasPermission("projects")
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { key: routeKey } = useLocation()
@@ -55,15 +81,39 @@ export default function DigestEditPage() {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewFormat, setPreviewFormat] = useState<"slack" | "email">("slack")
   const [previewContent, setPreviewContent] = useState("")
+  const [previewUnavailable, setPreviewUnavailable] = useState(false)
+  const initialRecovery = useRef(readDigestGenerations(userId))
+  const [generationStorageFailed] = useState(initialRecovery.current.failed)
+  const [pendingToneIntent, setPendingToneIntent] = useState<ToneDigestIntent | null>(() =>
+    initialRecovery.current.intents.find((intent): intent is ToneDigestIntent => intent.kind === "tone") ?? null,
+  )
 
   const { data: digest, isLoading, isError, refetch } = useQuery({
     queryKey: ["digest", id],
     queryFn: () => digestsApi.get(Number(id)),
     enabled: !!id,
   })
+  const toneRecovery = useQuery({
+    queryKey: ["digest-tone-recovery", userId, pendingToneIntent?.generation_key],
+    queryFn: () => digestsApi.recoverGeneration(pendingToneIntent!.generation_key),
+    enabled: Boolean(pendingToneIntent),
+    retry: false,
+  })
+
+  useEffect(() => {
+    if (!pendingToneIntent || !toneRecovery.data || !active.current) return
+    clearDigestGeneration(userId, pendingToneIntent.operation_key)
+    setPendingToneIntent(null)
+    queryClient.setQueryData(["digest", String(toneRecovery.data.id)], toneRecovery.data)
+    queryClient.invalidateQueries({ queryKey: ["digests"] })
+    navigate(`/digests/${toneRecovery.data.id}/edit`, { replace: true })
+    toast.success(`Cambio de tono recuperado como versión #${toneRecovery.data.id}.`)
+  // A successful recovery is terminal for this persisted key.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toneRecovery.dataUpdatedAt])
 
   // Populate form when digest loads
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (digest && loadedId.current !== digest.id) {
       loadedId.current = digest.id
       setTone(digest.tone)
@@ -87,6 +137,7 @@ export default function DigestEditPage() {
         setPreviewId(null)
         setPreviewContent("")
       }
+      setPreviewUnavailable(false)
     }
   }, [id, previewId])
 
@@ -113,23 +164,47 @@ export default function DigestEditPage() {
   })
 
   const toneChangeMutation = useMutation({
-    mutationFn: async (request: { sourceId: number; epoch: number; newTone: DigestTone; content: DigestContent; tone: DigestTone }) => {
+    mutationFn: async (request: { sourceId: number; epoch: number; newTone: DigestTone; content: DigestContent; tone: DigestTone; resume?: ToneDigestIntent }) => {
+      if (request.resume) {
+        const generated = await digestsApi.update(request.resume.digest_id, { tone: request.resume.tone, generation_key: request.resume.generation_key })
+        return { generated, intent: request.resume }
+      }
       // Preserve manual edits before asking the model for another version.
       const saved = await digestsApi.update(request.sourceId, { content: request.content, tone: request.tone })
       if (!active.current || Number(liveId.current) !== request.sourceId || viewEpoch.current !== request.epoch) return null
+      const generation_key = newDigestGenerationKey()
+      const intent: ToneDigestIntent = { kind: "tone", operation_key: generation_key, generation_key, digest_id: saved.id, tone: request.newTone }
+      if (!persistDigestGeneration(userId, intent)) {
+        acceptVersion(saved, request.sourceId, request.epoch)
+        throw { cause: new Error("El navegador no pudo guardar la clave de recuperación. No se solicitó el cambio de tono."), storageFailure: true }
+      }
+      setPendingToneIntent(intent)
       try {
-        return await digestsApi.update(saved.id, { tone: request.newTone })
+        const generated = await digestsApi.update(saved.id, { tone: request.newTone, generation_key })
+        return { generated, intent }
       } catch (error) {
         acceptVersion(saved, request.sourceId, request.epoch)
-        throw error
+        throw { cause: error, intent }
       }
     },
-    onSuccess: (saved, request) => {
-      if (!saved || !active.current || Number(liveId.current) !== request.sourceId || viewEpoch.current !== request.epoch) return
-      acceptVersion(saved, request.sourceId, request.epoch)
+    onSuccess: (result, request) => {
+      if (!result || !active.current || Number(liveId.current) !== request.sourceId || viewEpoch.current !== request.epoch) return
+      clearDigestGeneration(userId, result.intent.operation_key)
+      setPendingToneIntent(null)
+      acceptVersion(result.generated, request.sourceId, request.epoch)
       toast.success("Nueva versión generada; el borrador anterior se conserva")
     },
-    onError: (err) => toast.error(getErrorMessage(err, "No se pudo regenerar. Tu borrador se conserva.")),
+    onError: (wrapped: unknown) => {
+      const failure = wrapped as { cause?: unknown; intent?: ToneDigestIntent; storageFailure?: boolean }
+      const error = failure.cause ?? wrapped
+      if (failure.intent && isConfirmedFailure(error)) {
+        clearDigestGeneration(userId, failure.intent.operation_key)
+        setPendingToneIntent(null)
+      } else if (failure.intent) {
+        setPendingToneIntent(failure.intent)
+      }
+      toast.error(failure.storageFailure ? String((error as Error).message) : isConfirmedFailure(error) ? getErrorMessage(error, "No se pudo regenerar. Tu borrador se conserva.") : "No se pudo confirmar el cambio de tono. Conservamos la misma solicitud para comprobarla o reintentarla.")
+    },
   })
 
   const renderMutation = useMutation({
@@ -157,9 +232,22 @@ export default function DigestEditPage() {
       if (active.current) setPreviewSaving(false)
     }
   }
+  const handleReadPreview = (fmt: "slack" | "email") => {
+    if (!digest?.content) {
+      setPreviewUnavailable(true)
+      return
+    }
+    setPreviewUnavailable(false)
+    setPreviewId(digest.id)
+    setPreviewFormat(fmt)
+    setPreviewOpen(true)
+    setPreviewContent("")
+    renderMutation.mutate({ digestId: digest.id, format: fmt })
+  }
   const busy = updateMutation.isPending || toneChangeMutation.isPending || previewSaving
   const unsaved = !!digest && (tone !== digest.tone || greeting !== (digest.content?.greeting || "") || closing !== (digest.content?.closing || "") ||
     (["done", "need", "next", "metrics"] as const).some(section => JSON.stringify(sections[section]) !== JSON.stringify(digest.content?.sections?.[section] || [])))
+  const catalog = sourceCatalog(digest?.raw_context ?? null)
 
   const handleCopy = async () => {
     try {
@@ -170,10 +258,10 @@ export default function DigestEditPage() {
     }
   }
 
-  const updateItem = (section: keyof DigestSections, index: number, field: keyof DigestItem, value: string) => {
+  const updateItem = (section: keyof DigestSections, index: number, field: "title" | "description", value: string) => {
     setSections((prev) => {
       const items = [...prev[section]]
-      items[index] = { ...items[index], [field]: value }
+      items[index] = { ...items[index], [field]: value, source_keys: [] }
       return { ...prev, [section]: items }
     })
   }
@@ -181,7 +269,7 @@ export default function DigestEditPage() {
   const addItem = (section: keyof DigestSections) => {
     setSections((prev) => ({
       ...prev,
-      [section]: [...prev[section], { title: "", description: "" }],
+      [section]: [...prev[section], { title: "", description: "", source_keys: [] }],
     }))
   }
 
@@ -218,7 +306,17 @@ export default function DigestEditPage() {
         <ArrowLeft className="w-4 h-4 mr-1" />Volver
       </Button>
       {!canWrite && <p className="text-sm text-muted-foreground">Puedes consultar esta versión. Necesitas permiso de edición para modificarla o preparar su envío.</p>}
-      <fieldset disabled={busy || !canWrite} className="space-y-6 min-w-0">
+      {(pendingToneIntent || generationStorageFailed) && <div role="alert" className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4 text-sm space-y-2">
+        {generationStorageFailed ? <p>No se pudo leer el almacenamiento de recuperación. No cambies el tono desde este navegador.</p> : <>
+          <p>Hay un cambio de tono sin respuesta confirmada. Se conserva su clave para evitar otra versión accidental.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" disabled={toneRecovery.isFetching || toneChangeMutation.isPending} onClick={() => void toneRecovery.refetch()}>{toneRecovery.isFetching ? "Comprobando…" : "Comprobar resultado"}</Button>
+            <Button size="sm" disabled={toneRecovery.isFetching || toneChangeMutation.isPending || !canWrite} onClick={() => pendingToneIntent && toneChangeMutation.mutate({ sourceId: Number(id), epoch: viewEpoch.current, newTone: pendingToneIntent.tone, content: draftContent(), tone, resume: pendingToneIntent })}>Reintentar el mismo cambio</Button>
+          </div>
+          {toneRecovery.isError && <p>{(toneRecovery.error as { response?: { status?: number } })?.response?.status === 404 ? "Todavía no hay una versión confirmada. Puedes comprobar de nuevo o reintentar el mismo cambio." : "No se pudo comprobar el resultado. La clave sigue guardada."}</p>}
+        </>}
+      </div>}
+      <fieldset disabled={canWrite && (busy || !!pendingToneIntent)} className="space-y-6 min-w-0">
       {/* Header */}
       <div className="flex flex-wrap gap-4 items-center justify-between">
         <div className="flex items-center gap-4">
@@ -230,25 +328,26 @@ export default function DigestEditPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => handlePreview("slack")}>
+          <Button variant="outline" onClick={() => canWrite ? handlePreview("slack") : handleReadPreview("slack")}>
             <Eye className="w-4 h-4 mr-2" />
             Vista previa
           </Button>
-          <Button onClick={() => updateMutation.mutate({ sourceId: Number(id), epoch: viewEpoch.current, content: draftContent(), tone })} disabled={updateMutation.isPending}>
+          {canWrite && <Button onClick={() => updateMutation.mutate({ sourceId: Number(id), epoch: viewEpoch.current, content: draftContent(), tone })} disabled={updateMutation.isPending}>
             {updateMutation.isPending ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
               <Save className="w-4 h-4 mr-2" />
             )}
             Guardar
-          </Button>
+          </Button>}
         </div>
       </div>
+      {canWrite && <p className="text-sm text-muted-foreground">Guardar conserva una nueva versión si hay cambios. No envía el resumen: revisa la vista previa antes de compartirlo.</p>}
 
       {/* Tone selector */}
       <div className="flex gap-4 items-center">
-        <Label htmlFor="digest-tone">Tono</Label>
-        <Select
+        {canWrite ? <Label htmlFor="digest-tone">Tono</Label> : <p className="text-sm font-medium">Tono</p>}
+        {canWrite ? <Select
           id="digest-tone"
           value={tone}
           onChange={(e) => { if (e.target.value !== tone) setPendingTone(e.target.value as DigestTone) }}
@@ -258,7 +357,7 @@ export default function DigestEditPage() {
           <option value="cercano">Cercano</option>
           <option value="formal">Formal</option>
           <option value="equipo">Equipo</option>
-        </Select>
+        </Select> : <p aria-label="Tono" className="text-sm">{toneLabels[tone]}</p>}
         {toneChangeMutation.isPending && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -272,16 +371,18 @@ export default function DigestEditPage() {
       <Card>
         <CardContent className="space-y-4 pt-6">
           <div className="space-y-2">
-            <Label htmlFor="digest-greeting">Saludo</Label>
-            <Input id="digest-greeting" value={greeting} onChange={(e) => setGreeting(e.target.value)} placeholder="Hola [Cliente]!" />
+            {canWrite ? <Label htmlFor="digest-greeting">Saludo</Label> : <p className="text-sm font-medium">Saludo</p>}
+            {canWrite ? <Input id="digest-greeting" value={greeting} onChange={(e) => setGreeting(e.target.value)} placeholder="Hola [Cliente]!" /> : <p>{greeting || "—"}</p>}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="digest-period">Período del informe</Label>
-            <Input id="digest-period" value={dateStr} readOnly />
+            {canWrite ? <Label htmlFor="digest-period">Período del informe</Label> : <p className="text-sm font-medium">Período del informe</p>}
+            {canWrite ? <Input id="digest-period" value={dateStr} readOnly /> : <p>{dateStr || "—"}</p>}
             <p className="text-xs text-muted-foreground">Se calcula con las fechas del informe; no cambia al editar el texto.</p>
           </div>
         </CardContent>
       </Card>
+
+      {!catalog && <p className="rounded-lg border border-border bg-muted p-3 text-sm text-muted-foreground">Esta versión se creó sin referencias por afirmación. Conservamos sus hechos históricos, pero cada frase debe revisarse manualmente.</p>}
 
       {/* Sections */}
       {(["done", "need", "next", "metrics"] as const).map((sectionKey) => (
@@ -293,20 +394,20 @@ export default function DigestEditPage() {
                   {sectionLabels[sectionKey].title}
                 </Badge>
                 <span className="text-sm text-muted-foreground">
-                  {sections[sectionKey].length} elementos
+                  {sections[sectionKey].length} {sections[sectionKey].length === 1 ? "elemento" : "elementos"}
                 </span>
               </div>
-              <Button variant="outline" size="sm" onClick={() => addItem(sectionKey)}>
+              {canWrite && <Button variant="outline" size="sm" aria-label={`Añadir elemento a ${sectionLabels[sectionKey].title}`} onClick={() => addItem(sectionKey)}>
                 <Plus className="w-4 h-4 mr-1" />
                 Añadir
-              </Button>
+              </Button>}
             </div>
 
             <div className="space-y-3">
               {sections[sectionKey].map((item, idx) => (
                 <div key={idx} className="flex gap-3 items-start border rounded-lg p-3">
                   <div className="flex-1 space-y-2">
-                    <Input
+                    {canWrite ? <><Input
                       value={item.title}
                       onChange={(e) => updateItem(sectionKey, idx, "title", e.target.value)}
                       placeholder="Título"
@@ -319,9 +420,10 @@ export default function DigestEditPage() {
                       placeholder="Descripción"
                       aria-label={`${sectionLabels[sectionKey].title}: descripción ${idx + 1}`}
                       rows={2}
-                    />
+                    /></> : <><p className="font-medium">{item.title || "Sin título"}</p><p className="whitespace-pre-wrap text-sm">{item.description || "—"}</p></>}
+                    <AssertionSources keys={item.source_keys ?? []} catalog={catalog} canReadTasks={canReadTasks} canReadProjects={canReadProjects} />
                   </div>
-                  <Button
+                  {canWrite && <Button
                     variant="ghost"
                     size="sm"
                     aria-label={`Eliminar ${sectionLabels[sectionKey].title.toLowerCase()} ${idx + 1}`}
@@ -329,12 +431,12 @@ export default function DigestEditPage() {
                     className="text-destructive hover:text-destructive"
                   >
                     <Trash2 className="w-4 h-4" />
-                  </Button>
+                  </Button>}
                 </div>
               ))}
               {sections[sectionKey].length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-4">
-                  Sin elementos. Haz clic en "Añadir" para crear uno.
+                  {canWrite ? 'Sin elementos. Haz clic en "Añadir" para crear uno.' : "Sin elementos."}
                 </p>
               )}
             </div>
@@ -346,21 +448,22 @@ export default function DigestEditPage() {
       <Card>
         <CardContent className="space-y-4 pt-6">
           <div className="space-y-2">
-            <Label htmlFor="digest-closing">Cierre</Label>
-            <Textarea
+            {canWrite ? <Label htmlFor="digest-closing">Cierre</Label> : <p className="text-sm font-medium">Cierre</p>}
+            {canWrite ? <Textarea
               id="digest-closing"
               value={closing}
               onChange={(e) => setClosing(e.target.value)}
               placeholder="Mensaje de cierre..."
               rows={3}
-            />
-            <p className="text-xs text-muted-foreground">Soporta HTML en email (ej: enlaces con &lt;a href=&quot;...&quot;&gt;)</p>
+            /> : <p className="whitespace-pre-wrap">{closing || "—"}</p>}
+            {canWrite && <p className="text-xs text-muted-foreground">Soporta HTML en email (ej: enlaces con &lt;a href=&quot;...&quot;&gt;)</p>}
           </div>
         </CardContent>
       </Card>
 
       </fieldset>
-      <p className="text-sm text-muted-foreground">Versión #{digest.id} · Guardar crea una versión si hay cambios. Las anteriores siguen disponibles en Resúmenes.</p>
+      {previewUnavailable && <p role="alert" className="text-sm text-muted-foreground">Esta versión no tiene contenido para previsualizar.</p>}
+      <p className="text-sm text-muted-foreground">Versión #{digest.id} · Las anteriores siguen disponibles en Resúmenes.</p>
       <ConfirmDialog open={pendingTone !== null && canWrite} onOpenChange={(open) => { if (!open) setPendingTone(null) }} title="Crear una versión con otro tono" description="Se guardará tu borrador actual y se generará otra versión. Podrás volver a la anterior desde Resúmenes." confirmLabel="Guardar y generar" onConfirm={() => { if (pendingTone && canWrite) toneChangeMutation.mutate({ sourceId: Number(id), epoch: viewEpoch.current, newTone: pendingTone, content: draftContent(), tone }) }} />
 
       {digest.raw_context && <DigestFacts context={digest.raw_context} />}

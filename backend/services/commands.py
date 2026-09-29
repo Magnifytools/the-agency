@@ -27,6 +27,13 @@ STATUS_EXECUTED = "executed"
 STATUS_FAILED = "failed"
 MAX_COMMAND_MINUTES = 24 * 60
 
+_COMMERCIAL_AMOUNT = r"(?:\d+(?:[.,]\d+)?)"
+_COMMERCIAL_SIGNAL = re.compile(
+    rf"(?:{_COMMERCIAL_AMOUNT}\s*(?:€|eur\b)|"
+    rf"\b(?:tarifa|cuota|fee|precio|presupuesto|facturación)\b[^\n\d]{{0,32}}{_COMMERCIAL_AMOUNT})",
+    re.IGNORECASE,
+)
+
 
 def canonical_hash(value: Any) -> str:
     raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -135,9 +142,11 @@ def _peel_direct_date(text: str) -> tuple[str, str | None]:
 def parse_command(raw: str) -> dict[str, Any]:
     """Parse a small Spanish allowlist. Page context is deliberately absent."""
     text = " ".join(raw.strip().split())
-    project_match = re.match(r"^(?:crea|crear) (?:un )?proyecto (.+)$", text, re.I)
+    project_match = re.match(r"^(?:crea|crear) (?:(?:un|el) )?proyecto (.+)$", text, re.I)
     if project_match:
         remainder = project_match.group(1).strip()
+        if _COMMERCIAL_SIGNAL.search(remainder):
+            return {"kind": "project_commercial_handoff"}
         project_text, first_task_text = _split_clause(remainder, r"con primera tarea")
         if first_task_text is not None:
             project_intent = parse_command(f'Crea proyecto {project_text}')
@@ -228,6 +237,15 @@ def parse_command(raw: str) -> dict[str, Any]:
     match = re.match(r"^(?:completa|completar|marca como completada) (?:la )?tarea (.+)$", text, re.I)
     if match:
         return {"kind": "complete_task", "task_name": match.group(1).strip('" ')}
+    match = re.match(r"^(?:reprograma|reprogramar) (?:la )?tarea (.+)$", text, re.I)
+    if match:
+        quoted, suffix = _quoted_head(match.group(1))
+        if quoted is not None:
+            if suffix.casefold() == "sin fecha":
+                return {"kind": "reschedule_task", "task_name": quoted, "scheduled_date": None}
+            date_match = re.fullmatch(r"(?:para|al)\s+(.+)", suffix, re.I)
+            if date_match:
+                return _date_intent("reschedule_task", quoted, date_match.group(1))
     match = re.match(r"^(?:reprograma|reprogramar) (?:la )?tarea (.+?)\s+sin fecha$", text, re.I)
     if match:
         return {"kind": "reschedule_task", "task_name": match.group(1).strip('" '), "scheduled_date": None}
@@ -445,6 +463,20 @@ async def execute_or_prompt(
             "field": "literal_title", "label": intent["error"], "kind": "choice",
             "choices": [{"id": "literal_title:confirm", "label": "Usar todo como título", "subtitle": intent["literal"]}],
         }]}
+        return
+    if kind == "project_commercial_handoff":
+        receipt.status = STATUS_EXECUTED
+        receipt.result = {
+            "kind": "derivation",
+            "label": "Derivación",
+            "message": (
+                "Esta orden contiene condiciones comerciales. Revísalas en el "
+                "formulario de proyecto antes de crear."
+            ),
+            "action": {"kind": "open_project_form", "href": "/projects?new=1"},
+            "entities": [],
+            "undo_available": False,
+        }
         return
     if kind == "create_project_with_task":
         require_permission(actor, "projects")
@@ -771,6 +803,92 @@ def response_dict(row: CommandReceipt) -> dict:
             "change_log_id": row.change_log_id,
             "error": ({"code": row.error_code, "detail": row.error_detail} if row.error_code else None),
             "revision": row.revision, "created_at": row.created_at, "updated_at": row.updated_at}
+
+
+async def visible_response_dict(
+    db: AsyncSession, row: CommandReceipt, actor: User,
+    query_cache: dict[tuple[str, str], dict | None] | None = None,
+) -> dict:
+    """Project a durable receipt through the actor's current source access.
+
+    Stored snapshots remain untouched for idempotency and Undo. A query receipt
+    gets a fresh first page because even a still-authorized incident can have
+    lost its source, assignee, or recipient permission since it was created.
+    """
+    response = response_dict(row)
+    intent = row.intent or {}
+    kind = intent.get("kind")
+    if kind == "query_work" and row.status == STATUS_EXECUTED:
+        query_kind = intent.get("query")
+        scope = intent.get("scope", "mine")
+        key = (query_kind, scope)
+        if query_cache is not None and key in query_cache:
+            page = query_cache[key]
+        else:
+            try:
+                if query_kind == "decisions":
+                    from backend.services.command_decisions import query_decisions
+                    page = await query_decisions(db, actor, scope=scope, page=1, page_size=25)
+                else:
+                    require_permission(actor, "tasks", write=False)
+                    page = await query_work(db, query_kind, actor=actor, scope=scope,
+                                            page=1, page_size=25)
+            except HTTPException as exc:
+                if exc.status_code != 403:
+                    raise
+                page = None
+            if query_cache is not None:
+                query_cache[key] = page
+        if page is None:
+            response["result"] = {
+                "message": "Consulta no disponible con los permisos actuales",
+                "entities": [], "undo_available": False,
+            }
+        else:
+            noun = "decisiones" if query_kind == "decisions" else "tareas"
+            response["result"] = {
+                "message": f"{page['total']} {noun}", "entities": [],
+                "query": page, "undo_available": False,
+            }
+        return response
+
+    # Choices, review plans, result messages, entity labels/IDs and error
+    # details can all contain names from a source resolved by the server.
+    # Check every module whose data entered this receipt before returning any
+    # of those fields. Raw text and extension context came from this actor.
+    required = set()
+    if kind in {"create_task", "complete_task", "reschedule_task", "set_priority", "log_time", "create_project_with_task"}:
+        required.add("tasks")
+    if kind in {"create_project", "create_project_with_task"}:
+        required.add("projects")
+    if kind == "log_time":
+        required.add("timesheet")
+    applied = (row.result or {}).get("applied") or {}
+    entities = (row.result or {}).get("entities") or []
+    if any(intent.get(field) is not None or applied.get(field) is not None
+           for field in ("client_id", "client_name")):
+        required.add("clients")
+    if any(intent.get(field) is not None or applied.get(field) is not None
+           for field in ("project_id", "project_name")) or any(
+        entity.get("project_id") is not None for entity in entities
+    ):
+        required.add("projects")
+    questions = (row.prompt or {}).get("questions") or []
+    if any(
+        choice.get("subtitle") not in (None, "Sin proyecto") and choice.get("id", "").startswith("task:")
+        for question in questions for choice in question.get("choices", [])
+    ):
+        required.add("projects")
+    if required and any(not _permission(actor, module, write=False) for module in required):
+        response["intent"] = {"kind": kind}
+        response["prompt"] = None
+        response["result"] = {
+            "message": "Contenido no disponible con los permisos actuales",
+            "entities": [], "undo_available": False,
+        } if row.result is not None else None
+        if response["error"] is not None:
+            response["error"] = {"code": row.error_code, "detail": "Contenido no disponible con los permisos actuales"}
+    return response
 
 
 def step_hash(kind: str, revision: int, payload: Any) -> str:

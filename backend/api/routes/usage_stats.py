@@ -7,27 +7,48 @@ level so paths with ids collapse into a single row.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.deps import require_admin
 from backend.db.database import get_db
 from backend.db.models import AuditLog, User
-from backend.api.deps import require_admin
+from backend.schemas.operational_usage import OperationalUsageResponse
+from backend.services.operational_usage import collect_operational_usage
 
 router = APIRouter(prefix="/api/admin/usage", tags=["admin-usage"])
+
+
+@router.get("/operational", response_model=OperationalUsageResponse)
+async def operational_usage(
+    days: int = Query(30, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_admin),
+):
+    return await collect_operational_usage(db, days=days)
 
 
 def _window(days: int) -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
 
 
+Origin = Literal["web", "extension", "unknown"]
+
+
+def _origin_clause(origin: Origin):
+    if origin == "unknown":
+        return func.coalesce(AuditLog.client_origin, "unknown") == "unknown"
+    return AuditLog.client_origin == origin
+
+
 @router.get("/top-routes")
 async def top_routes(
     days: int = Query(30, ge=1, le=365),
     limit: int = Query(50, ge=1, le=500),
+    origin: Origin | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_admin),
 ):
@@ -36,7 +57,7 @@ async def top_routes(
     # Two passes: total hits + avg duration first, then error count per route.
     # Splitting avoids a CASE-inside-SUM construct that misbehaves on empty
     # result sets in PostgreSQL through SQLAlchemy.
-    hits_result = await db.execute(
+    hits_query = (
         select(
             AuditLog.route_template,
             AuditLog.method,
@@ -51,10 +72,13 @@ async def top_routes(
         .order_by(func.count().desc())
         .limit(limit)
     )
+    if origin is not None:
+        hits_query = hits_query.where(_origin_clause(origin))
+    hits_result = await db.execute(hits_query)
     hits_rows = hits_result.all()
     if not hits_rows:
         return []
-    err_result = await db.execute(
+    err_query = (
         select(
             AuditLog.route_template,
             AuditLog.method,
@@ -67,6 +91,9 @@ async def top_routes(
         )
         .group_by(AuditLog.route_template, AuditLog.method)
     )
+    if origin is not None:
+        err_query = err_query.where(_origin_clause(origin))
+    err_result = await db.execute(err_query)
     err_by_key = {(r.route_template, r.method): int(r.errors) for r in err_result.all()}
     return [
         {
@@ -83,22 +110,26 @@ async def top_routes(
 @router.get("/by-user")
 async def by_user(
     days: int = Query(30, ge=1, le=365),
+    origin: Origin | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_admin),
 ):
     """Request counts per user in the window."""
     since = _window(days)
-    result = await db.execute(
+    query = (
         select(
             AuditLog.user_id,
             User.full_name,
             func.count().label("hits"),
         )
         .join(User, AuditLog.user_id == User.id, isouter=True)
-        .where(AuditLog.created_at >= since)
+        .where(AuditLog.created_at >= since, AuditLog.route_template.isnot(None))
         .group_by(AuditLog.user_id, User.full_name)
         .order_by(func.count().desc())
     )
+    if origin is not None:
+        query = query.where(_origin_clause(origin))
+    result = await db.execute(query)
     return [
         {"user_id": row.user_id, "user_name": row.full_name, "hits": int(row.hits)}
         for row in result.all()
@@ -108,24 +139,45 @@ async def by_user(
 @router.get("/daily")
 async def daily(
     days: int = Query(30, ge=1, le=365),
+    origin: Origin | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_admin),
 ):
     """Request volume per day in the window."""
     since = _window(days)
-    result = await db.execute(
+    query = (
         select(
             func.date(AuditLog.created_at).label("day"),
             func.count().label("hits"),
         )
-        .where(AuditLog.created_at >= since)
+        .where(AuditLog.created_at >= since, AuditLog.route_template.isnot(None))
         .group_by(func.date(AuditLog.created_at))
         .order_by(func.date(AuditLog.created_at))
     )
+    if origin is not None:
+        query = query.where(_origin_clause(origin))
+    result = await db.execute(query)
     return [
         {"day": row.day.isoformat() if row.day else None, "hits": int(row.hits)}
         for row in result.all()
     ]
+
+
+@router.get("/origins")
+async def origins(
+    days: int = Query(30, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_admin),
+):
+    """Request volume by declared client; NULL history remains unknown."""
+    label = func.coalesce(AuditLog.client_origin, "unknown")
+    result = await db.execute(
+        select(label.label("origin"), func.count().label("hits"))
+        .where(AuditLog.created_at >= _window(days), AuditLog.route_template.isnot(None))
+        .group_by(label)
+        .order_by(label)
+    )
+    return [{"origin": row.origin, "hits": int(row.hits)} for row in result.all()]
 
 
 @router.get("/unused-routes")

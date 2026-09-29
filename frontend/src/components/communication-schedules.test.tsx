@@ -1,15 +1,15 @@
 import { beforeEach, it, expect, vi } from "vitest"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { CommunicationSchedules } from "./communication-schedules"
-const mock = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }))
+const mock = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), isAdmin: false }))
 vi.mock("@/lib/api", () => ({ api: mock }))
-vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: { id: 7 }, isAdmin: false }) }))
+vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: { id: 7 }, isAdmin: mock.isAdmin }) }))
 vi.mock("./delivery-receipts", () => ({ DeliveryReceipts: ({ sourceId }: { sourceId: number }) => <div>Recibo {sourceId}</div> }))
 const policy = { kind: "meeting", enabled: false, channels: [], revision: 0, time: null, minutes_before: 30, quiet_start: null, quiet_end: null, state: "needs_review", reason: "Elige los canales" }
 const catalog = { user_id: 7, timezone: "Europe/Madrid", scheduler_enabled: false, extension_min_version: "2.2.0", extension_download_url: "/extension/agency-manager.crx", policies: [policy] }
 function show() { render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><CommunicationSchedules /></QueryClientProvider>) }
-beforeEach(() => { vi.resetAllMocks(); mock.get.mockImplementation(async (url: string) => ({ data: url.endsWith("history") ? [] : catalog })) })
+beforeEach(() => { vi.resetAllMocks(); mock.isAdmin = false; mock.get.mockImplementation(async (url: string) => ({ data: url.endsWith("history") ? [] : catalog })) })
 it("shows opt-in, paused status and a real extension update link", async () => {
   show()
   expect(await screen.findByText(/Los envíos están pausados/)).toBeInTheDocument()
@@ -48,4 +48,32 @@ it("reloads a changed revision only when the user discards their draft", async (
   mock.get.mockImplementation(async (url: string) => ({ data: url.endsWith("history") ? [] : { ...catalog, policies: [{ ...policy, revision: 2, minutes_before: 60 }] } }))
   fireEvent.click(screen.getByRole("button", { name: "Descartar borrador y recargar" }))
   await waitFor(() => expect(screen.getByRole("spinbutton")).toHaveValue(60))
+})
+it("lets an admin opt into one fixed team morning message without changing personal notices", async () => {
+  mock.isAdmin = true
+  const teamMorning = { kind: "team_morning", enabled: false, channels: [], revision: 0, time: "08:00", minutes_before: null, quiet_start: null, quiet_end: null, state: "needs_review", reason: "Requiere autorización del administrador" }
+  mock.get.mockImplementation(async (url: string) => ({ data: url.endsWith("history") ? [] : { ...catalog, policies: [policy, teamMorning] } }))
+  mock.put.mockImplementation(async (_url: string, body: object) => ({ data: { ...teamMorning, ...body, revision: 1, state: "ready", reason: null } }))
+  show()
+  const heading = await screen.findByText("Plan matinal del equipo", { selector: "summary span" })
+  const editor = heading.closest("details")!
+  fireEvent.click(heading)
+  expect(within(editor).getByText(/un único mensaje en el Discord compartido a las 08:00/)).toBeInTheDocument()
+  expect(within(editor).getByText(/tareas sin responsable una sola vez/)).toBeInTheDocument()
+  expect(within(editor).getByText(/no activa ni cambia los avisos personales/)).toBeInTheDocument()
+  expect(within(editor).getByText((_, element) => element?.tagName === "P" && element.textContent === "Hora fija: 08:00 (Europe/Madrid)")).toBeInTheDocument()
+  expect(within(editor).queryByLabelText("Hora")).not.toBeInTheDocument()
+  expect(within(editor).queryByText("Horario de silencio (opcional)")).not.toBeInTheDocument()
+  expect(within(editor).getAllByRole("checkbox")).toHaveLength(2)
+  fireEvent.click(within(editor).getByRole("checkbox", { name: "Activar plan matinal del equipo" }))
+  fireEvent.click(within(editor).getByRole("checkbox", { name: "Canal de Discord del equipo (visible para todos)" }))
+  fireEvent.click(within(editor).getByRole("button", { name: "Guardar plan matinal del equipo" }))
+  await waitFor(() => expect(mock.put).toHaveBeenCalledWith("/communication-schedules/team_morning", expect.objectContaining({ enabled: true, channels: ["team_webhook"], time: "08:00", revision: 0 })))
+})
+it("does not expose the team policy to a non-admin even if a stale catalog contains it", async () => {
+  const teamMorning = { kind: "team_morning", enabled: false, channels: [], revision: 0, time: "08:00", minutes_before: null, quiet_start: null, quiet_end: null, state: "needs_review", reason: null }
+  mock.get.mockImplementation(async (url: string) => ({ data: url.endsWith("history") ? [] : { ...catalog, policies: [policy, teamMorning] } }))
+  show()
+  await screen.findByText("Reuniones", { selector: "summary span" })
+  expect(screen.queryByText("Plan matinal del equipo", { selector: "summary span" })).not.toBeInTheDocument()
 })

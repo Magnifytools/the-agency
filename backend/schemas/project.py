@@ -111,7 +111,7 @@ class ProjectResponse(BaseModel):
     target_end_date: Optional[datetime]
     actual_end_date: Optional[datetime]
     status: str
-    progress_percent: int
+    progress_percent: Optional[int]
     budget_hours: Optional[float]
     weekly_hours_budget: Optional[float] = None
     monthly_hours_budget: Optional[float] = None
@@ -132,8 +132,8 @@ class ProjectResponse(BaseModel):
     owner_id: Optional[int] = None
     owner_name: Optional[str] = None
     phases: list[ProjectPhaseResponse] = []
-    task_count: int = 0
-    completed_task_count: int = 0
+    task_count: Optional[int] = None
+    completed_task_count: Optional[int] = None
     hours_used: Optional[float] = None
     hours_used_week: Optional[float] = None
     hours_used_month: Optional[float] = None
@@ -157,7 +157,7 @@ class ProjectListResponse(BaseModel):
     start_date: Optional[datetime]
     target_end_date: Optional[datetime]
     status: str
-    progress_percent: int
+    progress_percent: Optional[int]
     gsc_url: Optional[str] = None
     ga4_property_id: Optional[str] = None
     # La tarifa es la fuente de verdad del pricing, pero el listado no la
@@ -170,8 +170,8 @@ class ProjectListResponse(BaseModel):
     owner_id: Optional[int] = None
     owner_name: Optional[str] = None
     phase_count: int = 0
-    task_count: int = 0
-    completed_task_count: int = 0
+    task_count: Optional[int] = None
+    completed_task_count: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
@@ -292,8 +292,8 @@ class ProjectMonthlyCycleResponse(BaseModel):
     period_end: date
     planned_count: int
     completed_in_month_count: int
-    total_minutes: int
-    used_hours: float
+    total_minutes: Optional[int]
+    used_hours: Optional[float]
     budget_hours: Optional[float] = None
     remaining_hours: Optional[float] = None
     tasks: list[ProjectCycleTaskResponse]

@@ -6,6 +6,10 @@ import { ActivityTimeline } from "./activity-timeline"
 
 const api = vi.hoisted(() => ({ list: vi.fn() }))
 vi.mock("@/lib/api", () => ({ clientActivityApi: { list: api.list } }))
+vi.mock("@/context/auth-context", () => ({
+  useAuth: () => ({ hasPermission: (module: string) => ["clients", "tasks"].includes(module) }),
+}))
+vi.mock("@/lib/hidden-modules", () => ({ isEnabled: () => true }))
 
 describe("ActivityTimeline recovery", () => {
   it("hides cached events after failure and restores only a fresh success", async () => {

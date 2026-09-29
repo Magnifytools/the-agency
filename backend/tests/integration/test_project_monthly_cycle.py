@@ -231,7 +231,9 @@ async def test_monthly_cycle_returns_large_month_in_constant_queries(
 async def test_monthly_cycle_follows_current_projects_read_permission(
     db_session, make_member_client
 ):
-    member = await make_member_client([("projects", True, False)])
+    member = await make_member_client([
+        ("projects", True, False), ("tasks", True, False),
+    ])
     try:
         client = Client(name="Cliente permisos ciclo")
         db_session.add(client)

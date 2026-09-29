@@ -124,10 +124,10 @@ async def test_adoption_preserves_unknown_legacy_timezone_and_uses_observed_utc(
 
 
 async def test_activity_cannot_count_or_mark_operational_incidents(admin_client, admin_user, db_session):
-    await task(db_session, admin_user.id)
+    source = await task(db_session, admin_user.id)
     await reconcile_recipient(db_session, admin_user.id, now=NOW)
     incident, = await notifications(db_session, admin_user.id)
-    activity = Notification(user_id=admin_user.id, type="task_assigned", title="Actividad", entity_type="task", is_read=False)
+    activity = Notification(user_id=admin_user.id, type="task_assigned", title="Actividad", entity_type="task", entity_id=source.id, is_read=False)
     db_session.add(activity); await db_session.commit()
     await decide_incident(db_session, admin_user.id, incident.id, IncidentDecision(revision=1, action="dismiss", reason="Revisado"), now=NOW)
     await db_session.commit()

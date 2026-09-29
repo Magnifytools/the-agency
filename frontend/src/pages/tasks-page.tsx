@@ -13,7 +13,7 @@ import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { InfoTooltip } from "@/components/ui/tooltip"
-import { Plus, Pencil, Trash2, Clock, Calendar, Kanban, List, CheckSquare, CalendarDays, Repeat } from "lucide-react"
+import { Plus, Pencil, Eye, Trash2, Clock, Calendar, Kanban, List, CheckSquare, CalendarDays, Repeat } from "lucide-react"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
@@ -33,12 +33,12 @@ import { WeeklyPlannerView } from "@/components/tasks/weekly-planner-view"
 import { TaskPanel } from "@/components/tasks/task-panel"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
-import { initialTasksView, taskQueryKeyWithWeek } from "@/components/tasks/task-page-utils"
+import { initialTasksView, selectedTaskAssignee, taskQueryKeyWithWeek, withTaskAssignee } from "@/components/tasks/task-page-utils"
 import { invalidateTaskChange, optimisticallyUpdateExactQuery, restoreQuerySnapshot, taskKeys } from "@/lib/query-keys"
 import type { OperationalImpact } from "@/lib/query-keys"
 import { addCivilDays, formatCivilDate } from "@/lib/dates"
 import { useBusinessDate } from "@/hooks/use-business-date"
-import { taskStatusPresentation } from "@/lib/task-status"
+import { taskStatusPresentation, taskStatusSelectClass } from "@/lib/task-status"
 
 const priorityBadge = (priority: TaskPriority) => {
   const map: Record<TaskPriority, { label: string; variant: "destructive" | "warning" | "secondary" | "outline" }> = {
@@ -96,9 +96,9 @@ export default function TasksPage() {
   const [filterCategory, setFilterCategory] = useState<string>("")
   const [filterStatus, setFilterStatus] = useState<string>("backlog,pending,in_progress,advanced,waiting,in_review")
   const [filterPriority, setFilterPriority] = useState<string>("")
-  const [filterAssigned, setFilterAssigned] = useState<string>(() =>
-    user && user.role !== "admin" ? String(user.id) : ""
-  )
+  const filterAssigned = selectedTaskAssignee(searchParams, user?.id, user?.role === "admin")
+  const setFilterAssigned = (value: string) => setSearchParams((previous) =>
+    withTaskAssignee(previous, value, user?.role === "admin"))
   const [filterDateFrom, setFilterDateFrom] = useState<string>("")
   const [filterDateTo, setFilterDateTo] = useState<string>("")
   const [filterDateField, setFilterDateField] = useState<"due_date" | "scheduled_date">("due_date")
@@ -207,6 +207,7 @@ export default function TasksPage() {
 
   // Clear bulk selection when switching views
   useEffect(() => { clearTaskSelection(); reset() }, [view, qaFilter, reset, clearTaskSelection])
+  useEffect(() => { if (!canWriteTasks) clearTaskSelection() }, [canWriteTasks, clearTaskSelection])
 
   const bulkUpdateMutation = useMutation({
     mutationFn: async ({ ids, updates }: { ids: number[]; updates: Record<string, unknown> }) =>
@@ -397,9 +398,9 @@ export default function TasksPage() {
             </p>
           )}
         </div>
-        <Button onClick={openCreate}>
+        {canWriteTasks && <Button onClick={openCreate}>
           <Plus className="h-4 w-4 mr-2" /> Nueva tarea
-        </Button>
+        </Button>}
       </div>
 
       {view === "my_day" && (user?.role === "admin" ? <Select aria-label="Ámbito de Hoy" className="w-full sm:w-48" value={agendaScope} onChange={(event) => setAgendaScope(event.target.value)}><option value="mine">Mi trabajo</option><option value="team">Todo el equipo</option></Select> : <p className="text-sm text-muted-foreground">Mi trabajo</p>)}
@@ -410,12 +411,13 @@ export default function TasksPage() {
       <div className="flex flex-wrap gap-3">
         <Input
           type="search"
+          aria-label="Buscar tareas"
           placeholder="Buscar tareas..."
           value={searchQuery}
           onChange={(e) => { setSearchQuery(e.target.value); reset() }}
           className="w-64"
         />
-        <Select value={filterClient} onChange={(e) => { setFilterClient(e.target.value); reset() }} className="w-48">
+        <Select aria-label="Filtrar por cliente" value={filterClient} onChange={(e) => { setFilterClient(e.target.value); reset() }} className="w-48">
           <option value="">Todos los clientes</option>
           {clients.map((c) => (
             <option key={c.id} value={c.id}>
@@ -423,7 +425,7 @@ export default function TasksPage() {
             </option>
           ))}
         </Select>
-        <Select value={filterCategory} onChange={(e) => { setFilterCategory(e.target.value); reset() }} className="w-48">
+        <Select aria-label="Filtrar por categoría" value={filterCategory} onChange={(e) => { setFilterCategory(e.target.value); reset() }} className="w-48">
           <option value="">Todas las categorias</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
@@ -431,7 +433,7 @@ export default function TasksPage() {
             </option>
           ))}
         </Select>
-        <Select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); reset() }} className="w-48">
+        <Select aria-label="Filtrar por estado" value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); reset() }} className="w-48">
           <option value="">Todos (incl. completadas)</option>
           <option value="backlog,pending,in_progress,advanced,waiting,in_review">Activas</option>
           <option value="pending,backlog">Pendiente</option>
@@ -442,14 +444,14 @@ export default function TasksPage() {
           <option value="backlog">Pendiente · backlog</option>
           <option value="advanced">En curso · avance registrado</option>
         </Select>
-        <Select value={filterPriority} onChange={(e) => { setFilterPriority(e.target.value); reset() }} className="w-48">
+        <Select aria-label="Filtrar por prioridad" value={filterPriority} onChange={(e) => { setFilterPriority(e.target.value); reset() }} className="w-48">
           <option value="">Todas las prioridades</option>
           <option value="urgent">Urgente</option>
           <option value="high">Alta</option>
           <option value="medium">Media</option>
           <option value="low">Baja</option>
         </Select>
-        <Select value={filterAssigned} onChange={(e) => { setFilterAssigned(e.target.value); reset() }} className="w-48">
+        <Select aria-label="Filtrar por responsable" value={filterAssigned} onChange={(e) => { setFilterAssigned(e.target.value); reset() }} className="w-48">
           <option value="">Todos los asignados</option>
           {users.map((u) => (
             <option key={u.id} value={u.id}>
@@ -457,12 +459,13 @@ export default function TasksPage() {
             </option>
           ))}
         </Select>
-        <Select value={filterDateField} onChange={(e) => { setFilterDateField(e.target.value as "due_date" | "scheduled_date"); reset() }} className="w-40">
+        <Select aria-label="Tipo de fecha para filtrar" value={filterDateField} onChange={(e) => { setFilterDateField(e.target.value as "due_date" | "scheduled_date"); reset() }} className="w-40">
           <option value="due_date">Fecha límite</option>
           <option value="scheduled_date">Fecha planificada</option>
         </Select>
         <Input
           type="date"
+          aria-label={`${filterDateField === "due_date" ? "Fecha límite" : "Fecha planificada"} desde`}
           value={filterDateFrom}
           onChange={(e) => { setFilterDateFrom(e.target.value); reset() }}
           placeholder="Desde"
@@ -471,6 +474,7 @@ export default function TasksPage() {
         />
         <Input
           type="date"
+          aria-label={`${filterDateField === "due_date" ? "Fecha límite" : "Fecha planificada"} hasta`}
           value={filterDateTo}
           onChange={(e) => { setFilterDateTo(e.target.value); reset() }}
           placeholder="Hasta"
@@ -487,7 +491,7 @@ export default function TasksPage() {
           onClick={() => { setQaFilter(qaFilter === "unassigned" ? "none" : "unassigned"); reset() }}
           className="text-xs h-8 bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 border-orange-500/20"
         >
-          ⚠️ Sin Asignar
+          ⚠️ Sin responsable
         </Button>
         <Button
           variant={qaFilter === "no_date" ? "secondary" : "outline"}
@@ -495,7 +499,7 @@ export default function TasksPage() {
           onClick={() => { setQaFilter(qaFilter === "no_date" ? "none" : "no_date"); reset() }}
           className="text-xs h-8 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border-blue-500/20"
         >
-          ⚠️ Sin Fechas
+          ⚠️ Sin fecha límite ni plan
         </Button>
         <Button
           variant={qaFilter === "no_estimate" ? "secondary" : "outline"}
@@ -503,7 +507,7 @@ export default function TasksPage() {
           onClick={() => { setQaFilter(qaFilter === "no_estimate" ? "none" : "no_estimate"); reset() }}
           className="text-xs h-8 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 border-purple-500/20"
         >
-          ⚠️ Sin Estimación
+          ⚠️ Sin estimación de tiempo
         </Button>
         <Button
           variant={qaFilter === "no_project" ? "secondary" : "outline"}
@@ -512,7 +516,7 @@ export default function TasksPage() {
           className="text-xs h-8 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 border-amber-500/20"
           title="Tareas sin proyecto asignado (no cuentan en métricas de proyecto)"
         >
-          ⚠️ Sin Proyecto
+          ⚠️ Sin proyecto
         </Button>
         <Button
           variant={qaFilter === "overdue" ? "secondary" : "outline"}
@@ -520,7 +524,7 @@ export default function TasksPage() {
           onClick={() => { setQaFilter(qaFilter === "overdue" ? "none" : "overdue"); reset() }}
           className="text-xs h-8 bg-red-500/10 hover:bg-red-500/20 text-red-600 border-red-500/20"
         >
-          🔥 Atrasadas
+          🔥 Vencidas
         </Button>
         {qaFilter !== "none" && (
           <Button variant="ghost" size="sm" onClick={() => { setQaFilter("none"); reset() }} className="text-xs h-8 text-muted-foreground">
@@ -607,14 +611,15 @@ export default function TasksPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10">
+              {canWriteTasks && <TableHead className="w-10">
                 <input
                   type="checkbox"
+                  aria-label="Seleccionar todas las tareas visibles"
                   checked={allTasksSelected}
                   onChange={toggleAllTasks}
                   className="rounded border-border"
                 />
-              </TableHead>
+              </TableHead>}
               <SortableTableHead sortKey="title" currentSort={taskSortConfig} onSort={requestTaskSort}>Título</SortableTableHead>
               <SortableTableHead sortKey="client_name" currentSort={taskSortConfig} onSort={requestTaskSort}>Cliente</SortableTableHead>
               <SortableTableHead sortKey="priority" currentSort={taskSortConfig} onSort={requestTaskSort}>Prioridad</SortableTableHead>
@@ -646,14 +651,15 @@ export default function TasksPage() {
 
               return (
                 <TableRow key={t.id} className={rowHighlight}>
-                  <TableCell>
+                  {canWriteTasks && <TableCell>
                     <input
                       type="checkbox"
+                      aria-label={`Seleccionar tarea ${t.title}`}
                       checked={isTaskSelected(t.id)}
                       onChange={() => toggleTask(t.id)}
                       className="rounded border-border"
                     />
-                  </TableCell>
+                  </TableCell>}
                   <TableCell className="font-medium">
                     <span className="inline-flex items-center gap-1">
                       {t.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" aria-label="Recurrente" />}
@@ -687,8 +693,9 @@ export default function TasksPage() {
                       "bg-teal-500": t.status === "advanced",
                       "bg-green-500": t.status === "completed",
                     })} />
-                    <Select
+                    {canWriteTasks ? <Select
                       value={taskStatusPresentation(t.status, t.scheduled_date).group}
+                      className={cn("h-7 text-xs w-32 py-0", taskStatusSelectClass(t.status, t.scheduled_date))}
                       onChange={(e) => {
                         const next = e.target.value as TaskStatus
                         if (next === "waiting") {
@@ -697,14 +704,13 @@ export default function TasksPage() {
                         }
                         updateMutation.mutate({ id: t.id, data: { status: next === "completed" && sendsForReview(t) ? "in_review" : next } })
                       }}
-                      className="h-7 text-xs w-32 py-0"
                     >
                       <option value="pending">Pendiente</option>
                       <option value="in_progress">En curso</option>
                       <option value="waiting">En espera…</option>
                       <option value="in_review">En revisión</option>
                       <option value="completed">{sendsForReview(t) ? "Enviar a revisión" : "Hecho"}</option>
-                    </Select>
+                    </Select> : <span className={cn("rounded-md border px-2 py-1 text-xs", taskStatusSelectClass(t.status, t.scheduled_date))}>{taskStatusPresentation(t.status, t.scheduled_date).label}</span>}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs mono">
@@ -745,19 +751,19 @@ export default function TasksPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" aria-label="Editar tarea" onClick={() => openEdit(t)}>
-                        <Pencil className="h-4 w-4" />
+                      <Button variant="ghost" size="icon" aria-label={canWriteTasks ? "Editar tarea" : "Ver tarea"} onClick={() => openEdit(t)}>
+                        {canWriteTasks ? <Pencil className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
-                      <Button variant="ghost" size="icon" aria-label="Eliminar tarea" onClick={() => setDeleteId(t.id)}>
+                      {canWriteTasks && <Button variant="ghost" size="icon" aria-label="Eliminar tarea" onClick={() => setDeleteId(t.id)}>
                         <Trash2 className="h-4 w-4" />
-                      </Button>
+                      </Button>}
                     </div>
                   </TableCell>
                 </TableRow>
               )
             })}
             {tasks.length === 0 && (
-              <EmptyTableState colSpan={10} icon={CheckSquare} title="Sin tareas" description="Crea tareas, asígnalas y trackea con timer integrado." />
+              <EmptyTableState colSpan={canWriteTasks ? 10 : 9} icon={CheckSquare} title="Sin tareas" description="Crea tareas, asígnalas y trackea con timer integrado." />
             )}
           </TableBody>
         </Table>
@@ -806,6 +812,7 @@ export default function TasksPage() {
             updateMutation.mutate({ id: taskId, data: { status: newStatus === "completed" && task && sendsForReview(task) ? "in_review" : newStatus } })
           }}
           onOpenEdit={openEdit}
+          canWrite={canWriteTasks}
         />
       )}
 
@@ -827,6 +834,7 @@ export default function TasksPage() {
           onWeekOffsetChange={(offset) => { setWeekOffset(offset); reset() }}
           onScheduleChange={(taskId, date) => scheduleMutation.mutate({ id: taskId, scheduled_date: date })}
           onOpenEdit={openEdit}
+          canWrite={canWriteTasks}
         />
       )}
 
@@ -939,7 +947,7 @@ export default function TasksPage() {
       />
 
       {/* Bulk Action Bar */}
-      <BulkActionBar selectedCount={selectedTaskCount} onClear={clearTaskSelection}>
+      {canWriteTasks && <BulkActionBar selectedCount={selectedTaskCount} onClear={clearTaskSelection}>
         <Select
           value={bulkStatus}
           onChange={(e) => {
@@ -986,7 +994,7 @@ export default function TasksPage() {
         >
           Eliminar
         </Button>
-      </BulkActionBar>
+      </BulkActionBar>}
 
       <ConfirmDialog
         open={bulkDeleteOpen}

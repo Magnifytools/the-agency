@@ -17,7 +17,7 @@ from backend.api.routes import communication_schedules as routes, google_calenda
 from backend.config import settings
 from backend.db.database import get_db
 from backend.db.models import (CommunicationSchedule as Schedule, CommunicationOccurrence as Occurrence, CommunicationRequest,
-    Delivery, DeliveryAttempt, Notification, User, UserRole, UserPermission, Event, EventType, Task, TaskStatus, DiscordSettings)
+    Delivery, DeliveryAttempt, Notification, User, UserRole, UserPermission, Event, EventType, Task, TaskStatus, DiscordSettings, CompanyHoliday)
 from backend.services import scheduled_communications as svc, deliveries
 
 
@@ -43,7 +43,7 @@ async def fixture(engine, monkeypatch):
         ids = {"admin": admin.id, "member": member.id, "config": config.id}
     yield maker, ids, now
     async with maker() as db:
-        for model in (DeliveryAttempt, Delivery, Occurrence, Schedule, CommunicationRequest, Notification, Event, Task):
+        for model in (DeliveryAttempt, Delivery, Occurrence, Schedule, CommunicationRequest, Notification, Event, Task, CompanyHoliday):
             await db.execute(delete(model))
         await db.execute(delete(UserPermission).where(UserPermission.user_id.in_([admin.id, member.id])))
         await db.execute(delete(User).where(User.id.in_([admin.id, member.id])))
@@ -55,6 +55,7 @@ def body(kind="morning", **overrides):
     values = dict(revision=0, enabled=True, channels=["in_app"], time="10:00", minutes_before=None, quiet_start=None, quiet_end=None)
     if kind == "meeting": values.update(channels=["extension"], time=None, minutes_before=30)
     if kind == "weekly": values.update(channels=["owner_dm"], time="08:00", destination_id="123456789")
+    if kind == "team_morning": values.update(channels=["team_webhook"], time="08:00")
     return routes.PolicyUpdate(**(values | overrides))
 
 
@@ -100,6 +101,127 @@ async def test_no_inferred_consent_legacy_disabled_and_negative_authority(fixtur
     await svc.run_scheduler_once(maker)
     assert await count(maker, Occurrence) == 0
     assert await count(maker, Schedule) == 0
+
+
+async def test_team_morning_requires_admin_opt_in_and_has_one_team_delivery(fixture):
+    maker, ids, now = fixture
+    now[0] = datetime(2026, 9, 15, 5, 59)  # Tuesday, 07:59 Madrid; no historical replay.
+    async with client(fixture, "member") as http:
+        catalog = (await http.get("/api/communication-schedules")).json()
+        assert "team_morning" not in {row["kind"] for row in catalog["policies"]}
+        assert (await http.put("/api/communication-schedules/team_morning", json=body("team_morning").model_dump())).status_code == 403
+    await svc.run_scheduler_once(maker)
+    assert await count(maker, Occurrence) == 0
+    async with client(fixture, "admin") as http:
+        catalog = (await http.get("/api/communication-schedules")).json()
+        assert "team_morning" in {row["kind"] for row in catalog["policies"]}
+        assert (await http.put("/api/communication-schedules/team_morning", json=body("team_morning", time="09:00").model_dump())).status_code == 422
+        assert (await http.put("/api/communication-schedules/team_morning", json=body("team_morning").model_dump())).status_code == 200
+    now[0] += timedelta(minutes=2)
+    await asyncio.gather(svc.run_scheduler_once(maker), svc.run_scheduler_once(maker))
+    assert await count(maker, Occurrence) == 1
+    assert await count(maker, CommunicationRequest) == 1
+    assert await count(maker, Delivery) == 1
+    async with maker() as db:
+        occurrence = await db.scalar(select(Occurrence))
+        source = await db.scalar(select(CommunicationRequest))
+        assert occurrence.kind == "team_morning" and occurrence.channel == "team_webhook"
+        assert source.scope == "team" and source.owner_id == ids["admin"]
+    provider = AsyncMock(return_value=httpx.Response(200, json={"id": "123", "channel_id": "456"}))
+    await deliveries.run_once(maker, transport=httpx.MockTransport(provider))
+    assert provider.call_count == 1
+    async with maker() as db:
+        receipt = await db.scalar(select(Delivery))
+        assert receipt.status == "sent"
+        assert (await deliveries.latest_attempt(db, receipt.id)).steps[0]["message_id"] == "123"
+    async with client(fixture, "member") as http:
+        assert (await http.get("/api/communication-schedules/history")).json() == []
+
+
+async def test_shared_morning_and_personal_webhook_cannot_both_be_enabled(fixture):
+    maker, ids, _ = fixture
+    await policy(fixture, "team_morning", identity="admin")
+    async with client(fixture, "member") as http:
+        response = await http.put("/api/communication-schedules/morning", json=body(channels=["team_webhook"]).model_dump())
+        assert response.status_code == 409
+        assert (await http.put("/api/communication-schedules/morning", json=body(channels=["in_app"]).model_dump())).status_code == 200
+    async with maker() as db:
+        team = await db.scalar(select(Schedule).where(Schedule.policy_key == "team:morning"))
+        team.enabled = False
+        await db.commit()
+    async with client(fixture, "admin") as http:
+        response = await http.put("/api/communication-schedules/team_morning", json=body("team_morning", revision=1).model_dump())
+        assert response.status_code == 200
+    assert await count(maker, Schedule) == 2
+
+
+async def test_concurrent_shared_and_personal_webhook_enable_only_one(fixture):
+    maker, ids, _ = fixture
+
+    async def activate(identity, kind):
+        async with maker() as db:
+            return await svc.save_policy(db, await svc.load_actor(db, ids[identity]), kind,
+                                         body(kind, channels=["team_webhook"]))
+
+    results = await asyncio.gather(activate("admin", "team_morning"), activate("member", "morning"), return_exceptions=True)
+    assert sum(not isinstance(result, Exception) for result in results) == 1
+    assert sum(isinstance(result, HTTPException) and result.status_code == 409 for result in results) == 1
+    async with maker() as db:
+        rows = (await db.scalars(select(Schedule).where(Schedule.enabled.is_(True)))).all()
+        assert len(rows) == 1 and rows[0].channels == ["team_webhook"]
+
+
+async def test_team_morning_groups_owners_once_and_excludes_nonactionable_or_private_items(fixture):
+    maker, ids, _ = fixture
+    day = date(2026, 9, 14)
+    async with maker() as db:
+        db.add_all([
+            Task(title="Admin today 500 €", assigned_to=ids["admin"], due_date=datetime(2026, 9, 14, 12)),
+            Task(title="Member carryover", assigned_to=ids["member"], due_date=datetime(2026, 9, 11, 12)),
+            Task(title="Unassigned plan", scheduled_date=day),
+            Task(title="Completed excluded", assigned_to=ids["admin"], status=TaskStatus.completed, due_date=datetime(2026, 9, 14, 12)),
+            Task(title="Recurring excluded", assigned_to=ids["member"], is_recurring=True, due_date=datetime(2026, 9, 14, 12)),
+            Task(title="Retired excluded", assigned_to=ids["admin"], retired_at=datetime(2026, 9, 13), retired_reason="Archived", due_date=datetime(2026, 9, 14, 12)),
+            Task(title="Waiting later excluded", assigned_to=ids["member"], status=TaskStatus.waiting, due_date=datetime(2026, 9, 20, 12)),
+        ])
+        db.add(Event(user_id=ids["member"], event_type=EventType.meeting, title="Private meeting excluded", start_time=datetime(2026, 9, 14, 11)))
+        await db.commit()
+        from backend.services.daily_reminders import generate_team_morning_plan
+        message = await generate_team_morning_plan(db, day)
+    assert message.count("Admin today") == 1
+    assert message.count("Member carryover") == 1
+    assert message.count("Unassigned plan") == 1
+    assert "500 €" not in message
+    assert "**Schedule Admin**" in message and "**Schedule Member**" in message
+    assert "**Sin responsable**" in message
+    for hidden in ("Completed excluded", "Recurring excluded", "Retired excluded", "Waiting later excluded", "Private meeting excluded"):
+        assert hidden not in message
+
+
+async def test_team_morning_uses_global_holidays_and_skips_members_regionally_off(fixture):
+    maker, ids, now = fixture
+    day = date(2026, 9, 15)
+    now[0] = datetime(2026, 9, 15, 5, 59)
+    async with maker() as db:
+        await db.execute(update(User).where(User.id == ids["admin"]).values(region="MAD"))
+        await db.execute(update(User).where(User.id == ids["member"]).values(region="CAT"))
+        db.add_all([
+            CompanyHoliday(date=day, name="Regional", region="MAD"),
+            CompanyHoliday(date=day + timedelta(days=1), name="Global"),
+            Task(title="Admin day off", assigned_to=ids["admin"], scheduled_date=day),
+            Task(title="Member working", assigned_to=ids["member"], scheduled_date=day),
+        ])
+        await db.commit()
+        await svc.save_policy(db, await svc.load_actor(db, ids["admin"]), "team_morning", body("team_morning"))
+    now[0] += timedelta(minutes=2)
+    await svc.run_scheduler_once(maker)
+    async with maker() as db:
+        row = await db.scalar(select(CommunicationRequest))
+        assert row is not None and "Member working" in row.content
+        assert "Admin day off" not in row.content
+    now[0] += timedelta(days=1)
+    await svc.run_scheduler_once(maker)
+    assert await count(maker, Occurrence) == 1
 
 
 async def test_two_schedulers_restart_prepare_once_per_channel(fixture):
@@ -172,6 +294,27 @@ async def test_quiet_midnight_dst_and_expiry(fixture):
         assert latest.state == "expired"
 
 
+async def test_repeated_hour_does_not_release_in_app_notice_during_quiet(fixture):
+    maker, ids, now = fixture
+    policy_id, _ = await policy(fixture, quiet_start="02:00", quiet_end="02:30")
+    now[0] = datetime(2026, 10, 25, 1, 15)  # Second 02:15 in Madrid.
+    async with maker() as db:
+        occurrence = Occurrence(
+            occurrence_key="quiet-second-fold", schedule_id=policy_id,
+            recipient_id=ids["member"], kind="morning", channel="in_app",
+            period_start=date(2026, 10, 25), period_end=date(2026, 10, 25),
+            due_at=datetime(2026, 10, 25, 1), expires_at=datetime(2026, 10, 25, 1, 45),
+            state="planned",
+        )
+        db.add(occurrence)
+        await db.flush()
+        await svc.prepare_occurrence(db, occurrence, now[0])
+        assert occurrence.state == "planned"
+        assert occurrence.notification_id is None
+        await db.commit()
+    assert await count(maker, Notification) == 0
+
+
 async def test_meeting_without_tasks_legacy_reschedule_and_extension_prefs(fixture):
     maker, ids, now = fixture
     await policy(fixture, "meeting")
@@ -203,6 +346,39 @@ async def test_meeting_without_tasks_legacy_reschedule_and_extension_prefs(fixtu
         response = await http.put("/api/communication-schedules/meeting", json=body("meeting", revision=previous["revision"], enabled=False).model_dump())
         assert response.status_code == 200
         assert (await http.get("/api/communication-schedules/extension-upcoming")).json()["occurrences"] == []
+
+
+async def test_morning_plan_includes_today_carryover_and_unplanned_without_mislabeling_waiting(fixture):
+    maker, ids, _ = fixture
+    day = date(2026, 9, 14)
+    async with maker() as db:
+        db.add_all([
+            Task(title="Assigned due today", assigned_to=ids["member"], status=TaskStatus.backlog,
+                 due_date=datetime(2026, 9, 14, 17), is_recurring=False),
+            Task(title="Shared carryover", assigned_to=None, status=TaskStatus.in_progress,
+                 scheduled_date=day - timedelta(days=1), is_recurring=False),
+            Task(title="Own unplanned", assigned_to=ids["member"], status=TaskStatus.in_progress,
+                 is_recurring=False),
+            Task(title="Waiting due today", assigned_to=ids["member"], status=TaskStatus.waiting,
+                 due_date=datetime(2026, 9, 14, 12), is_recurring=False),
+            Task(title="Future plan", assigned_to=ids["member"], status=TaskStatus.pending,
+                 scheduled_date=day + timedelta(days=1), is_recurring=False),
+            Task(title="Recurring template", assigned_to=ids["member"], status=TaskStatus.pending,
+                 scheduled_date=day, is_recurring=True),
+            Task(title="Other person's task", assigned_to=ids["admin"], status=TaskStatus.pending,
+                 due_date=datetime(2026, 9, 14, 12), is_recurring=False),
+        ])
+        await db.commit()
+        from backend.services.daily_reminders import generate_morning_plan
+        message = await generate_morning_plan(db, await svc.load_actor(db, ids["member"]), day=day)
+    assert "Para hoy" in message and "Assigned due today" in message
+    assert "Arrastre" in message and "Shared carryover" in message
+    assert "Shared carryover (sin responsable)" in message
+    assert "Sin planificar" in message and "Own unplanned" in message
+    assert "En espera" in message and "Waiting due today" in message
+    assert "Future plan" not in message
+    assert "Recurring template" not in message
+    assert "Other person's task" not in message
 
 
 async def test_weekly_delayed_snapshot_closed_period_and_explicit_recipient(fixture, monkeypatch):

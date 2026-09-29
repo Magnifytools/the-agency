@@ -7,6 +7,14 @@ interface HealthGridProps {
   data: ClientHealthScore[]
 }
 
+const factorLabels: Record<keyof ClientHealthScore["observations"], string> = {
+  communication: "Comunicación",
+  tasks: "Tareas",
+  digests: "Resúmenes",
+  profitability: "Presupuesto",
+  followups: "Seguimientos",
+}
+
 export function HealthGrid({ data }: HealthGridProps) {
   const sorted = [...data].sort((a, b) => {
     const riskDifference = b.risk_signals.length - a.risk_signals.length
@@ -29,7 +37,7 @@ export function HealthGrid({ data }: HealthGridProps) {
             </ul>}
             <div className="mt-2 space-y-1 text-xs text-muted-foreground">
               {(Object.keys(client.observations) as Array<keyof typeof client.observations>).map((factor) => (
-                <p key={factor}>{client.observations[factor]}</p>
+                <p key={factor}><span className="font-medium text-foreground">{factorLabels[factor]}:</span> {client.observations[factor]}</p>
               ))}
             </div>
             {client.score != null && <details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">Índice orientativo legado</summary><p className="mt-1">{client.score} puntos</p></details>}

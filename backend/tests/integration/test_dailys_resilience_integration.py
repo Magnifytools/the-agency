@@ -223,7 +223,7 @@ async def test_un_daily_sin_parsear_se_envia_en_crudo_en_vez_de_dar_400(
     assert enviado.status_code == 202, enviado.text
     assert enviado.json()["success"] is False
     assert enviado.json()["status"] == "pending"
-    assert "Sin estructurar" in enviado.json()["content"]
+    assert "Cierre del día" in enviado.json()["content"]
     assert texto in enviado.json()["content"]
     assert discord_falso.posts == []  # the route never sends before durable processing
 

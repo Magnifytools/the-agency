@@ -43,6 +43,7 @@ export type DigestTone = "formal" | "cercano" | "equipo"
 export interface DigestItem {
   title: string
   description: string
+  source_keys?: string[]
 }
 
 export interface DigestSections {
@@ -66,6 +67,7 @@ export interface Digest {
   period_start: string
   period_end: string
   status: DigestStatus
+  can_delete?: boolean | null
   tone: DigestTone
   content: DigestContent | null
   raw_context: Record<string, unknown> | null
@@ -78,6 +80,7 @@ export interface Digest {
 }
 
 export interface DigestGenerateRequest {
+  generation_key: string
   client_id: number
   period_start?: string | null
   period_end?: string | null
@@ -87,6 +90,7 @@ export interface DigestGenerateRequest {
 export interface DigestUpdateRequest {
   content?: DigestContent | null
   tone?: DigestTone | null
+  generation_key?: string
 }
 
 export interface DigestRenderResponse {

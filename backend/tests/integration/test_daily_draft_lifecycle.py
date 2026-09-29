@@ -15,6 +15,49 @@ from backend.services.deliveries import fingerprint, source_version
 from backend.services.temporal import utc_now_naive
 
 
+async def test_reviewed_closing_message_uses_current_revision_and_keeps_source_unchanged(
+    admin_client, member_client, db_session, monkeypatch,
+):
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/123/fake-test-token")
+    fact = {"key": "time:1", "kind": "time_logged", "task_id": 8, "title": "Fichas", "minutes": 40,
+            "client_id": 3, "client_name": "Fit Generation", "project_id": None, "project_name": None,
+            "detail": "40 min registrados el 2026-09-21"}
+    daily = DailyUpdate(user_id=admin_client.test_user.id, date=date(2026, 9, 21),
+                        raw_text="- Fichas — 40 min registrados el 2026-09-21", source_facts=[fact],
+                        parsed_data=None, revision=1)
+    db_session.add(daily)
+    await db_session.commit()
+
+    path = f"/api/dailys/{daily.id}"
+    assert (await member_client.get(f"{path}/preview")).status_code == 403
+    assert (await member_client.post(f"{path}/send-discord")).status_code == 403
+    preview = await admin_client.get(f"{path}/preview")
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["revision"] == 1
+    assert preview.json()["content"].count("Fichas") == 1
+    assert "40 min" in preview.json()["content"]
+    assert "registrados el" not in preview.json()["content"]
+
+    edited = await admin_client.put(path, json={"revision": 1, "raw_text": "Contexto corregido"})
+    assert edited.status_code == 200 and edited.json()["revision"] == 2
+    missing_revision = await admin_client.post(f"{path}/send-discord", json={"content": "Sin revisión"})
+    assert missing_revision.status_code == 422
+    stale = await admin_client.post(f"{path}/send-discord", json={"revision": 1, "content": "Texto antiguo"})
+    assert stale.status_code == 409
+    reviewed = "🌙 Cierre del día — Ignacio\n\n**Fit Generation**\n- ✅ Fichas · 40 min\n\nMatiz revisado"
+    sent = await admin_client.post(f"{path}/send-discord", json={"revision": 2, "content": reviewed})
+    assert sent.status_code == 202, sent.text
+    assert sent.json()["content"] == reviewed
+    source = (await admin_client.get(path)).json()
+    assert source["raw_text"] == "Contexto corregido" and source["source_facts"] == [fact]
+    daily.status = DailyUpdateStatus.sent
+    await db_session.commit()
+    after_sent = await admin_client.post(f"{path}/send-discord", json={"revision": 2, "content": "Otro texto"})
+    assert after_sent.status_code == 409
+
+
 async def test_save_and_edit_do_not_wait_for_or_call_ai(admin_client, monkeypatch):
     async def forbidden(*args, **kwargs):
         pytest.fail("Saving must not call the enrichment provider")
@@ -88,7 +131,7 @@ async def test_selected_facts_revalidate_additions_and_preserve_saved_history(ad
     assert (await admin_client.get("/api/dailys/for-date", params={"date": "2026-09-10"})).json() is None
     fresh = (await admin_client.get("/api/dailys/prefill", params={"date": "2026-09-10"})).json()
     selected = next(f for f in fresh["facts"] if f["kind"] == "time_logged" and f["task_id"] == task.id)
-    saved_response = await admin_client.post("/api/dailys", json={"date": "2026-09-10", "raw_text": "45 minutos", "source_fact_keys": [selected["key"]]})
+    saved_response = await admin_client.post("/api/dailys", json={"date": "2026-09-10", "raw_text": "", "source_fact_keys": [selected["key"]]})
     assert saved_response.status_code == 201, saved_response.text
     saved = saved_response.json()
     assert saved["source_facts"] == [selected]

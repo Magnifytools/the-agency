@@ -85,7 +85,7 @@ class TestDigestsToResponse:
         mock_digest.created_at = _NOW
         mock_digest.updated_at = _NOW
 
-        result = _to_response(mock_digest)
+        result = _to_response(mock_digest, {"tasks", "projects", "communications"})
         assert result.id == 1
         assert result.client_name == "Acme Corp"
         assert result.creator_name == "Admin"
@@ -110,7 +110,7 @@ class TestDigestsToResponse:
         mock_digest.created_at = _NOW
         mock_digest.updated_at = _NOW
 
-        result = _to_response(mock_digest)
+        result = _to_response(mock_digest, {"tasks", "projects", "communications"})
         assert result.client_name is None
         assert result.creator_name is None
         assert result.content is None
@@ -137,5 +137,5 @@ class TestDigestsToResponse:
         mock_digest.updated_at = _NOW
 
         # Should not crash — content may default to empty rather than None
-        result = _to_response(mock_digest)
+        result = _to_response(mock_digest, {"tasks", "projects", "communications"})
         assert result is not None

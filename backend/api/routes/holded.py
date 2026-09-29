@@ -1,7 +1,7 @@
 """Holded integration API routes."""
 import logging
 from datetime import datetime, date, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -9,12 +9,11 @@ from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
-from backend.db.models import (
-    Client, Income, HoldedSyncLog, HoldedInvoiceCache, HoldedExpenseCache,
-)
+from backend.db.models import Client, HoldedSyncLog, HoldedInvoiceCache, HoldedExpenseCache
 from backend.api.deps import get_current_user, require_admin
 from backend.config import settings
 from backend.services.holded_service import HoldedClient, HoldedError
+from backend.services.temporal import business_today
 from backend.schemas.holded import (
     SyncLogResponse, SyncStatusResponse, SyncResult,
     HoldedInvoiceResponse, HoldedExpenseResponse,
@@ -145,12 +144,7 @@ async def sync_invoices(
             inv_date = _parse_holded_date(inv.get("date"))
             due_date = _parse_holded_date(inv.get("dueDate"))
 
-            # Determine status
-            status = "pending"
-            if inv.get("paid"):
-                status = "paid"
-            elif due_date and due_date < date.today():
-                status = "overdue"
+            status = _invoice_payment_status(inv, due_date)
 
             total = float(inv.get("total", 0) or 0)
             subtotal = float(inv.get("subtotal", 0) or 0)
@@ -187,15 +181,12 @@ async def sync_invoices(
 
             synced += 1
 
-        # Auto-match paid invoices with Income records
-        matched = await _match_paid_invoices(session)
-
         log.status = "success"
         log.records_synced = synced
         log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await session.commit()
 
-        return SyncResult(sync_type="invoices", status="success", records_synced=synced, detail=f"{matched} facturas marcadas como cobradas" if matched else None)
+        return SyncResult(sync_type="invoices", status="success", records_synced=synced)
 
     except HoldedError as e:
         await _persist_failure_log(session, "invoices", str(e))
@@ -604,57 +595,6 @@ async def _persist_failure_log(session: AsyncSession, sync_type: str, error_mess
         await session.rollback()
 
 
-async def _match_paid_invoices(session: AsyncSession) -> int:
-    """Match paid Holded invoices with Income records and update status to 'cobrado'.
-
-    Matches by: invoice_number OR (client_id + amount + month).
-    Returns count of Income records updated.
-    """
-    # Get all paid Holded invoices
-    paid_result = await session.execute(
-        select(HoldedInvoiceCache).where(HoldedInvoiceCache.status == "paid")
-    )
-    paid_invoices = paid_result.scalars().all()
-    if not paid_invoices:
-        return 0
-
-    matched = 0
-    for inv in paid_invoices:
-        # Try match by invoice_number first
-        query = None
-        if inv.invoice_number:
-            query = select(Income).where(
-                Income.invoice_number == inv.invoice_number,
-                Income.status == "pendiente",
-            )
-        elif inv.client_id and inv.total:
-            # Fallback: match by client + approximate amount + date range
-            month_start = inv.date.replace(day=1) if inv.date else None
-            if month_start:
-                from calendar import monthrange
-                last_day = monthrange(month_start.year, month_start.month)[1]
-                month_end = month_start.replace(day=last_day)
-                query = select(Income).where(
-                    Income.client_id == inv.client_id,
-                    Income.status == "pendiente",
-                    Income.amount >= inv.total * Decimal("0.95"),
-                    Income.amount <= inv.total * Decimal("1.05"),
-                    Income.date >= month_start,
-                    Income.date <= month_end,
-                )
-
-        if query is not None:
-            result = await session.execute(query.limit(1))
-            income = result.scalar_one_or_none()
-            if income:
-                income.status = "cobrado"
-                matched += 1
-                logger.info("Auto-matched Income %d (%s) as cobrado from Holded invoice %s",
-                            income.id, income.invoice_number or "?", inv.holded_id)
-
-    return matched
-
-
 def _parse_holded_date(val) -> Optional[date]:
     """Parse Holded date field (unix timestamp in seconds or ISO string)."""
     if not val:
@@ -667,3 +607,31 @@ def _parse_holded_date(val) -> Optional[date]:
     except (ValueError, OSError):
         return None
     return None
+
+
+def _invoice_payment_status(invoice: dict, due_date: Optional[date]) -> str:
+    """Classify the outstanding balance reported by Holded's invoice API.
+
+    The v1 response does not reliably include ``paid``. A zero outstanding
+    balance alone is not evidence that money was received, so incomplete or
+    inconsistent payment data must stay unknown.
+    """
+    amounts = []
+    for key in ("total", "paymentsPending", "paymentsTotal"):
+        value = invoice.get(key)
+        if value is None or isinstance(value, bool):
+            return "unknown"
+        try:
+            amount = Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            return "unknown"
+        if not amount.is_finite() or amount < 0:
+            return "unknown"
+        amounts.append(amount)
+
+    total, pending, paid = amounts
+    if total <= 0 or pending > total or (pending > 0 and paid >= total):
+        return "unknown"
+    if pending == 0:
+        return "paid" if paid > 0 else "unknown"
+    return "overdue" if due_date and due_date < business_today() else "pending"

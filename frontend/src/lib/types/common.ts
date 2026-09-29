@@ -21,6 +21,11 @@ export interface UserPermission {
   can_write: boolean
 }
 
+export interface DeactivationImpact {
+  open_tasks: number
+  portfolio_projects: number
+}
+
 export interface User {
   id: number
   email: string
@@ -33,9 +38,6 @@ export interface User {
   permissions: UserPermission[]
   preferences?: {
     shortcuts?: Record<string, string>
-    digest_default_tone?: string
-    digest_default_recipients?: string
-    digest_auto_send?: string
     notifications_email?: boolean
     notifications_discord?: boolean
   } | null

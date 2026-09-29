@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Path,
 from pydantic import BaseModel
 from fastapi.responses import Response
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, func, delete, update, or_, text
+from sqlalchemy import Date, case, cast, select, func, delete, update, or_, text
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,10 +27,17 @@ from backend.schemas.client_onboarding import ClientOnboardingCreate, ClientOnbo
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module, require_admin
 from backend.services.client_health import HealthCapabilities, compute_health, compute_health_batch
+from backend.services.dashboard_access import (
+    ensure_source_access,
+    has_module_read,
+    require_financial_dashboard_access,
+)
 from backend.core.modules import is_enabled
 from backend.api.utils.db_helpers import safe_refresh
 from backend.services.client_onboarding import create_onboarding, recover_onboarding
 from backend.services.domain_writes import create_client as create_client_write
+from backend.services.temporal import business_today, utc_isoformat
+from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -602,48 +609,54 @@ async def delete_client(
 async def get_client_summary(
     client_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("clients")),
+    current_user: User = Depends(require_module("clients")),
 ):
     result = await db.execute(select(Client).where(Client.id == client_id))
     client = result.scalar_one_or_none()
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    # Fetch tasks with relationships needed for _task_to_response
-    from sqlalchemy.orm import selectinload
-    tasks_result = await db.execute(
-        select(Task).options(
-            selectinload(Task.client),
-            selectinload(Task.category),
-            selectinload(Task.assigned_user),
-            selectinload(Task.project),
-            selectinload(Task.phase),
-        ).where(
-            Task.client_id == client_id, Task.retired_at.is_(None)
-        ).order_by(Task.created_at.desc())
-    )
-    tasks = tasks_result.scalars().unique().all()
+    can_read_tasks = has_module_read(current_user, "tasks")
+    can_read_time = can_read_tasks and has_module_read(current_user, "timesheet")
+    task_responses = None
+    total_tasks = total_estimated = total_actual = total_tracked_minutes = None
 
-    # Aggregate time via subquery (avoids building huge IN list)
-    task_ids_subq = select(Task.id).where(Task.client_id == client_id).scalar_subquery()
-    time_result = await db.execute(
-        select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
-            TimeEntry.task_id.in_(task_ids_subq),
-            TimeEntry.minutes.isnot(None),
+    if can_read_tasks:
+        # Task titles and task-derived totals belong to the tasks module.
+        from sqlalchemy.orm import selectinload
+        from backend.api.routes.tasks import _task_to_response
+
+        tasks_result = await db.execute(
+            select(Task).options(
+                selectinload(Task.client),
+                selectinload(Task.category),
+                selectinload(Task.assigned_user),
+                selectinload(Task.project),
+                selectinload(Task.phase),
+            ).where(
+                Task.client_id == client_id, Task.retired_at.is_(None)
+            ).order_by(Task.created_at.desc())
         )
-    )
-    total_tracked_minutes = time_result.scalar()
+        tasks = tasks_result.scalars().unique().all()
+        task_responses = [_task_to_response(task) for task in tasks]
+        total_tasks = len(tasks)
+        total_estimated = sum(task.estimated_minutes or 0 for task in tasks)
+        total_actual = sum(task.actual_minutes or 0 for task in tasks)
 
-    total_estimated = sum(t.estimated_minutes or 0 for t in tasks)
-    total_actual = sum(t.actual_minutes or 0 for t in tasks)
-
-    from backend.schemas.task import TaskResponse
-    from backend.api.routes.tasks import _task_to_response
+    if can_read_time:
+        task_ids_subq = select(Task.id).where(Task.client_id == client_id).scalar_subquery()
+        time_result = await db.execute(
+            select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
+                TimeEntry.task_id.in_(task_ids_subq),
+                TimeEntry.minutes.isnot(None),
+            )
+        )
+        total_tracked_minutes = time_result.scalar()
 
     return {
         "client": ClientResponse.model_validate(client),
-        "tasks": [_task_to_response(t) for t in tasks],
-        "total_tasks": len(tasks),
+        "tasks": task_responses,
+        "total_tasks": total_tasks,
         "total_estimated_minutes": total_estimated,
         "total_actual_minutes": total_actual,
         "total_tracked_minutes": total_tracked_minutes,
@@ -655,16 +668,27 @@ async def get_recent_time_entries(
     client_id: int,
     limit: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("clients")),
+    current_user: User = Depends(require_module("clients")),
 ):
     """Recent time entries for a client, single query instead of N parallel fetches."""
+    ensure_source_access(current_user, "tasks", "timesheet")
     from sqlalchemy.orm import selectinload
+    # The legacy column is a civil datetime for manual entries and a UTC
+    # instant for timers. Rank both by the day shown in the client detail UI.
+    timer_business_day = cast(
+        func.timezone(settings.AGENCY_TIMEZONE, func.timezone("UTC", TimeEntry.date)),
+        Date,
+    )
+    work_day = case(
+        (TimeEntry.started_at.isnot(None), timer_business_day),
+        else_=cast(TimeEntry.date, Date),
+    )
     result = await db.execute(
         select(TimeEntry)
         .join(Task, TimeEntry.task_id == Task.id)
         .options(selectinload(TimeEntry.task), selectinload(TimeEntry.user))
         .where(Task.client_id == client_id, TimeEntry.minutes.isnot(None))
-        .order_by(TimeEntry.date.desc())
+        .order_by(work_day.desc(), TimeEntry.id.desc())
         .limit(limit)
     )
     entries = result.scalars().unique().all()
@@ -672,6 +696,7 @@ async def get_recent_time_entries(
         {
             "id": e.id,
             "date": e.date.isoformat() if e.date else None,
+            "started_at": utc_isoformat(e.started_at),
             "minutes": e.minutes,
             "notes": e.notes,
             "task_title": e.task.title if e.task else None,
@@ -690,9 +715,14 @@ async def get_ai_advice(
     """Get AI-generated recommendations for a client."""
     from backend.core.rate_limiter import ai_limiter
     ai_limiter.check(current_user.id, max_requests=10, window_seconds=60)
-    from backend.services.client_advisor import get_client_advice
+    from backend.services.client_advisor import AdviceSources, get_client_advice
     try:
-        recommendations = await get_client_advice(db, client_id)
+        recommendations = await get_client_advice(db, client_id, AdviceSources(
+            tasks=has_module_read(current_user, "tasks"),
+            communications=has_module_read(current_user, "communications"),
+            timesheet=has_module_read(current_user, "tasks") and has_module_read(current_user, "timesheet"),
+            billing=has_module_read(current_user, "billing"),
+        ))
         return {"recommendations": recommendations}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -797,10 +827,10 @@ async def delete_document(
 async def what_if_lose_client(
     client_id: int,
     db: AsyncSession = Depends(get_db),
-    _user = Depends(require_module("clients")),
+    _user: User = Depends(require_financial_dashboard_access),
 ):
     """Estimate financial impact of losing a client."""
-    from datetime import date, timedelta
+    from datetime import timedelta
 
     # Check client exists
     r = await db.execute(select(Client).where(Client.id == client_id))
@@ -809,7 +839,8 @@ async def what_if_lose_client(
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
     # Average monthly revenue from this client (last 6 months)
-    six_months_ago = date.today() - timedelta(days=180)
+    today = business_today()
+    six_months_ago = today - timedelta(days=180)
     r_inc = await db.execute(
         select(func.coalesce(func.sum(Income.amount), 0))
         .where(Income.client_id == client_id, Income.date >= six_months_ago)
@@ -826,7 +857,7 @@ async def what_if_lose_client(
     pct_of_total = round((total_6m / total_company_6m * 100) if total_company_6m > 0 else 0, 1)
 
     # Average monthly burn (last 3 months expenses)
-    three_months_ago = date.today() - timedelta(days=90)
+    three_months_ago = today - timedelta(days=90)
     r_burn = await db.execute(
         select(func.coalesce(func.sum(Expense.amount), 0))
         .where(Expense.date >= three_months_ago)

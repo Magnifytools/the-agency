@@ -178,6 +178,27 @@ async def test_stop_timer_computes_elapsed_minutes(admin_client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_stale_stop_cannot_end_a_newer_timer(admin_client, db_session):
+    first = await admin_client.post("/api/timer/start", json={"notes": "first"})
+    assert first.status_code == 201, first.text
+    second = await admin_client.post("/api/timer/start", json={"notes": "second"})
+    assert second.status_code == 201, second.text
+
+    stale_stop = await admin_client.post(
+        "/api/timer/stop", json={"timer_id": first.json()["id"]}
+    )
+    assert stale_stop.status_code == 409, stale_stop.text
+    active = await admin_client.get("/api/timer/active")
+    assert active.status_code == 200
+    assert active.json()["id"] == second.json()["id"]
+
+    current_stop = await admin_client.post(
+        "/api/timer/stop", json={"timer_id": second.json()["id"]}
+    )
+    assert current_stop.status_code == 200, current_stop.text
+
+
+@pytest.mark.asyncio
 async def test_stop_with_no_active_timer_404(admin_client):
     resp = await admin_client.post("/api/timer/stop", json={})
     assert resp.status_code == 404

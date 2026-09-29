@@ -1,17 +1,26 @@
 """AI Client Advisor: generates actionable recommendations based on client data."""
+
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timezone
+from dataclasses import dataclass
+from datetime import timedelta
 
-from sqlalchemy import select, func
+from sqlalchemy import Date as SQLDate
+from sqlalchemy import cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.services.ai_utils import get_anthropic_client, parse_claude_json
 from backend.db.models import (
-    Client, Task, TaskStatus, TimeEntry, CommunicationLog,
-    ClientContact, BillingEvent, ClientDocument,
+    Client,
+    ClientDocument,
+    CommunicationLog,
+    Task,
+    TaskStatus,
+    TimeEntry,
 )
+from backend.services.ai_utils import get_anthropic_client, parse_claude_json
+from backend.services.temporal import business_today
+from backend.services.time_entry_dates import time_entry_civil_period
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +52,18 @@ Responde con un JSON asi:
 }"""
 
 
+@dataclass(frozen=True)
+class AdviceSources:
+    tasks: bool
+    communications: bool
+    timesheet: bool
+    billing: bool
+
+
 async def get_client_advice(
     db: AsyncSession,
     client_id: int,
+    sources: AdviceSources,
 ) -> list[dict]:
     """Gather client context and call Claude for recommendations."""
     # Gather context
@@ -54,62 +72,62 @@ async def get_client_advice(
     if not client:
         raise ValueError("Cliente no encontrado")
 
-    today = date.today()
+    today = business_today()
 
-    # Tasks summary
-    task_result = await db.execute(
-        select(Task.status, func.count(Task.id))
-        .where(Task.client_id == client_id, Task.retired_at.is_(None))
-        .group_by(Task.status)
-    )
-    tasks_by_status = {row[0].value: row[1] for row in task_result.all()}
-
-    overdue_result = await db.execute(
-        select(func.count(Task.id)).where(
-            Task.client_id == client_id,
-            Task.retired_at.is_(None),
-            Task.due_date < datetime.now(timezone.utc).replace(tzinfo=None),
-            Task.status != TaskStatus.completed,
+    if sources.tasks:
+        task_result = await db.execute(
+            select(Task.status, func.count(Task.id))
+            .where(Task.client_id == client_id, Task.retired_at.is_(None))
+            .group_by(Task.status)
         )
-    )
-    tasks_overdue = overdue_result.scalar() or 0
+        tasks_by_status = {row[0].value: row[1] for row in task_result.all()}
 
-    # Recent communications count
-    comm_result = await db.execute(
-        select(func.count(CommunicationLog.id)).where(
-            CommunicationLog.client_id == client_id,
+        overdue_result = await db.execute(
+            select(func.count(Task.id)).where(
+                Task.client_id == client_id,
+                Task.retired_at.is_(None),
+                cast(Task.due_date, SQLDate) < today,
+                Task.status != TaskStatus.completed,
+            )
         )
-    )
-    total_comms = comm_result.scalar() or 0
+        tasks_overdue = overdue_result.scalar() or 0
 
-    # Last communication date
-    last_comm_result = await db.execute(
-        select(func.max(CommunicationLog.occurred_at)).where(
-            CommunicationLog.client_id == client_id,
+    if sources.communications:
+        comm_result = await db.execute(
+            select(func.count(CommunicationLog.id)).where(
+                CommunicationLog.client_id == client_id,
+            )
         )
-    )
-    last_comm_date = last_comm_result.scalar()
-
-    # Hours this month (subquery avoids fetching IDs into Python)
-    first_of_month = today.replace(day=1)
-    task_subq = select(Task.id).where(Task.client_id == client_id).scalar_subquery()
-
-    hours_result = await db.execute(
-        select(func.sum(TimeEntry.minutes)).where(
-            TimeEntry.task_id.in_(task_subq),
-            TimeEntry.minutes.isnot(None),
-            TimeEntry.date >= datetime.combine(first_of_month, datetime.min.time()),
+        total_comms = comm_result.scalar() or 0
+        last_comm_result = await db.execute(
+            select(func.max(CommunicationLog.occurred_at)).where(
+                CommunicationLog.client_id == client_id,
+            )
         )
-    )
-    hours_this_month = round((hours_result.scalar() or 0) / 60, 1)
+        last_comm_date = last_comm_result.scalar()
+
+    if sources.tasks and sources.timesheet:
+        first_of_month = today.replace(day=1)
+        next_month = (first_of_month.replace(day=28) + timedelta(days=4)).replace(day=1)
+        task_subq = select(Task.id).where(Task.client_id == client_id).scalar_subquery()
+        hours_result = await db.execute(
+            select(func.sum(TimeEntry.minutes)).where(
+                TimeEntry.task_id.in_(task_subq),
+                TimeEntry.minutes.isnot(None),
+                time_entry_civil_period(first_of_month, next_month),
+            )
+        )
+        hours_this_month = round((hours_result.scalar() or 0) / 60, 1)
 
     # Billing info
     billing_info = ""
-    if client.billing_cycle:
+    if sources.billing and client.billing_cycle:
         billing_info = f"Ciclo: {client.billing_cycle.value}"
         if client.next_invoice_date:
             days_until = (client.next_invoice_date - today).days
-            billing_info += f", Proxima factura: {client.next_invoice_date} ({days_until} dias)"
+            billing_info += (
+                f", Proxima factura: {client.next_invoice_date} ({days_until} dias)"
+            )
         if client.last_invoiced_date:
             billing_info += f", Ultima factura: {client.last_invoiced_date}"
 
@@ -117,14 +135,22 @@ async def get_client_advice(
     context_parts = [
         f"CLIENTE: {client.name}",
         f"Estado: {client.status.value}",
-        f"Fee mensual: {client.monthly_fee or 0} {client.currency}",
-        f"Presupuesto mensual: {client.monthly_budget or 0} {client.currency}",
-        f"Tareas: {tasks_by_status}",
-        f"Tareas vencidas: {tasks_overdue}",
-        f"Total comunicaciones: {total_comms}",
-        f"Ultima comunicacion: {last_comm_date or 'nunca'}",
-        f"Horas este mes: {hours_this_month}h",
     ]
+    if sources.billing and client.monthly_fee is not None:
+        context_parts.append(f"Fee mensual: {client.monthly_fee} {client.currency}")
+    if sources.billing and client.monthly_budget is not None:
+        context_parts.append(
+            f"Presupuesto mensual: {client.monthly_budget} {client.currency}"
+        )
+    if sources.tasks:
+        context_parts.extend([f"Tareas: {tasks_by_status}", f"Tareas vencidas: {tasks_overdue}"])
+    if sources.communications:
+        context_parts.extend([
+            f"Total comunicaciones: {total_comms}",
+            f"Ultima comunicacion: {last_comm_date or 'nunca'}",
+        ])
+    if sources.tasks and sources.timesheet:
+        context_parts.append(f"Horas este mes: {hours_this_month}h")
     if billing_info:
         context_parts.append(f"Facturacion: {billing_info}")
     if client.notes:
@@ -138,11 +164,15 @@ async def get_client_advice(
     doc_result = await db.execute(
         select(ClientDocument.name, ClientDocument.description)
         .where(ClientDocument.client_id == client_id)
-        .order_by(ClientDocument.created_at.desc()).limit(10)
+        .order_by(ClientDocument.created_at.desc())
+        .limit(10)
     )
     docs = doc_result.all()
     if docs:
-        doc_lines = "\n".join(f"- {d.name}" + (f": {d.description}" if d.description else "") for d in docs)
+        doc_lines = "\n".join(
+            f"- {d.name}" + (f": {d.description}" if d.description else "")
+            for d in docs
+        )
         context_parts.append(f"\nDOCUMENTOS ADJUNTOS:\n{doc_lines}")
 
     user_prompt = (
@@ -162,6 +192,8 @@ async def get_client_advice(
 
     content = parse_claude_json(message)
     recommendations = content.get("recommendations", [])
-    logger.info("Generated %d recommendations for client %d", len(recommendations), client_id)
+    logger.info(
+        "Generated %d recommendations for client %d", len(recommendations), client_id
+    )
 
     return recommendations

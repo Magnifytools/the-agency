@@ -38,6 +38,7 @@ import { clientKeys, holdedKeys, invalidateClientChange, projectKeys, timeKeys }
 import { formatCurrency } from "@/lib/format"
 import { TaskPanel } from "@/components/tasks/task-panel"
 import { clientHealthPresentation } from "@/components/dashboard/client-health-presentation"
+import { InvoiceStatusBadge } from "@/components/finance/invoice-status-badge"
 
 function formatMinutes(m: number): string {
   const h = Math.floor(m / 60)
@@ -72,6 +73,8 @@ const taskStatusBadge = (status: TaskStatus) => {
 }
 
 function RevenueIntelligenceCard({ client }: { client: Client }) {
+  const { hasPermission } = useAuth()
+  const canWriteClients = hasPermission("clients", true)
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({
@@ -92,6 +95,7 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
   })
 
   const handleSave = () => {
+    if (!canWriteClients) return
     updateMutation.mutate({
       business_model: form.business_model || null,
       aov: form.aov !== "" ? Number(form.aov) : null,
@@ -120,8 +124,8 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-base">Inteligencia de Negocio</CardTitle>
-        {!editing ? (
-          <Button variant="ghost" size="sm" onClick={() => {
+        {!editing && canWriteClients ? (
+          <Button variant="ghost" size="sm" aria-label="Editar inteligencia de negocio" onClick={() => {
             setForm({
               business_model: client.business_model || "",
               aov: client.aov ?? "",
@@ -133,23 +137,23 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
           }}>
             <Pencil className="w-4 h-4" />
           </Button>
-        ) : (
+        ) : editing ? (
           <div className="flex gap-1">
-            <Button variant="ghost" size="sm" onClick={handleSave} disabled={updateMutation.isPending}>
+            {canWriteClients && <Button variant="ghost" size="sm" aria-label="Guardar inteligencia de negocio" onClick={handleSave} disabled={updateMutation.isPending}>
               <Check className="w-4 h-4" />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
+            </Button>}
+            <Button variant="ghost" size="sm" aria-label="Cancelar edición de inteligencia de negocio" onClick={() => setEditing(false)}>
               <X className="w-4 h-4" />
             </Button>
           </div>
-        )}
+        ) : null}
       </CardHeader>
       <CardContent>
         {editing ? (
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-muted-foreground">Modelo de negocio</label>
-              <Select value={form.business_model} onChange={e => setForm(f => ({ ...f, business_model: e.target.value }))}>
+              <label htmlFor="business-model" className="text-xs text-muted-foreground">Modelo de negocio</label>
+              <Select id="business-model" value={form.business_model} onChange={e => setForm(f => ({ ...f, business_model: e.target.value }))} disabled={!canWriteClients}>
                 <option value="">Seleccionar...</option>
                 <option value="ecommerce">E-commerce</option>
                 <option value="saas">SaaS</option>
@@ -158,20 +162,20 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
               </Select>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">AOV (€)</label>
-              <Input type="number" value={form.aov} onChange={e => setForm(f => ({ ...f, aov: e.target.value }))} placeholder="0" />
+              <label htmlFor="business-aov" className="text-xs text-muted-foreground">AOV (€)</label>
+              <Input id="business-aov" type="number" value={form.aov} onChange={e => setForm(f => ({ ...f, aov: e.target.value }))} placeholder="0" disabled={!canWriteClients} />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">Conversión (%)</label>
-              <Input type="number" step="0.1" value={form.conversion_rate} onChange={e => setForm(f => ({ ...f, conversion_rate: e.target.value }))} placeholder="0" />
+              <label htmlFor="business-conversion" className="text-xs text-muted-foreground">Conversión (%)</label>
+              <Input id="business-conversion" type="number" step="0.1" value={form.conversion_rate} onChange={e => setForm(f => ({ ...f, conversion_rate: e.target.value }))} placeholder="0" disabled={!canWriteClients} />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">LTV (€)</label>
-              <Input type="number" value={form.ltv} onChange={e => setForm(f => ({ ...f, ltv: e.target.value }))} placeholder="0" />
+              <label htmlFor="business-ltv" className="text-xs text-muted-foreground">LTV (€)</label>
+              <Input id="business-ltv" type="number" value={form.ltv} onChange={e => setForm(f => ({ ...f, ltv: e.target.value }))} placeholder="0" disabled={!canWriteClients} />
             </div>
             <div className="col-span-2">
-              <label className="text-xs text-muted-foreground">Madurez SEO</label>
-              <Select value={form.seo_maturity_level} onChange={e => setForm(f => ({ ...f, seo_maturity_level: e.target.value }))}>
+              <label htmlFor="business-seo-maturity" className="text-xs text-muted-foreground">Madurez SEO</label>
+              <Select id="business-seo-maturity" value={form.seo_maturity_level} onChange={e => setForm(f => ({ ...f, seo_maturity_level: e.target.value }))} disabled={!canWriteClients}>
                 <option value="">Seleccionar...</option>
                 <option value="none">Sin SEO</option>
                 <option value="basic">Básico</option>
@@ -214,7 +218,7 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
             )}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">Sin datos de negocio. Haz clic en el lápiz para añadir.</p>
+          <p className="text-sm text-muted-foreground">{canWriteClients ? "Sin datos de negocio. Haz clic en el lápiz para añadir." : "No hay datos de negocio registrados."}</p>
         )}
       </CardContent>
     </Card>
@@ -222,7 +226,11 @@ function RevenueIntelligenceCard({ client }: { client: Client }) {
 }
 
 export default function ClientDetailPage() {
-  const { isAdmin, hasPermission } = useAuth()
+  const { user, isAdmin, hasPermission } = useAuth()
+  const canReadClient = hasPermission("clients")
+  const canReadTasks = hasPermission("tasks") && isEnabled("tasks")
+  const canReadTime = canReadTasks && hasPermission("timesheet") && isEnabled("timesheet")
+  const canReadFinancialPanel = isAdmin && isEnabled("finance")
   const { id } = useParams<{ id: string }>()
   const clientId = Number(id)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -255,6 +263,7 @@ export default function ClientDetailPage() {
     informes: "reports",
   }
   const isTabVisible = (tab: Tab) => {
+    if (tab === "tiempo") return canReadTime
     const mod = TAB_MODULE[tab]
     const permission = TAB_PERMISSION[tab]
     return (!mod || isEnabled(mod)) && (!permission || hasPermission(permission))
@@ -268,14 +277,14 @@ export default function ClientDetailPage() {
   const summaryQuery = useQuery({
     queryKey: clientKeys.summary(clientId),
     queryFn: () => clientsApi.summary(clientId),
-    enabled: !!clientId,
+    enabled: !!clientId && canReadClient,
   })
   const { data: summary, isLoading } = summaryQuery
 
   const projectsQuery = useQuery({
     queryKey: projectKeys.client(clientId),
     queryFn: () => projectsApi.listAll({ client_id: clientId }),
-    enabled: !!clientId && activeTab === "proyectos" && hasPermission("projects"),
+    enabled: !!clientId && canReadClient && activeTab === "proyectos" && hasPermission("projects"),
   })
   const projects = projectsQuery.data ?? []
 
@@ -302,9 +311,14 @@ export default function ClientDetailPage() {
     staleTime: 10 * 60_000,
   })
 
-  const canReadClientHealth = hasPermission("clients")
+  const canReadClientHealth = canReadClient
+  const healthAccessScope = [
+    user?.id ?? "anonymous", isAdmin,
+    ...(["tasks", "communications", "digests", "finance", "billing"] as const)
+      .map((module) => hasPermission(module) && isEnabled(module)),
+  ].join(":")
   const healthQuery = useQuery({
-    queryKey: ["client-health", clientId],
+    queryKey: ["client-health", clientId, healthAccessScope],
     queryFn: () => clientHealthApi.get(clientId),
     enabled: !!clientId && canReadClientHealth,
     staleTime: 60_000,
@@ -314,16 +328,17 @@ export default function ClientDetailPage() {
   const recentEntriesQuery = useQuery({
     queryKey: timeKeys.client(clientId),
     queryFn: () => clientsApi.recentTimeEntries(clientId),
-    enabled: !!clientId && activeTab === "tiempo",
+    enabled: !!clientId && canReadClient && canReadTime && activeTab === "tiempo",
   })
-  const recentEntries = recentEntriesQuery.data ?? []
+  const recentEntries = canReadTime ? recentEntriesQuery.data ?? [] : []
 
   const { data: whatIfData, isLoading: whatIfLoading } = useQuery({
     queryKey: ["client-what-if", clientId],
     queryFn: () => clientsApi.whatIf(clientId),
-    enabled: whatIfOpen && !!clientId,
+    enabled: whatIfOpen && !!clientId && canReadClient && canReadFinancialPanel,
   })
 
+  if (!canReadClient) return <p role="alert">No tienes acceso a este cliente.</p>
   if (isLoading) return (
     <div className="space-y-6">
       <Skeleton className="h-5 w-48" />
@@ -344,7 +359,10 @@ export default function ClientDetailPage() {
   )
   if (!summary) return <p className="text-muted-foreground">Cliente no encontrado</p>
 
-  const { client, tasks } = summary
+  const { client } = summary
+  // The same summary query can remain cached after permissions are refreshed.
+  // Gate cached projections with the current permissions before rendering.
+  const tasks = canReadTasks ? summary.tasks ?? [] : []
   const activeTasks = tasks.filter((task) => task.status !== "completed")
   const completedTasks = tasks.filter((task) => task.status === "completed")
 
@@ -356,15 +374,15 @@ export default function ClientDetailPage() {
       <TableCell role="cell" className="mono row-start-3 block px-0 py-1 text-xs md:table-cell md:px-4 md:py-3 md:text-sm"><span className="md:hidden">Registrado: </span>{t.actual_minutes ? formatMinutes(t.actual_minutes) : "-"}</TableCell>
       <TableCell role="cell" className="col-start-2 row-start-2 block px-0 py-1 md:table-cell md:px-4 md:py-3">
         <div className="flex justify-end gap-1 md:justify-start">
-          <TimerButton taskId={t.id} />
-          <Button
+          {canReadTime && <TimerButton taskId={t.id} />}
+          {canReadTime && <Button
             variant="ghost"
             size="icon"
             aria-label={`Ver horas de ${t.title}`}
             onClick={() => setTimeLogTaskId({ id: t.id, title: t.title, retired: !!t.retired_at })}
           >
             <Clock className="h-4 w-4" />
-          </Button>
+          </Button>}
         </div>
       </TableCell>
     </TableRow>
@@ -416,7 +434,7 @@ export default function ClientDetailPage() {
           </div>
           {client.company && <p className="text-muted-foreground">{client.company}</p>}
         </div>
-        {(activeTab === "ficha" || activeTab === "panel") && <Button variant="outline" size="sm" onClick={() => setWhatIfOpen(true)}>
+        {canReadFinancialPanel && (activeTab === "ficha" || activeTab === "panel") && <Button variant="outline" size="sm" onClick={() => setWhatIfOpen(true)}>
           ¿Y si pierdo este cliente?
         </Button>}
       </div>
@@ -438,7 +456,7 @@ export default function ClientDetailPage() {
             tabs: [
               ...(isTabVisible("tareas") ? (["tareas"] as TabKey[]) : []),
               ...(isTabVisible("proyectos") ? (["proyectos"] as TabKey[]) : []),
-              "tiempo",
+              ...(canReadTime ? (["tiempo"] as TabKey[]) : []),
             ],
           },
           {
@@ -553,13 +571,13 @@ export default function ClientDetailPage() {
       {/* Summary Cards — Tracked es la métrica canónica.
           Estimado/Real quedan como subtexto secundario (datos declarados vs fichados). */}
       {(activeTab === "ficha" || activeTab === "panel") && <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
+        {canReadTasks && <Card>
           <CardContent className="p-4">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total tareas</p>
-            <p className="kpi-value mt-1">{summary.total_tasks}</p>
+            <p className="kpi-value mt-1">{summary.total_tasks ?? "—"}</p>
           </CardContent>
-        </Card>
-        <Card
+        </Card>}
+        {canReadTime && <Card
           className="lg:col-span-2"
           title="Tiempo tracked: suma del timer real del equipo. Estimado: lo previsto al crear la tarea. Declarado: lo que el responsable apuntó al cerrarla."
         >
@@ -568,20 +586,20 @@ export default function ClientDetailPage() {
               Tiempo tracked
               <span className="text-muted-foreground/60 cursor-help">ⓘ</span>
             </p>
-            <p className="kpi-value mt-1">{formatMinutes(summary.total_tracked_minutes)}</p>
+            <p className="kpi-value mt-1">{summary.total_tracked_minutes == null ? "—" : formatMinutes(summary.total_tracked_minutes)}</p>
             <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
               <span>
-                Estimado: <span className="mono">{formatMinutes(summary.total_estimated_minutes)}</span>
+                Estimado: <span className="mono">{summary.total_estimated_minutes == null ? "—" : formatMinutes(summary.total_estimated_minutes)}</span>
               </span>
               <span className="text-muted-foreground/40">·</span>
               <span>
-                Declarado: <span className="mono">{formatMinutes(summary.total_actual_minutes)}</span>
+                Declarado: <span className="mono">{summary.total_actual_minutes == null ? "—" : formatMinutes(summary.total_actual_minutes)}</span>
               </span>
             </div>
           </CardContent>
-        </Card>
+        </Card>}
         {canReadClientHealth && healthQuery.isError && (
-          <Card>
+          <Card className={!canReadTasks && !canReadTime ? "col-span-2 lg:col-span-2" : undefined}>
             <CardContent className="flex h-full flex-col items-start justify-center gap-2 p-4" role="alert">
               <p className="text-sm">No se pudo cargar la salud del cliente.</p>
               <Button variant="outline" size="sm" disabled={healthQuery.isFetching} onClick={() => void healthQuery.refetch()}>Reintentar salud</Button>
@@ -592,7 +610,7 @@ export default function ClientDetailPage() {
           const presentation = clientHealthPresentation(health)
           const measuredFactors = (Object.keys(health.factors) as Array<keyof typeof health.factors>).filter((factor) => health.factors[factor] != null)
           const unavailableFactors = (Object.keys(health.factors) as Array<keyof typeof health.factors>).filter((factor) => health.factors[factor] == null)
-          return <Card className={health.risk_signals.length ? "border-red-500/40" : ""}>
+          return <Card className={`${!canReadTasks && !canReadTime ? "col-span-2 lg:col-span-2 " : ""}${health.risk_signals.length ? "border-red-500/40" : ""}`}>
             <CardContent className="p-4">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                 <Heart className="h-3 w-3 flex-shrink-0" /> <span className="truncate">Salud</span>
@@ -691,7 +709,11 @@ export default function ClientDetailPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {projects.map((p) => (
+                {projects.map((p) => {
+                  const hasTaskMetrics = p.progress_percent != null
+                    && p.completed_task_count != null
+                    && p.task_count != null
+                  return (
                   <TableRow key={p.id}>
                     <TableCell className="font-medium">
                       <Link to={`/projects/${p.id}`} className="text-brand hover:underline">
@@ -705,7 +727,7 @@ export default function ClientDetailPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      {hasTaskMetrics ? <div className="flex items-center gap-2">
                         <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
                           <div
                             className="h-full bg-brand rounded-full"
@@ -713,11 +735,12 @@ export default function ClientDetailPage() {
                           />
                         </div>
                         <span className="text-xs mono">{p.progress_percent}%</span>
-                      </div>
+                      </div> : <span className="text-sm text-muted-foreground">No disponible</span>}
                     </TableCell>
-                    <TableCell className="mono">{p.completed_task_count}/{p.task_count}</TableCell>
+                    <TableCell className="mono">{hasTaskMetrics ? `${p.completed_task_count}/${p.task_count}` : "No disponible"}</TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
                 {projects.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
@@ -737,7 +760,7 @@ export default function ClientDetailPage() {
         <div className="space-y-6">
           <EngineMetricsWidget client={client} />
           <RevenueIntelligenceCard client={client} />
-          <ClientDashboardTab client={client} />
+          {canReadFinancialPanel && canReadTime && <ClientDashboardTab client={client} />}
         </div>
       )}
 
@@ -870,9 +893,7 @@ export default function ClientDetailPage() {
                     <TableCell className="mono">{inv.due_date ? new Date(inv.due_date).toLocaleDateString("es-ES") : "-"}</TableCell>
                     <TableCell className="mono font-semibold">{formatCurrency(inv.total, inv.currency || "EUR")}</TableCell>
                     <TableCell>
-                      <Badge variant={inv.status === "paid" ? "success" : inv.status === "overdue" ? "destructive" : "warning"}>
-                        {inv.status === "paid" ? "Pagada" : inv.status === "overdue" ? "Vencida" : "Pendiente"}
-                      </Badge>
+                      <InvoiceStatusBadge status={inv.status} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -890,7 +911,7 @@ export default function ClientDetailPage() {
       )}
 
       {/* Time Log Dialog */}
-      {timeLogTaskId && (
+      {canReadTime && timeLogTaskId && (
         <TimeLogDialog
           taskId={timeLogTaskId.id}
           taskTitle={timeLogTaskId.title}
@@ -900,15 +921,15 @@ export default function ClientDetailPage() {
         />
       )}
       <TaskPanel
-        open={taskPanelId !== null || creatingTask}
+        open={canReadTasks && (taskPanelId !== null || creatingTask)}
         taskId={taskPanelId}
         defaults={creatingTask ? { clientId } : undefined}
         onOpenChange={(open) => { if (!open) { setTaskPanelId(null); setCreatingTask(false) } }}
-        onOpenTime={(task) => { setTaskPanelId(null); setTimeLogTaskId({ id: task.id, title: task.title, retired: !!task.retired_at }) }}
+        onOpenTime={(task) => { if (canReadTime) { setTaskPanelId(null); setTimeLogTaskId({ id: task.id, title: task.title, retired: !!task.retired_at }) } }}
       />
 
       {/* What-If Modal */}
-      <Dialog open={whatIfOpen} onOpenChange={setWhatIfOpen}>
+      <Dialog open={canReadFinancialPanel && whatIfOpen} onOpenChange={setWhatIfOpen}>
         <DialogHeader>
           <DialogTitle>Impacto financiero — {client?.name}</DialogTitle>
         </DialogHeader>

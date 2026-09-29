@@ -26,13 +26,13 @@ import {
   invalidateProjectChange,
   invalidateTaskChange,
   invalidateTimeChange,
-  projectKeys,
 } from "@/lib/query-keys";
 import type { CommandContext, CommandEntity, CommandReceipt } from "@/lib/types";
 import { showUndoResult } from "@/lib/undo-feedback";
 import { getErrorMessage } from "@/lib/utils";
 import { formatCivilDate } from "@/lib/dates";
 import { useAuth } from "@/context/auth-context";
+import { isEnabled } from "@/lib/hidden-modules";
 
 interface Props {
   open: boolean;
@@ -142,7 +142,13 @@ function appliedValue(
 }
 
 export function QuickCaptureDialog({ open, onOpenChange }: Props) {
-  const [mode, setMode] = useState<Mode>("command");
+  const { user, hasPermission } = useAuth();
+  const canReadTasks = isEnabled("tasks") && hasPermission("tasks");
+  const canWriteTasks = isEnabled("tasks") && hasPermission("tasks", true);
+  const canWriteProjects = isEnabled("projects") && hasPermission("projects", true);
+  const canWriteTime = isEnabled("timesheet") && hasPermission("timesheet", true);
+  const canUseMutatingCommands = canWriteTasks || canWriteProjects || (canWriteTime && canReadTasks);
+  const [mode, setMode] = useState<Mode>(() => canUseMutatingCommands ? "command" : "capture");
   const [text, setText] = useState("");
   const [receipt, setReceipt] = useState<CommandReceipt | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -154,6 +160,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     channel: "app" | "extension";
     context?: CommandContext;
   } | null>(null);
+  const failedRetrySource = useRef<string | null>(null);
   const stepKey = useRef<string>(requestKey());
   const stepPayload = useRef<{
     receiptId: string;
@@ -165,27 +172,31 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
   const [activeGeneration, setActiveGeneration] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const canReadClients = isEnabled("clients") && hasPermission("clients");
+  const canReadProjects = isEnabled("projects") && hasPermission("projects");
 
   const [captureText, setCaptureText] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [clientId, setClientId] = useState("");
   const [projectId, setProjectId] = useState("");
+  const captureAccessKey = `${user?.id ?? "anonymous"}:${canReadClients}:${canReadProjects}`;
+  const previousCaptureAccessKey = useRef(captureAccessKey);
+  const selectedContextOwnerId = useRef(user?.id);
 
   const { data: clients = [] } = useQuery({
-    queryKey: ["clients-active-list"],
+    queryKey: ["quick-capture", user?.id, "clients-active"],
     queryFn: () => clientsApi.listAll("active"),
     staleTime: 60_000,
-    enabled: open && mode === "capture",
+    enabled: open && mode === "capture" && canReadClients,
   });
   const { data: projects = [] } = useQuery({
-    queryKey: projectKeys.list(["active"]),
+    queryKey: ["quick-capture", user?.id, "projects-active"],
     queryFn: () => projectsApi.listAll({ status: "active" }),
     staleTime: 60_000,
-    enabled: open && mode === "capture",
+    enabled: open && mode === "capture" && canReadProjects,
   });
   const { data: recentCommands } = useQuery({
-    queryKey: ["commands", "recent"],
+    queryKey: ["commands", "recent", user?.id ?? 0],
     queryFn: () => commandsApi.list(1, 5),
     enabled: open && mode === "command" && !receipt,
     staleTime: 15_000,
@@ -368,8 +379,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
       inboxApi.create({
         raw_text: captureText.trim(),
         source: "quick_capture",
-        client_id: clientId ? Number(clientId) : undefined,
-        project_id: projectId ? Number(projectId) : undefined,
+        ...(canReadClients && selectedContextOwnerId.current === user?.id && clientId ? { client_id: Number(clientId) } : {}),
+        ...(canReadProjects && selectedContextOwnerId.current === user?.id && projectId ? { project_id: Number(projectId) } : {}),
         link_url: linkUrl.trim() || undefined,
       }),
     onSuccess: () => {
@@ -391,6 +402,28 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     return () => window.clearTimeout(id);
   }, [open]);
 
+  useEffect(() => {
+    if (previousCaptureAccessKey.current === captureAccessKey) return;
+    previousCaptureAccessKey.current = captureAccessKey;
+    selectedContextOwnerId.current = user?.id;
+    setClientId("");
+    setProjectId("");
+  }, [captureAccessKey, user?.id]);
+
+  const commandAccessKey = `${user?.id ?? "anonymous"}:${canReadTasks}:${canWriteTasks}:${canWriteProjects}:${canWriteTime}`;
+  const previousCommandAccessKey = useRef(commandAccessKey);
+  useEffect(() => {
+    if (previousCommandAccessKey.current === commandAccessKey) return;
+    previousCommandAccessKey.current = commandAccessKey;
+    invalidateCommand();
+    setText("");
+    // A revoked write permission returns people to their personal capture; the
+    // command tab remains available for their authorized queries.
+    if (!canUseMutatingCommands) setMode("capture");
+    // `invalidateCommand` intentionally uses the current generation/ref state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commandAccessKey, canUseMutatingCommands]);
+
   const resetCommand = () => {
     invalidateCommand();
     setText("");
@@ -402,6 +435,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     setUndoneChangeId(null);
     commandKey.current = requestKey();
     commandReplayPayload.current = null;
+    failedRetrySource.current = null;
     stepKey.current = requestKey();
     window.setTimeout(() => textareaRef.current?.focus(), 0);
   };
@@ -415,6 +449,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     setUndoneChangeId(null);
     commandKey.current = requestKey();
     commandReplayPayload.current = null;
+    failedRetrySource.current = null;
     stepKey.current = requestKey();
     window.setTimeout(() => textareaRef.current?.focus(), 0);
   };
@@ -430,6 +465,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     invalidateCommand();
     setText(item.raw_text);
     commandKey.current = item.request_key;
+    failedRetrySource.current = null;
     commandReplayPayload.current = {
       channel: item.channel,
       context: item.context ?? undefined,
@@ -442,6 +478,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     replaceReceipt(item);
   };
   const submitCommand = () => {
+    if (!canSubmitCommand) return;
     const target: CommandTarget = {
       generation: commandGeneration.current,
       request: {
@@ -452,6 +489,15 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
       },
     };
     commandMutation.mutate(target);
+  };
+  const retryFailedCommand = () => {
+    if (!receipt || isPending) return;
+    if (!networkUncertain && failedRetrySource.current !== receipt.id) {
+      commandKey.current = requestKey();
+      commandReplayPayload.current = null;
+      failedRetrySource.current = receipt.id;
+    }
+    submitCommand();
   };
   const updateCommandText = (next: string) => {
     if (!receiptRef.current && !networkUncertain && next !== text) {
@@ -474,9 +520,42 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
     setMode(next);
   };
   const handleOpenChange = (next: boolean) => {
-    if (!next) invalidateCommand();
+    if (!next) {
+      invalidateCommand();
+      setMode(canUseMutatingCommands ? "command" : "capture");
+    }
     onOpenChange(next);
   };
+
+  const normalizedCommand = text.trim().replace(/^¿\s*/, "").toLocaleLowerCase("es");
+  // Readers get a deliberately small query-only entry point. Mutation parsing
+  // stays on the server, which remains the authority for every write.
+  const isDecisionQuery = /^(?:consulta|muestra|qué|que).*\bdecisiones\b/.test(normalizedCommand)
+    || ["qué necesita respuesta mía", "que necesita respuesta mía", "qué necesita mi respuesta", "que necesita mi respuesta"].includes(normalizedCommand);
+  const isTaskQuery = /^(?:consulta|muestra|qué|que).*\b(?:prioridades|prioridad|bloqueos|bloqueadas|esperando)\b/.test(normalizedCommand);
+  const canSubmitCommand = canUseMutatingCommands || isDecisionQuery || (canReadTasks && isTaskQuery);
+  const commandPlaceholder = canWriteProjects && canWriteTasks
+    ? "Ej. Completa la tarea Revisar portada, crea una tarea o consulta bloqueos"
+    : canWriteTasks
+    ? "Ej. Completa la tarea Revisar portada o crea una tarea"
+    : canWriteProjects
+    ? "Ej. Crea proyecto \"Web nueva\" para cliente \"Nombre del cliente\""
+    : canWriteTime && canReadTasks
+    ? "Ej. Registra 30 minutos en la tarea Revisar portada"
+    : canReadTasks
+    ? "Ej. Consulta prioridades o consulta bloqueos"
+    : "Ej. Consulta decisiones pendientes";
+  const commandHelp = canWriteProjects && canWriteTasks
+    ? "Las acciones simples muestran un recibo con Deshacer. Si creas un proyecto con su primera tarea, revisarás ambos antes de guardarlos."
+    : canWriteTasks
+    ? "Puedes crear y actualizar tareas. Los proyectos y el tiempo requieren sus permisos de escritura."
+    : canWriteProjects
+    ? "Puedes crear proyectos. Las tareas y el tiempo requieren sus permisos de escritura."
+    : canWriteTime && canReadTasks
+    ? "Puedes registrar tiempo en tareas que puedas consultar. Crear o actualizar tareas requiere su permiso de escritura."
+    : canReadTasks
+    ? "Puedes consultar prioridades y bloqueos. Para cambiar trabajo, guarda una nota para aclarar o pide acceso de escritura."
+    : "Puedes consultar tus decisiones pendientes. Para cambiar trabajo, guarda una nota para aclarar o pide acceso de escritura.";
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -523,7 +602,7 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                       submitCommand();
                     }
                   }}
-                  placeholder="Ej. Completa la tarea Revisar portada, crea una tarea o consulta bloqueos"
+                  placeholder={commandPlaceholder}
                   className="min-h-28 resize-none"
                   disabled={isPending || networkUncertain}
                   aria-label="Petición"
@@ -553,26 +632,27 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                 )}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs text-muted-foreground">
-                    Las acciones simples muestran un recibo con Deshacer. Si creas un proyecto con su primera tarea, revisarás ambos antes de guardarlos.
+                    {commandHelp}
                   </p>
                   <Button
                     onClick={submitCommand}
-                    disabled={!text.trim() || isPending || networkUncertain}
+                    disabled={!text.trim() || !canSubmitCommand || isPending || networkUncertain}
                   >
                     {isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <Zap className="h-4 w-4" />
                     )}
-                    Hacer
+                    {canUseMutatingCommands ? "Hacer" : "Consultar"}
                   </Button>
                 </div>
                 <details className="rounded-lg border border-border p-3 text-sm">
                   <summary className="cursor-pointer font-medium">Ver ejemplos de peticiones</summary>
                   <ul className="mt-2 space-y-2 text-muted-foreground">
-                    <li>Crea proyecto "Web nueva" para cliente "Nombre del cliente" con primera tarea "Preparar propuesta" para mañana</li>
                     <li>Consulta decisiones pendientes</li>
-                    <li>Completa la tarea "Preparar propuesta"</li>
+                    {canReadTasks && <><li>Consulta prioridades</li><li>Consulta bloqueos</li></>}
+                    {canWriteProjects && <li>Crea proyecto "Web nueva" para cliente "Nombre del cliente"</li>}
+                    {canWriteTasks && <li>Completa la tarea "Preparar propuesta"</li>}
                   </ul>
                   <p className="mt-2 text-xs text-muted-foreground">Sustituye los nombres por los de tu trabajo. Las comillas separan los nombres del resto de la petición.</p>
                 </details>
@@ -713,15 +793,20 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                   {receipt.error?.detail ??
                     "No se ha podido realizar la petición."}
                 </p>
+                <p className="text-sm">
+                  {networkUncertain
+                    ? "No hemos recibido respuesta del reintento. Comprueba la misma petición antes de volver a enviarla."
+                    : "Se enviará una petición nueva con el mismo texto."}
+                </p>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={editCommand}>
+                  {!networkUncertain && <Button variant="outline" onClick={editCommand}>
                     Editar petición
-                  </Button>
+                  </Button>}
                   <Button
-                    onClick={submitCommand}
+                    onClick={retryFailedCommand}
                     disabled={isPending}
                   >
-                    Reintentar
+                    {networkUncertain ? "Comprobar el reintento" : "Reintentar"}
                   </Button>
                 </div>
               </div>
@@ -734,6 +819,11 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                 aria-live="polite"
               >
                 <p className="font-medium">{receipt.result.message}</p>
+                {receipt.result.kind === "derivation" && receipt.raw_text && (
+                  <blockquote className="rounded-md border border-border bg-background/70 px-3 py-2 text-sm text-muted-foreground">
+                    {receipt.raw_text}
+                  </blockquote>
+                )}
                 {receipt.result.applied && (
                   <dl className="grid gap-x-4 gap-y-1 rounded-md bg-background/70 p-3 text-sm sm:grid-cols-[max-content_1fr]">
                     {orderedAppliedEntries(receipt.result.applied).map(([field, value]) => (
@@ -794,6 +884,15 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                   ))
                 )}
                 <div className="flex flex-wrap gap-2">
+                  {receipt.result.action?.kind === "open_project_form" && (
+                    <Link
+                      className="inline-flex h-10 items-center justify-center rounded-[10px] bg-brand px-5 py-2 text-sm font-semibold text-primary-foreground shadow hover:bg-brand/90"
+                      to={receipt.result.action.href}
+                      onClick={() => onOpenChange(false)}
+                    >
+                      Revisar proyecto
+                    </Link>
+                  )}
                   {receipt.result.undo_available && receipt.change_log_id && (
                     <Button
                       variant="outline"
@@ -834,8 +933,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                 placeholder="Enlace de referencia (opcional)"
               />
             </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Select
+            {(canReadClients || canReadProjects) && <div className={`grid grid-cols-1 gap-2 ${canReadClients && canReadProjects ? "sm:grid-cols-2" : "sm:grid-cols-1"}`}>
+              {canReadClients && <Select
                 aria-label="Cliente"
                 value={clientId}
                 onChange={(event) => {
@@ -849,8 +948,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                     {client.name}
                   </option>
                 ))}
-              </Select>
-              <Select
+              </Select>}
+              {canReadProjects && <Select
                 aria-label="Proyecto"
                 value={projectId}
                 onChange={(event) => setProjectId(event.target.value)}
@@ -866,8 +965,8 @@ export function QuickCaptureDialog({ open, onOpenChange }: Props) {
                       {project.name}
                     </option>
                   ))}
-              </Select>
-            </div>
+              </Select>}
+            </div>}
             <div className="flex justify-end">
               <Button
                 onClick={() => captureMutation.mutate()}

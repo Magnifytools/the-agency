@@ -20,6 +20,8 @@ from backend.schemas.daily import (
     DailySubmitRequest,
     DailyEditRequest,
     DailyEnrichRequest,
+    DailySendRequest,
+    DailyPreviewResponse,
     DailyUpdateResponse,
     ParsedDailyData,
 )
@@ -131,8 +133,8 @@ async def submit_daily(
     current_user: User = Depends(get_current_user),
 ):
     """Save immediately. AI enrichment is a separate, explicit operation."""
-    if not body.raw_text.strip():
-        raise HTTPException(400, "El texto del resumen no puede estar vacío")
+    if not body.raw_text.strip() and not body.source_fact_keys:
+        raise HTTPException(400, "Añade notas o selecciona al menos un hecho para el cierre")
     actor = await _lock_actor(db, current_user.id)
     update_date = body.date or business_today()
     keys = list(dict.fromkeys(body.source_fact_keys))
@@ -283,9 +285,9 @@ async def edit_daily(
     actor = await _lock_actor(db, current_user.id)
     daily = await _load_owned(db, daily_id, actor, lock=True)
     raw = body.raw_text if body.raw_text is not None else daily.raw_text
-    if not raw.strip():
-        raise HTTPException(400, "El texto del resumen no puede estar vacío")
     keys = list(dict.fromkeys(body.source_fact_keys)) if body.source_fact_keys is not None else _keys(daily.source_facts)
+    if not raw.strip() and not keys:
+        raise HTTPException(400, "Añade notas o selecciona al menos un hecho para el cierre")
     parsed = (body.parsed_data.model_dump() if body.parsed_data is not None else
               None if raw != daily.raw_text or keys != _keys(daily.source_facts) else daily.parsed_data)
     unchanged = raw == daily.raw_text and keys == _keys(daily.source_facts) and parsed == daily.parsed_data
@@ -385,15 +387,33 @@ async def _send_daily_as_thread(
     return True
 
 
+@router.get("/{daily_id}/preview", response_model=DailyPreviewResponse)
+async def preview_daily_for_discord(
+    daily_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Show the exact body that would be queued, without contacting Discord."""
+    from backend.services import deliveries
+    daily = await deliveries.authorize_source(db, "daily", daily_id, current_user, write=False)
+    _, content = deliveries.render_snapshot("daily", daily)
+    return DailyPreviewResponse(revision=daily.revision, content=content)
+
+
 @router.post("/{daily_id}/send-discord", response_model=DeliveryReceipt, status_code=202)
 async def send_daily_to_discord(
     daily_id: int,
+    body: DailySendRequest | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Persist an intent; the durable worker is the only daily sender."""
     from backend.services import deliveries
-    row = await deliveries.enqueue(db, "daily", daily_id, current_user)
+    row = await deliveries.enqueue(
+        db, "daily", daily_id, current_user,
+        custom_content=body.content if body else None,
+        expected_revision=body.revision if body else None,
+    )
     source = await deliveries.authorize_source(db, "daily", daily_id, current_user)
     return await deliveries.receipt(db, row, source)
 

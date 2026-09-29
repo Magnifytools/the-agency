@@ -80,6 +80,42 @@ describe("ClientsPage recovery states", () => {
     localStorage.clear()
   })
 
+  it("names the client selection controls in the desktop table", async () => {
+    api.clients.mockResolvedValueOnce({ items: [clientRow], total: 1, page: 1, page_size: 25 })
+    show()
+    expect(await screen.findByRole("checkbox", { name: "Seleccionar cliente Cliente conservado" })).toBeInTheDocument()
+    expect(screen.getByRole("checkbox", { name: "Seleccionar todos los clientes visibles" })).toBeInTheDocument()
+  })
+
+  it("hides the client finalization menu from read-only users", async () => {
+    auth.canWriteClients = false
+    api.clients.mockResolvedValueOnce({ items: [clientRow], total: 1, page: 1, page_size: 25 })
+    show()
+
+    expect(await screen.findAllByText("Cliente conservado")).not.toHaveLength(0)
+    expect(screen.queryByRole("button", { name: "Más opciones" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Finalizar" })).not.toBeInTheDocument()
+  })
+
+  it("hides client bulk selection and status changes from read-only users", async () => {
+    auth.canWriteClients = false
+    api.clients.mockResolvedValueOnce({ items: [clientRow], total: 1, page: 1, page_size: 25 })
+    show()
+
+    expect(await screen.findAllByText("Cliente conservado")).not.toHaveLength(0)
+    expect(screen.queryByRole("checkbox", { name: "Seleccionar todos los clientes visibles" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("checkbox", { name: "Seleccionar cliente Cliente conservado" })).not.toBeInTheDocument()
+    expect(screen.queryByText("Cambiar estado…")).not.toBeInTheDocument()
+  })
+
+  it("keeps the client finalization menu available to writers", async () => {
+    api.clients.mockResolvedValueOnce({ items: [clientRow], total: 1, page: 1, page_size: 25 })
+    show()
+
+    await userEvent.click(await screen.findByRole("button", { name: "Más opciones" }))
+    expect(screen.getByRole("button", { name: "Finalizar" })).toBeInTheDocument()
+  })
+
   it("offers retry for an initial 503 without claiming the list is empty", async () => {
     api.clients.mockRejectedValueOnce(httpError(503))
     show()
@@ -175,6 +211,16 @@ describe("ClientsPage recovery states", () => {
     expect((await screen.findAllByText("1 riesgo")).length).toBeGreaterThan(0)
     expect(screen.queryByText("95")).not.toBeInTheDocument()
     expect(screen.getAllByText("No evaluado · solo activos").length).toBeGreaterThan(0)
+  })
+
+  it("shows a long intermediary name as wrapping provenance below the client", async () => {
+    const intermediary = "Asociación internacional de agencias colaboradoras"
+    api.clients.mockResolvedValueOnce({ items: [{ ...clientRow, is_intermediary_deal: true, intermediary_name: intermediary }], total: 1, page: 1, page_size: 25 })
+    show()
+
+    const provenance = await screen.findByText(`Vía ${intermediary}`)
+    expect(provenance).toHaveClass("break-words")
+    expect(provenance).toHaveAttribute("title", `Vía ${intermediary}`)
   })
 
   it("creates the client, contacts and optional project in one recoverable request", async () => {
@@ -414,4 +460,28 @@ describe("ClientsPage recovery states", () => {
     expect(api.onboard).not.toHaveBeenCalled()
     storage.mockRestore()
   })
+
+  it("keeps client detail links but hides client mutations from readers", async () => {
+    auth.canWriteClients = false
+    api.clients.mockResolvedValueOnce({ items: [clientRow], total: 1, page: 1, page_size: 25 })
+    show()
+
+    expect((await screen.findAllByRole("link", { name: "Cliente conservado" })).every((link) => link.getAttribute("href") === "/clients/4")).toBe(true)
+    expect(screen.queryByRole("button", { name: "Nuevo cliente" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Editar cliente" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Más opciones" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Finalizar" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("columnheader", { name: "Acciones" })).not.toBeInTheDocument()
+  })
+
+  it("keeps client creation and editing available to writers", async () => {
+    api.clients.mockResolvedValueOnce({ items: [clientRow], total: 1, page: 1, page_size: 25 })
+    show()
+
+    expect(await screen.findByRole("button", { name: "Nuevo cliente" })).toBeEnabled()
+    await screen.findAllByRole("link", { name: "Cliente conservado" })
+    expect(screen.getAllByRole("button", { name: "Editar cliente" }).every((button) => !button.hasAttribute("disabled"))).toBe(true)
+    expect(screen.getByRole("columnheader", { name: "Acciones" })).toBeInTheDocument()
+  })
+
 })

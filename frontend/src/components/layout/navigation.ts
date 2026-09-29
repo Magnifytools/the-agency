@@ -2,7 +2,7 @@ import { CalendarDays, CheckSquare, Users, ClipboardList, Settings, type LucideI
 import { isHidden } from "@/lib/hidden-modules"
 
 export type AreaId = "today" | "work" | "clients" | "summaries" | "settings"
-export interface AreaLink { to: string; label: string; module?: string; hidden?: string; admin?: boolean }
+export interface AreaLink { to: string; label: string; mobileLabel?: string; module?: string; hidden?: string; admin?: boolean }
 export interface NavigationArea { id: AreaId; label: string; icon: LucideIcon; links: AreaLink[] }
 
 const areas: NavigationArea[] = [
@@ -25,9 +25,9 @@ const areas: NavigationArea[] = [
     { to: "/clients", label: "Clientes", module: "clients" },
   ] },
   { id: "summaries", label: "Resúmenes", icon: ClipboardList, links: [
-    { to: "/dailys", label: "Mi resumen diario" },
-    { to: "/digests", label: "Resúmenes de clientes", module: "digests" },
-    { to: "/reports", label: "Informes", module: "reports", hidden: "reports" },
+    { to: "/dailys", label: "Mi resumen diario", mobileLabel: "Diario" },
+    { to: "/digests", label: "Resúmenes de clientes", mobileLabel: "Clientes", module: "digests" },
+    { to: "/reports", label: "Informes", mobileLabel: "Informes", module: "reports", hidden: "reports" },
   ] },
   { id: "settings", label: "Ajustes", icon: Settings, links: [
     { to: "/settings", label: "Preferencias" },

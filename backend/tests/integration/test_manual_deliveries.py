@@ -239,6 +239,32 @@ async def test_http_ownership_scopes_history_and_no_provider_before_worker(fixtu
     no_http.assert_not_awaited()
 
 
+async def test_manual_history_rechecks_source_scope_before_limit_after_role_change(fixture):
+    maker, ids = fixture
+    mine = await queue(fixture, kind="pm_briefing", scope="mine", content="Personal briefing")
+    team = await queue(fixture, kind="pm_briefing", scope="team", content="Team briefing")
+    weekly = await queue(fixture, kind="weekly_report", content="Admin weekly report")
+    async with client(fixture) as admin:
+        response = await admin.get("/api/deliveries/manual", params={"kind": "pm_briefing"})
+        assert response.status_code == 200
+        assert {item["delivery_id"] for item in response.json()} == {mine["delivery_id"], team["delivery_id"]}
+
+    async with maker() as db:
+        await db.execute(update(User).where(User.id == ids["admin"]).values(role=UserRole.member))
+        db.add(UserPermission(user_id=ids["admin"], module="pm", can_read=True, can_write=False))
+        await db.commit()
+
+    async with client(fixture) as member:
+        response = await member.get("/api/deliveries/manual", params={"kind": "pm_briefing", "limit": 1})
+        assert response.status_code == 200
+        assert [item["delivery_id"] for item in response.json()] == [mine["delivery_id"]]
+        assert response.json()[0]["content"] == "Personal briefing"
+        assert (await member.get("/api/deliveries/manual", params={"kind": "pm_briefing", "scope": "team"})).status_code == 403
+        assert (await member.get(f"/api/deliveries/{team['delivery_id']}")).status_code == 403
+        assert (await member.get("/api/deliveries/manual", params={"kind": "weekly_report"})).status_code == 403
+        assert (await member.get(f"/api/deliveries/{weekly['delivery_id']}")).status_code == 403
+
+
 async def test_summary_aliases_and_manual_endpoints_return_real_pending_receipts(fixture):
     async with client(fixture) as admin:
         first = await admin.post("/api/discord/send", params={"date": "2026-09-14"})

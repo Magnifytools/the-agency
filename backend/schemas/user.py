@@ -15,6 +15,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    is_active: bool = True
     full_name: Optional[str] = None
     hourly_rate: Optional[float] = None
     cost_per_hour: Optional[float] = None

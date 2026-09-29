@@ -93,7 +93,7 @@ async def test_generate_preserves_prior_versions_and_provider_failure(
         patch(
             "backend.api.routes.digests.collect_digest_data",
             new_callable=AsyncMock,
-            return_value={"client_name": client.name},
+            return_value={"client_name": client.name, "source_catalog": {}},
         ),
         patch("backend.api.routes.digests.generate_digest_content", generated),
     ):
@@ -101,17 +101,20 @@ async def test_generate_preserves_prior_versions_and_provider_failure(
             "client_id": client.id,
             "period_start": "2026-09-07",
             "period_end": "2026-09-13",
+            "generation_key": "version-first-key",
         })
         second = await admin_client.post("/api/digests/generate", json={
             "client_id": client.id,
             "period_start": "2026-09-07",
             "period_end": "2026-09-13",
+            "generation_key": "version-second-key",
         })
         generated.side_effect = RuntimeError("provider unavailable")
         failed = await admin_client.post("/api/digests/generate", json={
             "client_id": client.id,
             "period_start": "2026-09-14",
             "period_end": "2026-09-20",
+            "generation_key": "version-failed-key",
         })
 
     assert first.status_code == 200, first.text
@@ -141,7 +144,7 @@ async def test_generate_default_uses_last_closed_madrid_week(
         patch(
             "backend.api.routes.digests.collect_digest_data",
             new_callable=AsyncMock,
-            return_value={"client_name": client.name},
+            return_value={"client_name": client.name, "source_catalog": {}},
         ),
         patch(
             "backend.api.routes.digests.generate_digest_content",
@@ -150,7 +153,7 @@ async def test_generate_default_uses_last_closed_madrid_week(
         ),
     ):
         response = await admin_client.post(
-            "/api/digests/generate", json={"client_id": client.id}
+            "/api/digests/generate", json={"client_id": client.id, "generation_key": "default-period-key"}
         )
 
     assert response.status_code == 200, response.text
@@ -229,7 +232,7 @@ async def test_put_is_idempotent_or_creates_new_source_version(
         return_value=regenerated_content,
     ) as generator:
         regenerated = await admin_client.put(
-            f"/api/digests/{original.id}", json={"tone": "formal"}
+            f"/api/digests/{original.id}", json={"tone": "formal", "generation_key": "tone-regeneration-key"}
         )
 
     assert regenerated.status_code == 200, regenerated.text
@@ -238,7 +241,10 @@ async def test_put_is_idempotent_or_creates_new_source_version(
     assert regenerated.json()["content"]["date"] == (
         "Período del 7 al 13 de septiembre de 2026"
     )
-    generator.assert_awaited_once_with(original.raw_context, DigestTone.formal)
+    generated_context = generator.await_args.args[0]
+    assert generated_context["client_name"] == original.raw_context["client_name"]
+    assert generated_context["source_catalog"]["legacy:raw_context"]["class"] == "legacy"
+    assert generator.await_args.args[1] == DigestTone.formal
     await db_session.refresh(original)
     assert original.tone == DigestTone.cercano
     assert await db_session.scalar(select(func.count(WeeklyDigest.id)).where(

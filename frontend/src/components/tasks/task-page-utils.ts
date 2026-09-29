@@ -12,6 +12,21 @@ export function taskQueryKeyWithWeek(base: readonly unknown[], week: { from: str
   return [...base, week.from, week.to]
 }
 
+export function selectedTaskAssignee(search: URLSearchParams, userId: number | undefined, isAdmin: boolean): string {
+  const value = search.get("assigned")
+  if (value === "all") return ""
+  if (value && /^[1-9]\d*$/.test(value)) return value
+  return !isAdmin && userId ? String(userId) : ""
+}
+
+export function withTaskAssignee(search: URLSearchParams, value: string, isAdmin: boolean): URLSearchParams {
+  const next = new URLSearchParams(search)
+  if (value) next.set("assigned", value)
+  else if (isAdmin) next.delete("assigned")
+  else next.set("assigned", "all")
+  return next
+}
+
 export function withExplicitActualMinutes(data: TaskCreate, rawValue: FormDataEntryValue | null, wasEdited: boolean): TaskCreate {
   if (!wasEdited) return data
   return { ...data, actual_minutes: rawValue ? Number(rawValue) : null }

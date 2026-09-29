@@ -73,10 +73,10 @@ async def get_history(limit: int = Query(30, ge=1, le=100), before: int | None =
                       db: AsyncSession = Depends(get_db), actor: User = Depends(get_current_user)):
     own = Occurrence.recipient_id == actor.id
     if actor.role == UserRole.admin:
-        own = or_(own, Occurrence.kind == "weekly")
+        own = or_(own, Occurrence.kind.in_(service.TEAM_KINDS))
     query = select(Occurrence).where(own)
     if actor.role != UserRole.admin:
-        query = query.where(Occurrence.kind != "weekly")
+        query = query.where(Occurrence.kind.not_in(service.TEAM_KINDS))
     if before is not None:
         query = query.where(Occurrence.id < before)
     rows = (await db.scalars(query.order_by(Occurrence.id.desc()).limit(limit))).all()

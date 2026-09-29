@@ -7,6 +7,8 @@ Covers:
 """
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from httpx import AsyncClient, ASGITransport
 
@@ -35,6 +37,84 @@ async def test_weekly_sender_passes_explicit_civil_period_to_shared_reader(monke
         include_financial=finance_enabled,
     )
     assert enqueue.await_args.kwargs["content"] == "Reviewed weekly report"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("today", "period_start", "period_end"),
+    [
+        (date(2026, 9, 21), date(2026, 9, 14), date(2026, 9, 18)),
+        (date(2026, 9, 25), date(2026, 9, 14), date(2026, 9, 18)),
+        (date(2026, 9, 26), date(2026, 9, 21), date(2026, 9, 25)),
+        (date(2026, 9, 27), date(2026, 9, 21), date(2026, 9, 25)),
+    ],
+)
+async def test_weekly_sender_default_uses_last_closed_madrid_workweek(
+    monkeypatch, admin_user, today, period_start, period_end
+):
+    from unittest.mock import AsyncMock
+    from backend.api.routes import discord
+
+    db = AsyncMock()
+    generator = AsyncMock(return_value="Reviewed weekly report")
+    enqueue = AsyncMock(return_value={"success": False, "status": "pending"})
+    monkeypatch.setattr(discord, "business_today", lambda: today)
+    monkeypatch.setattr(discord, "generate_weekly_report", generator)
+    monkeypatch.setattr(discord, "enqueue_request", enqueue)
+    monkeypatch.setattr(discord, "is_enabled", lambda module: False)
+
+    response = await discord.send_weekly_report(week_start=None, db=db, current_user=admin_user)
+
+    assert response["status"] == "pending"
+    generator.assert_awaited_once_with(
+        db,
+        period_start=period_start,
+        period_end=period_end,
+        include_financial=False,
+    )
+    assert enqueue.await_args.kwargs["period_start"] == period_start
+    assert enqueue.await_args.kwargs["period_end"] == period_end
+
+
+@pytest.mark.asyncio
+async def test_weekly_sender_http_default_uses_closed_madrid_workweek(admin_client, monkeypatch):
+    from unittest.mock import AsyncMock
+    from backend.api.routes import discord
+
+    receipt = dict(
+        delivery_id="test",
+        success=False,
+        status="pending",
+        message="En cola",
+        source_kind="communication",
+        source_id=1,
+        source_version="hash",
+        source_changed=False,
+        content="Reviewed weekly report",
+        created_at="2026-09-26T00:00:00Z",
+        sent_at=None,
+        error_code=None,
+        steps=[],
+        can_retry=False,
+        can_resend=False,
+        can_cancel=True,
+        worker_enabled=False,
+    )
+    generator = AsyncMock(return_value="Reviewed weekly report")
+    enqueue = AsyncMock(return_value=receipt)
+    monkeypatch.setattr(discord, "business_today", lambda: date(2026, 9, 26))
+    monkeypatch.setattr(discord, "generate_weekly_report", generator)
+    monkeypatch.setattr(discord, "enqueue_request", enqueue)
+    monkeypatch.setattr(discord, "is_enabled", lambda module: False)
+
+    response = await admin_client.post("/api/discord/send-weekly-report")
+
+    assert response.status_code == 202, response.text
+    assert response.json()["status"] == "pending"
+    assert generator.await_args.kwargs["period_start"] == date(2026, 9, 21)
+    assert generator.await_args.kwargs["period_end"] == date(2026, 9, 25)
+    assert enqueue.await_args.kwargs["period_start"] == date(2026, 9, 21)
+    assert enqueue.await_args.kwargs["period_end"] == date(2026, 9, 25)
 
 
 @pytest.mark.asyncio

@@ -25,6 +25,15 @@ export function Tooltip({ content, children, side = "bottom", align = "center", 
     }
   }, [open, side, align])
 
+  React.useEffect(() => {
+    if (!open) return
+    const closeOutside = (event: PointerEvent) => {
+      if (!triggerRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener("pointerdown", closeOutside)
+    return () => document.removeEventListener("pointerdown", closeOutside)
+  }, [open])
+
   const transformClass =
     align === "start" ? "translate-x-0" :
     align === "end" ? "-translate-x-full" :
@@ -38,7 +47,13 @@ export function Tooltip({ content, children, side = "bottom", align = "center", 
       onMouseLeave={() => setOpen(false)}
       onFocus={() => setOpen(true)}
       onBlur={() => setOpen(false)}
-      onClick={() => setOpen((v) => !v)}
+      onClick={() => setOpen(true)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation()
+          setOpen(false)
+        }
+      }}
     >
       {children}
       {open && createPortal(
@@ -63,7 +78,13 @@ export function Tooltip({ content, children, side = "bottom", align = "center", 
 export function InfoTooltip({ content, align = "end", className }: { content: React.ReactNode; align?: "start" | "center" | "end"; className?: string }) {
   return (
     <Tooltip content={content} align={align} className={className}>
-      <HelpCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground cursor-help transition-colors" />
+      <button
+        type="button"
+        aria-label={typeof content === "string" ? `Ayuda: ${content}` : "Más información"}
+        className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+      >
+        <HelpCircle aria-hidden="true" className="h-3.5 w-3.5" />
+      </button>
     </Tooltip>
   )
 }

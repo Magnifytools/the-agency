@@ -90,6 +90,36 @@ async def test_reschedule_changes_only_scheduled_date(admin_client, db_session):
     assert task.due_date == datetime(2026, 10, 20)
 
 
+@pytest.mark.parametrize("title,preposition", [
+    ("Informe para cliente", "para"),
+    ("Visita al cliente", "al"),
+])
+async def test_reschedule_quoted_title_with_date_preposition_is_undoable(
+    admin_client, db_session, title, preposition,
+):
+    task = Task(title=title, status=TaskStatus.pending)
+    db_session.add(task)
+    await db_session.commit()
+
+    response = await admin_client.post("/api/commands", json={
+        "request_key": f"command-quoted-reschedule-{preposition}",
+        "text": f'Reprograma la tarea "{title}" {preposition} 2026-10-05',
+    })
+    assert response.status_code == 200, response.text
+    receipt = response.json()
+    assert receipt["status"] == "executed"
+    assert receipt["intent"]["task_name"] == title
+    assert receipt["result"]["undo_available"] is True
+    assert receipt["change_log_id"] is not None
+    await db_session.refresh(task)
+    assert task.scheduled_date.isoformat() == "2026-10-05"
+
+    undo = await admin_client.post(f"/api/changes/{receipt['change_log_id']}/undo")
+    assert undo.status_code == 200, undo.text
+    await db_session.refresh(task)
+    assert task.scheduled_date is None
+
+
 async def test_explicit_minutes_create_time_and_undo_together(admin_client, db_session):
     task = Task(title="Cronometrada", status=TaskStatus.pending)
     db_session.add(task)
@@ -120,6 +150,46 @@ async def test_member_without_permission_gets_durable_failed_receipt(member_clie
     assert replay.status_code == 200
     assert replay.json()["id"] == str(row.id)
     assert replay.json()["status"] == "failed"
+
+
+async def test_restored_permission_requires_new_key_for_manual_retry(member_client, db_session):
+    original = {"request_key": KEY, "text": "Crea tarea Recuperada", "channel": "app"}
+    denied = await member_client.post("/api/commands", json=original)
+    assert denied.status_code == 403
+    failed = await db_session.scalar(select(CommandReceipt).where(
+        CommandReceipt.user_id == member_client.test_user.id,
+        CommandReceipt.request_key == KEY,
+    ))
+    assert failed.status == "failed"
+
+    db_session.add(UserPermission(
+        user_id=member_client.test_user.id, module="tasks", can_read=True, can_write=True,
+    ))
+    await db_session.commit()
+    await db_session.refresh(member_client.test_user, ["permissions"])
+
+    recovery = await member_client.post("/api/commands", json=original)
+    assert recovery.status_code == 200
+    assert recovery.json()["id"] == failed.id
+    assert recovery.json()["status"] == "failed"
+
+    retried = {**original, "request_key": "command-manual-retry-0001"}
+    success = await member_client.post("/api/commands", json=retried)
+    assert success.status_code == 200, success.text
+    receipt = success.json()
+    assert receipt["status"] == "executed"
+    assert receipt["id"] != failed.id
+    assert receipt["result"]["undo_available"] is True
+    assert len((await db_session.scalars(select(Task).where(Task.title == "Recuperada"))).all()) == 1
+
+    replay = await member_client.post("/api/commands", json=retried)
+    assert replay.status_code == 200
+    assert replay.json()["id"] == receipt["id"]
+    assert len((await db_session.scalars(select(Task).where(Task.title == "Recuperada"))).all()) == 1
+    receipts = (await db_session.scalars(select(CommandReceipt).where(
+        CommandReceipt.user_id == member_client.test_user.id,
+    ))).all()
+    assert {row.id for row in receipts} == {failed.id, receipt["id"]}
 
 
 async def test_project_creation_resolves_client_and_does_not_invent_commercial_fields(admin_client, db_session):

@@ -23,7 +23,7 @@ export function ProjectWorkSummary({ tasks, today, canWrite, onOpen, onAdd }: Pr
           {plannedDate(next)! < today ? " · Atrasada: revisar planificación" : plannedDate(next) === today ? " · Hoy" : ""}
         </span>
       </button> : <div className="mt-2 space-y-2">
-        <p className="text-sm text-muted-foreground">No hay una próxima acción planificada.{unplanned > 0 ? ` Hay ${unplanned} tareas sin planificar; abre una del listado para concretar el siguiente paso.` : ""}</p>
+        <p className="text-sm text-muted-foreground">No hay una próxima acción planificada.{unplanned > 0 ? ` Hay ${unplanned} ${unplanned === 1 ? "tarea sin planificar" : "tareas sin planificar"}. ${canWrite ? "Abre una del listado para concretar el siguiente paso." : "Puedes consultar su detalle en la lista."}` : ""}</p>
         {canWrite && <Button variant="outline" onClick={onAdd}>Añadir una acción</Button>}
       </div>}
     </div>

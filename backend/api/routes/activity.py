@@ -18,6 +18,7 @@ from backend.db.models import (
     User,
 )
 from backend.api.deps import get_current_user, require_module
+from backend.services.dashboard_access import has_module_read
 
 router = APIRouter(prefix="/api/clients", tags=["activity"])
 
@@ -31,7 +32,7 @@ async def get_client_activity(
     client_id: int,
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_module("clients")),
+    current_user: User = Depends(require_module("clients")),
 ):
     """Unified chronological activity feed for a client."""
     # Verify client exists
@@ -42,53 +43,62 @@ async def get_client_activity(
     events: list[dict] = []
 
     # 1) Communications
-    comms_q = (
-        select(CommunicationLog)
-        .where(CommunicationLog.client_id == client_id)
-        .order_by(desc(CommunicationLog.occurred_at))
-        .limit(limit)
-    )
-    comms = (await db.execute(comms_q)).scalars().all()
+    comms = []
+    if has_module_read(current_user, "communications"):
+        comms_q = (
+            select(CommunicationLog)
+            .where(CommunicationLog.client_id == client_id)
+            .order_by(desc(CommunicationLog.occurred_at))
+            .limit(limit)
+        )
+        comms = (await db.execute(comms_q)).scalars().all()
 
     # 2) Tasks completed
-    tasks_q = (
-        select(Task)
-        .where(
-            Task.client_id == client_id,
-            Task.status == "completed",
-            Task.completed_at.is_not(None),
+    completed_tasks = []
+    created_tasks = []
+    if has_module_read(current_user, "tasks"):
+        tasks_q = (
+            select(Task)
+            .where(
+                Task.client_id == client_id,
+                Task.status == "completed",
+                Task.completed_at.is_not(None),
+            )
+            .order_by(desc(Task.completed_at))
+            .limit(limit)
         )
-        .order_by(desc(Task.completed_at))
-        .limit(limit)
-    )
-    completed_tasks = (await db.execute(tasks_q)).scalars().all()
+        completed_tasks = (await db.execute(tasks_q)).scalars().all()
 
-    # 3) Tasks created (recent)
-    tasks_created_q = (
-        select(Task)
-        .where(Task.client_id == client_id)
-        .order_by(desc(Task.created_at))
-        .limit(limit)
-    )
-    created_tasks = (await db.execute(tasks_created_q)).scalars().all()
+        # 3) Tasks created (recent)
+        tasks_created_q = (
+            select(Task)
+            .where(Task.client_id == client_id)
+            .order_by(desc(Task.created_at))
+            .limit(limit)
+        )
+        created_tasks = (await db.execute(tasks_created_q)).scalars().all()
 
     # 4) Weekly Digests
-    digests_q = (
-        select(WeeklyDigest)
-        .where(WeeklyDigest.client_id == client_id)
-        .order_by(desc(WeeklyDigest.created_at))
-        .limit(limit)
-    )
-    digests = (await db.execute(digests_q)).scalars().all()
+    digests = []
+    if has_module_read(current_user, "digests"):
+        digests_q = (
+            select(WeeklyDigest)
+            .where(WeeklyDigest.client_id == client_id)
+            .order_by(desc(WeeklyDigest.created_at))
+            .limit(limit)
+        )
+        digests = (await db.execute(digests_q)).scalars().all()
 
     # 5) Proposals
-    proposals_q = (
-        select(Proposal)
-        .where(Proposal.client_id == client_id)
-        .order_by(desc(Proposal.created_at))
-        .limit(limit)
-    )
-    proposals = (await db.execute(proposals_q)).scalars().all()
+    proposals = []
+    if has_module_read(current_user, "proposals"):
+        proposals_q = (
+            select(Proposal)
+            .where(Proposal.client_id == client_id)
+            .order_by(desc(Proposal.created_at))
+            .limit(limit)
+        )
+        proposals = (await db.execute(proposals_q)).scalars().all()
 
     # Batch-load all referenced users in a single query (fix N+1)
     user_ids: set[int] = set()

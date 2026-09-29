@@ -15,6 +15,12 @@ const task: Task = {
 }
 
 describe("KanbanBoard", () => {
+  it("keeps cards readable but not draggable for readers", () => {
+    render(<KanbanBoard tasks={[task]} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} canWrite={false} />)
+    expect(screen.getByText("Preparar revisión").closest("[draggable='false']")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Ver tarea Preparar revisión" })).toBeInTheDocument()
+  })
+
   it("opens the waiting form with an explicit waiting intent instead of patching incomplete data", () => {
     const onStatusChange = vi.fn()
     const onOpenEdit = vi.fn()

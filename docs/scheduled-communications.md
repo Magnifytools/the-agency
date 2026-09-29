@@ -1,7 +1,7 @@
 # Opt-in scheduled communications (B2)
 
-The scheduler prepares durable occurrences for morning plans, evening recaps,
-weekly team reports and timed meetings. It never calls Discord. Remote messages
+The scheduler prepares durable occurrences for personal morning plans, one
+shared team morning plan, evening recaps, weekly team reports and timed meetings. It never calls Discord. Remote messages
 use the delivery ledger; local app notifications and occurrence state commit
 atomically. Hidden automations, incident management and new personal Discord
 identity linking are outside this change.
@@ -23,6 +23,13 @@ fallback to a global recipient. The weekly team policy is a singleton assumed
 explicitly by an active administrator. Its `destination_id` is a technical
 Discord recipient, visibly entered by that administrator, not a User mapping.
 
+`team_morning` is a separate singleton policy assumed explicitly by an active
+administrator. It produces one team message at 08:00 in the configured business
+zone and has only the shared team webhook as a destination. It groups visible
+work by team member and lists unassigned tasks once, instead of repeating them
+inside multiple personal plans. Adopting this policy does not create, enable or
+change any person's `morning` policy. Personal and team opt-ins remain distinct.
+
 The settings panel reads and writes the actual policy and shows blocked reasons,
 scheduler pause, occurrence history and remote receipts. Admin-only limited
 configuration endpoints store webhook/bot credentials using existing vault
@@ -33,6 +40,7 @@ message. Removed legacy auto-send controls retain their historical data.
 
 `communication_schedules` stores only effective preferences. A persistent
 `communication_occurrences` key identifies person/type/channel/civil day, a
+team morning civil day, a
 closed weekly period, or person/event/start-time revision/channel. The key does
 not change when the message text or configured hour changes. Re-enabling a policy
 starts at its new effective time; historical periods are not replayed.
@@ -61,10 +69,18 @@ a repeated time uses its first occurrence and the civil key prevents duplicates.
 Silence spanning midnight is supported. If silence ends beyond expiry, the
 occurrence expires visibly.
 
-Morning plans use planned/due/overdue work and include meetings even without
-tasks. Evening recaps use completion timestamps and civil time-entry periods;
+Personal morning plans use planned/due/overdue work and include the person's
+meetings even without tasks. The team morning plan contains task work only: it
+groups assigned work by eligible active team member and lists unassigned work in
+one shared section. Eligible members are active and retain task-read access;
+tasks assigned to inactive users or users without that access are not published.
+The team occurrence follows global company holidays. Within that message, a
+member whose region has a regional holiday does not receive a personal group;
+the shared unassigned section remains governed by the global working day. The
+plan does not publish personal calendar events. Evening recaps use completion timestamps and civil time-entry periods;
 a pending task is not described as untouched, and a missing daily is described
-as not saved. Morning expires at the configured evening slot (18:00 fallback);
+as not saved. Personal morning expires at the configured evening slot (18:00 fallback);
+the team morning is fixed at 08:00 and expires at 18:00;
 evening expires at civil midnight. Weekly reports cover the preceding closed
 Monday–Friday, are due Saturday 08:00 and expire Monday 08:00. A delayed run uses
 the stored period. Meeting windows run from configured advance notice to start;

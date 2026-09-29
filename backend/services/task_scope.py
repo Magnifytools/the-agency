@@ -1,9 +1,10 @@
 """Shared hierarchy validation for every path that creates or edits a task."""
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import Client, Project, ProjectPhase, Task
+from backend.db.models import Client, Project, ProjectPhase, Task, User
 
 
 async def _validate_dependency(
@@ -37,6 +38,36 @@ async def validate_client_exists(db: AsyncSession, client_id: int | None) -> Non
         raise HTTPException(422, "El cliente seleccionado no existe")
 
 
+async def validate_task_assignee(
+    db: AsyncSession, assigned_to: int | None,
+) -> None:
+    """Require an active assignee for a new or genuinely reassigned task.
+
+    Existing tasks may preserve a historical assignment after that person is
+    deactivated, so unrelated edits deliberately do not revalidate it. A
+    shared lock makes a simultaneous deactivation conflict instead of letting
+    a stale assignment through.
+    """
+    if assigned_to is None:
+        return
+    try:
+        active_user = await db.scalar(
+            select(User.id).where(
+                User.id == assigned_to,
+                User.is_active.is_(True),
+            ).with_for_update(read=True, nowait=True)
+        )
+    except DBAPIError as exc:
+        if getattr(exc.orig, "sqlstate", None) == "55P03":
+            raise HTTPException(
+                409,
+                "La persona asignada está cambiando; vuelve a intentarlo",
+            ) from exc
+        raise
+    if active_user is None:
+        raise HTTPException(422, "La persona asignada no existe o está inactiva")
+
+
 async def validate_task_scope(
     db: AsyncSession, data: dict, *, existing: Task | None = None,
 ) -> None:
@@ -44,6 +75,12 @@ async def validate_task_scope(
     project_id = data.get("project_id", existing.project_id if existing else None)
     phase_id = data.get("phase_id", existing.phase_id if existing else None)
     client_id = data.get("client_id", existing.client_id if existing else None)
+    assigned_to = data.get("assigned_to", existing.assigned_to if existing else None)
+
+    if existing is None or (
+        "assigned_to" in data and data["assigned_to"] != existing.assigned_to
+    ):
+        await validate_task_assignee(db, assigned_to)
 
     requested_status = data.get("status")
     requested_status_value = getattr(requested_status, "value", requested_status)

@@ -5,10 +5,11 @@ import { toast } from "sonner"
 import { invalidateCalendarViews } from "@/lib/calendar-queries"
 import { useAuth } from "@/context/auth-context"
 import { usersApi, categoriesApi, myWeekApi, calendarApi } from "@/lib/api"
-import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS } from "@/hooks/use-keyboard-shortcuts"
-import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar, FileText } from "lucide-react"
+import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS, isShortcutAvailable, isValidShortcutBinding, resolveShortcuts, shortcutConflict } from "@/hooks/use-keyboard-shortcuts"
+import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar } from "lucide-react"
 import { CommunicationSchedules } from "@/components/communication-schedules"
 import { JobRuntimeStatusPanel } from "@/components/job-runtime-status"
+import { OperationalUsagePanel } from "@/components/admin/operational-usage"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Button } from "@/components/ui/button"
 
@@ -45,6 +46,7 @@ function formatBinding(binding: string): string {
 interface EditingState {
   key: string
   captured: string | null
+  awaitingSecond: boolean
 }
 
 export default function SettingsPage() {
@@ -64,8 +66,7 @@ export default function SettingsPage() {
     { kind: "category" | "holiday"; id: number; name: string } | null
   >(null)
   const [bindings, setBindings] = useState<Record<string, string>>({
-    ...DEFAULT_SHORTCUTS,
-    ...(user?.preferences?.shortcuts ?? {}),
+    ...resolveShortcuts(user?.preferences?.shortcuts),
   })
   const [editing, setEditing] = useState<EditingState | null>(null)
   const [saving, setSaving] = useState(false)
@@ -89,22 +90,10 @@ export default function SettingsPage() {
   const [newHolidayLocality, setNewHolidayLocality] = useState("")
   const currentYear = new Date().getFullYear()
 
-  // Digest settings state
-  const [digestTone, setDigestTone] = useState(user?.preferences?.digest_default_tone ?? "cercano")
-  const [digestRecipients, setDigestRecipients] = useState(user?.preferences?.digest_default_recipients ?? "")
-  const [digestAutoSend, setDigestAutoSend] = useState(user?.preferences?.digest_auto_send ?? "manual")
-  const [savingDigest, setSavingDigest] = useState(false)
-
   // Sync with user preferences when they load
   useEffect(() => {
-    setBindings({ ...DEFAULT_SHORTCUTS, ...(user?.preferences?.shortcuts ?? {}) })
+    setBindings(resolveShortcuts(user?.preferences?.shortcuts))
   }, [user?.preferences?.shortcuts])
-
-  useEffect(() => {
-    setDigestTone(user?.preferences?.digest_default_tone ?? "cercano")
-    setDigestRecipients(user?.preferences?.digest_default_recipients ?? "")
-    setDigestAutoSend(user?.preferences?.digest_auto_send ?? "manual")
-  }, [user?.preferences])
 
   useEffect(() => {
     setUserRegion(user?.region ?? "")
@@ -150,7 +139,7 @@ export default function SettingsPage() {
   })
 
   const startCapture = useCallback((key: string) => {
-    setEditing({ key, captured: null })
+    setEditing({ key, captured: null, awaitingSecond: false })
   }, [])
 
   const cancelCapture = useCallback(() => {
@@ -166,6 +155,16 @@ export default function SettingsPage() {
 
       if (e.key === "Escape") {
         setEditing(null)
+        return
+      }
+
+      if (editing.key.startsWith("goto_")) {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+        if (!editing.awaitingSecond) {
+          if (e.key.toLowerCase() === "g") setEditing((prev) => prev && { ...prev, awaitingSecond: true })
+          return
+        }
+        if (/^[a-z]$/i.test(e.key)) setEditing((prev) => prev && { ...prev, captured: `G+${e.key.toUpperCase()}` })
         return
       }
 
@@ -187,24 +186,39 @@ export default function SettingsPage() {
 
     window.addEventListener("keydown", handler, { capture: true })
     return () => window.removeEventListener("keydown", handler, { capture: true })
-  }, [editing?.key])
+  }, [editing])
 
   const confirmCapture = () => {
     if (!editing?.captured) return
+    if (!isValidShortcutBinding(editing.key, editing.captured)) {
+      toast.error("Combinación no disponible")
+      return
+    }
+    const conflict = shortcutConflict(editing.key, editing.captured, bindings)
+    if (conflict) {
+      toast.error(`Atajo ya usado por ${SHORTCUT_LABELS[conflict]}`)
+      return
+    }
     setBindings((prev) => ({ ...prev, [editing.key]: editing.captured! }))
     setEditing(null)
   }
 
   const resetDefaults = () => {
-    setBindings({ ...DEFAULT_SHORTCUTS })
+    setBindings((previous) => ({ ...previous, ...Object.fromEntries(Object.entries(DEFAULT_SHORTCUTS).filter(([key]) => isShortcutAvailable(key))) }))
   }
 
   const handleSave = async () => {
     if (!user) return
+    for (const key of Object.keys(DEFAULT_SHORTCUTS).filter(isShortcutAvailable)) {
+      if (!isValidShortcutBinding(key, bindings[key]) || shortcutConflict(key, bindings[key], bindings)) {
+        toast.error("Revisa los atajos duplicados o no válidos")
+        return
+      }
+    }
     setSaving(true)
     try {
       await usersApi.update(user.id, {
-        preferences: { ...(user.preferences ?? {}), shortcuts: bindings },
+        preferences: { ...(user.preferences ?? {}), shortcuts: { ...(user.preferences?.shortcuts ?? {}), ...bindings } },
       })
       await refreshUser()
       toast.success("Atajos guardados")
@@ -212,27 +226,6 @@ export default function SettingsPage() {
       toast.error("Error al guardar los atajos")
     } finally {
       setSaving(false)
-    }
-  }
-
-  const handleSaveDigestSettings = async () => {
-    if (!user) return
-    setSavingDigest(true)
-    try {
-      await usersApi.update(user.id, {
-        preferences: {
-          ...(user.preferences ?? {}),
-          digest_default_tone: digestTone,
-          digest_default_recipients: digestRecipients,
-          digest_auto_send: digestAutoSend,
-        },
-      })
-      await refreshUser()
-      toast.success("Preferencias de digest guardadas")
-    } catch {
-      toast.error("Error al guardar preferencias de digest")
-    } finally {
-      setSavingDigest(false)
     }
   }
 
@@ -281,15 +274,15 @@ export default function SettingsPage() {
     onError: () => toast.error("Error al eliminar. ¿Tiene tareas asociadas?"),
   })
 
-  const shortcutKeys = Object.keys(DEFAULT_SHORTCUTS)
+  const shortcutKeys = Object.keys(DEFAULT_SHORTCUTS).filter(isShortcutAvailable)
 
   const sections = [
     { id: "shortcuts", label: "Atajos de teclado" },
     ...(canManageCategories ? [{ id: "categories", label: "Categorías de tareas" }] : []),
     { id: "location", label: "Ubicación" },
-    { id: "digest", label: "Preferencias de digest" },
     { id: "notifications", label: "Avisos" },
     ...(isAdmin ? [{ id: "scheduled-processes", label: "Procesos programados" }] : []),
+    ...(isAdmin ? [{ id: "operational-usage", label: "Señales operativas" }] : []),
     { id: "calendar", label: "Google Calendar" },
     ...(isAdmin ? [{ id: "holidays", label: "Festivos" }] : []),
   ]
@@ -321,7 +314,7 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-base font-semibold text-foreground">Atajos de teclado</h2>
-            <p className="text-sm text-muted-foreground mt-0.5">Haz clic en Editar para capturar un nuevo atajo</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Elige Editar y pulsa la nueva combinación. Guarda los cambios para aplicarlos, también después de restaurar los valores por defecto.</p>
           </div>
           <button
             onClick={resetDefaults}
@@ -344,7 +337,7 @@ export default function SettingsPage() {
                   {isEditing ? (
                     <div className="flex items-center gap-2">
                       <div className="min-w-[140px] px-3 py-1.5 bg-brand/10 border border-brand rounded-lg text-sm font-mono text-center text-brand">
-                        {editing.captured ? formatBinding(editing.captured) : "Presiona una tecla…"}
+                        {editing.captured ? formatBinding(editing.captured) : editing.key.startsWith("goto_") ? (editing.awaitingSecond ? "G, luego una letra…" : "Presiona G…") : "Presiona una tecla…"}
                       </div>
                       {editing.captured && (
                         <button
@@ -410,12 +403,14 @@ export default function SettingsPage() {
                   {isEditingThis ? (
                     <div className="flex items-center gap-2 flex-1">
                       <input
+                        aria-label={`Nombre de la categoría ${cat.name}`}
                         className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
                         value={editCatName}
                         onChange={(e) => setEditCatName(e.target.value)}
                         autoFocus
                       />
                       <input
+                        aria-label={`Minutos por defecto de la categoría ${cat.name}`}
                         className="w-20 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-center"
                         type="number"
                         min="1"
@@ -424,12 +419,14 @@ export default function SettingsPage() {
                       />
                       <span className="text-xs text-muted-foreground">min</span>
                       <button
+                        aria-label={`Guardar categoría ${cat.name}`}
                         onClick={() => updateCatMut.mutate({ id: cat.id, data: { name: editCatName, default_minutes: editCatMinutes } })}
                         className="p-1.5 text-green-600 hover:bg-green-50 rounded-md transition-colors"
                       >
                         <Check className="h-3.5 w-3.5" />
                       </button>
                       <button
+                        aria-label={`Cancelar edición de categoría ${cat.name}`}
                         onClick={() => setEditingCatId(null)}
                         className="p-1.5 text-muted-foreground hover:bg-muted rounded-md transition-colors"
                       >
@@ -468,6 +465,7 @@ export default function SettingsPage() {
           {/* Add new category */}
           <fieldset disabled={!categoriesQuery.isSuccess} className="mt-4 flex items-center gap-2">
             <input
+              aria-label="Nombre de la nueva categoría"
               className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
               placeholder="Nueva categoría..."
               value={newCatName}
@@ -480,6 +478,7 @@ export default function SettingsPage() {
               }}
             />
             <input
+              aria-label="Minutos por defecto de la nueva categoría"
               className="w-20 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-center"
               type="number"
               min="1"
@@ -489,6 +488,7 @@ export default function SettingsPage() {
             />
             <span className="text-xs text-muted-foreground">min</span>
             <button
+              aria-label="Añadir categoría"
               onClick={() => newCatName.trim() && createCatMut.mutate({ name: newCatName.trim(), default_minutes: newCatMinutes })}
               disabled={!newCatName.trim() || createCatMut.isPending}
               className="p-1.5 bg-brand text-black rounded-md hover:bg-brand/90 transition-colors disabled:opacity-50"
@@ -510,8 +510,9 @@ export default function SettingsPage() {
         </p>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Comunidad Autónoma</label>
+            <label htmlFor="user-region" className="text-xs font-medium text-muted-foreground mb-1 block">Comunidad Autónoma</label>
             <select
+              id="user-region"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               value={userRegion}
               onChange={(e) => setUserRegion(e.target.value)}
@@ -523,8 +524,9 @@ export default function SettingsPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Localidad</label>
+            <label htmlFor="user-locality" className="text-xs font-medium text-muted-foreground mb-1 block">Localidad</label>
             <input
+              id="user-locality"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               placeholder="Ej: Madrid, Barcelona..."
               value={userLocality}
@@ -543,70 +545,10 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Digest settings */}
-      <div id="digest" className="bg-card border border-border rounded-2xl p-6 scroll-mt-8">
-        <div className="flex items-center gap-2 mb-4">
-          <FileText className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-base font-semibold text-foreground">Preferencias de digest</h2>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">
-          Configura los valores por defecto para la generación y envío de digests
-        </p>
-
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Tono por defecto</label>
-            <select
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-              value={digestTone}
-              onChange={(e) => setDigestTone(e.target.value)}
-            >
-              <option value="cercano">Cercano</option>
-              <option value="formal">Formal</option>
-              <option value="equipo">Equipo</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Destinatarios por defecto</label>
-            <input
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-              placeholder="email1@ejemplo.com, email2@ejemplo.com"
-              value={digestRecipients}
-              onChange={(e) => setDigestRecipients(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground mt-1">Separa múltiples emails con comas</p>
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Envío automático</label>
-            <select
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-              value={digestAutoSend}
-              onChange={(e) => setDigestAutoSend(e.target.value)}
-            >
-              <option value="manual">Manual (requiere confirmación)</option>
-              <option value="weekly_monday">Semanal — Lunes por la mañana</option>
-              <option value="weekly_friday">Semanal — Viernes por la tarde</option>
-              <option value="biweekly">Quincenal</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="mt-4 flex justify-end">
-          <button
-            onClick={handleSaveDigestSettings}
-            disabled={savingDigest}
-            className="px-4 py-2 bg-brand text-black text-sm font-semibold rounded-xl hover:bg-brand/90 transition-colors disabled:opacity-50"
-          >
-            {savingDigest ? "Guardando…" : "Guardar preferencias"}
-          </button>
-        </div>
-      </div>
-
       <CommunicationSchedules />
 
       {isAdmin && <JobRuntimeStatusPanel userId={user?.id} />}
+      {isAdmin && <OperationalUsagePanel userId={user?.id} />}
 
       {/* Google Calendar */}
       <CalendarSection />
@@ -664,24 +606,27 @@ export default function SettingsPage() {
 
           {/* Add new holiday */}
           <fieldset disabled={!holidaysQuery.isSuccess} className="mt-4 pt-4 border-t border-border space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <input
+                aria-label="Fecha del nuevo festivo"
                 type="date"
                 className="rounded-md border border-border bg-background px-3 py-1.5 text-sm"
                 value={newHolidayDate}
                 onChange={(e) => setNewHolidayDate(e.target.value)}
               />
               <input
+                aria-label="Nombre del nuevo festivo"
                 className="rounded-md border border-border bg-background px-3 py-1.5 text-sm"
                 placeholder="Nombre del festivo"
                 value={newHolidayName}
                 onChange={(e) => setNewHolidayName(e.target.value)}
               />
             </div>
-            <div className="grid grid-cols-3 gap-3 items-end">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end">
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Ámbito</label>
+                <label htmlFor="new-holiday-region" className="text-xs text-muted-foreground mb-1 block">Ámbito</label>
                 <select
+                  id="new-holiday-region"
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm"
                   value={newHolidayRegion}
                   onChange={(e) => setNewHolidayRegion(e.target.value)}
@@ -693,8 +638,9 @@ export default function SettingsPage() {
                 </select>
               </div>
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Localidad (opcional)</label>
+                <label htmlFor="new-holiday-locality" className="text-xs text-muted-foreground mb-1 block">Localidad (opcional)</label>
                 <input
+                  id="new-holiday-locality"
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm"
                   placeholder="Dejar vacío = toda la CCAA"
                   value={newHolidayLocality}
@@ -758,6 +704,9 @@ export function CalendarSection() {
       toast.success("Google Calendar conectado")
       window.history.replaceState({}, "", "/settings")
       void invalidateCalendarViews(queryClient)
+    } else if (calendarParam === "cancelled") {
+      toast.info("Conexión de Google Calendar cancelada")
+      window.history.replaceState({}, "", "/settings")
     } else if (calendarParam === "error") {
       toast.error("Error al conectar Google Calendar")
       window.history.replaceState({}, "", "/settings")

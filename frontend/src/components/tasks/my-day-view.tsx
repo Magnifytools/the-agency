@@ -3,10 +3,10 @@ import type { PaginatedResponse, Task, TaskStatus } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Pencil, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat } from "lucide-react"
+import { Pencil, Eye, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { agencyTimezoneLabel, businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates"
-import { taskStatusPresentation } from "@/lib/task-status"
+import { taskStatusPresentation, taskStatusSelectClass } from "@/lib/task-status"
 
 
 interface Props {
@@ -75,6 +75,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
     const isOverdue = task.due_date && task.due_date < today
     const isInProgress = task.status === "in_progress"
     const sendsForReview = !!task.project_requires_task_review && !task.is_recurring && !canCompleteReviewedTask(task)
+    const statusPresentation = taskStatusPresentation(task.status, task.scheduled_date)
 
     return (
       <Card
@@ -87,8 +88,8 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
         onClick={() => onOpenEdit(task)}
       >
         <CardContent className="p-3 grid grid-cols-[minmax(0,1fr)_auto] gap-3 sm:flex sm:items-center">
-          <select
-            value={taskStatusPresentation(task.status, task.scheduled_date).group}
+          {canWrite ? <select
+            value={statusPresentation.group}
             onChange={(e) => {
               e.stopPropagation()
               const next = e.target.value as TaskStatus
@@ -97,10 +98,10 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
             }}
             onClick={(e) => e.stopPropagation()}
             aria-label={`Estado de ${task.title}`}
-            disabled={!canWrite}
             className={cn(
               "col-span-2 row-start-2 w-fit sm:w-auto shrink-0 text-xs sm:text-[10px] rounded-md border px-2 py-1 min-h-9 sm:min-h-7 cursor-pointer font-semibold transition-colors shadow-sm",
-              "bg-background text-foreground border-input"
+              "text-foreground",
+              taskStatusSelectClass(task.status, task.scheduled_date)
             )}
           >
             <option value="pending">Pendiente</option>
@@ -108,7 +109,9 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
             <option value="waiting">En espera…</option>
             <option value="in_review">En revisión</option>
             <option value="completed">{sendsForReview ? "Enviar a revisión" : "Hecho"}</option>
-          </select>
+          </select> : <span className="col-span-2 row-start-2 w-fit rounded-md border border-border bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground sm:min-h-7 sm:text-[10px]">
+            {statusPresentation.label}
+          </span>}
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
@@ -119,7 +122,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
               {priorityBadge(task.priority)}
             </div>
             <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground flex-wrap">
-              {taskStatusPresentation(task.status, task.scheduled_date).detail && <span>{taskStatusPresentation(task.status, task.scheduled_date).detail}</span>}
+              {statusPresentation.detail && <span>{statusPresentation.detail}</span>}
               {task.client_name && <span>{task.client_name}</span>}
               {task.project_name && <span className="text-muted-foreground">· {task.project_name}</span>}
               {task.estimated_minutes && (
@@ -155,11 +158,11 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
           <Button
             variant="ghost"
             size="icon"
-            aria-label={`Editar ${task.title}`}
+            aria-label={`${canWrite ? "Editar" : "Ver"} ${task.title}`}
             className="h-9 w-9 sm:h-7 sm:w-7 sm:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity shrink-0"
             onClick={(e) => { e.stopPropagation(); onOpenEdit(task) }}
           >
-            <Pencil className="h-3.5 w-3.5" />
+            {canWrite ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
           </Button>
           {carryover && canWrite && (
             <Button variant="outline" size="sm" className="col-span-2 sm:col-span-1" onClick={(event) => { event.stopPropagation(); onReviewCarryover(task) }}>
@@ -214,6 +217,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
             Sin planificar ({unplanned.total})
           </p>
+          <p className="mb-2 text-sm text-muted-foreground">Tareas activas que todavía no tienen fecha planificada.</p>
           <div className="space-y-2">
             {unplannedTasks.map((task) => renderTaskCard(task))}
           </div>
@@ -240,6 +244,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
                 {task.client_name && <span className="text-[10px] shrink-0">{task.client_name}</span>}
                 {canWrite && <button
                   title="Reabrir tarea"
+                  aria-label={`Reabrir ${task.title}`}
                   className="opacity-0 group-hover/done:opacity-100 transition-opacity shrink-0 text-muted-foreground hover:text-amber-600"
                   onClick={() => onStatusChange(task.id, "pending")}
                 >

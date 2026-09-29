@@ -58,7 +58,7 @@ export function InboxWidget() {
                     </div>
                     Clasificación de Inbox
                     <span className="ml-auto text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                        {inboxNotes.length} items
+                        {inboxNotes.length} notas
                     </span>
                 </CardTitle>
             </CardHeader>
@@ -67,6 +67,7 @@ export function InboxWidget() {
                 <div className="p-3 border-b border-border/40 bg-background/50">
                     <div className="relative group">
                         <Input
+                            aria-label="Capturar una nota"
                             value={newNote}
                             onChange={(e) => setNewNote(e.target.value)}
                             onKeyDown={handleKeyDown}
@@ -76,6 +77,7 @@ export function InboxWidget() {
                             autoComplete="off"
                         />
                         <Button
+                            aria-label="Guardar nota en Por aclarar"
                             size="icon"
                             variant="ghost"
                             className="absolute right-1 top-1 h-8 w-8 text-muted-foreground hover:text-brand hover:bg-brand/10 transition-colors"

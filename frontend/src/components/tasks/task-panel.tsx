@@ -30,7 +30,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import { businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates";
-import { taskStatusPresentation } from "@/lib/task-status";
+import { taskStatusPresentation, taskStatusSelectClass } from "@/lib/task-status";
 
 type Defaults = {
   clientId?: number | null;
@@ -549,6 +549,7 @@ export function TaskPanel({
                 <Label htmlFor="task-panel-status">Estado</Label>
                 <Select
                   id="task-panel-status"
+                  className={taskStatusSelectClass(draft.status ?? "pending", draft.scheduled_date)}
                   value={statusPresentation.group}
                   onChange={(e) => {
                     const next = e.target.value as TaskStatus;

@@ -31,6 +31,12 @@ describe("project next action and follow-up", () => {
     await userEvent.click(screen.getByRole("button", { name: /Acción 8.*Atrasada/ }))
     expect(onOpen).toHaveBeenCalledWith(8)
   })
+  it("describes unplanned tasks as consultation for a reader", () => {
+    render(<ProjectWorkSummary tasks={[task(9)]} today="2026-09-17" canWrite={false} onOpen={vi.fn()} onAdd={vi.fn()} />)
+    expect(screen.getByText(/Hay 1 tarea sin planificar\. Puedes consultar su detalle en la lista\./)).toBeInTheDocument()
+    expect(screen.queryByText(/concretar el siguiente paso/)).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Añadir una acción" })).not.toBeInTheDocument()
+  })
   it("shows all waits and opens missing follow-ups without fabricating a deadline", async () => {
     const onOpen = vi.fn()
     render(<ProjectWorkSummary tasks={[task(1, { status: "waiting", waiting_for: "Material", follow_up_date: "2026-09-17" }), task(2, { status: "waiting" })]} today="2026-09-17" canWrite={false} onOpen={onOpen} onAdd={vi.fn()} />)

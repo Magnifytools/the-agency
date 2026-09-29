@@ -57,7 +57,7 @@ export function TodayBlock() {
                 {tasks.map((task) => (
                   <Link
                     key={task.id}
-                    to="/tasks"
+                    to={`/tasks?task=${task.id}`}
                     className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-muted/50 transition-colors group"
                   >
                     <div className={`h-2 w-2 rounded-full shrink-0 ${PRIORITY_COLORS[task.priority] ?? "bg-slate-300"}`} />

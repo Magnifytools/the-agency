@@ -13,7 +13,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PARENT_DIR="$(dirname "$SCRIPT_DIR")"
 # Key must live OUTSIDE the extension folder (Chrome rejects if key is inside)
-KEY="$PARENT_DIR/.agency-extension-key.pem"
+KEY="${AGENCY_EXTENSION_KEY:-$PARENT_DIR/.agency-extension-key.pem}"
 CRX="$SCRIPT_DIR/dist/agency-manager.crx"
 EXT_DIR="$SCRIPT_DIR"
 
@@ -64,7 +64,6 @@ VERSION=$(python3 -c "import json; print(json.load(open('$EXT_DIR/manifest.json'
 echo "✓ Built agency-manager.crx (v$VERSION)"
 echo ""
 echo "Next steps:"
-echo "  1. Load dist/agency-manager.crx in Chrome (chrome://extensions → drag & drop)"
-echo "  2. Copy the extension ID shown in chrome://extensions"
-echo "  3. Save it: echo 'YOUR_ID' > dist/extension-id.txt"
-echo "  4. git add dist/agency-manager.crx dist/extension-id.txt && git push"
+echo "  1. Confirm the signed CRX keeps the ID in dist/extension-id.txt"
+echo "  2. Package the same runtime files in the versioned ZIP"
+echo "  3. For unpacked installs, replace files in the existing folder and reload in chrome://extensions"

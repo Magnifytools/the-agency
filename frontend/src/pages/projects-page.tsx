@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { Plus, FolderKanban, Calendar, Trash2, Repeat, FileUp, FileText, UserRound, Archive } from "lucide-react"
@@ -42,6 +42,7 @@ const STATUS_VARIANTS: Record<ProjectStatus, "default" | "success" | "warning" |
 export default function ProjectsPage() {
   const queryClient = useQueryClient()
   const { hasPermission } = useAuth()
+  const canWriteProjects = hasPermission("projects", true)
   const [searchParams, setSearchParams] = useSearchParams()
   const pageSize = 25
   const rawPage = Number(searchParams.get("page") || 1)
@@ -50,6 +51,8 @@ export default function ProjectsPage() {
   const archiveView = searchParams.get("view") === "archive" || (!searchParams.get("view") && ["completed", "cancelled"].includes(requestedStatus))
   const statusFilter = requestedStatus
   const typeFilter = searchParams.get("type") || ""
+  const requestedOwner = searchParams.get("owner")
+  const ownerFilter = requestedOwner === "assigned" || requestedOwner === "unassigned" || (requestedOwner && /^[1-9]\d*$/.test(requestedOwner)) ? requestedOwner : ""
   const periodFilter = searchParams.get("period") || ""
   const setFilter = (key: string, value: string) => setSearchParams((previous) => {
     const next = new URLSearchParams(previous)
@@ -58,6 +61,7 @@ export default function ProjectsPage() {
     next.delete("page")
     return next
   })
+  const showUnassignedProjects = () => setSearchParams({ owner: "unassigned" })
   const setPage = (value: number) => setSearchParams((previous) => {
     const next = new URLSearchParams(previous)
     next.set("page", String(value))
@@ -78,14 +82,27 @@ export default function ProjectsPage() {
   const [showImportTextDialog, setShowImportTextDialog] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
 
+  useEffect(() => {
+    if (searchParams.get("new") === "1" && canWriteProjects) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- A route deep link opens this dialog without remounting the page.
+      setShowNewDialog(true)
+      setSearchParams((previous) => {
+        const next = new URLSearchParams(previous)
+        next.delete("new")
+        return next
+      }, { replace: true })
+    }
+  }, [searchParams, setSearchParams, canWriteProjects])
+
   const effectiveStatusFilter = archiveView
     ? (["completed", "cancelled"].includes(statusFilter) ? statusFilter : "")
     : (["planning", "active", "on_hold"].includes(statusFilter) ? statusFilter : "")
   const { data: projectsData, isLoading, isError, refetch } = useQuery({
-    queryKey: ["projects", "lifecycle-list", archiveView ? "archive" : "portfolio", effectiveStatusFilter, typeFilter, periodBounds, page, pageSize],
+    queryKey: ["projects", "lifecycle-list", archiveView ? "archive" : "portfolio", effectiveStatusFilter, ownerFilter, typeFilter, periodBounds, page, pageSize],
     queryFn: () => projectsApi.list({
       lifecycle: archiveView ? "archive" : "portfolio",
       ...(effectiveStatusFilter ? { status: effectiveStatusFilter } : {}),
+      ...(ownerFilter ? { owner: ownerFilter } : {}),
       ...(["recurring", "one_time"].includes(typeFilter) ? { is_recurring: typeFilter === "recurring" } : {}),
       ...periodBounds,
       page,
@@ -93,6 +110,11 @@ export default function ProjectsPage() {
     }),
   })
   const projects = projectsData?.items ?? []
+  const { data: unassignedCount = 0, isError: isUnassignedCountError, refetch: refetchUnassignedCount } = useQuery({
+    queryKey: ["projects", "unassigned-count"],
+    queryFn: projectsApi.unassignedCount,
+    enabled: !archiveView,
+  })
 
   const { data: clients = [] } = useQuery({
     queryKey: ["clients-all-active"],
@@ -123,6 +145,14 @@ export default function ProjectsPage() {
     if (!date) return "—"
     return new Date(date).toLocaleDateString("es-ES", { day: "numeric", month: "short" })
   }
+  const hasActiveFilters = Boolean(statusFilter || ownerFilter || typeFilter || periodFilter)
+  const canCreateHere = canWriteProjects && !archiveView
+  let emptyDescription = "Organiza el trabajo en proyectos con fases y tareas. Puedes empezar desde una plantilla o importar una propuesta."
+  if (hasActiveFilters) emptyDescription = canCreateHere
+    ? "No hay proyectos con estos filtros. Prueba a cambiarlos o crea uno nuevo."
+    : "No hay proyectos con estos filtros. Prueba a cambiarlos."
+  else if (archiveView) emptyDescription = "Los proyectos terminados o cancelados aparecerán aquí y conservarán su historial."
+  else if (!canWriteProjects) emptyDescription = "Los proyectos a los que tengas acceso aparecerán aquí."
 
 
   return (
@@ -135,23 +165,37 @@ export default function ProjectsPage() {
             Gestiona proyectos con fases y tareas
           </p>
         </div>
-        <Button disabled={!hasPermission("projects", true)} onClick={() => setShowNewDialog(true)}>
+        {canWriteProjects && <Button onClick={() => setShowNewDialog(true)}>
           <Plus className="h-4 w-4 mr-2" /> Nuevo proyecto
-        </Button>
+        </Button>}
       </div>
 
       <div className="flex flex-wrap gap-2" aria-label="Vista de proyectos">
-        <Button size="sm" variant={archiveView ? "outline" : "default"} onClick={() => setView("portfolio")}>Cartera</Button>
-        <Button size="sm" variant={archiveView ? "default" : "outline"} onClick={() => setView("archive")}><Archive className="mr-2 h-4 w-4" />Archivo</Button>
+        <Button size="sm" variant={archiveView ? "outline" : "default"} aria-pressed={!archiveView} onClick={() => setView("portfolio")}>Cartera</Button>
+        <Button size="sm" variant={archiveView ? "default" : "outline"} aria-pressed={archiveView} onClick={() => setView("archive")}><Archive className="mr-2 h-4 w-4" />Archivo</Button>
       </div>
+      <p className="text-xs text-muted-foreground">{archiveView ? "Proyectos terminados o cancelados. Puedes consultar su historial y reabrirlos si tienes permiso." : "Proyectos en planificación, activos o pausados. El archivo muestra los terminados y cancelados."}</p>
+
+      {!archiveView && isUnassignedCountError && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 text-sm">
+          <p>No se pudo comprobar si hay proyectos sin responsable.</p>
+          <Button size="sm" variant="outline" onClick={() => void refetchUnassignedCount()}>Reintentar</Button>
+        </div>
+      )}
+      {!archiveView && !isUnassignedCountError && unassignedCount > 0 && ownerFilter !== "assigned" && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm">
+          <p><span className="font-medium">{unassignedCount} {unassignedCount === 1 ? "proyecto sin responsable" : "proyectos sin responsable"}.</span> Los avisos de seguimiento requieren elegir una persona responsable.</p>
+          {ownerFilter !== "unassigned" && <Button size="sm" variant="outline" onClick={showUnassignedProjects}>Filtrar sin responsable</Button>}
+        </div>
+      )}
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap">
         <Select
           value={effectiveStatusFilter}
           aria-label="Estado del proyecto"
           onChange={(e) => setFilter("status", e.target.value)}
-          className="w-full sm:w-48"
+          className="w-full min-w-0 sm:w-48"
         >
           <option value="">{archiveView ? "Todo el archivo" : "Toda la cartera"}</option>
           {archiveView ? <>
@@ -164,10 +208,25 @@ export default function ProjectsPage() {
           </>}
         </Select>
         <Select
+          value={ownerFilter}
+          aria-label="Responsable del proyecto"
+          onChange={(e) => setFilter("owner", e.target.value)}
+          className="w-full min-w-0 sm:w-48"
+        >
+          <option value="">Asignación: todas</option>
+          <option value="unassigned">Sin responsable</option>
+          <option value="assigned">Con responsable</option>
+          {allUsers.map((owner) => (
+            <option key={owner.id} value={owner.id}>
+              {owner.full_name}{owner.is_active ? "" : " (inactivo)"}
+            </option>
+          ))}
+        </Select>
+        <Select
           value={typeFilter}
           aria-label="Tipo de proyecto"
           onChange={(e) => setFilter("type", e.target.value)}
-          className="w-full sm:w-48"
+          className="w-full min-w-0 sm:w-48"
         >
           <option value="">Todos los tipos</option>
           <option value="recurring">Recurrentes</option>
@@ -177,9 +236,9 @@ export default function ProjectsPage() {
           value={periodFilter}
           aria-label="Período del proyecto"
           onChange={(e) => setFilter("period", e.target.value)}
-          className="w-full sm:w-48"
+          className="w-full min-w-0 sm:w-48"
         >
-          <option value="">Todos los periodos</option>
+          <option value="">Cualquier período</option>
           <option value="week">Esta semana</option>
           <option value="month">Este mes</option>
           <option value="quarter">Este trimestre</option>
@@ -205,10 +264,10 @@ export default function ProjectsPage() {
       ) : projects.length === 0 ? (
         <EmptyState
           icon={FolderKanban}
-          title={statusFilter || typeFilter || periodFilter ? "Sin proyectos con estos filtros" : archiveView ? "El archivo está vacío" : "Sin proyectos todavía"}
-          description={archiveView ? "Los proyectos terminados o cancelados aparecerán aquí y conservarán su historial." : statusFilter ? "No hay proyectos con este estado. Prueba a cambiar el filtro o crea uno nuevo." : "Organiza el trabajo en proyectos con fases y tareas. Puedes empezar desde una plantilla o importar una propuesta."}
-          actionLabel={archiveView ? undefined : "Crear un proyecto"}
-          onAction={archiveView ? undefined : () => setShowNewDialog(true)}
+          title={hasActiveFilters ? "Sin proyectos con estos filtros" : archiveView ? "El archivo está vacío" : "Sin proyectos todavía"}
+          description={emptyDescription}
+          actionLabel={canCreateHere ? "Crear un proyecto" : undefined}
+          onAction={canCreateHere ? () => setShowNewDialog(true) : undefined}
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -216,7 +275,7 @@ export default function ProjectsPage() {
             <ProjectCard
               key={project.id}
               project={project}
-              onDelete={() => setDeleteId(project.id)}
+              onDelete={canWriteProjects ? () => setDeleteId(project.id) : undefined}
               formatDate={formatDate}
             />
           ))}
@@ -243,6 +302,7 @@ export default function ProjectsPage() {
         clients={clients}
         users={activeUsers}
         templates={templates}
+        canWriteTasks={hasPermission("tasks", true)}
       />
 
       {/* Import from PDF Dialog */}
@@ -263,11 +323,11 @@ export default function ProjectsPage() {
 
       {/* Delete Confirmation */}
       <ConfirmDialog
-        open={deleteId !== null}
+        open={canWriteProjects && deleteId !== null}
         onOpenChange={(open) => !open && setDeleteId(null)}
         title="Eliminar proyecto"
         description="¿Seguro que quieres eliminar este proyecto? Las tareas no se eliminarán, solo se desvincularán. Las plantillas recurrentes del proyecto quedarán pausadas."
-        onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
+        onConfirm={() => canWriteProjects && deleteId && deleteMutation.mutate(deleteId)}
       />
     </div>
   )
@@ -279,9 +339,13 @@ function ProjectCard({
   formatDate,
 }: {
   project: ProjectListItem
-  onDelete: () => void
+  onDelete?: () => void
   formatDate: (d: string | null) => string
 }) {
+  const hasTaskMetrics = project.progress_percent != null
+    && project.completed_task_count != null
+    && project.task_count != null
+
   return (
     <Link to={`/projects/${project.id}`}>
       <Card className="hover:border-brand/40 transition-colors cursor-pointer group">
@@ -294,7 +358,7 @@ function ProjectCard({
               <p className="text-sm text-muted-foreground mt-1">{project.client_name}</p>
               <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><UserRound className="h-3 w-3" />{project.owner_name || "Sin responsable"}</p>
             </div>
-            <button
+            {onDelete && <button
               aria-label={`Eliminar proyecto ${project.name}`}
               onClick={(e) => {
                 e.preventDefault()
@@ -304,7 +368,7 @@ function ProjectCard({
               className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
             >
               <Trash2 className="h-4 w-4" />
-            </button>
+            </button>}
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -320,17 +384,17 @@ function ProjectCard({
               )}
             </div>
             <span className="text-sm text-muted-foreground">
-              {project.progress_percent}% completado
+              {hasTaskMetrics ? `${project.progress_percent}% completado` : "Progreso no disponible"}
             </span>
           </div>
 
           {/* Progress bar */}
-          <div role="progressbar" aria-label="Tareas completadas" aria-valuenow={project.progress_percent} aria-valuemin={0} aria-valuemax={100} className="h-1.5 bg-secondary rounded-full overflow-hidden">
+          {hasTaskMetrics && <div role="progressbar" aria-label="Tareas completadas" aria-valuenow={project.progress_percent!} aria-valuemin={0} aria-valuemax={100} className="h-1.5 bg-secondary rounded-full overflow-hidden">
             <div
               className="h-full bg-brand transition-all"
               style={{ width: `${project.progress_percent}%` }}
             />
-          </div>
+          </div>}
 
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <div className="flex items-center gap-1">
@@ -338,7 +402,7 @@ function ProjectCard({
               {formatDate(project.target_end_date)}
             </div>
             <div>
-              {project.completed_task_count}/{project.task_count} tareas
+              {hasTaskMetrics ? `${project.completed_task_count}/${project.task_count} tareas` : "Tareas no disponibles"}
             </div>
           </div>
         </CardContent>
@@ -466,6 +530,7 @@ function NewProjectDialog({
       </form>
       <details className="border-t mt-4 pt-3">
         <summary className="cursor-pointer py-2 text-sm">Partir de una plantilla o un documento</summary>
+        <p className="text-xs text-muted-foreground">Una plantilla reutiliza fases y tareas. Si importas un PDF o texto, podrás revisar la propuesta antes de crear el proyecto.</p>
         <div className="flex flex-wrap gap-2 pt-2">
           <Button type="button" variant="outline" onClick={onTemplate}><FolderKanban className="h-4 w-4 mr-2" />Usar plantilla</Button>
           <Button type="button" variant="outline" onClick={onPdf}><FileUp className="h-4 w-4 mr-2" />Importar PDF</Button>
@@ -482,12 +547,14 @@ function TemplateDialog({
   clients,
   templates,
   users,
+  canWriteTasks,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   clients: { id: number; name: string }[]
   templates: Record<string, { name: string; description?: string | null; phase_count: number; task_count: number; pricing_model?: string | null; monthly_fee?: number | null; is_recurring?: boolean }>
   users: User[]
+  canWriteTasks: boolean
 }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -513,12 +580,15 @@ function TemplateDialog({
   })
 
   const selectedTemplate = templateKey ? templates[templateKey] : null
+  const selectedTemplateNeedsTaskWrite = !!selectedTemplate && selectedTemplate.task_count > 0
+  const canCreateSelectedTemplate = !selectedTemplateNeedsTaskWrite || canWriteTasks
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogHeader>
         <DialogTitle>Crear desde plantilla</DialogTitle>
       </DialogHeader>
+      <p className="text-sm text-muted-foreground">Se creará un proyecto nuevo con las fases y tareas de la plantilla. Podrás ajustarlas después.</p>
       <form
         onSubmit={(e) => {
           e.preventDefault()
@@ -569,6 +639,7 @@ function TemplateDialog({
                 </span>
               )}
             </div>
+            {selectedTemplateNeedsTaskWrite && !canWriteTasks && <p role="alert" className="text-amber-700 dark:text-amber-400">Esta plantilla incluye tareas. Necesitas permiso de escritura en Tareas para crearla.</p>}
             {(selectedTemplate.pricing_model || selectedTemplate.monthly_fee != null) && (
               <div className="flex gap-3 text-muted-foreground">
                 {selectedTemplate.pricing_model && (
@@ -596,7 +667,7 @@ function TemplateDialog({
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={createMutation.isPending}>
+          <Button type="submit" disabled={createMutation.isPending || !canCreateSelectedTemplate}>
             {createMutation.isPending ? "Creando..." : "Crear proyecto"}
           </Button>
         </div>
@@ -1090,6 +1161,6 @@ function OwnerSelect({ id, value, users, onChange }: { id: string; value: string
       <option value="">Sin responsable</option>
       {users.map((user) => <option key={user.id} value={user.id}>{user.full_name}</option>)}
     </Select>
-    <p className="text-xs text-muted-foreground">Se guarda solo la persona elegida aquí.</p>
+    <p className="text-xs text-muted-foreground">Si lo dejas sin responsable, no recibirá avisos de seguimiento del proyecto.</p>
   </div>
 }

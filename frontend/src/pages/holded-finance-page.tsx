@@ -19,6 +19,7 @@ import { toast } from "sonner"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import { getErrorMessage } from "@/lib/utils"
 import { FinanceTabNav } from "@/components/finance/finance-tab-nav"
+import { InvoiceStatusBadge } from "@/components/finance/invoice-status-badge"
 
 type TabKey = "resumen" | "facturas" | "gastos" | "config"
 const SYNC_LOG_LIMIT = 20
@@ -774,17 +775,6 @@ function ConfigTab({ onInvalidateHolded }: { onInvalidateHolded: () => Promise<u
 }
 
 // ── Helpers ──────────────────────────────────────────────
-
-function InvoiceStatusBadge({ status }: { status: string | null }) {
-  if (!status) return <Badge variant="secondary">-</Badge>
-  const map: Record<string, { label: string; variant: "success" | "warning" | "destructive" | "secondary" }> = {
-    paid: { label: "Pagada", variant: "success" },
-    pending: { label: "Pendiente", variant: "warning" },
-    overdue: { label: "Vencida", variant: "destructive" },
-  }
-  const { label, variant } = map[status] || { label: status, variant: "secondary" as const }
-  return <Badge variant={variant}>{label}</Badge>
-}
 
 function SyncStatusIcon({ status }: { status: string }) {
   if (status === "success") return <CheckCircle className="h-3.5 w-3.5 text-green-400" />

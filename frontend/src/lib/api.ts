@@ -24,6 +24,7 @@ import type {
   User,
   UserCreate,
   UserPermission,
+  DeactivationImpact,
   TimeEntry,
   TimeEntryCreate,
   ActiveTimer,
@@ -145,6 +146,7 @@ import type {
   AutomationTriggerOption,
   AutomationActionOption,
   JobRuntimeResponse,
+  OperationalUsage,
 } from "./types"
 
 export const CSRF_COOKIE_NAME = "agency_csrf_token"
@@ -206,6 +208,7 @@ function getCookie(name: string): string | null {
 
 api.interceptors.request.use((config) => {
   const sessionConfig = config as SessionRequestConfig
+  config.headers["X-Agency-Client"] = "web"
   sessionConfig.agencySessionEpoch = sessionEpoch
   // Logout must keep its own request alive: it clears the cookie that belongs
   // to the session being ended, even while a later login is queued.
@@ -293,7 +296,7 @@ export const clientsApi = {
   aiAdvice: (id: number) =>
     api.post<{ recommendations: Array<{ priority: "high" | "medium" | "low"; category: string; title: string; description: string; action: string }> }>(`/clients/${id}/ai-advice`).then((r) => r.data),
   recentTimeEntries: (id: number, limit = 10) =>
-    api.get<Array<{ id: number; date: string; minutes: number; notes: string | null; task_title: string | null; user_name: string | null }>>(`/clients/${id}/recent-time-entries`, { params: { limit } }).then((r) => r.data),
+    api.get<Array<{ id: number; date: string; started_at: string | null; minutes: number; notes: string | null; task_title: string | null; user_name: string | null }>>(`/clients/${id}/recent-time-entries`, { params: { limit } }).then((r) => r.data),
   whatIf: (clientId: number) => api.get(`/clients/${clientId}/what-if`).then((r) => r.data),
   extractContext: (params: { file?: File; rawText?: string }) => {
     const form = new FormData()
@@ -319,12 +322,24 @@ export const clientsApi = {
 
 // Tasks
 export const tasksApi = {
-  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; retirement?: "active" | "retired"; search?: string; page?: number; page_size?: number }) =>
+  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; timer_eligible?: boolean; timer_scope?: "assigned" | "assigned_or_created"; retirement?: "active" | "retired"; search?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params }).then((r) => r.data),
   agenda: (params: { date: string; section: "planned" | "carryover" | "unplanned" | "completed"; assigned_to?: number | "me" | "unassigned" | "all"; timezone_offset_minutes?: number; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks/agenda", { params }).then((r) => r.data),
-  listAll: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean }) =>
-    api.get<PaginatedResponse<Task>>("/tasks", { params: { ...params, page_size: 1000 } }).then((r) => r.data.items),
+  listAll: async (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; timer_eligible?: boolean; timer_scope?: "assigned" | "assigned_or_created" }) => {
+    const items: Task[] = []
+    let page = 1
+    let total = Infinity
+    while (items.length < total) {
+      const response = await api.get<PaginatedResponse<Task>>("/tasks", { params: { ...params, page, page_size: 1000 } })
+      const batch = response.data.items
+      items.push(...batch)
+      total = response.data.total
+      if (batch.length === 0) break
+      page += 1
+    }
+    return items
+  },
   get: (id: number) => api.get<Task>(`/tasks/${id}`).then((r) => r.data),
   create: (data: TaskCreate) => api.post<Task>("/tasks", data).then((r) => r.data),
   update: (id: number, data: Partial<TaskCreate>) =>
@@ -405,7 +420,7 @@ export const timeEntriesApi = {
 export const timerApi = {
   start: (data: { task_id?: number | null; notes?: string }) =>
     api.post<ActiveTimer>("/timer/start", data).then((r) => r.data),
-  stop: (notes?: string) => api.post<TimeEntry>("/timer/stop", { notes }).then((r) => r.data),
+  stop: (timerId: number, notes?: string) => api.post<TimeEntry>("/timer/stop", { timer_id: timerId, notes }).then((r) => r.data),
   pause: () => api.post<ActiveTimer>("/timer/pause").then((r) => r.data),
   resume: () => api.post<ActiveTimer>("/timer/resume").then((r) => r.data),
   active: () =>
@@ -424,6 +439,8 @@ export const usersApi = {
   create: (data: UserCreate) => api.post<User>("/users", data).then((r) => r.data),
   get: (id: number) => api.get<User>(`/users/${id}`).then((r) => r.data),
   update: (id: number, data: Partial<User>) => api.put<User>(`/users/${id}`, data).then((r) => r.data),
+  deactivationImpact: (id: number) =>
+    api.get<DeactivationImpact>(`/users/${id}/deactivation-impact`).then((r) => r.data),
   getPermissions: (id: number) => api.get<UserPermission[]>(`/users/${id}/permissions`).then((r) => r.data),
   updatePermissions: (id: number, permissions: UserPermission[]) =>
     api.put<UserPermission[]>(`/users/${id}/permissions`, { permissions }).then((r) => r.data),
@@ -562,8 +579,10 @@ export const categoriesApi = {
 
 // Projects
 export const projectsApi = {
-  list: (params?: { client_id?: number; status?: string; lifecycle?: "portfolio" | "archive"; project_type?: string; is_recurring?: boolean; period_from?: string; period_to?: string; page?: number; page_size?: number }) =>
+  list: (params?: { client_id?: number; status?: string; owner?: string; lifecycle?: "portfolio" | "archive"; project_type?: string; is_recurring?: boolean; period_from?: string; period_to?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<ProjectListItem>>("/projects", { params }).then((r) => r.data),
+  unassignedCount: () =>
+    api.get<PaginatedResponse<ProjectListItem>>("/projects", { params: { lifecycle: "portfolio", owner: "unassigned", page_size: 1 } }).then((r) => r.data.total),
   listAll: (params?: { client_id?: number; status?: string; project_type?: string }) =>
     api.get<PaginatedResponse<ProjectListItem>>("/projects", { params: { ...params, page_size: 1000 } }).then((r) => r.data.items),
   get: (id: number) => api.get<Project>(`/projects/${id}`).then((r) => r.data),
@@ -864,6 +883,7 @@ export const digestsApi = {
   list: (params?: { client_id?: number; status?: string; period_from?: string; period_to?: string; limit?: number; offset?: number }) =>
     api.get<Digest[]>("/digests", { params }).then((r) => r.data),
   get: (id: number) => api.get<Digest>(`/digests/${id}`).then((r) => r.data),
+  recoverGeneration: (generationKey: string) => api.get<Digest>(`/digests/generation/${generationKey}`).then((r) => r.data),
   generate: (data: DigestGenerateRequest) =>
     api.post<Digest>("/digests/generate", data, { timeout: 90_000 }).then((r) => r.data),
   generateBatch: (params?: { period_start?: string; period_end?: string; tone?: string }) =>
@@ -931,8 +951,10 @@ export const dailysApi = {
   forDate: (date: string) => api.get<DailyUpdate | null>("/dailys/for-date", { params: { date } }).then((r) => r.data),
   reparse: (id: number, revision: number) =>
     api.post<DailyUpdate>(`/dailys/${id}/reparse`, { revision }, { timeout: 90_000 }).then((r) => r.data),
-  sendDiscord: (id: number) =>
-    api.post<DailyDiscordResponse>(`/dailys/${id}/send-discord`).then((r) => r.data),
+  previewDiscord: (id: number) =>
+    api.get<{ revision: number; content: string }>(`/dailys/${id}/preview`).then((r) => r.data),
+  sendDiscord: (id: number, data?: { revision: number; content: string }) =>
+    api.post<DailyDiscordResponse>(`/dailys/${id}/send-discord`, data).then((r) => r.data),
   edit: (id: number, data: { raw_text?: string; parsed_data?: DailyUpdate["parsed_data"]; revision: number; source_fact_keys?: string[] }) =>
     api.put<DailyUpdate>(`/dailys/${id}`, data).then((r) => r.data),
   delete: (id: number, revision: number) => api.delete(`/dailys/${id}`, { params: { revision } }).then((r) => r.data),
@@ -1060,6 +1082,13 @@ export const commandsApi = {
     api.get<NonNullable<NonNullable<CommandReceipt["result"]>["query"]>>(`/commands/${id}/query`, { params: { page, page_size: pageSize } }).then((r) => r.data),
   list: (page = 1, pageSize = 5) =>
     api.get<{ items: CommandReceipt[]; total: number; page: number; page_size: number; has_more: boolean }>("/commands", { params: { page, page_size: pageSize } }).then((r) => r.data),
+}
+
+export const operationalUsageApi = {
+  get: (days = 30) =>
+    api.get<OperationalUsage>("/admin/usage/operational", { params: { days } }).then((response) => response.data),
+  origins: (days = 30) =>
+    api.get<Array<{ origin: "web" | "extension" | "unknown"; hits: number }>>("/admin/usage/origins", { params: { days } }).then((response) => response.data),
 }
 
 // --- Project Evidence ---

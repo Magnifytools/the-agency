@@ -8,10 +8,10 @@ const badgeVariants = cva(
       variant: {
         default: "bg-brand/10 text-brand",
         secondary: "bg-secondary text-secondary-foreground",
-        destructive: "bg-red-500 text-white",
-        outline: "bg-slate-500/80 text-white",
-        success: "bg-green-500 text-white",
-        warning: "bg-orange-500 text-white",
+        destructive: "border border-red-800 bg-red-950 text-red-200",
+        outline: "border border-slate-600 bg-slate-800 text-slate-100",
+        success: "border border-green-800 bg-green-950 text-green-200",
+        warning: "border border-amber-800 bg-amber-950 text-amber-200",
       },
     },
     defaultVariants: { variant: "default" },
@@ -26,10 +26,10 @@ function Badge({ className, variant, dot = true, ...props }: BadgeProps) {
   const dotColors: Record<string, string> = {
     default: "bg-brand",
     secondary: "bg-muted-foreground",
-    destructive: "bg-white",
-    outline: "bg-white",
-    success: "bg-white",
-    warning: "bg-white",
+    destructive: "bg-red-300",
+    outline: "bg-slate-300",
+    success: "bg-green-300",
+    warning: "bg-amber-300",
   }
 
   return (

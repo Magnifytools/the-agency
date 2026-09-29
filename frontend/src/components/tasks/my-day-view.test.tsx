@@ -19,6 +19,17 @@ const task = (id: number, title: string, overrides: Partial<Task> = {}): Task =>
 const page = (items: Task[], total = items.length): PaginatedResponse<Task> => ({ items, total, page: 1, page_size: 25 })
 
 describe("MyDayView", () => {
+  it("distinguishes task statuses with labeled, tinted controls", () => {
+    render(<MyDayView planned={page([task(1, "Por empezar"), task(2, "En marcha", { status: "in_progress" })])} carryover={page([])} unplanned={page([])} completed={page([])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} onReviewCarryover={vi.fn()} canWrite />)
+
+    const pending = screen.getByRole("combobox", { name: "Estado de Por empezar" })
+    const inProgress = screen.getByRole("combobox", { name: "Estado de En marcha" })
+    expect(pending).toHaveValue("pending")
+    expect(pending).toHaveClass("bg-amber-500/10")
+    expect(inProgress).toHaveValue("in_progress")
+    expect(inProgress).toHaveClass("bg-sky-500/10")
+  })
+
   it("explains the reliable completion-date scope", () => {
     render(<MyDayView planned={page([])} carryover={page([])} unplanned={page([])} completed={page([task(9, "Terminada")])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} onReviewCarryover={vi.fn()} canWrite={false} />)
     expect(screen.getByText(/fecha de finalización registrada para hoy/)).toBeInTheDocument()
@@ -60,7 +71,8 @@ describe("MyDayView", () => {
   it("does not present carryover actions to a read-only user", () => {
     render(<MyDayView planned={page([])} carryover={page([task(2, "Arrastre")])} unplanned={page([])} completed={page([])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} onReviewCarryover={vi.fn()} canWrite={false} />)
     expect(screen.queryByRole("button", { name: "Revisar" })).not.toBeInTheDocument()
-    expect(screen.getByLabelText("Estado de Arrastre")).toBeDisabled()
+    expect(screen.queryByRole("combobox", { name: "Estado de Arrastre" })).not.toBeInTheDocument()
+    expect(screen.getByText("Pendiente")).toBeInTheDocument()
   })
 
   it("sends reviewed work to review and opens the waiting form with its intended status", async () => {
@@ -97,4 +109,22 @@ describe("MyDayView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reintentar" }))
     expect(retry).toHaveBeenCalledOnce()
   })
+
+  it("labels a reader's task action as view-only while preserving consultation", () => {
+    const onOpenEdit = vi.fn()
+    render(<MyDayView planned={page([task(1, "Consulta")])} carryover={page([])} unplanned={page([])} completed={page([])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={onOpenEdit} onReviewCarryover={vi.fn()} canWrite={false} />)
+
+    expect(screen.getByRole("button", { name: "Ver Consulta" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Editar Consulta" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Ver Consulta" }))
+    expect(onOpenEdit).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }))
+  })
+
+  it("keeps the edit action for a writer", () => {
+    render(<MyDayView planned={page([task(1, "Editable")])} carryover={page([])} unplanned={page([])} completed={page([])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} onReviewCarryover={vi.fn()} canWrite />)
+
+    expect(screen.getByRole("button", { name: "Editar Editable" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Estado de Editable" })).toBeEnabled()
+  })
+
 })

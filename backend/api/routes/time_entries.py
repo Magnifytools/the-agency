@@ -782,6 +782,8 @@ async def stop_timer(
     entry = result.scalar_one_or_none()
     if entry is None:
         raise HTTPException(status_code=404, detail="No hay timer activo")
+    if body.timer_id is not None and entry.id != body.timer_id:
+        raise HTTPException(status_code=409, detail="El timer cambió. Revisa el cronómetro antes de detenerlo")
     if not entry.started_at:
         raise HTTPException(status_code=400, detail="Timer has no start time")
 
@@ -790,7 +792,8 @@ async def stop_timer(
     entry = (await db.execute(
         select(TimeEntry).where(TimeEntry.id == entry.id).with_for_update().execution_options(populate_existing=True)
     )).scalar_one_or_none()
-    if entry is None or entry.minutes is not None or entry.task_id != original_task_id:
+    if (entry is None or entry.minutes is not None or entry.task_id != original_task_id
+            or (body.timer_id is not None and entry.id != body.timer_id)):
         raise HTTPException(status_code=409, detail="El timer cambió; vuelve a intentarlo")
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)

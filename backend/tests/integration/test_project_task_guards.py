@@ -129,6 +129,117 @@ async def test_archived_project_blocks_restore_template_activation_and_timer(
     )) == 0
 
 
+async def test_timer_eligible_list_hides_own_tasks_in_archived_projects(
+    admin_client, db_session,
+):
+    active_client, active_project = await _project(db_session)
+    _completed_client, completed_project = await _project(
+        db_session, status=ProjectStatus.completed,
+    )
+    _cancelled_client, cancelled_project = await _project(
+        db_session, status=ProjectStatus.cancelled,
+    )
+    actor_id = admin_client.test_user.id
+    active_task = await _task(db_session, active_project, actor_id, assigned_to=actor_id)
+    completed_task = await _task(db_session, completed_project, actor_id, assigned_to=actor_id)
+    cancelled_task = await _task(db_session, cancelled_project, actor_id, assigned_to=actor_id)
+    projectless_task = Task(
+        title=f"Projectless timer task {uuid4().hex[:8]}",
+        client_id=active_client.id,
+        created_by=actor_id,
+        assigned_to=actor_id,
+        status=TaskStatus.pending,
+        priority=TaskPriority.medium,
+    )
+    db_session.add(projectless_task)
+    await db_session.flush()
+
+    selector_params = {
+        "assigned_to": "me",
+        "status": "backlog,pending,in_progress,advanced,waiting,in_review",
+        "is_recurring": "false",
+        "timer_eligible": "true",
+        "page_size": 100,
+    }
+    eligible = await admin_client.get("/api/tasks", params=selector_params)
+    assert eligible.status_code == 200, eligible.text
+    assert {item["id"] for item in eligible.json()["items"]} == {
+        active_task.id, projectless_task.id,
+    }
+    assert eligible.json()["total"] == 2
+
+    unfiltered = await admin_client.get("/api/tasks", params={
+        key: value for key, value in selector_params.items() if key != "timer_eligible"
+    })
+    assert unfiltered.status_code == 200, unfiltered.text
+    assert {item["id"] for item in unfiltered.json()["items"]} == {
+        active_task.id, completed_task.id, cancelled_task.id, projectless_task.id,
+    }
+
+    blocked = await admin_client.post("/api/timer/start", json={"task_id": completed_task.id})
+    assert blocked.status_code == 409
+    assert "Reabre el proyecto" in blocked.json()["detail"]
+
+
+async def test_direct_task_assigned_to_creator_remains_timer_eligible_after_stopping(
+    admin_client, db_session,
+):
+    """The picker retains new and legacy personal captures after stop."""
+    created = await admin_client.post("/api/tasks", json={
+        "title": "Captura directa para retomar",
+        "status": "in_progress",
+        "assign_to_current_user": True,
+    })
+    assert created.status_code == 201, created.text
+    task_id = created.json()["id"]
+    assert created.json()["assigned_to"] == admin_client.test_user.id
+
+    started = await admin_client.post("/api/timer/start", json={"task_id": task_id})
+    assert started.status_code == 201, started.text
+    stopped = await admin_client.post("/api/timer/stop", json={})
+    assert stopped.status_code == 200, stopped.text
+
+    # Existing direct captures predate the explicit self-assignment flag.
+    legacy = await admin_client.post("/api/tasks", json={
+        "title": "Captura directa histórica para retomar",
+        "status": "in_progress",
+    })
+    assert legacy.status_code == 201, legacy.text
+    legacy_id = legacy.json()["id"]
+    assert legacy.json()["assigned_to"] is None
+
+    legacy_started = await admin_client.post("/api/timer/start", json={"task_id": legacy_id})
+    assert legacy_started.status_code == 201, legacy_started.text
+    legacy_stopped = await admin_client.post("/api/timer/stop", json={})
+    assert legacy_stopped.status_code == 200, legacy_stopped.text
+
+    other = User(
+        email=f"other-timer-{uuid4().hex}@example.test", full_name="Other timer",
+        hashed_password="test", role=UserRole.member, is_active=True,
+        hourly_rate=40, weekly_hours=40,
+    )
+    db_session.add(other)
+    await db_session.flush()
+    foreign_legacy = Task(
+        title="Captura directa de otra persona", created_by=other.id,
+        status=TaskStatus.in_progress, priority=TaskPriority.medium,
+    )
+    db_session.add(foreign_legacy)
+    await db_session.flush()
+
+    selector = await admin_client.get("/api/tasks", params={
+        "assigned_to": "me",
+        "status": "backlog,pending,in_progress,advanced,waiting,in_review",
+        "timer_scope": "assigned_or_created",
+        "timer_eligible": "true",
+        "page_size": 100,
+    })
+    assert selector.status_code == 200, selector.text
+    selectable_ids = {item["id"] for item in selector.json()["items"]}
+    assert {task_id, legacy_id}.issubset(selectable_ids)
+    assert foreign_legacy.id not in selectable_ids
+
+
 async def test_closed_time_correction_remains_allowed_in_archived_project(
     admin_client, db_session,
 ):

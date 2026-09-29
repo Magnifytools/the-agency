@@ -15,7 +15,7 @@ async function setup(t) {
   const dom = new JSDOM(fs.readFileSync(path.join(extension, 'popup.html'), 'utf8'), { runScripts: 'outside-only', url: 'https://extension.invalid/popup.html' });
   t.after(() => dom.window.close());
   const requests = [];
-  const state = { failPath: null, failPage: 2, status: 503, posted: null, commandRequests: [], commandStepRequests: [], scheduleRevision: 3 };
+  const state = { failPath: null, failPage: 2, status: 503, posted: null, taskCreateRequests: [], commandRequests: [], commandStepRequests: [], scheduleRevision: 3 };
   dom.window.chrome = {
     storage: { local: { get: async () => ({}), set: async () => {}, remove: async () => {} } },
     runtime: { sendMessage: () => {} }, tabs: { create: () => {} },
@@ -30,6 +30,10 @@ async function setup(t) {
       state.posted = JSON.parse(options.body);
       status = state.captureStatus || 201;
       data = { id: 1, detail: 'Captura no disponible' };
+    } else if (options.method === 'POST' && u.pathname === '/api/tasks') {
+      const body = JSON.parse(options.body); state.taskCreateRequests.push(body);
+      status = state.taskCreateStatus || 201;
+      data = state.taskCreateResponse || { id: 901, title: body.title };
     } else if (options.method === 'POST' && u.pathname === '/api/commands') {
       const body = JSON.parse(options.body); state.commandRequests.push(body);
       status = state.commandStatus || 200;
@@ -78,12 +82,53 @@ test('popup UTC parsing accepts explicit Z and legacy instants without doubling 
   assert.equal(h.run('parseApiInstant("2026-09-17T12:00:00+02:00").toISOString()'), '2026-09-17T10:00:00.000Z');
 });
 
+test('every authenticated popup request declares the extension client', async t => {
+  const h = await setup(t);
+  await h.run('loadProjectsAndClients()');
+  const authenticated = h.requests.filter(request => request.options.headers?.Authorization);
+  assert.ok(authenticated.length > 0);
+  assert.ok(authenticated.every(request => request.options.headers['X-Agency-Client'] === 'extension'));
+});
+
+test('commercial command opens the empty project review and never offers undo', async t => {
+  const h = await setup(t);
+  let opened;
+  h.dom.window.chrome.tabs.create = value => { opened = value; };
+  h.state.commandResponse = {
+    id: 'commercial-1', request_key: 'commercial-request', raw_text: 'Proyecto SEO tarifa 500 EUR',
+    channel: 'extension', context: null, status: 'executed', intent: { kind: 'project_commercial_handoff' },
+    prompt: null, change_log_id: null, error: null, revision: 1,
+    result: { kind: 'derivation', message: 'Revisa las condiciones comerciales', entities: [], undo_available: false,
+      action: { kind: 'open_project_form', href: '/projects?new=1' } },
+  };
+  h.run(`renderCommand(${JSON.stringify(h.state.commandResponse)})`);
+  const buttons = [...h.get('command-receipt').querySelectorAll('button')];
+  assert.ok(!buttons.some(button => button.textContent === 'Deshacer'));
+  buttons.find(button => button.textContent === 'Revisar proyecto').click();
+  assert.equal(opened.url, 'https://agency.magnifytools.com/projects?new=1');
+  assert.match(h.get('command-receipt').textContent, /Proyecto SEO tarifa 500 EUR/);
+  assert.doesNotMatch(h.get('command-receipt').textContent, /proyecto creado/i);
+});
+
 test('popup paused timer freezes at accumulated time and renders the pause indicator', async t => {
   const h = await setup(t);
   h.run('showActiveTimer({started_at:"2026-09-17T10:00:00Z", task_title:"Prueba pausa", is_paused:true, accumulated_seconds:3661})');
   h.run('updateTimerDisplay()');
   assert.equal(h.get('timer-elapsed').textContent, '1:01:01');
   assert.equal(h.get('header-timer-text').textContent, '⏸ 1:01');
+});
+
+test('both popup tab groups expose the selected panel after switching', async t => {
+  const { get, dom, run } = await setup(t);
+  get('tab-capture').querySelector('[data-mode="note"]').click();
+  const noteTab = get('tab-capture').querySelector('[data-mode="note"]');
+  assert.equal(noteTab.getAttribute('aria-selected'), 'true');
+  assert.equal(dom.window.document.getElementById(noteTab.getAttribute('aria-controls')).classList.contains('hidden'), false);
+  run('switchToTab("timer")');
+  const timerTab = dom.window.document.querySelector('[data-tab="timer"]');
+  assert.equal(timerTab.getAttribute('aria-selected'), 'true');
+  assert.equal(dom.window.document.getElementById(timerTab.getAttribute('aria-controls')).classList.contains('hidden'), false);
+  assert.equal(dom.window.document.querySelector('[data-tab="capture"]').getAttribute('aria-selected'), 'false');
 });
 
 test('all selector pages use page/page_size, including clients/projects beyond 25 and 100', async t => {
@@ -163,9 +208,10 @@ test('failed Inbox capture retains the draft and assignment for retry', async t 
 });
 
 test('timer and manual task selectors load all pages and preserve selection on a page error', async t => {
-  const { run, get, state } = await setup(t);
+  const { run, get, state, requests } = await setup(t);
   await run('loadTimerTasks()');
   assert.equal(get('timer-task-select').options.length, tasks.length + 1);
+  assert.equal(requests.some(request => request.url.pathname === '/api/tasks' && request.url.searchParams.get('timer_scope') === 'assigned_or_created'), true);
   get('timer-task-select').value = '126';
   get('manual-task-select').value = '125';
   state.failPath = '/api/tasks';
@@ -232,6 +278,36 @@ test('task tab paginates and retains previously rendered cards on intermediate f
   await run('loadTasks()');
   assert.equal(get('tasks-list').querySelectorAll('.task-card').length, tasks.length);
   assert.ok(get('tasks-list').querySelector('.tasks-error[role="alert"]'));
+});
+
+test('task action failure appears beside the task list, with a named control', async t => {
+  const h = await setup(t);
+  const fetch = h.dom.window.fetch;
+  h.dom.window.fetch = async (url, options = {}) => {
+    if (options.method === 'PUT' && /\/api\/tasks\/1$/.test(new URL(url).pathname)) {
+      return { ok: false, status: 403, json: async () => ({ detail: 'Sin permiso para completar' }) };
+    }
+    return fetch(url, options);
+  };
+  await h.run('loadTasks()');
+  const button = h.get('tasks-list').querySelector('.task-check-btn');
+  assert.match(button.getAttribute('aria-label'), /Completar Tarea 1/);
+  button.click(); await tick();
+  assert.match(h.get('tasks-action-error').textContent, /Sin permiso para completar/);
+  assert.equal(h.get('tasks-action-error').classList.contains('hidden'), false);
+  assert.equal(h.get('timer-error').classList.contains('hidden'), true);
+});
+
+test('task names cannot break action labels into HTML attributes', async t => {
+  const h = await setup(t);
+  const title = 'Informe " onmouseover="alert(1) & revisión';
+  const markup = h.run(`renderTaskCard(${JSON.stringify({ id: 12, title, status: 'pending' })})`);
+  const container = h.dom.window.document.createElement('div');
+  container.innerHTML = markup;
+  for (const button of container.querySelectorAll('.task-check-btn, .task-play-btn, .task-open-btn')) {
+    assert.equal(button.getAttribute('onmouseover'), null);
+    assert.match(button.getAttribute('aria-label'), /Informe " onmouseover="alert\(1\) & revisión/);
+  }
 });
 
 test('capture finishing does not erase a draft or assignment edited while sending', async t => {
@@ -362,7 +438,7 @@ test('late timer JSON from previous login cannot replace the new active timer', 
   h.get('settings-btn').click();
   await loginAs(h, 'session-b', 'b@example.test');
   assert.equal(h.get('command-text').disabled, false);
-  assert.equal(h.get('command-submit').textContent, 'Hacer');
+  assert.equal(h.get('command-submit').textContent, 'Enviar petición');
   await h.run('loadActiveTimer()');
   body.resolve(); await pending;
   assert.equal(h.get('timer-task-name').textContent, 'New timer');
@@ -379,6 +455,7 @@ test('late timer stop cannot hide a newer account timer or reset its pending but
     if (new URL(url).pathname === '/api/timer/stop') { reached.resolve(); await response.promise; return { ok: true, status: 200 }; }
     return fetch(url, options);
   };
+  h.run('showActiveTimer({id: 42, started_at:"2026-09-17T09:00:00Z", task_title:"Old timer"})');
   h.get('timer-stop-btn').click(); await reached.promise;
   h.get('settings-btn').click(); await loginAs(h, 'session-b', 'b@example.test');
   h.run('showActiveTimer({started_at:"2026-09-17T10:00:00Z", task_title:"New timer"})');
@@ -387,6 +464,41 @@ test('late timer stop cannot hide a newer account timer or reset its pending but
   assert.equal(h.get('timer-task-name').textContent, 'New timer');
   assert.equal(h.get('timer-active').classList.contains('hidden'), false);
   assert.equal(h.get('timer-stop-btn').disabled, true);
+});
+
+test('stop sends the displayed timer id and refreshes after a stale stop', async t => {
+  const h = await setup(t);
+  await loginAs(h, 'session-a', 'a@example.test');
+  let sentId;
+  const fetch = h.dom.window.fetch;
+  h.dom.window.fetch = async (url, options = {}) => {
+    const pathname = new URL(url).pathname;
+    if (pathname === '/api/timer/stop') {
+      sentId = JSON.parse(options.body).timer_id;
+      return { ok: false, status: 409, json: async () => ({ detail: 'El timer cambió' }) };
+    }
+    if (pathname === '/api/timer/active') {
+      return { ok: true, status: 200, json: async () => ({ id: 88, started_at: '2026-09-17T10:00:00Z', task_title: 'Current timer' }) };
+    }
+    return fetch(url, options);
+  };
+  h.run('showActiveTimer({id: 42, started_at:"2026-09-17T09:00:00Z", task_title:"Old timer"})');
+  h.get('timer-stop-btn').click();
+  await tick(); await tick();
+  assert.equal(sentId, 42);
+  assert.equal(h.run('activeTimerId'), 88);
+  assert.equal(h.get('timer-task-name').textContent, 'Current timer');
+});
+
+test('failed active timer check does not show an idle timer', async t => {
+  const h = await setup(t);
+  await loginAs(h, 'session-a', 'a@example.test');
+  h.run('showActiveTimer({id: 42, started_at:"2026-09-17T09:00:00Z", task_title:"Running"})');
+  h.dom.window.fetch = async () => ({ ok: false, status: 503, json: async () => ({ detail: 'Temporalmente no disponible' }) });
+  await h.run('loadActiveTimer()');
+  assert.equal(h.get('timer-active').classList.contains('hidden'), false);
+  assert.equal(h.run('activeTimerId'), 42);
+  assert.equal(h.get('timer-error').classList.contains('hidden'), false);
 });
 
 test('drafts stay with their authenticated email and restore safely after reconnecting', async t => {
@@ -461,6 +573,22 @@ test('reconnected task drafts cannot submit unavailable assignments before selec
   assert.equal(h.get('task-title').value, 'Task draft');
 });
 
+test('direct capture explicitly assigns the new task to its authenticated creator', async t => {
+  const h = await setup(t);
+  await h.run('loadProjectsAndClients()');
+  h.get('task-title').value = 'Preparar propuesta';
+  h.get('task-client-select').value = '1';
+
+  await h.run('createTaskDirect()');
+
+  assert.equal(h.state.taskCreateRequests.length, 1);
+  assert.deepEqual(h.state.taskCreateRequests[0], {
+    title: 'Preparar propuesta', client_id: 1, status: 'in_progress', assign_to_current_user: true,
+  });
+  assert.match(h.get('task-capture-error').textContent, /Tarea creada, pero no se pudo iniciar el timer/);
+  assert.equal(h.get('success-msg').classList.contains('hidden'), true);
+});
+
 test('command mode sends through shared endpoint and renders a linked receipt', async t => {
   const { run, get, state, dom } = await setup(t);
   run('showMainView()');
@@ -498,7 +626,7 @@ test('command choices preserve semantic date, literal title and user fields', as
     id: 'cmd-choice', request_key: 'request-command-choice', raw_text: 'Crea tarea', channel: 'extension', context: null,
     status: 'needs_input', intent: { kind: 'create_task' }, result: null, change_log_id: null, error: null, revision: 1,
     prompt: { questions: [
-      { field: 'scheduled_date', label: '¿Qué viernes?', kind: 'choice', choices: [{ id: 'date:2026-09-25', label: '25 de septiembre' }] },
+      { field: 'scheduled_date', label: '¿Qué viernes?', kind: 'choice', choices: [{ id: 'date:2026-09-25', label: '25 de septiembre', subtitle: 'Antes del cierre' }] },
       { field: 'literal_title', label: '¿Conservar?', kind: 'choice', choices: [{ id: 'literal_title:confirm', label: 'Sí' }] },
       { field: 'assigned_to', label: '¿Quién?', kind: 'choice', choices: [{ id: 'user:8', label: 'María' }] },
     ] },
@@ -506,7 +634,11 @@ test('command choices preserve semantic date, literal title and user fields', as
   get('command-text').value = 'Crea tarea';
   get('command-text').dispatchEvent(new dom.window.Event('input'));
   get('command-submit').click(); await tick();
+  assert.equal(get('command-prompt').querySelector('.primary-btn').disabled, true);
+  assert.match(get('command-prompt').textContent, /Antes del cierre/);
   for (const button of get('command-prompt').querySelectorAll('.command-choice')) button.click();
+  assert.equal(get('command-prompt').querySelector('.primary-btn').disabled, false);
+  assert.equal(get('command-prompt').querySelector('.command-choice').getAttribute('aria-pressed'), 'true');
   get('command-prompt').querySelector('.primary-btn').click(); await tick();
   const resolve = state.commandStepRequests.find(request => request.path.endsWith('/resolve'));
   assert.deepEqual(resolve?.body?.answers, [

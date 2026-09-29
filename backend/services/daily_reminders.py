@@ -4,13 +4,13 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
-from sqlalchemy import select, and_, func, case, cast, Date, or_
+from sqlalchemy import select, func, case, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import (
     IN_PROGRESS_TASK_STATUSES,
     Task, TaskStatus, TaskPriority, TimeEntry, DailyUpdate,
-    CompanyHoliday, User, Event, EventType,
+    CompanyHoliday, User, UserRole, UserPermission, Event, EventType,
 )
 import re
 
@@ -48,70 +48,123 @@ async def is_working_day(db: AsyncSession, day: date, region: str | None) -> boo
     return True
 
 
+def _morning_sections(today: date):
+    """The same mutually exclusive Hoy buckets for personal and shared plans."""
+    due_day = func.date(Task.due_date)
+    actionable = Task.status != TaskStatus.waiting
+    return (
+        ("Para hoy", actionable & or_(
+            due_day == today,
+            (Task.scheduled_date == today) & or_(Task.due_date.is_(None), due_day > today),
+        )),
+        ("Arrastre pendiente", actionable & or_(
+            due_day < today,
+            (Task.scheduled_date < today) & or_(Task.due_date.is_(None), due_day != today),
+        )),
+        ("Sin planificar", actionable & Task.scheduled_date.is_(None) & or_(
+            Task.due_date.is_(None), due_day > today,
+        )),
+        ("En espera (no son acciones inmediatas)", (Task.status == TaskStatus.waiting) & (due_day <= today)),
+    )
+
+
+def _morning_priority_sort():
+    return case({TaskPriority.urgent: 0, TaskPriority.high: 1,
+                 TaskPriority.medium: 2, TaskPriority.low: 3}, value=Task.priority, else_=4)
+
+
+def _morning_task_line(task: Task, today: date, *, mark_unassigned: bool) -> str:
+    _, emoji = _PRIORITY_ORDER.get(task.priority, (4, "\u26aa"))
+    parts = [emoji]
+    if task.priority == TaskPriority.urgent:
+        parts.append("[URGENTE]")
+    parts.append(_MONEY_RE.sub("", task.title).strip())
+    if mark_unassigned and task.assigned_to is None:
+        parts.append("(sin responsable)")
+    if task.status == TaskStatus.backlog:
+        parts.append("(por priorizar)")
+    elif task.status == TaskStatus.in_review:
+        parts.append("(en revisión)")
+    if task.client:
+        parts.append(f"\u2014 {task.client.name}")
+    if task.due_date:
+        task_due_day = task.due_date.date()
+        if task_due_day < today:
+            parts.append("(vencida)")
+        elif task_due_day == today:
+            parts.append("(vence hoy)")
+        else:
+            parts.append(f"(vence {task_due_day:%d/%m})")
+    return " ".join(parts)
+
+
+async def generate_team_morning_plan(db: AsyncSession, day: date) -> str:
+    """One shared agenda, grouped by active task readers; unassigned work appears once."""
+    users = (await db.scalars(select(User).where(
+        User.is_active.is_(True),
+        or_(User.role == UserRole.admin, User.permissions.any(
+            (UserPermission.module == "tasks") & UserPermission.can_read.is_(True))),
+    ).order_by(User.id))).all()
+    groups = [(user.short_name or user.full_name, user.id) for user in users
+              if await is_working_day(db, day, user.region)]
+    groups.append(("Sin responsable", None))
+    lines = [f"\u2600\ufe0f Plan del equipo para hoy · {day:%d/%m/%Y}"]
+    any_tasks = False
+    for name, owner_id in groups:
+        group_lines = []
+        for heading, condition in _morning_sections(day):
+            tasks = (await db.scalars(select(Task).where(
+                Task.assigned_to == owner_id if owner_id is not None else Task.assigned_to.is_(None),
+                Task.retired_at.is_(None), Task.status != TaskStatus.completed,
+                Task.is_recurring.is_(False), condition,
+            ).order_by(_morning_priority_sort(), Task.due_date.asc().nulls_last(), Task.id).limit(9))).all()
+            if tasks:
+                group_lines.append(f"**{heading}**")
+                group_lines.extend(_morning_task_line(task, day, mark_unassigned=False) for task in tasks[:8])
+                if len(tasks) > 8:
+                    group_lines.append("Hay más en la vista Hoy de la app.")
+        if group_lines:
+            any_tasks = True
+            lines.extend((f"\n**{name}**", *group_lines))
+    if not any_tasks:
+        lines.append("\nNo hay tareas pendientes visibles en Hoy para esta fecha.")
+    return "\n".join(lines)
+
+
 async def generate_morning_plan(db: AsyncSession, user: User, *, day: date | None = None) -> str:
     """Build the morning task list for a user."""
     name = user.short_name or user.full_name
     today = day or business_today()
 
-    # Fetch active tasks ordered by priority then due_date
-    priority_sort = case(
-        {
-            TaskPriority.urgent: 0,
-            TaskPriority.high: 1,
-            TaskPriority.medium: 2,
-            TaskPriority.low: 3,
-        },
-        value=Task.priority,
-        else_=4,
+    # Match the sections of Hoy. The personal agenda also shows tasks without an
+    # assignee, so label those explicitly instead of silently dropping them.
+    priority_sort = _morning_priority_sort()
+    base = (
+        or_(Task.assigned_to == user.id, Task.assigned_to.is_(None)),
+        Task.retired_at.is_(None),
+        Task.status != TaskStatus.completed,
+        Task.is_recurring.is_(False),
     )
-    stmt = (
-        select(Task)
-        .where(
-            Task.assigned_to == user.id,
-            Task.retired_at.is_(None),
-            Task.status.in_([TaskStatus.pending, *IN_PROGRESS_TASK_STATUSES]),
-            Task.is_recurring.is_(False),
-            or_(cast(Task.due_date, Date) <= today,
-                (Task.scheduled_date == today) & or_(Task.due_date.is_(None), cast(Task.due_date, Date) > today)),
+    sections = _morning_sections(today)
+
+    lines = [f"\u2600\ufe0f Buenos d\u00edas, {name}", "\U0001f4cb Tu agenda de hoy:"]
+    has_tasks = False
+    for heading, condition in sections:
+        result = await db.execute(
+            select(Task).where(*base, condition)
+            .order_by(priority_sort, Task.due_date.asc().nulls_last(), Task.id).limit(9)
         )
-        .order_by(priority_sort, Task.due_date.asc().nulls_last(), Task.id).limit(31)
-    )
-    result = await db.execute(stmt)
-    tasks = result.scalars().all()
-
-    lines = [
-        f"\u2600\ufe0f Buenos d\u00edas, {name}",
-        f"\U0001f4cb Tus tareas para hoy:\n",
-    ]
-
-    for t in tasks[:30]:
-        order, emoji = _PRIORITY_ORDER.get(t.priority, (4, "\u26aa"))
-        client_name = t.client.name if t.client else None
-
-        title = _MONEY_RE.sub("", t.title).strip()
-        parts = [emoji]
-        if t.priority == TaskPriority.urgent:
-            parts.append("[URGENTE]")
-        parts.append(title)
-        if client_name:
-            parts.append(f"\u2014 {client_name}")
-
-        # Due date annotation
-        if t.due_date:
-            due_day = t.due_date.date() if hasattr(t.due_date, "date") else t.due_date
-            if due_day < today:
-                parts.append("(vencida)")
-            elif due_day == today:
-                parts.append("(vence hoy)")
-            else:
-                parts.append(f"(vence {due_day.strftime('%d/%m')})")
-
-        lines.append(" ".join(parts))
-
-    if not tasks:
-        lines.append("No hay tareas planificadas ni vencidas para hoy.")
-    elif len(tasks) > 30:
-        lines.append("Hay más tareas en la vista Hoy de la app.")
+        tasks = result.scalars().all()
+        if not tasks:
+            continue
+        has_tasks = True
+        lines.append(f"\n**{heading}**")
+        for task in tasks[:8]:
+            lines.append(_morning_task_line(task, today, mark_unassigned=True))
+        if len(tasks) > 8:
+            lines.append("Hay más en la vista Hoy de la app.")
+    if not has_tasks:
+        lines.append("\nNo hay tareas pendientes visibles en Hoy para esta fecha.")
 
     # Meetings today (from Google Calendar sync)
     from datetime import datetime as dt_type

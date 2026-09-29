@@ -3,18 +3,70 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { Link, MemoryRouter } from "react-router-dom"
 import { beforeEach, expect, it, vi } from "vitest"
 import DigestsPage from "./digests-page"
-const mocks = vi.hoisted(() => ({ api: {list: vi.fn(), render: vi.fn(), generate: vi.fn(), updateStatus: vi.fn(), delete: vi.fn()}, clients: vi.fn(), send: vi.fn(), auth: { id: 1, write: true } }))
+const mocks = vi.hoisted(() => ({ api: {list: vi.fn(), render: vi.fn(), generate: vi.fn(), recoverGeneration: vi.fn(), updateStatus: vi.fn(), delete: vi.fn()}, clients: vi.fn(), policy: vi.fn(), send: vi.fn(), auth: { id: 1, write: true, admin: true } }))
 vi.mock("@/lib/api", () => ({digestsApi: mocks.api, clientsApi: {listAll: mocks.clients}, discordApi: {sendDigest: mocks.send}}))
-vi.mock("@/context/auth-context", () => ({useAuth: () => ({user: {id: mocks.auth.id}, isAdmin: true, hasPermission: (_module: string, write?: boolean) => !write || mocks.auth.write})}))
+vi.mock("@/lib/report-policy-api", () => ({reportPolicyApi: {getPolicy: mocks.policy}, reportPolicyKeys: {all: ["report-policy"], preview: ["digest-generation-preview"], external: ["digest-external-delivery"]}}))
+vi.mock("@/context/auth-context", () => ({useAuth: () => ({user: {id: mocks.auth.id}, isAdmin: mocks.auth.admin, hasPermission: (_module: string, write?: boolean) => !write || mocks.auth.write})}))
 vi.mock("@/components/digests/digest-cohort", () => ({DigestCohort: ({clientId, expectedPeriod}: {clientId?: number; expectedPeriod?: {start: string; end: string}}) => expectedPeriod ? <div>Período esperado {expectedPeriod.start} — {expectedPeriod.end} <Link to={`/digests?client_id=${clientId}`}>Ver períodos actuales</Link></div> : <div>Selección de clientes</div>}))
 vi.mock("@/components/delivery-receipts", () => ({DeliveryReceipts: ({sourceId}: {sourceId: number}) => <p>Recibos #{sourceId}</p>, deliveryToast: vi.fn()}))
-const source = {id: 10, client_id: 1, client_name: "Acme", status: "draft", tone: "cercano", period_start: "2026-09-07", period_end: "2026-09-13", generated_at: null, created_by: 1}
+const source = {id: 10, client_id: 1, client_name: "Acme", status: "draft", can_delete: true, tone: "cercano", period_start: "2026-09-07", period_end: "2026-09-13", generated_at: null, created_by: 1}
 function setup(route = "/digests") {
   const client = new QueryClient({defaultOptions: {queries: {retry: false}, mutations: {retry: false}}})
   const node = () => <QueryClientProvider client={client}><MemoryRouter initialEntries={[route]}><DigestsPage /></MemoryRouter></QueryClientProvider>
   return {...render(node()), node}
 }
-beforeEach(() => {vi.resetAllMocks(); mocks.auth = {id: 1, write: true}; mocks.api.list.mockResolvedValue([source, {...source, id: 20, client_id: 2, client_name: "Other"}]); mocks.clients.mockResolvedValue([{id: 1, name: "Acme", status: "active", is_internal: false}]); mocks.api.render.mockResolvedValue({rendered: "Rendered"}); mocks.api.generate.mockResolvedValue({...source, id: 30}); mocks.send.mockResolvedValue({status: "pending"})})
+beforeEach(() => {vi.resetAllMocks(); localStorage.clear(); mocks.auth = {id: 1, write: true, admin: true}; mocks.api.list.mockResolvedValue([source, {...source, id: 20, client_id: 2, client_name: "Other"}]); mocks.clients.mockResolvedValue([{id: 1, name: "Acme", status: "active", is_internal: false}]); mocks.policy.mockResolvedValue({configured: true, enabled: false, responsible_user_id: 1, responsible_can_prepare: true}); mocks.api.render.mockResolvedValue({rendered: "Rendered"}); mocks.api.generate.mockResolvedValue({...source, id: 30}); mocks.send.mockResolvedValue({status: "pending"})})
+it("explains missing member policy and allows generation after configuration is rechecked", async () => {
+  mocks.auth.admin = false
+  mocks.policy.mockRejectedValueOnce({response: {status: 403}}).mockResolvedValue({configured: true, enabled: false, responsible_user_id: 1, responsible_can_prepare: true})
+  setup()
+  fireEvent.click(await screen.findByRole("button", {name: "Preparar uno"}))
+  fireEvent.change(screen.getByLabelText("Cliente"), {target: {value: "1"}})
+  expect(await screen.findByText(/Pide a un administrador que lo revise/)).toBeInTheDocument()
+  expect(screen.getByRole("button", {name: "Generar borrador"})).toBeDisabled()
+  expect(mocks.api.generate).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole("button", {name: "Comprobar configuración de nuevo"}))
+  await waitFor(() => expect(screen.getByRole("button", {name: "Generar borrador"})).toBeEnabled())
+  fireEvent.click(screen.getByRole("button", {name: "Generar borrador"}))
+  await waitFor(() => expect(mocks.api.generate).toHaveBeenCalledWith(expect.objectContaining({client_id: 1})))
+}, 15000)
+it("blocks an assigned member whose digest permission is unavailable", async () => {
+  mocks.auth.admin = false
+  mocks.policy.mockResolvedValue({configured: true, enabled: true, responsible_user_id: 1, responsible_can_prepare: false})
+  setup()
+  fireEvent.click(await screen.findByRole("button", {name: "Preparar uno"}))
+  fireEvent.change(screen.getByLabelText("Cliente"), {target: {value: "1"}})
+  expect(await screen.findByText(/Ya no puedes preparar resúmenes/)).toBeInTheDocument()
+  expect(screen.getByRole("button", {name: "Generar borrador"})).toBeDisabled()
+  expect(mocks.api.generate).not.toHaveBeenCalled()
+}, 15000)
+it("offers deletion only when the server confirms the version can be deleted", async () => {
+  mocks.api.list.mockResolvedValueOnce([{...source, status: "reviewed", can_delete: false}, {...source, id: 20, client_name: "Other", status: "sent", can_delete: true}, {...source, id: 30, client_name: "Free"}])
+  setup()
+  const acme = (await screen.findByRole("cell", {name: "Acme"})).closest("tr")!
+  const other = screen.getByRole("cell", {name: "Other"}).closest("tr")!
+  const free = screen.getByRole("cell", {name: "Free"}).closest("tr")!
+  expect(within(acme).queryByTitle("Eliminar")).not.toBeInTheDocument()
+  expect(within(other).queryByTitle("Eliminar")).not.toBeInTheDocument()
+  expect(within(free).getByTitle("Eliminar")).toBeInTheDocument()
+})
+it("names each summary action and explains that generation creates a draft", async () => {
+  setup()
+  const acme = (await screen.findByRole("cell", {name: "Acme"})).closest("tr")!
+  expect(within(acme).getByRole("button", {name: "Editar resumen de Acme, versión #10"})).toBeInTheDocument()
+  expect(within(acme).getByRole("button", {name: "Ver vista previa del resumen de Acme, versión #10"})).toBeInTheDocument()
+  expect(within(acme).getByRole("button", {name: "Copiar para Slack el resumen de Acme, versión #10"})).toBeInTheDocument()
+  expect(within(acme).getByRole("button", {name: "Copiar para email el resumen de Acme, versión #10"})).toBeInTheDocument()
+  expect(within(acme).getByRole("button", {name: "Revisar y compartir en Discord interno el resumen de Acme, versión #10"})).toBeInTheDocument()
+  fireEvent.click(screen.getByRole("button", {name: "Preparar uno"}))
+  expect(screen.getByText(/generar no envía ningún mensaje/i)).toBeInTheDocument()
+})
+it("does not offer deletion to a reader even if a stale list says the version is deletable", async () => {
+  mocks.auth.write = false
+  setup()
+  await screen.findByRole("cell", {name: "Acme"})
+  expect(screen.queryByTitle("Eliminar")).not.toBeInTheDocument()
+})
 it("clears an exact incident period when returning to current periods on the same route", async () => {
   setup("/digests?client_id=1&period_start=2026-08-01&period_end=2026-08-31")
   await screen.findByText("Período esperado 2026-08-01 — 2026-08-31")
@@ -29,8 +81,28 @@ it("keeps individual generation and removes the unreviewed generate-all action",
   expect(screen.queryByTitle("Marcar como enviado (histórico)")).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole("button", {name: "Preparar uno"}))
   fireEvent.change(screen.getByLabelText("Cliente"), {target: {value: "1"}})
-  fireEvent.click(screen.getByRole("button", {name: "Generar"}))
-  await waitFor(() => expect(mocks.api.generate).toHaveBeenCalledWith({client_id: 1, tone: "cercano", period_start: undefined, period_end: undefined}))
+  fireEvent.click(screen.getByRole("button", {name: "Generar borrador"}))
+  await waitFor(() => expect(mocks.api.generate).toHaveBeenCalledWith({generation_key: expect.stringMatching(/^[A-Za-z0-9_-]{16,64}$/), client_id: 1, tone: "cercano", period_start: undefined, period_end: undefined}))
+})
+it("recovers an uncertain individual request after reload and retries the same key", async () => {
+  const generationKey = "individual-recovery-key"
+  localStorage.setItem(`agency:digest-generation:1:${generationKey}`, JSON.stringify({ kind: "individual", operation_key: generationKey, generation_key: generationKey, client_id: 1, tone: "formal" }))
+  mocks.api.recoverGeneration.mockRejectedValueOnce({ response: { status: 404 } })
+  setup()
+  expect(await screen.findByText(/Todavía no hay una versión confirmada/)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole("button", { name: "Reintentar la misma solicitud" }))
+  await waitFor(() => expect(mocks.api.generate).toHaveBeenCalledWith({ generation_key: generationKey, client_id: 1, tone: "formal", period_start: undefined, period_end: undefined }))
+  expect(localStorage.getItem(`agency:digest-generation:1:${generationKey}`)).toBeNull()
+})
+it("cannot retry a persisted individual request after write permission is revoked", async () => {
+  const generationKey = "individual-revoked-key"
+  localStorage.setItem(`agency:digest-generation:1:${generationKey}`, JSON.stringify({ kind: "individual", operation_key: generationKey, generation_key: generationKey, client_id: 1, tone: "formal" }))
+  mocks.auth.write = false
+  mocks.api.recoverGeneration.mockRejectedValueOnce({ response: { status: 404 } })
+  setup()
+  expect(await screen.findByText(/Todavía no hay una versión confirmada/)).toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Reintentar la misma solicitud" })).not.toBeInTheDocument()
+  expect(mocks.api.generate).not.toHaveBeenCalled()
 })
 it("late preview A cannot appear under B and only the current format wins", async () => {
   let old!: (value: unknown) => void
@@ -83,13 +155,15 @@ it("an old session cannot put its render in the new user's dialog", async () => 
   await act(async () => {old({rendered: "Old identity"})})
   expect(screen.queryByText("Old identity")).not.toBeInTheDocument()
 })
-it("read-only history allows copying but disables writes and internal sharing", async () => {
+it("read-only history allows consultation and copying without dead write controls", async () => {
   mocks.auth.write = false
   setup(); await screen.findByRole("cell", {name: "Acme"})
   expect(screen.queryByRole("button", {name: "Preparar uno"})).not.toBeInTheDocument()
   expect(screen.getAllByTitle("Consultar versión")[0]).not.toBeDisabled()
-  expect(screen.getAllByTitle("Discord (interno)")[0]).toBeDisabled()
-  expect(screen.getByLabelText("Estado histórico de versión #10")).toBeDisabled()
+  expect(screen.queryByTitle("Discord (interno)")).not.toBeInTheDocument()
+  expect(screen.queryByLabelText("Estado histórico de versión #10")).not.toBeInTheDocument()
+  expect(within(screen.getAllByRole("cell", {name: "Acme"})[0].closest("tr")!).getByText("Borrador")).toBeInTheDocument()
+  expect(screen.getByText("Abre una versión para consultar su texto y sus fuentes.")).toBeInTheDocument()
   fireEvent.click(screen.getAllByTitle("Vista previa")[0])
   await screen.findByText("Rendered")
   expect(within(screen.getByRole("dialog")).getByRole("button", {name: "Copiar"})).not.toBeDisabled()

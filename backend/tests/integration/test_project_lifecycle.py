@@ -99,23 +99,22 @@ async def test_close_preview_reports_exact_blockers_and_permission_aware_samples
 
     project_only = await make_member_client([("projects", True, True)])
     try:
-        hidden = await _preview(project_only, project.id)
+        hidden = await project_only.get(
+            f"/api/projects/{project.id}/close-preview", params={"target": "completed"},
+        )
     finally:
         await project_only.aclose()
-    assert hidden["blockers"]["active_tasks"]["total"] == 2
-    assert hidden["blockers"]["active_tasks"]["sample"] == []
-    assert hidden["blockers"]["active_timers"]["total"] == 1
-    assert hidden["blockers"]["active_timers"]["sample"] == []
+    assert hidden.status_code == 403
 
     timers_only = await make_member_client([
-        ("projects", True, True), ("timesheet", True, False),
+        ("projects", True, True), ("tasks", True, False), ("timesheet", True, False),
     ])
     try:
         limited = await _preview(timers_only, project.id)
     finally:
         await timers_only.aclose()
     assert limited["blockers"]["active_timers"]["sample"] == [{
-        "id": timer.id, "task_id": completed.id, "href": None,
+        "id": timer.id, "task_id": completed.id, "href": f"/tasks?task={completed.id}",
     }]
 
 

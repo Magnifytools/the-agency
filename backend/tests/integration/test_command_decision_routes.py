@@ -169,7 +169,12 @@ async def test_query_rechecks_acl_after_receipt_creation(
         assert refreshed.json()["total"] == 0
         assert refreshed.json()["items"] == []
         stored = await member.get(f"/api/commands/{receipt['id']}")
-        assert stored.json()["result"]["query"]["total"] == 1
+        assert stored.status_code == 200, stored.text
+        assert stored.json()["result"]["query"]["total"] == 0
+        assert stored.json()["result"]["query"]["items"] == []
+        durable = await db_session.get(CommandReceipt, receipt["id"])
+        assert durable.result["query"]["total"] == 1
+        assert durable.result["query"]["items"][0]["title"] == incident.title
         await db_session.refresh(incident)
         assert (incident.incident_state, incident.incident_revision, incident.updated_at) == before
         assert await db_session.scalar(select(func.count(ChangeLog.id))) == 0

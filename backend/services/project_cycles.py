@@ -27,7 +27,9 @@ def month_bounds(month: str | None) -> tuple[date, date, str]:
     return start, end, start.strftime("%Y-%m")
 
 
-async def collect_project_monthly_cycle(db, project_id: int, month: str | None):
+async def collect_project_monthly_cycle(
+    db, project_id: int, month: str | None, *, include_hours: bool = True,
+):
     project = (
         await db.execute(
             select(
@@ -71,22 +73,24 @@ async def collect_project_monthly_cycle(db, project_id: int, month: str | None):
             .order_by(Task.scheduled_date.asc().nullslast(), Task.completed_at, Task.id)
         )
     ).all()
-    total_minutes = float(
-        (
-            await db.scalar(
-                select(func.coalesce(func.sum(TimeEntry.minutes), 0))
-                .join(Task, Task.id == TimeEntry.task_id)
-                .where(
-                    Task.project_id == project_id,
-                    TimeEntry.minutes.is_not(None),
-                    time_entry_civil_period(start, end),
+    total_minutes = None
+    if include_hours:
+        total_minutes = float(
+            (
+                await db.scalar(
+                    select(func.coalesce(func.sum(TimeEntry.minutes), 0))
+                    .join(Task, Task.id == TimeEntry.task_id)
+                    .where(
+                        Task.project_id == project_id,
+                        TimeEntry.minutes.is_not(None),
+                        time_entry_civil_period(start, end),
+                    )
                 )
             )
+            or 0
         )
-        or 0
-    )
     _, monthly_budget = effective_budgets(project)
-    used_hours = round(total_minutes / 60, 2)
+    used_hours = round(total_minutes / 60, 2) if total_minutes is not None else None
     budget = round(float(monthly_budget), 2) if monthly_budget and monthly_budget > 0 else None
     return {
         "project_id": project_id,
@@ -99,10 +103,10 @@ async def collect_project_monthly_cycle(db, project_id: int, month: str | None):
             and completed_start <= row.completed_at < completed_end
             for row in rows
         ),
-        "total_minutes": int(total_minutes),
+        "total_minutes": int(total_minutes) if total_minutes is not None else None,
         "used_hours": used_hours,
         "budget_hours": budget,
-        "remaining_hours": round(budget - used_hours, 2) if budget is not None else None,
+        "remaining_hours": round(budget - used_hours, 2) if budget is not None and used_hours is not None else None,
         "tasks": [
             {
                 "id": row.id,

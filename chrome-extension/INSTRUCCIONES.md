@@ -11,15 +11,11 @@
 ## Uso
 
 1. Haz clic en el icono **A** en la barra de herramientas
-2. La primera vez: introduce tu email y contraseña de Agency Manager y pulsa **Conectar**
-3. Escribe tu nota en el campo de texto
-4. Pulsa **Capturar** (o `Cmd+Enter`)
+2. La primera vez: introduce tu correo y contraseña de The Agency y pulsa **Iniciar sesión**.
+3. En **Hacer**, elige **Pedir** para hacer una petición o consulta, **Aclarar** para guardar una nota en el Inbox, o **Tarea directa** para crear una tarea asignada a ti.
+4. En **Timer**, inicia o registra tiempo para una tarea. En **Tareas**, consulta tus tareas asignadas, complétalas o inicia el timer.
 
-La IA clasifica la nota automáticamente y la asigna al cliente/proyecto correspondiente.
-
-## La casilla "Incluir URL"
-
-Cuando está marcada (por defecto), la extensión adjunta a la nota la URL y el título de la pestaña que tienes abierta en ese momento. Útil si estás viendo algo en el navegador y quieres guardar contexto de dónde vino la idea. Si no quieres que se incluya, desmarcarla.
+Las notas sin cliente o proyecto elegido se clasifican automáticamente. Puedes añadirles un enlace relacionado de forma opcional. **Avisos de reuniones** permite activar notificaciones de Chrome y elegir su antelación, siempre que los avisos generales estén activos.
 
 ## Listas y asignación
 
@@ -40,4 +36,8 @@ Las pruebas ejecutan el HTML y el JavaScript reales del popup en un DOM con Chro
 
 No hay compilación de JavaScript: Chrome carga los archivos de esta carpeta directamente. `build.sh` copia únicamente manifest, popup, background e iconos a un directorio temporal y firma el CRX con la clave externa existente. No incluir claves en esta carpeta ni generar una identidad nueva para actualizar instalaciones existentes.
 
-Cambiar el código fuente no actualiza automáticamente los archivos CRX o ZIP ya distribuidos. Para una publicación hay que aumentar la versión del manifiesto, regenerar el CRX con la identidad existente y preparar el ZIP desde los mismos archivos fuente; comprobar que ambos contienen esa misma versión y contenido antes de distribuirlos. Esta corrección de fuentes deja esos pasos de publicación pendientes y conserva los paquetes anteriores.
+Cambiar el código fuente no actualiza automáticamente los archivos CRX o ZIP ya distribuidos. Para una publicación hay que aumentar la versión del manifiesto, regenerar el CRX con la identidad existente y preparar el ZIP desde los mismos archivos fuente; comprobar que ambos contienen esa misma versión y contenido antes de distribuirlos.
+
+### Actualizar una instalación cargada como carpeta descomprimida
+
+El equipo usa **Cargar descomprimida**: publicar `update.xml` y el CRX no actualiza esa instalación. Entrega el ZIP de la versión nueva, descomprímelo y sustituye los archivos dentro de **la misma carpeta** que Chrome ya tiene cargada. Después, en `chrome://extensions`, pulsa **Recargar** en The Agency y comprueba el número de versión. Mantener la ruta de la carpeta evita crear otra instalación y conserva el almacenamiento local de la extensión.

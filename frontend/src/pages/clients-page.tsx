@@ -181,6 +181,10 @@ function ClientsPageBody() {
   const { sortedItems: sortedClients, sortConfig: clientSortConfig, requestSort: requestClientSort } = useTableSort(clients)
   const { selectedIds: selectedClientIds, isSelected: isClientSelected, toggleItem: toggleClient, toggleAll: toggleAllClients, clearSelection: clearClientSelection, selectedCount: selectedClientCount, allSelected: allClientsSelected } = useBulkSelect(clients)
 
+  useEffect(() => {
+    if (!canWriteClients) clearClientSelection()
+  }, [canWriteClients, clearClientSelection])
+
   const bulkClientStatusMutation = useMutation({
     mutationFn: async ({ ids, status }: { ids: number[]; status: string }) => {
       const results = await Promise.allSettled(ids.map((id) => clientsApi.update(id, { status: status as ClientCreate["status"] })))
@@ -454,9 +458,9 @@ function ClientsPageBody() {
             {STATUS_TABS.find((item) => item.value === tab)?.label} · {COHORTS.find((item) => item.value === cohort)?.label} · {data.total} resultados
           </p>}
         </div>
-        <Button onClick={openCreate} disabled={!canWriteClients || !!onboardingKey || storageReadFailed}>
+        {canWriteClients && <Button onClick={openCreate} disabled={!!onboardingKey || storageReadFailed}>
           <Plus className="h-4 w-4 mr-2" /> Nuevo cliente
-        </Button>
+        </Button>}
       </div>
 
       {(onboardingKey || onboardingNotice || storageReadFailed) && (
@@ -516,7 +520,7 @@ function ClientsPageBody() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10" />
+              {canWriteClients && <TableHead className="w-10" />}
               <TableHead>Nombre</TableHead>
               <TableHead>Empresa</TableHead>
               <TableHead>Email</TableHead>
@@ -536,11 +540,11 @@ function ClientsPageBody() {
                   />
                 </span>
               </TableHead>
-              <TableHead className="w-24">Acciones</TableHead>
+              {canWriteClients && <TableHead className="w-24">Acciones</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={isAdmin ? 9 : 8} />)}
+            {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={6 + (canWriteClients ? 2 : 0) + (isAdmin ? 1 : 0)} />)}
           </TableBody>
         </Table>
       ) : clientsDenied ? (
@@ -569,11 +573,11 @@ function ClientsPageBody() {
                     </Link>
                     {c.company && <p className="text-sm text-muted-foreground">{c.company}</p>}
                   </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" aria-label="Editar cliente" disabled={!canWriteClients || !!onboardingKey || storageReadFailed} onClick={() => openEdit(c)}>
+                  {canWriteClients && <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" aria-label="Editar cliente" disabled={!!onboardingKey || storageReadFailed} onClick={() => openEdit(c)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                  </div>
+                  </div>}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {statusBadge(c.status)}
@@ -595,14 +599,15 @@ function ClientsPageBody() {
         <Table className="hidden sm:table">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10">
+              {canWriteClients && <TableHead className="w-10">
                 <input
                   type="checkbox"
+                  aria-label="Seleccionar todos los clientes visibles"
                   checked={allClientsSelected}
                   onChange={toggleAllClients}
                   className="rounded border-border"
                 />
-              </TableHead>
+              </TableHead>}
               <SortableTableHead sortKey="name" currentSort={clientSortConfig} onSort={requestClientSort}>Nombre</SortableTableHead>
               <TableHead>Empresa</TableHead>
               <TableHead className="hidden md:table-cell">Email</TableHead>
@@ -622,51 +627,54 @@ function ClientsPageBody() {
                   />
                 </span>
               </TableHead>
-              <TableHead className="w-24">Acciones</TableHead>
+              {canWriteClients && <TableHead className="w-24">Acciones</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {sortedClients.map((c) => (
               <TableRow key={c.id}>
-                <TableCell>
+                {canWriteClients && <TableCell>
                   <input
                     type="checkbox"
+                    aria-label={`Seleccionar cliente ${c.name || 'Sin nombre'}`}
                     checked={isClientSelected(c.id)}
                     onChange={() => toggleClient(c.id)}
                     className="rounded border-border"
                   />
-                </TableCell>
+                </TableCell>}
                 <TableCell className="font-medium">
-                  <span className="flex items-center gap-1.5">
-                    <Link to={`/clients/${c.id}`} className="hover:underline text-brand">
-                      {c.name || 'Sin nombre'}
-                    </Link>
-                    {c.is_internal && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-purple-500/50 text-purple-400">
-                        Interno
-                      </Badge>
-                    )}
-                    {c.is_intermediary_deal && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-orange-500/50 text-orange-400">
-                        {c.intermediary_name ? `vía ${c.intermediary_name}` : "Intermediario"}
-                      </Badge>
-                    )}
-                    {c.engine_project_id && engineConfig?.engine_frontend_url && (
-                      <a
-                        href={`${engineConfig.engine_frontend_url}/p/${c.engine_project_id}/dashboard`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Abrir en Engine"
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-0.5"
-                      >
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 gap-0.5">
-                          <ExternalLink className="h-3 w-3" />
-                          Engine
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      <Link to={`/clients/${c.id}`} className="break-words text-brand hover:underline">
+                        {c.name || 'Sin nombre'}
+                      </Link>
+                      {c.is_internal && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-purple-500/50 text-purple-400">
+                          Interno
                         </Badge>
-                      </a>
+                      )}
+                      {c.engine_project_id && engineConfig?.engine_frontend_url && (
+                        <a
+                          href={`${engineConfig.engine_frontend_url}/p/${c.engine_project_id}/dashboard`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Abrir en Engine"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-0.5"
+                        >
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 gap-0.5">
+                            <ExternalLink className="h-3 w-3" />
+                            Engine
+                          </Badge>
+                        </a>
+                      )}
+                    </div>
+                    {c.is_intermediary_deal && (
+                      <p className="mt-1 break-words text-xs font-normal text-muted-foreground" title={c.intermediary_name ? `Vía ${c.intermediary_name}` : "Agencia intermediaria"}>
+                        {c.intermediary_name ? `Vía ${c.intermediary_name}` : "Agencia intermediaria"}
+                      </p>
                     )}
-                  </span>
+                  </div>
                 </TableCell>
                 <TableCell>{c.company || "-"}</TableCell>
                 <TableCell className="hidden md:table-cell">{c.email || "-"}</TableCell>
@@ -684,9 +692,9 @@ function ClientsPageBody() {
                     )
                   })()}
                 </TableCell>
-                <TableCell>
+                {canWriteClients && <TableCell>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" aria-label="Editar cliente" disabled={!canWriteClients || !!onboardingKey || storageReadFailed} onClick={() => openEdit(c)}>
+                    <Button variant="ghost" size="icon" aria-label="Editar cliente" disabled={!!onboardingKey || storageReadFailed} onClick={() => openEdit(c)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <div className="relative">
@@ -694,6 +702,7 @@ function ClientsPageBody() {
                         variant="ghost"
                         size="icon"
                         aria-label="Más opciones"
+                        aria-description={`Acciones para ${c.name || "este cliente"}`}
                         onClick={() => setOpenMenuId(openMenuId === c.id ? null : c.id)}
                       >
                         <MoreVertical className="h-4 w-4" />
@@ -718,11 +727,11 @@ function ClientsPageBody() {
                       )}
                     </div>
                   </div>
-                </TableCell>
+                </TableCell>}
               </TableRow>
             ))}
             {clients.length === 0 && (
-              <EmptyTableState colSpan={9} icon={Users} title="Sin resultados" description={`No hay clientes ${tab === "all" ? "" : STATUS_TABS.find((item) => item.value === tab)?.label.toLowerCase()} ${cohort === "all" ? "" : COHORTS.find((item) => item.value === cohort)?.label.toLowerCase()}.`} />
+              <EmptyTableState colSpan={6 + (canWriteClients ? 2 : 0) + (isAdmin ? 1 : 0)} icon={Users} title="Sin resultados" description={tab === "all" && cohort === "all" ? (canWriteClients ? "Aún no hay clientes. Crea uno para empezar." : "Aún no hay clientes.") : "No hay clientes con estos filtros. Prueba a cambiarlos."} />
             )}
           </TableBody>
         </Table>
@@ -918,7 +927,7 @@ function ClientsPageBody() {
               Cancelar
             </Button>
             <Button type="submit" disabled={!canWriteClients || !!onboardingKey || storageReadFailed || createMutation.isPending || updateMutation.isPending}>
-              {editing ? "Guardar" : createMutation.isPending ? "Creando…" : "Crear"}
+              {editing ? "Guardar cambios" : createMutation.isPending ? "Creando…" : "Crear"}
             </Button>
           </div>
         </form>
@@ -955,7 +964,7 @@ function ClientsPageBody() {
       />
 
       {/* Bulk Actions */}
-      <BulkActionBar selectedCount={selectedClientCount} onClear={clearClientSelection}>
+      {canWriteClients && <BulkActionBar selectedCount={selectedClientCount} onClear={clearClientSelection}>
         <Select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)} className="h-8 text-xs w-36">
           <option value="">Cambiar estado…</option>
           <option value="active">Activo</option>
@@ -965,12 +974,15 @@ function ClientsPageBody() {
         <Button
           size="sm"
           disabled={!bulkStatus || bulkClientStatusMutation.isPending}
-          onClick={() => bulkClientStatusMutation.mutate({ ids: Array.from(selectedClientIds), status: bulkStatus })}
+          onClick={() => {
+            if (!canWriteClients) return
+            bulkClientStatusMutation.mutate({ ids: Array.from(selectedClientIds), status: bulkStatus })
+          }}
         >
           {bulkClientStatusMutation.isPending && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
-          Aplicar
+          Aplicar estado
         </Button>
-      </BulkActionBar>
+      </BulkActionBar>}
     </div>
   )
 }

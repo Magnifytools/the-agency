@@ -1008,6 +1008,9 @@ class AuditLog(TimestampMixin, Base):
     route_template = Column(String(255), nullable=True, index=True)
     status_code = Column(Integer, nullable=True)
     duration_ms = Column(Integer, nullable=True)
+    # Declared client application. This is analytics context, never identity
+    # or authorization; historical rows intentionally remain NULL.
+    client_origin = Column(String(12), nullable=True)
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
 

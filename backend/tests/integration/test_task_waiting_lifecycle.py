@@ -224,6 +224,55 @@ async def test_task_api_full_draft_preserves_legacy_waiting_metadata(
     assert reason_changed.json()["follow_up_date"] == expired.isoformat()
 
 
+async def test_task_api_requires_active_assignee_without_rewriting_legacy_assignments(
+    admin_client, db_session,
+):
+    inactive = User(
+        email="inactive-assignee@test.local", full_name="Inactive Assignee",
+        hashed_password="unused", role=UserRole.member, is_active=False,
+    )
+    db_session.add(inactive)
+    await db_session.flush()
+    assigned = await _task(db_session, admin_client.test_user.id, title="Reasignable")
+    legacy = await _task(db_session, inactive.id, title="Asignación histórica")
+    await db_session.commit()
+
+    created = await admin_client.post("/api/tasks", json={
+        "title": "Alta a persona inactiva", "assigned_to": inactive.id,
+    })
+    assert created.status_code == 422, created.text
+    assert "inactiva" in created.json()["detail"]
+
+    reassigned = await admin_client.put(f"/api/tasks/{assigned.id}", json={
+        "assigned_to": inactive.id,
+    })
+    assert reassigned.status_code == 422, reassigned.text
+    await db_session.refresh(assigned)
+    assert assigned.assigned_to == admin_client.test_user.id
+
+    bulk = await admin_client.patch("/api/tasks/bulk/update", json={
+        "ids": [assigned.id], "updates": {"assigned_to": inactive.id},
+    })
+    assert bulk.status_code == 200, bulk.text
+    assert bulk.json()["updated"] == 0
+    assert bulk.json()["failed"] == 1
+    await db_session.refresh(assigned)
+    assert assigned.assigned_to == admin_client.test_user.id
+
+    unassigned = await admin_client.put(f"/api/tasks/{assigned.id}", json={
+        "assigned_to": None,
+    })
+    assert unassigned.status_code == 200, unassigned.text
+    assert unassigned.json()["assigned_to"] is None
+
+    legacy_edit = await admin_client.put(f"/api/tasks/{legacy.id}", json={
+        "title": "Asignación histórica corregida",
+        "assigned_to": inactive.id,
+    })
+    assert legacy_edit.status_code == 200, legacy_edit.text
+    assert legacy_edit.json()["assigned_to"] == inactive.id
+
+
 async def test_starting_timer_uses_lifecycle_stamp_for_advanced_task(
     admin_client, db_session,
 ):

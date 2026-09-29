@@ -16,7 +16,7 @@ const ACTION_LABELS: Record<string, string> = {
 }
 
 /** Historial corto de cambios propios, cada uno con su botón de deshacer. */
-export function UndoPanel() {
+export function UndoPanel({ showLabel = false }: { showLabel?: boolean } = {}) {
   const [open, setOpen] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
   const { entries, undo, isUndoing, pendingId, refresh } = useUndo()
@@ -38,21 +38,25 @@ export function UndoPanel() {
     <div className="relative" ref={panelRef}>
       <button
         onClick={() => setOpen(!open)}
-        className="relative p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
-        title="Deshacer cambios recientes (⌘Z)"
-        aria-label="Deshacer cambios recientes"
+        className={`relative p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors ${showLabel ? "flex min-h-11 w-full flex-col items-center justify-center gap-1 text-xs" : ""}`}
+        title="Ver tus cambios recientes y deshacerlos"
+        aria-label="Ver cambios recientes y deshacer"
         aria-expanded={open}
       >
         <Undo2 className="h-4 w-4" />
+        {showLabel && <span aria-hidden="true">Cambios</span>}
         {entries.length > 0 && (
           <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-brand" />
         )}
       </button>
 
       {open && (
-        <div className="fixed right-4 top-14 w-80 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-4rem)] overflow-auto rounded-xl border border-border bg-card shadow-xl z-50">
+        <div className={`fixed right-4 top-14 w-80 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-4rem)] overflow-auto rounded-xl border border-border bg-card shadow-xl ${showLabel ? "z-[70]" : "z-50"}`}>
           <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-            <span className="text-sm font-semibold">Cambios recientes</span>
+            <div>
+              <span className="text-sm font-semibold">Cambios recientes</span>
+              <p className="text-xs text-muted-foreground">Puedes deshacer los cambios disponibles desde aquí.</p>
+            </div>
             <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-muted border border-border rounded text-muted-foreground">
               ⌘Z
             </kbd>

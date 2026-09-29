@@ -7,6 +7,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { clientsApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/utils"
+import { useAuth } from "@/context/auth-context"
+import { isEnabled } from "@/lib/hidden-modules"
 
 interface Recommendation {
   priority: "high" | "medium" | "low"
@@ -35,13 +37,21 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 export function ClientAiAdvisor({ clientId }: Props) {
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([])
+  const { user, hasPermission } = useAuth()
+  const canWriteClients = hasPermission("clients", true)
+  const accessScope = [
+    user?.id ?? "anonymous", clientId, canWriteClients,
+    ...(["tasks", "communications", "timesheet", "billing"] as const)
+      .map((module) => hasPermission(module) && isEnabled(module)),
+  ].join(":")
+  const [result, setResult] = useState<{ scope: string; recommendations: Recommendation[] } | null>(null)
+  const recommendations = canWriteClients && result?.scope === accessScope ? result.recommendations : []
 
   const adviceMut = useMutation({
-    mutationFn: () => clientsApi.aiAdvice(clientId),
+    mutationFn: async () => ({ scope: accessScope, data: await clientsApi.aiAdvice(clientId) }),
     onSuccess: (data) => {
-      setRecommendations(data.recommendations)
-      toast.success(`${data.recommendations.length} recomendaciones generadas`)
+      setResult({ scope: data.scope, recommendations: data.data.recommendations })
+      if (data.scope === accessScope) toast.success(`${data.data.recommendations.length} recomendaciones generadas`)
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   })
@@ -52,19 +62,19 @@ export function ClientAiAdvisor({ clientId }: Props) {
         <h3 className="text-lg font-semibold flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-brand" /> Recomendaciones IA
         </h3>
-        <Button
+        {canWriteClients && <Button
           size="sm"
           onClick={() => adviceMut.mutate()}
           disabled={adviceMut.isPending}
         >
           <Sparkles className="h-4 w-4 mr-1" />
           {adviceMut.isPending ? "Analizando..." : "Pedir recomendaciones"}
-        </Button>
+        </Button>}
       </div>
 
       {recommendations.length === 0 && !adviceMut.isPending && (
         <p className="text-sm text-muted-foreground text-center py-6">
-          Pulsa el botón para que la IA analice los datos del cliente y genere recomendaciones accionables.
+          {canWriteClients ? "Pulsa el botón para que la IA analice los datos del cliente y genere recomendaciones accionables." : "No hay recomendaciones disponibles en esta sesión."}
         </p>
       )}
 
