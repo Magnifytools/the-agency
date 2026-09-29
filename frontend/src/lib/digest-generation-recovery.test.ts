@@ -26,4 +26,12 @@ describe("digest generation recovery storage", () => {
     expect(isConfirmedFailure({ response: { status: 409, data: { detail: { code: "sources_changed" } } } })).toBe(false)
     expect(isConfirmedFailure({ response: { status: 409, data: { detail: { code: "generation_key_conflict" } } } })).toBe(true)
   })
+
+  it("releases the key when the API confirms it rolled back, but not on an anonymous 5xx or timeout", () => {
+    expect(isConfirmedFailure({ response: { status: 502, data: { detail: { code: "invalid_provider_response" } } } })).toBe(true)
+    expect(isConfirmedFailure({ response: { status: 503, data: { detail: { code: "provider_unavailable" } } } })).toBe(true)
+    expect(isConfirmedFailure({ response: { status: 504, data: { detail: { code: "provider_timeout" } } } })).toBe(false)
+    expect(isConfirmedFailure({ response: { status: 502, data: "Bad Gateway" } })).toBe(false)
+    expect(isConfirmedFailure(new Error("timeout of 90000ms exceeded"))).toBe(false)
+  })
 })

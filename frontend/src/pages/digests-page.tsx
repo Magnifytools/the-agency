@@ -10,7 +10,7 @@ import { DigestCohort } from "@/components/digests/digest-cohort"
 import { reportPolicyApi, reportPolicyKeys } from "@/lib/report-policy-api"
 import { digestsApi, clientsApi, discordApi } from "@/lib/api"
 import type { Digest, DigestStatus, DigestTone } from "@/lib/types"
-import { clearDigestGeneration, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type IndividualDigestIntent } from "@/lib/digest-generation-recovery"
+import { clearDigestGeneration, httpStatus, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type IndividualDigestIntent } from "@/lib/digest-generation-recovery"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -152,6 +152,16 @@ function DigestList() {
     enabled: Boolean(pendingIndividual),
     retry: false,
   })
+  const recoveryNotFound = recoveryQuery.isError && httpStatus(recoveryQuery.error) === 404
+
+  // Only offered after the server confirmed nothing exists under this key, so
+  // the person is never trapped behind a request that keeps failing.
+  const discardPendingIndividual = () => {
+    if (!pendingIndividual || !recoveryNotFound || generateMutation.isPending) return
+    clearDigestGeneration(userId, pendingIndividual.operation_key)
+    setPendingIndividual(null)
+    toast.success("Solicitud descartada. Puedes preparar el resumen de nuevo.")
+  }
 
   useEffect(() => {
     if (!pendingIndividual || !recoveryQuery.data) return
@@ -358,8 +368,9 @@ function DigestList() {
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={recoveryQuery.isFetching || generateMutation.isPending} onClick={() => void recoveryQuery.refetch()}>{recoveryQuery.isFetching ? "Comprobando…" : "Comprobar resultado"}</Button>
             {canWrite && <Button size="sm" disabled={recoveryQuery.isFetching || generateMutation.isPending} onClick={() => pendingIndividual && generateMutation.mutate(pendingIndividual)}>Reintentar la misma solicitud</Button>}
+            {recoveryNotFound && <Button size="sm" variant="ghost" disabled={recoveryQuery.isFetching || generateMutation.isPending} onClick={discardPendingIndividual}>Descartar solicitud</Button>}
           </div>
-          {recoveryQuery.isError && <p>{(recoveryQuery.error as { response?: { status?: number } })?.response?.status === 404 ? "Todavía no hay una versión confirmada. Puedes comprobar de nuevo o reintentar la misma solicitud." : "No se pudo comprobar el resultado. La solicitud sigue guardada."}</p>}
+          {recoveryQuery.isError && <p>{recoveryNotFound ? "No se guardó ninguna versión con esta solicitud. Puedes reintentarla o descartarla y preparar el resumen de nuevo." : "No se pudo comprobar el resultado. La solicitud sigue guardada."}</p>}
         </>}
       </div>}
 

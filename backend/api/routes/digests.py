@@ -368,8 +368,13 @@ async def generate_digest(
                 else "El proveedor de generación no está disponible.",
             },
         ) from exc
-    except ValueError:
+    except ValueError as exc:
         await db.rollback()
+        logger.warning(
+            "Digest generation rejected provider output client_id=%s reason=%s",
+            request.client_id,
+            exc,
+        )
         raise HTTPException(
             status_code=502,
             detail={
@@ -621,8 +626,13 @@ async def update_digest(
         except DigestGenerationRejected as exc:
             await db.rollback()
             raise _generation_rejection(exc.reason) from exc
-        except ValueError:
+        except ValueError as exc:
             await db.rollback()
+            logger.warning(
+                "Digest regeneration rejected provider output id=%s reason=%s",
+                digest_id,
+                exc,
+            )
             raise HTTPException(
                 status_code=502,
                 detail={
