@@ -432,19 +432,42 @@ async def test_generation_persists_when_final_source_snapshot_is_stable(engine):
         assert await verify.scalar(select(func.count(WeeklyDigest.id)).where(WeeklyDigest.id == digest.id)) == 1
 
 
-def test_source_keys_reject_unknown_duplicate_missing_and_wrong_section():
-    base = {"sections": {"done": [], "need": [], "next": [], "metrics": []}}
+def test_source_keys_keep_only_valid_citations_and_drop_unbacked_claims():
     catalog = facts()
-    for item in (
-        {"title": "x", "description": "", "source_keys": []},
-        {"title": "x", "description": "", "source_keys": ["missing"]},
-        {"title": "x", "description": "", "source_keys": ["task:1", "task:1"]},
-        {"title": "x", "description": "", "source_keys": ["aggregate:hours"]},
-    ):
-        candidate = {"sections": {**base["sections"], "done": [item]}}
-        with pytest.raises(ValueError):
-            _validate_sources(candidate, catalog)
+    backed = {"title": "ok", "description": "", "source_keys": ["task:1"]}
+    candidate = {
+        "sections": {
+            "done": [
+                {"title": "sin fuentes", "description": ""},
+                {"title": "vacía", "description": "", "source_keys": []},
+                {"title": "desconocida", "description": "", "source_keys": ["missing"]},
+                {"title": "sección errónea", "description": "", "source_keys": ["aggregate:hours"]},
+                {"title": "mixta", "description": "", "source_keys": ["task:1", "task:1", "missing", 7]},
+                backed,
+            ],
+            "need": [],
+            "next": [],
+            "metrics": [],
+        }
+    }
+    cleaned = _validate_sources(candidate, catalog)
+    assert cleaned["sections"]["done"] == [
+        {"title": "mixta", "description": "", "source_keys": ["task:1"]},
+        backed,
+    ]
     assert _validate_sources(generated(), catalog) == generated()
+
+
+def test_source_keys_reject_a_draft_with_no_backed_claim():
+    catalog = facts()
+    candidate = {"sections": {
+        "done": [{"title": "x", "description": "", "source_keys": ["missing"]}],
+        "need": [], "next": [], "metrics": [],
+    }}
+    with pytest.raises(ValueError):
+        _validate_sources(candidate, catalog)
+    empty = {"sections": {"done": [], "need": [], "next": [], "metrics": []}}
+    assert _validate_sources(empty, catalog) == empty
 
 
 async def test_timeout_is_sanitized_and_persists_nothing(admin_client, db_session):

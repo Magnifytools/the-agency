@@ -230,6 +230,14 @@ cd frontend && npm run test
   añadir su `CREATE TABLE IF NOT EXISTS` a la lista de DDL inline del lifespan,
   como `project_evidence` y `change_logs`. Y el índice va DESPUÉS del CREATE, o
   el arranque loguea `UndefinedTableError` y sigue sin índice.
+- **Un validador estricto sobre la salida de Claude convierte un fallo puntual en
+  uno permanente.** Los resúmenes exigían `source_keys` válidas en cada item y
+  rechazaban el borrador entero si una fallaba, pero la plantilla JSON del prompt
+  ni siquiera mostraba `source_keys`. Con los mismos hechos, cada reintento
+  fallaba igual (502 `invalid_provider_response`, sin log) y el cliente quedaba
+  sin resumen. Ahora `_validate_sources` descarta citas inválidas e items sin
+  fuente, y sólo rechaza si no queda ninguno. Todo campo que valides tiene que
+  aparecer en el formato de ejemplo del prompt.
 - bcrypt pinned a 4.1.3 (incompatibilidad passlib)
 - `Base.metadata.create_all` no agrega columnas a tablas existentes. Para nuevas columnas en tablas existentes, agregar `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` en `backend/main.py` lifespan.
 

@@ -110,11 +110,16 @@ function errorCode(error: unknown) {
   return (error as { response?: { data?: { detail?: { code?: unknown } } } })?.response?.data?.detail?.code
 }
 
+const ROLLED_BACK_CODES = new Set(["invalid_provider_response", "provider_failed", "provider_unavailable"])
+
 export function isConfirmedFailure(error: unknown) {
   const status = httpStatus(error)
   // A changed source is a definite rejection, but the same persisted intent is
   // still the safe retry vehicle: the server will collect fresh facts under its
   // original generation key.
   if (errorCode(error) === "sources_changed" || errorCode(error) === "source_changed") return false
+  // The API answers these after rolling back, so nothing was stored under the
+  // key. A bare 5xx (e.g. from the proxy) carries no code and stays unknown.
+  if (ROLLED_BACK_CODES.has(String(errorCode(error)))) return true
   return status !== undefined && status >= 400 && status < 500
 }

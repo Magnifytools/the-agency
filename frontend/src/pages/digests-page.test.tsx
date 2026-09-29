@@ -89,10 +89,31 @@ it("recovers an uncertain individual request after reload and retries the same k
   localStorage.setItem(`agency:digest-generation:1:${generationKey}`, JSON.stringify({ kind: "individual", operation_key: generationKey, generation_key: generationKey, client_id: 1, tone: "formal" }))
   mocks.api.recoverGeneration.mockRejectedValueOnce({ response: { status: 404 } })
   setup()
-  expect(await screen.findByText(/Todavía no hay una versión confirmada/)).toBeInTheDocument()
+  expect(await screen.findByText(/No se guardó ninguna versión/)).toBeInTheDocument()
   fireEvent.click(screen.getByRole("button", { name: "Reintentar la misma solicitud" }))
   await waitFor(() => expect(mocks.api.generate).toHaveBeenCalledWith({ generation_key: generationKey, client_id: 1, tone: "formal", period_start: undefined, period_end: undefined }))
   expect(localStorage.getItem(`agency:digest-generation:1:${generationKey}`)).toBeNull()
+})
+it("lets the person discard a pending request once the server confirms nothing was saved", async () => {
+  const generationKey = "individual-discard-key"
+  localStorage.setItem(`agency:digest-generation:1:${generationKey}`, JSON.stringify({ kind: "individual", operation_key: generationKey, generation_key: generationKey, client_id: 1, tone: "formal" }))
+  mocks.api.recoverGeneration.mockRejectedValueOnce({ response: { status: 404 } })
+  setup()
+  fireEvent.click(await screen.findByRole("button", { name: "Descartar solicitud" }))
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Reintentar la misma solicitud" })).not.toBeInTheDocument())
+  expect(localStorage.getItem(`agency:digest-generation:1:${generationKey}`)).toBeNull()
+  expect(mocks.api.generate).not.toHaveBeenCalled()
+})
+it("releases the pending request when the API reports it rolled back an invalid draft", async () => {
+  const generationKey = "individual-rolled-back-key"
+  localStorage.setItem(`agency:digest-generation:1:${generationKey}`, JSON.stringify({ kind: "individual", operation_key: generationKey, generation_key: generationKey, client_id: 1, tone: "formal" }))
+  mocks.api.recoverGeneration.mockRejectedValueOnce({ response: { status: 404 } })
+  mocks.api.generate.mockRejectedValueOnce({ response: { status: 502, data: { detail: { code: "invalid_provider_response", message: "El proveedor devolvió un resumen no válido." } } } })
+  setup()
+  expect(await screen.findByText(/No se guardó ninguna versión/)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole("button", { name: "Reintentar la misma solicitud" }))
+  await waitFor(() => expect(localStorage.getItem(`agency:digest-generation:1:${generationKey}`)).toBeNull())
+  expect(screen.queryByRole("button", { name: "Reintentar la misma solicitud" })).not.toBeInTheDocument()
 })
 it("cannot retry a persisted individual request after write permission is revoked", async () => {
   const generationKey = "individual-revoked-key"
@@ -100,7 +121,7 @@ it("cannot retry a persisted individual request after write permission is revoke
   mocks.auth.write = false
   mocks.api.recoverGeneration.mockRejectedValueOnce({ response: { status: 404 } })
   setup()
-  expect(await screen.findByText(/Todavía no hay una versión confirmada/)).toBeInTheDocument()
+  expect(await screen.findByText(/No se guardó ninguna versión/)).toBeInTheDocument()
   expect(screen.queryByRole("button", { name: "Reintentar la misma solicitud" })).not.toBeInTheDocument()
   expect(mocks.api.generate).not.toHaveBeenCalled()
 })

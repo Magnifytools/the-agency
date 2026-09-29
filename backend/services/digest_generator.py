@@ -86,10 +86,10 @@ Responde con un JSON con esta estructura exacta:
   "greeting": "...",
   "date": "Semana del ... al ... de ... ...",
   "sections": {{
-    "done": [{{"title": "...", "description": "..."}}],
-    "need": [{{"title": "...", "description": "..."}}],
-    "next": [{{"title": "...", "description": "..."}}],
-    "metrics": [{{"title": "...", "description": "..."}}]
+    "done": [{{"title": "...", "description": "...", "source_keys": ["..."]}}],
+    "need": [{{"title": "...", "description": "...", "source_keys": ["..."]}}],
+    "next": [{{"title": "...", "description": "...", "source_keys": ["..."]}}],
+    "metrics": [{{"title": "...", "description": "...", "source_keys": ["..."]}}]
   }},
   "closing": "..."
 }}"""
@@ -126,10 +126,10 @@ Responde con un JSON con esta estructura exacta:
   "greeting": "...",
   "date": "Semana del ... al ... de ... ...",
   "sections": {{
-    "done": [{{"title": "...", "description": "..."}}],
-    "need": [{{"title": "...", "description": "..."}}],
-    "next": [{{"title": "...", "description": "..."}}],
-    "metrics": [{{"title": "...", "description": "..."}}]
+    "done": [{{"title": "...", "description": "...", "source_keys": ["..."]}}],
+    "need": [{{"title": "...", "description": "...", "source_keys": ["..."]}}],
+    "next": [{{"title": "...", "description": "...", "source_keys": ["..."]}}],
+    "metrics": [{{"title": "...", "description": "...", "source_keys": ["..."]}}]
   }},
   "closing": "..."
 }}"""
@@ -288,26 +288,43 @@ def _validate_sources(result: dict, raw_data: dict) -> dict:
         "next": {"task_active", "project", "period", "legacy"},
         "metrics": {"aggregate", "legacy"},
     }
+    # The model's citations are untrusted: keep only keys that exist in the
+    # catalog and fit the section, and drop claims left without any. Rejecting
+    # the whole draft for one bad citation made every retry over the same facts
+    # fail, so nobody could get a draft for that client and period.
+    received = 0
+    dropped_items = 0
+    dropped_keys = 0
     for section, items in result["sections"].items():
+        kept_items = []
         for item in items:
-            keys = item.get("source_keys")
-            if not isinstance(keys, list) or not 1 <= len(keys) <= 8:
-                raise ValueError(
-                    "Cada afirmación generada necesita entre 1 y 8 fuentes"
-                )
-            if any(not isinstance(key, str) for key in keys) or len(keys) != len(
-                set(keys)
-            ):
-                raise ValueError(
-                    "Las fuentes de una afirmación deben ser claves únicas"
-                )
-            if any(key not in catalog for key in keys):
-                raise ValueError("La respuesta contiene una fuente desconocida")
-            if any(
-                catalog[key].get("class") not in allowed_classes[section]
-                for key in keys
-            ):
-                raise ValueError("La fuente no corresponde a la sección indicada")
+            received += 1
+            raw_keys = item.get("source_keys")
+            raw_keys = raw_keys if isinstance(raw_keys, list) else []
+            keys: list[str] = []
+            for key in raw_keys:
+                if (
+                    isinstance(key, str)
+                    and key not in keys
+                    and key in catalog
+                    and catalog[key].get("class") in allowed_classes[section]
+                ):
+                    keys.append(key)
+            dropped_keys += len(raw_keys) - len(keys)
+            if not keys:
+                dropped_items += 1
+                continue
+            kept_items.append({**item, "source_keys": keys[:8]})
+        result["sections"][section] = kept_items
+    if dropped_items or dropped_keys:
+        logger.warning(
+            "Digest sources sanitized: dropped_items=%d dropped_keys=%d of items=%d",
+            dropped_items,
+            dropped_keys,
+            received,
+        )
+    if received and dropped_items == received:
+        raise ValueError("Ninguna afirmación generada cita fuentes válidas")
     return result
 
 
