@@ -255,7 +255,9 @@ api.interceptors.response.use(
         const isShellRequest =
           requestUrl.includes("/inbox/count") ||
           requestUrl.includes("/holded/config")
-        if (!isShellRequest) {
+        // La página de dailys ya muestra el detalle del 502 ("El texto sigue guardado...")
+        const isDailyEnrichment = /\/dailys\/\d+\/reparse$/.test(requestUrl)
+        if (!isShellRequest && !isDailyEnrichment) {
           toast.error("Error del servidor. Intenta de nuevo.")
         }
       }

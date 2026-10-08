@@ -60,5 +60,18 @@ def parse_claude_json(message: anthropic.types.Message) -> dict:
     try:
         return json.loads(raw_text)
     except json.JSONDecodeError as e:
+        # A veces el modelo antepone una frase al bloque JSON ("Hoy estuve...
+        # ```json {...}```"). Se acepta el primer objeto completo del texto.
+        start = raw_text.find("{")
+        while start != -1:
+            try:
+                parsed, _ = json.JSONDecoder().raw_decode(raw_text, start)
+            except json.JSONDecodeError:
+                start = raw_text.find("{", start + 1)
+                continue
+            if isinstance(parsed, dict):
+                logger.warning("Claude JSON response had surrounding text; extracted object")
+                return parsed
+            start = raw_text.find("{", start + 1)
         logger.error("Failed to parse Claude JSON response: %s", raw_text[:200])
         raise ValueError(f"La respuesta de Claude no es JSON valido: {e}") from e
