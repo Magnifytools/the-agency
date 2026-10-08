@@ -230,6 +230,11 @@ cd frontend && npm run test
   añadir su `CREATE TABLE IF NOT EXISTS` a la lista de DDL inline del lifespan,
   como `project_evidence` y `change_logs`. Y el índice va DESPUÉS del CREATE, o
   el arranque loguea `UndefinedTableError` y sigue sin índice.
+- **`parse_claude_json` no puede exigir que la respuesta empiece por el JSON.** Con
+  notas vacías el parser de dailys recibía una frase inventada antes del bloque
+  ```json y respondía 502 en cada reintento (daily 129 de Nacho, oct 2026). Ahora
+  se extrae el primer objeto del texto, y con notas vacías el prompt lo dice y se
+  descartan las tareas sin `fact_keys`. Lo guarda `TestDailySoloConHechos`.
 - bcrypt pinned a 4.1.3 (incompatibilidad passlib)
 - `Base.metadata.create_all` no agrega columnas a tablas existentes. Para nuevas columnas en tablas existentes, agregar `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` en `backend/main.py` lifespan.
 
