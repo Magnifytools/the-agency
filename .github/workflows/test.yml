@@ -128,3 +128,16 @@ jobs:
           npm --prefix chrome-extension ci
           npm --prefix chrome-extension test
           npm --prefix chrome-extension audit --audit-level=high
+
+  mcp-server-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test the MCP server against a fake backend
+        working-directory: mcp-server
+        run: |
+          pip install -e ".[dev]"
+          python -m pytest -q

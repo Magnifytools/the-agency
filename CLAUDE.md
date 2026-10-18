@@ -154,6 +154,20 @@ admin_users, admin_settings
   duro de clientes (`DELETE /api/clients/{id}/hard`) es de ese tipo y es
   irreversible por diseño.
 
+## MCP (manejar The Agency desde Claude)
+
+- **Qué es**: servidor MCP local por stdio en `mcp-server/` (paquete
+  `agency_mcp`, Python >= 3.11, venv propio). Instalación y uso en
+  `mcp-server/README.md`.
+- **Es un cliente de la API**, como la extensión: entra con el usuario de la
+  persona (`AGENCY_EMAIL` + contraseña en el Llavero o `AGENCY_PASSWORD`) y
+  manda Bearer. Permisos por módulo y Deshacer funcionan solos. Cero cambios
+  en el backend.
+- **Si cambias un endpoint que usa** (tasks, agenda, timer, time-entries,
+  inbox, search, projects, users), revisa `mcp-server/agency_mcp/server.py`.
+- **Sin herramientas de borrado**, a propósito.
+- MCP SDK v2: `FastMCP` ahora es `MCPServer` (`mcp.server.mcpserver`).
+
 ## No tocar
 - Módulos financieros custom: tax_service, forecast_service, income, expenses, taxes, forecasts
 - Se reemplazarán por integración Holded en fase posterior
@@ -173,6 +187,9 @@ cd backend && source venv/bin/activate && python -m pytest tests/ -v
 
 # Frontend (vitest, 45 tests)
 cd frontend && npm run test
+
+# Servidor MCP (pytest, 20 tests, backend falso)
+cd mcp-server && .venv/bin/python -m pytest -q
 ```
 
 ## Responsive / Mobile
