@@ -11,6 +11,7 @@ from datetime import date
 
 from backend.db.models import DigestTone
 from backend.schemas.digest import DigestContent, DigestItem
+from backend.services import digest_seo
 from backend.services.digest_periods import format_digest_period
 
 # ---------------------------------------------------------------------------
@@ -30,6 +31,11 @@ SECTION_TITLES_PLURAL = {
     "next": "¿Qué vamos a hacer?",
     "metrics": "Métricas clave",
 }
+
+
+def _seo_block(content: DigestContent, seo: dict | None) -> dict | None:
+    """El bloque de Search Console, si hay datos y no se ha quitado en el editor."""
+    return seo if content.include_seo and digest_seo.is_available(seo) else None
 
 
 def _section_titles(tone: DigestTone | None = None) -> dict[str, str]:
@@ -58,6 +64,7 @@ def render_discord(
     tone: DigestTone | None = None,
     period_start: date | None = None,
     period_end: date | None = None,
+    seo: dict | None = None,
 ) -> str:
     """Render digest content as Discord-formatted Markdown message."""
     titles = _section_titles(tone)
@@ -92,6 +99,11 @@ def render_discord(
             lines.append(f"• {item.title}{desc}")
         lines.append("")
 
+    seo_block = _seo_block(content, seo)
+    if seo_block:
+        lines.extend(digest_seo.render_text(seo_block, bold="**"))
+        lines.append("")
+
     # Closing / AI note
     if content.closing:
         lines.append("**💡 Nota del día**")
@@ -106,6 +118,7 @@ def render_slack(
     slack_template: dict | None = None,
     period_start: date | None = None,
     period_end: date | None = None,
+    seo: dict | None = None,
 ) -> str:
     """Render digest content as Slack mrkdwn text (paste-friendly).
 
@@ -113,8 +126,8 @@ def render_slack(
     Otherwise uses the default Magnify format.
     """
     if slack_template:
-        return _render_slack_custom(content, slack_template, period_start, period_end)
-    return _render_slack_default(content, tone, period_start, period_end)
+        return _render_slack_custom(content, slack_template, period_start, period_end, seo)
+    return _render_slack_default(content, tone, period_start, period_end, seo)
 
 
 def _render_slack_default(
@@ -122,6 +135,7 @@ def _render_slack_default(
     tone: DigestTone | None = None,
     period_start: date | None = None,
     period_end: date | None = None,
+    seo: dict | None = None,
 ) -> str:
     """Default Slack format — Magnify standard."""
     titles = _section_titles(tone)
@@ -147,6 +161,11 @@ def _render_slack_default(
                     lines.append(f"  {item.description}")
             lines.append("")
 
+    seo_block = _seo_block(content, seo)
+    if seo_block:
+        lines.extend(digest_seo.render_text(seo_block, bold="*"))
+        lines.append("")
+
     if content.closing:
         lines.append("---")
         lines.append(content.closing)
@@ -159,6 +178,7 @@ def _render_slack_custom(
     template: dict,
     period_start: date | None = None,
     period_end: date | None = None,
+    seo: dict | None = None,
 ) -> str:
     """Custom per-client Slack format based on template config."""
     lines: list[str] = []
@@ -210,6 +230,11 @@ def _render_slack_custom(
         elif empty_text:
             lines.append(f"- {empty_text}")
 
+        lines.append("")
+
+    seo_block = _seo_block(content, seo)
+    if seo_block:
+        lines.extend(digest_seo.render_text(seo_block, bold="*"))
         lines.append("")
 
     # Closing — incluir siempre que exista, igual que el resto de canales
@@ -293,6 +318,7 @@ def render_email(
     period_start: date | None = None,
     period_end: date | None = None,
     logo_url: str | None = None,
+    seo: dict | None = None,
 ) -> str:
     """Render digest content as a clean, minimal HTML email."""
     titles = _section_titles(tone)
@@ -309,6 +335,9 @@ def render_email(
     sections_html += _render_section_email(titles["done"], content.sections.done, _SECTION_COLORS["done"])
     sections_html += _render_section_email(titles["need"], content.sections.need, _SECTION_COLORS["need"])
     sections_html += _render_section_email(titles["next"], content.sections.next, _SECTION_COLORS["next"])
+    seo_block = _seo_block(content, seo)
+    if seo_block:
+        sections_html += digest_seo.render_html(seo_block, esc=_esc, dark=_DARK, gray=_GRAY, border=_BORDER)
 
     return f"""\
 <!DOCTYPE html>
@@ -383,6 +412,7 @@ def render_email_plain(
     tone: DigestTone | None = None,
     period_start: date | None = None,
     period_end: date | None = None,
+    seo: dict | None = None,
 ) -> str:
     """Render digest content as plain text for email (no HTML)."""
     titles = _section_titles(tone)
@@ -414,6 +444,11 @@ def render_email_plain(
         for item in content.sections.next:
             desc = f" — {item.description}" if item.description else ""
             lines.append(f"  - {item.title}{desc}")
+        lines.append("")
+
+    seo_block = _seo_block(content, seo)
+    if seo_block:
+        lines.extend(digest_seo.render_text(seo_block))
         lines.append("")
 
     if content.closing:

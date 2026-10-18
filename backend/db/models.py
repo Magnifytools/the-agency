@@ -8,6 +8,7 @@ from sqlalchemy import (
     Integer,
     String,
     Float,
+    SmallInteger,
     Numeric,
     Text,
     Date,
@@ -1987,3 +1988,37 @@ class JobRuntime(Base):
     success_at = Column(DateTime(timezone=True), nullable=True)
     error_code = Column(String(64), nullable=True)
     next_run_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class GscConnection(Base):
+    """Única conexión de la agencia con Search Console (fila id=1)."""
+    __tablename__ = "gsc_connection"
+
+    id = Column(SmallInteger, primary_key=True, default=1)
+    google_email = Column(String(255), nullable=True)
+    refresh_token = Column(Text, nullable=False)  # cifrado con encrypt_vault_secret
+    status = Column(String(32), nullable=False)  # connected | reconnect_required
+    connected_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    connected_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class GscDaily(Base):
+    """Totales diarios finales de una propiedad de Search Console."""
+    __tablename__ = "gsc_daily"
+
+    site_url = Column(String(255), primary_key=True)
+    date = Column(Date, primary_key=True)
+    clicks = Column(Integer, nullable=False)
+    impressions = Column(Integer, nullable=False)
+    position = Column(Float, nullable=False)
+
+
+class GscSiteSync(Base):
+    """Estado de importación por propiedad: decide si un mes está completo."""
+    __tablename__ = "gsc_site_sync"
+
+    site_url = Column(String(255), primary_key=True)
+    backfilled_at = Column(DateTime(timezone=True), nullable=True)
+    last_synced_at = Column(DateTime(timezone=True), nullable=True)
+    last_data_date = Column(Date, nullable=True)
+    error_code = Column(String(64), nullable=True)
