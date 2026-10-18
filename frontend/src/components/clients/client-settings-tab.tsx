@@ -1,7 +1,8 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { clientsApi, engineApi } from "@/lib/api"
+import { clientsApi, engineApi, gscApi } from "@/lib/api"
+import { formatDay, gscErrorLabel } from "@/lib/gsc"
 import type { Client } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -53,6 +54,18 @@ export function ClientSettingsTab({ client }: Props) {
     onError: (e) => toast.error(getErrorMessage(e)),
   })
 
+  // Estado de importación de la propiedad GUARDADA (no la que se está escribiendo).
+  const { data: gscStatus } = useQuery({ queryKey: ["gsc-status"], queryFn: gscApi.getStatus, staleTime: 60_000 })
+  const gscConnected = gscStatus?.connection?.status === "connected"
+  const { data: gscSites } = useQuery({
+    queryKey: ["gsc-sites"],
+    queryFn: gscApi.listSites,
+    enabled: isAdmin && canWriteClients && gscConnected,
+    staleTime: 5 * 60_000,
+  })
+  const savedSite = normalizeSiteUrl(client.gsc_url)
+  const siteState = gscStatus?.sites.find((s) => s.site_url === savedSite)
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!canWriteClients) return
@@ -95,13 +108,31 @@ export function ClientSettingsTab({ client }: Props) {
                 <Input
                   value={gsc}
                   onChange={(e) => setGsc(e.target.value)}
-                  placeholder="https://ejemplo.com"
+                  placeholder="sc-domain:ejemplo.com o https://ejemplo.com/"
                   className="mt-1"
                   disabled={!canWriteClients}
+                  list="gsc-sites"
                 />
+                {gscSites && (
+                  <datalist id="gsc-sites">
+                    {gscSites.sites.map((site) => <option key={site.site_url} value={site.site_url} />)}
+                  </datalist>
+                )}
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  URL de la propiedad en Search Console
+                  Propiedad tal y como aparece en Search Console
                 </p>
+                {savedSite && gscStatus && (
+                  <p className="text-[11px] mt-1">
+                    {!gscStatus.connection ? (
+                      <span className="text-muted-foreground">Search Console no está conectado (Ajustes).</span>
+                    ) : siteState?.last_data_date ? (
+                      <span className="text-muted-foreground">Datos importados hasta el {formatDay(siteState.last_data_date)}.</span>
+                    ) : (
+                      <span className="text-muted-foreground">Se importará en la próxima pasada diaria.</span>
+                    )}
+                    {gscErrorLabel(siteState?.error_code) && <span className="block text-amber-600">{gscErrorLabel(siteState?.error_code)}</span>}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -151,4 +182,12 @@ export function ClientSettingsTab({ client }: Props) {
       </Card>
     </div>
   )
+}
+
+/** Igual que el backend: 'sc-domain:x' tal cual; URL con barra final. */
+function normalizeSiteUrl(value: string | null | undefined): string | null {
+  const site = value?.trim()
+  if (!site) return null
+  if (site.startsWith("sc-domain:")) return site
+  return /^https?:\/\//.test(site) && !site.endsWith("/") ? `${site}/` : site
 }

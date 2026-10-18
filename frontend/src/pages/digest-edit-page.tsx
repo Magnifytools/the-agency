@@ -4,7 +4,7 @@ import { Link, useParams, useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, Save, Eye, Copy, Loader2, Plus, Trash2 } from "lucide-react"
 import { digestsApi } from "@/lib/api"
-import type { Digest, DigestContent, DigestTone, DigestSections } from "@/lib/types"
+import type { Digest, DigestContent, DigestSeo, DigestTone, DigestSections } from "@/lib/types"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -14,6 +14,7 @@ import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { DigestFacts } from "@/components/digests/digest-facts"
+import { DigestSeoPanel } from "@/components/digests/digest-seo-panel"
 import { DigestExternalDelivery } from "@/components/digests/digest-external-delivery"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -67,6 +68,7 @@ export default function DigestEditPage() {
   const [greeting, setGreeting] = useState("")
   const [dateStr, setDateStr] = useState("")
   const [closing, setClosing] = useState("")
+  const [includeSeo, setIncludeSeo] = useState(true)
   const [sections, setSections] = useState<Required<DigestSections>>({ done: [], need: [], next: [], metrics: [] })
   const [tone, setTone] = useState<DigestTone>("cercano")
   const [pendingTone, setPendingTone] = useState<DigestTone | null>(null)
@@ -120,6 +122,7 @@ export default function DigestEditPage() {
       setGreeting(digest.content?.greeting || "")
       setDateStr(digest.content?.date || "")
       setClosing(digest.content?.closing || "")
+      setIncludeSeo(digest.content?.include_seo ?? true)
       setSections({
         done: digest.content?.sections?.done || [],
         need: digest.content?.sections?.need || [],
@@ -141,7 +144,7 @@ export default function DigestEditPage() {
     }
   }, [id, previewId])
 
-  const draftContent = (): DigestContent => ({ greeting, date: dateStr, sections, closing })
+  const draftContent = (): DigestContent => ({ greeting, date: dateStr, sections, closing, include_seo: includeSeo })
   const acceptVersion = (saved: Digest, sourceId: number, sourceEpoch: number) => {
     if (!active.current || Number(liveId.current) !== sourceId || viewEpoch.current !== sourceEpoch) return
     queryClient.setQueryData(["digest", String(saved.id)], saved)
@@ -245,9 +248,10 @@ export default function DigestEditPage() {
     renderMutation.mutate({ digestId: digest.id, format: fmt })
   }
   const busy = updateMutation.isPending || toneChangeMutation.isPending || previewSaving
-  const unsaved = !!digest && (tone !== digest.tone || greeting !== (digest.content?.greeting || "") || closing !== (digest.content?.closing || "") ||
+  const unsaved = !!digest && (tone !== digest.tone || greeting !== (digest.content?.greeting || "") || closing !== (digest.content?.closing || "") || includeSeo !== (digest.content?.include_seo ?? true) ||
     (["done", "need", "next", "metrics"] as const).some(section => JSON.stringify(sections[section]) !== JSON.stringify(digest.content?.sections?.[section] || [])))
   const catalog = sourceCatalog(digest?.raw_context ?? null)
+  const seo = (digest?.raw_context?.seo ?? null) as DigestSeo | null
 
   const handleCopy = async () => {
     try {
@@ -460,6 +464,8 @@ export default function DigestEditPage() {
           </div>
         </CardContent>
       </Card>
+
+      {seo && <DigestSeoPanel seo={seo} clientId={digest.client_id} include={includeSeo} canWrite={canWrite} onIncludeChange={setIncludeSeo} />}
 
       </fieldset>
       {previewUnavailable && <p role="alert" className="text-sm text-muted-foreground">Esta versión no tiene contenido para previsualizar.</p>}

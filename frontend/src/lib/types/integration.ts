@@ -58,7 +58,30 @@ export interface DigestContent {
   date: string
   sections: DigestSections
   closing: string
+  /** Bloque de Search Console en el resumen mensual. Ausente = incluido. */
+  include_seo?: boolean
 }
+
+export interface DigestSeoPeriod {
+  start: string
+  end: string
+  days: number
+  clicks: number
+  impressions: number
+  ctr: number | null
+  position: number | null
+}
+
+export interface DigestSeoChanges {
+  clicks_pct: number | null
+  impressions_pct: number | null
+  ctr_delta: number | null
+  position_delta: number | null
+}
+
+export type DigestSeo =
+  | { status: "ok"; site_url: string; month: DigestSeoPeriod; previous: DigestSeoPeriod | null; year_ago: DigestSeoPeriod | null; vs_previous: DigestSeoChanges | null; vs_year_ago: DigestSeoChanges | null }
+  | { status: "no_property" | "not_connected" | "not_synced" | "reconnect_required" | "incomplete" | "no_data"; site_url?: string; last_data_date?: string | null; error_code?: string | null }
 
 export interface Digest {
   id: number

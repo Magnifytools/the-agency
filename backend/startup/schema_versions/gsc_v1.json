@@ -1,0 +1,37 @@
+{
+  "version": "20261018_gsc_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS gsc_connection (\n id SMALLINT PRIMARY KEY CONSTRAINT ck_gsc_connection_singleton CHECK (id = 1),\n google_email VARCHAR(255),\n refresh_token TEXT NOT NULL,\n status VARCHAR(32) NOT NULL CONSTRAINT ck_gsc_connection_status CHECK (status IN ('connected', 'reconnect_required')),\n connected_by INTEGER REFERENCES users(id) ON DELETE SET NULL,\n connected_at TIMESTAMPTZ NOT NULL\n)",
+    "CREATE TABLE IF NOT EXISTS gsc_daily (\n site_url VARCHAR(255) NOT NULL,\n date DATE NOT NULL,\n clicks INTEGER NOT NULL,\n impressions INTEGER NOT NULL,\n position DOUBLE PRECISION NOT NULL,\n PRIMARY KEY (site_url, date)\n)",
+    "CREATE TABLE IF NOT EXISTS gsc_site_sync (\n site_url VARCHAR(255) PRIMARY KEY,\n backfilled_at TIMESTAMPTZ,\n last_synced_at TIMESTAMPTZ,\n last_data_date DATE,\n error_code VARCHAR(64)\n)"
+  ],
+  "tables": {
+    "gsc_connection": {
+      "id": ["int2", false, null],
+      "google_email": ["varchar", true, 255],
+      "refresh_token": ["text", false, null],
+      "status": ["varchar", false, 32],
+      "connected_by": ["int4", true, null],
+      "connected_at": ["timestamptz", false, null]
+    },
+    "gsc_daily": {
+      "site_url": ["varchar", false, 255],
+      "date": ["date", false, null],
+      "clicks": ["int4", false, null],
+      "impressions": ["int4", false, null],
+      "position": ["float8", false, null]
+    },
+    "gsc_site_sync": {
+      "site_url": ["varchar", false, 255],
+      "backfilled_at": ["timestamptz", true, null],
+      "last_synced_at": ["timestamptz", true, null],
+      "last_data_date": ["date", true, null],
+      "error_code": ["varchar", true, 64]
+    }
+  },
+  "primary_keys": {
+    "gsc_connection": ["id"],
+    "gsc_daily": ["site_url", "date"],
+    "gsc_site_sync": ["site_url"]
+  }
+}

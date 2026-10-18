@@ -10,6 +10,7 @@ import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar } from "lucide-react"
 import { CommunicationSchedules } from "@/components/communication-schedules"
 import { JobRuntimeStatusPanel } from "@/components/job-runtime-status"
 import { OperationalUsagePanel } from "@/components/admin/operational-usage"
+import { SearchConsoleSection } from "@/components/settings/search-console-section"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Button } from "@/components/ui/button"
 
@@ -284,6 +285,7 @@ export default function SettingsPage() {
     ...(isAdmin ? [{ id: "scheduled-processes", label: "Procesos programados" }] : []),
     ...(isAdmin ? [{ id: "operational-usage", label: "Señales operativas" }] : []),
     { id: "calendar", label: "Google Calendar" },
+    ...(isAdmin ? [{ id: "search-console", label: "Search Console" }] : []),
     ...(isAdmin ? [{ id: "holidays", label: "Festivos" }] : []),
   ]
 
@@ -552,6 +554,8 @@ export default function SettingsPage() {
 
       {/* Google Calendar */}
       <CalendarSection />
+
+      {isAdmin && <SearchConsoleSection />}
 
       {/* Holiday management — admin only */}
       {isAdmin && (
