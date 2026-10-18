@@ -221,6 +221,106 @@ class TestDailyParserBudget:
         )
 
 
+@pytest.mark.asyncio
+class TestDailySoloConHechos:
+    """8 oct 2026: Nacho cerró el día marcando hechos y sin escribir notas.
+
+    Con `user_notes` vacío el modelo escribía unas notas inventadas ("Hoy estuve
+    trabajando en la migración de Parklex...") y DESPUÉS el bloque ```json. El
+    lector de JSON sólo aceptaba respuestas que empezaran por el JSON: 502,
+    "El texto sigue guardado. No se pudo estructurar" en cada reintento.
+    """
+
+    FACT = {
+        "key": "task_completed:7:2026-10-07:0123456789abcdef",
+        "kind": "task_completed", "task_id": 7, "title": "Migración Parklex",
+        "client_id": 3, "client_name": "Parklex", "project_id": 30,
+        "project_name": "SEO Parklex",
+    }
+
+    def _cliente(self, monkeypatch, texto, prompts):
+        from backend.services import daily_parser
+
+        class _FakeMessages:
+            async def create(self, **kwargs):
+                prompts.append(kwargs)
+                msg = MagicMock()
+                msg.stop_reason = "end_turn"
+                bloque = MagicMock()
+                bloque.type = "text"
+                bloque.text = texto
+                msg.content = [bloque]
+                return msg
+
+        class _FakeClient:
+            messages = _FakeMessages()
+
+            def with_options(self, **_kwargs):
+                return self
+
+        monkeypatch.setattr(daily_parser, "get_anthropic_client", lambda: _FakeClient())
+        return daily_parser
+
+    async def test_texto_antes_del_json_no_tumba_el_parseo(self, monkeypatch):
+        respuesta = (
+            "Hoy estuve trabajando en la migración de Parklex, toda la mañana.\n\n"
+            "```json\n"
+            '{"projects": [{"name": "Migración Parklex", "client": "Parklex", "tasks": ['
+            '{"description": "Migración completada", "details": "", '
+            f'"fact_keys": ["{self.FACT["key"]}"]}}]}}], '
+            '"general": [{"description": "Toda la mañana con la migración", "details": "", "fact_keys": []}], '
+            '"tomorrow": []}\n```'
+        )
+        prompts: list = []
+        parser = self._cliente(monkeypatch, respuesta, prompts)
+
+        result = await parser.parse_daily_update("", source_facts=[self.FACT])
+
+        assert [p["name"] for p in result["projects"]] == ["SEO Parklex"]
+        assert result["projects"][0]["tasks"][0]["fact_keys"] == [self.FACT["key"]]
+        # Sin notas no hay aporte libre: "toda la mañana" sería inventado.
+        assert result["general"] == []
+        enviado = prompts[0]
+        assert "(sin notas)" in enviado["messages"][0]["content"]
+        assert "user_notes está vacío" in enviado["system"]
+
+    async def test_con_notas_se_conservan_los_aportes_libres(self, monkeypatch):
+        respuesta = (
+            '{"projects": [], "general": [{"description": "Reunión interna", '
+            '"details": "", "fact_keys": []}], "tomorrow": []}'
+        )
+        prompts: list = []
+        parser = self._cliente(monkeypatch, respuesta, prompts)
+
+        result = await parser.parse_daily_update("Reunión interna", source_facts=[self.FACT])
+
+        assert [t["description"] for t in result["general"]] == ["Reunión interna"]
+        assert "user_notes está vacío" not in prompts[0]["system"]
+
+
+class TestParseClaudeJson:
+    def _msg(self, texto):
+        msg = MagicMock()
+        msg.stop_reason = "end_turn"
+        bloque = MagicMock()
+        bloque.type = "text"
+        bloque.text = texto
+        msg.content = [bloque]
+        return msg
+
+    def test_extrae_el_objeto_aunque_lleve_texto_alrededor(self):
+        from backend.services.ai_utils import parse_claude_json
+
+        texto = 'Aquí va {no es json} y luego:\n```json\n{"a": {"b": 1}}\n```\nFin.'
+        assert parse_claude_json(self._msg(texto)) == {"a": {"b": 1}}
+
+    def test_sin_objeto_json_sigue_fallando(self):
+        from backend.services.ai_utils import parse_claude_json
+
+        with pytest.raises(ValueError, match="no es JSON valido"):
+            parse_claude_json(self._msg("Lo siento, no puedo."))
+
+
 class TestEmbedDailySinEstructurar:
     """Un fallo de la IA no puede dejar al autor sin poder publicar su informe.
 

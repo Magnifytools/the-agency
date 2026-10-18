@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     GOOGLE_REDIRECT_URI: str = "https://agency.magnifytools.com/api/calendar/callback"
+    # Search Console usa el mismo cliente OAuth con su propio callback.
+    GSC_REDIRECT_URI: str = "https://agency.magnifytools.com/api/gsc/callback"
 
     model_config = {"env_file": str(Path(__file__).resolve().parent.parent / ".env")}
 

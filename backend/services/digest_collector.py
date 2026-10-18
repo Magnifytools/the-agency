@@ -19,6 +19,7 @@ from backend.db.models import (
     TimeEntry,
     User,
 )
+from backend.services.gsc_service import is_full_month, month_summary
 from backend.services.temporal import civil_day_utc_bounds
 from backend.services.time_entry_dates import time_entry_civil_period
 
@@ -346,5 +347,13 @@ async def collect_digest_data(
             "kind": "followup", "class": "followup", "id": followup["id"],
             "label": followup.get("subject") or "Seguimiento",
         }
+    # Search Console sólo en resúmenes de mes natural: con datos semanales el
+    # retraso de GSC y el ruido darían comparaciones engañosas. Sale de la BD
+    # propia (gsc_daily), así que es determinista entre las dos recolecciones.
+    # Se pinta con código en todos los formatos (no lo redacta la IA), así que
+    # las cifras que ve el cliente son exactamente las guardadas.
+    if is_full_month(period_start, period_end):
+        gsc_url = await db.scalar(select(Client.gsc_url).where(Client.id == client_id))
+        result["seo"] = await month_summary(db, gsc_url, period_start, period_end)
     result["source_catalog"] = catalog
     return result

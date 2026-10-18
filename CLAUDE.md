@@ -154,6 +154,30 @@ admin_users, admin_settings
   duro de clientes (`DELETE /api/clients/{id}/hard`) es de ese tipo y es
   irreversible por diseño.
 
+## Search Console propio (resúmenes mensuales)
+
+- **Qué es**: The Agency importa Search Console por su cuenta (no depende de
+  The Engine). Una cuenta de Google de la agencia, conectada por un admin en
+  Ajustes → Search Console. Propiedad por cliente en `Client.gsc_url`.
+- **Datos**: `gsc_daily` (totales diarios FINALES por propiedad, sin límite de
+  16 meses), `gsc_site_sync` (hasta qué día hay datos, último error),
+  `gsc_connection` (fila única, token cifrado). Job diario `gsc`: 16 meses de
+  backfill la primera vez, luego los últimos 7 días.
+- **Resúmenes**: sólo los de MES NATURAL llevan `raw_context["seo"]` (lo añade
+  el collector desde la BD propia, así las dos recolecciones coinciden). Si el
+  mes no tiene datos finales hasta su último día → `status: "incomplete"` y no
+  hay bloque. El bloque lo pinta `services/digest_seo.py` con código en email,
+  Slack, Discord y texto plano: la IA no redacta esas cifras.
+  `content.include_seo` permite quitarlo desde el editor.
+- **Cifras**: clics/impresiones se suman; posición ponderada por impresiones;
+  `position_delta` positivo = mejora.
+- **Producción necesita** (una vez, en Google Cloud del cliente OAuth): activar
+  la Search Console API, añadir el redirect `https://agency.magnifytools.com/api/gsc/callback`
+  y el scope `webmasters.readonly` en la pantalla de consentimiento.
+- El PDF SEO completo sigue en The Engine (`/p/{engine_project_id}/reports`):
+  el editor enlaza ahí. Su `report-data` NO se usa: traga errores como ceros y
+  no pondera la posición.
+
 ## No tocar
 - Módulos financieros custom: tax_service, forecast_service, income, expenses, taxes, forecasts
 - Se reemplazarán por integración Holded en fase posterior
@@ -168,7 +192,7 @@ admin_users, admin_settings
 
 ## Testing
 ```bash
-# Backend (pytest, 425 tests — incluye tests/integration contra Postgres real)
+# Backend (pytest; tests/integration contra Postgres real con TEST_DATABASE_URL)
 cd backend && source venv/bin/activate && python -m pytest tests/ -v
 
 # Frontend (vitest, 45 tests)
@@ -225,14 +249,21 @@ cd frontend && npm run test
   ese daily con un 400 y el informe del día no salía; ahora publica el texto en
   crudo con `format_raw_daily_embed()` y avisa en el mensaje de vuelta. Al tocar
   el parseo, mirar siempre quién lee después ese campo.
-- **El lifespan de `main.py` NO ejecuta `create_all`** — sólo lo hace `init_db`,
-  que en producción no corre. Una tabla NUEVA del ORM no aparece sola: hay que
-  añadir su `CREATE TABLE IF NOT EXISTS` a la lista de DDL inline del lifespan,
-  como `project_evidence` y `change_logs`. Y el índice va DESPUÉS del CREATE, o
-  el arranque loguea `UndefinedTableError` y sigue sin índice.
+- **Una tabla o columna NUEVA va en una migración versionada**, no en el lifespan
+  ni en `create_all` (que sólo corre en `init_db`, nunca en producción). Patrón:
+  contrato JSON en `backend/startup/schema_versions/<x>_v1.json` + módulo
+  `backend/startup/<x>_schema.py` con `apply`/`verify` + añadirlo al final de
+  `MIGRATIONS` en `deployment_schema.py`. Railway ejecuta
+  `python -m backend.scripts.migrate` en el release y el arranque se niega a
+  servir si falta una versión. Ejemplo reciente: `gsc_schema.py`. Las versiones
+  ya publicadas son inmutables (su checksum se comprueba).
+- **`parse_claude_json` no puede exigir que la respuesta empiece por el JSON.** Con
+  notas vacías el parser de dailys recibía una frase inventada antes del bloque
+  ```json y respondía 502 en cada reintento (daily 129 de Nacho, oct 2026). Ahora
+  se extrae el primer objeto del texto, y con notas vacías el prompt lo dice y se
+  descartan las tareas sin `fact_keys`. Lo guarda `TestDailySoloConHechos`.
 - bcrypt pinned a 4.1.3 (incompatibilidad passlib)
-- `Base.metadata.create_all` no agrega columnas a tablas existentes. Para nuevas columnas en tablas existentes, agregar `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` en `backend/main.py` lifespan.
 
 ---
 
-*Actualizado: 27 Ago 2026*
+*Actualizado: 18 Oct 2026*

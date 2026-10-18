@@ -28,6 +28,7 @@ from backend.api.routes import (
     my_week,
     automations,
     google_calendar,
+    gsc,
     bank_import,
     cfo,
     usage_stats, job_runtime,
@@ -218,7 +219,7 @@ _CORE_ROUTERS = [
     auth, clients, tasks, task_categories, time_entries, users, dashboard,
     projects, pm, report_policies, digests, sync, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     client_dashboard, engine_integration, inbox, extension, google_calendar,
-    usage_stats, job_runtime,
+    gsc, usage_stats, job_runtime,
     # changes: el Undo del shell. No es una pantalla, es la red de seguridad
     # de todas las demás — se registra siempre.
     changes, commands,

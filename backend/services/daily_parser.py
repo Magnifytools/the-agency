@@ -100,11 +100,19 @@ FUENTES CANÓNICAS:
 - Usa únicamente keys presentes en source_facts. No inventes IDs, horas, finalizaciones,
   clientes ni proyectos. Los hechos son contexto; las notas del usuario deciden la redacción.
 """
+        notes = raw_text
+        if not raw_text.strip():
+            # Cierre hecho sólo con hechos marcados. Sin este aviso el modelo
+            # escribía unas notas inventadas antes del JSON y el parseo fallaba.
+            system += """- Si user_notes está vacío, redacta sólo a partir de source_facts: cada tarea
+  lleva sus fact_keys, no añadas aportes libres ni detalles que no estén en los hechos.
+"""
+            notes = "(sin notas)"
         prompt = (
             "<source_facts>\n"
             + json.dumps(facts, ensure_ascii=False, separators=(",", ":"))
             + "\n</source_facts>\n<user_notes>\n"
-            + raw_text
+            + notes
             + "\n</user_notes>"
         )
 
@@ -180,7 +188,9 @@ FUENTES CANÓNICAS:
                 "fact_keys": fact_keys,
             }
             if not fact_keys:
-                result["general"].append(parsed_task)
+                # Sin notas no hay aporte libre posible: sería texto inventado.
+                if raw_text.strip():
+                    result["general"].append(parsed_task)
                 continue
 
             referenced = [facts_by_key[key] for key in fact_keys]

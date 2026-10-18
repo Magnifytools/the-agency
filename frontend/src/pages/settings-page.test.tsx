@@ -21,6 +21,7 @@ vi.mock("@/lib/api", () => ({
   categoriesApi: { list: vi.fn() },
   myWeekApi: { listHolidays: vi.fn(), createHoliday: vi.fn(), deleteHoliday: vi.fn() },
   calendarApi: { getStatus: vi.fn().mockResolvedValue({ connected: false }), getAuthUrl: vi.fn(), disconnect: vi.fn(), sync: vi.fn() },
+  gscApi: { getStatus: vi.fn().mockResolvedValue({ configured: true, connection: null, sites: [] }), getAuthUrl: vi.fn(), disconnect: vi.fn(), sync: vi.fn(), listSites: vi.fn() },
 }))
 
 it("does not render the scheduled-process panel or anchor for a member", async () => {
