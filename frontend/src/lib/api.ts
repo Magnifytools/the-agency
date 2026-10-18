@@ -279,8 +279,10 @@ export const authApi = {
 }
 
 // Clients
+export type ClientSort = "created" | "seo_change_asc" | "seo_change_desc"
+
 export const clientsApi = {
-  list: (params?: { status?: string; cohort?: ClientCohort; page?: number; page_size?: number }) =>
+  list: (params?: { status?: string; cohort?: ClientCohort; page?: number; page_size?: number; sort?: ClientSort }) =>
     api.get<PaginatedResponse<Client>>("/clients", { params }).then((r) => r.data),
   listAll: (status?: string, cohort?: ClientCohort) =>
     api.get<PaginatedResponse<Client>>("/clients", { params: { ...(status && { status }), ...(cohort && { cohort }), page_size: 1000 } }).then((r) => r.data.items),

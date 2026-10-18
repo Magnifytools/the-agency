@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { clientsApi, clientHealthApi, engineApi } from "@/lib/api"
+import { clientsApi, clientHealthApi, engineApi, type ClientSort } from "@/lib/api"
 import type { Client, ClientCohort, ClientContactCreate, ClientCreate, ClientExtract, ClientOnboardingCreate, ClientOnboardingResult, ClientOnboardingProjectCreate, ClientStatus, ClientHealthScore } from "@/lib/types"
 import { usePagination } from "@/hooks/use-pagination"
 import { Pagination } from "@/components/ui/pagination"
@@ -28,6 +28,7 @@ import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
 import { clientKeys, invalidateClientChange } from "@/lib/query-keys"
 import { clientHealthPresentation } from "@/components/dashboard/client-health-presentation"
+import { SeoTrendBadge } from "@/components/clients/seo-trend-badge"
 
 const STATUS_TABS: { label: string; value: ClientStatus | "all" }[] = [
   { label: "En cartera", value: "all" },
@@ -116,6 +117,8 @@ function ClientsPageBody() {
   const { page, pageSize, setPage, reset } = usePagination(25)
   const [tab, setTab] = useState<ClientStatus | "all">("all")
   const [cohort, setCohort] = useState<ClientCohort>("all")
+  // "Tráfico SEO" sorts on the server so the biggest drops lead across every page.
+  const [seoSort, setSeoSort] = useState<ClientSort>("created")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
   const [prefill, setPrefill] = useState<ClientExtract | null>(null)
@@ -161,8 +164,8 @@ function ClientsPageBody() {
   })
 
   const clientsQuery = useQuery({
-    queryKey: [...clientKeys.all(), tab, cohort, page, pageSize],
-    queryFn: () => clientsApi.list({ status: tab === "all" ? undefined : tab, cohort, page, page_size: pageSize }),
+    queryKey: [...clientKeys.all(), tab, cohort, page, pageSize, seoSort],
+    queryFn: () => clientsApi.list({ status: tab === "all" ? undefined : tab, cohort, page, page_size: pageSize, sort: seoSort }),
   })
   const clientsDenied = [401, 403].includes((clientsQuery.error as { response?: { status?: number } } | null)?.response?.status ?? 0)
   const data = clientsQuery.isError ? undefined : clientsQuery.data
@@ -179,6 +182,13 @@ function ClientsPageBody() {
   const healthMap = new Map(healthScores.map((h: ClientHealthScore) => [h.client_id, h]))
 
   const { sortedItems: sortedClients, sortConfig: clientSortConfig, requestSort: requestClientSort } = useTableSort(clients)
+  const onClientSort = (key: string) => {
+    // Same asc → desc → off cycle as useTableSort, mirrored for the server order.
+    setSeoSort((prev) => key !== "seo_clicks_change_pct" ? "created"
+      : prev === "created" ? "seo_change_asc" : prev === "seo_change_asc" ? "seo_change_desc" : "created")
+    requestClientSort(key)
+    setPage(1)
+  }
   const { selectedIds: selectedClientIds, isSelected: isClientSelected, toggleItem: toggleClient, toggleAll: toggleAllClients, clearSelection: clearClientSelection, selectedCount: selectedClientCount, allSelected: allClientsSelected } = useBulkSelect(clients)
 
   useEffect(() => {
@@ -527,6 +537,7 @@ function ClientsPageBody() {
               <TableHead>Contrato</TableHead>
               {isAdmin && <TableHead>Presupuesto</TableHead>}
               <TableHead>Estado</TableHead>
+              <TableHead>Tráfico SEO</TableHead>
               <TableHead>
                 <span className="inline-flex items-center gap-1">
                   Salud
@@ -544,7 +555,7 @@ function ClientsPageBody() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={6 + (canWriteClients ? 2 : 0) + (isAdmin ? 1 : 0)} />)}
+            {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={7 + (canWriteClients ? 2 : 0) + (isAdmin ? 1 : 0)} />)}
           </TableBody>
         </Table>
       ) : clientsDenied ? (
@@ -582,6 +593,7 @@ function ClientsPageBody() {
                 <div className="flex flex-wrap items-center gap-2">
                   {statusBadge(c.status)}
                   {isAdmin && c.monthly_budget != null && <Badge variant="outline" className="text-xs">{formatCurrency(c.monthly_budget)}</Badge>}
+                  {c.engine_project_id != null && <SeoTrendBadge linked trend={c.seo_trend} changePct={c.seo_clicks_change_pct} />}
                   {c.status !== "active" ? <span className="text-xs text-muted-foreground">No evaluado · solo activos</span>
                     : presentation ? <Badge variant={presentation.variant}>{presentation.label}</Badge>
                     : healthQuery.isLoading ? <span className="text-xs text-muted-foreground">Consultando…</span>
@@ -608,12 +620,13 @@ function ClientsPageBody() {
                   className="rounded border-border"
                 />
               </TableHead>}
-              <SortableTableHead sortKey="name" currentSort={clientSortConfig} onSort={requestClientSort}>Nombre</SortableTableHead>
+              <SortableTableHead sortKey="name" currentSort={clientSortConfig} onSort={onClientSort}>Nombre</SortableTableHead>
               <TableHead>Empresa</TableHead>
               <TableHead className="hidden md:table-cell">Email</TableHead>
               <TableHead>Contrato</TableHead>
-              {isAdmin && <SortableTableHead sortKey="monthly_budget" currentSort={clientSortConfig} onSort={requestClientSort}>Presupuesto</SortableTableHead>}
+              {isAdmin && <SortableTableHead sortKey="monthly_budget" currentSort={clientSortConfig} onSort={onClientSort}>Presupuesto</SortableTableHead>}
               <TableHead>Estado</TableHead>
+              <SortableTableHead sortKey="seo_clicks_change_pct" currentSort={clientSortConfig} onSort={onClientSort} className="hidden md:table-cell">Tráfico SEO</SortableTableHead>
               <TableHead className="hidden md:table-cell">
                 <span className="inline-flex items-center gap-1">
                   Salud
@@ -682,6 +695,9 @@ function ClientsPageBody() {
                 {isAdmin && <TableCell className="mono">{c.monthly_budget != null ? formatCurrency(c.monthly_budget) : "-"}</TableCell>}
                 <TableCell>{statusBadge(c.status)}</TableCell>
                 <TableCell className="hidden md:table-cell">
+                  <SeoTrendBadge linked={c.engine_project_id != null} trend={c.seo_trend} changePct={c.seo_clicks_change_pct} />
+                </TableCell>
+                <TableCell className="hidden md:table-cell">
                   {(() => {
                     if (c.status !== "active") return <span className="text-muted-foreground text-xs">No evaluado · solo activos</span>
                     const h = healthMap.get(c.id)
@@ -731,7 +747,7 @@ function ClientsPageBody() {
               </TableRow>
             ))}
             {clients.length === 0 && (
-              <EmptyTableState colSpan={6 + (canWriteClients ? 2 : 0) + (isAdmin ? 1 : 0)} icon={Users} title="Sin resultados" description={tab === "all" && cohort === "all" ? (canWriteClients ? "Aún no hay clientes. Crea uno para empezar." : "Aún no hay clientes.") : "No hay clientes con estos filtros. Prueba a cambiarlos."} />
+              <EmptyTableState colSpan={7 + (canWriteClients ? 2 : 0) + (isAdmin ? 1 : 0)} icon={Users} title="Sin resultados" description={tab === "all" && cohort === "all" ? (canWriteClients ? "Aún no hay clientes. Crea uno para empezar." : "Aún no hay clientes.") : "No hay clientes con estos filtros. Prueba a cambiarlos."} />
             )}
           </TableBody>
         </Table>

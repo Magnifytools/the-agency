@@ -7,6 +7,8 @@ import type { ProjectCreate } from "./project"
 export type BillingCycle = "monthly" | "bimonthly" | "quarterly" | "annual" | "one_time"
 export type BillingEventType = "invoice_sent" | "payment_received" | "reminder_sent" | "note"
 
+export type SeoTrend = "up" | "stable" | "down" | "drop_alert"
+
 export interface Client {
   id: number
   name: string
@@ -37,6 +39,10 @@ export interface Client {
   engine_metrics_synced_at: string | null
   engine_summary_data: EngineSummaryData | null
   engine_alerts_data: { alerts: EngineAlert[] } | null
+  // Semáforo SEO, derivado en backend del summary de Engine
+  seo_clicks_change_pct: number | null
+  seo_impressions_change_pct: number | null
+  seo_trend: SeoTrend | null
   // Revenue intelligence
   business_model: string | null
   aov: number | null

@@ -2,8 +2,9 @@ from __future__ import annotations
 from typing import Optional
 
 from datetime import date, datetime
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 from backend.db.models import ContractType, ClientStatus, BillingCycle
+from backend.services.seo_traffic import SeoTrend, seo_traffic
 
 
 class ClientCreate(BaseModel):
@@ -112,6 +113,25 @@ class ClientResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    # Semáforo SEO: derivado del summary de Engine, sin almacenamiento propio.
+    @computed_field
+    @property
+    def seo_clicks_change_pct(self) -> Optional[float]:
+        traffic = seo_traffic(self.engine_summary_data)
+        return traffic.clicks_change_pct if traffic else None
+
+    @computed_field
+    @property
+    def seo_impressions_change_pct(self) -> Optional[float]:
+        traffic = seo_traffic(self.engine_summary_data)
+        return traffic.impressions_change_pct if traffic else None
+
+    @computed_field
+    @property
+    def seo_trend(self) -> Optional[SeoTrend]:
+        traffic = seo_traffic(self.engine_summary_data)
+        return traffic.trend if traffic else None
 
 
 class ClientDocumentResponse(BaseModel):

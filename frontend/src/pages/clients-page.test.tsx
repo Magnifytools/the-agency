@@ -136,7 +136,7 @@ describe("ClientsPage recovery states", () => {
 
     expect(await screen.findByText("No se pudieron cargar los clientes. Reintenta en unos momentos.")).toBeInTheDocument()
     expect(screen.queryByText("Cliente conservado")).not.toBeInTheDocument()
-    expect(queryClient.getQueryData([...clientKeys.all(), "all", "all", 1, 25])).toMatchObject({ total: 1 })
+    expect(queryClient.getQueryData([...clientKeys.all(), "all", "all", 1, 25, "created"])).toMatchObject({ total: 1 })
   })
 
   it("hides cached rows when refreshed access is denied", async () => {
