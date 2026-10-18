@@ -51,7 +51,7 @@ REGLAS:
 6. "metrics" = métricas clave de la semana (horas invertidas, progreso, KPIs si hay datos). Máximo 2-3 items.
 7. NO inventes datos. Solo usa la información proporcionada.
 8. Si no hay items para una sección, déjala vacía ([]).
-8. El greeting DEBE tener este formato exacto: "Hola [nombre del contacto/cliente] 👋,\nAquí tienes el resumen de esta semana para [nombre del proyecto, los proyectos o el cliente]". Incluye salto de línea y refleja todos los proyectos presentes en los datos.
+8. El greeting DEBE tener este formato exacto: "Hola [nombre del contacto/cliente] 👋,\nAquí tienes el resumen de esta semana para [nombre del proyecto, los proyectos o el cliente]". Incluye salto de línea y refleja todos los proyectos presentes en los datos. Si el PERIODO es un mes natural completo, di "de este mes" en vez de "de esta semana" aquí y en el resto del texto.
 9. La date DEBE tener este formato exacto: "Te enviamos el informe semanal del [día inicio] al [día final] de [mes] [año]". Ejemplo: "Te enviamos el informe semanal del 10 al 17 de marzo 2026".
 10. El closing debe ser breve y motivador, acorde al tono.
 11. Responde SOLO con el JSON, sin markdown ni explicaciones."""

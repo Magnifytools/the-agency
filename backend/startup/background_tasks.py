@@ -216,6 +216,18 @@ async def _sync_calendars_once():
         raise JobFailure("partial_failure")
 
 
+async def _gsc_sync_once():
+    from backend.db.database import async_session
+    from backend.services.gsc_service import sync_all
+    from backend.services.job_runtime import JobFailure
+
+    result = await sync_all(async_session)
+    if result["status"] == "reconnect_required":
+        raise JobFailure("reconnect_required")
+    if result["failed"]:
+        raise JobFailure("partial_failure")
+
+
 # ── Retention cleanup ───────────────────────────────────────
 
 async def _retention_cleanup_once():
@@ -329,6 +341,7 @@ def start_background_tasks() -> list[asyncio.Task]:
         "calendar": ("calendar-sync", _sync_calendars_once),
         "retention": ("retention-cleanup", _retention_cleanup_once),
         "inbox_classification": ("inbox-classification", _inbox_classification_once),
+        "gsc": ("gsc-sync", _gsc_sync_once),
     }
 
     for key, (task_name, operation) in operations.items():

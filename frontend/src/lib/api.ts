@@ -1238,6 +1238,31 @@ export const calendarApi = {
     api.get<{ id: number; title: string; start_time: string; minutes_until: number }[]>(`/calendar/upcoming?minutes=${minutes}`).then((r) => r.data),
 }
 
+// ── Search Console ──────────────────────────────────────────
+
+export interface GscSiteStatus {
+  site_url: string
+  clients: { id: number; name: string }[]
+  backfilled: boolean
+  last_data_date: string | null
+  last_synced_at: string | null
+  error_code: string | null
+}
+
+export interface GscStatus {
+  configured: boolean
+  connection: { status: "connected" | "reconnect_required"; google_email: string | null; connected_by: string | null; connected_at: string } | null
+  sites: GscSiteStatus[]
+}
+
+export const gscApi = {
+  getStatus: () => api.get<GscStatus>("/gsc/status").then((r) => r.data),
+  getAuthUrl: () => api.get<{ url: string }>("/gsc/auth-url").then((r) => r.data),
+  disconnect: () => api.post("/gsc/disconnect").then((r) => r.data),
+  listSites: () => api.get<{ sites: { site_url: string; permission: string | null }[] }>("/gsc/sites").then((r) => r.data),
+  sync: () => api.post<{ status: string; synced: number; failed: number }>("/gsc/sync").then((r) => r.data),
+}
+
 // ── My Week ──────────────────────────────────────────────────
 
 export interface MyWeekTask {

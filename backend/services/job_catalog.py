@@ -52,4 +52,8 @@ def job_definitions() -> tuple[JobDefinition, ...]:
                       "Aplica la retención de logs y notificaciones antiguas; conserva las incidencias actuales."),
         JobDefinition(JobSpec("inbox_classification", 11, 30, 180), "Clasificar notas de Inbox",
                       "Recupera notas pendientes y propone asociaciones. Nunca crea tareas sin tu decisión."),
+        JobDefinition(JobSpec("gsc", 12, 86400, 1800, retry_seconds=3600), "Importar Search Console",
+                      "Guarda los datos diarios finales de las propiedades de los clientes activos.",
+                      None if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET
+                      else "Google OAuth no está configurado."),
     )

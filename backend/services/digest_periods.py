@@ -76,6 +76,11 @@ def format_digest_period(period_start: date, period_end: date) -> str:
     )
 
 
+def format_month(day: date) -> str:
+    """'septiembre de 2026'."""
+    return f"{_MONTHS[day.month]} de {day.year}"
+
+
 def canonicalize_digest_content(
     content: dict,
     period_start: date,
