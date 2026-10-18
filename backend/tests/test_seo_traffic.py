@@ -67,3 +67,16 @@ def test_client_response_exposes_flat_sortable_fields():
         "created_at": now, "updated_at": now,
     }).model_dump()
     assert unlinked["seo_trend"] is None and unlinked["seo_clicks_change_pct"] is None
+
+
+def test_drop_clause_casts_only_inside_the_type_guard():
+    """Postgres may reorder AND operands, so every cast must sit behind a CASE."""
+    from sqlalchemy.dialects import postgresql
+
+    from backend.db.models import Client
+    from backend.services.seo_traffic import traffic_drop_clause
+
+    sql = str(traffic_drop_clause(Client.engine_summary_data).compile(dialect=postgresql.dialect()))
+    guard, _, rest = sql.partition(" THEN ")
+    assert guard.startswith("CASE WHEN") and "jsonb_typeof" in guard and "CAST" not in guard
+    assert "CAST" in rest and rest.rstrip().endswith("END")
