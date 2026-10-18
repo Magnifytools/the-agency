@@ -38,11 +38,13 @@ from backend.services.client_onboarding import create_onboarding, recover_onboar
 from backend.services.domain_writes import create_client as create_client_write
 from backend.services.temporal import business_today, utc_isoformat
 from backend.config import settings
+from backend.services.seo_traffic import clicks_change_expr
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 ClientCohort = Literal["all", "external", "internal"]
+ClientSort = Literal["created", "seo_change_asc", "seo_change_desc"]
 
 
 def _client_cohort(query, cohort: ClientCohort):
@@ -59,6 +61,7 @@ async def list_clients(
     cohort: ClientCohort = Query("all"),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=1000),
+    sort: ClientSort = Query("created"),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients")),
 ):
@@ -71,7 +74,12 @@ async def list_clients(
 
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
 
-    query = base.order_by(Client.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+    order = [Client.created_at.desc()]
+    if sort != "created":
+        # Semáforo SEO across every page, not just the visible one.
+        change = clicks_change_expr(Client.engine_summary_data)
+        order.insert(0, (change.asc() if sort == "seo_change_asc" else change.desc()).nulls_last())
+    query = base.order_by(*order, Client.id.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(query)
 
     return PaginatedResponse(items=result.scalars().all(), total=total, page=page, page_size=page_size)

@@ -15,6 +15,9 @@ from sqlalchemy.orm import noload
 from backend.core.modules import is_enabled
 from backend.db.models import Notification, Task, TaskStatus, User, UserPermission, UserRole
 from backend.schemas.incident import IncidentDecision, IncidentResponse
+from backend.services.incident_client_conditions import (
+    CLIENT_CONDITIONS, client_visibility_clause, collect_client_conditions,
+)
 from backend.services.incident_conditions import Condition
 from backend.services.incident_project_conditions import (
     PROJECT_CONDITIONS, collect_project_conditions, project_visibility_clause,
@@ -25,7 +28,7 @@ from backend.services.incident_report_conditions import (
 from backend.services.temporal import as_utc_instant, business_today, utc_now_naive
 
 TASK_CONDITIONS = ("task_overdue", "task_waiting_followup")
-SUPPORTED_CONDITIONS = TASK_CONDITIONS + PROJECT_CONDITIONS + REPORT_CONDITIONS
+SUPPORTED_CONDITIONS = TASK_CONDITIONS + PROJECT_CONDITIONS + REPORT_CONDITIONS + CLIENT_CONDITIONS
 OPEN_STATES = ("active", "snoozed", "dismissed")
 
 
@@ -84,6 +87,7 @@ def visible_incident_clause(user_id: int, *, current_only: bool = False):
             task_visibility_clause(user_id, current_only=current_only),
             project_visibility_clause(user_id, current_only=current_only),
             report_visibility_clause(user_id, current_only=current_only),
+            client_visibility_clause(user_id, current_only=current_only),
         ),
     )
 
@@ -140,6 +144,7 @@ async def reconcile_recipient(db, user_id: int, *, now: datetime | None = None):
     if actor.is_active:
         candidates.update(await collect_project_conditions(db, user_id, now))
         candidates.update(await collect_report_conditions(db, user_id, now))
+        candidates.update(await collect_client_conditions(db, user_id, now))
     legacy_sources = [and_(
         Notification.type == condition.kind,
         Notification.entity_type == condition.entity_type,

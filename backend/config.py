@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     ENGINE_SYNC_INTERVAL_HOURS: int = 6
     ENGINE_SYNC_ENABLED: bool = True
     ENGINE_FRONTEND_URL: Optional[str] = None
+    # Semáforo SEO: incidencia cuando los clics de 30 días caen este % o más
+    # frente a los 30 anteriores, si el periodo anterior llegaba a este mínimo.
+    SEO_DROP_ALERT_PCT: float = 20.0
+    SEO_DROP_MIN_CLICKS: int = 100
     VOYAGE_API_KEY: Optional[str] = None
     AGENCY_TIMEZONE: str = "Europe/Madrid"
 

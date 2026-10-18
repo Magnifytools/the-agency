@@ -127,6 +127,25 @@ admin_users, admin_settings
 - **Nomenclatura**: UI dice "Buffer de Ideas" / "Buffer", código interno sigue usando `growth` (evita migración DB)
 - **No confundir** con Pipeline/Leads (`/leads`) que es el CRM comercial
 
+## Semáforo SEO (tráfico orgánico por cliente)
+- **Datos**: Engine ya manda en `/summary` los clics/impresiones de 30 días y de
+  los 30 anteriores (`clicks_previous_30d`, `impressions_previous_30d`), sumados en
+  la ventana. Se guardan dentro de `clients.engine_summary_data`; NO hay columnas
+  ni snapshots propios. Posición anterior no llega → no se compara.
+- **Cálculo**: `backend/services/seo_traffic.py` (Python + gemelo SQL sobre JSONB).
+  `ClientResponse` expone `seo_clicks_change_pct`, `seo_impressions_change_pct`,
+  `seo_trend` (`up`/`stable`/`down`/`drop_alert`; ±5 % es estable).
+- **Lista de clientes**: columna "Tráfico SEO"; ordenar va al servidor
+  (`GET /api/clients?sort=seo_change_asc|seo_change_desc`) para que los que más
+  caen salgan primero en todas las páginas, no sólo en la visible.
+- **Incidencia**: `client_seo_traffic_drop` en el inbox de incidentes existente
+  (`services/incident_client_conditions.py`). Salta si los clics caen
+  ≥ `SEO_DROP_ALERT_PCT` (20) con ≥ `SEO_DROP_MIN_CLICKS` (100) en el periodo
+  anterior; crítica a partir del doble del umbral. Destinatarios: admins y
+  responsables de proyectos activos/planificados del cliente con lectura de
+  `clients`. Clave `...:open`: se resuelve sola al recuperarse y un descarte se
+  mantiene mientras dure la misma caída.
+
 ## Undo (deshacer los últimos cambios)
 
 - **Qué es**: los 5 últimos cambios de CADA usuario, deshacibles desde el panel
