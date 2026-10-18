@@ -890,20 +890,9 @@ async def _after_project_status_change(
         }, db)
     except Exception as exc:
         logger.warning("Automation hook failed for project %d: %s", project.id, exc)
-
-    if new_status == "completed" and project.billing_amount:
-        try:
-            from backend.services.notification_service import create_notification, BILLING_REMINDER
-            await create_notification(
-                db, user_id=actor.id, type=BILLING_REMINDER,
-                title=f"Proyecto completado — facturar {project.name}",
-                message=f"Importe: {float(project.billing_amount)}€",
-                link_url=f"/projects/{project.id}",
-                entity_type="project", entity_id=project.id,
-            )
-            await db.commit()
-        except Exception:
-            pass
+    # No billing reminder here: billing_reminder is a retired type that the
+    # activity feed hides, so each close (and close after reopen) only stored
+    # another unread row that nobody could see.
 
 
 @router.get("/{project_id}/close-preview", response_model=ProjectClosePreview)

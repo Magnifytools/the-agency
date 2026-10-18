@@ -12,6 +12,7 @@ from backend.db.models import (
     ChangeLog,
     Client,
     ClientStatus,
+    Notification,
     Project,
     ProjectStatus,
     Task,
@@ -521,3 +522,31 @@ async def test_close_reopen_generator_preserves_receipts_and_explicit_pauses(
     assert await db_session.scalar(select(func.count()).select_from(Task).where(
         Task.recurring_parent_id == paused_id,
     )) == 0
+
+
+async def test_closing_a_billable_project_stores_no_hidden_billing_reminder(admin_client, db_session):
+    """Close → reopen → close used to pile up invisible unread billing rows."""
+    _client, project = await _project(db_session, admin_client.test_user.id)
+    project.billing_amount = 1200
+    await db_session.commit()
+
+    for _ in range(2):
+        preview = await _preview(admin_client, project.id)
+        response = await admin_client.post(f"/api/projects/{project.id}/close", json={
+            "target": "completed",
+            "expected_updated_at": preview["expected_updated_at"],
+            "preview_revision": preview["preview_revision"],
+        })
+        assert response.status_code == 200, response.text
+        reopen = (await admin_client.get(f"/api/projects/{project.id}/reopen-preview")).json()
+        response = await admin_client.post(f"/api/projects/{project.id}/reopen", json={
+            "expected_updated_at": reopen["expected_updated_at"],
+            "preview_revision": reopen["preview_revision"],
+        })
+        assert response.status_code == 200, response.text
+
+    assert (await db_session.execute(select(func.count(Notification.id)).where(
+        Notification.type == "billing_reminder",
+        Notification.entity_type == "project",
+        Notification.entity_id == project.id,
+    ))).scalar_one() == 0
