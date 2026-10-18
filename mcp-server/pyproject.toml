@@ -1,0 +1,26 @@
+[project]
+name = "agency-mcp"
+version = "0.1.0"
+description = "Servidor MCP local para manejar The Agency desde Claude"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=2.3,<3",
+    "httpx>=0.28,<1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9", "pytest-asyncio>=1.3"]
+
+[project.scripts]
+agency-mcp = "agency_mcp.server:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["agency_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
