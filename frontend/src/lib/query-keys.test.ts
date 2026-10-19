@@ -12,7 +12,6 @@ import {
   projectKeys,
   restoreQuerySnapshot,
   taskKeys,
-  myWeekKeys,
   inboxKeys,
   searchKeys,
 } from "./query-keys"
@@ -31,7 +30,6 @@ describe("shared operational query keys", () => {
       clientKeys.summary(5),
       projectKeys.detail(22),
       dashboardKeys.today(),
-      myWeekKeys.week("2026-09-14"),
       [...briefingKeys.all(), "mine"],
       incidentKeys.count(7),
       incidentKeys.list(7, "active"),
@@ -121,7 +119,6 @@ describe("shared operational query keys", () => {
       ["time-entries", "client", 4],
       incidentKeys.list(7, "active"),
       dashboardKeys.today(),
-      myWeekKeys.week("2026-09-14"),
       [...briefingKeys.all(), "mine"],
       searchKeys.results(7, "clients", "acme"),
     ] as const

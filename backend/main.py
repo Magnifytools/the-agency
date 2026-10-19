@@ -25,7 +25,6 @@ from backend.api.routes import (
     search, balance,
     inbox,
     extension,
-    my_week,
     google_calendar,
     gsc,
     holidays,
@@ -232,9 +231,6 @@ _CORE_ROUTERS = [
     # app creyendo que Discord no está configurado — el mismo error que en
     # Vigil: deducir el estado de una integración en vez de leerlo.
     discord,
-    # my_week: su PANTALLA está oculta (12 visitas). Los festivos ya salieron a
-    # /api/holidays; el router se va entero con la PR que borra my_week.
-    my_week,
 ]
 
 # Opcionales: se registran solo si su módulo no está oculto. Un módulo puede
@@ -246,7 +242,6 @@ _OPTIONAL_ROUTERS = {
     "proposals": [proposals, service_templates, investments],
     "leads": [leads],
     "growth": [growth],
-    # ("my_week" no está aquí: ver _CORE_ROUTERS.)
     "communications": [communications],
     "export": [export],
 }
