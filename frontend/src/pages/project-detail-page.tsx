@@ -39,7 +39,6 @@ import { Select } from "@/components/ui/select"
 import { getErrorMessage } from "@/lib/utils"
 import { GanttChart } from "@/components/gantt/gantt-chart"
 import { ProjectPhaseKanban } from "@/components/projects/project-phase-kanban"
-import { EvidenceList } from "@/components/projects/evidence-list"
 import { ProjectIdeasTab } from "@/components/projects/project-ideas-tab"
 import { Breadcrumb } from "@/components/ui/breadcrumb"
 import { Skeleton, SkeletonCard } from "@/components/ui/skeleton"
@@ -90,7 +89,7 @@ export default function ProjectDetailPage() {
   const [showAddTaskDialog, setShowAddTaskDialog] = useState<number | null>(null)
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false)
   const [viewMode, setViewMode] = useState<"list" | "gantt" | "kanban">("list")
-  const [activeTab, setActiveTab] = useState<"tasks" | "ideas" | "evidence">("tasks")
+  const [activeTab, setActiveTab] = useState<"tasks" | "ideas">("tasks")
   const [previewTaskId, setPreviewTaskId] = useState<number | null>(null)
   const [showMetrics, setShowMetrics] = useState(false)
   const [timeLogTask, setTimeLogTask] = useState<{ id: number; title: string; retired?: boolean } | null>(null)
@@ -539,8 +538,8 @@ export default function ProjectDetailPage() {
         </div>}
       </details>
 
-      {/* Tab Toggle: Tasks / Evidence */}
-      {(isEnabled("growth") || isEnabled("evidence")) && <div className="flex flex-wrap items-center gap-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
+      {/* Tab Toggle: Tasks / Buffer */}
+      {isEnabled("growth") && <div className="flex flex-wrap items-center gap-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
         <Button
           variant={activeTab === "tasks" ? "default" : "ghost"}
           size="sm"
@@ -548,8 +547,8 @@ export default function ProjectDetailPage() {
         >
           Fases y Tareas
         </Button>
-        {/* Buffer y Documentos pertenecen a módulos ocultos: sus
-            endpoints ya no están registrados, así que la pestaña tampoco. */}
+        {/* Buffer pertenece a un módulo oculto: sus endpoints ya no están
+            registrados, así que la pestaña tampoco. */}
         {isEnabled("growth") && (
           <Button
             variant={activeTab === "ideas" ? "default" : "ghost"}
@@ -559,25 +558,11 @@ export default function ProjectDetailPage() {
             Buffer
           </Button>
         )}
-        {isEnabled("evidence") && (
-          <Button
-            variant={activeTab === "evidence" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setActiveTab("evidence")}
-          >
-            Documentos
-          </Button>
-        )}
       </div>}
 
       {/* Ideas Tab */}
       {activeTab === "ideas" && project && isEnabled("growth") && (
         <ProjectIdeasTab projectId={project.id} />
-      )}
-
-      {/* Evidence Tab */}
-      {activeTab === "evidence" && project && isEnabled("evidence") && (
-        <EvidenceList projectId={project.id} phases={project.phases} />
       )}
 
       {!canReadTasks && activeTab === "tasks" && <ProjectPhaseReadOnly phases={project.phases} />}

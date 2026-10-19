@@ -24,7 +24,6 @@ export const HIDDEN_MODULES = [
   "executive", // solo frontend
   "discord", // 13 — solo la pantalla de ajustes del webhook
   "communications", // 0
-  "evidence", // 0
   "export", // 0
 ] as const
 

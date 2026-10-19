@@ -22,7 +22,7 @@ from backend.api.routes import (
     service_templates, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     changes, commands,
     client_dashboard, engine_integration, investments,
-    evidence, search, balance,
+    search, balance,
     inbox,
     extension,
     my_week,
@@ -252,7 +252,6 @@ _OPTIONAL_ROUTERS = {
     # ("my_week" no está aquí: ver _CORE_ROUTERS — el router sirve los festivos
     #  de Ajustes, que es una pantalla que se conserva.)
     "communications": [communications],
-    "evidence": [evidence],
     "export": [export],
 }
 
