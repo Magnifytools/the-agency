@@ -27,7 +27,7 @@ vi.mock("@/lib/api", () => ({
     hardDelete: vi.fn(),
     extractContext: api.extractContext,
   },
-  clientHealthApi: { list: api.health },
+  clientStatusApi: { portfolio: api.health },
   engineApi: { getConfig: api.engineConfig },
 }))
 const auth = vi.hoisted(() => ({
@@ -57,10 +57,18 @@ function httpError(status: number) {
   return Object.assign(new Error(`HTTP ${status}`), { response: { status } })
 }
 
+function showPortfolio() {
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <MemoryRouter initialEntries={["/clients"]}><ClientsPage /></MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
 function show(queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter><ClientsPage /></MemoryRouter>
+      <MemoryRouter initialEntries={["/clients?vista=listado"]}><ClientsPage /></MemoryRouter>
     </QueryClientProvider>,
   )
   return queryClient
@@ -175,42 +183,39 @@ describe("ClientsPage recovery states", () => {
     expect(await screen.findAllByText("Cliente conservado")).not.toHaveLength(0)
   })
 
-  it("reports an unavailable health source without turning it into healthy data", async () => {
-    api.clients.mockResolvedValueOnce({ items: [clientRow], total: 1, page: 1, page_size: 25 })
+  it("opens on the portfolio and says when the status cannot be calculated", async () => {
     api.health.mockRejectedValueOnce(httpError(503))
-    show()
+    showPortfolio()
 
-    expect(await screen.findByText("No se pudo actualizar la salud de clientes.")).toBeInTheDocument()
-    expect(screen.getAllByText("Cliente conservado")).not.toHaveLength(0)
-    expect(screen.queryByText(/Saludable/)).not.toBeInTheDocument()
+    expect(await screen.findByText("No se pudo calcular el estado de los clientes.")).toBeInTheDocument()
+    expect(screen.queryByText("Bien")).not.toBeInTheDocument()
   })
 
-  it("keeps cohort in both list and active-health requests", async () => {
-    show()
-    await screen.findAllByText("Sin resultados")
+  it("keeps the cohort in the portfolio request", async () => {
+    showPortfolio()
+    await screen.findByText("No hay clientes activos en esta cohorte.")
 
     await userEvent.click(screen.getByRole("button", { name: "Externos" }))
 
-    await waitFor(() => expect(api.clients).toHaveBeenLastCalledWith(expect.objectContaining({ cohort: "external", page: 1 })))
-    expect(api.health).toHaveBeenLastCalledWith("external")
-    expect(screen.getByText(/En cartera · Externos · 0 resultados/)).toBeInTheDocument()
+    await waitFor(() => expect(api.health).toHaveBeenLastCalledWith("external"))
   })
 
-  it("shows observable risks before a high legacy score and does not evaluate inactive clients", async () => {
-    api.clients.mockResolvedValueOnce({ items: [clientRow, { ...clientRow, id: 5, name: "Cliente pausado", status: "paused" }], total: 2, page: 1, page_size: 25 })
-    api.health.mockResolvedValueOnce([{
-      client_id: 4, client_name: clientRow.name, score: 95, risk_level: "healthy", enough_information: true,
-      available_source_count: 5, available_weight: 100,
-      factors: { communication: 25, tasks: 20, digests: 15, profitability: 20, followups: 15 },
-      factor_max: { communication: 25, tasks: 25, digests: 15, profitability: 20, followups: 15 },
-      observations: { communication: "Reciente", tasks: "Una tarea vencida a fecha de hoy", digests: "Al día", profitability: "Dentro de presupuesto", followups: "Sin pendientes" },
-      risk_signals: ["Una tarea vencida a fecha de hoy"],
-    }])
-    show()
+  it("puts what needs action first, with its reasons", async () => {
+    api.health.mockResolvedValueOnce([
+      { client_id: 4, client_name: "Cliente urgente", status: "act", reasons: ["3 tareas vencidas", "Toca enviar el resumen mensual"],
+        seo: { source: "search_console", clicks: 300, clicks_previous: 1000, change_pct: -70, trend: "drop_alert", as_of: "2026-10-16" },
+        digest: { cadence: "monthly", last_sent_period_end: null, expected_period_end: "2026-09-30", state: "due" },
+        tasks: { overdue: 3, waiting: 1, followups_late: 0 }, month: { hours: 12.5, fee: 1000, consumption_pct: 40 } },
+      { client_id: 5, client_name: "Cliente tranquilo", status: "ok", reasons: [], seo: null, digest: null,
+        tasks: { overdue: 0, waiting: 0, followups_late: 0 }, month: { hours: 2 } },
+    ])
+    showPortfolio()
 
-    expect((await screen.findAllByText("1 riesgo")).length).toBeGreaterThan(0)
-    expect(screen.queryByText("95")).not.toBeInTheDocument()
-    expect(screen.getAllByText("No evaluado · solo activos").length).toBeGreaterThan(0)
+    expect((await screen.findAllByText("Actuar")).length).toBeGreaterThan(0)
+    expect(screen.getByText("1 actuar · 1 bien")).toBeInTheDocument()
+    expect(screen.getAllByText("3 tareas vencidas").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("-70 %").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Ninguna señal preocupa.").length).toBeGreaterThan(0)
   })
 
   it("shows a long intermediary name as wrapping provenance below the client", async () => {

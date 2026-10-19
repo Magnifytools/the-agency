@@ -3,7 +3,7 @@ import { useState } from "react"
 import { useParams, Link, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { clientsApi, projectsApi, holdedApi, clientHealthApi, engineApi } from "@/lib/api"
+import { clientsApi, projectsApi, holdedApi, clientStatusApi, engineApi } from "@/lib/api"
 import type { TaskStatus, Client } from "@/lib/types"
 import { isEnabled } from "@/lib/hidden-modules"
 import { Input } from "@/components/ui/input"
@@ -35,7 +35,7 @@ import { useAuth } from "@/context/auth-context"
 import { clientKeys, holdedKeys, invalidateClientChange, projectKeys, timeKeys } from "@/lib/query-keys"
 import { formatCurrency } from "@/lib/format"
 import { TaskPanel } from "@/components/tasks/task-panel"
-import { clientHealthPresentation } from "@/components/dashboard/client-health-presentation"
+import { ClientStatusBadge, ClientStatusReasons, DigestCell, SeoCell, WorkCell } from "@/components/clients/client-status"
 import { InvoiceStatusBadge } from "@/components/finance/invoice-status-badge"
 
 function formatMinutes(m: number): string {
@@ -309,12 +309,12 @@ export default function ClientDetailPage() {
   const canReadClientHealth = canReadClient
   const healthAccessScope = [
     user?.id ?? "anonymous", isAdmin,
-    ...(["tasks", "communications", "digests", "finance"] as const)
+    ...(["tasks", "digests", "timesheet"] as const)
       .map((module) => hasPermission(module) && isEnabled(module)),
   ].join(":")
   const healthQuery = useQuery({
-    queryKey: ["client-health", clientId, healthAccessScope],
-    queryFn: () => clientHealthApi.get(clientId),
+    queryKey: ["client-status", clientId, healthAccessScope],
+    queryFn: () => clientStatusApi.get(clientId),
     enabled: !!clientId && canReadClientHealth,
     staleTime: 60_000,
   })
@@ -594,39 +594,27 @@ export default function ClientDetailPage() {
         {canReadClientHealth && healthQuery.isError && (
           <Card className={!canReadTasks && !canReadTime ? "col-span-2 lg:col-span-2" : undefined}>
             <CardContent className="flex h-full flex-col items-start justify-center gap-2 p-4" role="alert">
-              <p className="text-sm">No se pudo cargar la salud del cliente.</p>
-              <Button variant="outline" size="sm" disabled={healthQuery.isFetching} onClick={() => void healthQuery.refetch()}>Reintentar salud</Button>
+              <p className="text-sm">No se pudo calcular el estado del cliente.</p>
+              <Button variant="outline" size="sm" disabled={healthQuery.isFetching} onClick={() => void healthQuery.refetch()}>Reintentar</Button>
             </CardContent>
           </Card>
         )}
-        {health && (() => {
-          const presentation = clientHealthPresentation(health)
-          const measuredFactors = (Object.keys(health.factors) as Array<keyof typeof health.factors>).filter((factor) => health.factors[factor] != null)
-          const unavailableFactors = (Object.keys(health.factors) as Array<keyof typeof health.factors>).filter((factor) => health.factors[factor] == null)
-          return <Card className={`${!canReadTasks && !canReadTime ? "col-span-2 lg:col-span-2 " : ""}${health.risk_signals.length ? "border-red-500/40" : ""}`}>
-            <CardContent className="p-4">
+        {health && <Card className={`${!canReadTasks && !canReadTime ? "col-span-2 lg:col-span-2 " : ""}${health.status === "act" ? "border-red-500/40" : ""}`}>
+          <CardContent className="space-y-3 p-4">
+            <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                <Heart className="h-3 w-3 flex-shrink-0" /> <span className="truncate">Salud</span>
+                <Heart className="h-3 w-3 flex-shrink-0" /> <span className="truncate">Estado</span>
               </p>
-              <Badge variant={presentation.variant} className="mt-2">{presentation.label}</Badge>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {presentation.detail}. {health.available_source_count} fuentes disponibles.
-              </p>
-              <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                {health.risk_signals.map((signal) => <p key={signal} className="font-medium text-red-600">{signal}</p>)}
-                {measuredFactors.map((factor) => (
-                    <p key={factor}>
-                      {health.observations[factor]}
-                      {factor === "tasks" && <> · <Link className="text-brand hover:underline" to={`/clients/${clientId}?tab=tareas`}>Ver tareas</Link></>}
-                      {factor === "profitability" && <> · <Link className="text-brand hover:underline" to={`/clients/${clientId}?tab=panel`}>Ver consumo</Link></>}
-                    </p>
-                  ))}
-                {unavailableFactors.length > 0 && <div className="mt-2 border-t pt-2"><p className="font-medium">Información incompleta</p>{unavailableFactors.map((factor) => <p key={factor}>{health.observations[factor]}</p>)}</div>}
-                {health.score != null && <details className="mt-2"><summary className="cursor-pointer">Ver índice orientativo legado</summary><p className="mt-1">{health.score} puntos; no sustituye las condiciones anteriores.</p></details>}
-              </div>
-            </CardContent>
-          </Card>
-        })()}
+              <ClientStatusBadge status={health.status} />
+            </div>
+            <ClientStatusReasons row={health} />
+            <div className="space-y-2 border-t pt-2">
+              <SeoCell seo={health.seo} />
+              <DigestCell digest={health.digest} />
+              <WorkCell tasks={health.tasks} month={health.month} />
+            </div>
+          </CardContent>
+        </Card>}
       </div>}
 
       {/* Tab: Ficha */}

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { clientsApi, clientHealthApi, engineApi, type ClientSort } from "@/lib/api"
-import type { Client, ClientCohort, ClientContactCreate, ClientCreate, ClientExtract, ClientOnboardingCreate, ClientOnboardingResult, ClientOnboardingProjectCreate, ClientStatus, ClientHealthScore } from "@/lib/types"
+import { clientsApi, engineApi, type ClientSort } from "@/lib/api"
+import type { Client, ClientCohort, ClientContactCreate, ClientCreate, ClientExtract, ClientOnboardingCreate, ClientOnboardingResult, ClientOnboardingProjectCreate, ClientStatus } from "@/lib/types"
 import { usePagination } from "@/hooks/use-pagination"
 import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
@@ -19,7 +19,6 @@ import { useAuth } from "@/context/auth-context"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
-import { InfoTooltip } from "@/components/ui/tooltip"
 import { BulkActionBar } from "@/components/ui/bulk-action-bar"
 import { EmptyTableState } from "@/components/ui/empty-state"
 import { SkeletonTableRow } from "@/components/ui/skeleton"
@@ -27,7 +26,7 @@ import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
 import { clientKeys, invalidateClientChange } from "@/lib/query-keys"
-import { clientHealthPresentation } from "@/components/dashboard/client-health-presentation"
+import { ClientPortfolio } from "@/components/clients/client-portfolio"
 import { SeoTrendBadge } from "@/components/clients/seo-trend-badge"
 
 const STATUS_TABS: { label: string; value: ClientStatus | "all" }[] = [
@@ -117,6 +116,16 @@ function ClientsPageBody() {
   const { page, pageSize, setPage, reset } = usePagination(25)
   const [tab, setTab] = useState<ClientStatus | "all">("all")
   const [cohort, setCohort] = useState<ClientCohort>("all")
+  // La cartera (estado de cada cliente activo) es la vista por defecto; el listado queda
+  // para editar. La vista vive en la URL para poder enlazarla (?vista=listado).
+  const [searchParams, setSearchParams] = useSearchParams()
+  const view: "portfolio" | "list" = searchParams.get("vista") === "listado" ? "list" : "portfolio"
+  const setView = (next: "portfolio" | "list") => {
+    const params = new URLSearchParams(searchParams)
+    if (next === "list") params.set("vista", "listado")
+    else params.delete("vista")
+    setSearchParams(params, { replace: true })
+  }
   // "Tráfico SEO" sorts on the server so the biggest drops lead across every page.
   const [seoSort, setSeoSort] = useState<ClientSort>("created")
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -172,14 +181,6 @@ function ClientsPageBody() {
   const isLoading = clientsQuery.isLoading
   const clients = data?.items ?? []
 
-  const healthQuery = useQuery({
-    queryKey: ["client-health-scores", cohort],
-    queryFn: () => clientHealthApi.list(cohort),
-    staleTime: 60_000,
-  })
-  const healthDenied = [401, 403].includes((healthQuery.error as { response?: { status?: number } } | null)?.response?.status ?? 0)
-  const healthScores = healthQuery.isError ? [] : (healthQuery.data ?? [])
-  const healthMap = new Map(healthScores.map((h: ClientHealthScore) => [h.client_id, h]))
 
   const { sortedItems: sortedClients, sortConfig: clientSortConfig, requestSort: requestClientSort } = useTableSort(clients)
   const onClientSort = (key: string) => {
@@ -490,8 +491,13 @@ function ClientsPageBody() {
         </div>
       )}
 
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Vista de clientes">
+        <Button role="tab" aria-selected={view === "portfolio"} size="sm" variant={view === "portfolio" ? "default" : "outline"} onClick={() => setView("portfolio")}>Cartera</Button>
+        <Button role="tab" aria-selected={view === "list"} size="sm" variant={view === "list" ? "default" : "outline"} onClick={() => setView("list")}>Listado</Button>
+      </div>
+
       {/* Tabs */}
-      <div className="flex flex-wrap gap-2">
+      {view === "list" && <div className="flex flex-wrap gap-2">
         {STATUS_TABS.map((t) => (
           <Button
             key={t.value}
@@ -502,7 +508,7 @@ function ClientsPageBody() {
             {t.label}
           </Button>
         ))}
-      </div>
+      </div>}
       <div className="flex flex-wrap items-center gap-2" aria-label="Población de clientes">
         <span className="text-xs font-medium text-muted-foreground">Tipo de cliente</span>
         {COHORTS.map((item) => (
@@ -517,16 +523,10 @@ function ClientsPageBody() {
         ))}
       </div>
 
-      {healthQuery.isError && !healthDenied && (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm text-muted-foreground">
-          <span>No se pudo actualizar la salud de clientes.</span>
-          <Button variant="outline" size="sm" onClick={() => void healthQuery.refetch()}>Reintentar salud</Button>
-        </div>
-      )}
-      {healthDenied && !clientsDenied && <p role="alert" className="text-sm text-muted-foreground">No tienes acceso a la salud de clientes.</p>}
+      {view === "portfolio" && <ClientPortfolio cohort={cohort} />}
 
       {/* Table */}
-      {isLoading ? (
+      {view === "list" && (isLoading ? (
         <Table>
           <TableHeader>
             <TableRow>
@@ -538,24 +538,11 @@ function ClientsPageBody() {
               {isAdmin && <TableHead>Presupuesto</TableHead>}
               <TableHead>Estado</TableHead>
               <TableHead>Tráfico SEO</TableHead>
-              <TableHead>
-                <span className="inline-flex items-center gap-1">
-                  Salud
-                  <InfoTooltip
-                    content={
-                      <div className="space-y-1.5">
-                        <p className="font-semibold">Condiciones observables</p>
-                        <p className="text-muted-foreground">Muestra riesgos comprobados en comunicación, tareas, resúmenes, rentabilidad y seguimientos. Si falta una fuente, se indica como información incompleta.</p>
-                      </div>
-                    }
-                  />
-                </span>
-              </TableHead>
               {canWriteClients && <TableHead className="w-24">Acciones</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={7 + (canWriteClients ? 2 : 0) + (isAdmin ? 1 : 0)} />)}
+            {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={6 + (canWriteClients ? 2 : 0) + (isAdmin ? 1 : 0)} />)}
           </TableBody>
         </Table>
       ) : clientsDenied ? (
@@ -573,8 +560,6 @@ function ClientsPageBody() {
         {/* Mobile card list */}
         <div className="sm:hidden space-y-3">
           {sortedClients.map((c) => {
-            const h = healthMap.get(c.id)
-            const presentation = h ? clientHealthPresentation(h) : null
             return (
               <div key={c.id} className="border border-border rounded-xl p-4 bg-card space-y-2">
                 <div className="flex items-start justify-between">
@@ -594,10 +579,6 @@ function ClientsPageBody() {
                   {statusBadge(c.status)}
                   {isAdmin && c.monthly_budget != null && <Badge variant="outline" className="text-xs">{formatCurrency(c.monthly_budget)}</Badge>}
                   {c.engine_project_id != null && <SeoTrendBadge linked trend={c.seo_trend} changePct={c.seo_clicks_change_pct} />}
-                  {c.status !== "active" ? <span className="text-xs text-muted-foreground">No evaluado · solo activos</span>
-                    : presentation ? <Badge variant={presentation.variant}>{presentation.label}</Badge>
-                    : healthQuery.isLoading ? <span className="text-xs text-muted-foreground">Consultando…</span>
-                    : <span className="text-xs text-muted-foreground">Información no disponible</span>}
                 </div>
               </div>
             )
@@ -627,19 +608,6 @@ function ClientsPageBody() {
               {isAdmin && <SortableTableHead sortKey="monthly_budget" currentSort={clientSortConfig} onSort={onClientSort}>Presupuesto</SortableTableHead>}
               <TableHead>Estado</TableHead>
               <SortableTableHead sortKey="seo_clicks_change_pct" currentSort={clientSortConfig} onSort={onClientSort} className="hidden md:table-cell">Tráfico SEO</SortableTableHead>
-              <TableHead className="hidden md:table-cell">
-                <span className="inline-flex items-center gap-1">
-                  Salud
-                  <InfoTooltip
-                    content={
-                      <div className="space-y-1.5">
-                        <p className="font-semibold">Condiciones observables</p>
-                        <p className="text-muted-foreground">Los riesgos comprobados tienen prioridad. Las fuentes que faltan se muestran como información incompleta.</p>
-                      </div>
-                    }
-                  />
-                </span>
-              </TableHead>
               {canWriteClients && <TableHead className="w-24">Acciones</TableHead>}
             </TableRow>
           </TableHeader>
@@ -697,17 +665,6 @@ function ClientsPageBody() {
                 <TableCell className="hidden md:table-cell">
                   <SeoTrendBadge linked={c.engine_project_id != null} trend={c.seo_trend} changePct={c.seo_clicks_change_pct} />
                 </TableCell>
-                <TableCell className="hidden md:table-cell">
-                  {(() => {
-                    if (c.status !== "active") return <span className="text-muted-foreground text-xs">No evaluado · solo activos</span>
-                    const h = healthMap.get(c.id)
-                    if (!h) return <span className="text-muted-foreground text-xs">{healthQuery.isLoading ? "Consultando…" : "Información no disponible"}</span>
-                    const presentation = clientHealthPresentation(h)
-                    return (
-                      <Badge variant={presentation.variant} title={(Object.values(h.observations)).join(" · ")}>{presentation.label}</Badge>
-                    )
-                  })()}
-                </TableCell>
                 {canWriteClients && <TableCell>
                   <div className="flex gap-1">
                     <Button variant="ghost" size="icon" aria-label="Editar cliente" disabled={!!onboardingKey || storageReadFailed} onClick={() => openEdit(c)}>
@@ -747,14 +704,14 @@ function ClientsPageBody() {
               </TableRow>
             ))}
             {clients.length === 0 && (
-              <EmptyTableState colSpan={7 + (canWriteClients ? 2 : 0) + (isAdmin ? 1 : 0)} icon={Users} title="Sin resultados" description={tab === "all" && cohort === "all" ? (canWriteClients ? "Aún no hay clientes. Crea uno para empezar." : "Aún no hay clientes.") : "No hay clientes con estos filtros. Prueba a cambiarlos."} />
+              <EmptyTableState colSpan={6 + (canWriteClients ? 2 : 0) + (isAdmin ? 1 : 0)} icon={Users} title="Sin resultados" description={tab === "all" && cohort === "all" ? (canWriteClients ? "Aún no hay clientes. Crea uno para empezar." : "Aún no hay clientes.") : "No hay clientes con estos filtros. Prueba a cambiarlos."} />
             )}
           </TableBody>
         </Table>
         </>
-      )}
+      ))}
 
-      <Pagination page={page} pageSize={pageSize} total={data?.total ?? 0} onPageChange={setPage} />
+      {view === "list" && <Pagination page={page} pageSize={pageSize} total={data?.total ?? 0} onPageChange={setPage} />}
 
       {/* Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

@@ -25,7 +25,7 @@ vi.mock("@/lib/api", () => ({
   clientsApi: { summary: mocks.summary, recentTimeEntries: mocks.time, whatIf: vi.fn() },
   projectsApi: { listAll: mocks.projects },
   holdedApi: { config: vi.fn(), clientInvoices: vi.fn() },
-  clientHealthApi: { get: mocks.health },
+  clientStatusApi: { get: mocks.health },
   engineApi: { getConfig: vi.fn().mockResolvedValue({}) },
 }))
 
@@ -227,37 +227,35 @@ describe("client detail areas", () => {
     expect(mocks.summary).toHaveBeenCalledTimes(2)
   })
 
-  it("hides cached health after an error until a fresh response succeeds", async () => {
-    const health = {
-      score: 81, risk_level: "healthy", enough_information: true,
-      available_source_count: 3, available_weight: 65,
-      factors: { communication: 20, tasks: 20, digests: 12, profitability: 16, followups: 13 },
-      observations: { communication: "Comunicación", tasks: "Tareas", digests: "Resúmenes", profitability: "Rentabilidad", followups: "Seguimiento" },
-      risk_signals: [],
+  it("hides cached status after an error until a fresh response succeeds", async () => {
+    const status = {
+      client_id: 5, client_name: "Acme", status: "watch", reasons: ["Toca enviar el resumen mensual"],
+      seo: null, digest: { cadence: "monthly", last_sent_period_end: null, expected_period_end: "2026-09-30", state: "due" },
+      tasks: null, month: null,
     }
-    mocks.health.mockResolvedValueOnce(health)
+    mocks.health.mockResolvedValueOnce(status)
     const { client } = show("ficha")
-    expect(await screen.findByText("81 puntos; no sustituye las condiciones anteriores.")).toBeInTheDocument()
+    expect(await screen.findByText("Toca enviar el resumen mensual")).toBeInTheDocument()
 
     mocks.health.mockRejectedValueOnce({ response: { status: 403 } })
-    await act(async () => { await client.invalidateQueries({ queryKey: ["client-health", 5] }) })
-    expect(await screen.findByText("No se pudo cargar la salud del cliente.")).toBeInTheDocument()
-    expect(screen.queryByText("81 puntos; no sustituye las condiciones anteriores.")).not.toBeInTheDocument()
+    await act(async () => { await client.invalidateQueries({ queryKey: ["client-status", 5] }) })
+    expect(await screen.findByText("No se pudo calcular el estado del cliente.")).toBeInTheDocument()
+    expect(screen.queryByText("Toca enviar el resumen mensual")).not.toBeInTheDocument()
 
-    mocks.health.mockResolvedValueOnce(health)
-    await userEvent.click(screen.getByRole("button", { name: "Reintentar salud" }))
-    expect(await screen.findByText("81 puntos; no sustituye las condiciones anteriores.")).toBeInTheDocument()
+    mocks.health.mockResolvedValueOnce(status)
+    await userEvent.click(screen.getAllByRole("button", { name: "Reintentar" }).at(-1)!)
+    expect(await screen.findByText("Toca enviar el resumen mensual")).toBeInTheDocument()
   })
 
   it("does not request or render health without current client permission", async () => {
     mocks.permissions.delete("clients")
-    mocks.health.mockResolvedValue({ score: 99 })
+    mocks.health.mockResolvedValue({ client_id: 5, client_name: "Acme", status: "act", reasons: ["3 tareas vencidas"], seo: null, digest: null, tasks: null, month: null })
     show("ficha")
 
     expect(screen.getByRole("alert")).toHaveTextContent("No tienes acceso a este cliente.")
     expect(mocks.summary).not.toHaveBeenCalled()
     expect(mocks.health).not.toHaveBeenCalled()
-    expect(screen.queryByText("99 puntos; no sustituye las condiciones anteriores.")).not.toBeInTheDocument()
+    expect(screen.queryByText("Actuar")).not.toBeInTheDocument()
   })
 
   it("removes cached client details immediately when client read access is revoked", async () => {
@@ -272,27 +270,19 @@ describe("client detail areas", () => {
     expect(mocks.summary).toHaveBeenCalledTimes(1)
   })
 
-  it("removes cached task health observations after task access is revoked", async () => {
-    const fullHealth = {
-      score: 70, risk_level: "warning", enough_information: true,
-      available_source_count: 1, available_weight: 20,
-      factors: { communication: null, tasks: 10, digests: null, profitability: null, followups: null },
-      observations: { communication: "Fuente no disponible", tasks: "Tres tareas vencidas", digests: "Fuente no disponible", profitability: "Fuente no disponible", followups: "Fuente no disponible" },
-      risk_signals: ["Tres tareas vencidas"],
+  it("removes cached task signals after task access is revoked", async () => {
+    const full = {
+      client_id: 5, client_name: "Acme", status: "act", reasons: ["3 tareas vencidas"],
+      seo: null, digest: null, tasks: { overdue: 3, waiting: 0, followups_late: 0 }, month: null,
     }
-    const redactedHealth = {
-      ...fullHealth, score: null, available_source_count: 0, available_weight: 0,
-      factors: { ...fullHealth.factors, tasks: null },
-      observations: { ...fullHealth.observations, tasks: "Fuente no disponible" },
-      risk_signals: [],
-    }
-    mocks.health.mockResolvedValueOnce(fullHealth).mockResolvedValueOnce(redactedHealth)
+    const redacted = { ...full, status: "no_data", reasons: [], tasks: null }
+    mocks.health.mockResolvedValueOnce(full).mockResolvedValueOnce(redacted)
     const view = show("ficha")
-    expect(await screen.findAllByText("Tres tareas vencidas")).not.toHaveLength(0)
+    expect(await screen.findAllByText("3 tareas vencidas")).not.toHaveLength(0)
 
     mocks.permissions.delete("tasks")
     view.refresh()
-    expect(screen.queryByText("Tres tareas vencidas")).not.toBeInTheDocument()
+    expect(screen.queryByText("3 tareas vencidas")).not.toBeInTheDocument()
     await waitFor(() => expect(mocks.health).toHaveBeenCalledTimes(2))
   })
 

@@ -36,9 +36,9 @@ describe("shared operational query keys", () => {
       incidentKeys.count(7),
       incidentKeys.list(7, "active"),
       searchKeys.results(7, "tasks", "reunión"),
-      ["client-health-scores"] as const,
-      ["client-health", 4] as const,
-      ["client-health", 5] as const,
+      ["client-portfolio"] as const,
+      ["client-status", 4] as const,
+      ["client-status", 5] as const,
       ["unrelated", "settings"] as const,
     ]
     keys.forEach((key) => client.setQueryData(key, { ok: true }))
@@ -109,8 +109,8 @@ describe("shared operational query keys", () => {
       ["clients-active"],
       ["clients-active-list"],
       ["clients-list"],
-      ["client-health-scores"],
-      ["client-health", 4],
+      ["client-portfolio"],
+      ["client-status", 4],
       ["active-timer"],
       ["admin-active-timers"],
       clientKeys.summary(4),
@@ -146,8 +146,8 @@ describe("shared operational query keys", () => {
 
   it("invalidates all client health when an operational mutation lacks a client id", async () => {
     const client = new QueryClient()
-    const health = ["client-health", 41] as const
-    const healthScores = ["client-health-scores"] as const
+    const health = ["client-status", 41] as const
+    const healthScores = ["client-portfolio"] as const
     client.setQueryData(health, { score: 80 })
     client.setQueryData(healthScores, [{ client_id: 41, score: 80 }])
 
