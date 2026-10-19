@@ -30,7 +30,6 @@ from backend.api.routes import (
     google_calendar,
     gsc,
     bank_import,
-    cfo,
     usage_stats, job_runtime,
 )
 
@@ -246,7 +245,6 @@ _OPTIONAL_ROUTERS = {
     "finance": [income, expenses, expense_categories, taxes, forecasts,
                 advisor, bank_import, balance],
     "holded": [holded],
-    "cfo": [cfo],
     "reports": [reports],
     "proposals": [proposals, service_templates, investments],
     "leads": [leads],

@@ -30,7 +30,6 @@ const DigestsPage = lazy(() => import("@/pages/digests-page"))
 const DigestEditPage = lazy(() => import("@/pages/digest-edit-page"))
 const GrowthPage = lazy(() => import("@/pages/growth-page"))
 const FinanceDashboardPage = lazy(() => import("@/pages/finance-dashboard-page"))
-const CfoPage = lazy(() => import("@/pages/cfo-page"))
 const IncomePage = lazy(() => import("@/pages/income-page"))
 const ExpensesPage = lazy(() => import("@/pages/expenses-page"))
 const TaxesPage = lazy(() => import("@/pages/taxes-page"))
@@ -122,7 +121,6 @@ export default function App() {
               <Route path="/reports" element={<PermissionRoute module="reports"><ErrorBoundary section="Reports"><Suspense fallback={<PageLoader />}><ReportsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Finance — admin only */}
               <Route path="/finance" element={<PermissionRoute adminOnly><ErrorBoundary section="Finance"><Suspense fallback={<PageLoader />}><FinanceDashboardPage /></Suspense></ErrorBoundary></PermissionRoute>} />
-              <Route path="/finance/cfo" element={<PermissionRoute adminOnly><ErrorBoundary section="CFO"><Suspense fallback={<PageLoader />}><CfoPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/finance/income" element={<PermissionRoute adminOnly><ErrorBoundary section="Income"><Suspense fallback={<PageLoader />}><IncomePage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/finance/expenses" element={<PermissionRoute adminOnly><ErrorBoundary section="Expenses"><Suspense fallback={<PageLoader />}><ExpensesPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/finance/taxes" element={<PermissionRoute adminOnly><ErrorBoundary section="Taxes"><Suspense fallback={<PageLoader />}><TaxesPage /></Suspense></ErrorBoundary></PermissionRoute>} />

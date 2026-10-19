@@ -18,8 +18,8 @@ import { HIDDEN_ROUTES, isHidden } from "@/lib/hidden-modules"
 export function HiddenModuleGate({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation()
 
-  // Coincidencia por prefijo más largo: `/leads/42` cae en `/leads`, y
-  // `/finance/cfo` gana a `/finance` (importa si algún día uno se reactiva
+  // Coincidencia por prefijo más largo: `/leads/42` cae en `/leads`, y una
+  // ruta más concreta gana a su prefijo (importa si algún día uno se reactiva
   // sin el otro).
   const match = Object.keys(HIDDEN_ROUTES)
     .filter((route) => pathname === route || pathname.startsWith(`${route}/`))
