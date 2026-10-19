@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
-from sqlalchemy import select, func, case, or_
+from sqlalchemy import select, func, case, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import (
@@ -48,11 +48,78 @@ async def is_working_day(db: AsyncSession, day: date, region: str | None) -> boo
     return True
 
 
-def _morning_sections(today: date):
-    """The same mutually exclusive Hoy buckets for personal and shared plans."""
+# A task "drags" once it is this overdue, or has stayed open this long after
+# being taken on (backlog ideas waiting to be prioritised don't count).
+STALE_OVERDUE_DAYS = 7
+STALE_OPEN_DAYS = 21
+# ...or once someone has pushed its date later this many times.
+STALE_POSTPONED_TIMES = 3
+# From here the line says how often it was pushed; one move is normal planning.
+SHOW_POSTPONED_FROM = 2
+STALE_HEADING = "Llevan tiempo arrastrándose (decide: hacer, replanificar, delegar o cerrar)"
+STALE_LIMIT = 5
+
+# Every undo-journal entry that moved a task's due or planned date. The journal
+# only records changes made by a person (the nightly sweeps have no actor) and
+# the retention sweep keeps 90 days, so this counts deliberate postponements in
+# that window. Undone entries don't count: the move was taken back.
+_DATE_MOVES_SQL = text("""
+    SELECT (op->>'entity_id')::int AS task_id,
+           op->'before'->>'due_date' AS due_before, op->'after'->>'due_date' AS due_after,
+           op->'before'->>'scheduled_date' AS plan_before, op->'after'->>'scheduled_date' AS plan_after
+    FROM change_logs cl CROSS JOIN LATERAL jsonb_array_elements(cl.operations) AS op
+    WHERE cl.undone_at IS NULL
+      AND op->>'entity_type' = 'task' AND op->>'action' = 'update'
+      AND (op->'after'->>'due_date' IS NOT NULL OR op->'after'->>'scheduled_date' IS NOT NULL)
+""")
+
+
+def _moved_later(before: str | None, after: str | None) -> bool:
+    # ISO strings: the first 10 chars are the civil day for dates and datetimes.
+    return bool(before and after) and after[:10] > before[:10]
+
+
+async def _postponements(db: AsyncSession) -> dict[int, int]:
+    """How many separate actions pushed each task's date later."""
+    counts: dict[int, int] = {}
+    for row in (await db.execute(_DATE_MOVES_SQL)).mappings():
+        if _moved_later(row["due_before"], row["due_after"]) or _moved_later(
+            row["plan_before"], row["plan_after"]
+        ):
+            counts[row["task_id"]] = counts.get(row["task_id"], 0) + 1
+    return counts
+
+
+def _stale_condition(today: date, postponed: dict[int, int]):
+    # Null dates must yield FALSE, not NULL: the Hoy buckets use ``~stale`` and
+    # NOT NULL would silently drop the task from every section.
+    overdue = Task.due_date.is_not(None) & (
+        func.date(Task.due_date) <= today - timedelta(days=STALE_OVERDUE_DAYS)
+    )
+    long_open = (
+        (Task.status != TaskStatus.backlog)
+        & Task.created_at.is_not(None)
+        & (func.date(Task.created_at) <= today - timedelta(days=STALE_OPEN_DAYS))
+    )
+    often_postponed = Task.id.in_(
+        [task_id for task_id, n in postponed.items() if n >= STALE_POSTPONED_TIMES] or [-1]
+    )
+    return (Task.status != TaskStatus.waiting) & func.coalesce(
+        or_(overdue, long_open, often_postponed), False
+    )
+
+
+def _morning_sections(today: date, postponed: dict[int, int]):
+    """The same mutually exclusive buckets for personal and shared plans.
+
+    Long-dragging work goes first and out of the Hoy buckets, so it is read
+    before the day's list and never twice.
+    """
     due_day = func.date(Task.due_date)
-    actionable = Task.status != TaskStatus.waiting
+    stale = _stale_condition(today, postponed)
+    actionable = (Task.status != TaskStatus.waiting) & ~stale
     return (
+        (STALE_HEADING, stale),
         ("Para hoy", actionable & or_(
             due_day == today,
             (Task.scheduled_date == today) & or_(Task.due_date.is_(None), due_day > today),
@@ -73,7 +140,25 @@ def _morning_priority_sort():
                  TaskPriority.medium: 2, TaskPriority.low: 3}, value=Task.priority, else_=4)
 
 
-def _morning_task_line(task: Task, today: date, *, mark_unassigned: bool) -> str:
+def _morning_order(heading: str):
+    """Priority first; within it, the task that has waited longest comes first."""
+    if heading == STALE_HEADING:
+        since = func.coalesce(func.date(Task.due_date), func.date(Task.created_at))
+        return (_morning_priority_sort(), since.asc(), Task.id)
+    if heading == "Arrastre pendiente":
+        # Rescheduled tasks without a due date used to sink below every dated one.
+        since = func.coalesce(func.date(Task.due_date), Task.scheduled_date)
+        return (_morning_priority_sort(), since.asc(), Task.id)
+    return (_morning_priority_sort(), Task.due_date.asc().nulls_last(), Task.id)
+
+
+def _days(n: int) -> str:
+    return "1 día" if n == 1 else f"{n} días"
+
+
+def _morning_task_line(
+    task: Task, today: date, *, mark_unassigned: bool, postponed: int = 0
+) -> str:
     _, emoji = _PRIORITY_ORDER.get(task.priority, (4, "\u26aa"))
     parts = [emoji]
     if task.priority == TaskPriority.urgent:
@@ -87,14 +172,20 @@ def _morning_task_line(task: Task, today: date, *, mark_unassigned: bool) -> str
         parts.append("(en revisión)")
     if task.client:
         parts.append(f"\u2014 {task.client.name}")
-    if task.due_date:
-        task_due_day = task.due_date.date()
-        if task_due_day < today:
-            parts.append("(vencida)")
-        elif task_due_day == today:
-            parts.append("(vence hoy)")
-        else:
-            parts.append(f"(vence {task_due_day:%d/%m})")
+    task_due_day = task.due_date.date() if task.due_date else None
+    if task_due_day and task_due_day < today:
+        parts.append(f"(vencida hace {_days((today - task_due_day).days)})")
+    elif task_due_day == today:
+        parts.append("(vence hoy)")
+    elif task_due_day:
+        parts.append(f"(vence {task_due_day:%d/%m})")
+    open_days = (today - task.created_at.date()).days if task.created_at else 0
+    if open_days >= STALE_OPEN_DAYS and task.status != TaskStatus.backlog and not (
+        task_due_day and (today - task_due_day).days >= STALE_OVERDUE_DAYS
+    ):
+        parts.append(f"(abierta hace {_days(open_days)})")
+    if postponed >= SHOW_POSTPONED_FROM:
+        parts.append(f"(aplazada {postponed} veces)")
     return " ".join(parts)
 
 
@@ -110,18 +201,23 @@ async def generate_team_morning_plan(db: AsyncSession, day: date) -> str:
     groups.append(("Sin responsable", None))
     lines = [f"\u2600\ufe0f Plan del equipo para hoy · {day:%d/%m/%Y}"]
     any_tasks = False
+    postponed = await _postponements(db)
     for name, owner_id in groups:
         group_lines = []
-        for heading, condition in _morning_sections(day):
+        for heading, condition in _morning_sections(day, postponed):
             tasks = (await db.scalars(select(Task).where(
                 Task.assigned_to == owner_id if owner_id is not None else Task.assigned_to.is_(None),
                 Task.retired_at.is_(None), Task.status != TaskStatus.completed,
                 Task.is_recurring.is_(False), condition,
-            ).order_by(_morning_priority_sort(), Task.due_date.asc().nulls_last(), Task.id).limit(9))).all()
+            ).order_by(*_morning_order(heading)).limit(9))).all()
             if tasks:
+                shown = STALE_LIMIT if heading == STALE_HEADING else 8
                 group_lines.append(f"**{heading}**")
-                group_lines.extend(_morning_task_line(task, day, mark_unassigned=False) for task in tasks[:8])
-                if len(tasks) > 8:
+                group_lines.extend(
+                    _morning_task_line(task, day, mark_unassigned=False, postponed=postponed.get(task.id, 0))
+                    for task in tasks[:shown]
+                )
+                if len(tasks) > shown:
                     group_lines.append("Hay más en la vista Hoy de la app.")
         if group_lines:
             any_tasks = True
@@ -138,30 +234,33 @@ async def generate_morning_plan(db: AsyncSession, user: User, *, day: date | Non
 
     # Match the sections of Hoy. The personal agenda also shows tasks without an
     # assignee, so label those explicitly instead of silently dropping them.
-    priority_sort = _morning_priority_sort()
     base = (
         or_(Task.assigned_to == user.id, Task.assigned_to.is_(None)),
         Task.retired_at.is_(None),
         Task.status != TaskStatus.completed,
         Task.is_recurring.is_(False),
     )
-    sections = _morning_sections(today)
+    postponed = await _postponements(db)
+    sections = _morning_sections(today, postponed)
 
     lines = [f"\u2600\ufe0f Buenos d\u00edas, {name}", "\U0001f4cb Tu agenda de hoy:"]
     has_tasks = False
     for heading, condition in sections:
         result = await db.execute(
             select(Task).where(*base, condition)
-            .order_by(priority_sort, Task.due_date.asc().nulls_last(), Task.id).limit(9)
+            .order_by(*_morning_order(heading)).limit(9)
         )
         tasks = result.scalars().all()
         if not tasks:
             continue
         has_tasks = True
+        shown = STALE_LIMIT if heading == STALE_HEADING else 8
         lines.append(f"\n**{heading}**")
-        for task in tasks[:8]:
-            lines.append(_morning_task_line(task, today, mark_unassigned=True))
-        if len(tasks) > 8:
+        for task in tasks[:shown]:
+            lines.append(_morning_task_line(
+                task, today, mark_unassigned=True, postponed=postponed.get(task.id, 0)
+            ))
+        if len(tasks) > shown:
             lines.append("Hay más en la vista Hoy de la app.")
     if not has_tasks:
         lines.append("\nNo hay tareas pendientes visibles en Hoy para esta fecha.")
