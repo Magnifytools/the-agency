@@ -9,7 +9,7 @@ import {
 import { proposalsApi, investmentsApi } from "@/lib/api"
 import type {
     Proposal, ProposalStatus, ProposalStatusUpdate,
-    InvestmentCalculateResponse, Client,
+    InvestmentCalculateResponse,
 } from "@/lib/types"
 
 import { Button } from "@/components/ui/button"
@@ -40,12 +40,11 @@ function isNonEmptyString(value: unknown): value is string {
 
 interface ProposalDetailProps {
     proposal: Proposal
-    clients: Client[]
     onBack: () => void
     onEdit: (p: Proposal) => void
 }
 
-export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: ProposalDetailProps) {
+export function ProposalDetail({ proposal: p, onBack, onEdit }: ProposalDetailProps) {
     const queryClient = useQueryClient()
     const [deleteId, setDeleteId] = useState<number | null>(null)
     const [roiDialogOpen, setRoiDialogOpen] = useState(false)
@@ -576,21 +575,6 @@ export function ProposalDetail({ proposal: p, clients, onBack, onEdit }: Proposa
                                 </div>
                             </div>
                             <DialogFooter>
-                                <Button variant="outline" onClick={() => {
-                                    if (p.client_id) {
-                                        const clientData = clients.find(c => c.id === p.client_id)
-                                        if (clientData) {
-                                            setRoiForm(f => ({
-                                                ...f,
-                                                business_model: clientData.business_model || f.business_model,
-                                                aov: clientData.aov?.toString() || f.aov,
-                                                conversion_rate: clientData.conversion_rate?.toString() || f.conversion_rate,
-                                                ltv: clientData.ltv?.toString() || f.ltv,
-                                                seo_maturity: clientData.seo_maturity_level || f.seo_maturity,
-                                            }))
-                                        }
-                                    }
-                                }}>Autorellenar de cliente</Button>
                                 <Button onClick={async () => {
                                     setRoiLoading(true)
                                     try {

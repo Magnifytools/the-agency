@@ -34,22 +34,6 @@ async def calculate_investment(
     current_monthly_traffic = body.current_monthly_traffic
     monthly_investment = body.monthly_investment
 
-    # Auto-fill from client
-    if body.client_id:
-        result = await db.execute(select(Client).where(Client.id == body.client_id))
-        client = result.scalar_one_or_none()
-        if client:
-            if not business_model and client.business_model:
-                business_model = client.business_model
-            if aov is None and client.aov is not None:
-                aov = client.aov
-            if conversion_rate is None and client.conversion_rate is not None:
-                conversion_rate = client.conversion_rate
-            if ltv is None and client.ltv is not None:
-                ltv = client.ltv
-            if not seo_maturity and client.seo_maturity_level:
-                seo_maturity = client.seo_maturity_level
-
     # Auto-fill monthly_investment from proposal's recommended pricing
     if body.proposal_id and monthly_investment is None:
         result = await db.execute(select(Proposal).where(Proposal.id == body.proposal_id))

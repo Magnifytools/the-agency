@@ -351,13 +351,11 @@ function ClientsPageBody() {
       monthly_budget: fd.get("monthly_budget") ? Number(fd.get("monthly_budget")) : null,
       status: (fd.get("status") as ClientStatus) || "active",
       notes: (fd.get("notes") as string) || null,
-      cif: (fd.get("cif") as string) || null,
       vat_number: (fd.get("vat_number") as string) || null,
       is_internal: fd.get("is_internal") === "on",
       is_intermediary_deal: fd.get("is_intermediary_deal") === "on",
       intermediary_name: (fd.get("intermediary_name") as string) || null,
       context: (fd.get("context") as string) || undefined,
-      business_model: (fd.get("business_model") as string) || prefill?.business_model || undefined,
     }
     if (editing) {
       updateMutation.mutate({ id: editing.id, data })
@@ -753,10 +751,6 @@ function ClientsPageBody() {
             <div className="space-y-2">
               <Label htmlFor="website">Web</Label>
               <Input id="website" name="website" defaultValue={prefill?.website ?? editing?.website ?? ""} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cif">CIF</Label>
-              <Input id="cif" name="cif" defaultValue={editing?.cif ?? ""} placeholder="B12345678" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="vat_number">VAT Number</Label>
