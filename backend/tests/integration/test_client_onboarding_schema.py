@@ -10,7 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models import Base, Client, User, UserRole
 from backend.startup import deployment_schema, schema_baseline
 from backend.startup.client_onboarding_schema import MIGRATION, apply, verify
+from backend.startup.phase0_retirement_schema import RETIRED_COLUMNS
 from backend.startup.schema_runner import run_schema_migrations
+
+# Las columnas que retira la fase 0 desaparecen; el resto de la fila no cambia.
+CLIENT_ROWS = "SELECT to_jsonb(c)" + "".join(
+    f" - '{column}'" for table, column in sorted(RETIRED_COLUMNS) if table == "clients"
+) + " FROM clients c"
 
 
 async def reset(engine):
@@ -40,13 +46,13 @@ async def p20_schema(engine):
 
 async def test_upgrade_preserves_history_and_ledger_and_is_repeatable(engine):
     async with engine.connect() as conn:
-        clients = (await conn.execute(text("SELECT to_jsonb(c) FROM clients c"))).scalars().all()
+        clients = (await conn.execute(text(CLIENT_ROWS))).scalars().all()
         ledger = (await conn.execute(text("SELECT * FROM agency_schema_versions ORDER BY version"))).all()
     await deployment_schema.migrate_schema(engine)
     await deployment_schema.migrate_schema(engine)
     await deployment_schema.check_deployment_ready(engine)
     async with engine.connect() as conn:
-        assert (await conn.execute(text("SELECT to_jsonb(c) FROM clients c"))).scalars().all() == clients
+        assert (await conn.execute(text(CLIENT_ROWS))).scalars().all() == clients
         after = (await conn.execute(text("SELECT * FROM agency_schema_versions ORDER BY version"))).all()
         assert set(ledger) <= set(after)
         assert len(after) == len(deployment_schema.MIGRATIONS)

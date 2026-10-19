@@ -1,0 +1,17 @@
+{
+  "version": "20261020_phase0_retirement_v1",
+  "drop_tables": [
+    "automation_logs",
+    "automation_rules",
+    "user_invitations",
+    "agency_assets",
+    "client_resources",
+    "project_evidence",
+    "generated_reports",
+    "user_day_statuses"
+  ],
+  "drop_columns": {
+    "clients": ["aov", "ltv", "conversion_rate", "business_model", "seo_maturity_level", "cif"],
+    "users": ["invited_by"]
+  }
+}

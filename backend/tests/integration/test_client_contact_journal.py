@@ -13,8 +13,8 @@ from backend.db.models import (
     ChangeLog,
     Client,
     ClientContact,
-    ClientResource,
     Project,
+    Task,
     User,
     UserRole,
 )
@@ -65,9 +65,7 @@ async def test_grouped_undo_refuses_a_reference_added_after_onboarding(
     admin_client, admin_user, db_session,
 ):
     client_id, contact_id, project_id, change = await _grouped_creation(db_session, admin_user.id)
-    db_session.add(ClientResource(
-        client_id=client_id, label="Trabajo posterior", url="https://example.test/resource",
-    ))
+    db_session.add(Task(client_id=client_id, title="Trabajo posterior"))
     await db_session.commit()
 
     response = await admin_client.post(f"/api/changes/{change.id}/undo")

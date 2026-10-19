@@ -15,11 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.database import get_db
 from backend.db.models import (
     Client, ClientStatus, Task, TaskRecurrenceOccurrence, TimeEntry, User, UserRole,
-    Project, ProjectPhase, ProjectEvidence,
-    ClientContact, ClientResource, BillingEvent,
+    Project, ProjectPhase,
+    ClientContact, BillingEvent,
     CommunicationLog, WeeklyDigest, Invoice, InvoiceItem,
     PMInsight, GrowthIdea, Proposal, Event, Lead,
-    GeneratedReport, Income, Expense, HoldedInvoiceCache, ClientDocument,
+    Income, Expense, HoldedInvoiceCache, ClientDocument,
     BalanceSnapshot,
 )
 from backend.schemas.client import ClientCreate, ClientUpdate, ClientResponse, ClientDocumentResponse
@@ -477,11 +477,6 @@ async def hard_delete_client(
         await db.execute(update(Event).where(Event.project_id.in_(project_ids)).values(project_id=None))
 
     await db.execute(update(Lead).where(Lead.converted_client_id == client_id).values(converted_client_id=None))
-
-    await db.execute(update(GeneratedReport).where(GeneratedReport.client_id == client_id).values(client_id=None))
-    if project_ids:
-        await db.execute(update(GeneratedReport).where(GeneratedReport.project_id.in_(project_ids)).values(project_id=None))
-
     await db.execute(update(Income).where(Income.client_id == client_id).values(client_id=None))
     await db.execute(update(HoldedInvoiceCache).where(HoldedInvoiceCache.client_id == client_id).values(client_id=None))
 
@@ -516,14 +511,10 @@ async def hard_delete_client(
         ))
     if invoice_ids:
         await db.execute(delete(InvoiceItem).where(InvoiceItem.invoice_id.in_(invoice_ids)))
-    if project_ids:
-        await db.execute(delete(ProjectEvidence).where(ProjectEvidence.project_id.in_(project_ids)))
-
     # Step 3: Delete tables with NOT NULL client_id (in dependency order)
     # CommunicationLog before ClientContact (contact_id FK)
     await db.execute(delete(CommunicationLog).where(CommunicationLog.client_id == client_id))
     await db.execute(delete(ClientContact).where(ClientContact.client_id == client_id))
-    await db.execute(delete(ClientResource).where(ClientResource.client_id == client_id))
     await db.execute(delete(BillingEvent).where(BillingEvent.client_id == client_id))
     await db.execute(delete(WeeklyDigest).where(WeeklyDigest.client_id == client_id))
     # Task before ProjectPhase and Project

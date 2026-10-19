@@ -341,6 +341,12 @@ cd mcp-server && .venv/bin/python -m pytest -q
   `python -m backend.scripts.migrate` en el release y el arranque se niega a
   servir si falta una versión. Ejemplo reciente: `gsc_schema.py`. Las versiones
   ya publicadas son inmutables (su checksum se comprueba).
+- **Borrar una tabla o columna publicada no es un `DROP` suelto.** P12 se
+  verifica en cada arranque y exige todas sus tablas y columnas. El paso
+  `startup/phase0_retirement_schema.py` borra las de los módulos eliminados y
+  `schema_baseline` sólo perdona lo retirado cuando ya no existe. Para retirar
+  algo más: paso nuevo con su contrato, ampliar ese perdón y probar subida con
+  datos e instalación limpia (`test_phase0_retirement_schema.py`).
 - **`parse_claude_json` no puede exigir que la respuesta empiece por el JSON.** Con
   notas vacías el parser de dailys recibía una frase inventada antes del bloque
   ```json y respondía 502 en cada reintento (daily 129 de Nacho, oct 2026). Ahora

@@ -46,7 +46,6 @@ from backend.startup.migrations import (  # noqa: F401
     _ensure_columns_v6,
     _ensure_columns_v7,
     _ensure_columns_v8,
-    _ensure_columns_v9,
     _ensure_columns_v10,
     _reset_admin_password,
     _seed_national_holidays,
