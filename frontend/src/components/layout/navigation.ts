@@ -16,7 +16,6 @@ const areas: NavigationArea[] = [
     { to: "/projects", label: "Proyectos", module: "projects" },
     { to: "/timesheet", label: "Horas", module: "timesheet" },
     { to: "/inbox", label: "Por aclarar", module: "tasks" },
-    { to: "/my-week", label: "Mi semana", hidden: "my_week" },
     { to: "/leads", label: "Pipeline", module: "growth", hidden: "leads" },
     { to: "/growth", label: "Ideas", module: "growth", hidden: "growth" },
     { to: "/proposals", label: "Presupuestos", module: "proposals", hidden: "proposals" },
@@ -51,7 +50,7 @@ export function activeArea(pathname: string, search: string): AreaId {
   if (pathname === "/dashboard" || pathname === "/incidents" || pathname.startsWith("/deliveries/")) return "today"
   if (pathname.startsWith("/clients")) return "clients"
   if (["/dailys", "/digests"].some((path) => pathname === path || pathname.startsWith(path + "/"))) return "summaries"
-  if (["/projects", "/timesheet", "/inbox", "/my-week", "/leads", "/growth", "/proposals"].some((path) => pathname === path || pathname.startsWith(path + "/"))) return "work"
+  if (["/projects", "/timesheet", "/inbox", "/leads", "/growth", "/proposals"].some((path) => pathname === path || pathname.startsWith(path + "/"))) return "work"
   return "settings"
 }
 

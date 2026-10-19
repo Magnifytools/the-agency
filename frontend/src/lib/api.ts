@@ -1059,36 +1059,7 @@ export const gscApi = {
   sync: () => api.post<{ status: string; synced: number; failed: number }>("/gsc/sync").then((r) => r.data),
 }
 
-// ── My Week ──────────────────────────────────────────────────
-
-export interface MyWeekTask {
-  id: number
-  title: string
-  status: string
-  priority: string
-  scheduled_date: string | null
-  due_date: string | null
-  estimated_minutes: number | null
-  client_id: number | null
-  client_name: string | null
-  project_id: number | null
-  project_name: string | null
-  created_at: string
-  last_comment: string | null
-  last_comment_at: string | null
-  checklist_total: number
-  checklist_done: number
-  weeks_open: number
-}
-
-export interface DayStatusResponse {
-  id: number
-  user_id: number
-  date: string
-  status: string
-  label: string | null
-  note: string | null
-}
+// ── Festivos ─────────────────────────────────────────────
 
 export interface CompanyHolidayResponse {
   id: number
@@ -1097,64 +1068,6 @@ export interface CompanyHolidayResponse {
   country: string
   region: string | null
   locality: string | null
-}
-
-export interface EventResponse {
-  id: number
-  title: string
-  description: string | null
-  event_type: string
-  date: string
-  time: string | null
-  start_time: string | null
-  end_time: string | null
-  is_all_day: boolean
-  duration_minutes: number | null
-  client_id: number | null
-  client_name: string | null
-  user_id: number
-}
-
-export interface MyWeekDay {
-  date: string
-  weekday: string
-  status: DayStatusResponse | null
-  is_holiday: CompanyHolidayResponse | null
-  events: EventResponse[]
-  tasks: MyWeekTask[]
-}
-
-export interface MyWeekSummary {
-  total_tasks: number
-  estimated_minutes: number
-  available_hours: number
-  tasks_dragging: number
-  tasks_no_estimate: number
-  tasks_no_date: number
-  by_client: { client_id: number | null; client_name: string; count: number }[]
-}
-
-export interface TeamMemberDay {
-  date: string
-  status: string | null
-  label: string | null
-  holiday_name: string | null
-}
-
-export interface TeamMemberWeek {
-  user_id: number
-  full_name: string
-  short_name: string | null
-  days: TeamMemberDay[]
-}
-
-export interface MyWeekResponse {
-  week_start: string
-  week_end: string
-  days: MyWeekDay[]
-  backlog: MyWeekTask[]
-  summary: MyWeekSummary
-  team: TeamMemberWeek[]
 }
 
 export const holidaysApi = {
@@ -1166,25 +1079,6 @@ export const holidaysApi = {
     api.post<CompanyHolidayResponse>("/holidays", data).then((r) => r.data),
   delete: (id: number) =>
     api.delete(`/holidays/${id}`).then((r) => r.data),
-}
-
-export const myWeekApi = {
-  get: (weekStart?: string) =>
-    api.get<MyWeekResponse>("/my-week", { params: weekStart ? { week_start: weekStart } : {} }).then((r) => r.data),
-  updateDayStatus: (data: { date: string; status: string; label?: string | null; note?: string | null }) =>
-    api.put<DayStatusResponse>("/my-week/day-status", data).then((r) => r.data),
-  deleteDayStatus: (date: string) =>
-    api.delete(`/my-week/day-status/${date}`).then((r) => r.data),
-  createEvent: (data: { date: string; time?: string | null; title: string; client_id?: number | null; event_type?: string; duration_minutes?: number | null; description?: string | null; is_all_day?: boolean }) =>
-    api.post<EventResponse>("/my-week/events", data).then((r) => r.data),
-  updateEvent: (id: number, data: Partial<{ date: string; time: string; title: string; client_id: number; event_type: string; duration_minutes: number; description: string; is_all_day: boolean }>) =>
-    api.put<EventResponse>(`/my-week/events/${id}`, data).then((r) => r.data),
-  deleteEvent: (id: number) =>
-    api.delete(`/my-week/events/${id}`).then((r) => r.data),
-  scheduleTask: (taskId: number, scheduledDate: string | null) =>
-    api.patch(`/my-week/tasks/${taskId}/schedule`, null, { params: { scheduled_date: scheduledDate } }).then((r) => r.data),
-  addTaskComment: (taskId: number, content: string) =>
-    api.post(`/tasks/${taskId}/comments`, { content }).then((r) => r.data),
 }
 
 export const jobRuntimeApi = {

@@ -35,7 +35,6 @@ HIDDEN_MODULES: frozenset[str] = frozenset(
         "proposals",      # 30, solo el listado: nunca se creó una propuesta
         "leads",          # 37 — Pipeline
         "growth",         # 4 — Buffer de ideas
-        "my_week",        # 12 — 592 líneas de backend para 12 llamadas
         "capacity",       # solo frontend
         "executive",      # solo frontend
         # OJO — "discord" oculta la PANTALLA, pero su router sigue registrado

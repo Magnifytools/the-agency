@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({ status: vi.fn(), sync: vi.fn(), auth: vi.fn(),
 const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }))
 vi.mock("@/lib/api", () => ({
   calendarApi: { getStatus: mocks.status, sync: mocks.sync, getAuthUrl: mocks.auth, disconnect: mocks.disconnect },
-  usersApi: {}, categoriesApi: {}, myWeekApi: {},
+  usersApi: {}, categoriesApi: {},
 }))
 vi.mock("@/components/communication-schedules", () => ({ CommunicationSchedules: () => null }))
 vi.mock("sonner", () => ({ toast: toasts }))

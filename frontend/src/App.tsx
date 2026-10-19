@@ -43,7 +43,6 @@ const ExecutiveDashboardPage = lazy(() => import("@/pages/executive-dashboard-pa
 const InboxPage = lazy(() => import("@/pages/inbox-page"))
 const DeliveryPage = lazy(() => import("@/pages/delivery-page"))
 const IncidentsPage = lazy(() => import("@/pages/incidents-page"))
-const MyWeekPage = lazy(() => import("@/pages/my-week-page"))
 const SettingsPage = lazy(() => import("@/pages/settings-page"))
 
 function PageLoader() {
@@ -127,7 +126,6 @@ export default function App() {
               <Route path="/finance-holded" element={<PermissionRoute adminOnly><ErrorBoundary section="HoldedFinance"><Suspense fallback={<PageLoader />}><HoldedFinancePage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Agency */}
               <Route path="/inbox" element={<ErrorBoundary section="Inbox"><Suspense fallback={<PageLoader />}><InboxPage /></Suspense></ErrorBoundary>} />
-              <Route path="/my-week" element={<ErrorBoundary section="MyWeek"><Suspense fallback={<PageLoader />}><MyWeekPage /></Suspense></ErrorBoundary>} />
               {/* Discord */}
               <Route path="/discord" element={<PermissionRoute adminOnly><ErrorBoundary section="Discord"><Suspense fallback={<PageLoader />}><DiscordSettingsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Settings */}

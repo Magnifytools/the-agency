@@ -33,11 +33,6 @@ export const dashboardKeys = {
   today: () => ["dashboard", "today"] as const,
 }
 
-export const myWeekKeys = {
-  all: () => ["my-week"] as const,
-  week: (weekStart: string) => ["my-week", weekStart] as const,
-}
-
 export const briefingKeys = {
   all: () => ["daily-briefing"] as const,
 }
@@ -76,7 +71,6 @@ export async function invalidateTaskChange(
     queryClient.invalidateQueries({ queryKey: timeKeys.all() }),
     queryClient.invalidateQueries({ queryKey: ["active-timer"] }),
     queryClient.invalidateQueries({ queryKey: dashboardKeys.all() }),
-    queryClient.invalidateQueries({ queryKey: myWeekKeys.all() }),
     queryClient.invalidateQueries({ queryKey: briefingKeys.all() }),
     queryClient.invalidateQueries({ queryKey: searchKeys.all() }),
     queryClient.invalidateQueries({ queryKey: ["client-portfolio"] }),
@@ -100,7 +94,6 @@ export async function invalidateProjectChange(queryClient: QueryClient, affected
     queryClient.invalidateQueries({ queryKey: projectKeys.all() }),
     queryClient.invalidateQueries({ queryKey: taskKeys.all() }),
     queryClient.invalidateQueries({ queryKey: timeKeys.all() }),
-    queryClient.invalidateQueries({ queryKey: myWeekKeys.all() }),
     queryClient.invalidateQueries({ queryKey: briefingKeys.all() }),
     queryClient.invalidateQueries({ queryKey: dashboardKeys.all() }),
     queryClient.invalidateQueries({ queryKey: searchKeys.all() }),
@@ -167,7 +160,6 @@ export async function invalidateClientChange(queryClient: QueryClient, clientIds
     queryClient.invalidateQueries({ queryKey: timeKeys.all() }),
     queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
     queryClient.invalidateQueries({ queryKey: dashboardKeys.all() }),
-    queryClient.invalidateQueries({ queryKey: myWeekKeys.all() }),
     queryClient.invalidateQueries({ queryKey: briefingKeys.all() }),
     queryClient.invalidateQueries({ queryKey: searchKeys.all() }),
   ]
