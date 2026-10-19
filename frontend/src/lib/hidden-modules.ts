@@ -20,7 +20,6 @@ export const HIDDEN_MODULES = [
   "growth", // 4 — Buffer de ideas
   "my_week", // 12
   "automations", // 0
-  "vault", // 0
   "capacity", // solo frontend
   "executive", // solo frontend
   "discord", // 13 — solo la pantalla de ajustes del webhook
@@ -64,7 +63,6 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/proposals": "proposals",
   "/reports": "reports",
   "/capacity": "capacity",
-  "/vault": "vault",
   "/automations": "automations",
   "/discord": "discord",
   "/finance": "finance",

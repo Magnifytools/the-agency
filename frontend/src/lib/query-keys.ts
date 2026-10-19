@@ -194,10 +194,6 @@ export const holdedKeys = {
   clientInvoices: (clientId: number) => ["holded-client-invoices", clientId] as const,
 }
 
-export const vaultKeys = {
-  assets: (category?: string) => ["vault-assets", category ?? "all"] as const,
-}
-
 export const inboxKeys = {
   all: (userId: number) => ["inbox", userId] as const,
   list: (userId: number, status?: string, pageSize = 50) => ["inbox", userId, "list", status ?? "all", pageSize] as const,
