@@ -30,6 +30,16 @@ vi.mock("@/lib/api", () => ({
 }))
 
 vi.mock("@/components/clients/ficha-tab", () => ({ FichaTab: () => <div>FichaTab</div> }))
+vi.mock("@/components/clients/client-overview", () => ({
+  // Pasa lo que la página le entrega: así los tests de caché/permisos siguen viendo el estado.
+  ClientOverview: (props: { status?: { reasons: string[] }; statusFailed: boolean; onRetryStatus: () => void }) => (
+    <div>
+      <div>VistaGeneral</div>
+      {props.status?.reasons.map((reason) => <p key={reason}>{reason}</p>)}
+      {props.statusFailed && <><p>No se pudo calcular el estado del cliente.</p><button onClick={props.onRetryStatus}>Reintentar</button></>}
+    </div>
+  ),
+}))
 vi.mock("@/components/clients/activity-timeline", () => ({ ActivityTimeline: () => <div>ActivityTimeline</div> }))
 vi.mock("@/components/clients/client-ai-advisor", () => ({ ClientAiAdvisor: () => <div>ClientAiAdvisor</div> }))
 vi.mock("@/components/clients/contact-list", () => ({ ContactList: () => <div>ContactList</div> }))
@@ -82,10 +92,13 @@ describe("client detail areas", () => {
     show("actividad")
     expect(await screen.findByText("ActivityTimeline")).toBeInTheDocument()
     const nav = screen.getByRole("navigation", { name: "Áreas del cliente" })
-    expect(nav).toHaveTextContent("Resumen")
+    expect(nav).toHaveTextContent("Vista general")
     expect(nav).toHaveTextContent("Trabajo")
-    expect(nav).toHaveTextContent("Resúmenes y archivos")
-    expect(nav).toHaveTextContent("Ajustes")
+    expect(nav).toHaveTextContent("Resultados")
+    expect(nav).toHaveTextContent("Relación")
+    // Ajustes sale de la fila de áreas: se abre con el engranaje de la cabecera.
+    expect(nav).not.toHaveTextContent("Ajustes")
+    expect(screen.getByRole("button", { name: "Ajustes del cliente" })).toBeInTheDocument()
     expect(screen.getByLabelText("Área del cliente")).toHaveValue("resumen")
   })
 
@@ -97,7 +110,7 @@ describe("client detail areas", () => {
 
   it("hides the financial what-if action while finance is disabled", async () => {
     show("ficha")
-    await screen.findByText("FichaTab")
+    await screen.findByText("VistaGeneral")
     expect(screen.queryByRole("button", { name: "¿Y si pierdo este cliente?" })).not.toBeInTheDocument()
   })
 
@@ -156,7 +169,7 @@ describe("client detail areas", () => {
   it("falls back safely when a legacy URL points to a hidden module", async () => {
     mocks.enabled.delete("communications")
     show("comunicaciones")
-    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(await screen.findByText("VistaGeneral")).toBeInTheDocument()
     expect(screen.queryByText("Communications")).not.toBeInTheDocument()
     expect(screen.getByLabelText("Área del cliente")).toHaveValue("resumen")
   })
@@ -164,7 +177,7 @@ describe("client detail areas", () => {
   it("does not expose or query project work without project permission", async () => {
     mocks.permissions.delete("projects")
     show("proyectos")
-    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(await screen.findByText("VistaGeneral")).toBeInTheDocument()
     await waitFor(() => expect(mocks.projects).not.toHaveBeenCalled())
     expect(screen.queryByRole("option", { name: "Proyectos" })).not.toBeInTheDocument()
   })
@@ -178,7 +191,7 @@ describe("client detail areas", () => {
     })
     show("tiempo")
 
-    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(await screen.findByText("VistaGeneral")).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "Acme" })).toBeInTheDocument()
     expect(screen.queryByText("Total tareas")).not.toBeInTheDocument()
     expect(screen.queryByText("Tiempo tracked")).not.toBeInTheDocument()
@@ -199,7 +212,7 @@ describe("client detail areas", () => {
     mocks.permissions.delete("timesheet")
     view.refresh()
 
-    expect(screen.getByText("FichaTab")).toBeInTheDocument()
+    expect(screen.getByText("VistaGeneral")).toBeInTheDocument()
     expect(screen.queryByText("Trabajo privado")).not.toBeInTheDocument()
     expect(screen.queryByText("Total tareas")).not.toBeInTheDocument()
     expect(screen.queryByText("Tiempo tracked")).not.toBeInTheDocument()
@@ -223,7 +236,7 @@ describe("client detail areas", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo cargar la ficha")
     await userEvent.click(screen.getByRole("button", { name: "Reintentar" }))
-    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(await screen.findByText("VistaGeneral")).toBeInTheDocument()
     expect(mocks.summary).toHaveBeenCalledTimes(2)
   })
 
@@ -260,12 +273,12 @@ describe("client detail areas", () => {
 
   it("removes cached client details immediately when client read access is revoked", async () => {
     const view = show("ficha")
-    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(await screen.findByText("VistaGeneral")).toBeInTheDocument()
     mocks.permissions.delete("clients")
     view.refresh()
 
     expect(screen.getByRole("alert")).toHaveTextContent("No tienes acceso a este cliente.")
-    expect(screen.queryByText("FichaTab")).not.toBeInTheDocument()
+    expect(screen.queryByText("VistaGeneral")).not.toBeInTheDocument()
     expect(screen.queryByRole("heading", { name: "Acme" })).not.toBeInTheDocument()
     expect(mocks.summary).toHaveBeenCalledTimes(1)
   })
@@ -299,7 +312,7 @@ describe("client detail areas", () => {
     mocks.enabled.delete("digests")
     show("resumenes")
 
-    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(await screen.findByText("VistaGeneral")).toBeInTheDocument()
     expect(screen.queryByRole("link", { name: /Abrir resúmenes/ })).not.toBeInTheDocument()
     expect(screen.queryByRole("option", { name: "Resúmenes" })).not.toBeInTheDocument()
     expect(screen.getByLabelText("Área del cliente")).toHaveValue("resumen")
@@ -364,4 +377,17 @@ describe("client detail areas", () => {
     expect(mocks.projects).not.toHaveBeenCalled()
   })
 
+
+  it("keeps the old ficha (context and contact) one tab away, in Relación", async () => {
+    show("contexto")
+    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(screen.getByLabelText("Área del cliente")).toHaveValue("relacion")
+  })
+
+  it("opens client settings from the header gear", async () => {
+    show("ficha")
+    await screen.findByText("VistaGeneral")
+    await userEvent.click(screen.getByRole("button", { name: "Ajustes del cliente" }))
+    expect(await screen.findByText("Settings")).toBeInTheDocument()
+  })
 })
