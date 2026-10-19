@@ -118,6 +118,12 @@ admin_users, admin_settings
 - Closing soporta HTML en email (para links tipo Google Sheets)
 - **Flujo**: Generar → Editar → Copiar al portapapeles → Pegar en Gmail/Slack manualmente
 - NO se envían emails ni mensajes desde la app. Discord solo para uso interno.
+- **Vista "Resúmenes de este mes"** (`components/digests/digest-monthly-cycle.tsx`,
+  arriba en `/digests`): una fila por cliente externo activo con el estado de su
+  resumen del mes anterior. Entregado = entrega externa confirmada
+  (`digest_external_delivery_events`); `DigestStatus.sent` es histórico y no
+  cuenta. Sin endpoint propio: lee `generation-preview` (Equipo para admins) y
+  genera con `generate-cohort`, guardando la clave de recuperación como cohorte.
 
 ## Buffer de Ideas (Growth)
 - **Concepto**: Backlog de ideas **por proyecto**, priorizadas con ICE (Impact/Confidence/Ease)
