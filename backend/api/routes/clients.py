@@ -25,14 +25,13 @@ from backend.db.models import (
 from backend.schemas.client import ClientCreate, ClientUpdate, ClientResponse, ClientDocumentResponse
 from backend.schemas.client_onboarding import ClientOnboardingCreate, ClientOnboardingResponse
 from backend.schemas.pagination import PaginatedResponse
-from backend.api.deps import get_current_user, require_module, require_admin
-from backend.services.client_health import HealthCapabilities, compute_health, compute_health_batch
+from backend.api.deps import require_module, require_admin
+from backend.services.client_status import Viewer, portfolio
 from backend.services.dashboard_access import (
     ensure_source_access,
     has_module_read,
     require_financial_dashboard_access,
 )
-from backend.core.modules import is_enabled
 from backend.api.utils.db_helpers import safe_refresh
 from backend.services.client_onboarding import create_onboarding, recover_onboarding
 from backend.services.domain_writes import create_client as create_client_write
@@ -232,7 +231,7 @@ async def create_client(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ya existe un cliente con esos datos")
-    except DataError as e:
+    except DataError:
         await db.rollback()
         raise HTTPException(status_code=422, detail="Datos inválidos: campo excede longitud máxima")
     except Exception as e:
@@ -298,75 +297,29 @@ async def recover_client_onboarding(
     return JSONResponse(status_code=response_status, content=response.model_dump(mode="json"))
 
 
-def _health_capabilities(user: User) -> HealthCapabilities:
-    """Only score sources exposed to this caller by the current product."""
-    readable = {
-        permission.module
-        for permission in (user.permissions or [])
-        if permission.can_read
-    }
-    is_admin = user.role == UserRole.admin
-
-    def can_read(module: str) -> bool:
-        return is_enabled(module) and (is_admin or module in readable)
-
-    return HealthCapabilities(
-        communications=can_read("communications"),
-        tasks=can_read("tasks"),
-        digests=can_read("digests"),
-        profitability=(
-            is_admin
-            and is_enabled("finance")
-            and (is_admin or "finance_income" in readable)
-        ),
-    )
-
-
-def _health_sort_key(result: dict) -> tuple[bool, bool, int]:
-    """Put observed risk first, including partial risk without a global score."""
-    return (
-        result["risk_level"] != "at_risk",
-        result["score"] is None,
-        result["score"] or 0,
-    )
-
-
-@router.get("/health-scores")
-async def list_health_scores(
-    cohort: ClientCohort = Query("all"),
+@router.get("/portfolio")
+async def client_portfolio(
+    cohort: ClientCohort = Query("external"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("clients")),
 ):
-    """Health scores for all active clients."""
-    try:
-        query = select(Client).where(Client.status == ClientStatus.active)
-        result = await db.execute(_client_cohort(query, cohort).order_by(Client.name))
-        clients = result.scalars().all()
-        scores = await compute_health_batch(clients, db, _health_capabilities(current_user))
-        # Sort by score ascending (worst first)
-        scores.sort(key=_health_sort_key)
-        return scores
-    except Exception as e:
-        logger.error("Error computing batch health scores: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Error calculando health scores")
+    """Cartera: estado explicado de cada cliente activo, lo que pide actuar primero."""
+    query = select(Client).where(Client.status == ClientStatus.active)
+    clients = (await db.execute(_client_cohort(query, cohort).order_by(Client.name))).scalars().all()
+    return await portfolio(db, list(clients), Viewer.of(current_user))
 
 
-@router.get("/{client_id}/health")
-async def get_client_health(
+@router.get("/{client_id}/status")
+async def client_status(
     client_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("clients")),
 ):
-    """Health score for a single client."""
-    result = await db.execute(select(Client).where(Client.id == client_id))
-    client = result.scalar_one_or_none()
+    """Estado explicado de un cliente (el mismo que su fila en la cartera)."""
+    client = await db.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
-    try:
-        return await compute_health(client, db, _health_capabilities(current_user))
-    except Exception as e:
-        logger.error("Error computing health for client %s: %s", client_id, e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Error calculando health score")
+    return (await portfolio(db, [client], Viewer.of(current_user)))[0]
 
 
 @router.get("/{client_id}", response_model=ClientResponse)
@@ -427,7 +380,7 @@ async def update_client(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conflicto al actualizar cliente")
-    except DataError as e:
+    except DataError:
         await db.rollback()
         raise HTTPException(status_code=422, detail="Datos inválidos: campo excede longitud máxima")
     except Exception as e:

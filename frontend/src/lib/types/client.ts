@@ -208,24 +208,33 @@ export interface ClientDashboard {
   monthly_profitability: Record<string, { income: number; cost: number }>
 }
 
-export interface ClientHealthScore {
+export type ClientStatusLevel = "ok" | "watch" | "act" | "no_data"
+
+/** Estado explicado de un cliente: una fila de la cartera. */
+export interface ClientStatusRow {
   client_id: number
   client_name: string
-  score: number | null
-  factors: {
-    communication: number | null
-    tasks: number | null
-    digests: number | null
-    profitability: number | null
-    followups: number | null
-  }
-  factor_max: Record<keyof ClientHealthScore["factors"], number>
-  observations: Record<keyof ClientHealthScore["factors"], string>
-  available_weight: number
-  available_source_count: number
-  enough_information: boolean
-  risk_signals: string[]
-  risk_level: "healthy" | "warning" | "at_risk" | "no_data"
+  status: ClientStatusLevel
+  /** Motivos de Vigilar/Actuar, lo que pide actuar primero. */
+  reasons: string[]
+  seo: {
+    source: "search_console" | "engine"
+    clicks: number
+    clicks_previous: number
+    change_pct: number | null
+    trend: "up" | "stable" | "down" | "drop_alert" | null
+    as_of: string | null
+  } | null
+  digest: {
+    cadence: "weekly" | "monthly"
+    last_sent_period_end: string | null
+    expected_period_end: string
+    state: "ok" | "due" | "late"
+  } | null
+  /** null = quien mira no puede leer tareas. */
+  tasks: { overdue: number; waiting: number; followups_late: number } | null
+  /** null = quien mira no puede leer horas. fee y consumption_pct sólo para admins con cuota. */
+  month: { hours: number; fee?: number; consumption_pct?: number } | null
 }
 
 export type ClientCohort = "all" | "external" | "internal"

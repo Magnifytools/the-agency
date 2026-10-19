@@ -79,15 +79,15 @@ export async function invalidateTaskChange(
     queryClient.invalidateQueries({ queryKey: myWeekKeys.all() }),
     queryClient.invalidateQueries({ queryKey: briefingKeys.all() }),
     queryClient.invalidateQueries({ queryKey: searchKeys.all() }),
-    queryClient.invalidateQueries({ queryKey: ["client-health-scores"] }),
+    queryClient.invalidateQueries({ queryKey: ["client-portfolio"] }),
   ]
-  if (clientIds.length === 0) invalidations.push(queryClient.invalidateQueries({ queryKey: ["client-health"] }))
+  if (clientIds.length === 0) invalidations.push(queryClient.invalidateQueries({ queryKey: ["client-status"] }))
   for (const clientId of clientIds) {
     invalidations.push(
       queryClient.invalidateQueries({ queryKey: clientKeys.summary(clientId) }),
       queryClient.invalidateQueries({ queryKey: clientKeys.dashboard(clientId) }),
       queryClient.invalidateQueries({ queryKey: ["client-activity", clientId] }),
-      queryClient.invalidateQueries({ queryKey: ["client-health", clientId] }),
+      queryClient.invalidateQueries({ queryKey: ["client-status", clientId] }),
     )
   }
   await Promise.all(invalidations)
@@ -104,15 +104,15 @@ export async function invalidateProjectChange(queryClient: QueryClient, affected
     queryClient.invalidateQueries({ queryKey: briefingKeys.all() }),
     queryClient.invalidateQueries({ queryKey: dashboardKeys.all() }),
     queryClient.invalidateQueries({ queryKey: searchKeys.all() }),
-    queryClient.invalidateQueries({ queryKey: ["client-health-scores"] }),
+    queryClient.invalidateQueries({ queryKey: ["client-portfolio"] }),
   ]
-  if (clientIds.length === 0) invalidations.push(queryClient.invalidateQueries({ queryKey: ["client-health"] }))
+  if (clientIds.length === 0) invalidations.push(queryClient.invalidateQueries({ queryKey: ["client-status"] }))
   for (const clientId of clientIds) {
     invalidations.push(
       queryClient.invalidateQueries({ queryKey: clientKeys.summary(clientId) }),
       queryClient.invalidateQueries({ queryKey: clientKeys.dashboard(clientId) }),
       queryClient.invalidateQueries({ queryKey: ["client-activity", clientId] }),
-      queryClient.invalidateQueries({ queryKey: ["client-health", clientId] }),
+      queryClient.invalidateQueries({ queryKey: ["client-status", clientId] }),
     )
   }
   await Promise.all(invalidations)
@@ -161,7 +161,7 @@ export async function invalidateClientChange(queryClient: QueryClient, clientIds
     queryClient.invalidateQueries({ queryKey: ["clients-active"] }),
     queryClient.invalidateQueries({ queryKey: ["clients-active-list"] }),
     queryClient.invalidateQueries({ queryKey: ["clients-list"] }),
-    queryClient.invalidateQueries({ queryKey: ["client-health-scores"] }),
+    queryClient.invalidateQueries({ queryKey: ["client-portfolio"] }),
     queryClient.invalidateQueries({ queryKey: ["active-timer"] }),
     queryClient.invalidateQueries({ queryKey: ["admin-active-timers"] }),
     queryClient.invalidateQueries({ queryKey: projectKeys.all() }),
@@ -177,7 +177,7 @@ export async function invalidateClientChange(queryClient: QueryClient, clientIds
     invalidations.push(
       queryClient.invalidateQueries({ queryKey: clientKeys.dashboard(clientId) }),
       queryClient.invalidateQueries({ queryKey: ["client-activity", clientId] }),
-      queryClient.invalidateQueries({ queryKey: ["client-health", clientId] }),
+      queryClient.invalidateQueries({ queryKey: ["client-status", clientId] }),
     )
   }
   await Promise.all(invalidations)

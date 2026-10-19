@@ -14,8 +14,8 @@ def september_business_date(monkeypatch):
     # The dataset exercises a specific month and a deadline due today. Keep
     # those semantics independent of the host's date, timezone and test time.
     from backend.api.routes import client_dashboard, dashboard, projects, time_entries
-    from backend.services import client_health
-    for module in (client_dashboard, dashboard, projects, time_entries, client_health):
+    from backend.services import client_status
+    for module in (client_dashboard, dashboard, projects, time_entries, client_status):
         monkeypatch.setattr(module, "business_today", lambda: date(2026, 9, 17))
 
 
@@ -79,11 +79,10 @@ async def test_month_metrics_share_manual_civil_and_timer_utc_boundaries(
     assert budget.status_code == 200, budget.text
     assert budget.json()["month"]["used_hours"] == pytest.approx(50 / 60, abs=0.01)
 
-    health = await admin_client.get(f"/api/clients/{client.id}/health")
-    assert health.status_code == 200, health.text
-    assert health.json()["observations"]["profitability"] == (
-        "Mes civil actual: coste estimado 33 de presupuesto 1000"
-    )
+    status = await admin_client.get(f"/api/clients/{client.id}/status")
+    assert status.status_code == 200, status.text
+    # Mismo mes civil de Madrid que el resto de métricas: 50 minutos.
+    assert status.json()["month"]["hours"] == pytest.approx(0.8, abs=0.01)
 
     client_dashboard = await admin_client.get(f"/api/clients/{client.id}/dashboard")
     assert client_dashboard.status_code == 200, client_dashboard.text

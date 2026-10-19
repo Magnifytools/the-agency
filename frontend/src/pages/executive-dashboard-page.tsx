@@ -4,7 +4,6 @@ import {
   financeAdvisorApi,
   financeForecastsApi,
   dashboardApi,
-  clientHealthApi,
   capacityApi,
   leadsApi,
   balanceApi,
@@ -12,7 +11,6 @@ import {
 import { profitabilityStatus } from "@/lib/profitability"
 import { MetricCard } from "@/components/dashboard/metric-card"
 import { RevenueTrendChart } from "@/components/dashboard/revenue-trend-chart"
-import { HealthGrid } from "@/components/dashboard/health-grid"
 import { CapacityBars } from "@/components/dashboard/capacity-bars"
 import { PipelineCard } from "@/components/dashboard/pipeline-card"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
@@ -79,12 +77,6 @@ export default function ExecutiveDashboardPage() {
     queryKey: ["exec-profitability", year, month],
     queryFn: () => dashboardApi.profitability({ year, month }),
     enabled: profitabilitySourcesEnabled,
-  })
-
-  // Client health scores
-  const { data: healthScores } = useQuery({
-    queryKey: ["exec-health"],
-    queryFn: () => clientHealthApi.list(),
   })
 
   // Team capacity
@@ -356,18 +348,6 @@ export default function ExecutiveDashboardPage() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Health Scores */}
-        {healthScores && healthScores.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Salud de clientes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <HealthGrid data={healthScores} />
             </CardContent>
           </Card>
         )}

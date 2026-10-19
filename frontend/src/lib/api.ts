@@ -123,7 +123,7 @@ import type {
   ClientResource,
   ClientResourceCreate,
   ClientDashboard,
-  ClientHealthScore,
+  ClientStatusRow,
   ClientCohort,
   CapacityMember,
   CapacityMemberDetail,
@@ -994,12 +994,12 @@ export const clientDashboardApi = {
     api.get<ClientDashboard>(`/clients/${clientId}/dashboard`).then((r) => r.data),
 }
 
-// --- Client Health Score ---
-export const clientHealthApi = {
+// --- Estado del cliente (cartera) ---
+export const clientStatusApi = {
   get: (clientId: number) =>
-    api.get<ClientHealthScore>(`/clients/${clientId}/health`).then((r) => r.data),
-  list: (cohort: ClientCohort = "all") =>
-    api.get<ClientHealthScore[]>("/clients/health-scores", { params: { cohort } }).then((r) => r.data),
+    api.get<ClientStatusRow>(`/clients/${clientId}/status`).then((r) => r.data),
+  portfolio: (cohort: ClientCohort = "external") =>
+    api.get<ClientStatusRow[]>("/clients/portfolio", { params: { cohort } }).then((r) => r.data),
 }
 
 // --- Capacity Planning ---

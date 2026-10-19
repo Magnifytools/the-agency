@@ -211,6 +211,23 @@ admin_users, admin_settings
   el editor enlaza ahí. Su `report-data` NO se usa: traga errores como ceros y
   no pondera la posición.
 
+## Estado del cliente (cartera)
+
+- **Qué es**: la antigua salud 0-100 se sustituyó (19 oct 2026) por un estado
+  explicado: `act` (Actuar) · `watch` (Vigilar) · `ok` (Bien) · `no_data`, con
+  la lista de motivos. Vive en `backend/services/client_status.py`; API
+  `GET /api/clients/portfolio` y `GET /api/clients/{id}/status`. La lista de
+  clientes abre en la vista Cartera (`?vista=listado` para la tabla clásica) y
+  la ficha muestra la misma tarjeta.
+- **Señales** (umbrales en el propio módulo): tráfico de Google 28 días
+  (`gsc_daily` propio; si no hay propiedad, summary de Engine), resumen según
+  `ClientReportPolicy` (toca / atrasado tras 5 días), tareas vencidas (≥ 3 =
+  Actuar; las tareas en espera no cuentan), seguimientos con el cliente
+  vencidos y consumo de la cuota del mes (sólo admin, ≥ 90 % / ≥ 110 %).
+- **No lee comunicaciones** (decisión de David): no añadas esa señal.
+- Cada señal se calcula sólo si quien mira puede leer su fuente; sin ninguna
+  señal el estado es `no_data`, nunca un "Bien" inventado.
+
 ## No tocar
 - Módulos financieros custom: tax_service, forecast_service, income, expenses, taxes, forecasts
 - Se reemplazarán por integración Holded en fase posterior
