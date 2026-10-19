@@ -146,6 +146,18 @@ admin_users, admin_settings
   `clients`. Clave `...:open`: se resuelve sola al recuperarse y un descarte se
   mantiene mientras dure la misma caída.
 
+## Ciclo mensual de resúmenes (fase 1 Agency 2.0)
+- **"Entregado" = evento de entrega externa** (`digest_external_delivery_events`,
+  botón "Marcar como entregado al cliente" del editor): guarda quién y cuándo.
+  `DigestStatus.sent` es una etiqueta histórica sin evidencia: no cuenta.
+- **Incidencia `report_unsent`** (`services/incident_report_conditions.py`): desde
+  el día 1, por cada cliente externo activo con política mensual habilitada cuyo
+  mes anterior no tiene ninguna versión con entrega confirmada. Destinatarios:
+  admins y el responsable de la política (con escritura en `digests`). Al
+  responsable no le llega mientras tenga `report_pending` (aún no hay versión).
+  Se resuelve sola al confirmar la entrega; clave por mes, así que el mes
+  siguiente la sustituye.
+
 ## Undo (deshacer los últimos cambios)
 
 - **Qué es**: los 5 últimos cambios de CADA usuario, deshacibles desde el panel
