@@ -77,11 +77,11 @@ def build_server(client: AgencyClient, *, timezone: str = "Europe/Madrid") -> MC
         day: Annotated[str | None, Field(description="Día AAAA-MM-DD. Por defecto, hoy.")] = None,
     ) -> str:
         """Agenda de un día de la persona: tareas planificadas, arrastradas de días
-        anteriores y completadas, más el temporizador activo y las notas del inbox
+        anteriores, seguimientos con clientes que ya tocan y completadas, más el temporizador activo y las notas del inbox
         sin procesar. Es el mejor punto de partida para "¿qué tengo hoy?"."""
         d = _opt_date(day) or today().isoformat()
         sections = {}
-        for section in ("planned", "carryover", "completed"):
+        for section in ("planned", "carryover", "followups", "completed"):
             page = await call(client.get(
                 "/api/tasks/agenda", date=d, section=section, assigned_to="me", page_size=50
             ))
@@ -93,6 +93,7 @@ def build_server(client: AgencyClient, *, timezone: str = "Europe/Madrid") -> MC
         for section, title in (
             ("planned", "Planificadas para el día"),
             ("carryover", "Arrastradas (vencidas o de días anteriores)"),
+            ("followups", "Seguimientos que ya tocan (esperando al cliente)"),
             ("completed", "Completadas ese día"),
         ):
             page = sections[section]

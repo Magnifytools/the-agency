@@ -71,13 +71,13 @@ describe("tasks URL navigation", () => {
   })
   it("defaults an administrator to personal work and explicitly switches all cohorts to team", async () => {
     showAgenda("/tasks?view=my_day")
-    await waitFor(() => expect(api.agenda).toHaveBeenCalledTimes(4))
+    await waitFor(() => expect(api.agenda).toHaveBeenCalledTimes(5))
     expect(api.agenda.mock.calls.every(([params]) => params.assigned_to === "me")).toBe(true)
     expect(screen.getByText("Alertas personales")).toBeInTheDocument()
     expect(screen.getByText("Próxima reunión personal")).toBeInTheDocument()
     await userEvent.selectOptions(screen.getByLabelText("Ámbito de Hoy"), "team")
-    await waitFor(() => expect(api.agenda).toHaveBeenCalledTimes(8))
-    expect(api.agenda.mock.calls.slice(4).every(([params]) => params.assigned_to === "all")).toBe(true)
+    await waitFor(() => expect(api.agenda).toHaveBeenCalledTimes(10))
+    expect(api.agenda.mock.calls.slice(5).every(([params]) => params.assigned_to === "all")).toBe(true)
     expect(screen.queryByText("Alertas personales")).not.toBeInTheDocument()
     expect(screen.queryByText("Próxima reunión personal")).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", {name:"Atrás navegador"}))
@@ -86,7 +86,7 @@ describe("tasks URL navigation", () => {
   it("ignores a team URL for members and always requests their own tasks", async () => {
     api.user.role = "member"
     showAgenda("/tasks?view=my_day&scope=team")
-    await waitFor(() => expect(api.agenda).toHaveBeenCalledTimes(4))
+    await waitFor(() => expect(api.agenda).toHaveBeenCalledTimes(5))
     expect(screen.queryByLabelText("Ámbito de Hoy")).not.toBeInTheDocument()
     expect(api.agenda.mock.calls.every(([params]) => params.assigned_to === "me")).toBe(true)
   })

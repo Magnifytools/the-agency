@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query"
 import { tasksApi, clientsApi, categoriesApi, usersApi } from "@/lib/api"
-import type { Task, TaskCreate, TaskStatus, TaskPriority } from "@/lib/types"
+import type { Task, TaskAgendaSection, TaskCreate, TaskStatus, TaskPriority } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { usePagination } from "@/hooks/use-pagination"
 import { useAuth } from "@/context/auth-context"
@@ -163,7 +163,7 @@ export default function TasksPage() {
     enabled: view !== "my_day",
   })
 
-  const useAgendaQuery = (section: "planned" | "carryover" | "unplanned" | "completed") => useInfiniteQuery({
+  const useAgendaQuery = (section: TaskAgendaSection) => useInfiniteQuery({
     queryKey: taskKeys.agenda(section, businessToday, user?.id, 0, agendaScope),
     queryFn: ({ pageParam }) => tasksApi.agenda({ date: businessToday, section, assigned_to: agendaScope === "team" ? "all" : "me", page: pageParam, page_size: pageSize }),
     initialPageParam: 1,
@@ -173,6 +173,7 @@ export default function TasksPage() {
   const plannedAgenda = useAgendaQuery("planned")
   const carryoverAgenda = useAgendaQuery("carryover")
   const unplannedAgenda = useAgendaQuery("unplanned")
+  const followupsAgenda = useAgendaQuery("followups")
   const completedAgenda = useAgendaQuery("completed")
   const retiredTasks = useInfiniteQuery({
     queryKey: taskKeys.list(["retired", user?.id]),
@@ -186,11 +187,11 @@ export default function TasksPage() {
     const last = pages[pages.length - 1]
     return { items: pages.flatMap((item) => item.items), total: last?.total ?? 0, page: last?.page ?? 1, page_size: last?.page_size ?? pageSize }
   }
-  const agendaLoading = plannedAgenda.isLoading || carryoverAgenda.isLoading || unplannedAgenda.isLoading || completedAgenda.isLoading
+  const agendaLoading = plannedAgenda.isLoading || carryoverAgenda.isLoading || unplannedAgenda.isLoading || followupsAgenda.isLoading || completedAgenda.isLoading
   const invalidateTaskViews = (affected: OperationalImpact = {}) =>
     invalidateTaskChange(queryClient, affected)
   const allTasks = tasksData?.items ?? []
-  const agendaTasks = [plannedAgenda, carryoverAgenda, unplannedAgenda, completedAgenda]
+  const agendaTasks = [plannedAgenda, carryoverAgenda, unplannedAgenda, followupsAgenda, completedAgenda]
     .flatMap((query) => agendaData(query).items)
   const visibleTasks = [...allTasks, ...agendaTasks]
 
@@ -383,7 +384,7 @@ export default function TasksPage() {
           <h1 className="text-2xl font-bold">{view === "my_day" ? "Hoy" : "Tareas"}</h1>
           {view === "my_day" ? (
             <p className="text-sm text-muted-foreground mt-1">
-              {agendaData(plannedAgenda).total} para hoy · {agendaData(carryoverAgenda).total} de arrastre · {agendaData(unplannedAgenda).total} sin planificar · {agendaData(completedAgenda).total} completadas hoy
+              {agendaData(plannedAgenda).total} para hoy · {agendaData(carryoverAgenda).total} de arrastre · {agendaData(unplannedAgenda).total} sin planificar · {agendaData(followupsAgenda).total} seguimientos · {agendaData(completedAgenda).total} completadas hoy
             </p>
           ) : view === "recurring" ? (
             <p className="text-sm text-muted-foreground mt-1">
@@ -775,25 +776,26 @@ export default function TasksPage() {
 
       {/* Conditional Rendering of Views */}
       {!isLoading && !agendaLoading && view === "my_day" && (
-        plannedAgenda.isError || carryoverAgenda.isError || unplannedAgenda.isError || completedAgenda.isError ? (
+        plannedAgenda.isError || carryoverAgenda.isError || unplannedAgenda.isError || followupsAgenda.isError || completedAgenda.isError ? (
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center">
             <p className="font-medium">No hemos podido cargar tus tareas. Reintenta.</p>
-            <Button variant="outline" className="mt-3" onClick={() => { plannedAgenda.refetch(); carryoverAgenda.refetch(); unplannedAgenda.refetch(); completedAgenda.refetch() }}>Reintentar</Button>
+            <Button variant="outline" className="mt-3" onClick={() => { plannedAgenda.refetch(); carryoverAgenda.refetch(); unplannedAgenda.refetch(); followupsAgenda.refetch(); completedAgenda.refetch() }}>Reintentar</Button>
           </div>
         ) : (
           <MyDayView
             planned={agendaData(plannedAgenda)}
             carryover={agendaData(carryoverAgenda)}
             unplanned={agendaData(unplannedAgenda)}
+            followups={agendaData(followupsAgenda)}
             completed={agendaData(completedAgenda)}
             retired={agendaData(retiredTasks)}
             retiredLoading={retiredTasks.isLoading}
             retiredError={retiredTasks.isError}
             onRetryRetired={() => void retiredTasks.refetch()}
-            isLoadingMore={plannedAgenda.isFetchingNextPage || carryoverAgenda.isFetchingNextPage || unplannedAgenda.isFetchingNextPage || completedAgenda.isFetchingNextPage || retiredTasks.isFetchingNextPage}
-            onLoadMore={(section) => ({ planned: plannedAgenda, carryover: carryoverAgenda, unplanned: unplannedAgenda, completed: completedAgenda, retired: retiredTasks }[section].fetchNextPage())}
+            isLoadingMore={plannedAgenda.isFetchingNextPage || carryoverAgenda.isFetchingNextPage || unplannedAgenda.isFetchingNextPage || followupsAgenda.isFetchingNextPage || completedAgenda.isFetchingNextPage || retiredTasks.isFetchingNextPage}
+            onLoadMore={(section) => ({ planned: plannedAgenda, carryover: carryoverAgenda, unplanned: unplannedAgenda, followups: followupsAgenda, completed: completedAgenda, retired: retiredTasks }[section].fetchNextPage())}
             onStatusChange={(id, status) => {
-              const task = [...agendaData(plannedAgenda).items, ...agendaData(carryoverAgenda).items, ...agendaData(unplannedAgenda).items, ...agendaData(completedAgenda).items].find((item) => item.id === id)
+              const task = [...agendaData(plannedAgenda).items, ...agendaData(carryoverAgenda).items, ...agendaData(unplannedAgenda).items, ...agendaData(followupsAgenda).items, ...agendaData(completedAgenda).items].find((item) => item.id === id)
               updateMutation.mutate({ id, data: { status: status === "completed" && task && sendsForReview(task) ? "in_review" : status } })
             }}
             onOpenEdit={openEdit}

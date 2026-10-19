@@ -127,4 +127,18 @@ describe("MyDayView", () => {
     expect(screen.getByRole("combobox", { name: "Estado de Editable" })).toBeEnabled()
   })
 
+
+  it("muestra los seguimientos que ya tocan, con a quién se espera", () => {
+    const onLoadMore = vi.fn()
+    render(<MyDayView planned={page([])} carryover={page([])} unplanned={page([])}
+      followups={page([task(5, "Accesos GSC", { status: "waiting", waiting_for: "Marta", follow_up_date: "2020-01-14", client_name: "Parklex" })], 2)}
+      completed={page([])} retired={page([])} onLoadMore={onLoadMore} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} onReviewCarryover={vi.fn()} canWrite />)
+
+    expect(screen.getByText("Seguimientos (2)")).toBeInTheDocument()
+    expect(screen.getByText("Accesos GSC")).toBeInTheDocument()
+    expect(screen.getByText("Esperando a Marta")).toBeInTheDocument()
+    expect(screen.getByText(/^Seguimiento 14 ene/)).toHaveClass("text-red-500")
+    fireEvent.click(screen.getByRole("button", { name: /Ver más seguimientos/ }))
+    expect(onLoadMore).toHaveBeenCalledWith("followups")
+  })
 })
