@@ -53,6 +53,8 @@ async def test_create_task_returns_201_when_notification_fails(admin_client, adm
     fake_task.recurrence_occurrence_date = None
     fake_task.recurring_parent_id = None
     fake_task.link_url = None
+    fake_task.procedure_text = None
+    fake_task.procedure_url = None
     fake_task.client = None
     fake_task.category = None
     fake_task.assigned_user = None

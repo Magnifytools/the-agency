@@ -1,0 +1,16 @@
+{
+  "version": "20261019_task_procedure_v1",
+  "sql": "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS procedure_text TEXT, ADD COLUMN IF NOT EXISTS procedure_url TEXT",
+  "columns": {
+    "procedure_text": [
+      "text",
+      true,
+      null
+    ],
+    "procedure_url": [
+      "text",
+      true,
+      null
+    ]
+  }
+}

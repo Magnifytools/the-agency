@@ -700,6 +700,10 @@ class Task(TimestampMixin, Base):
     # Historical instances stay NULL because their original date is unknown.
     recurrence_occurrence_date = Column(Date, nullable=True)
     recurring_parent_id = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
+    # Written procedure of a recurring template. Each generated occurrence
+    # keeps its own copy, so editing the template only changes future ones.
+    procedure_text = Column(Text, nullable=True)
+    procedure_url = Column(Text, nullable=True)
 
     __table_args__ = (
         CheckConstraint(

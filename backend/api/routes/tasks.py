@@ -126,6 +126,8 @@ def _task_to_response(task: Task) -> TaskResponse:
         recurring_parent_id=task.recurring_parent_id,
         recurrence_occurrence_date=task.recurrence_occurrence_date,
         link_url=task.link_url,
+        procedure_text=task.procedure_text,
+        procedure_url=task.procedure_url,
         client_name=_safe_attr(task, "client", "name"),
         category_name=_safe_attr(task, "category", "name"),
         assigned_user_name=_safe_attr(task, "assigned_user", "full_name"),

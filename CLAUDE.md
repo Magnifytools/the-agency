@@ -191,6 +191,14 @@ admin_users, admin_settings
   duro de clientes (`DELETE /api/clients/{id}/hard`) es de ese tipo y es
   irreversible por diseño.
 
+## Procedimientos en tareas recurrentes
+- La plantilla (`is_recurring`) guarda `procedure_text` + `procedure_url` y su
+  checklist hace de checklist modelo. El generador (`services/recurrence.py`)
+  copia ambos en cada repetición nueva (checklist sin marcar y sin fechas).
+- Copia, no lectura en vivo: editar la plantilla sólo cambia las futuras.
+- Sólo se escribe en la plantilla (`_validate_procedure` en `domain_writes.py`);
+  en la repetición se muestra en lectura. Detalle en `docs/recurrences.md`.
+
 ## MCP (manejar The Agency desde Claude)
 
 - **Qué es**: servidor MCP local por stdio en `mcp-server/` (paquete

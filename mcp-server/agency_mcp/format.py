@@ -96,6 +96,12 @@ def task_detail(
         lines.append(f"Creada por {t['created_by_name']} el {day(t.get('created_at'))}")
     if t.get("description"):
         lines += ["", "Descripción:", t["description"].strip()]
+    if t.get("procedure_text") or t.get("procedure_url"):
+        lines += ["", "Procedimiento:"]
+        if t.get("procedure_text"):
+            lines.append(t["procedure_text"].strip())
+        if t.get("procedure_url"):
+            lines.append(f"Documento de referencia: {t['procedure_url']}")
     if checklist:
         done = sum(1 for c in checklist if c.get("is_done"))
         lines += ["", f"Checklist ({done}/{len(checklist)}):"]

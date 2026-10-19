@@ -190,6 +190,19 @@ async def test_get_task_junta_checklist_y_comentarios(fake, agency):
     assert "Semillas y clusters" in text
 
 
+async def test_get_task_muestra_el_procedimiento(fake, agency):
+    fake.route("GET", "/api/tasks/7", {
+        **TASK, "procedure_text": "1. Exportar\n2. Revisar",
+        "procedure_url": "https://docs.example.test/proc"})
+    fake.route("GET", "/api/tasks/7/checklist", [])
+    fake.route("GET", "/api/tasks/7/comments", [])
+
+    _, text = await call(agency, "get_task", {"task_id": 7})
+
+    assert "Procedimiento:\n1. Exportar\n2. Revisar" in text
+    assert "Documento de referencia: https://docs.example.test/proc" in text
+
+
 async def test_horas_suman_por_cliente(fake, agency):
     fake.route("GET", "/api/time-entries", [
         {"id": 1, "minutes": 90, "date": "2026-10-13T00:00:00", "task_id": 7, "task_title": "KW", "client_name": "FG"},

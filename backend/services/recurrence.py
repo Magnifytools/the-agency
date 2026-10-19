@@ -128,10 +128,22 @@ def summarize_recurrence(
     return RecurrenceSummary("active", None, label, dates)
 
 
+def _copy_checklist(db: AsyncSession, task_id: int, items) -> None:
+    """Every occurrence starts with a fresh, unticked copy of the template's
+    checklist. Dates are not copied: they belong to one specific occurrence."""
+    from backend.db.models import TaskChecklist
+
+    for item in items:
+        db.add(TaskChecklist(
+            task_id=task_id, text=item.text, description=item.description,
+            order_index=item.order_index, assigned_to=item.assigned_to, is_done=False,
+        ))
+
+
 async def generate_recurring_instances(db: AsyncSession, *, target_date: date | None = None) -> int:
     """Materialize due templates for one business date; caller owns the session."""
     from backend.db.models import (
-        Client, ClientStatus, Project, ProjectStatus, Task,
+        Client, ClientStatus, Project, ProjectStatus, Task, TaskChecklist,
         TaskRecurrenceOccurrence, TaskStatus,
     )
     from backend.services.change_journal import paused as journal_paused
@@ -152,6 +164,13 @@ async def generate_recurring_instances(db: AsyncSession, *, target_date: date | 
         ).options(noload("*")).order_by(Task.id).with_for_update()
         .execution_options(populate_existing=True)
     )).scalars())
+    checklist_by_template: dict[int, list[TaskChecklist]] = {}
+    if templates:
+        for item in (await db.execute(
+            select(TaskChecklist).where(TaskChecklist.task_id.in_([t.id for t in templates]))
+            .options(noload("*")).order_by(TaskChecklist.order_index, TaskChecklist.id)
+        )).scalars():
+            checklist_by_template.setdefault(item.task_id, []).append(item)
     created = 0
     with journal_paused():
         for template in templates:
@@ -202,6 +221,8 @@ async def generate_recurring_instances(db: AsyncSession, *, target_date: date | 
                 "scheduled_date": today, "due_date": datetime.combine(today, time.min),
                 "recurring_parent_id": template.id, "is_recurring": False,
                 "recurrence_occurrence_date": today,
+                "procedure_text": template.procedure_text,
+                "procedure_url": template.procedure_url,
             }
             try:
                 async with db.begin_nested():
@@ -211,6 +232,7 @@ async def generate_recurring_instances(db: AsyncSession, *, target_date: date | 
                     db.add(TaskRecurrenceOccurrence(
                         template_id=template.id, date=today, task_id=task.id,
                     ))
+                    _copy_checklist(db, task.id, checklist_by_template.get(template.id, ()))
                     await db.flush()
                 created += 1
             except IntegrityError as exc:

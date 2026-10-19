@@ -63,7 +63,7 @@ async def test_upgrade_preserves_all_task_and_time_values(engine, legacy_tz):
     await deployment_schema.migrate_schema(engine)
     await deployment_schema.check_deployment_ready(engine)
     async with engine.connect() as conn:
-        after_tasks = (await conn.execute(text("SELECT to_jsonb(t)-'retired_at'-'retired_reason' FROM tasks t ORDER BY id"))).scalars().all()
+        after_tasks = (await conn.execute(text("SELECT to_jsonb(t)-'retired_at'-'retired_reason'-'procedure_text'-'procedure_url' FROM tasks t ORDER BY id"))).scalars().all()
         assert after_tasks == before_tasks
         assert (await conn.execute(text("SELECT to_jsonb(t) FROM time_entries t ORDER BY id"))).scalars().all() == before_time
         assert (await conn.execute(text("SELECT retired_at,retired_reason FROM tasks ORDER BY id"))).all() == [(None, None)] * 2

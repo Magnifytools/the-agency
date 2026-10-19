@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Clock,
   Download,
+  ExternalLink,
   Paperclip,
   Pause,
   Play,
@@ -72,6 +73,8 @@ const EMPTY: TaskCreate = {
   recurrence_end_date: null,
   recurrence_anchor_date: null,
   link_url: null,
+  procedure_text: null,
+  procedure_url: null,
 };
 
 function fromTask(task?: Task, defaults?: Defaults): TaskCreate {
@@ -104,6 +107,8 @@ function fromTask(task?: Task, defaults?: Defaults): TaskCreate {
     recurrence_end_date: task.recurrence_end_date,
     recurrence_anchor_date: task.recurrence_anchor_date,
     link_url: task.link_url,
+    procedure_text: task.procedure_text ?? null,
+    procedure_url: task.procedure_url ?? null,
   };
 }
 
@@ -440,6 +445,8 @@ export function TaskPanel({
   const loadedTask = taskQuery.data;
   const isRetired = !!loadedTask?.retired_at;
   const canOperate = canWrite && !isRetired;
+  const savedProcedureText = loadedTask?.procedure_text ?? null;
+  const savedProcedureUrl = loadedTask?.procedure_url ?? null;
   const statusPresentation = taskStatusPresentation(draft.status ?? "pending", draft.scheduled_date);
   const enteringWaiting = draft.status === "waiting" && loadedTask?.status !== "waiting";
   const waitingDetailsChanged = draft.status === "waiting" && (!!enteringWaiting
@@ -810,6 +817,65 @@ export function TaskPanel({
               <Label htmlFor="task-panel-link">Enlace</Label>
               <Input id="task-panel-link" type="url" value={draft.link_url ?? ""} onChange={(event) => change("link_url", event.target.value || null)} disabled={!canWrite} />
             </div>
+            {draft.is_recurring ? (
+              <details open={!!(savedProcedureText || savedProcedureUrl)}>
+                <summary className="cursor-pointer text-sm font-medium">
+                  Procedimiento
+                </summary>
+                <div className="mt-2 space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Cada repetición nueva copia estos pasos y empieza con la checklist sin marcar. Cambiarlos no afecta a las repeticiones ya creadas.
+                  </p>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="task-panel-procedure">Pasos</Label>
+                    <Textarea
+                      id="task-panel-procedure"
+                      value={draft.procedure_text ?? ""}
+                      onChange={(e) => change("procedure_text", e.target.value || null)}
+                      placeholder={"1. Exportar los datos\n2. Revisar…"}
+                      disabled={!canOperate}
+                      rows={6}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="task-panel-procedure-url">Documento de referencia</Label>
+                    <Input
+                      id="task-panel-procedure-url"
+                      type="url"
+                      placeholder="https://"
+                      value={draft.procedure_url ?? ""}
+                      onChange={(e) => change("procedure_url", e.target.value || null)}
+                      disabled={!canOperate}
+                    />
+                  </div>
+                </div>
+              </details>
+            ) : (savedProcedureText || savedProcedureUrl) && (
+              <details open>
+                <summary className="cursor-pointer text-sm font-medium">
+                  Procedimiento
+                </summary>
+                <div className="mt-2 space-y-2 rounded-md border border-border p-3 text-sm">
+                  {savedProcedureText && <p className="whitespace-pre-wrap">{savedProcedureText}</p>}
+                  {savedProcedureUrl && (
+                    <a
+                      href={savedProcedureUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 underline underline-offset-2"
+                    >
+                      Abrir documento de referencia
+                      <ExternalLink className="size-3" aria-hidden="true" />
+                    </a>
+                  )}
+                  {loadedTask?.recurring_parent_title && (
+                    <p className="text-xs text-muted-foreground">
+                      Copiado de {loadedTask.recurring_parent_title} al crear esta repetición. Se cambia en la plantilla.
+                    </p>
+                  )}
+                </div>
+              </details>
+            )}
             <details open={draft.status === "waiting"}>
               <summary className="cursor-pointer text-sm font-medium">
                 Espera y seguimiento
@@ -908,6 +974,13 @@ export function TaskPanel({
                         recurrence_anchor_date: event.target.checked
                           ? current.recurrence_anchor_date
                           : null,
+                        // Sin plantilla no hay procedimiento: se descarta lo no guardado.
+                        procedure_text: event.target.checked
+                          ? current.procedure_text
+                          : (taskQuery.data?.procedure_text ?? null),
+                        procedure_url: event.target.checked
+                          ? current.procedure_url
+                          : (taskQuery.data?.procedure_url ?? null),
                       })); }
                     }
                     disabled={!canOperate}
@@ -1064,6 +1137,11 @@ export function TaskPanel({
                 <div className="mt-3 space-y-5">
                   <section className="space-y-2">
                     <h3 className="text-sm font-medium">Checklist</h3>
+                    {loadedTask?.is_recurring && (
+                      <p className="text-xs text-muted-foreground">
+                        Cada repetición empieza con una copia de esta checklist, sin marcar y sin fechas.
+                      </p>
+                    )}
                     {checklistQuery.isError && (
                       <LoadError
                         label="checklist"

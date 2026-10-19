@@ -48,6 +48,9 @@ export interface Task {
   recurring_parent_id: number | null
   recurrence_occurrence_date?: string | null
   link_url: string | null
+  /** Procedimiento escrito en la plantilla recurrente; cada repetición guarda su copia. */
+  procedure_text?: string | null
+  procedure_url?: string | null
   created_at: string
   updated_at: string
   completed_at?: string | null
@@ -109,6 +112,8 @@ export interface TaskCreate {
   recurrence_paused?: boolean
   recurring_parent_id?: number | null
   link_url?: string | null
+  procedure_text?: string | null
+  procedure_url?: string | null
 }
 
 export type TaskAgendaSection = "planned" | "carryover" | "unplanned" | "followups" | "completed"
