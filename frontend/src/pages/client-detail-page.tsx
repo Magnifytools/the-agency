@@ -8,13 +8,13 @@ import type { TaskStatus, Client } from "@/lib/types"
 import { isEnabled } from "@/lib/hidden-modules"
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
-import { Pencil, Check, X, ExternalLink } from "lucide-react"
+import { Pencil, Check, X, ExternalLink, Settings } from "lucide-react"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { Clock, Heart } from "lucide-react"
+import { Clock } from "lucide-react"
 import { Breadcrumb } from "@/components/ui/breadcrumb"
 import { Skeleton, SkeletonCard } from "@/components/ui/skeleton"
 import { TimerButton } from "@/components/timer/timer-button"
@@ -35,7 +35,7 @@ import { useAuth } from "@/context/auth-context"
 import { clientKeys, holdedKeys, invalidateClientChange, projectKeys, timeKeys } from "@/lib/query-keys"
 import { formatCurrency } from "@/lib/format"
 import { TaskPanel } from "@/components/tasks/task-panel"
-import { ClientStatusBadge, ClientStatusReasons, DigestCell, SeoCell, WorkCell } from "@/components/clients/client-status"
+import { ClientOverview } from "@/components/clients/client-overview"
 import { InvoiceStatusBadge } from "@/components/finance/invoice-status-badge"
 
 function formatMinutes(m: number): string {
@@ -237,7 +237,7 @@ export default function ClientDetailPage() {
   const [creatingTask, setCreatingTask] = useState(false)
   const [whatIfOpen, setWhatIfOpen] = useState(false)
 
-  const validTabs = ["ficha", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "recursos", "seo", "informes", "ajustes", "facturas"] as const
+  const validTabs = ["ficha", "contexto", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "recursos", "seo", "informes", "ajustes", "facturas"] as const
   type Tab = (typeof validTabs)[number]
 
   // Pestaña -> módulo que la sirve. Si el módulo está oculto, sus endpoints no
@@ -429,9 +429,20 @@ export default function ClientDetailPage() {
           </div>
           {client.company && <p className="text-muted-foreground">{client.company}</p>}
         </div>
-        {canReadFinancialPanel && (activeTab === "ficha" || activeTab === "panel") && <Button variant="outline" size="sm" onClick={() => setWhatIfOpen(true)}>
-          ¿Y si pierdo este cliente?
-        </Button>}
+        <div className="flex items-center gap-2">
+          {canReadFinancialPanel && activeTab === "panel" && <Button variant="outline" size="sm" onClick={() => setWhatIfOpen(true)}>
+            ¿Y si pierdo este cliente?
+          </Button>}
+          <Button
+            variant={activeTab === "ajustes" || activeTab === "facturas" ? "secondary" : "ghost"}
+            size="icon"
+            aria-label="Ajustes del cliente"
+            title="Ajustes del cliente"
+            onClick={() => setActiveTab("ajustes")}
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Cuatro áreas estables; las URLs ?tab= heredadas siguen seleccionando
@@ -442,8 +453,8 @@ export default function ClientDetailPage() {
         const areas = ([
           {
             key: "resumen",
-            label: "Resumen",
-            tabs: ["ficha", "actividad", "panel"],
+            label: "Vista general",
+            tabs: ["ficha", "actividad"],
           },
           {
             key: "trabajo",
@@ -456,22 +467,28 @@ export default function ClientDetailPage() {
           },
           {
             key: "outputs",
-            label: "Resúmenes y archivos",
+            label: "Resultados",
             tabs: [
               ...(isTabVisible("resumenes") ? (["resumenes"] as TabKey[]) : []),
+              ...(client.engine_project_id ? (["seo"] as TabKey[]) : []),
+              "panel",
               ...(isTabVisible("informes") ? (["informes"] as TabKey[]) : []),
               ...(isTabVisible("comunicaciones")
                 ? (["comunicaciones"] as TabKey[])
                 : []),
               ...(isTabVisible("recursos") ? (["recursos"] as TabKey[]) : []),
-              ...(client.engine_project_id ? (["seo"] as TabKey[]) : []),
             ],
           },
           {
+            key: "relacion",
+            label: "Relación",
+            tabs: ["contexto", "contactos"],
+          },
+          {
+            // Fuera de la fila de áreas: se abre con el engranaje de la cabecera.
             key: "ajustes",
             label: "Ajustes",
             tabs: [
-              "contactos",
               ...(holdedEnabled && isTabVisible("facturas")
                 ? (["facturas"] as TabKey[])
                 : []),
@@ -482,7 +499,8 @@ export default function ClientDetailPage() {
         const activeArea =
           areas.find((area) => area.tabs.includes(activeTab)) ?? areas[0]
         const tabLabels: Record<TabKey, string> = {
-          ficha: "Ficha",
+          ficha: "Vista general",
+          contexto: "Contexto",
           actividad: "Actividad",
           panel: "Panel",
           tareas: "Tareas",
@@ -510,14 +528,14 @@ export default function ClientDetailPage() {
                 if (area?.tabs[0]) setActiveTab(area.tabs[0])
               }}
             >
-              {areas.map((area) => (
+              {areas.filter((area) => area.key !== "ajustes").map((area) => (
                 <option key={area.key} value={area.key}>
                   {area.label}
                 </option>
               ))}
             </Select>
             <div className="hidden md:flex items-center gap-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
-              {areas.map((area) => (
+              {areas.filter((area) => area.key !== "ajustes").map((area) => (
                 <Button
                   key={area.key}
                   variant={activeArea.key === area.key ? "default" : "ghost"}
@@ -563,7 +581,7 @@ export default function ClientDetailPage() {
 
       {/* Summary Cards — Tracked es la métrica canónica.
           Estimado/Real quedan como subtexto secundario (datos declarados vs fichados). */}
-      {(activeTab === "ficha" || activeTab === "panel") && <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {activeTab === "panel" && <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {canReadTasks && <Card>
           <CardContent className="p-4">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total tareas</p>
@@ -591,34 +609,26 @@ export default function ClientDetailPage() {
             </div>
           </CardContent>
         </Card>}
-        {canReadClientHealth && healthQuery.isError && (
-          <Card className={!canReadTasks && !canReadTime ? "col-span-2 lg:col-span-2" : undefined}>
-            <CardContent className="flex h-full flex-col items-start justify-center gap-2 p-4" role="alert">
-              <p className="text-sm">No se pudo calcular el estado del cliente.</p>
-              <Button variant="outline" size="sm" disabled={healthQuery.isFetching} onClick={() => void healthQuery.refetch()}>Reintentar</Button>
-            </CardContent>
-          </Card>
-        )}
-        {health && <Card className={`${!canReadTasks && !canReadTime ? "col-span-2 lg:col-span-2 " : ""}${health.status === "act" ? "border-red-500/40" : ""}`}>
-          <CardContent className="space-y-3 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                <Heart className="h-3 w-3 flex-shrink-0" /> <span className="truncate">Estado</span>
-              </p>
-              <ClientStatusBadge status={health.status} />
-            </div>
-            <ClientStatusReasons row={health} />
-            <div className="space-y-2 border-t pt-2">
-              <SeoCell seo={health.seo} />
-              <DigestCell digest={health.digest} />
-              <WorkCell tasks={health.tasks} month={health.month} />
-            </div>
-          </CardContent>
-        </Card>}
       </div>}
 
-      {/* Tab: Ficha */}
+      {/* Tab: Vista general — estado + Trabajo · Resultados · Relación */}
       {activeTab === "ficha" && (
+        <ClientOverview
+          client={client}
+          status={health}
+          statusFailed={canReadClientHealth && healthQuery.isError}
+          onRetryStatus={() => void healthQuery.refetch()}
+          tasks={canReadTasks ? summary.tasks ?? [] : null}
+          canReadDigests={isTabVisible("resumenes")}
+          canReadContacts
+          engineReportsUrl={client.engine_project_id && engineConfig?.engine_frontend_url
+            ? `${engineConfig.engine_frontend_url}/p/${client.engine_project_id}/reports` : null}
+          onNavigate={(section) => setActiveTab(section)}
+        />
+      )}
+
+      {/* Tab: Contexto (historia editable + interlocutor) */}
+      {activeTab === "contexto" && (
         <FichaTab client={client} onNavigateToContacts={() => setActiveTab("contactos")} />
       )}
 
