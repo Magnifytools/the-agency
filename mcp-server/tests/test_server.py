@@ -148,7 +148,7 @@ async def test_agenda_de_hoy_usa_el_dia_de_madrid(fake, agency):
     assert not is_error, text
     today = datetime.now(ZoneInfo("Europe/Madrid")).date().isoformat()
     sections = [r.url.params["section"] for r in fake.requests if r.url.path == "/api/tasks/agenda"]
-    assert sections == ["planned", "carryover", "completed"]
+    assert sections == ["planned", "carryover", "followups", "completed"]
     req = fake.last("GET", "/api/tasks/agenda")
     assert req.url.params["date"] == today and req.url.params["assigned_to"] == "me"
     assert "#7 Keyword research [en curso · alta]" in text

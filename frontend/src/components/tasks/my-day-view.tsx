@@ -13,10 +13,12 @@ interface Props {
   planned: PaginatedResponse<Task>
   carryover: PaginatedResponse<Task>
   unplanned: PaginatedResponse<Task>
+  /** Esperas cuyo seguimiento ya toca y que no salen en otra sección. */
+  followups?: PaginatedResponse<Task>
   completed: PaginatedResponse<Task>
   retired: PaginatedResponse<Task>
   isLoadingMore?: boolean
-  onLoadMore: (section: "planned" | "carryover" | "unplanned" | "completed" | "retired") => void
+  onLoadMore: (section: "planned" | "carryover" | "unplanned" | "followups" | "completed" | "retired") => void
   onStatusChange: (id: number, status: TaskStatus) => void
   onOpenEdit: (task: Task, initialStatus?: TaskStatus) => void
   onReviewCarryover: (task: Task) => void
@@ -47,7 +49,7 @@ const formatMinutes = (mins: number) => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-export function MyDayView({ planned, carryover, unplanned, completed, retired, isLoadingMore, onLoadMore, onStatusChange, onOpenEdit, onReviewCarryover, retiredLoading = false, retiredError = false, onRetryRetired, canWrite = false, canCompleteReviewedTask = () => true }: Props) {
+export function MyDayView({ planned, carryover, unplanned, followups = { items: [], total: 0, page: 1, page_size: 25 }, completed, retired, isLoadingMore, onLoadMore, onStatusChange, onOpenEdit, onReviewCarryover, retiredLoading = false, retiredError = false, onRetryRetired, canWrite = false, canCompleteReviewedTask = () => true }: Props) {
   const today = businessDateString()
   const [showRetired, setShowRetired] = useState(false)
 
@@ -69,6 +71,7 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
   const plannedTodayTasks = sortTasks(planned.items)
   const carryoverTasks = sortTasks(carryover.items)
   const unplannedTasks = sortTasks(unplanned.items)
+  const followupTasks = [...followups.items].sort((a, b) => (a.follow_up_date ?? "").localeCompare(b.follow_up_date ?? ""))
   const completedToday = completed.items
 
   const renderTaskCard = (task: Task, carryover = false) => {
@@ -124,6 +127,12 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
             <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground flex-wrap">
               {statusPresentation.detail && <span>{statusPresentation.detail}</span>}
               {task.client_name && <span>{task.client_name}</span>}
+              {task.status === "waiting" && task.waiting_for && <span>Esperando a {task.waiting_for}</span>}
+              {task.status === "waiting" && task.follow_up_date && (
+                <span className={cn(task.follow_up_date < today && "text-red-500 font-medium")}>
+                  Seguimiento {formatCivilDate(task.follow_up_date, { day: "numeric", month: "short" })}
+                </span>
+              )}
               {task.project_name && <span className="text-muted-foreground">· {task.project_name}</span>}
               {task.estimated_minutes && (
                 <span className="flex items-center gap-0.5">
@@ -207,6 +216,19 @@ export function MyDayView({ planned, carryover, unplanned, completed, retired, i
           {carryover.total > carryover.items.length && (
             <Button variant="outline" className="mt-3" disabled={isLoadingMore} onClick={() => onLoadMore("carryover")}>
               Ver más de arrastre ({carryover.total - carryover.items.length} restantes)
+            </Button>
+          )}
+        </div>
+      )}
+
+      {followupTasks.length > 0 && (
+        <div className="mt-6">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Seguimientos ({followups.total})</p>
+          <p className="mb-2 text-sm text-muted-foreground">Tareas en espera del cliente cuya fecha de seguimiento ya ha llegado.</p>
+          <div className="space-y-2">{followupTasks.map((task) => renderTaskCard(task))}</div>
+          {followups.total > followups.items.length && (
+            <Button variant="outline" className="mt-3" disabled={isLoadingMore} onClick={() => onLoadMore("followups")}>
+              Ver más seguimientos ({followups.total - followups.items.length} restantes)
             </Button>
           )}
         </div>

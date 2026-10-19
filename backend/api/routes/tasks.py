@@ -327,7 +327,7 @@ async def list_tasks(
 @router.get("/agenda", response_model=PaginatedResponse[TaskResponse])
 async def list_task_agenda(
     date: date_type = Query(...),
-    section: Literal["planned", "carryover", "unplanned", "completed"] = Query(...),
+    section: Literal["planned", "carryover", "unplanned", "followups", "completed"] = Query(...),
     assigned_to: str = Query("me"),
     timezone_offset_minutes: int = Query(
         0, ge=-840, le=840, deprecated=True,
@@ -383,6 +383,15 @@ async def list_task_agenda(
             Task.status != TaskStatus.completed,
             Task.status != TaskStatus.waiting,
             Task.scheduled_date.is_(None),
+            or_(Task.due_date.is_(None), due_day > date),
+        )
+    elif section == "followups":
+        # Esperas cuyo seguimiento ya toca. Las que vencen hoy o antes ya salen
+        # en planned/carryover; aquí sólo las que no saldrían en ningún sitio.
+        base = base.where(
+            Task.status == TaskStatus.waiting,
+            Task.follow_up_date.is_not(None),
+            Task.follow_up_date <= date,
             or_(Task.due_date.is_(None), due_day > date),
         )
     else:

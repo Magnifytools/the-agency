@@ -424,3 +424,38 @@ async def test_explicit_actual_requires_timesheet_write_permission(
         assert allowed.status_code == 201, allowed.text
     finally:
         await allowed_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_agenda_followups_surface_waiting_tasks_once_their_follow_up_is_due(
+    admin_client, db_session
+):
+    from backend.services.daily_reminders import generate_morning_plan
+
+    user_id = admin_client.test_user.id
+    target_day = date(2026, 10, 19)
+    await _task(db_session, user_id, title="Seguimiento que toca", status=TaskStatus.waiting,
+                waiting_for="Marta", follow_up_date=target_day - timedelta(days=2))
+    await _task(db_session, user_id, title="Seguimiento de hoy", status=TaskStatus.waiting,
+                follow_up_date=target_day, due_date=datetime(2026, 10, 30, 12, 0))
+    await _task(db_session, user_id, title="Seguimiento futuro", status=TaskStatus.waiting,
+                follow_up_date=target_day + timedelta(days=1))
+    await _task(db_session, user_id, title="Espera vencida", status=TaskStatus.waiting,
+                follow_up_date=target_day, due_date=datetime(2026, 10, 18, 12, 0))
+    await db_session.flush()
+
+    async def section(name):
+        response = await admin_client.get(
+            "/api/tasks/agenda", params={"date": target_day.isoformat(), "section": name},
+        )
+        assert response.status_code == 200, response.text
+        return {item["title"] for item in response.json()["items"]}
+
+    # La vencida ya sale como arrastre: cada espera aparece en una sola sección.
+    assert await section("followups") == {"Seguimiento que toca", "Seguimiento de hoy"}
+    assert "Espera vencida" in await section("carryover")
+
+    plan = await generate_morning_plan(db_session, admin_client.test_user, day=target_day)
+    assert "Seguimiento que toca (esperando a Marta) (seguimiento 17/10)" in plan
+    assert "Seguimiento de hoy" in plan
+    assert "Seguimiento futuro" not in plan

@@ -111,7 +111,7 @@ export interface TaskCreate {
   link_url?: string | null
 }
 
-export type TaskAgendaSection = "planned" | "carryover" | "unplanned" | "completed"
+export type TaskAgendaSection = "planned" | "carryover" | "unplanned" | "followups" | "completed"
 
 export interface TaskComment {
   id: number

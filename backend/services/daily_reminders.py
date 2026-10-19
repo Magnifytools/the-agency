@@ -64,7 +64,9 @@ def _morning_sections(today: date):
         ("Sin planificar", actionable & Task.scheduled_date.is_(None) & or_(
             Task.due_date.is_(None), due_day > today,
         )),
-        ("En espera (no son acciones inmediatas)", (Task.status == TaskStatus.waiting) & (due_day <= today)),
+        ("En espera (no son acciones inmediatas)", (Task.status == TaskStatus.waiting) & or_(
+            due_day <= today, Task.follow_up_date <= today,
+        )),
     )
 
 
@@ -87,6 +89,11 @@ def _morning_task_line(task: Task, today: date, *, mark_unassigned: bool) -> str
         parts.append("(en revisión)")
     if task.client:
         parts.append(f"\u2014 {task.client.name}")
+    if task.status == TaskStatus.waiting:
+        if task.waiting_for:
+            parts.append(f"(esperando a {task.waiting_for})")
+        if task.follow_up_date and task.follow_up_date <= today:
+            parts.append(f"(seguimiento {task.follow_up_date:%d/%m})")
     if task.due_date:
         task_due_day = task.due_date.date()
         if task_due_day < today:
