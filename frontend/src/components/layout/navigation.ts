@@ -35,7 +35,6 @@ const areas: NavigationArea[] = [
     { to: "/capacity", label: "Capacidad", admin: true, hidden: "capacity" },
     { to: "/discord", label: "Integraciones", admin: true, hidden: "discord" },
     { to: "/automations", label: "Automatizaciones", admin: true, hidden: "automations" },
-    { to: "/vault", label: "Vault", admin: true, hidden: "vault" },
     { to: "/finance", label: "Finanzas", admin: true, hidden: "finance" },
   ] },
 ]
