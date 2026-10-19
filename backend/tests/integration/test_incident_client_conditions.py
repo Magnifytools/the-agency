@@ -75,6 +75,8 @@ async def test_only_real_drops_on_active_linked_clients_raise_a_condition(db_ses
         await _client(db_session, _summary(400, 1000), is_internal=True),
         await _client(db_session, _summary(400, 1000), engine_project_id=None),
         await _client(db_session, {"clicks_30d": "400", "clicks_previous_30d": 1000}),  # malformed
+        await _client(db_session, {"clicks_30d": "abc", "clicks_previous_30d": "1.000"}),
+        await _client(db_session, {"clicks_30d": {"v": 1}, "clicks_previous_30d": [1000]}),
         await _client(db_session, None),
     ]:
         await _own(db_session, client, owner)
@@ -179,3 +181,26 @@ async def test_client_list_sorts_biggest_drops_first_across_pages(db_session, ad
     assert first["seo_trend"] == "drop_alert" and first["seo_clicks_change_pct"] == -70.0
     assert (await order("seo_change_desc"))[0] == [grows.id, dips.id, falls.id, no_base.id]
     assert (await admin_client.get("/api/clients", params={"sort": "bogus"})).status_code == 422
+
+
+@pytest.mark.parametrize("summary", [
+    {"clicks_30d": "abc", "clicks_previous_30d": 1000},
+    {"clicks_30d": 400, "clicks_previous_30d": ""},
+    {"clicks_30d": True, "clicks_previous_30d": {"v": 1000}},
+    {"clicks_30d": None, "clicks_previous_30d": [1000]},
+    {},
+])
+async def test_drop_clause_never_casts_a_non_numeric_value(db_session, summary):
+    """Whatever order Postgres picks, a non-numeric value is "no drop", not an error."""
+    from sqlalchemy import cast, literal, not_
+    from sqlalchemy.dialects.postgresql import JSONB
+
+    from backend.services.seo_traffic import traffic_drop_clause
+
+    clause = traffic_drop_clause(cast(literal(summary, JSONB), JSONB))
+    assert (await db_session.execute(select(clause))).scalar_one() is False
+    assert (await db_session.execute(select(not_(clause)))).scalar_one() is True
+    client = await _client(db_session, summary)
+    assert (await db_session.execute(select(Client.id).where(
+        Client.id == client.id, traffic_drop_clause(Client.engine_summary_data),
+    ))).all() == []

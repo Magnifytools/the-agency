@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from sqlalchemy import Float, and_, case, cast, func
+from sqlalchemy import Float, and_, case, cast, false, func
 
 from backend.config import settings
 
@@ -86,11 +86,20 @@ def traffic_drop_clause(summary_column):
     def value(key):
         return cast(summary_column[key].astext, Float)
 
-    return and_(
-        func.jsonb_typeof(summary_column["clicks_30d"]) == "number",
-        func.jsonb_typeof(summary_column["clicks_previous_30d"]) == "number",
-        value("clicks_previous_30d") >= _min_previous_clicks(),
-        value("clicks_30d") <= value("clicks_previous_30d") * (1 - settings.SEO_DROP_ALERT_PCT / 100),
+    # Postgres does not promise to evaluate AND left to right, so the casts go
+    # inside a CASE: a non-numeric value must read as "no drop", not raise.
+    return case(
+        (
+            and_(
+                func.jsonb_typeof(summary_column["clicks_30d"]) == "number",
+                func.jsonb_typeof(summary_column["clicks_previous_30d"]) == "number",
+            ),
+            and_(
+                value("clicks_previous_30d") >= _min_previous_clicks(),
+                value("clicks_30d") <= value("clicks_previous_30d") * (1 - settings.SEO_DROP_ALERT_PCT / 100),
+            ),
+        ),
+        else_=false(),
     )
 
 
