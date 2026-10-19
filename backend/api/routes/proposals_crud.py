@@ -460,26 +460,7 @@ async def generate_proposal_content(
                 recurring = "/mes" if opt.get("is_recurring") else ""
                 pricing_str += f"- {opt['name']}: {opt.get('price', 0)}EUR{recurring}{rec} -- {opt.get('description', '')}\n"
 
-    # Enrich prompt with client revenue fields when available
     client_context = ""
-    if prop.client_id:
-        client_result = await db.execute(select(Client).where(Client.id == prop.client_id))
-        client_obj = client_result.scalar_one_or_none()
-        if client_obj:
-            fields = []
-            if client_obj.business_model:
-                fields.append(f"- Modelo de negocio: {client_obj.business_model}")
-            if client_obj.aov:
-                fields.append(f"- Valor medio de pedido (AOV): {client_obj.aov}EUR")
-            if client_obj.conversion_rate:
-                fields.append(f"- Tasa de conversion: {client_obj.conversion_rate}%")
-            if client_obj.ltv:
-                fields.append(f"- Valor de vida del cliente (LTV): {client_obj.ltv}EUR")
-            if client_obj.seo_maturity_level:
-                fields.append(f"- Madurez SEO: {client_obj.seo_maturity_level}")
-            if fields:
-                client_context = "\n\nDATOS DE NEGOCIO DEL CLIENTE:\n" + "\n".join(fields)
-                client_context += "\nUsa estos datos para hacer estimaciones de ROI mas especificas en la propuesta."
 
     prompt = f"""Eres el redactor de propuestas de Magnify, una consultora SEO boutique en Barcelona dirigida por David Carrasco. Generas propuestas de servicios SEO profesionales, directas y centradas en el impacto de negocio del cliente.
 

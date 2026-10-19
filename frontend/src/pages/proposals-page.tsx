@@ -118,7 +118,6 @@ export default function ProposalsPage() {
     }
 
     const openEdit = (p: Proposal) => {
-        const clientData = p.client_id ? clients.find(c => c.id === p.client_id) : null
         setForm({
             title: p.title,
             lead_id: p.lead_id,
@@ -126,13 +125,12 @@ export default function ProposalsPage() {
             contact_name: p.contact_name || "",
             company_name: p.company_name || "",
             service_type: p.service_type,
-            business_model: clientData?.business_model || "",
-            aov: clientData?.aov?.toString() || "",
-            conversion_rate: clientData?.conversion_rate?.toString() || "",
-            ltv: clientData?.ltv?.toString() || "",
-            seo_maturity_level: clientData?.seo_maturity_level || "",
+            business_model: "",
+            aov: "",
+            conversion_rate: "",
+            ltv: "",
+            seo_maturity_level: "",
             current_monthly_traffic: "",
-            save_to_client: false,
             situation: p.situation || "",
             problem: p.problem || "",
             cost_of_inaction: p.cost_of_inaction || "",
@@ -202,7 +200,6 @@ export default function ProposalsPage() {
         return (
             <ProposalDetail
                 proposal={selectedProposal}
-                clients={clients}
                 onBack={() => { setView("list"); setSelectedId(null) }}
                 onEdit={openEdit}
             />

@@ -20,16 +20,10 @@ class ClientCreate(BaseModel):
     is_internal: bool = False
     intermediary_name: Optional[str] = None
     is_intermediary_deal: bool = False
-    cif: Optional[str] = None
     vat_number: Optional[str] = None
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
     # Revenue intelligence
-    business_model: Optional[str] = None
-    aov: Optional[float] = None
-    conversion_rate: Optional[float] = None
-    ltv: Optional[float] = None
-    seo_maturity_level: Optional[str] = None
     context: Optional[str] = None
 
 
@@ -44,7 +38,6 @@ class ClientUpdate(BaseModel):
     status: Optional[ClientStatus] = None
     notes: Optional[str] = None
     is_internal: Optional[bool] = None
-    cif: Optional[str] = None
     vat_number: Optional[str] = None
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
@@ -52,11 +45,6 @@ class ClientUpdate(BaseModel):
     intermediary_name: Optional[str] = None
     is_intermediary_deal: Optional[bool] = None
     # Revenue intelligence
-    business_model: Optional[str] = None
-    aov: Optional[float] = None
-    conversion_rate: Optional[float] = None
-    ltv: Optional[float] = None
-    seo_maturity_level: Optional[str] = None
     context: Optional[str] = None
     slack_template: Optional[dict] = None
 
@@ -84,15 +72,9 @@ class ClientResponse(BaseModel):
     engine_summary_data: Optional[dict] = None
     engine_alerts_data: Optional[dict] = None
     # Revenue intelligence
-    business_model: Optional[str] = None
-    aov: Optional[float] = None
-    conversion_rate: Optional[float] = None
-    ltv: Optional[float] = None
-    seo_maturity_level: Optional[str] = None
     is_internal: bool = False
     intermediary_name: Optional[str] = None
     is_intermediary_deal: bool = False
-    cif: Optional[str] = None
     vat_number: Optional[str] = None
     context: Optional[str] = None
     slack_template: Optional[dict] = None

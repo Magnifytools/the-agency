@@ -16,7 +16,6 @@ export interface Client {
   monthly_budget: number | null
   status: ClientStatus
   notes: string | null
-  cif: string | null
   vat_number: string | null
   currency: string
   monthly_fee: number | null
@@ -36,11 +35,6 @@ export interface Client {
   seo_impressions_change_pct: number | null
   seo_trend: SeoTrend | null
   // Revenue intelligence
-  business_model: string | null
-  aov: number | null
-  conversion_rate: number | null
-  ltv: number | null
-  seo_maturity_level: string | null
   is_internal: boolean
   intermediary_name: string | null
   is_intermediary_deal: boolean
@@ -69,7 +63,6 @@ export interface ClientCreate {
   monthly_budget?: number | null
   status?: ClientStatus
   notes?: string | null
-  cif?: string | null
   vat_number?: string | null
   currency?: string
   monthly_fee?: number | null
@@ -77,11 +70,6 @@ export interface ClientCreate {
   gsc_url?: string | null
   engine_project_id?: number | null
   // Revenue intelligence
-  business_model?: string | null
-  aov?: number | null
-  conversion_rate?: number | null
-  ltv?: number | null
-  seo_maturity_level?: string | null
   is_internal?: boolean
   intermediary_name?: string | null
   is_intermediary_deal?: boolean

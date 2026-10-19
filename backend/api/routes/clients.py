@@ -95,7 +95,6 @@ Responde SOLO con un JSON válido con los campos que puedas extraer (omite los q
   "contract_type": "monthly si es recurrente/retención, one_time si es puntual",
   "monthly_budget": importe mensual numérico o null (solo si es fijo; si es variable, dejarlo null)",
   "notes": "resumen breve de la relación y contexto importante (2-3 frases)",
-  "business_model": "sector/modelo de negocio del cliente (ej: ecommerce, saas, igaming, media, fintech, etc.) o null",
   "is_intermediary_deal": true si hay una agencia intermediaria entre nosotros y el cliente final,
   "intermediary_name": "nombre de la agencia intermediaria o null",
   "context": "resumen ejecutivo completo: quién es el cliente, cómo llegó, qué se ha hecho, qué se ha prometido, particularidades del trato",
@@ -168,7 +167,6 @@ class ClientExtract(BaseModel):
     contract_type: Optional[str] = None
     monthly_budget: Optional[float] = None
     notes: Optional[str] = None
-    business_model: Optional[str] = None
     is_intermediary_deal: bool = False
     intermediary_name: Optional[str] = None
     context: Optional[str] = None
@@ -364,9 +362,8 @@ async def update_client(
     _UPDATABLE_CLIENT_FIELDS = {
         "name", "email", "phone", "company", "website", "contract_type",
         "monthly_budget", "status", "notes", "is_internal", "ga4_property_id",
-        "gsc_url", "engine_project_id", "business_model", "aov",
-        "conversion_rate", "ltv", "seo_maturity_level", "context",
-        "cif", "vat_number", "slack_template",
+        "gsc_url", "engine_project_id", "context",
+        "vat_number", "slack_template",
     }
     if "engine_project_id" in update_data:
         if update_data["engine_project_id"] != client.engine_project_id:

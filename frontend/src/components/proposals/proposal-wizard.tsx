@@ -4,7 +4,7 @@ import {
     Plus, Trash2, XCircle, ChevronRight, ChevronLeft,
     Euro, AlertTriangle, Calculator
 } from "lucide-react"
-import { proposalsApi, investmentsApi, clientsApi } from "@/lib/api"
+import { proposalsApi, investmentsApi } from "@/lib/api"
 import type {
     ProposalCreate, ServiceType, PricingOption,
     InvestmentCalculateResponse, Client, Lead, ServiceTemplate,
@@ -19,7 +19,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { serviceTypeLabels } from "@/lib/constants"
-import { invalidateClientChange } from "@/lib/query-keys"
 
 export interface WizardForm {
     title: string
@@ -34,7 +33,6 @@ export interface WizardForm {
     ltv: string
     seo_maturity_level: string
     current_monthly_traffic: string
-    save_to_client: boolean
     situation: string
     problem: string
     cost_of_inaction: string
@@ -60,7 +58,6 @@ export const emptyForm: WizardForm = {
     ltv: "",
     seo_maturity_level: "",
     current_monthly_traffic: "",
-    save_to_client: false,
     situation: "",
     problem: "",
     cost_of_inaction: "",
@@ -371,21 +368,6 @@ export function ProposalWizard({
             valid_until: form.valid_until ? new Date(form.valid_until).toISOString() : undefined,
         }
 
-        if (form.save_to_client && form.client_id) {
-            try {
-                await clientsApi.update(form.client_id, {
-                    business_model: form.business_model || null,
-                    aov: form.aov ? Number(form.aov) : null,
-                    conversion_rate: form.conversion_rate ? Number(form.conversion_rate) : null,
-                    ltv: form.ltv ? Number(form.ltv) : null,
-                    seo_maturity_level: form.seo_maturity_level || null,
-                })
-                void invalidateClientChange(queryClient, [form.client_id])
-            } catch {
-                // Client data save is best-effort; proposal creation continues
-            }
-        }
-
         if (editingId) {
             updateMutation.mutate({ id: editingId, data: payload })
         } else {
@@ -459,11 +441,6 @@ export function ProposalWizard({
                                         if (client) setForm((prev) => ({
                                             ...prev,
                                             company_name: prev.company_name || client.name,
-                                            business_model: client.business_model || prev.business_model,
-                                            aov: client.aov?.toString() || prev.aov,
-                                            conversion_rate: client.conversion_rate?.toString() || prev.conversion_rate,
-                                            ltv: client.ltv?.toString() || prev.ltv,
-                                            seo_maturity_level: client.seo_maturity_level || prev.seo_maturity_level,
                                         }))
                                     }
                                 }}>
@@ -573,12 +550,6 @@ export function ProposalWizard({
                                 <Input type="number" value={form.current_monthly_traffic} onChange={e => setForm(f => ({ ...f, current_monthly_traffic: e.target.value }))} placeholder="5000" />
                             </div>
                         </div>
-                        {form.client_id && (
-                            <label className="flex items-center gap-2 text-sm">
-                                <input type="checkbox" checked={form.save_to_client} onChange={e => setForm(f => ({ ...f, save_to_client: e.target.checked }))} className="rounded" />
-                                Guardar estos datos en el cliente
-                            </label>
-                        )}
                     </div>
                 )}
 

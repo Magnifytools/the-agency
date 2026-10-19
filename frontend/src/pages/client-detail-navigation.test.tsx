@@ -131,39 +131,6 @@ describe("client detail areas", () => {
     expect(screen.getByText("21/9/2026")).toBeInTheDocument()
   })
 
-  it("names business intelligence actions and associates its edit fields", async () => {
-    show("panel")
-    await userEvent.click(await screen.findByRole("button", { name: "Editar inteligencia de negocio" }))
-    expect(screen.getByRole("combobox", { name: "Modelo de negocio" })).toBeInTheDocument()
-    expect(screen.getByRole("spinbutton", { name: "AOV (€)" })).toBeInTheDocument()
-    expect(screen.getByRole("spinbutton", { name: "Conversión (%)" })).toBeInTheDocument()
-    expect(screen.getByRole("spinbutton", { name: "LTV (€)" })).toBeInTheDocument()
-    expect(screen.getByRole("combobox", { name: "Madurez SEO" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Guardar inteligencia de negocio" })).toBeInTheDocument()
-    await userEvent.click(screen.getByRole("button", { name: "Cancelar edición de inteligencia de negocio" }))
-    expect(screen.getByRole("button", { name: "Editar inteligencia de negocio" })).toBeInTheDocument()
-  })
-
-  it("keeps business intelligence read-only for a client reader", async () => {
-    mocks.writePermissions.delete("clients")
-    show("panel")
-
-    expect(await screen.findByText("Inteligencia de Negocio")).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Editar inteligencia de negocio" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Guardar inteligencia de negocio" })).not.toBeInTheDocument()
-  })
-
-  it("does not submit business intelligence after client write access is revoked", async () => {
-    const view = show("panel")
-    await userEvent.click(await screen.findByRole("button", { name: "Editar inteligencia de negocio" }))
-    mocks.writePermissions.delete("clients")
-    view.refresh()
-
-    expect(screen.getByRole("combobox", { name: "Modelo de negocio" })).toBeDisabled()
-    expect(screen.getByRole("spinbutton", { name: "AOV (€)" })).toBeDisabled()
-    expect(screen.queryByRole("button", { name: "Guardar inteligencia de negocio" })).not.toBeInTheDocument()
-  })
-
   it("falls back safely when a legacy URL points to a hidden module", async () => {
     mocks.enabled.delete("communications")
     show("comunicaciones")
@@ -374,7 +341,6 @@ describe("client detail areas", () => {
     expect(await screen.findByText("Tiempo visible")).toBeInTheDocument()
     expect(mocks.projects).not.toHaveBeenCalled()
   })
-
 
   it("keeps the old ficha (context and contact) one tab away, in Relación", async () => {
     show("contexto")
