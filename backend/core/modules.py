@@ -32,7 +32,6 @@ HIDDEN_MODULES: frozenset[str] = frozenset(
         "finance",        # 0 llamadas — 8 páginas: ingresos, gastos, impuestos,
                           #              previsiones, asesor, importación, balance
         "holded",         # 26 — dos visitas en 77 días
-        "cfo",            # 0
         "reports",        # 0 — el informe mensual se hace fuera de la aplicación
         "proposals",      # 30, solo el listado: nunca se creó una propuesta
         "leads",          # 37 — Pipeline

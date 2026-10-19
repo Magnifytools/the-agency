@@ -14,7 +14,6 @@
 export const HIDDEN_MODULES = [
   "finance", // 0 llamadas — 8 páginas
   "holded", // 26 — dos visitas en 77 días
-  "cfo", // 0
   "reports", // 0 — el informe mensual se hace fuera de la app
   "proposals", // 30, solo el listado: nunca se creó una propuesta
   "leads", // 37 — Pipeline
@@ -69,7 +68,6 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/automations": "automations",
   "/discord": "discord",
   "/finance": "finance",
-  "/finance/cfo": "cfo",
   "/finance/income": "finance",
   "/finance/expenses": "finance",
   "/finance/taxes": "finance",
