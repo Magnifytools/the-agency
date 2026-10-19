@@ -242,7 +242,6 @@ def test_startup_loops_match_enabled_catalog(monkeypatch):
         "holded": "holded-sync",
         "advanced_reset": "advanced-reset",
         "recurrence": "recurring-reconcile",
-        "overdue_automations": "overdue-automations",
         "scheduled_communications": "scheduled-communications",
         "calendar": "calendar-sync",
         "retention": "retention-cleanup",
@@ -256,7 +255,6 @@ def test_startup_loops_match_enabled_catalog(monkeypatch):
     if settings.DELIVERY_WORKER_ENABLED:
         expected.add("manual-deliveries")
     assert set(captured) == expected
-    assert definitions["overdue_automations"].spec.run_on_startup is False
 
 
 @pytest.mark.parametrize("failed", [0, 1])

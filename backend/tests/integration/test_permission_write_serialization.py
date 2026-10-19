@@ -7,10 +7,10 @@ from uuid import uuid4
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.routes.invitations import update_user_permissions
+from backend.api.routes.users import update_user_permissions
 from backend.api.routes.users import sync_default_permissions_all_users, sync_user_permissions
 from backend.db.models import Notification, Task, TaskStatus, User, UserPermission, UserRole
-from backend.schemas.invitation import PermissionItem, UserPermissionsUpdate
+from backend.schemas.permission import PermissionItem, UserPermissionsUpdate
 from backend.services.incidents import reconcile_recipient
 
 

@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import {
   CheckSquare, X, RefreshCw, Loader2, FolderKanban,
-  Users, Clock, Sparkles, ExternalLink, Paperclip, FileText, Image, Trash2,
+  Users, Clock, Sparkles, ExternalLink, Paperclip, FileText, Image, Trash2, Lightbulb,
 } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage, formatTimeAgo } from "@/lib/utils"
@@ -136,6 +136,15 @@ export function InboxNoteCard({ note }: Props) {
     onError: (err) => toast.error(getErrorMessage(err, "Error al descartar")),
   })
 
+  const suggestMutation = useMutation({
+    mutationFn: () => inboxApi.suggest(note.id),
+    onSuccess: () => {
+      invalidateAll()
+      toast.success("Sugerencia enviada a los administradores")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "No se pudo enviar la sugerencia")),
+  })
+
   const deleteMutation = useMutation({
     mutationFn: () => inboxApi.delete(note.id),
     onSuccess: () => {
@@ -207,7 +216,7 @@ export function InboxNoteCard({ note }: Props) {
               )}
               {note.status === "processed" && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-500 border border-green-500/20">
-                  Procesado
+                  {note.resolved_as === "app_suggestion" ? "Sugerencia para la app" : "Procesado"}
                 </span>
               )}
               {note.status === "dismissed" && (
@@ -341,6 +350,17 @@ export function InboxNoteCard({ note }: Props) {
                 {classifyMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                 Reclasificar
               </Button>}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs gap-1.5 px-3"
+                title="Envía la nota a los administradores como mejora para The Agency"
+                onClick={() => suggestMutation.mutate()}
+                disabled={suggestMutation.isPending}
+              >
+                {suggestMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Lightbulb className="w-3 h-3" />}
+                Sugerencia para la app
+              </Button>
               <Button
                 size="sm"
                 variant="ghost"

@@ -550,7 +550,6 @@ async def update_task(
     # Dependency changes lock both ids in order, avoiding A→B / B→A deadlocks.
     task = await lock_task_patch(db, task_id, update_data)
     old_assigned_to = task.assigned_to
-    old_status = task.status.value if hasattr(task.status, "value") else str(task.status)
     try:
         task = await update_task_write(
             db, task, update_data, actor=current_user,
@@ -570,23 +569,6 @@ async def update_task(
         await db.rollback()
         logger.error("Error actualizando tarea %d: %s", task_id, e)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
-    # Automation hook: task_completed
-    new_status = update_data.get("status")
-    if new_status and str(new_status) == "completed" and old_status != "completed":
-        try:
-            from backend.api.routes.automations import execute_automations
-            await execute_automations("task_completed", {
-                "task_id": task_id,
-                "task_title": task.title,
-                "project_id": task.project_id,
-                "client_id": task.client_id,
-                "phase_id": task.phase_id,
-                "assigned_to": task.assigned_to,
-                "old_status": old_status,
-            }, db)
-        except Exception as e:
-            logger.warning("Automation hook failed for task %d: %s", task_id, e)
-
     task = await _load_task_for_response(db, task.id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found after update")

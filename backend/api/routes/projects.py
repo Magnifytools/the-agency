@@ -867,25 +867,6 @@ async def _load_project_response(db: AsyncSession, project_id: int) -> Project:
     return project
 
 
-async def _after_project_status_change(
-    db: AsyncSession, project: Project, actor: User, old_status: str,
-) -> None:
-    new_status = project.status.value if hasattr(project.status, "value") else str(project.status)
-    if new_status == old_status:
-        return
-    try:
-        from backend.api.routes.automations import execute_automations
-        await execute_automations("project_status_changed", {
-            "project_id": project.id,
-            "project_name": project.name,
-            "client_id": project.client_id,
-            "old_status": old_status,
-            "new_status": new_status,
-        }, db)
-    except Exception as exc:
-        logger.warning("Automation hook failed for project %d: %s", project.id, exc)
-
-
 @router.get("/{project_id}/close-preview", response_model=ProjectClosePreview)
 async def project_close_preview(
     project_id: int,
@@ -909,10 +890,8 @@ async def project_close(
         expected_updated_at=body.expected_updated_at,
         preview_revision=body.preview_revision, actor=current_user,
     )
-    old_status = project.__dict__.get("_lifecycle_previous_status", ProjectStatus.active.value)
     await db.commit()
     project = await _load_project_response(db, project.id)
-    await _after_project_status_change(db, project, current_user, old_status)
     return _build_project_response(project, actor=current_user)
 
 
@@ -937,10 +916,8 @@ async def project_reopen(
         db, project_id, expected_updated_at=body.expected_updated_at,
         preview_revision=body.preview_revision, actor=current_user,
     )
-    old_status = project.__dict__.get("_lifecycle_previous_status", ProjectStatus.completed.value)
     await db.commit()
     project = await _load_project_response(db, project.id)
-    await _after_project_status_change(db, project, current_user, old_status)
     return _build_project_response(project, actor=current_user)
 
 
@@ -964,10 +941,6 @@ async def update_project(
             raise HTTPException(status_code=404, detail="Project not found")
         await require_current_write(db, _user, {"projects"})
 
-    old_status = project.__dict__.get(
-        "_lifecycle_previous_status",
-        project.status.value if hasattr(project.status, "value") else str(project.status),
-    )
     await validate_project_review(db, update_data, existing=project)
     if "owner_id" in update_data and update_data["owner_id"] != project.owner_id:
         await validate_project_owner(db, update_data["owner_id"])
@@ -980,9 +953,6 @@ async def update_project(
 
     await db.commit()
     project = await _load_project_response(db, project.id)
-
-    # Automation hook: project_status_changed
-    await _after_project_status_change(db, project, _user, old_status)
 
     return _build_project_response(project, actor=_user)
 
@@ -1095,18 +1065,6 @@ async def update_phase(
     await db.commit()
     await safe_refresh(db, phase, log_context="projects")
 
-    # Automation hook: phase_completed
-    if phase.completed_at and not was_completed_before:
-        try:
-            from backend.api.routes.automations import execute_automations
-            await execute_automations("phase_completed", {
-                "phase_id": phase.id,
-                "phase_name": phase.name,
-                "project_id": phase.project_id,
-            }, db)
-        except Exception as e:
-            logger.debug("Automation hook phase_completed failed (never break phase update): %s", e)
-            pass  # Never break phase update
 
     # Notify project members when phase is newly completed
     if phase.completed_at and not was_completed_before:

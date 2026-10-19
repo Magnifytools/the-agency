@@ -10,7 +10,7 @@ se reactiva en un minuto.
 
 1. Sin desplegar — variable de entorno en Railway::
 
-       AGENCY_HIDDEN_MODULES=finance,reports        # deja fuera el resto
+       AGENCY_HIDDEN_MODULES=finance,leads          # deja fuera el resto
        AGENCY_HIDDEN_MODULES=                       # reactiva TODOS
 
 2. Permanente — quitar su clave de ``HIDDEN_MODULES`` aquí **y** de
@@ -32,14 +32,10 @@ HIDDEN_MODULES: frozenset[str] = frozenset(
         "finance",        # 0 llamadas — 8 páginas: ingresos, gastos, impuestos,
                           #              previsiones, asesor, importación, balance
         "holded",         # 26 — dos visitas en 77 días
-        "cfo",            # 0
-        "reports",        # 0 — el informe mensual se hace fuera de la aplicación
         "proposals",      # 30, solo el listado: nunca se creó una propuesta
         "leads",          # 37 — Pipeline
         "growth",         # 4 — Buffer de ideas
         "my_week",        # 12 — 592 líneas de backend para 12 llamadas
-        "automations",    # 0 — ninguna regla llegó a ejecutarse
-        "vault",          # 0
         "capacity",       # solo frontend
         "executive",      # solo frontend
         # OJO — "discord" oculta la PANTALLA, pero su router sigue registrado
@@ -49,9 +45,6 @@ HIDDEN_MODULES: frozenset[str] = frozenset(
         # una API son cosas distintas; aquí solo queríamos lo primero.
         "discord",        # 13 visitas a la pantalla de ajustes del webhook
         "communications", # 0
-        "resources",      # 0
-        "evidence",       # 0 — los 7 endpoints
-        "invitations",    # 0 — sin un solo llamador en el frontend
         "export",         # 0
     }
 )

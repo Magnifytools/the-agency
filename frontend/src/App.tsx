@@ -22,7 +22,6 @@ const UsersPage = lazy(() => import("@/pages/users-page"))
 const TimesheetPage = lazy(() => import("@/pages/timesheet-page"))
 const ProjectsPage = lazy(() => import("@/pages/projects-page"))
 const ProjectDetailPage = lazy(() => import("@/pages/project-detail-page"))
-const ReportsPage = lazy(() => import("@/pages/reports-page"))
 const ProposalsPage = lazy(() => import("@/pages/proposals-page"))
 const LeadsPage = lazy(() => import("@/pages/leads-page"))
 const LeadDetailPage = lazy(() => import("@/pages/lead-detail-page"))
@@ -30,7 +29,6 @@ const DigestsPage = lazy(() => import("@/pages/digests-page"))
 const DigestEditPage = lazy(() => import("@/pages/digest-edit-page"))
 const GrowthPage = lazy(() => import("@/pages/growth-page"))
 const FinanceDashboardPage = lazy(() => import("@/pages/finance-dashboard-page"))
-const CfoPage = lazy(() => import("@/pages/cfo-page"))
 const IncomePage = lazy(() => import("@/pages/income-page"))
 const ExpensesPage = lazy(() => import("@/pages/expenses-page"))
 const TaxesPage = lazy(() => import("@/pages/taxes-page"))
@@ -42,13 +40,11 @@ const DiscordSettingsPage = lazy(() => import("@/pages/discord-settings-page"))
 const DailysPage = lazy(() => import("@/pages/dailys-page"))
 const CapacityPage = lazy(() => import("@/pages/capacity-page"))
 const ExecutiveDashboardPage = lazy(() => import("@/pages/executive-dashboard-page"))
-const AgencyVaultPage = lazy(() => import("@/pages/agency-vault-page"))
 const InboxPage = lazy(() => import("@/pages/inbox-page"))
 const DeliveryPage = lazy(() => import("@/pages/delivery-page"))
 const IncidentsPage = lazy(() => import("@/pages/incidents-page"))
 const MyWeekPage = lazy(() => import("@/pages/my-week-page"))
 const SettingsPage = lazy(() => import("@/pages/settings-page"))
-const AutomationsPage = lazy(() => import("@/pages/automations-page"))
 
 function PageLoader() {
   return (
@@ -119,10 +115,8 @@ export default function App() {
               <Route path="/digests" element={<PermissionRoute module="digests"><ErrorBoundary section="Digests"><Suspense fallback={<PageLoader />}><DigestsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/digests/:id/edit" element={<PermissionRoute module="digests"><ErrorBoundary section="DigestEdit"><Suspense fallback={<PageLoader />}><DigestEditPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/dailys" element={<ErrorBoundary section="Dailys"><Suspense fallback={<PageLoader />}><DailysPage /></Suspense></ErrorBoundary>} />
-              <Route path="/reports" element={<PermissionRoute module="reports"><ErrorBoundary section="Reports"><Suspense fallback={<PageLoader />}><ReportsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Finance — admin only */}
               <Route path="/finance" element={<PermissionRoute adminOnly><ErrorBoundary section="Finance"><Suspense fallback={<PageLoader />}><FinanceDashboardPage /></Suspense></ErrorBoundary></PermissionRoute>} />
-              <Route path="/finance/cfo" element={<PermissionRoute adminOnly><ErrorBoundary section="CFO"><Suspense fallback={<PageLoader />}><CfoPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/finance/income" element={<PermissionRoute adminOnly><ErrorBoundary section="Income"><Suspense fallback={<PageLoader />}><IncomePage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/finance/expenses" element={<PermissionRoute adminOnly><ErrorBoundary section="Expenses"><Suspense fallback={<PageLoader />}><ExpensesPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/finance/taxes" element={<PermissionRoute adminOnly><ErrorBoundary section="Taxes"><Suspense fallback={<PageLoader />}><TaxesPage /></Suspense></ErrorBoundary></PermissionRoute>} />
@@ -132,13 +126,10 @@ export default function App() {
               {/* Holded Finance — admin only */}
               <Route path="/finance-holded" element={<PermissionRoute adminOnly><ErrorBoundary section="HoldedFinance"><Suspense fallback={<PageLoader />}><HoldedFinancePage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Agency */}
-              <Route path="/vault" element={<PermissionRoute adminOnly><ErrorBoundary section="Vault"><Suspense fallback={<PageLoader />}><AgencyVaultPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/inbox" element={<ErrorBoundary section="Inbox"><Suspense fallback={<PageLoader />}><InboxPage /></Suspense></ErrorBoundary>} />
               <Route path="/my-week" element={<ErrorBoundary section="MyWeek"><Suspense fallback={<PageLoader />}><MyWeekPage /></Suspense></ErrorBoundary>} />
               {/* Discord */}
               <Route path="/discord" element={<PermissionRoute adminOnly><ErrorBoundary section="Discord"><Suspense fallback={<PageLoader />}><DiscordSettingsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
-              {/* Automations */}
-              <Route path="/automations" element={<PermissionRoute adminOnly><ErrorBoundary section="Automations"><Suspense fallback={<PageLoader />}><AutomationsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Settings */}
               <Route path="/settings" element={<ErrorBoundary section="Settings"><Suspense fallback={<PageLoader />}><SettingsPage /></Suspense></ErrorBoundary>} />
             </Route>

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import { activeArea, activeAreaLink, navigationFor } from "./navigation"
-vi.mock("@/lib/hidden-modules", () => ({ isHidden: (name: string) => ["finance", "capacity", "my_week", "reports", "leads", "growth", "proposals", "vault", "discord", "automations"].includes(name) }))
+vi.mock("@/lib/hidden-modules", () => ({ isHidden: (name: string) => ["finance", "capacity", "my_week", "reports", "leads", "growth", "proposals", "discord"].includes(name) }))
 
 describe("agency areas and permission boundaries", () => {
   it("gives five areas to an admin without exposing hidden modules", () => {

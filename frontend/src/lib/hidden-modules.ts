@@ -14,21 +14,14 @@
 export const HIDDEN_MODULES = [
   "finance", // 0 llamadas — 8 páginas
   "holded", // 26 — dos visitas en 77 días
-  "cfo", // 0
-  "reports", // 0 — el informe mensual se hace fuera de la app
   "proposals", // 30, solo el listado: nunca se creó una propuesta
   "leads", // 37 — Pipeline
   "growth", // 4 — Buffer de ideas
   "my_week", // 12
-  "automations", // 0
-  "vault", // 0
   "capacity", // solo frontend
   "executive", // solo frontend
   "discord", // 13 — solo la pantalla de ajustes del webhook
   "communications", // 0
-  "resources", // 0
-  "evidence", // 0
-  "invitations", // 0
   "export", // 0
 ] as const
 
@@ -64,13 +57,9 @@ export const HIDDEN_ROUTES: Record<string, string> = {
   "/growth": "growth",
   "/my-week": "my_week",
   "/proposals": "proposals",
-  "/reports": "reports",
   "/capacity": "capacity",
-  "/vault": "vault",
-  "/automations": "automations",
   "/discord": "discord",
   "/finance": "finance",
-  "/finance/cfo": "cfo",
   "/finance/income": "finance",
   "/finance/expenses": "finance",
   "/finance/taxes": "finance",

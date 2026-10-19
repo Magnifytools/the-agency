@@ -209,7 +209,12 @@ admin_users, admin_settings
   manda Bearer. Permisos por módulo y Deshacer funcionan solos. Cero cambios
   en el backend.
 - **Si cambias un endpoint que usa** (tasks, agenda, timer, time-entries,
-  inbox, search, projects, users), revisa `mcp-server/agency_mcp/server.py`.
+  inbox, search, projects, users, auth/me, dailys + reparse + send-discord,
+  clients/{id}/status, digests + external-delivery-events), revisa
+  `mcp-server/agency_mcp/server.py`.
+- **Dailys**: `POST /api/dailys` sólo guarda; `submit_daily` encadena el
+  `reparse` (90 s, como la web). `send_daily_to_discord` es la única
+  herramienta que publica fuera (anotación `PUBLISH`) y sólo con dailys propios.
 - **Sin herramientas de borrado**, a propósito.
 - MCP SDK v2: `FastMCP` ahora es `MCPServer` (`mcp.server.mcpserver`).
 
@@ -274,7 +279,7 @@ cd backend && source venv/bin/activate && python -m pytest tests/ -v
 # Frontend (vitest, 45 tests)
 cd frontend && npm run test
 
-# Servidor MCP (pytest, 20 tests, backend falso)
+# Servidor MCP (pytest, 33 tests, backend falso)
 cd mcp-server && .venv/bin/python -m pytest -q
 ```
 

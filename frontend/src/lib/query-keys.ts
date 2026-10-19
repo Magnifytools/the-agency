@@ -148,8 +148,6 @@ export const clientKeys = {
   dashboard: (clientId: number) => ["client-dashboard", clientId] as const,
   summary: (clientId: number) => ["client-summary", clientId] as const,
   summaries: () => ["client-summary"] as const,
-  resources: (clientId: number) => ["client-resources", clientId] as const,
-  reports: (clientId: number) => ["client-reports", clientId] as const,
 }
 
 export async function invalidateClientChange(queryClient: QueryClient, clientIds: number[] = []) {
@@ -192,10 +190,6 @@ export const holdedKeys = {
     ["holded-expenses", category, dateFrom, dateTo, page] as const,
   syncLogs: (limit: number) => ["holded-sync-logs", limit] as const,
   clientInvoices: (clientId: number) => ["holded-client-invoices", clientId] as const,
-}
-
-export const vaultKeys = {
-  assets: (category?: string) => ["vault-assets", category ?? "all"] as const,
 }
 
 export const inboxKeys = {

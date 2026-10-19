@@ -35,7 +35,6 @@ vi.mock("@/hooks/use-business-date", () => ({ useBusinessDate: () => api.today }
 vi.mock("@/components/projects/project-work-summary", () => ({ ProjectWorkSummary: () => null }))
 vi.mock("@/components/projects/project-task-list", () => ({ ProjectTaskList: () => <div>Lista de tareas</div> }))
 vi.mock("@/components/projects/project-phase-kanban", () => ({ ProjectPhaseKanban: () => null }))
-vi.mock("@/components/projects/evidence-list", () => ({ EvidenceList: () => null }))
 vi.mock("@/components/projects/project-ideas-tab", () => ({ ProjectIdeasTab: () => null }))
 vi.mock("@/components/gantt/gantt-chart", () => ({ GanttChart: () => null }))
 vi.mock("@/components/tasks/task-panel", () => ({ TaskPanel: () => null }))

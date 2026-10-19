@@ -303,60 +303,6 @@ export interface HoldedTestConnection {
   message: string
 }
 
-// --- Agency Vault ---
-
-export type AssetCategory = "email" | "domain" | "hosting" | "tool"
-export type HostingType = "shared" | "vps" | "dedicated" | "cloud" | "other"
-
-export interface AgencyAsset {
-  id: number
-  category: AssetCategory
-  name: string
-  value: string | null
-  provider: string | null
-  url: string | null
-  notes: string | null
-  associated_domain: string | null
-  registrar: string | null
-  expiry_date: string | null
-  auto_renew: boolean
-  dns_provider: string | null
-  hosting_type: HostingType | null
-  tool_category: string | null
-  monthly_cost: number | null
-  // Credentials — password never returned in list responses
-  username: string | null
-  has_password: boolean
-  is_active: boolean | null
-  subscription_type: string | null
-  purpose: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface AgencyAssetCreate {
-  category: AssetCategory
-  name: string
-  value?: string | null
-  provider?: string | null
-  url?: string | null
-  notes?: string | null
-  associated_domain?: string | null
-  registrar?: string | null
-  expiry_date?: string | null
-  auto_renew?: boolean
-  dns_provider?: string | null
-  hosting_type?: HostingType | null
-  tool_category?: string | null
-  monthly_cost?: number | null
-  // Credentials
-  username?: string | null
-  password?: string | null
-  is_active?: boolean | null
-  subscription_type?: string | null
-  purpose?: string | null
-}
-
 // --- Daily Updates ---
 
 export type DailyUpdateStatus = "draft" | "sent"

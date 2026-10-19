@@ -3,8 +3,6 @@ import axios, { type GenericAbortSignal, type InternalAxiosRequestConfig } from 
 import { toast } from "sonner"
 import type {
   TaskAgendaSection,
-  ProjectEvidence,
-  ProjectEvidenceCreate,
   SearchResults,
   PaginatedResponse,
   Client,
@@ -56,9 +54,6 @@ import type {
   DailyBriefing,
   AlertSettings,
   AlertSettingsUpdate,
-  Report,
-  ReportRequest,
-  ReportNarrative,
   Proposal,
   ProposalCreate,
   ProposalUpdate,
@@ -71,9 +66,6 @@ import type {
   CommandContext,
   CommandReceipt,
   GrowthIdeaUpdate,
-  Invitation,
-  InvitationCreateResult,
-  InvitationCreate,
   Income,
   IncomeCreate,
   Expense,
@@ -121,8 +113,6 @@ import type {
   EmailDraftResponse,
   ClientContact,
   ClientContactCreate,
-  ClientResource,
-  ClientResourceCreate,
   ClientDashboard,
   ClientStatusRow,
   ClientCohort,
@@ -132,17 +122,9 @@ import type {
   NotificationItem,
   InvestmentCalculateRequest,
   InvestmentCalculateResponse,
-  AgencyAsset,
-  AgencyAssetCreate,
-  AssetCategory,
   InboxNote,
   InboxNoteCreate,
   InboxNoteUpdate,
-  AutomationRule,
-  AutomationRuleCreate,
-  AutomationLogEntry,
-  AutomationTriggerOption,
-  AutomationActionOption,
   JobRuntimeResponse,
   OperationalUsage,
 } from "./types"
@@ -474,51 +456,6 @@ export const dashboardApi = {
     api.get("/dashboard/utilization", { params }).then((r) => r.data),
 }
 
-// CFO — delivery margin, utilization, P&L, alerts
-export interface CfoProjectMargin {
-  project_id: number
-  project_name: string
-  client_id: number
-  client_name: string
-  monthly_fee: number
-  total_hours: number
-  labor_cost: number
-  delivery_margin: number
-  abr: number | null
-  margin_pct: number | null
-}
-export interface CfoUtilization {
-  user_id: number
-  user_name: string
-  cost_per_hour: number
-  available_hours_month: number
-  total_hours: number
-  billable_hours: number
-  internal_hours: number
-  utilization_pct: number
-}
-export interface CfoAlert {
-  severity: "critical" | "high" | "medium" | "low"
-  type: string
-  message: string
-  project_id?: number
-  client_id?: number
-  user_id?: number
-}
-export const cfoApi = {
-  deliveryMargin: (month?: string) =>
-    api.get<{ month: string; projects: CfoProjectMargin[] }>("/cfo/delivery-margin", { params: { month } }).then((r) => r.data),
-  utilization: (month?: string) =>
-    api.get<{ month: string; users: CfoUtilization[] }>("/cfo/utilization", { params: { month } }).then((r) => r.data),
-  monthlyPL: (month?: string, overhead?: number) =>
-    api.get<{ month: string; revenue: number; labor_cost: number; delivery_margin: number; overhead: number; net_before_tax: number }>(
-      "/cfo/monthly-pl",
-      { params: { month, overhead } },
-    ).then((r) => r.data),
-  alerts: (month?: string) =>
-    api.get<{ month: string; alerts: CfoAlert[] }>("/cfo/alerts", { params: { month } }).then((r) => r.data),
-}
-
 // Balance Snapshots
 export const balanceApi = {
   latest: () => api.get<BalanceSnapshot | null>("/finance/balance/latest").then((r) => r.data),
@@ -649,40 +586,6 @@ export const pmApi = {
     api.post<import("./types").DeliveryReceipt>("/pm/briefing/discord", content || date ? { content, date } : null, { params: { scope } }).then((r) => r.data),
 }
 
-// Reports
-export const reportsApi = {
-  list: (params?: { limit?: number; client_id?: number; offset?: number }) =>
-    api.get<Report[]>("/reports", { params }).then((r) => r.data),
-  get: (id: number) =>
-    api.get<Report>(`/reports/${id}`).then((r) => r.data),
-  generate: (data: ReportRequest) =>
-    api.post<Report>("/reports/generate", data, { timeout: 90_000 }).then((r) => r.data),
-  delete: (id: number) =>
-    api.delete(`/reports/${id}`).then((r) => r.data),
-  aiNarrative: (id: number) =>
-    api.post<ReportNarrative>(`/reports/${id}/ai-narrative`).then((r) => r.data),
-  pdfUrl: (id: number) => `/api/reports/${id}/pdf`,
-  narrativePdf: (id: number, body: { narrative: string; executive_summary: string; scqa_sections: { key: string; title: string; content: string }[] }) =>
-    api.post(`/reports/${id}/pdf`, body, { responseType: "blob" }).then((r) => {
-      const blob = new Blob([r.data], { type: "text/html" })
-      const url = URL.createObjectURL(blob)
-      window.open(url, "_blank")
-    }),
-  generateClientMonthly: (data: { client_id: number; year: number; month: number }) =>
-    api.post<Report>("/reports/generate-client-monthly", data).then((r) => r.data),
-  monthlyPdfUrl: (id: number) => `/api/reports/client-monthly/${id}/pdf`,
-  downloadPdf: (id: number) =>
-    api.get(`/reports/${id}/download`, { responseType: "blob" }).then((r) => {
-      const blob = new Blob([r.data], { type: "application/pdf" })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `report-${id}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
-    }),
-}
-
 // Service Templates
 export const serviceTemplatesApi = {
   list: () => api.get<ServiceTemplate[]>("/service-templates").then((r) => r.data),
@@ -716,20 +619,6 @@ export const proposalsApi = {
 export const investmentsApi = {
   calculate: (data: InvestmentCalculateRequest) =>
     api.post<InvestmentCalculateResponse>("/investments/calculate", data).then((r) => r.data),
-}
-
-// Invitations & Permissions
-export const invitationsApi = {
-  list: () => api.get<Invitation[]>("/invitations").then((r) => r.data),
-  create: (data: InvitationCreate) =>
-    api.post<InvitationCreateResult>("/invitations", data).then((r) => r.data),
-  revoke: (id: number) => api.delete(`/invitations/${id}`).then((r) => r.data),
-  accept: (data: { token: string; full_name: string; password: string }) =>
-    api.post<User>("/invitations/accept", data).then((r) => r.data),
-  getPermissions: (userId: number) =>
-    api.get<UserPermission[]>(`/users/${userId}/permissions`).then((r) => r.data),
-  updatePermissions: (userId: number, permissions: UserPermission[]) =>
-    api.put<UserPermission[]>(`/users/${userId}/permissions`, { permissions }).then((r) => r.data),
 }
 
 // Growth Operations
@@ -977,18 +866,6 @@ export const contactsApi = {
     api.delete(`/clients/${clientId}/contacts/${contactId}`).then((r) => r.data),
 }
 
-// --- Client Resources ---
-export const resourcesApi = {
-  list: (clientId: number) =>
-    api.get<ClientResource[]>(`/clients/${clientId}/resources`).then((r) => r.data),
-  create: (clientId: number, data: ClientResourceCreate) =>
-    api.post<ClientResource>(`/clients/${clientId}/resources`, data).then((r) => r.data),
-  update: (clientId: number, resourceId: number, data: Partial<ClientResourceCreate>) =>
-    api.put<ClientResource>(`/clients/${clientId}/resources/${resourceId}`, data).then((r) => r.data),
-  delete: (clientId: number, resourceId: number) =>
-    api.delete(`/clients/${clientId}/resources/${resourceId}`).then((r) => r.data),
-}
-
 // --- Client Dashboard ---
 export const clientDashboardApi = {
   get: (clientId: number) =>
@@ -1060,49 +937,10 @@ export const operationalUsageApi = {
     api.get<Array<{ origin: "web" | "extension" | "unknown"; hits: number }>>("/admin/usage/origins", { params: { days } }).then((response) => response.data),
 }
 
-// --- Project Evidence ---
-export const evidenceApi = {
-  list: (projectId: number) =>
-    api.get<ProjectEvidence[]>(`/projects/${projectId}/evidence`).then((r) => r.data),
-  create: (projectId: number, data: ProjectEvidenceCreate) =>
-    api.post<ProjectEvidence>(`/projects/${projectId}/evidence`, data).then((r) => r.data),
-  upload: (projectId: number, file: File, data: ProjectEvidenceCreate) => {
-    const form = new FormData()
-    form.append("file", file)
-    form.append("title", data.title)
-    form.append("evidence_type", data.evidence_type || "other")
-    if (data.phase_id != null) form.append("phase_id", String(data.phase_id))
-    if (data.description) form.append("description", data.description)
-    return api.post<ProjectEvidence>(`/projects/${projectId}/evidence/upload`, form).then((r) => r.data)
-  },
-  update: (projectId: number, evidenceId: number, data: Partial<ProjectEvidenceCreate>) =>
-    api.put<ProjectEvidence>(`/projects/${projectId}/evidence/${evidenceId}`, data).then((r) => r.data),
-  delete: (projectId: number, evidenceId: number) =>
-    api.delete(`/projects/${projectId}/evidence/${evidenceId}`).then((r) => r.data),
-  downloadUrl: (projectId: number, evidenceId: number) =>
-    `/api/projects/${projectId}/evidence/${evidenceId}/download`,
-  previewUrl: (projectId: number, evidenceId: number) =>
-    `/api/projects/${projectId}/evidence/${evidenceId}/preview`,
-}
-
 // --- Global Search ---
 export const searchApi = {
   search: (q: string) =>
     api.get<SearchResults>("/search", { params: { q } }).then((r) => r.data),
-}
-
-// --- Agency Vault ---
-export const vaultApi = {
-  list: (category?: AssetCategory) =>
-    api.get<AgencyAsset[]>(`/vault/assets${category ? `?category=${category}` : ""}`).then((r) => r.data),
-  create: (data: AgencyAssetCreate) =>
-    api.post<AgencyAsset>("/vault/assets", data).then((r) => r.data),
-  update: (id: number, data: Partial<AgencyAssetCreate>) =>
-    api.put<AgencyAsset>(`/vault/assets/${id}`, data).then((r) => r.data),
-  delete: (id: number) =>
-    api.delete(`/vault/assets/${id}`).then((r) => r.data),
-  getPassword: (id: number) =>
-    api.get<{ password: string | null }>(`/vault/assets/${id}/password`).then((r) => r.data),
 }
 
 // --- Engine Integration ---
@@ -1159,6 +997,8 @@ export const inboxApi = {
     api.post<{ ok: boolean; task_id: number; note: InboxNote }>(`/inbox/${id}/convert-to-task`, data).then((r) => r.data),
   dismiss: (id: number) =>
     api.post<InboxNote>(`/inbox/${id}/dismiss`).then((r) => r.data),
+  suggest: (id: number) =>
+    api.post<InboxNote>(`/inbox/${id}/suggest`).then((r) => r.data),
   uploadAttachment: (noteId: number, file: File) => {
     const fd = new FormData()
     fd.append("file", file)
@@ -1342,26 +1182,6 @@ export const myWeekApi = {
     api.delete(`/my-week/holidays/${id}`).then((r) => r.data),
   addTaskComment: (taskId: number, content: string) =>
     api.post(`/tasks/${taskId}/comments`, { content }).then((r) => r.data),
-}
-
-// ── Automations ──────────────────────────────────────────
-export const automationsApi = {
-  list: () =>
-    api.get<AutomationRule[]>("/automations").then((r) => r.data),
-  get: (id: number) =>
-    api.get<AutomationRule>(`/automations/${id}`).then((r) => r.data),
-  triggers: () =>
-    api.get<{ triggers: AutomationTriggerOption[]; actions: AutomationActionOption[] }>("/automations/triggers").then((r) => r.data),
-  logs: (ruleId?: number, limit?: number) =>
-    api.get<AutomationLogEntry[]>("/automations/logs", { params: { rule_id: ruleId, limit } }).then((r) => r.data),
-  create: (data: AutomationRuleCreate) =>
-    api.post<AutomationRule>("/automations", data).then((r) => r.data),
-  update: (id: number, data: Partial<AutomationRuleCreate>) =>
-    api.put<AutomationRule>(`/automations/${id}`, data).then((r) => r.data),
-  delete: (id: number) =>
-    api.delete(`/automations/${id}`).then((r) => r.data),
-  toggle: (id: number) =>
-    api.post<AutomationRule>(`/automations/${id}/toggle`).then((r) => r.data),
 }
 
 export const jobRuntimeApi = {

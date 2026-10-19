@@ -17,20 +17,18 @@ from backend.config import settings
 from backend.api.routes import (
     auth, clients, tasks, task_categories, time_entries, users,
     dashboard, discord, projects, communications, pm,
-    reports, proposals, growth, invitations, report_policies, digests, leads, holded,
+    proposals, growth, report_policies, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
-    service_templates, dailys, contacts, activity, notifications, incidents, resources, deliveries, communication_schedules,
+    service_templates, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     changes, commands,
     client_dashboard, engine_integration, investments,
-    evidence, search, agency_vault, balance,
+    search, balance,
     inbox,
     extension,
     my_week,
-    automations,
     google_calendar,
     gsc,
     bank_import,
-    cfo,
     usage_stats, job_runtime,
 )
 
@@ -160,7 +158,6 @@ class CsrfProtectionMiddleware(BaseHTTPMiddleware):
     EXEMPT_PATHS = {
         "/api/auth/login",
         "/api/auth/logout",
-        "/api/invitations/accept",
     }
 
     async def dispatch(self, request: Request, call_next):
@@ -246,19 +243,12 @@ _OPTIONAL_ROUTERS = {
     "finance": [income, expenses, expense_categories, taxes, forecasts,
                 advisor, bank_import, balance],
     "holded": [holded],
-    "cfo": [cfo],
-    "reports": [reports],
     "proposals": [proposals, service_templates, investments],
     "leads": [leads],
     "growth": [growth],
-    "automations": [automations],
-    "vault": [agency_vault],
     # ("my_week" no está aquí: ver _CORE_ROUTERS — el router sirve los festivos
     #  de Ajustes, que es una pantalla que se conserva.)
     "communications": [communications],
-    "resources": [resources],
-    "evidence": [evidence],
-    "invitations": [invitations],
     "export": [export],
 }
 

@@ -36,6 +36,9 @@ def _detail(response: httpx.Response) -> str:
             loc = ".".join(str(p) for p in item.get("loc", []) if p != "body")
             parts.append(f"{loc}: {item.get('msg')}" if loc else str(item.get("msg")))
         return "; ".join(parts)
+    if isinstance(detail, dict) and detail.get("message"):
+        # Conflictos con contexto: {"code": "...", "message": "...", "current": {...}}
+        return str(detail["message"])
     if detail:
         return str(detail)
     return response.text[:300] or response.reason_phrase
