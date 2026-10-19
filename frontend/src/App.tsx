@@ -22,7 +22,6 @@ const UsersPage = lazy(() => import("@/pages/users-page"))
 const TimesheetPage = lazy(() => import("@/pages/timesheet-page"))
 const ProjectsPage = lazy(() => import("@/pages/projects-page"))
 const ProjectDetailPage = lazy(() => import("@/pages/project-detail-page"))
-const ReportsPage = lazy(() => import("@/pages/reports-page"))
 const ProposalsPage = lazy(() => import("@/pages/proposals-page"))
 const LeadsPage = lazy(() => import("@/pages/leads-page"))
 const LeadDetailPage = lazy(() => import("@/pages/lead-detail-page"))
@@ -117,7 +116,6 @@ export default function App() {
               <Route path="/digests" element={<PermissionRoute module="digests"><ErrorBoundary section="Digests"><Suspense fallback={<PageLoader />}><DigestsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/digests/:id/edit" element={<PermissionRoute module="digests"><ErrorBoundary section="DigestEdit"><Suspense fallback={<PageLoader />}><DigestEditPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/dailys" element={<ErrorBoundary section="Dailys"><Suspense fallback={<PageLoader />}><DailysPage /></Suspense></ErrorBoundary>} />
-              <Route path="/reports" element={<PermissionRoute module="reports"><ErrorBoundary section="Reports"><Suspense fallback={<PageLoader />}><ReportsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Finance — admin only */}
               <Route path="/finance" element={<PermissionRoute adminOnly><ErrorBoundary section="Finance"><Suspense fallback={<PageLoader />}><FinanceDashboardPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/finance/income" element={<PermissionRoute adminOnly><ErrorBoundary section="Income"><Suspense fallback={<PageLoader />}><IncomePage /></Suspense></ErrorBoundary></PermissionRoute>} />

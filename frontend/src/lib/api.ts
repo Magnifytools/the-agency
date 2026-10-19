@@ -54,9 +54,6 @@ import type {
   DailyBriefing,
   AlertSettings,
   AlertSettingsUpdate,
-  Report,
-  ReportRequest,
-  ReportNarrative,
   Proposal,
   ProposalCreate,
   ProposalUpdate,
@@ -592,40 +589,6 @@ export const pmApi = {
     api.put<AlertSettings>("/pm/settings/alerts", data).then((r) => r.data),
   shareBriefingToDiscord: (scope: "mine" | "team" = "mine", content?: string, date?: string) =>
     api.post<import("./types").DeliveryReceipt>("/pm/briefing/discord", content || date ? { content, date } : null, { params: { scope } }).then((r) => r.data),
-}
-
-// Reports
-export const reportsApi = {
-  list: (params?: { limit?: number; client_id?: number; offset?: number }) =>
-    api.get<Report[]>("/reports", { params }).then((r) => r.data),
-  get: (id: number) =>
-    api.get<Report>(`/reports/${id}`).then((r) => r.data),
-  generate: (data: ReportRequest) =>
-    api.post<Report>("/reports/generate", data, { timeout: 90_000 }).then((r) => r.data),
-  delete: (id: number) =>
-    api.delete(`/reports/${id}`).then((r) => r.data),
-  aiNarrative: (id: number) =>
-    api.post<ReportNarrative>(`/reports/${id}/ai-narrative`).then((r) => r.data),
-  pdfUrl: (id: number) => `/api/reports/${id}/pdf`,
-  narrativePdf: (id: number, body: { narrative: string; executive_summary: string; scqa_sections: { key: string; title: string; content: string }[] }) =>
-    api.post(`/reports/${id}/pdf`, body, { responseType: "blob" }).then((r) => {
-      const blob = new Blob([r.data], { type: "text/html" })
-      const url = URL.createObjectURL(blob)
-      window.open(url, "_blank")
-    }),
-  generateClientMonthly: (data: { client_id: number; year: number; month: number }) =>
-    api.post<Report>("/reports/generate-client-monthly", data).then((r) => r.data),
-  monthlyPdfUrl: (id: number) => `/api/reports/client-monthly/${id}/pdf`,
-  downloadPdf: (id: number) =>
-    api.get(`/reports/${id}/download`, { responseType: "blob" }).then((r) => {
-      const blob = new Blob([r.data], { type: "application/pdf" })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `report-${id}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
-    }),
 }
 
 // Service Templates

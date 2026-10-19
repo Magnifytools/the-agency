@@ -17,7 +17,7 @@ from backend.config import settings
 from backend.api.routes import (
     auth, clients, tasks, task_categories, time_entries, users,
     dashboard, discord, projects, communications, pm,
-    reports, proposals, growth, report_policies, digests, leads, holded,
+    proposals, growth, report_policies, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
     service_templates, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     changes, commands,
@@ -244,7 +244,6 @@ _OPTIONAL_ROUTERS = {
     "finance": [income, expenses, expense_categories, taxes, forecasts,
                 advisor, bank_import, balance],
     "holded": [holded],
-    "reports": [reports],
     "proposals": [proposals, service_templates, investments],
     "leads": [leads],
     "growth": [growth],

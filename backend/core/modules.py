@@ -10,7 +10,7 @@ se reactiva en un minuto.
 
 1. Sin desplegar — variable de entorno en Railway::
 
-       AGENCY_HIDDEN_MODULES=finance,reports        # deja fuera el resto
+       AGENCY_HIDDEN_MODULES=finance,leads          # deja fuera el resto
        AGENCY_HIDDEN_MODULES=                       # reactiva TODOS
 
 2. Permanente — quitar su clave de ``HIDDEN_MODULES`` aquí **y** de
@@ -32,7 +32,6 @@ HIDDEN_MODULES: frozenset[str] = frozenset(
         "finance",        # 0 llamadas — 8 páginas: ingresos, gastos, impuestos,
                           #              previsiones, asesor, importación, balance
         "holded",         # 26 — dos visitas en 77 días
-        "reports",        # 0 — el informe mensual se hace fuera de la aplicación
         "proposals",      # 30, solo el listado: nunca se creó una propuesta
         "leads",          # 37 — Pipeline
         "growth",         # 4 — Buffer de ideas

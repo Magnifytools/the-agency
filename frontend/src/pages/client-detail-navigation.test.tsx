@@ -7,8 +7,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import ClientDetailPage from "./client-detail-page"
 
 const mocks = vi.hoisted(() => ({
-  enabled: new Set(["tasks", "timesheet", "digests", "communications", "reports"]),
-  permissions: new Set(["tasks", "timesheet", "projects", "digests", "communications", "reports"]),
+  enabled: new Set(["tasks", "timesheet", "digests", "communications"]),
+  permissions: new Set(["tasks", "timesheet", "projects", "digests", "communications"]),
   writePermissions: new Set<string>(),
   admin: false,
   summary: vi.fn(),
@@ -44,7 +44,6 @@ vi.mock("@/components/clients/activity-timeline", () => ({ ActivityTimeline: () 
 vi.mock("@/components/clients/client-ai-advisor", () => ({ ClientAiAdvisor: () => <div>ClientAiAdvisor</div> }))
 vi.mock("@/components/clients/contact-list", () => ({ ContactList: () => <div>ContactList</div> }))
 vi.mock("@/components/clients/client-dashboard-tab", () => ({ ClientDashboardTab: () => <div>Dashboard</div> }))
-vi.mock("@/components/clients/client-reports-tab", () => ({ ClientReportsTab: () => <div>Reports</div> }))
 vi.mock("@/components/clients/client-settings-tab", () => ({ ClientSettingsTab: () => <div>Settings</div> }))
 vi.mock("@/components/clients/engine-metrics-widget", () => ({ EngineMetricsWidget: () => null }))
 vi.mock("@/components/clients/engine-seo-tab", () => ({ EngineSeoTab: () => <div>SEO</div> }))
@@ -77,9 +76,9 @@ function show(tab: string) {
 describe("client detail areas", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.enabled = new Set(["tasks", "timesheet", "digests", "communications", "reports"])
-    mocks.permissions = new Set(["clients", "tasks", "timesheet", "projects", "digests", "communications", "reports"])
-    mocks.writePermissions = new Set(["clients", "tasks", "timesheet", "projects", "digests", "communications", "reports"])
+    mocks.enabled = new Set(["tasks", "timesheet", "digests", "communications"])
+    mocks.permissions = new Set(["clients", "tasks", "timesheet", "projects", "digests", "communications"])
+    mocks.writePermissions = new Set(["clients", "tasks", "timesheet", "projects", "digests", "communications"])
     mocks.admin = false
     mocks.summary.mockResolvedValue(summary)
     mocks.projects.mockResolvedValue([])

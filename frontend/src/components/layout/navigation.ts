@@ -27,7 +27,6 @@ const areas: NavigationArea[] = [
   { id: "summaries", label: "Resúmenes", icon: ClipboardList, links: [
     { to: "/dailys", label: "Mi resumen diario", mobileLabel: "Diario" },
     { to: "/digests", label: "Resúmenes de clientes", mobileLabel: "Clientes", module: "digests" },
-    { to: "/reports", label: "Informes", mobileLabel: "Informes", module: "reports", hidden: "reports" },
   ] },
   { id: "settings", label: "Ajustes", icon: Settings, links: [
     { to: "/settings", label: "Preferencias" },
@@ -52,7 +51,7 @@ export function activeArea(pathname: string, search: string): AreaId {
   }
   if (pathname === "/dashboard" || pathname === "/incidents" || pathname.startsWith("/deliveries/")) return "today"
   if (pathname.startsWith("/clients")) return "clients"
-  if (["/dailys", "/digests", "/reports"].some((path) => pathname === path || pathname.startsWith(path + "/"))) return "summaries"
+  if (["/dailys", "/digests"].some((path) => pathname === path || pathname.startsWith(path + "/"))) return "summaries"
   if (["/projects", "/timesheet", "/inbox", "/my-week", "/leads", "/growth", "/proposals"].some((path) => pathname === path || pathname.startsWith(path + "/"))) return "work"
   return "settings"
 }
