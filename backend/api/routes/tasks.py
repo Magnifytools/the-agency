@@ -125,8 +125,6 @@ def _task_to_response(task: Task) -> TaskResponse:
         recurrence_summary=RecurrenceSummaryResponse(**recurrence_summary.__dict__),
         recurring_parent_id=task.recurring_parent_id,
         recurrence_occurrence_date=task.recurrence_occurrence_date,
-        unit_cost=float(task.unit_cost) if task.unit_cost is not None else None,
-        invoiced_at=task.invoiced_at,
         link_url=task.link_url,
         client_name=_safe_attr(task, "client", "name"),
         category_name=_safe_attr(task, "category", "name"),

@@ -47,8 +47,6 @@ export interface Task {
   recurrence_summary?: RecurrenceSummary | null
   recurring_parent_id: number | null
   recurrence_occurrence_date?: string | null
-  unit_cost: number | null
-  invoiced_at: string | null
   link_url: string | null
   created_at: string
   updated_at: string
@@ -110,7 +108,6 @@ export interface TaskCreate {
   recurrence_anchor_date?: string | null
   recurrence_paused?: boolean
   recurring_parent_id?: number | null
-  unit_cost?: number | null
   link_url?: string | null
 }
 

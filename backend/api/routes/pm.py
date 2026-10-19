@@ -37,7 +37,6 @@ def _can_read_module(user: User, module: str) -> bool:
 def _can_read_financial_insights(user: User) -> bool:
     return (
         is_enabled("finance")
-        and is_enabled("billing")
         and _can_read_module(user, "finance_income")
     )
 

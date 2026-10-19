@@ -110,28 +110,19 @@ async def test_advice_prompt_uses_madrid_today_and_month_boundaries(
         client_advisor, "parse_claude_json", lambda _: {"recommendations": []}
     )
 
-    sources = client_advisor.AdviceSources(tasks=True, communications=True, timesheet=True, billing=True)
+    sources = client_advisor.AdviceSources(tasks=True, communications=True, timesheet=True)
     assert await client_advisor.get_client_advice(db_session, client.id, sources) == []
     assert "Tareas vencidas: 1" in prompt["text"]
     assert "Horas este mes: 0.8h" in prompt["text"]
-    assert "Fee mensual:" not in prompt["text"]
-    assert "Presupuesto mensual:" not in prompt["text"]
 
+    # El asesor ya no tiene fuente de facturación: aunque el cliente tenga
+    # importes, no llegan al prompt.
     client.monthly_fee = 0
     client.monthly_budget = 125
     await db_session.flush()
     prompt.clear()
 
     assert await client_advisor.get_client_advice(db_session, client.id, sources) == []
-    assert "Fee mensual: 0 EUR" in prompt["text"]
-    assert "Presupuesto mensual: 125 EUR" in prompt["text"]
-
-    client.monthly_fee = None
-    await db_session.flush()
-    prompt.clear()
-
-    assert await client_advisor.get_client_advice(db_session, client.id, sources) == []
     assert "Fee mensual:" not in prompt["text"]
-    assert prompt["text"].index("Presupuesto mensual: 125 EUR") < prompt["text"].index(
-        "Tareas:"
-    )
+    assert "Presupuesto mensual:" not in prompt["text"]
+    assert "Facturacion:" not in prompt["text"]

@@ -40,7 +40,6 @@ import { getErrorMessage } from "@/lib/utils"
 import { GanttChart } from "@/components/gantt/gantt-chart"
 import { ProjectPhaseKanban } from "@/components/projects/project-phase-kanban"
 import { EvidenceList } from "@/components/projects/evidence-list"
-import { ProjectBillingTab } from "@/components/projects/project-billing-tab"
 import { ProjectIdeasTab } from "@/components/projects/project-ideas-tab"
 import { Breadcrumb } from "@/components/ui/breadcrumb"
 import { Skeleton, SkeletonCard } from "@/components/ui/skeleton"
@@ -91,7 +90,7 @@ export default function ProjectDetailPage() {
   const [showAddTaskDialog, setShowAddTaskDialog] = useState<number | null>(null)
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false)
   const [viewMode, setViewMode] = useState<"list" | "gantt" | "kanban">("list")
-  const [activeTab, setActiveTab] = useState<"tasks" | "ideas" | "evidence" | "billing">("tasks")
+  const [activeTab, setActiveTab] = useState<"tasks" | "ideas" | "evidence">("tasks")
   const [previewTaskId, setPreviewTaskId] = useState<number | null>(null)
   const [showMetrics, setShowMetrics] = useState(false)
   const [timeLogTask, setTimeLogTask] = useState<{ id: number; title: string; retired?: boolean } | null>(null)
@@ -541,7 +540,7 @@ export default function ProjectDetailPage() {
       </details>
 
       {/* Tab Toggle: Tasks / Evidence */}
-      {(isEnabled("growth") || isEnabled("evidence") || isEnabled("billing")) && <div className="flex flex-wrap items-center gap-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
+      {(isEnabled("growth") || isEnabled("evidence")) && <div className="flex flex-wrap items-center gap-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
         <Button
           variant={activeTab === "tasks" ? "default" : "ghost"}
           size="sm"
@@ -549,7 +548,7 @@ export default function ProjectDetailPage() {
         >
           Fases y Tareas
         </Button>
-        {/* Buffer, Documentos y Facturación pertenecen a módulos ocultos: sus
+        {/* Buffer y Documentos pertenecen a módulos ocultos: sus
             endpoints ya no están registrados, así que la pestaña tampoco. */}
         {isEnabled("growth") && (
           <Button
@@ -569,15 +568,6 @@ export default function ProjectDetailPage() {
             Documentos
           </Button>
         )}
-        {isEnabled("billing") && (
-          <Button
-            variant={activeTab === "billing" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setActiveTab("billing")}
-          >
-            Facturación
-          </Button>
-        )}
       </div>}
 
       {/* Ideas Tab */}
@@ -588,11 +578,6 @@ export default function ProjectDetailPage() {
       {/* Evidence Tab */}
       {activeTab === "evidence" && project && isEnabled("evidence") && (
         <EvidenceList projectId={project.id} phases={project.phases} />
-      )}
-
-      {/* Billing Tab */}
-      {activeTab === "billing" && project && isEnabled("billing") && (
-        <ProjectBillingTab projectId={project.id} project={project} />
       )}
 
       {!canReadTasks && activeTab === "tasks" && <ProjectPhaseReadOnly phases={project.phases} />}
@@ -873,9 +858,6 @@ function EditProjectDialog({
     monthly_hours_budget: project.monthly_hours_budget?.toString() || "",
     budget_amount: project.budget_amount?.toString() || "",
     monthly_fee: project.monthly_fee?.toString() || "",
-    billing_day: project.billing_day?.toString() || "",
-    billing_amount: project.billing_amount?.toString() || "",
-    next_billing_date: project.next_billing_date || "",
     scope: project.scope || "",
     gsc_url: project.gsc_url || "",
     ga4_property_id: project.ga4_property_id || "",
@@ -901,9 +883,6 @@ function EditProjectDialog({
         monthly_hours_budget: formData.monthly_hours_budget ? parseFloat(formData.monthly_hours_budget) : null,
         budget_amount: formData.budget_amount ? parseFloat(formData.budget_amount) : undefined,
         monthly_fee: formData.monthly_fee ? parseFloat(formData.monthly_fee) : undefined,
-        billing_day: formData.billing_day ? parseInt(formData.billing_day) : undefined,
-        billing_amount: formData.billing_amount ? parseFloat(formData.billing_amount) : undefined,
-        next_billing_date: formData.next_billing_date || undefined,
         scope: formData.scope || null,
         gsc_url: formData.gsc_url || undefined,
         ga4_property_id: formData.ga4_property_id || undefined,
@@ -1121,38 +1100,6 @@ function EditProjectDialog({
           <p className="text-xs text-muted-foreground">Para adjuntar la propuesta en PDF, usa la pestaña Documentos con tipo &ldquo;Propuesta&rdquo;</p>
         </div>
 
-        {/* --- Facturación --- */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="project-detail-page-field-15">Día factura (1-28)</Label>
-            <Input id="project-detail-page-field-15"
-              type="number"
-              min="1"
-              max="28"
-              value={formData.billing_day}
-              onChange={(e) => setFormData({ ...formData, billing_day: e.target.value })}
-              placeholder="Día del mes"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="project-detail-page-field-16">Importe factura (€)</Label>
-            <Input id="project-detail-page-field-16"
-              type="number"
-              step="0.01"
-              value={formData.billing_amount}
-              onChange={(e) => setFormData({ ...formData, billing_amount: e.target.value })}
-              placeholder="0.00"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="project-detail-page-field-17">Próxima factura</Label>
-            <Input id="project-detail-page-field-17"
-              type="date"
-              value={formData.next_billing_date}
-              onChange={(e) => setFormData({ ...formData, next_billing_date: e.target.value })}
-            />
-          </div>
-        </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="project-detail-page-field-18">Google Search Console URL</Label>

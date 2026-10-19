@@ -32,7 +32,6 @@ const ALL_MODULES: { key: string; label: string; group: string; hint: string }[]
   { key: "timesheet", label: "Timesheet", group: "General", hint: "Timer, time entries y registro de horas" },
   { key: "pm", label: "PM", group: "General", hint: "Vista de project manager y asignaciones" },
   { key: "digests", label: "Digests", group: "General", hint: "Resúmenes semanales con IA para clientes" },
-  { key: "billing", label: "Facturación", group: "General", hint: "Facturación por tarea y control de costes" },
   { key: "communications", label: "Comunicaciones", group: "General", hint: "Seguimiento de emails y contactos" },
   { key: "growth", label: "Pipeline + Buffer", group: "Crecimiento", hint: "CRM de leads y buffer de ideas ICE" },
   { key: "proposals", label: "Presupuestos", group: "Crecimiento", hint: "Creación y envío de propuestas" },
@@ -47,6 +46,9 @@ const ALL_MODULES: { key: string; label: string; group: string; hint: string }[]
 ]
 
 const MODULE_GROUPS = [...new Set(ALL_MODULES.map((m) => m.group))]
+// Un usuario puede conservar filas de módulos ya eliminados (p. ej. "billing").
+// No se reenvían al guardar: el backend rechaza módulos que no reconoce.
+const KNOWN_MODULES = new Set(ALL_MODULES.map((m) => m.key))
 
 export default function UsersPage() {
   const queryClient = useQueryClient()
@@ -150,7 +152,7 @@ export default function UsersPage() {
 
   const handleSavePermissions = () => {
     const perms: UserPermission[] = Object.entries(permissionsState)
-      .filter(([, v]) => v.read || v.write)
+      .filter(([module, v]) => KNOWN_MODULES.has(module) && (v.read || v.write))
       .map(([module, v]) => ({ module, can_read: v.read, can_write: v.write }))
     permissionsMutation.mutate(perms)
   }

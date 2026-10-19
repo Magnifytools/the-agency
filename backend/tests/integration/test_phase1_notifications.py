@@ -29,12 +29,12 @@ def use_session(monkeypatch, db_session):
 
 async def emit(db, user_id, cycle):
     checks = await NotificationChecks.load(db, user_id)
-    if not checks.has("billing_reminder", "project", 123, cycle):
+    if not checks.has("periodic_check", "project", 123, cycle):
         await checks.create(
-            type="billing_reminder",
+            type="periodic_check",
             entity_type="project",
             entity_id=123,
-            title="Revisar facturación",
+            title="Revisar proyecto",
             message="Condición de prueba",
         )
     await db.commit()
@@ -55,7 +55,7 @@ async def test_read_does_not_recreate_check_but_new_cycle_can(db_session, admin_
 async def test_existing_read_legacy_check_is_adopted(db_session, admin_user):
     legacy = Notification(
         user_id=admin_user.id,
-        type="billing_reminder",
+        type="periodic_check",
         title="Existente",
         entity_type="project",
         entity_id=123,

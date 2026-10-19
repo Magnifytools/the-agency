@@ -59,7 +59,7 @@ async def test_client_list_filters_status_and_cohort_before_total_and_page(
 async def test_health_batch_applies_cohort_without_exposing_other_clients(
     admin_client, db_session, monkeypatch,
 ):
-    monkeypatch.setenv("AGENCY_HIDDEN_MODULES", "communications,tasks,digests,finance,billing")
+    monkeypatch.setenv("AGENCY_HIDDEN_MODULES", "communications,tasks,digests,finance")
     external = await _client(db_session, "External health")
     internal = await _client(db_session, "Internal health", internal=True)
     await db_session.commit()

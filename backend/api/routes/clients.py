@@ -317,7 +317,6 @@ def _health_capabilities(user: User) -> HealthCapabilities:
         profitability=(
             is_admin
             and is_enabled("finance")
-            and is_enabled("billing")
             and (is_admin or "finance_income" in readable)
         ),
     )
@@ -412,8 +411,7 @@ async def update_client(
     _UPDATABLE_CLIENT_FIELDS = {
         "name", "email", "phone", "company", "website", "contract_type",
         "monthly_budget", "status", "notes", "is_internal", "ga4_property_id",
-        "gsc_url", "billing_cycle", "billing_day", "next_invoice_date",
-        "last_invoiced_date", "engine_project_id", "business_model", "aov",
+        "gsc_url", "engine_project_id", "business_model", "aov",
         "conversion_rate", "ltv", "seo_maturity_level", "context",
         "cif", "vat_number", "slack_template",
     }
@@ -729,7 +727,6 @@ async def get_ai_advice(
             tasks=has_module_read(current_user, "tasks"),
             communications=has_module_read(current_user, "communications"),
             timesheet=has_module_read(current_user, "tasks") and has_module_read(current_user, "timesheet"),
-            billing=has_module_read(current_user, "billing"),
         ))
         return {"recommendations": recommendations}
     except ValueError as e:

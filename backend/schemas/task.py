@@ -42,7 +42,6 @@ class TaskCreate(BaseModel):
     recurrence_day: Optional[int] = None
     recurrence_end_date: Optional[date] = None
     recurrence_anchor_date: Optional[date] = None
-    unit_cost: Optional[float] = None
     link_url: Optional[str] = None
 
 
@@ -72,7 +71,6 @@ class TaskUpdate(BaseModel):
     recurrence_end_date: Optional[date] = None
     recurrence_anchor_date: Optional[date] = None
     recurrence_paused: Optional[bool] = None
-    unit_cost: Optional[float] = None
     link_url: Optional[str] = None
 
     @field_validator("status", mode="before")
@@ -170,8 +168,6 @@ class TaskResponse(BaseModel):
     recurrence_summary: RecurrenceSummaryResponse
     recurring_parent_id: Optional[int] = None
     recurrence_occurrence_date: Optional[date] = None
-    unit_cost: Optional[float] = None
-    invoiced_at: Optional[datetime] = None
     link_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime

@@ -7,7 +7,7 @@ Each condition supplies its own cycle (due date, reporting month, etc.).
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 
 from sqlalchemy import and_, exists, false, or_, select
 from sqlalchemy.orm import aliased, noload
@@ -103,13 +103,12 @@ class NotificationChecks:
         key = f"{kind}:{entity}:{entity_id}:{cycle.isoformat()}"
         if key in self.keys:
             return True
-        # Adopt an existing legacy check, including one already read. Billing
-        # starts three days before its due date. Never delete historical rows.
-        start = cycle - timedelta(days=3) if kind == "billing_reminder" else cycle
+        # Adopt an existing legacy check, including one already read. Never
+        # delete historical rows.
         for row in self.rows:
             if (row.type, row.entity_type, row.entity_id) != identity or row.dedupe_key:
                 continue
-            if row.created_at and row.created_at.date() >= start:
+            if row.created_at and row.created_at.date() >= cycle:
                 row.dedupe_key = key
                 self.keys.add(key)
                 return True

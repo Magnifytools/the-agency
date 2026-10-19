@@ -3,10 +3,6 @@ import type { EngineSummaryData, EngineAlert } from "./integration"
 import type { Task } from "./task"
 import type { ProjectCreate } from "./project"
 
-// --- Billing ---
-export type BillingCycle = "monthly" | "bimonthly" | "quarterly" | "annual" | "one_time"
-export type BillingEventType = "invoice_sent" | "payment_received" | "reminder_sent" | "note"
-
 export type SeoTrend = "up" | "stable" | "down" | "drop_alert"
 
 export interface Client {
@@ -26,10 +22,6 @@ export interface Client {
   monthly_fee: number | null
   ga4_property_id: string | null
   gsc_url: string | null
-  billing_cycle: BillingCycle | null
-  billing_day: number | null
-  next_invoice_date: string | null
-  last_invoiced_date: string | null
   engine_project_id: number | null
   engine_content_count: number | null
   engine_keyword_count: number | null
@@ -83,10 +75,6 @@ export interface ClientCreate {
   monthly_fee?: number | null
   ga4_property_id?: string | null
   gsc_url?: string | null
-  billing_cycle?: BillingCycle | null
-  billing_day?: number | null
-  next_invoice_date?: string | null
-  last_invoiced_date?: string | null
   engine_project_id?: number | null
   // Revenue intelligence
   business_model?: string | null
@@ -198,39 +186,6 @@ export interface ClientResourceCreate {
   url: string
   resource_type?: ResourceType
   notes?: string | null
-}
-
-// Billing Events
-export interface BillingEvent {
-  id: number
-  client_id: number
-  event_type: BillingEventType
-  amount: number | null
-  invoice_number: string | null
-  notes: string | null
-  event_date: string
-  created_at: string
-  updated_at: string
-}
-
-export interface BillingEventCreate {
-  event_type: BillingEventType
-  amount?: number | null
-  invoice_number?: string | null
-  notes?: string | null
-  event_date: string
-}
-
-export interface BillingStatus {
-  billing_cycle: string | null
-  billing_day: number | null
-  next_invoice_date: string | null
-  last_invoiced_date: string | null
-  days_until_invoice: number | null
-  is_overdue: boolean
-  monthly_fee: number | null
-  last_payment_date: string | null
-  last_payment_amount: number | null
 }
 
 // Client Dashboard

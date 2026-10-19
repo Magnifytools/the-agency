@@ -100,14 +100,7 @@ def test_member_without_source_permissions_gets_no_inferred_factors():
     assert capabilities.profitability is False
 
 
-def test_hidden_billing_disables_profitability_even_for_admin(monkeypatch):
-    monkeypatch.setenv("AGENCY_HIDDEN_MODULES", "billing")
-    admin = SimpleNamespace(role=UserRole.admin, permissions=[])
-
-    assert _health_capabilities(admin).profitability is False
-
-
-def test_hidden_finance_disables_profitability_even_when_billing_is_visible(monkeypatch):
+def test_hidden_finance_disables_profitability_even_for_admin(monkeypatch):
     monkeypatch.setenv("AGENCY_HIDDEN_MODULES", "finance")
     admin = SimpleNamespace(role=UserRole.admin, permissions=[])
 
