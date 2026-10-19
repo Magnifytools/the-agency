@@ -279,12 +279,12 @@ async def plan_policy(db, policy, now):
     today = local.date()
     actor = await load_actor(db, policy.approved_by)
     if policy.kind in ("morning", "evening", "team_morning"):
-        from backend.services.daily_reminders import is_working_day
+        from backend.services.holidays import is_working_day
         for day in (today - timedelta(days=1), today):
             # A shared plan follows company-wide holidays, not the owner's
             # regional calendar; individual sections handle regional days off.
-            region = None if policy.kind == "team_morning" else actor.region if actor else None
-            if not await is_working_day(db, day, region):
+            owner = None if policy.kind == "team_morning" else actor
+            if not await is_working_day(db, day, owner):
                 continue
             due = local_instant(day, policy.time)
             expires = local_instant(day + timedelta(days=1), "00:00")

@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom"
 import { beforeEach, expect, it, vi } from "vitest"
 import userEvent from "@testing-library/user-event"
 
-import { categoriesApi, myWeekApi, usersApi } from "@/lib/api"
+import { categoriesApi, holidaysApi, usersApi } from "@/lib/api"
 import SettingsPage from "./settings-page"
 
 const auth = vi.hoisted(() => ({ isAdmin: false, user: { id: 12, role: "member", preferences: { shortcuts: { goto_leads: "G+Y" } } } }))
@@ -19,7 +19,7 @@ vi.mock("@/components/job-runtime-status", () => ({ JobRuntimeStatusPanel: () =>
 vi.mock("@/lib/api", () => ({
   usersApi: { update: vi.fn() },
   categoriesApi: { list: vi.fn() },
-  myWeekApi: { listHolidays: vi.fn(), createHoliday: vi.fn(), deleteHoliday: vi.fn() },
+  holidaysApi: { list: vi.fn(), create: vi.fn(), delete: vi.fn() },
   calendarApi: { getStatus: vi.fn().mockResolvedValue({ connected: false }), getAuthUrl: vi.fn(), disconnect: vi.fn(), sync: vi.fn() },
   gscApi: { getStatus: vi.fn().mockResolvedValue({ configured: true, connection: null, sites: [] }), getAuthUrl: vi.fn(), disconnect: vi.fn(), sync: vi.fn(), listSites: vi.fn() },
 }))
@@ -92,7 +92,7 @@ it("keeps unsupported modifier combinations in edit mode", async () => {
 it("names the category creation and editing controls", async () => {
   auth.isAdmin = true
   vi.mocked(categoriesApi.list).mockResolvedValue([{ id: 4, name: "SEO", default_minutes: 60, created_at: "2026-09-21T00:00:00Z", updated_at: "2026-09-21T00:00:00Z" }])
-  vi.mocked(myWeekApi.listHolidays).mockResolvedValue([])
+  vi.mocked(holidaysApi.list).mockResolvedValue([])
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter><SettingsPage /></MemoryRouter></QueryClientProvider>)
 
@@ -109,7 +109,7 @@ it("names the category creation and editing controls", async () => {
 it("associates holiday labels and names its date and name fields", async () => {
   auth.isAdmin = true
   vi.mocked(categoriesApi.list).mockResolvedValue([])
-  vi.mocked(myWeekApi.listHolidays).mockResolvedValue([])
+  vi.mocked(holidaysApi.list).mockResolvedValue([])
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter><SettingsPage /></MemoryRouter></QueryClientProvider>)
 

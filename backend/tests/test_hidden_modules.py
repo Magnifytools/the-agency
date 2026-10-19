@@ -135,10 +135,8 @@ class TestRoutersRegistrados:
             # ofrecer "Enviar a Discord" en el Resumen Diario — y ese envío se usa
             "/api/discord/settings",
             "/api/dailys/{daily_id}/send-discord",
-            # my-week: la PANTALLA está oculta, pero este router sirve los
-            # festivos de empresa que se gestionan desde Ajustes, y Ajustes se
-            # conserva
-            "/api/my-week/holidays",
+            # festivos de empresa: Ajustes → Festivos y el plan de la mañana
+            "/api/holidays",
         ],
     )
     def test_el_nucleo_sigue_registrado(self, rutas, ruta):

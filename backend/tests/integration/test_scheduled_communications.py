@@ -224,6 +224,25 @@ async def test_team_morning_uses_global_holidays_and_skips_members_regionally_of
     assert await count(maker, Occurrence) == 1
 
 
+async def test_team_morning_ignores_another_towns_local_holiday(fixture):
+    """Regresión: el festivo local de Alcalá sacaba del plan a quien vive en Madrid."""
+    maker, ids, _ = fixture
+    day = date(2026, 9, 15)
+    async with maker() as db:
+        await db.execute(update(User).where(User.id == ids["admin"]).values(region="MAD", locality="Madrid"))
+        await db.execute(update(User).where(User.id == ids["member"]).values(region="MAD", locality="Alcalá de Henares"))
+        db.add_all([
+            CompanyHoliday(date=day, name="Fiesta local", region="MAD", locality="Alcalá de Henares"),
+            Task(title="Admin working", assigned_to=ids["admin"], scheduled_date=day),
+            Task(title="Member day off", assigned_to=ids["member"], scheduled_date=day),
+        ])
+        await db.commit()
+        from backend.services.daily_reminders import generate_team_morning_plan
+        message = await generate_team_morning_plan(db, day)
+    assert "**Schedule Admin**" in message and "Admin working" in message
+    assert "**Schedule Member**" not in message and "Member day off" not in message
+
+
 async def test_two_schedulers_restart_prepare_once_per_channel(fixture):
     maker, _, now = fixture
     await policy(fixture, channels=["in_app", "team_webhook"])

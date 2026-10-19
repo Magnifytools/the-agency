@@ -28,6 +28,7 @@ from backend.api.routes import (
     my_week,
     google_calendar,
     gsc,
+    holidays,
     bank_import,
     usage_stats, job_runtime,
 )
@@ -217,6 +218,8 @@ _CORE_ROUTERS = [
     projects, pm, report_policies, digests, sync, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     client_dashboard, engine_integration, inbox, extension, google_calendar,
     gsc, usage_stats, job_runtime,
+    # holidays: los festivos de empresa (Ajustes → Festivos, plan de la mañana).
+    holidays,
     # changes: el Undo del shell. No es una pantalla, es la red de seguridad
     # de todas las demás — se registra siempre.
     changes, commands,
@@ -229,11 +232,8 @@ _CORE_ROUTERS = [
     # app creyendo que Discord no está configurado — el mismo error que en
     # Vigil: deducir el estado de una integración en vez de leerlo.
     discord,
-    # my_week: su PANTALLA está oculta (12 visitas), pero el router también
-    # sirve /api/my-week/holidays, que es la gestión de festivos de la página
-    # de Ajustes — y Ajustes se conserva. Quitar el router dejaría un trozo de
-    # una pantalla viva llamando al vacío. Si algún día se borra el módulo de
-    # verdad, los festivos hay que sacarlos de aquí primero.
+    # my_week: su PANTALLA está oculta (12 visitas). Los festivos ya salieron a
+    # /api/holidays; el router se va entero con la PR que borra my_week.
     my_week,
 ]
 
@@ -246,8 +246,7 @@ _OPTIONAL_ROUTERS = {
     "proposals": [proposals, service_templates, investments],
     "leads": [leads],
     "growth": [growth],
-    # ("my_week" no está aquí: ver _CORE_ROUTERS — el router sirve los festivos
-    #  de Ajustes, que es una pantalla que se conserva.)
+    # ("my_week" no está aquí: ver _CORE_ROUTERS.)
     "communications": [communications],
     "export": [export],
 }

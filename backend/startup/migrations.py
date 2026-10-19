@@ -698,58 +698,9 @@ async def _reset_admin_password():
 
 
 async def _seed_national_holidays():
-    """Seed Spanish national holidays for current and next year if not present."""
-    from sqlalchemy import text, select
-    from backend.db.database import async_session
-    from backend.db.models import CompanyHoliday
-    from datetime import date as date_type
-
-    current_year = date_type.today().year
-
-    # Festivos nacionales fijos de España (region=NULL = aplica a todos)
-    NATIONAL_HOLIDAYS = [
-        (1, 1, "Año Nuevo"),
-        (1, 6, "Reyes Magos"),
-        (5, 1, "Día del Trabajador"),
-        (8, 15, "Asunción de la Virgen"),
-        (10, 12, "Fiesta Nacional de España"),
-        (11, 1, "Día de Todos los Santos"),
-        (12, 6, "Día de la Constitución"),
-        (12, 8, "Inmaculada Concepción"),
-        (12, 25, "Navidad"),
-    ]
-
-    # Festivos móviles 2026 (Semana Santa)
-    MOVABLE_HOLIDAYS = {
-        2026: [(4, 2, "Jueves Santo"), (4, 3, "Viernes Santo")],
-        2027: [(3, 25, "Jueves Santo"), (3, 26, "Viernes Santo")],
-    }
-
-    async with async_session() as session:
-        for year in [current_year, current_year + 1]:
-            all_holidays = [(year, m, d, name) for m, d, name in NATIONAL_HOLIDAYS]
-            for m, d, name in MOVABLE_HOLIDAYS.get(year, []):
-                all_holidays.append((year, m, d, name))
-
-            for y, m, d, name in all_holidays:
-                try:
-                    holiday_date = date_type(y, m, d)
-                except ValueError:
-                    continue
-                existing = await session.execute(
-                    select(CompanyHoliday).where(
-                        CompanyHoliday.date == holiday_date,
-                        CompanyHoliday.region.is_(None),
-                    )
-                )
-                if existing.scalar_one_or_none() is None:
-                    session.add(CompanyHoliday(
-                        date=holiday_date, name=name, country="ES",
-                        region=None, locality=None,
-                    ))
-
-        await session.commit()
-    logging.info("National holidays seeded.")
+    """Los festivos viven en el núcleo: ver services/holidays.py."""
+    from backend.services.holidays import seed_national_holidays
+    await seed_national_holidays()
 
 
 async def _cleanup_qa_test_data():
