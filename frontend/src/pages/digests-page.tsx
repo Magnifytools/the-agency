@@ -7,6 +7,7 @@ import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle, Tr
 import { DeliveryReceipts, deliveryToast } from "@/components/delivery-receipts"
 import { useAuth } from "@/context/auth-context"
 import { DigestCohort } from "@/components/digests/digest-cohort"
+import { DigestMonthlyCycle } from "@/components/digests/digest-monthly-cycle"
 import { reportPolicyApi, reportPolicyKeys } from "@/lib/report-policy-api"
 import { digestsApi, clientsApi, discordApi } from "@/lib/api"
 import type { Digest, DigestStatus, DigestTone } from "@/lib/types"
@@ -362,6 +363,8 @@ function DigestList() {
           {recoveryQuery.isError && <p>{(recoveryQuery.error as { response?: { status?: number } })?.response?.status === 404 ? "Todavía no hay una versión confirmada. Puedes comprobar de nuevo o reintentar la misma solicitud." : "No se pudo comprobar el resultado. La solicitud sigue guardada."}</p>}
         </>}
       </div>}
+
+      {!filterClient && <DigestMonthlyCycle />}
 
       <DigestCohort clientId={filterClient || undefined} expectedPeriod={expectedPeriod} />
 

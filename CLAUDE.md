@@ -146,6 +146,16 @@ admin_users, admin_settings
   `clients`. Clave `...:open`: se resuelve sola al recuperarse y un descarte se
   mantiene mientras dure la misma caída.
 
+## Ciclo mensual de resúmenes (fase 1 Agency 2.0)
+- **"Entregado" = evento de entrega externa** (`digest_external_delivery_events`,
+  botón "Marcar como entregado al cliente" del editor): guarda quién y cuándo.
+  `DigestStatus.sent` es una etiqueta histórica sin evidencia: no cuenta.
+- **Vista "Resúmenes de este mes"** (`components/digests/digest-monthly-cycle.tsx`,
+  arriba en `/digests`): una fila por cliente externo activo con el estado de su
+  resumen del mes anterior. Sin endpoint propio: lee `generation-preview`
+  (ámbito Equipo para admins, A mi cargo para el resto) y genera con
+  `generate-cohort`, guardando la clave de recuperación como una cohorte.
+
 ## Undo (deshacer los últimos cambios)
 
 - **Qué es**: los 5 últimos cambios de CADA usuario, deshacibles desde el panel
