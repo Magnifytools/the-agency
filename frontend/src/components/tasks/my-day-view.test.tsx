@@ -10,7 +10,7 @@ const task = (id: number, title: string, overrides: Partial<Task> = {}): Task =>
   assigned_to: 1, project_id: null, phase_id: null, is_inbox: false, depends_on: null,
   created_by: 1, scheduled_date: null, waiting_for: null, follow_up_date: null, is_recurring: false,
   recurrence_pattern: null, recurrence_day: null, recurrence_end_date: null, recurring_parent_id: null,
-  unit_cost: null, invoiced_at: null, link_url: null, created_at: "2026-09-17T09:00:00Z",
+  link_url: null, created_at: "2026-09-17T09:00:00Z",
   updated_at: "2026-09-17T09:00:00Z", client_name: null, category_name: null,
   assigned_user_name: null, project_name: null, phase_name: null, dependency_title: null,
   created_by_name: null, recurring_parent_title: null, checklist_count: 0, ...overrides,

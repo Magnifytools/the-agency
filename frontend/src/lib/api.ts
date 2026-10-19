@@ -122,9 +122,6 @@ import type {
   ClientContactCreate,
   ClientResource,
   ClientResourceCreate,
-  BillingEvent,
-  BillingEventCreate,
-  BillingStatus,
   ClientDashboard,
   ClientHealthScore,
   ClientCohort,
@@ -519,25 +516,6 @@ export const cfoApi = {
     ).then((r) => r.data),
   alerts: (month?: string) =>
     api.get<{ month: string; alerts: CfoAlert[] }>("/cfo/alerts", { params: { month } }).then((r) => r.data),
-}
-
-// Billing
-export const billingApi = {
-  preview: (params: { year: number; month: number }) =>
-    api.get("/billing/export", { params: { ...params, format: "json" } }).then((r) => r.data),
-  exportCsv: (params: { year: number; month: number }) =>
-    api.get("/billing/export", { params: { ...params, format: "csv" }, responseType: "blob" }).then((r) => r.data),
-  exportPdf: (params: { year: number; month: number }) =>
-    api.get("/billing/export-pdf", { params, responseType: "blob" }).then((r) => {
-      const url = window.URL.createObjectURL(new Blob([r.data], { type: "application/pdf" }))
-      const link = document.createElement("a")
-      link.href = url
-      link.setAttribute("download", `facturacion-${params.year}-${String(params.month).padStart(2, "0")}.pdf`)
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
-    }),
 }
 
 // Balance Snapshots
@@ -1008,20 +986,6 @@ export const resourcesApi = {
     api.put<ClientResource>(`/clients/${clientId}/resources/${resourceId}`, data).then((r) => r.data),
   delete: (clientId: number, resourceId: number) =>
     api.delete(`/clients/${clientId}/resources/${resourceId}`).then((r) => r.data),
-}
-
-// --- Client Billing Events ---
-export const billingEventsApi = {
-  list: (clientId: number) =>
-    api.get<BillingEvent[]>(`/clients/${clientId}/billing`).then((r) => r.data),
-  create: (clientId: number, data: BillingEventCreate) =>
-    api.post<BillingEvent>(`/clients/${clientId}/billing`, data).then((r) => r.data),
-  status: (clientId: number) =>
-    api.get<BillingStatus>(`/clients/${clientId}/billing/status`).then((r) => r.data),
-  markInvoiced: (clientId: number) =>
-    api.post<BillingEvent>(`/clients/${clientId}/billing/mark-invoiced`).then((r) => r.data),
-  markPaid: (clientId: number, amount?: number) =>
-    api.post<BillingEvent>(`/clients/${clientId}/billing/mark-paid`, null, { params: amount ? { amount } : {} }).then((r) => r.data),
 }
 
 // --- Client Dashboard ---

@@ -34,7 +34,7 @@ UPDATABLE_TASK_FIELDS = {
     "actual_minutes", "start_date", "due_date", "client_id", "category_id",
     "assigned_to", "project_id", "phase_id", "depends_on", "scheduled_date",
     "waiting_for", "follow_up_date", "is_recurring", "recurrence_pattern",
-    "recurrence_day", "recurrence_end_date", "unit_cost",
+    "recurrence_day", "recurrence_end_date",
     "link_url", "recurrence_anchor_date", "recurrence_paused",
 }
 

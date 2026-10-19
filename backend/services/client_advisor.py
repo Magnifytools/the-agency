@@ -32,7 +32,7 @@ REGLAS:
 1. Escribe en espanol, tono profesional pero directo.
 2. Cada recomendacion debe ser concreta y accionable (no generica).
 3. Prioriza: urgentes primero, luego importantes.
-4. Categorias posibles: comunicacion, facturacion, tareas, rentabilidad, estrategia.
+4. Categorias posibles: comunicacion, tareas, rentabilidad, estrategia.
 5. Si un area esta bien, no inventes problemas. Solo reporta lo relevante.
 6. NO inventes datos. Solo usa lo que esta en el contexto proporcionado.
 7. Responde SOLO con el JSON, sin markdown ni explicaciones.
@@ -43,7 +43,7 @@ Responde con un JSON asi:
   "recommendations": [
     {
       "priority": "high|medium|low",
-      "category": "comunicacion|facturacion|tareas|rentabilidad|estrategia",
+      "category": "comunicacion|tareas|rentabilidad|estrategia",
       "title": "Titulo corto y accionable",
       "description": "Explicacion de 1-2 frases con el contexto",
       "action": "Accion concreta a tomar"
@@ -57,7 +57,6 @@ class AdviceSources:
     tasks: bool
     communications: bool
     timesheet: bool
-    billing: bool
 
 
 async def get_client_advice(
@@ -119,29 +118,11 @@ async def get_client_advice(
         )
         hours_this_month = round((hours_result.scalar() or 0) / 60, 1)
 
-    # Billing info
-    billing_info = ""
-    if sources.billing and client.billing_cycle:
-        billing_info = f"Ciclo: {client.billing_cycle.value}"
-        if client.next_invoice_date:
-            days_until = (client.next_invoice_date - today).days
-            billing_info += (
-                f", Proxima factura: {client.next_invoice_date} ({days_until} dias)"
-            )
-        if client.last_invoiced_date:
-            billing_info += f", Ultima factura: {client.last_invoiced_date}"
-
     # Build context
     context_parts = [
         f"CLIENTE: {client.name}",
         f"Estado: {client.status.value}",
     ]
-    if sources.billing and client.monthly_fee is not None:
-        context_parts.append(f"Fee mensual: {client.monthly_fee} {client.currency}")
-    if sources.billing and client.monthly_budget is not None:
-        context_parts.append(
-            f"Presupuesto mensual: {client.monthly_budget} {client.currency}"
-        )
     if sources.tasks:
         context_parts.extend([f"Tareas: {tasks_by_status}", f"Tareas vencidas: {tasks_overdue}"])
     if sources.communications:
@@ -151,8 +132,6 @@ async def get_client_advice(
         ])
     if sources.tasks and sources.timesheet:
         context_parts.append(f"Horas este mes: {hours_this_month}h")
-    if billing_info:
-        context_parts.append(f"Facturacion: {billing_info}")
     if client.notes:
         context_parts.append(f"Notas: {client.notes[:300]}")
 

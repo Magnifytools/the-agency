@@ -101,4 +101,21 @@ describe("UsersPage safe reads", () => {
     await waitFor(() => expect(screen.getAllByRole("checkbox", { name: "Leer" })[3]).toBeChecked())
     expect(screen.getByRole("button", { name: "Guardar permisos" })).toBeEnabled()
   })
+
+  it("does not resend permissions for removed modules when saving", async () => {
+    api.list.mockResolvedValue(page([user(2, "Ana")]))
+    api.permissions.mockResolvedValue([
+      { module: "clients", can_read: true, can_write: true },
+      { module: "billing", can_read: true, can_write: false },
+    ])
+    api.updatePermissions.mockResolvedValue([])
+    show()
+    await screen.findAllByText("Ana")
+    await userEvent.click(screen.getAllByRole("button", { name: "Permisos" })[0])
+    await screen.findAllByRole("checkbox", { name: "Leer" })
+    await userEvent.click(screen.getByRole("button", { name: "Guardar permisos" }))
+    await waitFor(() => expect(api.updatePermissions).toHaveBeenCalledWith(2, [
+      { module: "clients", can_read: true, can_write: true },
+    ]))
+  })
 })

@@ -23,7 +23,6 @@ import { CommunicationList } from "@/components/communications/communication-lis
 import { ContactList } from "@/components/clients/contact-list"
 import { ActivityTimeline } from "@/components/clients/activity-timeline"
 import { ResourceList } from "@/components/clients/resource-list"
-import { BillingTab } from "@/components/clients/billing-tab"
 import { ClientDashboardTab } from "@/components/clients/client-dashboard-tab"
 import { ClientAiAdvisor } from "@/components/clients/client-ai-advisor"
 import { ClientReportsTab } from "@/components/clients/client-reports-tab"
@@ -239,7 +238,7 @@ export default function ClientDetailPage() {
   const [creatingTask, setCreatingTask] = useState(false)
   const [whatIfOpen, setWhatIfOpen] = useState(false)
 
-  const validTabs = ["ficha", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "facturacion", "recursos", "seo", "informes", "ajustes", "facturas"] as const
+  const validTabs = ["ficha", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "recursos", "seo", "informes", "ajustes", "facturas"] as const
   type Tab = (typeof validTabs)[number]
 
   // Pestaña -> módulo que la sirve. Si el módulo está oculto, sus endpoints no
@@ -248,7 +247,6 @@ export default function ClientDetailPage() {
   const TAB_MODULE: Partial<Record<Tab, string>> = {
     resumenes: "digests",
     comunicaciones: "communications",
-    facturacion: "billing",
     facturas: "holded",
     informes: "reports",
     recursos: "resources",
@@ -258,8 +256,6 @@ export default function ClientDetailPage() {
     proyectos: "projects",
     resumenes: "digests",
     comunicaciones: "communications",
-    facturacion: "billing",
-    facturas: "billing",
     informes: "reports",
   }
   const isTabVisible = (tab: Tab) => {
@@ -314,7 +310,7 @@ export default function ClientDetailPage() {
   const canReadClientHealth = canReadClient
   const healthAccessScope = [
     user?.id ?? "anonymous", isAdmin,
-    ...(["tasks", "communications", "digests", "finance", "billing"] as const)
+    ...(["tasks", "communications", "digests", "finance"] as const)
       .map((module) => hasPermission(module) && isEnabled(module)),
   ].join(":")
   const healthQuery = useQuery({
@@ -477,7 +473,6 @@ export default function ClientDetailPage() {
             label: "Ajustes",
             tabs: [
               "contactos",
-              ...(isTabVisible("facturacion") ? (["facturacion"] as TabKey[]) : []),
               ...(holdedEnabled && isTabVisible("facturas")
                 ? (["facturas"] as TabKey[])
                 : []),
@@ -500,7 +495,6 @@ export default function ClientDetailPage() {
           recursos: "Archivos",
           seo: "SEO",
           contactos: "Contactos",
-          facturacion: "Comercial",
           facturas: "Facturas",
           ajustes: "Configuración",
         }
@@ -847,11 +841,6 @@ export default function ClientDetailPage() {
             <ResourceList clientId={clientId} />
           </CardContent>
         </Card>
-      )}
-
-      {/* Tab: Facturacion */}
-      {activeTab === "facturacion" && (
-        <BillingTab client={client} />
       )}
 
       {/* Tab: Informes */}

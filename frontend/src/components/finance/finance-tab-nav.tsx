@@ -14,7 +14,6 @@ const TABS = [
   { to: "/finance/taxes", label: "Impuestos" },
   { to: "/finance/forecasts", label: "Previsiones" },
   { to: "/finance-holded", label: "Holded", holdedOnly: true },
-  { to: "/billing", label: "Facturación" },
   { to: "/finance/advisor", label: "Asesor" },
 ]
 

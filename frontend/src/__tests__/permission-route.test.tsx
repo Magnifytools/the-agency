@@ -77,7 +77,7 @@ describe("PermissionRoute", () => {
 
     it("redirects when user lacks read permission", () => {
       authAs({ hasPermission: () => false })
-      renderRoute({ module: "billing" })
+      renderRoute({ module: "reports" })
       expect(screen.queryByTestId("protected-content")).not.toBeInTheDocument()
       expect(screen.getByTestId("redirected-dashboard")).toBeInTheDocument()
     })

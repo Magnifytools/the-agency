@@ -146,8 +146,6 @@ export function restoreQuerySnapshot(queryClient: QueryClient, snapshot?: QueryS
 export const clientKeys = {
   all: () => ["clients"] as const,
   dashboard: (clientId: number) => ["client-dashboard", clientId] as const,
-  billing: (clientId: number) => ["billing-events", clientId] as const,
-  billingStatus: (clientId: number) => ["billing-status", clientId] as const,
   summary: (clientId: number) => ["client-summary", clientId] as const,
   summaries: () => ["client-summary"] as const,
   resources: (clientId: number) => ["client-resources", clientId] as const,

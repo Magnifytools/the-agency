@@ -115,8 +115,6 @@ const task = {
   recurrence_paused_at: null,
   recurrence_summary: null,
   recurring_parent_id: null,
-  unit_cost: null,
-  invoiced_at: null,
   link_url: null,
   created_at: "",
   updated_at: "",

@@ -1,9 +1,9 @@
 from __future__ import annotations
 from typing import Optional
 
-from datetime import date, datetime
+from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, computed_field
-from backend.db.models import ContractType, ClientStatus, BillingCycle
+from backend.db.models import ContractType, ClientStatus
 from backend.services.seo_traffic import SeoTrend, seo_traffic
 
 
@@ -24,10 +24,6 @@ class ClientCreate(BaseModel):
     vat_number: Optional[str] = None
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
-    billing_cycle: Optional[BillingCycle] = None
-    billing_day: Optional[int] = None
-    next_invoice_date: Optional[date] = None
-    last_invoiced_date: Optional[date] = None
     # Revenue intelligence
     business_model: Optional[str] = None
     aov: Optional[float] = None
@@ -52,10 +48,6 @@ class ClientUpdate(BaseModel):
     vat_number: Optional[str] = None
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
-    billing_cycle: Optional[BillingCycle] = None
-    billing_day: Optional[int] = None
-    next_invoice_date: Optional[date] = None
-    last_invoiced_date: Optional[date] = None
     engine_project_id: Optional[int] = None
     intermediary_name: Optional[str] = None
     is_intermediary_deal: Optional[bool] = None
@@ -82,10 +74,6 @@ class ClientResponse(BaseModel):
     notes: Optional[str] = None
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
-    billing_cycle: Optional[BillingCycle] = None
-    billing_day: Optional[int] = None
-    next_invoice_date: Optional[date] = None
-    last_invoiced_date: Optional[date] = None
     engine_project_id: Optional[int] = None
     engine_content_count: Optional[int] = None
     engine_keyword_count: Optional[int] = None

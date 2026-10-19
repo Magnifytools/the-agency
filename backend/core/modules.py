@@ -40,7 +40,6 @@ HIDDEN_MODULES: frozenset[str] = frozenset(
         "my_week",        # 12 — 592 líneas de backend para 12 llamadas
         "automations",    # 0 — ninguna regla llegó a ejecutarse
         "vault",          # 0
-        "billing",        # 0
         "capacity",       # solo frontend
         "executive",      # solo frontend
         # OJO — "discord" oculta la PANTALLA, pero su router sigue registrado

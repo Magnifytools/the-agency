@@ -38,9 +38,3 @@ def test_sanitize_csv_cell_blocks_formula_prefix():
 def test_sanitize_csv_cell_keeps_numeric_values():
     assert sanitize_csv_cell(-123.45) == -123.45
     assert sanitize_csv_cell(42) == 42
-
-
-@pytest.mark.asyncio
-async def test_billing_export_rejects_invalid_month(admin_client):
-    response = await admin_client.get("/api/billing/export?format=json&year=2026&month=13")
-    assert response.status_code == 422

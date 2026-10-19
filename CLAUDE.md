@@ -92,7 +92,7 @@ frontend/src/
 
 ## Permission Modules
 ```
-dashboard, clients, projects, tasks, timesheet, billing, proposals,
+dashboard, clients, projects, tasks, timesheet, proposals,
 reports, growth (Pipeline + Buffer), communications, digests,
 finance_income, finance_expenses, finance_taxes, finance_forecasts,
 finance_advisor, finance_import, finance_dashboard,

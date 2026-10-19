@@ -87,9 +87,6 @@ class ProjectUpdate(BaseModel):
     unit_price: Optional[float] = None
     unit_label: Optional[str] = None
     scope: Optional[str] = None
-    billing_day: Optional[int] = None
-    billing_amount: Optional[float] = None
-    next_billing_date: Optional[date] = None
     owner_id: Optional[int] = None
 
     @field_validator("status", mode="before")
@@ -123,10 +120,6 @@ class ProjectResponse(BaseModel):
     unit_price: Optional[float] = None
     unit_label: Optional[str] = None
     scope: Optional[str] = None
-    billing_day: Optional[int] = None
-    billing_amount: Optional[float] = None
-    next_billing_date: Optional[date] = None
-    last_billed_date: Optional[date] = None
     client_id: int
     client_name: Optional[str] = None
     owner_id: Optional[int] = None
@@ -351,10 +344,6 @@ class SaveAsTemplateInput(BaseModel):
     name: Optional[str] = None
     key: Optional[str] = None
     description: Optional[str] = None
-
-class InvoiceTasksInput(BaseModel):
-    task_ids: list[int]
-
 
 # --- Project Templates ---
 

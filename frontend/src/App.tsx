@@ -20,7 +20,6 @@ const ClientDetailPage = lazy(() => import("@/pages/client-detail-page"))
 const TasksPage = lazy(() => import("@/pages/tasks-page"))
 const UsersPage = lazy(() => import("@/pages/users-page"))
 const TimesheetPage = lazy(() => import("@/pages/timesheet-page"))
-const BillingPage = lazy(() => import("@/pages/billing-page"))
 const ProjectsPage = lazy(() => import("@/pages/projects-page"))
 const ProjectDetailPage = lazy(() => import("@/pages/project-detail-page"))
 const ReportsPage = lazy(() => import("@/pages/reports-page"))
@@ -116,7 +115,6 @@ export default function App() {
               <Route path="/capacity" element={<PermissionRoute adminOnly><ErrorBoundary section="Capacity"><Suspense fallback={<PageLoader />}><CapacityPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/users" element={<PermissionRoute adminOnly><ErrorBoundary section="Users"><Suspense fallback={<PageLoader />}><UsersPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/timesheet" element={<ErrorBoundary section="Timesheet"><Suspense fallback={<PageLoader />}><TimesheetPage /></Suspense></ErrorBoundary>} />
-              <Route path="/billing" element={<PermissionRoute adminOnly><ErrorBoundary section="Billing"><Suspense fallback={<PageLoader />}><BillingPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/proposals" element={<PermissionRoute module="proposals"><ErrorBoundary section="Proposals"><Suspense fallback={<PageLoader />}><ProposalsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/digests" element={<PermissionRoute module="digests"><ErrorBoundary section="Digests"><Suspense fallback={<PageLoader />}><DigestsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/digests/:id/edit" element={<PermissionRoute module="digests"><ErrorBoundary section="DigestEdit"><Suspense fallback={<PageLoader />}><DigestEditPage /></Suspense></ErrorBoundary></PermissionRoute>} />

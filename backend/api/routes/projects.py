@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, noload, with_loader_criteria
 
 from backend.db.database import get_db
-from backend.db.models import Project, ProjectPhase, ProjectTemplateDB, Task, TaskStatus, PhaseStatus, ProjectStatus, TimeEntry, Income, User
+from backend.db.models import Project, ProjectPhase, ProjectTemplateDB, Task, TaskStatus, PhaseStatus, ProjectStatus, TimeEntry, User
 from backend.schemas.project import (
     ProjectCreate,
     ProjectExtract,
@@ -25,7 +25,6 @@ from backend.schemas.project import (
     TemplateCreate,
     TemplateUpdate,
     SaveAsTemplateInput,
-    InvoiceTasksInput,
     ProjectTasksResponse,
     ProjectMonthlyCycleResponse,
     ProjectClosePreview,
@@ -204,10 +203,6 @@ def _build_project_response(
         unit_price=float(project.unit_price) if project.unit_price is not None else None,
         unit_label=project.unit_label,
         scope=project.scope,
-        billing_day=project.billing_day,
-        billing_amount=float(project.billing_amount) if project.billing_amount is not None else None,
-        next_billing_date=project.next_billing_date,
-        last_billed_date=project.last_billed_date,
         client_id=project.client_id,
         client_name=project.client.name if project.client else None,
         owner_id=project.owner_id,
@@ -860,7 +855,6 @@ _UPDATABLE_PROJECT_FIELDS = {
     "status", "budget_hours", "weekly_hours_budget", "monthly_hours_budget", "budget_amount",
     "gsc_url", "ga4_property_id",
     "pricing_model", "monthly_fee", "unit_price", "unit_label", "scope",
-    "billing_day", "billing_amount", "next_billing_date", "last_billed_date",
     "owner_id",
 }
 
@@ -890,20 +884,6 @@ async def _after_project_status_change(
         }, db)
     except Exception as exc:
         logger.warning("Automation hook failed for project %d: %s", project.id, exc)
-
-    if new_status == "completed" and project.billing_amount:
-        try:
-            from backend.services.notification_service import create_notification, BILLING_REMINDER
-            await create_notification(
-                db, user_id=actor.id, type=BILLING_REMINDER,
-                title=f"Proyecto completado — facturar {project.name}",
-                message=f"Importe: {float(project.billing_amount)}€",
-                link_url=f"/projects/{project.id}",
-                entity_type="project", entity_id=project.id,
-            )
-            await db.commit()
-        except Exception:
-            pass
 
 
 @router.get("/{project_id}/close-preview", response_model=ProjectClosePreview)
@@ -1259,174 +1239,4 @@ async def get_project_tasks(
         "project_name": project.name,
         "phases": phases_with_tasks,
         "unassigned_tasks": unassigned,
-    }
-
-
-# ── Per-task billing ────────────────────────────────────────────
-
-
-@router.get("/{project_id}/billing-summary")
-async def get_billing_summary(
-    project_id: int,
-    db: AsyncSession = Depends(get_db),
-    _user=Depends(require_module("billing")),
-):
-    """Billing summary for per-piece projects."""
-    result = await db.execute(
-        select(Project).where(Project.id == project_id)
-    )
-    project = result.scalar_one_or_none()
-    if not project:
-        raise HTTPException(404, "Project not found")
-
-    unit_price = float(project.unit_price or 0)
-
-    result = await db.execute(
-        select(Task).where(Task.project_id == project_id)
-    )
-    tasks = result.scalars().all()
-
-    billable_tasks = []
-    for t in tasks:
-        cost = float(t.unit_cost) if t.unit_cost is not None else unit_price
-        is_completed = t.status in (TaskStatus.completed, TaskStatus.in_review)
-        billable_tasks.append({
-            "id": t.id,
-            "title": t.title,
-            "status": t.status.value if hasattr(t.status, "value") else str(t.status),
-            "unit_cost": cost,
-            "completed": is_completed,
-            "invoiced": t.invoiced_at is not None,
-            "invoiced_at": t.invoiced_at.isoformat() if t.invoiced_at else None,
-            "completed_at": t.completed_at.isoformat() if is_completed and t.completed_at else None,
-        })
-
-    completed = [t for t in billable_tasks if t["completed"]]
-    pending_invoice = [t for t in completed if not t["invoiced"]]
-    invoiced = [t for t in completed if t["invoiced"]]
-
-    return {
-        "project_id": project_id,
-        "pricing_model": project.pricing_model,
-        "unit_price": unit_price,
-        "unit_label": project.unit_label or "pieza",
-        "total_tasks": len(billable_tasks),
-        "completed_tasks": len(completed),
-        "pending_invoice_count": len(pending_invoice),
-        "invoiced_count": len(invoiced),
-        "total_amount": sum(t["unit_cost"] for t in completed),
-        "pending_amount": sum(t["unit_cost"] for t in pending_invoice),
-        "invoiced_amount": sum(t["unit_cost"] for t in invoiced),
-        "tasks": billable_tasks,
-    }
-
-
-@router.post("/{project_id}/invoice-tasks")
-async def invoice_tasks(
-    project_id: int,
-    body: InvoiceTasksInput,
-    db: AsyncSession = Depends(get_db),
-    user=Depends(require_module("billing", write=True)),
-):
-    """Mark selected tasks as invoiced and create an Income record."""
-    task_ids = body.task_ids
-    if not task_ids:
-        raise HTTPException(400, "No tasks selected")
-
-    result = await db.execute(
-        select(Project).where(Project.id == project_id)
-    )
-    project = result.scalar_one_or_none()
-    if not project:
-        raise HTTPException(404, "Project not found")
-
-    unit_price = float(project.unit_price or 0)
-
-    result = await db.execute(
-        select(Task).where(Task.id.in_(task_ids), Task.project_id == project_id)
-    )
-    tasks = result.scalars().all()
-
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    total = 0.0
-    descriptions = []
-    for t in tasks:
-        cost = float(t.unit_cost) if t.unit_cost is not None else unit_price
-        total += cost
-        t.invoiced_at = now
-        descriptions.append(t.title)
-
-    if total <= 0:
-        raise HTTPException(400, "Total amount must be > 0")
-
-    income = Income(
-        date=now.date(),
-        description=f"{project.name}: {', '.join(descriptions[:3])}{'...' if len(descriptions) > 3 else ''}",
-        amount=round(total, 2),
-        type="factura",
-        client_id=project.client_id,
-        status="pendiente",
-    )
-    db.add(income)
-    await db.commit()
-
-    return {
-        "invoiced_tasks": len(tasks),
-        "total_amount": round(total, 2),
-        "income_id": income.id,
-    }
-
-
-@router.post("/{project_id}/mark-billed")
-async def mark_project_billed(
-    project_id: int,
-    db: AsyncSession = Depends(get_db),
-    user=Depends(require_module("billing", write=True)),
-):
-    """Mark project as billed for current period. Creates Income record and advances next_billing_date."""
-    from datetime import date, timedelta
-    import calendar
-
-    result = await db.execute(select(Project).where(Project.id == project_id))
-    project = result.scalar_one_or_none()
-    if not project:
-        raise HTTPException(404, "Project not found")
-
-    amount = float(project.billing_amount) if project.billing_amount else float(project.monthly_fee or 0)
-    if amount <= 0:
-        raise HTTPException(400, "No billing amount configured")
-
-    today = date.today()
-    project.last_billed_date = today
-
-    # Advance next_billing_date for recurring projects
-    if project.is_recurring and project.billing_day:
-        day = min(project.billing_day, 28)
-        # Next month
-        if today.month == 12:
-            next_date = today.replace(year=today.year + 1, month=1, day=day)
-        else:
-            max_day = calendar.monthrange(today.year, today.month + 1)[1]
-            next_date = today.replace(month=today.month + 1, day=min(day, max_day))
-        project.next_billing_date = next_date
-    else:
-        project.next_billing_date = None
-
-    # Create Income record
-    income = Income(
-        date=today,
-        description=f"{project.name} — factura {today.strftime('%m/%Y')}",
-        amount=round(amount, 2),
-        type="recurrente" if project.is_recurring else "factura",
-        client_id=project.client_id,
-        status="pendiente",
-    )
-    db.add(income)
-    await db.commit()
-
-    return {
-        "success": True,
-        "amount": round(amount, 2),
-        "next_billing_date": project.next_billing_date.isoformat() if project.next_billing_date else None,
-        "income_id": income.id,
     }
