@@ -45,7 +45,6 @@ const DeliveryPage = lazy(() => import("@/pages/delivery-page"))
 const IncidentsPage = lazy(() => import("@/pages/incidents-page"))
 const MyWeekPage = lazy(() => import("@/pages/my-week-page"))
 const SettingsPage = lazy(() => import("@/pages/settings-page"))
-const AutomationsPage = lazy(() => import("@/pages/automations-page"))
 
 function PageLoader() {
   return (
@@ -131,8 +130,6 @@ export default function App() {
               <Route path="/my-week" element={<ErrorBoundary section="MyWeek"><Suspense fallback={<PageLoader />}><MyWeekPage /></Suspense></ErrorBoundary>} />
               {/* Discord */}
               <Route path="/discord" element={<PermissionRoute adminOnly><ErrorBoundary section="Discord"><Suspense fallback={<PageLoader />}><DiscordSettingsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
-              {/* Automations */}
-              <Route path="/automations" element={<PermissionRoute adminOnly><ErrorBoundary section="Automations"><Suspense fallback={<PageLoader />}><AutomationsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Settings */}
               <Route path="/settings" element={<ErrorBoundary section="Settings"><Suspense fallback={<PageLoader />}><SettingsPage /></Suspense></ErrorBoundary>} />
             </Route>

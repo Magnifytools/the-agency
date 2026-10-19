@@ -148,7 +148,6 @@ export const clientKeys = {
   dashboard: (clientId: number) => ["client-dashboard", clientId] as const,
   summary: (clientId: number) => ["client-summary", clientId] as const,
   summaries: () => ["client-summary"] as const,
-  reports: (clientId: number) => ["client-reports", clientId] as const,
 }
 
 export async function invalidateClientChange(queryClient: QueryClient, clientIds: number[] = []) {

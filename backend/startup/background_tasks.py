@@ -68,55 +68,6 @@ async def _generate_recurring_instances():
             logging.info("Generated %d recurring task instance(s) for %s", created, business_today())
 
 
-async def _check_overdue_tasks():
-    """Check for overdue tasks and fire automation triggers."""
-    from datetime import date as date_type, datetime as dt_type
-    from sqlalchemy import select
-    from backend.db.database import async_session
-    from backend.db.models import Task, TaskStatus
-
-    today = business_today()
-    today_midnight = dt_type.combine(today, dt_type.min.time())
-
-    async with async_session() as session:
-        result = await session.execute(
-            select(Task).where(
-                Task.retired_at.is_(None),
-                Task.status.notin_([TaskStatus.completed]),
-                Task.due_date < today_midnight,
-            )
-        )
-        overdue_tasks = result.scalars().all()
-
-        if not overdue_tasks:
-            return
-
-        count = 0
-        failures = 0
-        for task in overdue_tasks:
-            try:
-                from backend.api.routes.automations import execute_automations
-                await execute_automations("task_overdue", {
-                    "task_id": task.id,
-                    "task_title": task.title,
-                    "project_id": task.project_id,
-                    "client_id": task.client_id,
-                    "assigned_to": task.assigned_to,
-                    "due_date": str(task.due_date),
-                    "status": task.status.value if hasattr(task.status, "value") else str(task.status),
-                }, session)
-                count += 1
-            except Exception as exc:
-                failures += 1
-                logging.warning("Overdue automation failed for task %d: %s", task.id, exc)
-
-        logging.info("Checked %d overdue tasks, triggered %d automations.", len(overdue_tasks), count)
-        if failures:
-            from backend.services.job_runtime import JobFailure
-
-            raise JobFailure("partial_failure")
-
-
 async def _reset_advanced_tasks():
     """Devolver a "En curso" las tareas marcadas como "Avanzada" días anteriores.
 
@@ -240,7 +191,7 @@ async def _retention_cleanup_once():
     from datetime import datetime, timedelta
     from sqlalchemy import delete
     from backend.db.database import async_session
-    from backend.db.models import AuditLog, ChangeLog, SyncLog, HoldedSyncLog, AutomationLog, Notification
+    from backend.db.models import AuditLog, ChangeLog, SyncLog, HoldedSyncLog, Notification
 
     now = utc_now_naive()
     cutoff_90d = now - timedelta(days=90)
@@ -249,7 +200,7 @@ async def _retention_cleanup_once():
     async with async_session() as db:
         total = 0
         # Tables with created_at via TimestampMixin
-        for model in (AuditLog, ChangeLog, SyncLog, AutomationLog):
+        for model in (AuditLog, ChangeLog, SyncLog):
             r = await db.execute(delete(model).where(model.created_at < cutoff_90d))
             total += r.rowcount or 0
         # HoldedSyncLog doesn't use TimestampMixin; key off started_at
@@ -334,7 +285,6 @@ def start_background_tasks() -> list[asyncio.Task]:
         "holded": ("holded-sync", _holded_sync_once),
         "advanced_reset": ("advanced-reset", _reset_advanced_tasks),
         "recurrence": ("recurring-reconcile", _generate_recurring_instances),
-        "overdue_automations": ("overdue-automations", _check_overdue_tasks),
         "scheduled_communications": (
             "scheduled-communications", _scheduled_communications_once,
         ),
