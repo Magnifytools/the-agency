@@ -71,9 +71,6 @@ import type {
   CommandContext,
   CommandReceipt,
   GrowthIdeaUpdate,
-  Invitation,
-  InvitationCreateResult,
-  InvitationCreate,
   Income,
   IncomeCreate,
   Expense,
@@ -716,20 +713,6 @@ export const proposalsApi = {
 export const investmentsApi = {
   calculate: (data: InvestmentCalculateRequest) =>
     api.post<InvestmentCalculateResponse>("/investments/calculate", data).then((r) => r.data),
-}
-
-// Invitations & Permissions
-export const invitationsApi = {
-  list: () => api.get<Invitation[]>("/invitations").then((r) => r.data),
-  create: (data: InvitationCreate) =>
-    api.post<InvitationCreateResult>("/invitations", data).then((r) => r.data),
-  revoke: (id: number) => api.delete(`/invitations/${id}`).then((r) => r.data),
-  accept: (data: { token: string; full_name: string; password: string }) =>
-    api.post<User>("/invitations/accept", data).then((r) => r.data),
-  getPermissions: (userId: number) =>
-    api.get<UserPermission[]>(`/users/${userId}/permissions`).then((r) => r.data),
-  updatePermissions: (userId: number, permissions: UserPermission[]) =>
-    api.put<UserPermission[]>(`/users/${userId}/permissions`, { permissions }).then((r) => r.data),
 }
 
 // Growth Operations

@@ -254,28 +254,6 @@ export interface SearchResults {
   leads: { id: number; company_name: string; contact_name: string | null; status: string }[]
 }
 
-// Invitations
-export interface Invitation {
-  id: number
-  email: string
-  role: UserRole
-  invited_by: number
-  inviter_name: string | null
-  expires_at: string
-  accepted_at: string | null
-  created_at: string
-}
-
-export interface InvitationCreateResult extends Invitation {
-  token: string
-}
-
-export interface InvitationCreate {
-  email: string
-  role?: UserRole
-  modules?: string[]
-}
-
 // ── Automation Rules ──────────────────────────────────────
 
 export type AutomationTrigger = "task_completed" | "task_overdue" | "phase_completed" | "project_status_changed" | "time_entry_created" | "communication_logged" | "daily_check"

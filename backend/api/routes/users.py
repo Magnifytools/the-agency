@@ -11,7 +11,7 @@ from backend.api.utils.db_helpers import safe_refresh
 from backend.core.security import hash_password
 from backend.db.database import get_db
 from backend.db.models import Project, ProjectStatus, Task, TaskStatus, User, UserPermission, UserRole
-from backend.schemas.invitation import PermissionItem, UserPermissionsUpdate
+from backend.schemas.permission import PermissionItem, UserPermissionsUpdate
 from backend.schemas.pagination import PaginatedResponse
 from backend.schemas.user import UserCreate, UserListResponse, UserUpdate
 

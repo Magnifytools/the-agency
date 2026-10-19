@@ -28,7 +28,6 @@ export const HIDDEN_MODULES = [
   "communications", // 0
   "resources", // 0
   "evidence", // 0
-  "invitations", // 0
   "export", // 0
 ] as const
 
