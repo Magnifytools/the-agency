@@ -31,7 +31,6 @@ import { ClientReportPolicy } from "@/components/clients/client-report-policy"
 import { ClientSettingsTab } from "@/components/clients/client-settings-tab"
 import { EngineMetricsWidget } from "@/components/clients/engine-metrics-widget"
 import { EngineSeoTab } from "@/components/clients/engine-seo-tab"
-// CoreUpdatesTab removed — analysis only available in Engine
 import { FichaTab } from "@/components/clients/ficha-tab"
 import { useAuth } from "@/context/auth-context"
 import { clientKeys, holdedKeys, invalidateClientChange, projectKeys, timeKeys } from "@/lib/query-keys"
@@ -836,9 +835,6 @@ export default function ClientDetailPage() {
 
       {/* Tab: SEO */}
       {activeTab === "seo" && client.engine_project_id && <EngineSeoTab client={client} />}
-
-      {/* Tab: Core Updates */}
-      {/* CoreUpdatesTab removed — analysis only available in Engine */}
 
       {/* Tab: Recursos */}
       {activeTab === "recursos" && (

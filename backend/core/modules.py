@@ -52,7 +52,6 @@ HIDDEN_MODULES: frozenset[str] = frozenset(
         "communications", # 0
         "resources",      # 0
         "evidence",       # 0 — los 7 endpoints
-        "core_updates",   # 0 — con él se van sklearn y numpy de la imagen
         "invitations",    # 0 — sin un solo llamador en el frontend
         "export",         # 0
     }
