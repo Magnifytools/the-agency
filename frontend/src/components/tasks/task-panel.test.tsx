@@ -672,4 +672,40 @@ describe("TaskPanel", () => {
       link_url: null,
     }));
   });
+
+  it("edits the procedure on a recurring template", async () => {
+    const template = { ...task, recurrence_pattern: "weekly", recurrence_day: 0, procedure_text: null, procedure_url: null };
+    mocks.get.mockResolvedValue(template);
+    mocks.update.mockResolvedValue({ ...template, procedure_text: "1. Exportar" });
+    setup({ taskId: 9 });
+    const steps = await screen.findByLabelText("Pasos");
+    expect(screen.getByText(/no afecta a las repeticiones ya creadas/)).toBeInTheDocument();
+    await userEvent.type(steps, "1. Exportar");
+    await userEvent.type(screen.getByLabelText("Documento de referencia"), "https://docs.example.test/proc");
+    await userEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(9, expect.objectContaining({
+      procedure_text: "1. Exportar",
+      procedure_url: "https://docs.example.test/proc",
+    })));
+  });
+
+  it("shows the copied procedure read-only on an occurrence", async () => {
+    mocks.get.mockResolvedValue({
+      ...task,
+      is_recurring: false,
+      recurrence_pattern: null,
+      recurrence_day: null,
+      recurrence_end_date: null,
+      recurring_parent_id: 5,
+      recurring_parent_title: "Informe mensual",
+      recurrence_occurrence_date: "2026-09-21",
+      procedure_text: "1. Exportar\n2. Revisar",
+      procedure_url: "https://docs.example.test/proc",
+    });
+    setup({ taskId: 9 });
+    expect(await screen.findByText(/1\. Exportar/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Abrir documento de referencia/ })).toHaveAttribute("href", "https://docs.example.test/proc");
+    expect(screen.getByText(/Copiado de Informe mensual/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Pasos")).not.toBeInTheDocument();
+  });
 });

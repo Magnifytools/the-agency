@@ -111,6 +111,8 @@ class TestTaskToResponse:
         mock_task.recurrence_occurrence_date = None
         mock_task.recurring_parent_id = None
         mock_task.link_url = None
+        mock_task.procedure_text = None
+        mock_task.procedure_url = None
         mock_task.checklist_items = []
         # Simulate missing relationships
         mock_task.client = None
@@ -167,6 +169,8 @@ class TestTaskToResponse:
         mock_task.recurrence_occurrence_date = None
         mock_task.recurring_parent_id = None
         mock_task.link_url = None
+        mock_task.procedure_text = None
+        mock_task.procedure_url = None
         mock_task.checklist_items = [MagicMock(), MagicMock()]
         # Set up relationships
         mock_task.client = MagicMock()

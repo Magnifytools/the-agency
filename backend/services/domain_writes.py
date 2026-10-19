@@ -36,7 +36,10 @@ UPDATABLE_TASK_FIELDS = {
     "waiting_for", "follow_up_date", "is_recurring", "recurrence_pattern",
     "recurrence_day", "recurrence_end_date",
     "link_url", "recurrence_anchor_date", "recurrence_paused",
+    "procedure_text", "procedure_url",
 }
+
+PROCEDURE_FIELDS = ("procedure_text", "procedure_url")
 
 RETIRED_TASK_EDITABLE_FIELDS = {"title", "description", "link_url"}
 
@@ -104,6 +107,25 @@ def _prepare_recurrence(data: dict, *, existing: Task | None = None) -> None:
         data["recurrence_paused_at"] = utc_now_naive() if paused else None
 
 
+def _validate_procedure(data: dict, *, existing: Task | None = None) -> None:
+    """The procedure is written on the recurring template only.
+
+    Occurrences receive a copy from the generator (``recurring_parent_id``)
+    and show it read-only; unchanged values may travel in a full-form patch.
+    """
+    if existing is None:
+        touched = any(data.get(field) for field in PROCEDURE_FIELDS)
+        allowed = bool(data.get("is_recurring")) or data.get("recurring_parent_id") is not None
+    else:
+        touched = any(
+            field in data and data[field] != getattr(existing, field)
+            for field in PROCEDURE_FIELDS
+        )
+        allowed = bool(data.get("is_recurring", existing.is_recurring))
+    if touched and not allowed:
+        raise HTTPException(422, "El procedimiento se escribe en la plantilla de una tarea recurrente")
+
+
 async def create_project(db: AsyncSession, data: dict) -> Project:
     await validate_client_exists(db, data.get("client_id"))
     await validate_project_owner(db, data.get("owner_id"))
@@ -126,6 +148,7 @@ async def create_task(
 ) -> Task:
     data = dict(data)
     _prepare_recurrence(data)
+    _validate_procedure(data)
     await validate_task_scope(db, data)
     actual = data.get("actual_minutes")
     await require_current_write(db, actor, {"tasks", "timesheet"} if actual else {"tasks"})
@@ -229,6 +252,7 @@ async def update_task(
     if task.retired_at is not None and changed_fields - RETIRED_TASK_EDITABLE_FIELDS:
         raise HTTPException(409, "Restaura la tarea antes de cambiar su trabajo operativo")
     await validate_task_waiting(db, data, existing=task)
+    _validate_procedure(data, existing=task)
     _prepare_recurrence(data, existing=task)
     old_status = task.status
     if manual_changed and not _can_write_time(actor):

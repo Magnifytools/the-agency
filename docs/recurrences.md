@@ -43,6 +43,21 @@ actual y conserva un recibo cuando los observa para el día de hoy; no intenta r
 Los trabajos automáticos conservan el creador de la plantilla, usan el escritor
 común y no se atribuyen como una acción manual deshacible.
 
+## Procedimiento de la plantilla
+
+Una plantilla puede llevar su procedimiento escrito: pasos en texto
+(`procedure_text`) y un enlace opcional a un documento de referencia
+(`procedure_url`, sólo http/https). Se edita únicamente en la plantilla; en una
+tarea no recurrente o en una repetición el backend rechaza el cambio (422),
+aunque acepta los valores sin cambiar que manda el formulario completo.
+
+Cada repetición nueva guarda una copia del procedimiento y una copia de la
+checklist de la plantilla: mismo texto, descripción, orden y responsable, sin
+marcar y sin fechas. Editar la plantilla sólo afecta a las repeticiones que se
+creen después; las ya creadas conservan lo que tenían. En el panel, la
+plantilla muestra la sección "Procedimiento" editable y cada repetición la
+muestra en lectura, desplegable.
+
 ## Proyectos recurrentes
 
 La ficha muestra el mes civil seleccionado, las tareas planificadas, las
