@@ -1159,6 +1159,8 @@ export const inboxApi = {
     api.post<{ ok: boolean; task_id: number; note: InboxNote }>(`/inbox/${id}/convert-to-task`, data).then((r) => r.data),
   dismiss: (id: number) =>
     api.post<InboxNote>(`/inbox/${id}/dismiss`).then((r) => r.data),
+  suggest: (id: number) =>
+    api.post<InboxNote>(`/inbox/${id}/suggest`).then((r) => r.data),
   uploadAttachment: (noteId: number, file: File) => {
     const fd = new FormData()
     fd.append("file", file)

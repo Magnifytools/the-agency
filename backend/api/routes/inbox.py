@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.database import get_db
 from backend.db.models import (
     InboxNote, InboxNoteStatus, InboxAttachment, Project, ProjectStatus, Client, ClientStatus,
-    Task, TaskStatus, TaskPriority,
+    Task, TaskStatus, TaskPriority, User, UserRole,
 )
 from backend.api.deps import get_current_user, require_module
 from backend.api.utils.db_helpers import safe_refresh
@@ -24,6 +24,7 @@ from backend.core.rate_limiter import ai_limiter
 from backend.services.task_scope import validate_task_scope
 from backend.services.domain_writes import create_task as create_task_write
 from backend.services.inbox_processing import can_read as _can_read
+from backend.services.notification_service import create_notification
 from backend.services.temporal import as_utc_instant, business_today
 
 logger = logging.getLogger(__name__)
@@ -353,7 +354,10 @@ async def convert_to_task(
             existing_task = await db.get(Task, note.resolved_entity_id)
             if existing_task is not None and existing_task.created_by == user.id:
                 return {"ok": True, "task_id": existing_task.id, "note": _to_response(note, user).model_dump()}
-        raise HTTPException(status_code=409, detail="Esta nota ya fue convertida en tarea")
+        raise HTTPException(status_code=409, detail=(
+            "Esta nota ya se envió como sugerencia para la app" if note.resolved_as == APP_SUGGESTION
+            else "Esta nota ya fue convertida en tarea"
+        ))
 
     # Resolve fields: explicit > AI suggestion > defaults
     ai = _visible_suggestion(note, user) or {}
@@ -467,12 +471,63 @@ async def dismiss_note(
     if note is None:
         raise HTTPException(status_code=404, detail="Nota no encontrada")
     if note.status == InboxNoteStatus.processed:
-        raise HTTPException(status_code=409, detail="La nota ya fue convertida en tarea")
+        raise HTTPException(status_code=409, detail="La nota ya está resuelta")
     note.status = InboxNoteStatus.dismissed
     note.resolved_as = "dismissed"
     note.updated_at = _updated_clock()
     await db.commit()
     await safe_refresh(db, note, log_context="dismiss_inbox_note")
+    return _to_response(note, user)
+
+
+# ---------------------------------------------------------------------------
+# POST /{id}/suggest — Send the note to the admins as an app suggestion
+# ---------------------------------------------------------------------------
+
+APP_SUGGESTION = "app_suggestion"
+
+
+@router.post("/{note_id}/suggest", response_model=InboxNoteResponse)
+async def send_as_app_suggestion(
+    note_id: int,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """La nota es una mejora para The Agency: llega a los admins como aviso.
+
+    El texto entero va en el aviso porque las notas del inbox son privadas de
+    quien las escribe. Quien la envía no se avisa a sí mismo; la nota queda en
+    su inbox marcada como sugerencia.
+    """
+    note = (await db.execute(
+        select(InboxNote)
+        .where(InboxNote.id == note_id, InboxNote.user_id == user.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if note is None:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    if note.resolved_as == APP_SUGGESTION:
+        return _to_response(note, user)
+    if note.status in (InboxNoteStatus.processed, InboxNoteStatus.dismissed):
+        raise HTTPException(status_code=409, detail="La nota ya está resuelta")
+
+    admins = (await db.scalars(select(User.id).where(
+        User.is_active.is_(True), User.role == UserRole.admin, User.id != user.id,
+    ))).all()
+    author = user.short_name or user.full_name
+    for admin_id in admins:
+        await create_notification(
+            db, user_id=admin_id, type=APP_SUGGESTION,
+            title=f"Sugerencia para la app de {author}",
+            message=note.raw_text,
+            entity_type="inbox_note", entity_id=note.id,
+        )
+    note.status = InboxNoteStatus.processed
+    note.resolved_as = APP_SUGGESTION
+    note.updated_at = _updated_clock()
+    await db.commit()
+    await safe_refresh(db, note, log_context="suggest_inbox_note")
     return _to_response(note, user)
 
 
