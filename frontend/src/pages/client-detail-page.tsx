@@ -22,7 +22,6 @@ import { TimeLogDialog } from "@/components/timer/time-log-dialog"
 import { CommunicationList } from "@/components/communications/communication-list"
 import { ContactList } from "@/components/clients/contact-list"
 import { ActivityTimeline } from "@/components/clients/activity-timeline"
-import { ResourceList } from "@/components/clients/resource-list"
 import { ClientDashboardTab } from "@/components/clients/client-dashboard-tab"
 import { ClientAiAdvisor } from "@/components/clients/client-ai-advisor"
 import { ClientReportsTab } from "@/components/clients/client-reports-tab"
@@ -237,7 +236,7 @@ export default function ClientDetailPage() {
   const [creatingTask, setCreatingTask] = useState(false)
   const [whatIfOpen, setWhatIfOpen] = useState(false)
 
-  const validTabs = ["ficha", "contexto", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "recursos", "seo", "informes", "ajustes", "facturas"] as const
+  const validTabs = ["ficha", "contexto", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "seo", "informes", "ajustes", "facturas"] as const
   type Tab = (typeof validTabs)[number]
 
   // Pestaña -> módulo que la sirve. Si el módulo está oculto, sus endpoints no
@@ -248,7 +247,6 @@ export default function ClientDetailPage() {
     comunicaciones: "communications",
     facturas: "holded",
     informes: "reports",
-    recursos: "resources",
   }
   const TAB_PERMISSION: Partial<Record<Tab, string>> = {
     tareas: "tasks",
@@ -476,7 +474,6 @@ export default function ClientDetailPage() {
               ...(isTabVisible("comunicaciones")
                 ? (["comunicaciones"] as TabKey[])
                 : []),
-              ...(isTabVisible("recursos") ? (["recursos"] as TabKey[]) : []),
             ],
           },
           {
@@ -509,7 +506,6 @@ export default function ClientDetailPage() {
           resumenes: "Resúmenes",
           informes: "Informes",
           comunicaciones: "Comunicaciones",
-          recursos: "Archivos",
           seo: "SEO",
           contactos: "Contactos",
           facturas: "Facturas",
@@ -827,15 +823,6 @@ export default function ClientDetailPage() {
 
       {/* Tab: SEO */}
       {activeTab === "seo" && client.engine_project_id && <EngineSeoTab client={client} />}
-
-      {/* Tab: Recursos */}
-      {activeTab === "recursos" && (
-        <Card>
-          <CardContent className="p-6">
-            <ResourceList clientId={clientId} />
-          </CardContent>
-        </Card>
-      )}
 
       {/* Tab: Informes */}
       {activeTab === "informes" && (

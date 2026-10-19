@@ -47,7 +47,6 @@ HIDDEN_MODULES: frozenset[str] = frozenset(
         # una API son cosas distintas; aquí solo queríamos lo primero.
         "discord",        # 13 visitas a la pantalla de ajustes del webhook
         "communications", # 0
-        "resources",      # 0
         "evidence",       # 0 — los 7 endpoints
         "export",         # 0
     }

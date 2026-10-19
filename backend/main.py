@@ -19,7 +19,7 @@ from backend.api.routes import (
     dashboard, discord, projects, communications, pm,
     reports, proposals, growth, report_policies, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
-    service_templates, dailys, contacts, activity, notifications, incidents, resources, deliveries, communication_schedules,
+    service_templates, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     changes, commands,
     client_dashboard, engine_integration, investments,
     evidence, search, balance,
@@ -252,7 +252,6 @@ _OPTIONAL_ROUTERS = {
     # ("my_week" no está aquí: ver _CORE_ROUTERS — el router sirve los festivos
     #  de Ajustes, que es una pantalla que se conserva.)
     "communications": [communications],
-    "resources": [resources],
     "evidence": [evidence],
     "export": [export],
 }

@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import ClientDetailPage from "./client-detail-page"
 
 const mocks = vi.hoisted(() => ({
-  enabled: new Set(["tasks", "timesheet", "digests", "communications", "reports", "resources"]),
+  enabled: new Set(["tasks", "timesheet", "digests", "communications", "reports"]),
   permissions: new Set(["tasks", "timesheet", "projects", "digests", "communications", "reports"]),
   writePermissions: new Set<string>(),
   admin: false,
@@ -43,7 +43,6 @@ vi.mock("@/components/clients/client-overview", () => ({
 vi.mock("@/components/clients/activity-timeline", () => ({ ActivityTimeline: () => <div>ActivityTimeline</div> }))
 vi.mock("@/components/clients/client-ai-advisor", () => ({ ClientAiAdvisor: () => <div>ClientAiAdvisor</div> }))
 vi.mock("@/components/clients/contact-list", () => ({ ContactList: () => <div>ContactList</div> }))
-vi.mock("@/components/clients/resource-list", () => ({ ResourceList: () => <div>ResourceList</div> }))
 vi.mock("@/components/clients/client-dashboard-tab", () => ({ ClientDashboardTab: () => <div>Dashboard</div> }))
 vi.mock("@/components/clients/client-reports-tab", () => ({ ClientReportsTab: () => <div>Reports</div> }))
 vi.mock("@/components/clients/client-settings-tab", () => ({ ClientSettingsTab: () => <div>Settings</div> }))
@@ -78,7 +77,7 @@ function show(tab: string) {
 describe("client detail areas", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.enabled = new Set(["tasks", "timesheet", "digests", "communications", "reports", "resources"])
+    mocks.enabled = new Set(["tasks", "timesheet", "digests", "communications", "reports"])
     mocks.permissions = new Set(["clients", "tasks", "timesheet", "projects", "digests", "communications", "reports"])
     mocks.writePermissions = new Set(["clients", "tasks", "timesheet", "projects", "digests", "communications", "reports"])
     mocks.admin = false

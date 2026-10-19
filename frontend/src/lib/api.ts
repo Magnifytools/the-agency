@@ -118,8 +118,6 @@ import type {
   EmailDraftResponse,
   ClientContact,
   ClientContactCreate,
-  ClientResource,
-  ClientResourceCreate,
   ClientDashboard,
   ClientStatusRow,
   ClientCohort,
@@ -910,18 +908,6 @@ export const contactsApi = {
     api.put<ClientContact>(`/clients/${clientId}/contacts/${contactId}`, data).then((r) => r.data),
   delete: (clientId: number, contactId: number) =>
     api.delete(`/clients/${clientId}/contacts/${contactId}`).then((r) => r.data),
-}
-
-// --- Client Resources ---
-export const resourcesApi = {
-  list: (clientId: number) =>
-    api.get<ClientResource[]>(`/clients/${clientId}/resources`).then((r) => r.data),
-  create: (clientId: number, data: ClientResourceCreate) =>
-    api.post<ClientResource>(`/clients/${clientId}/resources`, data).then((r) => r.data),
-  update: (clientId: number, resourceId: number, data: Partial<ClientResourceCreate>) =>
-    api.put<ClientResource>(`/clients/${clientId}/resources/${resourceId}`, data).then((r) => r.data),
-  delete: (clientId: number, resourceId: number) =>
-    api.delete(`/clients/${clientId}/resources/${resourceId}`).then((r) => r.data),
 }
 
 // --- Client Dashboard ---
