@@ -22,7 +22,7 @@ from backend.api.routes import (
     service_templates, dailys, contacts, activity, notifications, incidents, resources, deliveries, communication_schedules,
     changes, commands,
     client_dashboard, engine_integration, investments,
-    evidence, search, agency_vault, core_updates, balance,
+    evidence, search, agency_vault, balance,
     inbox,
     extension,
     my_week,
@@ -258,7 +258,6 @@ _OPTIONAL_ROUTERS = {
     "communications": [communications],
     "resources": [resources],
     "evidence": [evidence],
-    "core_updates": [core_updates],
     "invitations": [invitations],
     "export": [export],
 }
