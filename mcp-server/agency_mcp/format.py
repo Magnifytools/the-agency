@@ -155,3 +155,89 @@ def timer_line(t: dict[str, Any] | None, tz: tzinfo) -> str:
     what = f"#{t['task_id']} {t.get('task_title')}" if t.get("task_id") else "sin tarea"
     where = f" ({t['client_name']})" if t.get("client_name") else ""
     return f"Temporizador {state} (id {t['id']}): {what}{where}, desde las {local_time(t.get('started_at'), tz)}."
+
+
+DAILY_STATUS = {"draft": "borrador", "sent": "enviado"}
+
+CLIENT_STATUS = {"act": "Actuar", "watch": "Vigilar", "ok": "Bien", "no_data": "Sin datos"}
+
+SEO_TREND = {"up": "sube", "stable": "estable", "down": "baja", "drop_alert": "caída fuerte"}
+
+DIGEST_STATUS = {"draft": "borrador", "reviewed": "revisado", "sent": "marcado como enviado"}
+
+DIGEST_SIGNAL = {"ok": "al día", "due": "toca enviarlo", "late": "atrasado"}
+
+
+def daily_line(d: dict[str, Any]) -> str:
+    parts = [f"#{d['id']} {d.get('date')}"]
+    if d.get("user_name"):
+        parts.append(d["user_name"])
+    parts.append(DAILY_STATUS.get(d.get("status"), d.get("status")))
+    if d.get("discord_sent_at"):
+        parts.append(f"en Discord {day(d['discord_sent_at'])}")
+    parsed = d.get("parsed_data")
+    if parsed:
+        n = len(parsed.get("general") or []) + sum(len(p.get("tasks") or []) for p in parsed.get("projects") or [])
+        parts.append(f"{n} punto{'s' if n != 1 else ''} en {len(parsed.get('projects') or [])} proyectos")
+    else:
+        parts.append("sin estructurar")
+    return " · ".join(p for p in parts if p)
+
+
+def _parsed_task(t: dict[str, Any]) -> str:
+    details = f" — {t['details']}" if t.get("details") else ""
+    return f"{t['description']}{details}"
+
+
+def daily_detail(d: dict[str, Any]) -> str:
+    lines = [f"Daily {daily_line(d)} (revisión {d.get('revision', 1)})"]
+    parsed = d.get("parsed_data")
+    if not parsed:
+        text = (d.get("raw_text") or "").strip()
+        lines += ["", "Texto guardado:", text or "(vacío)"]
+        return "\n".join(lines)
+    for project in parsed.get("projects") or []:
+        where = f" ({project['client']})" if project.get("client") else ""
+        lines += ["", f"{project['name']}{where}:"]
+        lines += [f"- {_parsed_task(t)}" for t in project.get("tasks") or []]
+    if parsed.get("general"):
+        lines += ["", "General:"]
+        lines += [f"- {_parsed_task(t)}" for t in parsed["general"]]
+    if parsed.get("tomorrow"):
+        lines += ["", "Mañana:"]
+        lines += [f"- {item}" for item in parsed["tomorrow"]]
+    return "\n".join(lines)
+
+
+def client_status_block(s: dict[str, Any]) -> list[str]:
+    """Respuesta de /api/clients/{id}/status -> líneas. Las señales a None son
+    las que quien mira no puede leer: se omiten, no se inventan."""
+    lines = [f"Estado: {CLIENT_STATUS.get(s.get('status'), s.get('status'))}"]
+    lines += [f"- {r}" for r in s.get("reasons") or []]
+    seo = s.get("seo")
+    if seo:
+        change = seo.get("change_pct")
+        change_txt = f", {change:+.0f} %" if change is not None else ""
+        trend = SEO_TREND.get(seo.get("trend"), seo.get("trend") or "sin tendencia")
+        source = "Search Console" if seo.get("source") == "search_console" else "The Engine"
+        as_of = f", datos hasta {day(seo['as_of'])}" if seo.get("as_of") else ""
+        lines.append(f"Tráfico de Google (28 días): {seo.get('clicks')} clics frente a "
+                     f"{seo.get('clicks_previous')} ({trend}{change_txt}) · {source}{as_of}")
+    digest = s.get("digest")
+    if digest:
+        label = "mensual" if digest.get("cadence") == "monthly" else "semanal"
+        last = digest.get("last_sent_period_end")
+        lines.append(f"Resumen {label}: {DIGEST_SIGNAL.get(digest.get('state'), digest.get('state'))}"
+                     f" · periodo esperado hasta {digest.get('expected_period_end')}"
+                     + (f" · último enviado hasta {last}" if last else " · ninguno enviado"))
+    tasks = s.get("tasks")
+    if tasks:
+        lines.append(f"Tareas: {tasks.get('overdue', 0)} vencidas · {tasks.get('waiting', 0)} esperando al cliente"
+                     f" · {tasks.get('followups_late', 0)} seguimientos pasados")
+    month = s.get("month")
+    if month:
+        line = f"Este mes: {month.get('hours')} h"
+        if month.get("consumption_pct") is not None:
+            line += f" · {month['consumption_pct']:.0f} % de la cuota ({month.get('fee'):.0f} €)"
+        lines.append(line)
+    return lines

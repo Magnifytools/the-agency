@@ -2,7 +2,8 @@
 
 Servidor MCP local para manejar The Agency desde Claude (Claude Code o Claude
 Desktop): preguntar qué tienes hoy, buscar y crear tareas, cambiarlas de estado,
-registrar tiempo, usar el temporizador y apuntar cosas en el inbox.
+registrar tiempo, usar el temporizador, apuntar cosas en el inbox, escribir el
+daily y ver cómo va un cliente.
 
 Es un cliente más de la API, como la extensión de Chrome. Entra con **tu
 usuario**, así que ves y cambias lo mismo que en la web, con tus permisos, y
@@ -22,12 +23,21 @@ No tiene herramientas de borrado. Lo destructivo se hace en la web.
 | `list_team` | Personas del equipo con su id |
 | `list_time_entries` | Horas de un rango, con total por cliente |
 | `list_inbox` | Notas del inbox por procesar |
+| `list_dailys` | Tus dailys recientes, con su estado y si ya salieron en Discord |
+| `client_overview` | Cómo va un cliente (por id o nombre): estado y motivos, tráfico, resumen, horas, tareas abiertas, lo que espera al cliente y el último resumen con su entrega |
 | `create_task` | Crea una tarea (si no dices a quién, te la asigna a ti) |
 | `update_task` | Cambia estado, prioridad, fechas, responsable, espera… |
 | `comment_task` | Comenta una tarea |
 | `capture_inbox` | Apunta una idea en el inbox |
 | `log_time` | Registra tiempo a mano |
 | `timer` | Temporizador: estado, arrancar, pausar, reanudar, parar |
+| `submit_daily` | Guarda tu daily y lo estructura con IA (hasta 90 s). Queda en borrador |
+| `send_daily_to_discord` | **Publica** uno de tus dailys en Discord. No se deshace con ⌘Z |
+
+`client_overview` omite lo que tu usuario no puede leer (tareas, resúmenes,
+horas) en vez de fallar. `send_daily_to_discord` sólo envía dailys propios,
+también si eres admin, y manda la revisión leída: si alguien lo edita entre
+medias, el backend lo rechaza.
 
 ## Instalación
 
@@ -72,7 +82,7 @@ Reinicia Claude Desktop después de guardarlo.
 | `AGENCY_PASSWORD` | Llavero | Contraseña. Si no está, se lee del Llavero (servicio `the-agency-mcp`) |
 | `AGENCY_URL` | `https://agency.magnifytools.com` | `http://localhost:8004` para desarrollo |
 | `AGENCY_TIMEZONE` | `Europe/Madrid` | Para saber qué es "hoy" |
-| `AGENCY_TIMEOUT` | `30` | Segundos por llamada |
+| `AGENCY_TIMEOUT` | `30` | Segundos por llamada (el parseo del daily usa 90, como la web) |
 
 ## Cómo funciona la sesión
 
@@ -96,7 +106,8 @@ memoria: no hacen falta red ni base de datos.
 ## Añadir una herramienta
 
 1. Mira el endpoint y su esquema en `backend/api/routes/` y `backend/schemas/`.
-2. Añádela en `agency_mcp/server.py` con `@mcp.tool(annotations=READ | WRITE)`
+2. Añádela en `agency_mcp/server.py` con `@mcp.tool(annotations=READ | WRITE | PUBLISH)`
+   (`PUBLISH` para lo que sale fuera de The Agency, como Discord)
    y un docstring que diga cuándo usarla: es lo que lee el modelo.
 3. Devuelve texto compacto (`agency_mcp/format.py`), no el JSON entero.
 4. Test en `tests/test_server.py`: qué se manda y qué se devuelve.

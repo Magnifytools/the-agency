@@ -36,6 +36,10 @@ ACTIVE_STATUSES = "backlog,pending,in_progress,waiting,in_review,advanced"
 
 READ = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
 WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False)
+# Publica fuera de The Agency (Discord): no se puede deshacer con ⌘Z.
+PUBLISH = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
+# Lo mismo que da la web a las llamadas de dailys que esperan a Claude.
+DAILY_AI_TIMEOUT = 90.0
 
 INSTRUCTIONS = """\
 The Agency es la herramienta interna de gestión de la agencia (Magnify): clientes,
@@ -231,6 +235,91 @@ def build_server(client: AgencyClient, *, timezone: str = "Europe/Madrid") -> MC
             return "El inbox está vacío."
         return "\n".join(f"- {fmt.inbox_line(n)}" for n in notes)
 
+    @mcp.tool(annotations=READ)
+    async def list_dailys(
+        limit: Annotated[int, Field(ge=1, le=50)] = 7,
+        date_from: DateStr | None = None,
+        date_to: DateStr | None = None,
+    ) -> str:
+        """Dailys (cierres del día) recientes de la persona, del más nuevo al más viejo:
+        una línea por daily con su id, estado y si ya salió en Discord."""
+        me = await call(client.get("/api/auth/me"))
+        # Un admin vería los de todo el equipo: aquí sólo los suyos.
+        dailys = await call(client.get(
+            "/api/dailys", user_id=me["id"], limit=limit,
+            date_from=_opt_date(date_from), date_to=_opt_date(date_to),
+        ))
+        if not dailys:
+            return "No hay dailys en ese rango."
+        return "\n".join(f"- {fmt.daily_line(d)}" for d in dailys)
+
+    async def _resolve_client(client_id: int | None, name: str | None) -> int:
+        if client_id is not None:
+            return client_id
+        if not name or len(name.strip()) < 2:
+            raise ToolError("Indica client_id o el nombre del cliente (mínimo 2 letras).")
+        found = (await call(client.get("/api/search", q=name.strip()))).get("clients") or []
+        if not found:
+            raise ToolError(f"No encuentro ningún cliente que se llame {name!r} (o no tienes acceso a clientes).")
+        exact = [c for c in found if c["name"].casefold() == name.strip().casefold()]
+        if len(exact) == 1 or len(found) == 1:
+            return (exact or found)[0]["id"]
+        options = "; ".join(f"#{c['id']} {c['name']}" for c in found)
+        raise ToolError(f"Hay varios clientes para {name!r}: {options}. Repite con client_id.")
+
+    async def _optional(coro) -> Any:
+        """Partes del resumen que dependen de otro módulo: sin permiso se omiten."""
+        try:
+            return await coro
+        except AgencyError as exc:
+            if exc.status == 403:
+                return None
+            raise ToolError(str(exc)) from exc
+
+    @mcp.tool(annotations=READ)
+    async def client_overview(
+        client_id: int | None = None,
+        name: Annotated[str | None, Field(description="Nombre del cliente si no sabes su id")] = None,
+    ) -> str:
+        """Cómo va un cliente de un vistazo: estado (Actuar/Vigilar/Bien) con sus motivos,
+        tráfico de Google, resumen periódico, horas del mes, tareas abiertas, lo que
+        está esperando al cliente con su fecha de seguimiento y el último resumen
+        (si se confirmó su entrega al cliente)."""
+        cid = await _resolve_client(client_id, name)
+        status = await call(client.get(f"/api/clients/{cid}/status"))
+        common = {"client_id": cid, "is_recurring": False, "page_size": 30}
+        open_page = await _optional(client.get(
+            "/api/tasks", status=ACTIVE_STATUSES.replace("waiting,", ""), **common))
+        waiting_page = await _optional(client.get("/api/tasks", status="waiting", **common))
+        digests = await _optional(client.get("/api/digests", client_id=cid, limit=1))
+
+        out = [f"Cliente #{cid} {status.get('client_name')}", *fmt.client_status_block(status)]
+        if open_page is None:
+            out += ["", "Tareas: sin permiso para verlas."]
+        else:
+            out += ["", f"Tareas abiertas ({open_page['total']}):",
+                    fmt.task_list(open_page["items"], total=open_page["total"], empty="(ninguna)")]
+            out += ["", f"Esperando al cliente ({waiting_page['total']}):",
+                    fmt.task_list(waiting_page["items"], total=waiting_page["total"], empty="(nada)")]
+        if digests:
+            d = digests[0]
+            line = (f"Último resumen: #{d['id']} {d['period_start']} → {d['period_end']} · "
+                    f"{fmt.DIGEST_STATUS.get(d.get('status'), d.get('status'))}")
+            events = await _optional(client.get(f"/api/digests/{d['id']}/external-delivery-events"))
+            delivery = (events or {}).get("external_delivery") or {}
+            if delivery.get("state") == "confirmed":
+                line += f" · entregado al cliente el {fmt.day(delivery.get('confirmed_at'))}"
+                if delivery.get("actor_name"):
+                    line += f" por {delivery['actor_name']}"
+            elif events is not None:
+                line += " · entrega al cliente sin confirmar"
+            if (events or {}).get("has_newer_version"):
+                line += " (hay una versión más nueva del mismo periodo)"
+            out += ["", line]
+        elif digests is not None:
+            out += ["", "Último resumen: ninguno."]
+        return "\n".join(out)
+
     # ── Escritura ────────────────────────────────────────────────────────
 
     @mcp.tool(annotations=WRITE)
@@ -373,6 +462,45 @@ def build_server(client: AgencyClient, *, timezone: str = "Europe/Madrid") -> MC
         entry = await call(client.post("/api/timer/stop", body))
         what = f"#{entry['task_id']} {entry.get('task_title')}" if entry.get("task_id") else "sin tarea"
         return f"Temporizador parado: {fmt.hours(entry.get('minutes'))} registrados · {what}."
+
+    @mcp.tool(annotations=WRITE)
+    async def submit_daily(
+        text: Annotated[str, Field(min_length=1, max_length=50_000, description="Lo hecho hoy, en texto libre")],
+        day: Annotated[str | None, Field(description="Día AAAA-MM-DD. Por defecto, hoy.")] = None,
+    ) -> str:
+        """Guarda el daily (cierre del día) de la persona y lo estructura con IA por
+        proyectos, como al enviarlo en la web. Queda en borrador: no se publica en
+        Discord (para eso, send_daily_to_discord). Puede tardar hasta un minuto y medio.
+        Si ese día ya tiene otro daily, falla y no lo pisa."""
+        body: dict[str, Any] = {"raw_text": text}
+        if day:
+            body["date"] = _opt_date(day)
+        daily = await call(client.post("/api/dailys", body))
+        if daily.get("parsed_data") is None and daily.get("status") == "draft":
+            try:
+                daily = await client.post(
+                    f"/api/dailys/{daily['id']}/reparse", {"revision": daily["revision"]},
+                    timeout=DAILY_AI_TIMEOUT,
+                )
+            except AgencyError as exc:
+                # El texto ya está guardado: no es un fallo del daily, sólo del parseo.
+                return (f"Daily #{daily['id']} del {daily['date']} guardado, pero sin estructurar ({exc}). "
+                        "Se puede reintentar desde la web.")
+        return fmt.daily_detail(daily)
+
+    @mcp.tool(annotations=PUBLISH)
+    async def send_daily_to_discord(daily_id: int) -> str:
+        """PUBLICA en el canal de Discord del equipo un daily de la persona (sólo los
+        suyos), tal y como está guardado. Es visible para todo el equipo y no se puede
+        deshacer desde The Agency: confírmalo con la persona antes de usarla."""
+        me = await call(client.get("/api/auth/me"))
+        daily = await call(client.get(f"/api/dailys/{daily_id}"))
+        if daily.get("user_id") != me["id"]:
+            raise ToolError(f"El daily #{daily_id} no es tuyo: desde aquí sólo se envían los propios.")
+        # Con la revisión: si alguien lo edita entre medias, el backend lo rechaza.
+        receipt = await call(client.post(
+            f"/api/dailys/{daily_id}/send-discord", {"revision": daily["revision"]}))
+        return f"Daily #{daily_id} del {daily['date']}: {receipt.get('message')} (estado del envío: {receipt.get('status')})."
 
     return mcp
 
