@@ -125,11 +125,6 @@ import type {
   InboxNote,
   InboxNoteCreate,
   InboxNoteUpdate,
-  AutomationRule,
-  AutomationRuleCreate,
-  AutomationLogEntry,
-  AutomationTriggerOption,
-  AutomationActionOption,
   JobRuntimeResponse,
   OperationalUsage,
 } from "./types"
@@ -1187,26 +1182,6 @@ export const myWeekApi = {
     api.delete(`/my-week/holidays/${id}`).then((r) => r.data),
   addTaskComment: (taskId: number, content: string) =>
     api.post(`/tasks/${taskId}/comments`, { content }).then((r) => r.data),
-}
-
-// ── Automations ──────────────────────────────────────────
-export const automationsApi = {
-  list: () =>
-    api.get<AutomationRule[]>("/automations").then((r) => r.data),
-  get: (id: number) =>
-    api.get<AutomationRule>(`/automations/${id}`).then((r) => r.data),
-  triggers: () =>
-    api.get<{ triggers: AutomationTriggerOption[]; actions: AutomationActionOption[] }>("/automations/triggers").then((r) => r.data),
-  logs: (ruleId?: number, limit?: number) =>
-    api.get<AutomationLogEntry[]>("/automations/logs", { params: { rule_id: ruleId, limit } }).then((r) => r.data),
-  create: (data: AutomationRuleCreate) =>
-    api.post<AutomationRule>("/automations", data).then((r) => r.data),
-  update: (id: number, data: Partial<AutomationRuleCreate>) =>
-    api.put<AutomationRule>(`/automations/${id}`, data).then((r) => r.data),
-  delete: (id: number) =>
-    api.delete(`/automations/${id}`).then((r) => r.data),
-  toggle: (id: number) =>
-    api.post<AutomationRule>(`/automations/${id}/toggle`).then((r) => r.data),
 }
 
 export const jobRuntimeApi = {

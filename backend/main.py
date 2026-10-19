@@ -26,7 +26,6 @@ from backend.api.routes import (
     inbox,
     extension,
     my_week,
-    automations,
     google_calendar,
     gsc,
     bank_import,
@@ -247,7 +246,6 @@ _OPTIONAL_ROUTERS = {
     "proposals": [proposals, service_templates, investments],
     "leads": [leads],
     "growth": [growth],
-    "automations": [automations],
     # ("my_week" no está aquí: ver _CORE_ROUTERS — el router sirve los festivos
     #  de Ajustes, que es una pantalla que se conserva.)
     "communications": [communications],

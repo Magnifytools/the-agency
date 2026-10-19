@@ -938,29 +938,6 @@ async def test_closing_session_discards_pending_journal_before_reuse(engine, jou
         await writer.close()
 
 
-async def test_automation_batch_journals_only_successful_actions_once(admin_client, db_session, journal):
-    from backend.api.routes.automations import execute_automations
-    from backend.db.models import AutomationRule, AutomationLog
-    rules = [
-        AutomationRule(name="Good A", trigger="task_completed", action_type="create_task", action_config={"title": "A"}, is_active=True),
-        AutomationRule(name="Invalid", trigger="task_completed", action_type="create_insight", action_config={"task_id": 987654321}, is_active=True),
-        AutomationRule(name="Good B", trigger="task_completed", action_type="create_task", action_config={"title": "B"}, is_active=True),
-    ]
-    db_session.add_all(rules)
-    await db_session.commit()
-    cj.set_actor(admin_client.test_user.id)
-    await execute_automations("task_completed", {}, db_session)
-    entry = await journal.only()
-    assert len(entry.operations) == 2
-    assert {op["after"]["title"] for op in entry.operations} == {"A", "B"}
-    failed = (await db_session.execute(select(AutomationLog).where(AutomationLog.rule_id == rules[1].id))).scalar_one()
-    assert failed.success is False
-    response = await admin_client.post(f"/api/changes/{entry.id}/undo")
-    assert response.status_code == 200, response.text
-    for op in entry.operations:
-        assert await db_session.get(Task, op["entity_id"]) is None
-
-
 async def test_journal_write_failure_rolls_back_domain_change(db_session, admin_user, journal):
     from sqlalchemy import event
     from backend.db.models import ChangeLog

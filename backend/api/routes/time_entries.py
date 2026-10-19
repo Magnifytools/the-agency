@@ -143,22 +143,6 @@ async def create_time_entry(
 
     # Save attributes before they expire (async SQLAlchemy lazy-load guard)
     entry_id = entry.id
-    entry_task_id = body.task_id
-    entry_user_id = current_user.id
-    entry_minutes = body.minutes
-
-    # Automation hook: time_entry_created
-    try:
-        from backend.api.routes.automations import execute_automations
-        await execute_automations("time_entry_created", {
-            "time_entry_id": entry_id,
-            "task_id": entry_task_id,
-            "user_id": entry_user_id,
-            "minutes": entry_minutes,
-        }, db)
-    except Exception as e:
-        logger.debug("Automation hook time_entry_created failed (never break time entry creation): %s", e)
-        pass  # Never break time entry creation
 
     entry = await _load_time_entry_for_response(db, entry_id)
     if entry is None:
