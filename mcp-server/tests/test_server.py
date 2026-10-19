@@ -312,3 +312,203 @@ def test_hora_del_temporizador_en_hora_de_madrid():
     # 18 oct 2026 aún es horario de verano: UTC+2
     assert local_time("2026-10-17T06:42:20.175164Z", madrid) == "2026-10-17 08:42"
     assert local_time("2026-10-17T06:42:20", madrid) == "2026-10-17 08:42"  # sin zona = UTC
+
+
+# ── Dailys ─────────────────────────────────────────────────────────────
+
+ME = {"id": 2, "email": "nacho@magnify.ing", "full_name": "Nacho", "role": "member"}
+DAILY = {
+    "id": 31, "user_id": 2, "user_name": "Nacho", "date": "2026-10-19", "raw_text": "KW de FG",
+    "parsed_data": None, "status": "draft", "discord_sent_at": None, "revision": 1,
+}
+PARSED = {
+    "projects": [{"name": "SEO 2026", "client": "Fit Generation",
+                  "tasks": [{"description": "Keyword research", "details": "40 semillas", "fact_keys": []}]}],
+    "general": [{"description": "Reunión de equipo", "details": "", "fact_keys": []}],
+    "tomorrow": ["Clusters"],
+}
+
+
+async def test_submit_daily_guarda_y_estructura_con_90_s(fake, agency, monkeypatch):
+    fake.route("POST", "/api/dailys", httpx.Response(201, json=DAILY))
+    fake.route("POST", "/api/dailys/31/reparse", {**DAILY, "parsed_data": PARSED, "revision": 2})
+    timeouts = []
+    original = agency._http.request
+
+    async def spy(method, path, **kwargs):
+        timeouts.append((path, kwargs.get("timeout")))
+        return await original(method, path, **kwargs)
+
+    monkeypatch.setattr(agency._http, "request", spy)
+    is_error, text = await call(agency, "submit_daily", {"text": "KW de FG", "day": "2026-10-19"})
+
+    assert not is_error, text
+    assert json.loads(fake.last("POST", "/api/dailys").content) == {"raw_text": "KW de FG", "date": "2026-10-19"}
+    assert json.loads(fake.last("POST", "/api/dailys/31/reparse").content) == {"revision": 1}
+    assert ("/api/dailys/31/reparse", 90.0) in timeouts
+    assert "SEO 2026 (Fit Generation):" in text and "- Keyword research — 40 semillas" in text
+    assert "Mañana:" in text and "- Clusters" in text
+
+
+async def test_submit_daily_si_falla_la_ia_avisa_de_que_queda_guardado(fake, agency):
+    fake.route("POST", "/api/dailys", httpx.Response(201, json=DAILY))
+    fake.route("POST", "/api/dailys/31/reparse", httpx.Response(502, json={
+        "detail": "El texto sigue guardado. No se pudo estructurar; puedes reintentarlo."}))
+
+    is_error, text = await call(agency, "submit_daily", {"text": "KW de FG"})
+
+    assert not is_error
+    assert "Daily #31 del 2026-10-19 guardado, pero sin estructurar" in text
+
+
+async def test_submit_daily_que_ya_existe_da_el_mensaje_del_conflicto(fake, agency):
+    fake.route("POST", "/api/dailys", httpx.Response(409, json={"detail": {
+        "code": "daily_exists", "message": "Ya existe un resumen para el 2026-10-19. Revisa el texto guardado.",
+        "current": DAILY}}))
+
+    is_error, text = await call(agency, "submit_daily", {"text": "otro texto"})
+
+    assert is_error
+    assert "Ya existe un resumen para el 2026-10-19" in text and "current" not in text
+    assert not [r for r in fake.requests if r.url.path.endswith("/reparse")]
+
+
+async def test_list_dailys_solo_los_de_la_persona(fake, agency):
+    fake.route("GET", "/api/auth/me", ME)
+    fake.route("GET", "/api/dailys", [{**DAILY, "parsed_data": PARSED, "status": "sent",
+                                        "discord_sent_at": "2026-10-19T18:00:00"}])
+
+    _, text = await call(agency, "list_dailys", {"limit": 3})
+
+    params = fake.last("GET", "/api/dailys").url.params
+    assert params["user_id"] == "2" and params["limit"] == "3"
+    assert text == "- #31 2026-10-19 · Nacho · enviado · en Discord 2026-10-19 · 2 puntos en 1 proyectos"
+
+
+async def test_send_daily_propio_manda_la_revision(fake, agency):
+    fake.route("GET", "/api/auth/me", ME)
+    fake.route("GET", "/api/dailys/31", {**DAILY, "revision": 3})
+    fake.route("POST", "/api/dailys/31/send-discord", httpx.Response(202, json={
+        "delivery_id": "d1", "success": True, "status": "queued", "message": "Envío en cola"}))
+
+    is_error, text = await call(agency, "send_daily_to_discord", {"daily_id": 31})
+
+    assert not is_error, text
+    assert json.loads(fake.last("POST", "/api/dailys/31/send-discord").content) == {"revision": 3}
+    assert text == "Daily #31 del 2026-10-19: Envío en cola (estado del envío: queued)."
+
+
+async def test_send_daily_ajeno_no_llega_a_discord(fake, agency):
+    fake.route("GET", "/api/auth/me", {**ME, "id": 1, "role": "admin"})
+    fake.route("GET", "/api/dailys/31", DAILY)
+
+    is_error, text = await call(agency, "send_daily_to_discord", {"daily_id": 31})
+
+    assert is_error and "no es tuyo" in text
+    assert not [r for r in fake.requests if r.url.path.endswith("/send-discord")]
+
+
+async def test_send_daily_inexistente_es_error(fake, agency):
+    fake.route("GET", "/api/auth/me", ME)
+    fake.route("GET", "/api/dailys/99", httpx.Response(404, json={"detail": "Daily update no encontrado"}))
+
+    is_error, text = await call(agency, "send_daily_to_discord", {"daily_id": 99})
+
+    assert is_error and "404: Daily update no encontrado" in text
+
+
+async def test_send_daily_esta_marcada_como_publicacion(agency):
+    async with Client(build_server(agency)) as client:
+        tools = {t.name: t for t in (await client.list_tools()).tools}
+    hints = tools["send_daily_to_discord"].annotations
+    assert hints.read_only_hint is False and hints.open_world_hint is True
+    assert "PUBLICA" in tools["send_daily_to_discord"].description
+
+
+# ── Resumen de cliente ────────────────────────────────────────────────
+
+STATUS = {
+    "client_id": 4, "client_name": "Fit Generation", "status": "act",
+    "reasons": ["3 tareas vencidas", "Toca enviar el resumen mensual"],
+    "seo": {"source": "search_console", "clicks": 800, "clicks_previous": 1000, "change_pct": -20.0,
+            "trend": "drop_alert", "as_of": "2026-10-17"},
+    "digest": {"cadence": "monthly", "last_sent_period_end": "2026-08-31",
+               "expected_period_end": "2026-09-30", "state": "due"},
+    "tasks": {"overdue": 3, "waiting": 1, "followups_late": 0},
+    "month": {"hours": 12.5},
+}
+WAITING = {**TASK, "id": 8, "title": "Accesos GA4", "status": "waiting",
+           "waiting_for": "cliente", "follow_up_date": "2026-10-21"}
+
+
+def _overview_routes(fake):
+    fake.route("GET", "/api/clients/4/status", STATUS)
+
+    def tasks(request):
+        items = [WAITING] if request.url.params["status"] == "waiting" else [TASK]
+        return {"items": items, "total": len(items), "page": 1, "page_size": 30}
+
+    fake.route("GET", "/api/tasks", tasks)
+    fake.route("GET", "/api/digests", [{"id": 50, "client_id": 4, "period_start": "2026-09-01",
+                                        "period_end": "2026-09-30", "status": "reviewed"}])
+    fake.route("GET", "/api/digests/50/external-delivery-events", {
+        "events": [], "has_newer_version": False, "can_record": True,
+        "external_delivery": {"digest_id": 50, "state": "confirmed", "actor_name": "David",
+                              "confirmed_at": "2026-10-02T09:00:00Z"}})
+
+
+async def test_client_overview_por_nombre(fake, agency):
+    fake.route("GET", "/api/search", {"clients": [
+        {"id": 4, "name": "Fit Generation", "status": "active"},
+        {"id": 9, "name": "Fit Generation Kids", "status": "active"}], "projects": [], "tasks": []})
+    _overview_routes(fake)
+
+    is_error, text = await call(agency, "client_overview", {"name": "fit generation"})
+
+    assert not is_error, text
+    assert text.startswith("Cliente #4 Fit Generation\nEstado: Actuar\n- 3 tareas vencidas")
+    assert "800 clics frente a 1000 (caída fuerte, -20 %)" in text
+    assert "Resumen mensual: toca enviarlo" in text
+    assert "Este mes: 12.5 h" in text
+    waiting = [r for r in fake.requests if r.url.path == "/api/tasks" and r.url.params["status"] == "waiting"][0]
+    assert waiting.url.params["client_id"] == "4" and "assigned_to" not in waiting.url.params
+    assert "#8 Accesos GA4" in text and "esperando a cliente, seguimiento 2026-10-21" in text
+    assert "Último resumen: #50 2026-09-01 → 2026-09-30 · revisado · entregado al cliente el 2026-10-02 por David" in text
+
+
+async def test_client_overview_nombre_ambiguo_pide_id(fake, agency):
+    fake.route("GET", "/api/search", {"clients": [
+        {"id": 4, "name": "Fit Generation"}, {"id": 9, "name": "Fit Generation Kids"}]})
+
+    is_error, text = await call(agency, "client_overview", {"name": "fit"})
+
+    assert is_error and "#4 Fit Generation; #9 Fit Generation Kids" in text
+
+
+async def test_client_overview_sin_permiso_de_tareas_ni_resumenes(fake, agency):
+    fake.route("GET", "/api/clients/4/status", {**STATUS, "tasks": None, "digest": None, "month": None})
+    forbidden = httpx.Response(403, json={"detail": "No tienes acceso al módulo"})
+    fake.route("GET", "/api/tasks", forbidden)
+    fake.route("GET", "/api/digests", forbidden)
+
+    is_error, text = await call(agency, "client_overview", {"client_id": 4})
+
+    assert not is_error, text
+    assert "Tareas: sin permiso para verlas." in text
+    assert "Último resumen" not in text and "Este mes" not in text
+
+
+async def test_client_overview_inexistente_es_error(fake, agency):
+    fake.route("GET", "/api/clients/77/status", httpx.Response(404, json={"detail": "Client not found"}))
+
+    is_error, text = await call(agency, "client_overview", {"client_id": 77})
+
+    assert is_error and "404: Client not found" in text
+
+
+async def test_client_overview_sin_acceso_a_clientes_es_error(fake, agency):
+    fake.route("GET", "/api/clients/4/status", httpx.Response(403, json={"detail": "No tienes acceso al módulo"}))
+
+    is_error, text = await call(agency, "client_overview", {"client_id": 4})
+
+    assert is_error and "403" in text
