@@ -15,13 +15,14 @@ from backend.db.models import (
     Task, TaskStatus, TaskComment, Event, EventType,
     User, UserDayStatus, DayStatusType, CompanyHoliday,
 )
-from backend.api.deps import get_current_user, require_admin
+from backend.api.deps import get_current_user
 from backend.services.domain_writes import lock_task, update_task as update_task_write
 from backend.api.utils.db_helpers import safe_refresh
+from backend.services.holidays import applies_to, holidays_for
 from backend.schemas.my_week import (
     DayStatusUpdate, DayStatusResponse,
     EventCreate, EventUpdate, EventResponse,
-    CompanyHolidayCreate, CompanyHolidayResponse,
+    CompanyHolidayResponse,
     MyWeekTask, MyWeekDay, MyWeekSummary, MyWeekResponse,
     TeamMemberDay, TeamMemberWeek,
 )
@@ -121,25 +122,8 @@ async def get_my_week(
     status_result = await db.execute(status_q)
     day_statuses = {s.date: s for s in status_result.scalars().all()}
 
-    # 4. Company holidays (filtered by user region)
-    from sqlalchemy import or_
-    holiday_q = select(CompanyHoliday).where(
-        CompanyHoliday.date >= week_start,
-        CompanyHoliday.date <= week_end,
-    )
-    # Only show holidays that apply to this user: national + user's region + user's locality
-    region_conditions = [CompanyHoliday.region.is_(None)]  # national always
-    if user.region:
-        region_conditions.append(
-            (CompanyHoliday.region == user.region) & (CompanyHoliday.locality.is_(None))
-        )
-        if user.locality:
-            region_conditions.append(
-                (CompanyHoliday.region == user.region) & (CompanyHoliday.locality == user.locality)
-            )
-    holiday_q = holiday_q.where(or_(*region_conditions))
-    holiday_result = await db.execute(holiday_q)
-    holidays = {h.date: h for h in holiday_result.scalars().all()}
+    # 4. Company holidays that apply to this user (national, region, locality)
+    holidays = await holidays_for(db, user, week_start, week_end)
 
     # 5. Events
     week_start_dt = datetime(week_start.year, week_start.month, week_start.day)
@@ -287,19 +271,7 @@ async def get_my_week(
             for i in range(7):
                 d = week_start + timedelta(days=i)
                 # Resolve holiday for this user/day
-                tu_holiday = None
-                for h in all_holidays:
-                    if h.date != d:
-                        continue
-                    if h.region is None and h.locality is None:
-                        tu_holiday = h
-                        break
-                    if h.region == tu.region and h.locality is None:
-                        tu_holiday = h
-                        break
-                    if h.region == tu.region and h.locality == tu.locality:
-                        tu_holiday = h
-                        break
+                tu_holiday = next((h for h in all_holidays if h.date == d and applies_to(h, tu)), None)
                 tu_status = ts_map.get((tu.id, d))
                 tu_days.append(TeamMemberDay(
                     date=d,
@@ -531,61 +503,3 @@ async def schedule_task(
     await update_task_write(db, task, {"scheduled_date": scheduled_date}, actor=user, allow_assignee_schedule=True)
     await db.commit()
     return {"ok": True, "scheduled_date": str(scheduled_date) if scheduled_date else None}
-
-
-# ── Company Holidays (admin) ────────────────────────────────
-
-@router.get("/holidays", response_model=list[CompanyHolidayResponse])
-async def list_holidays(
-    year: Optional[int] = Query(None),
-    region: Optional[str] = Query(None, description="Filter by CCAA code"),
-    include_national: bool = Query(True, description="Include national holidays"),
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
-):
-    q = select(CompanyHoliday).order_by(CompanyHoliday.date.asc())
-    if year:
-        q = q.where(
-            CompanyHoliday.date >= date(year, 1, 1),
-            CompanyHoliday.date <= date(year, 12, 31),
-        )
-    if region:
-        from sqlalchemy import or_
-        conditions = [CompanyHoliday.region == region]
-        if include_national:
-            conditions.append(CompanyHoliday.region.is_(None))
-        q = q.where(or_(*conditions))
-    result = await db.execute(q)
-    return result.scalars().all()
-
-
-@router.post("/holidays", response_model=CompanyHolidayResponse, status_code=status.HTTP_201_CREATED)
-async def create_holiday(
-    body: CompanyHolidayCreate,
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
-):
-    holiday = CompanyHoliday(
-        date=body.date, name=body.name, country=body.country,
-        region=body.region, locality=body.locality,
-    )
-    db.add(holiday)
-    await db.commit()
-    await safe_refresh(db, holiday, log_context="my_week")
-    return holiday
-
-
-@router.delete("/holidays/{holiday_id}")
-async def delete_holiday(
-    holiday_id: int,
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
-):
-    q = select(CompanyHoliday).where(CompanyHoliday.id == holiday_id)
-    result = await db.execute(q)
-    holiday = result.scalar_one_or_none()
-    if not holiday:
-        raise HTTPException(status_code=404, detail="Holiday not found")
-    await db.delete(holiday)
-    await db.commit()
-    return {"ok": True}

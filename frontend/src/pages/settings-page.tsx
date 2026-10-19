@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { invalidateCalendarViews } from "@/lib/calendar-queries"
 import { useAuth } from "@/context/auth-context"
-import { usersApi, categoriesApi, myWeekApi, calendarApi } from "@/lib/api"
+import { usersApi, categoriesApi, holidaysApi, calendarApi } from "@/lib/api"
 import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS, isShortcutAvailable, isValidShortcutBinding, resolveShortcuts, shortcutConflict } from "@/hooks/use-keyboard-shortcuts"
 import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar } from "lucide-react"
 import { CommunicationSchedules } from "@/components/communication-schedules"
@@ -103,7 +103,7 @@ export default function SettingsPage() {
 
   const holidaysQuery = useQuery({
     queryKey: ["holidays", currentYear],
-    queryFn: () => myWeekApi.listHolidays(currentYear),
+    queryFn: () => holidaysApi.list(currentYear),
     enabled: isAdmin,
   })
   const holidays = holidaysQuery.isError ? [] : (holidaysQuery.data ?? [])
@@ -121,7 +121,7 @@ export default function SettingsPage() {
 
   const createHolidayMut = useMutation({
     mutationFn: (data: { date: string; name: string; region?: string | null; locality?: string | null }) =>
-      myWeekApi.createHoliday(data),
+      holidaysApi.create(data),
     onSuccess: () => {
       refetchHolidays()
       setNewHolidayDate("")
@@ -134,7 +134,7 @@ export default function SettingsPage() {
   })
 
   const deleteHolidayMut = useMutation({
-    mutationFn: (id: number) => myWeekApi.deleteHoliday(id),
+    mutationFn: (id: number) => holidaysApi.delete(id),
     onSuccess: () => { refetchHolidays(); toast.success("Festivo eliminado") },
     onError: () => toast.error("Error al eliminar festivo"),
   })

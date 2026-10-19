@@ -1157,6 +1157,17 @@ export interface MyWeekResponse {
   team: TeamMemberWeek[]
 }
 
+export const holidaysApi = {
+  list: (year?: number, region?: string) =>
+    api.get<CompanyHolidayResponse[]>("/holidays", {
+      params: { ...(year ? { year } : {}), ...(region ? { region } : {}) },
+    }).then((r) => r.data),
+  create: (data: { date: string; name: string; country?: string; region?: string | null; locality?: string | null }) =>
+    api.post<CompanyHolidayResponse>("/holidays", data).then((r) => r.data),
+  delete: (id: number) =>
+    api.delete(`/holidays/${id}`).then((r) => r.data),
+}
+
 export const myWeekApi = {
   get: (weekStart?: string) =>
     api.get<MyWeekResponse>("/my-week", { params: weekStart ? { week_start: weekStart } : {} }).then((r) => r.data),
@@ -1172,14 +1183,6 @@ export const myWeekApi = {
     api.delete(`/my-week/events/${id}`).then((r) => r.data),
   scheduleTask: (taskId: number, scheduledDate: string | null) =>
     api.patch(`/my-week/tasks/${taskId}/schedule`, null, { params: { scheduled_date: scheduledDate } }).then((r) => r.data),
-  listHolidays: (year?: number, region?: string) =>
-    api.get<CompanyHolidayResponse[]>("/my-week/holidays", {
-      params: { ...(year ? { year } : {}), ...(region ? { region } : {}) },
-    }).then((r) => r.data),
-  createHoliday: (data: { date: string; name: string; country?: string; region?: string | null; locality?: string | null }) =>
-    api.post<CompanyHolidayResponse>("/my-week/holidays", data).then((r) => r.data),
-  deleteHoliday: (id: number) =>
-    api.delete(`/my-week/holidays/${id}`).then((r) => r.data),
   addTaskComment: (taskId: number, content: string) =>
     api.post(`/tasks/${taskId}/comments`, { content }).then((r) => r.data),
 }

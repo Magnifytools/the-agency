@@ -10,11 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models import (
     IN_PROGRESS_TASK_STATUSES,
     Task, TaskStatus, TaskPriority, TimeEntry, DailyUpdate,
-    CompanyHoliday, User, UserRole, UserPermission, Event, EventType,
+    User, UserRole, UserPermission, Event, EventType,
 )
 import re
 
 from backend.services.discord import send_to_discord
+from backend.services.holidays import is_working_day
 from backend.services.temporal import business_today, civil_day_utc_bounds
 from backend.services.time_entry_dates import time_entry_civil_period
 
@@ -30,22 +31,6 @@ _PRIORITY_ORDER = {
     TaskPriority.medium: (2, "\U0001f7e1"),    # yellow circle
     TaskPriority.low: (3, "\u26aa"),           # white circle
 }
-
-
-async def is_working_day(db: AsyncSession, day: date, region: str | None) -> bool:
-    """Return False for weekends and company holidays."""
-    if day.weekday() >= 5:
-        return False
-
-    stmt = select(CompanyHoliday.id).where(
-        CompanyHoliday.date == day,
-        (CompanyHoliday.region.is_(None)) | (CompanyHoliday.region == region),
-    ).limit(1)
-    result = await db.execute(stmt)
-    if result.scalar_one_or_none() is not None:
-        return False
-
-    return True
 
 
 def _morning_sections(today: date):
@@ -113,7 +98,7 @@ async def generate_team_morning_plan(db: AsyncSession, day: date) -> str:
             (UserPermission.module == "tasks") & UserPermission.can_read.is_(True))),
     ).order_by(User.id))).all()
     groups = [(user.short_name or user.full_name, user.id) for user in users
-              if await is_working_day(db, day, user.region)]
+              if await is_working_day(db, day, user)]
     groups.append(("Sin responsable", None))
     lines = [f"\u2600\ufe0f Plan del equipo para hoy · {day:%d/%m/%Y}"]
     any_tasks = False
