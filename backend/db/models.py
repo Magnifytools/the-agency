@@ -32,13 +32,13 @@ Model inventory (38 models, ~1,500 lines):
 
   --- Core ---
   Base, TimestampMixin
-  User, UserPermission, UserInvitation
+  User, UserPermission
 
   --- Client Management ---
-  Client, ClientContact, ClientResource, ClientDocument
+  Client, ClientContact, ClientDocument
 
   --- Project Management ---
-  Project, ProjectPhase, ProjectEvidence, ProjectTemplateDB
+  Project, ProjectPhase, ProjectTemplateDB
 
   --- Tasks & Time ---
   TaskCategory, Task, TaskChecklist, TaskComment, TaskAttachment, TimeEntry
@@ -69,7 +69,7 @@ Model inventory (38 models, ~1,500 lines):
   DiscordSettings, SyncLog, CsvMapping
 
   --- Reports & Digests ---
-  GeneratedReport, WeeklyDigest, DailyUpdate
+  WeeklyDigest, DailyUpdate
 
   --- Undo ---
   ChangeLog
@@ -77,14 +77,8 @@ Model inventory (38 models, ~1,500 lines):
   --- Notifications & Inbox ---
   Notification, InboxNote, InboxAttachment
 
-  --- Agency Assets ---
-  AgencyAsset
-
-  --- My Week ---
-  UserDayStatus, CompanyHoliday
-
-  --- Automations ---
-  AutomationRule, AutomationLog
+  --- Holidays ---
+  CompanyHoliday
 
 NOTE: Do NOT split this file into separate modules.
 SQLAlchemy relationships require all models to share the same
@@ -316,15 +310,6 @@ class BillingEventType(str, enum.Enum):
     note = "note"
 
 
-class ResourceType(str, enum.Enum):
-    spreadsheet = "spreadsheet"
-    document = "document"
-    email = "email"
-    account = "account"
-    dashboard = "dashboard"
-    other = "other"
-
-
 class GrowthFunnelStage(str, enum.Enum):
     referral = "referral"
     desire = "desire"
@@ -359,7 +344,6 @@ class User(TimestampMixin, Base):
     weekly_hours = Column(Float, nullable=False, default=40.0)
     is_active = Column(Boolean, nullable=False, default=True)
     password_reset_required = Column(Boolean, nullable=False, default=False)
-    invited_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     preferences = Column(JSONB, nullable=True, server_default="{}")
     region = Column(String(10), nullable=True)      # CCAA code: "MAD", "CAT"...
     locality = Column(String(100), nullable=True)    # City: "Madrid", "Barcelona"...
@@ -400,7 +384,6 @@ class Client(UTCTimestampMixin, Base):
     status = Column(Enum(ClientStatus), nullable=False, default=ClientStatus.active)
     notes = Column(Text, nullable=True)
     # Financial fields (from GF)
-    cif = Column(String(50), nullable=True)
     currency = Column(String(10), nullable=False, default="EUR")
     monthly_fee = Column(Numeric(12, 2), nullable=True)
     # Holded integration
@@ -424,11 +407,6 @@ class Client(UTCTimestampMixin, Base):
     intermediary_name = Column(String(200), nullable=True)
     is_intermediary_deal = Column(Boolean, nullable=False, default=False)
     # Revenue intelligence
-    business_model = Column(String(50), nullable=True)  # ecommerce, saas, lead_gen, media
-    aov = Column(Float, nullable=True)  # Average Order Value EUR
-    conversion_rate = Column(Float, nullable=True)  # 0-100
-    ltv = Column(Float, nullable=True)  # Lifetime Value EUR
-    seo_maturity_level = Column(String(20), nullable=True)  # none, basic, intermediate, advanced
     # Engine cached metrics (synced periodically)
     engine_content_count = Column(Integer, nullable=True)
     engine_keyword_count = Column(Integer, nullable=True)
@@ -448,7 +426,6 @@ class Client(UTCTimestampMixin, Base):
     communications = relationship("CommunicationLog", back_populates="client", lazy="noload", order_by="CommunicationLog.occurred_at.desc()")
     contacts = relationship("ClientContact", back_populates="client", lazy="noload", order_by="ClientContact.is_primary.desc()")
     incomes = relationship("Income", back_populates="client", lazy="noload")
-    resources = relationship("ClientResource", back_populates="client", lazy="noload", order_by="ClientResource.label")
     billing_events = relationship("BillingEvent", back_populates="client", lazy="noload", order_by="BillingEvent.event_date.desc()")
 
 
@@ -515,7 +492,6 @@ class Project(UTCTimestampMixin, Base):
     owner = relationship("User", lazy="selectin", foreign_keys=[owner_id])
     phases = relationship("ProjectPhase", back_populates="project", lazy="selectin", order_by="ProjectPhase.order_index")
     tasks = relationship("Task", back_populates="project", lazy="selectin")
-    evidence = relationship("ProjectEvidence", back_populates="project", lazy="noload", order_by="ProjectEvidence.created_at.desc()")
 
 
 class ProjectPhase(TimestampMixin, Base):
@@ -826,19 +802,6 @@ class ClientContact(UTCTimestampMixin, Base):
     client = relationship("Client", back_populates="contacts", lazy="selectin")
 
 
-class ClientResource(TimestampMixin, Base):
-    __tablename__ = "client_resources"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
-    label = Column(String(200), nullable=False)
-    url = Column(String(500), nullable=False)
-    resource_type = Column(Enum(ResourceType), nullable=False, default=ResourceType.other)
-    notes = Column(Text, nullable=True)
-
-    client = relationship("Client", back_populates="resources", lazy="selectin")
-
-
 class ClientDocument(TimestampMixin, Base):
     __tablename__ = "client_documents"
 
@@ -851,38 +814,6 @@ class ClientDocument(TimestampMixin, Base):
     content = Column(LargeBinary, nullable=False)
 
     client = relationship("Client", lazy="noload")
-
-
-class EvidenceType(str, enum.Enum):
-    screenshot = "screenshot"
-    report = "report"
-    analytics = "analytics"
-    ranking = "ranking"
-    content = "content"
-    deliverable = "deliverable"
-    proposal = "proposal"
-    other = "other"
-
-
-class ProjectEvidence(TimestampMixin, Base):
-    __tablename__ = "project_evidence"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
-    phase_id = Column(Integer, ForeignKey("project_phases.id"), nullable=True, index=True)
-    title = Column(String(200), nullable=False)
-    url = Column(Text, nullable=True)
-    file_name = Column(String(255), nullable=True)
-    file_mime_type = Column(String(100), nullable=True)
-    file_size_bytes = Column(Integer, nullable=True)
-    file_content = Column(LargeBinary, nullable=True)
-    evidence_type = Column(String(20), default="other")
-    description = Column(Text, nullable=True)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-
-    project = relationship("Project", back_populates="evidence", lazy="selectin")
-    phase = relationship("ProjectPhase", lazy="selectin")
-    creator = relationship("User", lazy="selectin")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1178,27 +1109,6 @@ class ReportAudience(str, enum.Enum):
     operational = "operational"
 
 
-class GeneratedReport(TimestampMixin, Base):
-    __tablename__ = "generated_reports"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    report_type = Column(Enum(ReportType), nullable=False)
-    title = Column(String(200), nullable=False)
-    generated_at = Column(DateTime, nullable=False)
-    period_start = Column(DateTime, nullable=True)
-    period_end = Column(DateTime, nullable=True)
-    content = Column(Text, nullable=False)  # JSON string with sections and summary
-    audience = Column(String(50), nullable=True)  # stored as varchar in DB
-
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
-
-    user = relationship("User", lazy="selectin")
-    client = relationship("Client", lazy="selectin")
-    project = relationship("Project", lazy="selectin")
-
-
 # ── User Permissions & Invitations ────────────────────────────
 
 class UserPermission(TimestampMixin, Base):
@@ -1211,20 +1121,6 @@ class UserPermission(TimestampMixin, Base):
     can_write = Column(Boolean, nullable=False, default=False)
 
     user = relationship("User", back_populates="permissions", lazy="selectin")
-
-
-class UserInvitation(TimestampMixin, Base):
-    __tablename__ = "user_invitations"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    email = Column(String(255), nullable=False)
-    token = Column(String(255), unique=True, nullable=False, index=True)
-    role = Column(Enum(UserRole), nullable=False, default=UserRole.member)
-    invited_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    expires_at = Column(DateTime, nullable=False)
-    accepted_at = Column(DateTime, nullable=True)
-
-    inviter = relationship("User", lazy="selectin")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1734,43 +1630,6 @@ class DeliveryAttempt(TimestampMixin, Base):
     steps = Column(JSONB, nullable=False)
 
 
-class AssetCategory(str, enum.Enum):
-    email = "email"
-    domain = "domain"
-    hosting = "hosting"
-    tool = "tool"
-
-
-class AgencyAsset(TimestampMixin, Base):
-    __tablename__ = "agency_assets"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    category = Column(Enum(AssetCategory, native_enum=False), nullable=False, index=True)
-    name = Column(String(200), nullable=False)
-    value = Column(String(500))          # email address or domain name
-    provider = Column(String(200))
-    url = Column(String(500))
-    notes = Column(Text)
-    # Email
-    associated_domain = Column(String(200))
-    # Domain
-    registrar = Column(String(200))
-    expiry_date = Column(Date)
-    auto_renew = Column(Boolean, default=False)
-    dns_provider = Column(String(200))
-    # Hosting
-    hosting_type = Column(String(50))    # shared, vps, dedicated, cloud, other
-    # Tool / Hosting
-    tool_category = Column(String(100))
-    monthly_cost = Column(Numeric(10, 2))
-    # Credentials (tools + emails)
-    username = Column(String(200))        # login email / user for the tool
-    password = Column(String(500))        # password (encrypted with Fernet via security.py; vault is admin-only)
-    is_active = Column(Boolean)           # Activa: True/False/None
-    subscription_type = Column(String(50))  # Gratuita, Mensual, Anual, etc.
-    purpose = Column(String(200))         # Uso: Contacto general, Cuentas herramientas...
-
-
 class BalanceSnapshot(TimestampMixin, Base):
     __tablename__ = "balance_snapshots"
 
@@ -1870,29 +1729,7 @@ class InboxAttachment(TimestampMixin, Base):
     uploader = relationship("User", lazy="selectin")
 
 
-# ── My Week: Day Status & Company Holidays ─────────────────
-
-
-class DayStatusType(str, enum.Enum):
-    available = "available"
-    away = "away"
-    vacation = "vacation"
-    sick = "sick"
-    holiday = "holiday"
-
-
-class UserDayStatus(TimestampMixin, Base):
-    __tablename__ = "user_day_statuses"
-    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_user_day_status"),)
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    date = Column(Date, nullable=False, index=True)
-    status = Column(Enum(DayStatusType), nullable=False, default=DayStatusType.available)
-    label = Column(String(100), nullable=True)
-    note = Column(Text, nullable=True)
-
-    user = relationship("User", lazy="selectin")
+# ── Company Holidays ─────────────────
 
 
 class CompanyHoliday(TimestampMixin, Base):
@@ -1926,60 +1763,6 @@ class ProjectTemplateDB(TimestampMixin, Base):
     monthly_fee = Column(Numeric(12, 2), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     creator = relationship("User", lazy="selectin")
-
-
-# ── Automation Rules ──────────────────────────────────────
-
-class AutomationTrigger(str, enum.Enum):
-    task_completed = "task_completed"
-    task_overdue = "task_overdue"
-    phase_completed = "phase_completed"
-    project_status_changed = "project_status_changed"
-    time_entry_created = "time_entry_created"
-    communication_logged = "communication_logged"
-    # Scheduled
-    daily_check = "daily_check"
-
-
-class AutomationActionType(str, enum.Enum):
-    create_task = "create_task"
-    change_task_status = "change_task_status"
-    change_project_status = "change_project_status"
-    assign_user = "assign_user"
-    send_notification = "send_notification"
-    send_discord = "send_discord"
-    create_insight = "create_insight"
-
-
-class AutomationRule(TimestampMixin, Base):
-    __tablename__ = "automation_rules"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(200), nullable=False)
-    description = Column(Text, nullable=True)
-    trigger = Column(String(50), nullable=False, index=True)  # AutomationTrigger value
-    conditions = Column(JSON, nullable=False, default=dict)    # {project_id, client_id, status, etc.}
-    action_type = Column(String(50), nullable=False)           # AutomationActionType value
-    action_config = Column(JSON, nullable=False, default=dict) # Parameters for the action
-    is_active = Column(Boolean, nullable=False, default=True)
-    run_count = Column(Integer, nullable=False, default=0)
-    last_run_at = Column(DateTime, nullable=True)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-    creator = relationship("User", lazy="selectin")
-
-
-class AutomationLog(TimestampMixin, Base):
-    __tablename__ = "automation_logs"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    rule_id = Column(Integer, ForeignKey("automation_rules.id", ondelete="CASCADE"), nullable=False)
-    trigger_event = Column(String(50), nullable=False)
-    trigger_data = Column(JSON, nullable=True)     # What caused the trigger
-    action_result = Column(JSON, nullable=True)     # What the action did
-    success = Column(Boolean, nullable=False, default=True)
-    error_message = Column(Text, nullable=True)
-    executed_at = Column(DateTime, nullable=False, default=func.now())
-    rule = relationship("AutomationRule", lazy="selectin")
 
 
 class JobRuntime(Base):

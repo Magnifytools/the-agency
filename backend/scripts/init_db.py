@@ -30,7 +30,6 @@ async def run_init():
         _ensure_columns_v6,
         _ensure_columns_v7,
         _ensure_columns_v8,
-        _ensure_columns_v9,
         _ensure_columns_v10,
         _reset_admin_password,
         _seed_national_holidays,
@@ -54,7 +53,6 @@ async def run_init():
     await _ensure_columns_v6()
     await _ensure_columns_v7()
     await _ensure_columns_v8()
-    await _ensure_columns_v9()
     await _ensure_columns_v10()
 
     # One-time admin password reset
