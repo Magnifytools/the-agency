@@ -167,27 +167,6 @@ export interface ClientOnboardingResult {
   change_log_id: number | null
 }
 
-// Client Resources
-export type ResourceType = "spreadsheet" | "document" | "email" | "account" | "dashboard" | "other"
-
-export interface ClientResource {
-  id: number
-  client_id: number
-  label: string
-  url: string
-  resource_type: ResourceType
-  notes: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface ClientResourceCreate {
-  label: string
-  url: string
-  resource_type?: ResourceType
-  notes?: string | null
-}
-
 // Client Dashboard
 export interface ClientDashboard {
   hours_this_month: number
