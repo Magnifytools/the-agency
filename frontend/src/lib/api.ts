@@ -1173,15 +1173,6 @@ export const engineApi = {
     api.get<{ engine_frontend_url: string | null }>("/engine/config").then((r) => r.data),
   triggerSync: () =>
     api.post<{ synced: number; failed: number; detail?: string }>("/engine/sync").then((r) => r.data),
-  analyzeCoreUpdate: (projectId: number, body: {
-    period_pre_start: string
-    period_pre_end: string
-    period_post_start: string
-    period_post_end: string
-    top_n?: number
-    metric?: string
-  }) =>
-    api.post(`/engine/projects/${projectId}/core-updates/analyze`, body, { timeout: 300_000 }).then((r) => r.data),
 }
 
 // ── Inbox Quick Capture ────────────────────────────────────
