@@ -24,7 +24,6 @@ import { ContactList } from "@/components/clients/contact-list"
 import { ActivityTimeline } from "@/components/clients/activity-timeline"
 import { ClientDashboardTab } from "@/components/clients/client-dashboard-tab"
 import { ClientAiAdvisor } from "@/components/clients/client-ai-advisor"
-import { ClientReportsTab } from "@/components/clients/client-reports-tab"
 import { ClientReportPolicy } from "@/components/clients/client-report-policy"
 import { ClientSettingsTab } from "@/components/clients/client-settings-tab"
 import { EngineMetricsWidget } from "@/components/clients/engine-metrics-widget"
@@ -236,7 +235,7 @@ export default function ClientDetailPage() {
   const [creatingTask, setCreatingTask] = useState(false)
   const [whatIfOpen, setWhatIfOpen] = useState(false)
 
-  const validTabs = ["ficha", "contexto", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "seo", "informes", "ajustes", "facturas"] as const
+  const validTabs = ["ficha", "contexto", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "seo", "ajustes", "facturas"] as const
   type Tab = (typeof validTabs)[number]
 
   // Pestaña -> módulo que la sirve. Si el módulo está oculto, sus endpoints no
@@ -246,14 +245,12 @@ export default function ClientDetailPage() {
     resumenes: "digests",
     comunicaciones: "communications",
     facturas: "holded",
-    informes: "reports",
   }
   const TAB_PERMISSION: Partial<Record<Tab, string>> = {
     tareas: "tasks",
     proyectos: "projects",
     resumenes: "digests",
     comunicaciones: "communications",
-    informes: "reports",
   }
   const isTabVisible = (tab: Tab) => {
     if (tab === "tiempo") return canReadTime
@@ -470,7 +467,6 @@ export default function ClientDetailPage() {
               ...(isTabVisible("resumenes") ? (["resumenes"] as TabKey[]) : []),
               ...(client.engine_project_id ? (["seo"] as TabKey[]) : []),
               "panel",
-              ...(isTabVisible("informes") ? (["informes"] as TabKey[]) : []),
               ...(isTabVisible("comunicaciones")
                 ? (["comunicaciones"] as TabKey[])
                 : []),
@@ -504,7 +500,6 @@ export default function ClientDetailPage() {
           proyectos: "Proyectos",
           tiempo: "Tiempo",
           resumenes: "Resúmenes",
-          informes: "Informes",
           comunicaciones: "Comunicaciones",
           seo: "SEO",
           contactos: "Contactos",
@@ -823,15 +818,6 @@ export default function ClientDetailPage() {
 
       {/* Tab: SEO */}
       {activeTab === "seo" && client.engine_project_id && <EngineSeoTab client={client} />}
-
-      {/* Tab: Informes */}
-      {activeTab === "informes" && (
-        <Card>
-          <CardContent className="p-6">
-            <ClientReportsTab clientId={clientId} clientName={client.name} engineProjectId={client.engine_project_id} />
-          </CardContent>
-        </Card>
-      )}
 
       {/* Tab: Ajustes */}
       {activeTab === "ajustes" && (

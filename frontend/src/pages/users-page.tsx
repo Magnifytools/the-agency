@@ -35,7 +35,6 @@ const ALL_MODULES: { key: string; label: string; group: string; hint: string }[]
   { key: "communications", label: "Comunicaciones", group: "General", hint: "Seguimiento de emails y contactos" },
   { key: "growth", label: "Pipeline + Buffer", group: "Crecimiento", hint: "CRM de leads y buffer de ideas ICE" },
   { key: "proposals", label: "Presupuestos", group: "Crecimiento", hint: "Creación y envío de propuestas" },
-  { key: "reports", label: "Informes", group: "Crecimiento", hint: "Informes y métricas de rendimiento" },
   { key: "finance_dashboard", label: "Dashboard Financiero", group: "Finanzas", hint: "Resumen financiero global" },
   { key: "finance_income", label: "Ingresos", group: "Finanzas", hint: "Registro y gestión de ingresos" },
   { key: "finance_expenses", label: "Gastos", group: "Finanzas", hint: "Registro y categorización de gastos" },
