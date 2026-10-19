@@ -6,7 +6,7 @@ import { InboxNoteCard } from "./inbox-note-card"
 import type { InboxNote } from "@/lib/types"
 
 const mocks = vi.hoisted(() => ({
-  classify: vi.fn(), update: vi.fn(), dismiss: vi.fn(), remove: vi.fn(), upload: vi.fn(), deleteAttachment: vi.fn(),
+  classify: vi.fn(), update: vi.fn(), dismiss: vi.fn(), suggest: vi.fn(), remove: vi.fn(), upload: vi.fn(), deleteAttachment: vi.fn(),
   convert: vi.fn(), projects: vi.fn(), clients: vi.fn(), users: vi.fn(),
   permissions: { tasks: true, projects: true, clients: true, users: true },
 }))
@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: { id: 7 }, hasPermission: (module: keyof typeof mocks.permissions) => mocks.permissions[module] }) }))
 vi.mock("@/lib/api", () => ({
   inboxApi: {
-    classify: mocks.classify, update: mocks.update, dismiss: mocks.dismiss, delete: mocks.remove,
+    classify: mocks.classify, update: mocks.update, dismiss: mocks.dismiss, suggest: mocks.suggest, delete: mocks.remove,
     uploadAttachment: mocks.upload, deleteAttachment: mocks.deleteAttachment, convertToTask: mocks.convert,
   },
   projectsApi: { listAll: mocks.projects }, clientsApi: { listAll: mocks.clients }, usersApi: { listAll: mocks.users },
@@ -88,5 +88,27 @@ describe("InboxNoteCard classification", () => {
     await userEvent.click(screen.getByRole("button", { name: "Crear tarea" }))
     await userEvent.click(screen.getAllByRole("button", { name: "Crear tarea" }).at(-1)!)
     await waitFor(() => expect(mocks.convert).toHaveBeenCalledWith(31, expect.objectContaining({ project_id: 9, client_id: undefined })))
+  })
+})
+
+describe("InboxNoteCard app suggestion", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.projects.mockResolvedValue([])
+    mocks.clients.mockResolvedValue([])
+    mocks.users.mockResolvedValue([])
+    mocks.suggest.mockResolvedValue({ ...note, status: "processed", resolved_as: "app_suggestion" })
+  })
+
+  it("sends the note to the admins as an app suggestion", async () => {
+    setup({ classification_error_code: null, classification_next_attempt_at: null })
+    await userEvent.click(screen.getByRole("button", { name: "Sugerencia para la app" }))
+    await waitFor(() => expect(mocks.suggest).toHaveBeenCalledWith(31))
+  })
+
+  it("labels a note already sent as a suggestion", () => {
+    setup({ status: "processed", resolved_as: "app_suggestion", classification_error_code: null, classification_next_attempt_at: null })
+    expect(screen.getByText("Sugerencia para la app")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Sugerencia para la app" })).not.toBeInTheDocument()
   })
 })
