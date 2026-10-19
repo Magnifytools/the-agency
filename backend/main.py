@@ -17,7 +17,7 @@ from backend.config import settings
 from backend.api.routes import (
     auth, clients, tasks, task_categories, time_entries, users,
     dashboard, discord, projects, communications, pm,
-    reports, proposals, growth, invitations, report_policies, digests, leads, holded,
+    reports, proposals, growth, report_policies, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
     service_templates, dailys, contacts, activity, notifications, incidents, resources, deliveries, communication_schedules,
     changes, commands,
@@ -160,7 +160,6 @@ class CsrfProtectionMiddleware(BaseHTTPMiddleware):
     EXEMPT_PATHS = {
         "/api/auth/login",
         "/api/auth/logout",
-        "/api/invitations/accept",
     }
 
     async def dispatch(self, request: Request, call_next):
@@ -258,7 +257,6 @@ _OPTIONAL_ROUTERS = {
     "communications": [communications],
     "resources": [resources],
     "evidence": [evidence],
-    "invitations": [invitations],
     "export": [export],
 }
 
