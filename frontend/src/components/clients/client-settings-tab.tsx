@@ -62,7 +62,7 @@ export function ClientSettingsTab({ client }: Props) {
 
   // Estado de importación de la propiedad GUARDADA (no la que se está escribiendo).
   const { data: gscStatus } = useQuery({ queryKey: ["gsc-status"], queryFn: gscApi.getStatus, staleTime: 60_000 })
-  const gscConnected = gscStatus?.connection?.status === "connected"
+  const gscConnected = !!gscStatus?.connections.some((c) => c.status === "connected")
   const { data: gscSites } = useQuery({
     queryKey: ["gsc-sites"],
     queryFn: gscApi.listSites,
@@ -129,7 +129,7 @@ export function ClientSettingsTab({ client }: Props) {
                 </p>
                 {savedSite && gscStatus && (
                   <p className="text-[11px] mt-1">
-                    {!gscStatus.connection ? (
+                    {gscStatus.connections.length === 0 ? (
                       <span className="text-muted-foreground">Search Console no está conectado (Ajustes).</span>
                     ) : siteState?.last_data_date ? (
                       <span className="text-muted-foreground">Datos importados hasta el {formatDay(siteState.last_data_date)}.</span>

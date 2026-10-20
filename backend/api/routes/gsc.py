@@ -49,11 +49,15 @@ def _require_configured() -> None:
         raise HTTPException(status_code=503, detail="Google OAuth no está configurado")
 
 
-async def _connection_or_409(db: AsyncSession) -> GscConnection:
-    connection = await db.get(GscConnection, 1)
-    if connection is None:
+async def _connections(db: AsyncSession) -> list[GscConnection]:
+    return list((await db.scalars(select(GscConnection).order_by(GscConnection.id))).all())
+
+
+async def _connected_or_409(db: AsyncSession) -> list[GscConnection]:
+    connections = [c for c in await _connections(db) if c.status == "connected"]
+    if not connections:
         raise HTTPException(status_code=409, detail="Search Console no está conectado")
-    return connection
+    return connections
 
 
 @router.get("/status")
@@ -61,11 +65,12 @@ async def gsc_status(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients")),
 ):
-    """Conexión y estado de importación de cada propiedad usada por un cliente activo."""
-    connection = await db.get(GscConnection, 1)
-    connected_by = None
-    if connection is not None and connection.connected_by:
-        connected_by = await db.scalar(select(User.full_name).where(User.id == connection.connected_by))
+    """Cuentas conectadas y estado de importación de cada propiedad usada por un cliente activo."""
+    connections = await _connections(db)
+    users = dict((await db.execute(select(User.id, User.full_name).where(
+        User.id.in_([c.connected_by for c in connections if c.connected_by])
+    ))).all()) if connections else {}
+    emails = {c.id: c.google_email for c in connections}
 
     clients = (await db.execute(
         select(Client.id, Client.name, Client.gsc_url)
@@ -85,12 +90,16 @@ async def gsc_status(
 
     return {
         "configured": gsc_service.configured(),
-        "connection": None if connection is None else {
-            "status": connection.status,
-            "google_email": connection.google_email,
-            "connected_by": connected_by,
-            "connected_at": connection.connected_at,
-        },
+        "connections": [
+            {
+                "id": c.id,
+                "status": c.status,
+                "google_email": c.google_email,
+                "connected_by": users.get(c.connected_by),
+                "connected_at": c.connected_at,
+            }
+            for c in connections
+        ],
         "sites": [
             {
                 "site_url": site,
@@ -99,6 +108,7 @@ async def gsc_status(
                 "last_data_date": states[site].last_data_date if site in states else None,
                 "last_synced_at": states[site].last_synced_at if site in states else None,
                 "error_code": states[site].error_code if site in states else None,
+                "google_email": emails.get(states[site].connection_id) if site in states else None,
             }
             for site in sorted(by_site)
         ],
@@ -142,39 +152,46 @@ async def gsc_callback(
     return RedirectResponse(url="/settings?gsc=connected")
 
 
-@router.post("/disconnect")
-async def gsc_disconnect(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
-    """Quita la conexión. Los datos ya importados se conservan."""
-    connection = await db.get(GscConnection, 1)
-    if connection is not None:
-        await db.delete(connection)
-        await db.commit()
+@router.post("/connections/{connection_id}/disconnect")
+async def gsc_disconnect(connection_id: int, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    """Quita una cuenta. Los datos ya importados se conservan; sus propiedades
+    pasan a la siguiente cuenta que las vea en la próxima importación."""
+    connection = await db.get(GscConnection, connection_id)
+    if connection is None:
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada")
+    await db.delete(connection)
+    await db.commit()
     return {"status": "disconnected"}
 
 
 @router.get("/sites")
 async def gsc_sites(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
-    """Propiedades a las que tiene acceso la cuenta conectada, para elegir la del cliente."""
+    """Propiedades que ven las cuentas conectadas, para elegir la del cliente."""
     _require_configured()
-    connection = await _connection_or_409(db)
-    token = connection.refresh_token
+    connections = await _connected_or_409(db)
+    accounts = [(c.id, c.google_email, c.refresh_token) for c in connections]
     await db.commit()
-    try:
-        return {"sites": await gsc_service.list_sites(token)}
-    except gsc_service.GscAuthError:
-        connection = await db.get(GscConnection, 1)
-        if connection is not None:
-            connection.status = "reconnect_required"
-            await db.commit()
-        raise HTTPException(status_code=409, detail="Hay que volver a conectar Search Console")
-    except gsc_service.GscSiteError as exc:
-        raise HTTPException(status_code=502, detail=f"Search Console no respondió ({exc.code})")
+    sites: dict[str, dict] = {}
+    for connection_id, email, token in accounts:
+        try:
+            listed = await gsc_service.list_sites(token)
+        except gsc_service.GscAuthError:
+            connection = await db.get(GscConnection, connection_id)
+            if connection is not None:
+                connection.status = "reconnect_required"
+                await db.commit()
+            continue
+        except gsc_service.GscSiteError:
+            continue
+        for s in listed:
+            sites.setdefault(s["site_url"], {**s, "google_email": email})
+    return {"sites": [sites[k] for k in sorted(sites)]}
 
 
 @router.post("/sync")
 async def gsc_sync(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     """Importa ahora en vez de esperar a la pasada diaria."""
     _require_configured()
-    await _connection_or_409(db)
+    await _connected_or_409(db)
     await db.commit()
     return await gsc_service.sync_all(async_session)

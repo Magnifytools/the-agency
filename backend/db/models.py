@@ -20,7 +20,7 @@ from sqlalchemy import (
     LargeBinary,
     UniqueConstraint,
     func,
-    literal_column,
+    literal_column, Sequence,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship
@@ -1786,15 +1786,24 @@ class JobRuntime(Base):
 
 
 class GscConnection(Base):
-    """Única conexión de la agencia con Search Console (fila id=1)."""
+    """Una cuenta de Google conectada a Search Console (puede haber varias)."""
     __tablename__ = "gsc_connection"
 
-    id = Column(SmallInteger, primary_key=True, default=1)
-    google_email = Column(String(255), nullable=True)
+    # Secuencia explícita: con autoincrement, create_all la haría SERIAL (int4)
+    # y el contrato publicado (gsc_v1) exige SMALLINT. Es la misma secuencia
+    # que crea la migración gsc_accounts_v1.
+    id = Column(SmallInteger, Sequence("gsc_connection_id_seq"), primary_key=True)
+    google_email = Column(String(255), nullable=True)  # en minúsculas; único
     refresh_token = Column(Text, nullable=False)  # cifrado con encrypt_vault_secret
     status = Column(String(32), nullable=False)  # connected | reconnect_required
     connected_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     connected_at = Column(DateTime(timezone=True), nullable=False)
+
+
+Index(
+    "uq_gsc_connection_google_email", GscConnection.google_email, unique=True,
+    postgresql_where=GscConnection.google_email.isnot(None),
+)
 
 
 class GscDaily(Base):
@@ -1826,3 +1835,5 @@ class GscSiteSync(Base):
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
     last_data_date = Column(Date, nullable=True)
     error_code = Column(String(64), nullable=True)
+    # Cuenta con la que se importa (la que tiene acceso a la propiedad).
+    connection_id = Column(SmallInteger, ForeignKey("gsc_connection.id", ondelete="SET NULL"), nullable=True)

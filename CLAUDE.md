@@ -221,11 +221,15 @@ admin_users, admin_settings
 ## Search Console propio (resúmenes mensuales)
 
 - **Qué es**: The Agency importa Search Console por su cuenta (no depende de
-  The Engine). Una cuenta de Google de la agencia, conectada por un admin en
-  Ajustes → Search Console. Propiedad por cliente en `Client.gsc_url`.
+  The Engine). Una o varias cuentas de Google, conectadas por un admin en
+  Ajustes → Search Console (`gsc_connection`, una fila por cuenta, email
+  único). Propiedad por cliente en `Client.gsc_url`; cada pasada mira qué
+  cuenta ve cada propiedad (gana la de más permiso) y la guarda en
+  `gsc_site_sync.connection_id`. Una cuenta caída se marca para reconectar
+  sin parar a las demás.
 - **Datos**: `gsc_daily` (totales diarios FINALES por propiedad, sin límite de
   16 meses), `gsc_site_sync` (hasta qué día hay datos, último error),
-  `gsc_connection` (fila única, token cifrado). Job diario `gsc`: 16 meses de
+  `gsc_connection` (una fila por cuenta, token cifrado). Job diario `gsc`: 16 meses de
   backfill la primera vez, luego los últimos 7 días.
 - **Resúmenes**: sólo los de MES NATURAL llevan `raw_context["seo"]` (lo añade
   el collector desde la BD propia, así las dos recolecciones coinciden). Si el
