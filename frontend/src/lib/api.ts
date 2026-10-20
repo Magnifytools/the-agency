@@ -1080,6 +1080,10 @@ export interface Ga4PropertyStatus {
   google_email: string | null
 }
 
+export const extensionApi = {
+  info: () => api.get<{ version: string; filename: string; download_url: string }>("/extension").then((r) => r.data),
+}
+
 export const ga4Api = {
   getStatus: () => api.get<{ configured: boolean; properties: Ga4PropertyStatus[] }>("/ga4/status").then((r) => r.data),
   sync: () => api.post<{ status: string; synced: number; failed: number }>("/ga4/sync").then((r) => r.data),

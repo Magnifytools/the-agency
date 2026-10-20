@@ -15,7 +15,11 @@ RUN python -m pip install --no-cache-dir --upgrade pip==26.2.1 \
 COPY backend/ ./backend/
 COPY Procfile ./Procfile
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
-COPY chrome-extension/manifest.json ./chrome-extension/manifest.json
+# Extensión: el backend sirve update.xml/.crx desde dist/ y arma el zip de
+# "Descargar extensión" desde estos ficheros (services/extension_package.py).
+COPY chrome-extension/manifest.json chrome-extension/popup.html chrome-extension/popup.css \
+     chrome-extension/popup.js chrome-extension/background.js ./chrome-extension/
+COPY chrome-extension/icons/ ./chrome-extension/icons/
 COPY chrome-extension/dist/ ./chrome-extension/dist/
 
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
