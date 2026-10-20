@@ -1886,3 +1886,65 @@ class GscSiteSync(Base):
     error_code = Column(String(64), nullable=True)
     # Cuenta con la que se importa (la que tiene acceso a la propiedad).
     connection_id = Column(SmallInteger, ForeignKey("gsc_connection.id", ondelete="SET NULL"), nullable=True)
+
+
+# ── Accesos (credenciales compartidas) ───────────────────────────────────────
+
+CREDENTIAL_LOG_ACTIONS = ("reveal", "copy", "create", "update", "share", "delete")
+
+
+class Credential(Base):
+    """Un acceso compartido (WordPress del cliente, GA, herramientas…).
+
+    La contraseña sólo existe cifrada (``encrypt_vault_secret``, prefijo ``v1:``;
+    el CHECK impide guardar texto plano). Ningún listado la devuelve: sólo
+    ``POST /api/credentials/{id}/reveal``, que deja rastro en el registro.
+    Fuera del journal de Deshacer a propósito (ver ``change_journal._SPECS``).
+    """
+    __tablename__ = "credentials"
+    __table_args__ = (
+        CheckConstraint("secret_encrypted LIKE 'v1:%'", name="ck_credentials_secret_encrypted"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200), nullable=False)
+    url = Column(String(500), nullable=True)
+    username = Column(String(255), nullable=True)
+    secret_encrypted = Column(Text, nullable=False)
+    notes = Column(Text, nullable=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class CredentialShare(Base):
+    """Con quién se comparte un acceso. Los admins ven todos sin fila aquí."""
+    __tablename__ = "credential_shares"
+
+    credential_id = Column(Integer, ForeignKey("credentials.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+
+
+class CredentialAccessLog(Base):
+    """Quién vio, copió o cambió un acceso y cuándo. Sobrevive al borrado del acceso
+    (``credential_id`` pasa a NULL y queda ``credential_name``)."""
+    __tablename__ = "credential_access_log"
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('reveal','copy','create','update','share','delete')",
+            name="ck_credential_access_log_action",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    credential_id = Column(Integer, ForeignKey("credentials.id", ondelete="SET NULL"), nullable=True)
+    credential_name = Column(String(200), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    action = Column(String(16), nullable=False)
+    detail = Column(String(500), nullable=True)
+    at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+Index("ix_credential_access_log_credential_at", CredentialAccessLog.credential_id, CredentialAccessLog.at)

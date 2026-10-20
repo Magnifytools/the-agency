@@ -93,7 +93,7 @@ frontend/src/
 ## Permission Modules
 ```
 dashboard, clients, projects, tasks, timesheet, proposals,
-reports, growth (Pipeline + Buffer), communications, digests,
+reports, growth (Pipeline + Buffer), communications, digests, credentials (Accesos),
 finance_income, finance_expenses, finance_taxes, finance_forecasts,
 finance_advisor, finance_import, finance_dashboard,
 admin_users, admin_settings
@@ -231,6 +231,8 @@ admin_users, admin_settings
   `reparse` (90 s, como la web). `send_daily_to_discord` es la única
   herramienta que publica fuera (anotación `PUBLISH`) y sólo con dailys propios.
 - **Sin herramientas de borrado**, a propósito.
+- **Sin Accesos**, a propósito: ninguna herramienta lee `/api/credentials` ni
+  devuelve contraseñas. No la añadas.
 - MCP SDK v2: `FastMCP` ahora es `MCPServer` (`mcp.server.mcpserver`).
 
 ## Search Console propio (resúmenes mensuales)
@@ -369,6 +371,34 @@ admin_users, admin_settings
   (lo vigila `tests/test_extension_download.py`).
 - Nada de zips sueltos en la raíz (`.gitignore`). Al cambiar código de la
   extensión, sube la versión del `manifest.json`.
+
+## Accesos (contraseñas compartidas)
+
+- **Qué es**: `/credentials` (Ajustes → Accesos) y pestaña Accesos de la ficha
+  del cliente (área Relación). Tablas `credentials`, `credential_shares`,
+  `credential_access_log` (migración `credentials_v1`). Nada que ver con el
+  "vault" `agency_assets` retirado en la fase 0.
+- **Acceso por entrada**: módulo `credentials`. Admin ve y gestiona todo; el
+  resto sólo lo que creó o le compartieron (lo demás es 404, no 403). Crear pide
+  escritura; editar/compartir, además ser admin o quien lo creó; borrar
+  (definitivo) sólo admin. Sólo se comparte con usuarios activos que pueden abrir
+  el módulo.
+- **Secreto**: cifrado en el servidor con `encrypt_vault_secret` (`VAULT_KEY`,
+  o `SECRET_KEY` si falta). Un CHECK (`LIKE 'v1:%'`) impide guardar texto plano.
+  Ningún listado lo devuelve: sólo `POST /api/credentials/{id}/reveal`
+  (`purpose` reveal|copy), 30/min por usuario, `Cache-Control: no-store`, que
+  apunta quién y cuándo ANTES de devolverlo. El front no lo guarda en la caché de
+  TanStack y lo oculta a los 30 s. Las notas NO se cifran.
+- **Registro**: `credential_access_log` (reveal, copy, create, update, share,
+  delete; detalle de qué cambió o con quién). Sobrevive al borrado del acceso
+  (`credential_id` a NULL + `credential_name`). Lo ve sólo un admin.
+- **Fuera del Deshacer** a propósito: no está en `change_journal._SPECS` (el
+  snapshot llevaría el secreto a `change_logs` y un undo podría resucitar una
+  contraseña rotada). Lo guarda `test_accesos_quedan_fuera_del_journal`.
+- **Fuera del MCP**: ver sección MCP.
+- **Límite de seguridad**: el cifrado protege la BD y sus copias, no el
+  servidor. Quien tenga a la vez la BD y `VAULT_KEY` (Railway) descifra todo.
+  Rotar `VAULT_KEY` deja ilegibles los accesos existentes (no hay re-cifrado).
 
 ## No tocar
 - Módulos financieros custom: tax_service, forecast_service, income, expenses, taxes, forecasts

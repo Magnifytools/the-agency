@@ -126,6 +126,10 @@ class _Spec:
     rank: int            # 0 = padre, 1 = hijo (manda el orden de restauración)
 
 
+#: Accesos (``Credential`` y sus tablas) NO entran nunca: el snapshot guardaría
+#: la contraseña cifrada en ``change_logs`` y el undo podría resucitar una
+#: contraseña ya rotada. Lo guarda ``test_accesos_quedan_fuera_del_journal``.
+#:
 #: Padres (rank 0) e hijos "propios" (rank 1). Los hijos entran porque se borran
 #: en cascada con el padre: sin ellos, deshacer un borrado devolvería la tarea
 #: pero se habría comido su checklist en silencio.
