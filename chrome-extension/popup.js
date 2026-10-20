@@ -1869,7 +1869,8 @@ async function loadTasks() {
   tasksActionError.classList.add("hidden");
   if (!tasksList.children.length) tasksList.innerHTML = '<div class="tasks-loading">Cargando tareas...</div>';
   tasksEmpty.classList.add("hidden");
-  const filters = { assigned_to: "me" };
+  // Incluye las tareas propias que quedaron sin asignar (creadas antes desde el Timer).
+  const filters = { assigned_to: "me", timer_scope: "assigned_or_created" };
   if (tasksFilter.value) filters.status = tasksFilter.value;
   try {
     const tasks = await fetchAllPages("/api/tasks", filters, session);
@@ -2061,6 +2062,8 @@ function setupQuickCreate(linkEl, formEl, titleEl, clientEl, cancelEl, saveEl, t
           title,
           client_id: parseInt(clientId, 10),
           status: "in_progress",
+          // Como en Captura: trabajo propio, para que siga en "Tareas" al parar el timer.
+          assign_to_current_user: true,
         }),
       });
       if (!isCurrentSession(session)) return;
