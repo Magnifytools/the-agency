@@ -103,6 +103,22 @@ export function ClientOverview({ client, status, statusFailed, onRetryStatus, ta
                   <ul className="text-sm">{inReview.slice(0, 3).map((t) => <li key={t.id} className="truncate">{t.title}</li>)}</ul>
                 </div>
               )}
+              {status?.ready && (
+                <div>
+                  <p className="text-xs font-medium">Listo para entregar ({status.ready.count})</p>
+                  <p className="text-xs text-muted-foreground">Terminado desde el {day(status.ready.since)} y sin resumen entregado</p>
+                  {status.ready.count === 0 ? <p className="text-sm text-muted-foreground">Nada pendiente de contar.</p> : (
+                    <ul className="space-y-0.5 text-sm">
+                      {status.ready.items.map((t) => (
+                        <li key={t.id} className="flex justify-between gap-2">
+                          <span className="truncate">{t.title}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground">{day(t.completed_on)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
               <GoTo onClick={() => onNavigate("tareas")}>Ver tareas</GoTo>
             </>
           )}

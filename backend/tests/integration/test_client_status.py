@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 
@@ -10,7 +11,9 @@ from backend.db.models import (
     Client,
     ClientReportPolicy,
     ClientStatus,
+    DigestExternalDeliveryEvent,
     DigestStatus,
+    ExternalDeliveryAction,
     GscDaily,
     GscSiteSync,
     Project,
@@ -189,6 +192,8 @@ async def test_portfolio_endpoint_respects_viewer_permissions(member_client, adm
     single = (await admin_client.get(f"/api/clients/{client.id}/status")).json()
     assert [r["client_id"] for r in admin] == [client.id]
     assert single["client_id"] == client.id and single["status"] == admin[0]["status"]
+    # Lo listo para entregar sólo viaja en la ficha, no en la cartera.
+    assert single["ready"]["count"] == 0 and admin[0]["ready"] is None
 
     member = await member_client.get("/api/clients/portfolio")
     if member.status_code == 200:
@@ -196,3 +201,103 @@ async def test_portfolio_endpoint_respects_viewer_permissions(member_client, adm
             assert "fee" not in (row.get("month") or {})
     else:
         assert member.status_code == 403
+
+
+# ── Listo para entregar ─────────────────────────────────────────────
+
+
+async def _delivered(db, client, actor, start, end, *actions):
+    digest = WeeklyDigest(client_id=client.id, period_start=start, period_end=end,
+                          status=DigestStatus.draft, created_by=actor.id)
+    db.add(digest)
+    await db.flush()
+    for minute, action in enumerate(actions):
+        db.add(DigestExternalDeliveryEvent(
+            digest_id=digest.id, action=action, actor_id=actor.id, request_key=uuid4().hex,
+            request_hash="a" * 64, created_at=datetime(2026, 10, 2, 9, minute),
+        ))
+    await db.flush()
+    return digest
+
+
+def _done(client, title, completed_at, **kw):
+    return Task(client_id=client.id, title=title, status=TaskStatus.completed,
+                completed_at=completed_at, **kw)
+
+
+async def _ready(db, client, viewer=ALL, today=TODAY):
+    return (await portfolio(db, [client], viewer, today=today, detail=True))[0]["ready"]
+
+
+async def test_ready_lists_completed_work_of_the_period_due(db_session):
+    client = await _client(db_session)
+    db_session.add_all([
+        _done(client, "Auditoría", datetime(2026, 9, 10, 10)),
+        _done(client, "Informe enlaces", datetime(2026, 10, 14, 10)),
+        _done(client, "De agosto", datetime(2026, 8, 31, 10)),  # antes del periodo que toca
+        Task(client_id=client.id, title="Por revisar", status=TaskStatus.in_review),
+        _done(client, "Retirada", datetime(2026, 10, 1, 10), retired_at=datetime(2026, 10, 2), retired_reason="duplicada"),
+        _done(client, "Plantilla", datetime(2026, 10, 1, 10), is_recurring=True),
+    ])
+    await db_session.flush()
+
+    ready = await _ready(db_session, client)
+
+    # Sin política: ciclo mensual, desde el 1 del mes cerrado.
+    assert ready["since"] == "2026-09-01"
+    assert ready["count"] == 2
+    assert [t["title"] for t in ready["items"]] == ["Informe enlaces", "Auditoría"]
+    assert ready["items"][0]["completed_on"] == "2026-10-14"
+
+
+async def test_confirmed_delivery_moves_the_start_and_revocation_undoes_it(db_session, admin_user):
+    client = await _client(db_session)
+    db_session.add(ClientReportPolicy(client_id=client.id, enabled=True, cadence=ReportCadence.monthly))
+    db_session.add_all([
+        _done(client, "Entregada", datetime(2026, 9, 20, 10)),
+        _done(client, "Nueva", datetime(2026, 10, 5, 10)),
+    ])
+    await db_session.flush()
+    revoked = await _delivered(db_session, client, admin_user, date(2026, 9, 1), date(2026, 9, 30),
+                               ExternalDeliveryAction.confirmed, ExternalDeliveryAction.revoked)
+    # Una etiqueta "sent" sin evento no es una entrega.
+    db_session.add(WeeklyDigest(client_id=client.id, period_start=date(2026, 9, 1),
+                                period_end=date(2026, 9, 30), status=DigestStatus.sent,
+                                created_by=admin_user.id))
+    await db_session.flush()
+    assert (await _ready(db_session, client))["count"] == 2
+
+    db_session.add(DigestExternalDeliveryEvent(
+        digest_id=revoked.id, action=ExternalDeliveryAction.confirmed, actor_id=admin_user.id,
+        request_key=uuid4().hex, request_hash="a" * 64, created_at=datetime(2026, 10, 3, 9),
+    ))
+    await db_session.flush()
+    ready = await _ready(db_session, client)
+    assert ready["since"] == "2026-10-01"
+    assert [t["title"] for t in ready["items"]] == ["Nueva"]
+
+
+async def test_ready_day_boundary_is_madrid_civil_day(db_session, admin_user):
+    client = await _client(db_session)
+    await _delivered(db_session, client, admin_user, date(2026, 9, 1), date(2026, 9, 30),
+                     ExternalDeliveryAction.confirmed)
+    db_session.add_all([
+        _done(client, "30 sept. en Madrid", datetime(2026, 9, 30, 21, 30)),  # 23:30 en Madrid
+        _done(client, "1 oct. en Madrid", datetime(2026, 9, 30, 22, 30)),    # 00:30 en Madrid
+    ])
+    await db_session.flush()
+
+    ready = await _ready(db_session, client)
+    assert [t["title"] for t in ready["items"]] == ["1 oct. en Madrid"]
+    assert ready["items"][0]["completed_on"] == "2026-10-01"
+
+
+async def test_ready_needs_tasks_and_digests_and_is_not_in_the_portfolio(db_session):
+    client = await _client(db_session)
+    db_session.add(_done(client, "Hecha", datetime(2026, 10, 14, 10)))
+    await db_session.flush()
+
+    no_digests = Viewer(is_admin=False, tasks=True, digests=False, timesheet=True)
+    assert await _ready(db_session, client, no_digests) is None
+    assert (await _row(db_session, client))["ready"] is None
+    assert (await _ready(db_session, client))["count"] == 1

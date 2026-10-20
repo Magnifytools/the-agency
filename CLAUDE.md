@@ -258,6 +258,12 @@ admin_users, admin_settings
 - **No lee comunicaciones** (decisión de David): no añadas esa señal.
 - Cada señal se calcula sólo si quien mira puede leer su fuente; sin ninguna
   señal el estado es `no_data`, nunca un "Bien" inventado.
+- **Listo para entregar** (`ready`, sólo en `/{id}/status`, no en la cartera;
+  pide leer tareas y resúmenes): tareas completadas (la revisión, si el proyecto
+  la exige, ya pasó: sólo el responsable cierra) desde el inicio del periodo que
+  toca entregar (cadencia de la política, mensual si no hay) o desde el día tras
+  el último periodo con entrega externa confirmada, lo más reciente. Sin columnas
+  nuevas. Lo pinta el bloque Trabajo de la Vista general.
 
 ## No tocar
 - Módulos financieros custom: tax_service, forecast_service, income, expenses, taxes, forecasts
