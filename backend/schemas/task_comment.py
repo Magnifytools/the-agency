@@ -14,6 +14,7 @@ class TaskCommentResponse(BaseModel):
     user_id: int
     text: str
     user_name: Optional[str] = None
+    is_ai_draft: bool = False
     created_at: datetime
     updated_at: datetime
 

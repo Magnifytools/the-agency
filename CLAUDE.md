@@ -199,6 +199,21 @@ admin_users, admin_settings
 - Sólo se escribe en la plantilla (`_validate_procedure` en `domain_writes.py`);
   en la repetición se muestra en lectura. Detalle en `docs/recurrences.md`.
 
+## Borrador con IA desde el procedimiento (fase 3)
+- En una repetición con procedimiento escrito, "Generar borrador" del panel llama
+  a `POST /api/tasks/{id}/draft` (escritura en `tasks`; 422 sin `procedure_text`;
+  `ai_limiter` 5/5 min). Servicio: `services/task_draft.py`.
+- Prompt acotado: pasos, checklist, enlace del documento (no se descarga), título,
+  descripción, proyecto y cliente; `Client.context` sólo si quien pide lee `clients`
+  y el último resumen con entrega externa confirmada sólo si lee `digests` (el
+  borrador lo ven todos los lectores de la tarea).
+- Se guarda como comentario con `task_comments.is_ai_draft` (migración
+  `task_comment_ai_draft_v1`): "Borrador de IA — revisar antes de usar", quién y
+  cuándo. No toca estado, checklist ni nada externo. Si Claude falla: 502 y nada guardado.
+- `claude-opus-5-5`, effort medium, `max_tokens` 8000, timeout 100 s sin reintento,
+  dentro de los 120 s del front (lo guarda `tests/test_task_draft.py`).
+- MCP: `draft_task(task_id)`.
+
 ## MCP (manejar The Agency desde Claude)
 
 - **Qué es**: servidor MCP local por stdio en `mcp-server/` (paquete
@@ -208,7 +223,7 @@ admin_users, admin_settings
   persona (`AGENCY_EMAIL` + contraseña en el Llavero o `AGENCY_PASSWORD`) y
   manda Bearer. Permisos por módulo y Deshacer funcionan solos. Cero cambios
   en el backend.
-- **Si cambias un endpoint que usa** (tasks, agenda, timer, time-entries,
+- **Si cambias un endpoint que usa** (tasks, tasks/{id}/draft, agenda, timer, time-entries,
   inbox, search, projects, users, auth/me, dailys + reparse + send-discord,
   clients/{id}/status, digests + external-delivery-events), revisa
   `mcp-server/agency_mcp/server.py`.

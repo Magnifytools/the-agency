@@ -41,6 +41,10 @@ from backend.services.domain_writes import (
     update_task as update_task_write,
 )
 from backend.services.recurrence import summarize_recurrence
+from backend.services.task_draft import (
+    TaskDraftError, build_draft_prompt, collect_draft_context, generate_task_draft,
+)
+from backend.core.rate_limiter import ai_limiter
 from backend.services.task_scope import validate_task_scope
 from backend.services.temporal import business_today
 from backend.services.task_retirement import (
@@ -906,7 +910,7 @@ async def list_comments(
     return [
         TaskCommentResponse(
             id=c.id, task_id=c.task_id, user_id=c.user_id, text=c.text,
-            user_name=c.user.full_name if c.user else None,
+            user_name=c.user.full_name if c.user else None, is_ai_draft=c.is_ai_draft,
             created_at=c.created_at, updated_at=c.updated_at,
         )
         for c in r.scalars().all()
@@ -931,6 +935,45 @@ async def create_comment(
     return TaskCommentResponse(
         id=comment.id, task_id=comment.task_id, user_id=comment.user_id,
         text=comment.text, user_name=current_user.full_name,
+        created_at=comment.created_at, updated_at=comment.updated_at,
+    )
+
+
+@router.post("/{task_id}/draft", response_model=TaskCommentResponse, status_code=201)
+async def create_ai_draft(
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("tasks", write=True)),
+):
+    """Primer borrador del entregable con IA, guardado como comentario marcado.
+
+    No cambia la tarea: ni estado, ni checklist, ni nada se envía fuera.
+    """
+    task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if not (task.procedure_text or "").strip():
+        raise HTTPException(status_code=422, detail="Esta tarea no tiene procedimiento escrito")
+    if task.retired_at is not None:
+        raise HTTPException(status_code=409, detail="La tarea está retirada; restáurala para pedir un borrador")
+    ai_limiter.check(current_user.id, max_requests=5, window_seconds=300)
+    prompt = build_draft_prompt(await collect_draft_context(db, task, current_user))
+    actor_id, actor_name = current_user.id, current_user.full_name
+    # Sin transacción abierta durante la llamada a Claude (hasta 100 s).
+    await db.commit()
+    try:
+        draft = await generate_task_draft(prompt)
+    except TaskDraftError as exc:
+        raise HTTPException(status_code=502, detail=exc.detail) from None
+    if not (await db.execute(select(Task.id).where(Task.id == task_id))).scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Task not found")
+    comment = TaskComment(task_id=task_id, user_id=actor_id, text=draft, is_ai_draft=True)
+    db.add(comment)
+    await db.commit()
+    await safe_refresh(db, comment, log_context="tasks")
+    return TaskCommentResponse(
+        id=comment.id, task_id=comment.task_id, user_id=comment.user_id,
+        text=comment.text, user_name=actor_name, is_ai_draft=True,
         created_at=comment.created_at, updated_at=comment.updated_at,
     )
 

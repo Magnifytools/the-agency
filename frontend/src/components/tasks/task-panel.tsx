@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Clock,
+  Copy,
   Download,
   ExternalLink,
   Paperclip,
@@ -9,6 +10,7 @@ import {
   Play,
   Plus,
   RotateCcw,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -390,6 +392,23 @@ export function TaskPanel({
     onError: (error) =>
       toast.error(getErrorMessage(error, "No se pudo publicar el comentario")),
   });
+  const generateDraft = useMutation({
+    mutationFn: () => tasksApi.draft(taskId!),
+    onSuccess: () => {
+      toast.success("Borrador añadido a los comentarios. Revísalo antes de usarlo.");
+      void commentsQuery.refetch();
+    },
+    onError: (error) =>
+      toast.error(getErrorMessage(error, "No se pudo generar el borrador")),
+  });
+  const copyDraft = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Borrador copiado");
+    } catch {
+      toast.error("No se pudo copiar el borrador");
+    }
+  };
   const updateChecklist = useMutation({
     mutationFn: ({
       itemId,
@@ -873,6 +892,24 @@ export function TaskPanel({
                       Copiado de {loadedTask.recurring_parent_title} al crear esta repetición. Se cambia en la plantilla.
                     </p>
                   )}
+                  {taskId && savedProcedureText && canOperate && (
+                    <div className="space-y-1 border-t border-border pt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={generateDraft.isPending}
+                        aria-busy={generateDraft.isPending}
+                        onClick={() => generateDraft.mutate()}
+                      >
+                        <Sparkles className="mr-1 size-3" aria-hidden="true" />
+                        {generateDraft.isPending ? "Generando borrador… (hasta 2 min)" : "Generar borrador"}
+                      </Button>
+                      <p className="text-xs text-muted-foreground">
+                        La IA redacta un primer borrador siguiendo estos pasos con el contexto del cliente. Se guarda en los comentarios; no se envía ni cambia la tarea.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </details>
             )}
@@ -1280,7 +1317,47 @@ export function TaskPanel({
                         Cargando comentarios…
                       </p>
                     )}
-                    {commentsQuery.data?.map((item) => (
+                    {commentsQuery.data?.map((item) => item.is_ai_draft ? (
+                      <article
+                        key={item.id}
+                        aria-label={`Borrador de IA pedido por ${item.user_name ?? "Usuario"}`}
+                        className="space-y-2 rounded border border-dashed border-border p-2 text-sm"
+                      >
+                        <header className="flex items-start gap-2">
+                          <div className="flex-1">
+                            <p className="font-medium">Borrador de IA — revisar antes de usar</p>
+                            <p className="text-xs text-muted-foreground">
+                              Pedido por {item.user_name ?? "Usuario"} ·{" "}
+                              {parseApiInstant(item.created_at).toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" })}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            aria-label="Copiar borrador"
+                            onClick={() => void copyDraft(item.text)}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                          {canWrite && (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              aria-label="Eliminar borrador de IA"
+                              disabled={deleteComment.isPending}
+                              onClick={() => deleteComment.mutate(item.id)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </header>
+                        <div className="max-h-96 overflow-y-auto whitespace-pre-wrap break-words rounded bg-muted p-2 font-mono text-xs">
+                          {item.text}
+                        </div>
+                      </article>
+                    ) : (
                       <div
                         key={item.id}
                         className="flex items-start gap-2 rounded bg-muted p-2 text-sm"

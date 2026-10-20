@@ -124,6 +124,7 @@ export interface TaskComment {
   user_id: number
   text: string
   user_name: string | null
+  is_ai_draft: boolean
   created_at: string
   updated_at: string
 }

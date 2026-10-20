@@ -40,6 +40,8 @@ WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint
 PUBLISH = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
 # Lo mismo que da la web a las llamadas de dailys que esperan a Claude.
 DAILY_AI_TIMEOUT = 90.0
+# El borrador de una tarea genera más texto: el backend corta a 100 s.
+DRAFT_AI_TIMEOUT = 120.0
 
 INSTRUCTIONS = """\
 The Agency es la herramienta interna de gestión de la agencia (Magnify): clientes,
@@ -408,6 +410,17 @@ def build_server(client: AgencyClient, *, timezone: str = "Europe/Madrid") -> MC
         """Añade un comentario a una tarea."""
         await call(client.post(f"/api/tasks/{task_id}/comments", {"text": text}))
         return f"Comentario añadido a la tarea #{task_id}."
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False))
+    async def draft_task(task_id: int) -> str:
+        """Pide a la IA de The Agency un primer borrador del entregable de una tarea
+        siguiendo su procedimiento escrito, con el contexto del cliente. Sólo funciona en
+        tareas con procedimiento (las repeticiones de una recurrente). Se guarda como
+        comentario marcado "Borrador de IA": no cambia la tarea ni se envía a nadie.
+        Puede tardar hasta dos minutos. Cada llamada crea un borrador nuevo."""
+        comment = await call(client.post(f"/api/tasks/{task_id}/draft", {}, timeout=DRAFT_AI_TIMEOUT))
+        return (f"Borrador de IA guardado como comentario en la tarea #{task_id}. "
+                f"Revísalo antes de usarlo:\n\n{comment['text']}")
 
     @mcp.tool(annotations=WRITE)
     async def capture_inbox(

@@ -525,3 +525,47 @@ async def test_client_overview_sin_acceso_a_clientes_es_error(fake, agency):
     is_error, text = await call(agency, "client_overview", {"client_id": 4})
 
     assert is_error and "403" in text
+
+
+# ── Borrador de IA ─────────────────────────────────────────────────────
+
+async def test_draft_task_espera_a_la_ia_y_devuelve_el_borrador(fake, agency, monkeypatch):
+    fake.route("POST", "/api/tasks/7/draft", httpx.Response(201, json={
+        "id": 51, "task_id": 7, "user_id": 1, "text": "## Informe\n- [PENDIENTE: clics]",
+        "user_name": "David", "is_ai_draft": True,
+        "created_at": "2026-10-20T08:00:00", "updated_at": "2026-10-20T08:00:00",
+    }))
+    timeouts = []
+    original = agency._http.request
+
+    async def spy(method, path, **kwargs):
+        timeouts.append((path, kwargs.get("timeout")))
+        return await original(method, path, **kwargs)
+
+    monkeypatch.setattr(agency._http, "request", spy)
+    is_error, text = await call(agency, "draft_task", {"task_id": 7})
+
+    assert not is_error, text
+    assert ("/api/tasks/7/draft", 120.0) in timeouts
+    assert "Revísalo antes de usarlo" in text and "[PENDIENTE: clics]" in text
+
+
+async def test_draft_task_sin_procedimiento_da_el_motivo(fake, agency):
+    fake.route("POST", "/api/tasks/7/draft", httpx.Response(422, json={
+        "detail": "Esta tarea no tiene procedimiento escrito"}))
+    is_error, text = await call(agency, "draft_task", {"task_id": 7})
+    assert is_error
+    assert "no tiene procedimiento" in text
+
+
+async def test_get_task_marca_los_borradores_de_ia(fake, agency):
+    fake.route("GET", "/api/tasks/7", TASK)
+    fake.route("GET", "/api/tasks/7/checklist", [])
+    fake.route("GET", "/api/tasks/7/comments", [
+        {"text": "## Informe", "user_name": "David", "is_ai_draft": True, "created_at": "2026-10-20T08:00:00"},
+        {"text": "Visto", "user_name": "Nacho", "is_ai_draft": False, "created_at": "2026-10-20T09:00:00"},
+    ])
+    is_error, text = await call(agency, "get_task", {"task_id": 7})
+    assert not is_error, text
+    assert "David (borrador de IA, sin revisar): ## Informe" in text
+    assert "Nacho: Visto" in text

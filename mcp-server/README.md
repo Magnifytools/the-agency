@@ -28,6 +28,7 @@ No tiene herramientas de borrado. Lo destructivo se hace en la web.
 | `create_task` | Crea una tarea (si no dices a quién, te la asigna a ti) |
 | `update_task` | Cambia estado, prioridad, fechas, responsable, espera… |
 | `comment_task` | Comenta una tarea |
+| `draft_task` | Pide a la IA un primer borrador del entregable siguiendo el procedimiento de la tarea (queda como comentario marcado; no se envía) |
 | `capture_inbox` | Apunta una idea en el inbox |
 | `log_time` | Registra tiempo a mano |
 | `timer` | Temporizador: estado, arrancar, pausar, reanudar, parar |
