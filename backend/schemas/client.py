@@ -42,6 +42,7 @@ class ClientUpdate(BaseModel):
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
     engine_project_id: Optional[int] = None
+    vigil_slug: Optional[str] = None
     intermediary_name: Optional[str] = None
     is_intermediary_deal: Optional[bool] = None
     # Revenue intelligence
@@ -63,6 +64,7 @@ class ClientResponse(BaseModel):
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
     engine_project_id: Optional[int] = None
+    vigil_slug: Optional[str] = None
     engine_content_count: Optional[int] = None
     engine_keyword_count: Optional[int] = None
     engine_avg_position: Optional[float] = None

@@ -1,0 +1,24 @@
+{
+  "version": "20261020_vigil_v1",
+  "statements": [
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS vigil_slug VARCHAR(100)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_clients_vigil_slug ON clients (vigil_slug) WHERE vigil_slug IS NOT NULL",
+    "CREATE TABLE IF NOT EXISTS vigil_summary (\n slug VARCHAR(100) PRIMARY KEY,\n data JSONB NOT NULL,\n fetched_at TIMESTAMPTZ NOT NULL\n)"
+  ],
+  "columns": {
+    "clients": {
+      "vigil_slug": ["varchar", true, 100]
+    },
+    "vigil_summary": {
+      "slug": ["varchar", false, 100],
+      "data": ["jsonb", false, null],
+      "fetched_at": ["timestamptz", false, null]
+    }
+  },
+  "primary_keys": {
+    "vigil_summary": ["slug"]
+  },
+  "unique_indexes": [
+    {"table": "clients", "columns": ["vigil_slug"], "predicate": "(vigil_slug IS NOT NULL)"}
+  ]
+}

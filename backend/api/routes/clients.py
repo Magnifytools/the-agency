@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import re
 import logging
 import os
 from typing import Literal, Optional
@@ -352,6 +354,15 @@ async def update_client(
         if incoming_project_id is not None and incoming_project_id != client.engine_project_id:
             from backend.api.routes.engine_integration import validate_link_target
             await validate_link_target(incoming_project_id)
+    if "vigil_slug" in update_data:
+        slug = (update_data["vigil_slug"] or "").strip().lower() or None
+        if slug is not None and not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,99}", slug):
+            raise HTTPException(status_code=422, detail="El cliente de Vigil es su slug: minúsculas, números y guiones")
+        if slug is not None and await db.scalar(select(Client.id).where(
+            Client.vigil_slug == slug, Client.id != client_id,
+        )):
+            raise HTTPException(status_code=409, detail="Ese cliente de Vigil ya está asociado a otro cliente")
+        update_data["vigil_slug"] = slug
 
     result = await db.execute(
         select(Client).where(Client.id == client_id).with_for_update().execution_options(populate_existing=True)
@@ -362,7 +373,7 @@ async def update_client(
     _UPDATABLE_CLIENT_FIELDS = {
         "name", "email", "phone", "company", "website", "contract_type",
         "monthly_budget", "status", "notes", "is_internal", "ga4_property_id",
-        "gsc_url", "engine_project_id", "context",
+        "gsc_url", "engine_project_id", "vigil_slug", "context",
         "vat_number", "slack_template",
     }
     if "engine_project_id" in update_data:

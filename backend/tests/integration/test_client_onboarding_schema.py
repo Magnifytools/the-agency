@@ -7,16 +7,17 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import Base, Client, User, UserRole
+from backend.db.models import Base, User, UserRole
 from backend.startup import deployment_schema, schema_baseline
 from backend.startup.client_onboarding_schema import MIGRATION, apply, verify
 from backend.startup.phase0_retirement_schema import RETIRED_COLUMNS
 from backend.startup.schema_runner import run_schema_migrations
 
-# Las columnas que retira la fase 0 desaparecen; el resto de la fila no cambia.
+# Las columnas que retira la fase 0 desaparecen y las de pasos posteriores
+# llegan vacías (vigil_slug); el resto de la fila no cambia.
 CLIENT_ROWS = "SELECT to_jsonb(c)" + "".join(
     f" - '{column}'" for table, column in sorted(RETIRED_COLUMNS) if table == "clients"
-) + " FROM clients c"
+) + " - 'vigil_slug' FROM clients c"
 
 
 async def reset(engine):
@@ -34,9 +35,15 @@ async def p20_schema(engine):
         db.add_all([
             User(id=1, email="schema1@example.test", hashed_password="synthetic", full_name="One", role=UserRole.admin),
             User(id=2, email="schema2@example.test", hashed_password="synthetic", full_name="Two", role=UserRole.admin),
-            Client(id=1, name="Historical client"),
         ])
         await db.commit()
+    # El cliente va en SQL: el ORM ya conoce columnas de pasos posteriores
+    # (vigil_slug) que este esquema todavía no tiene.
+    async with engine.begin() as conn:
+        await conn.execute(text("""
+            INSERT INTO clients (id,name,contract_type,status,currency,is_internal,is_intermediary_deal,created_at,updated_at)
+            VALUES (1,'Historical client','monthly','active','EUR',false,false,'2026-01-01','2026-01-02')
+        """))
     yield
     await reset(engine)
     async with engine.begin() as conn:

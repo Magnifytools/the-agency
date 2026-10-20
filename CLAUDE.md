@@ -279,6 +279,20 @@ admin_users, admin_settings
   `report_unsent`).
 - Cada cifra es `null` si quien mira no lee su fuente; el front no la pinta.
 
+## Vigil (cambios en las webs de los clientes)
+
+- **Qué es**: Vigil (`/Código/Vigil`, vigil.magnifytools.com) vigila cambios en
+  las páginas de cada cliente. The Agency lee su resumen con
+  `GET /api/integrations/summary` y la cabecera `X-Service-Key`
+  (`VIGIL_API_URL` + `VIGIL_SERVICE_KEY`, la misma clave que `VIGIL_SERVICE_KEY`
+  en Vigil). Sin URL o sin clave, el job `vigil` queda en pausa.
+- **Enlace**: `Client.vigil_slug` (Ajustes del cliente, único). El job copia un
+  resumen por slug en `vigil_summary` cada 6 h. Cada 6 h y no diario, porque el
+  turno diario sería antes del barrido de Vigil (04:30 UTC).
+- **Uso**: la ficha lo enseña en Resultados y el estado del cliente da
+  Vigilar si hay cambios críticos sin revisar. Un resumen de más de 48 h se
+  enseña pero no cuenta (`services/vigil_service.py`).
+
 ## No tocar
 - Módulos financieros custom: tax_service, forecast_service, income, expenses, taxes, forecasts
 - Se reemplazarán por integración Holded en fase posterior

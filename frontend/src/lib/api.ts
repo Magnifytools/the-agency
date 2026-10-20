@@ -2,6 +2,7 @@ import type { ProjectTasksResponse } from "@/lib/project-work"
 import axios, { type GenericAbortSignal, type InternalAxiosRequestConfig } from "axios"
 import { toast } from "sonner"
 import type {
+  VigilClients,
   TaskAgendaSection,
   SearchResults,
   PaginatedResponse,
@@ -1051,6 +1052,10 @@ export interface GscStatus {
   configured: boolean
   connection: { status: "connected" | "reconnect_required"; google_email: string | null; connected_by: string | null; connected_at: string } | null
   sites: GscSiteStatus[]
+}
+
+export const vigilApi = {
+  clients: () => api.get<VigilClients>("/vigil/clients").then((r) => r.data),
 }
 
 export const gscApi = {

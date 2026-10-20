@@ -29,7 +29,7 @@ from backend.api.routes import (
     gsc,
     holidays,
     bank_import,
-    usage_stats, job_runtime,
+    usage_stats, job_runtime, vigil,
 )
 
 # ── Re-export migration/seed functions so scripts/init_db.py keeps working ──
@@ -215,7 +215,7 @@ _CORE_ROUTERS = [
     auth, clients, tasks, task_categories, time_entries, users, dashboard,
     projects, pm, report_policies, digests, sync, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     client_dashboard, engine_integration, inbox, extension, google_calendar,
-    gsc, usage_stats, job_runtime,
+    gsc, vigil, usage_stats, job_runtime,
     # holidays: los festivos de empresa (Ajustes → Festivos, plan de la mañana).
     holidays,
     # changes: el Undo del shell. No es una pantalla, es la red de seguridad

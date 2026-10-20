@@ -246,6 +246,7 @@ def test_startup_loops_match_enabled_catalog(monkeypatch):
         "calendar": "calendar-sync",
         "retention": "retention-cleanup",
         "inbox_classification": "inbox-classification",
+        "vigil": "vigil-sync",
     }
     definitions = {definition.spec.key: definition for definition in job_definitions()}
     expected = {

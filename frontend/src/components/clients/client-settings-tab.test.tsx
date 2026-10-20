@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn(),
   engineProjects: vi.fn(),
   gscStatus: vi.fn(),
+  vigilClients: vi.fn(),
 }))
 
 vi.mock("@/context/auth-context", () => ({
@@ -19,6 +20,7 @@ vi.mock("@/lib/api", () => ({
   clientsApi: { update: mocks.update },
   engineApi: { listProjects: mocks.engineProjects },
   gscApi: { getStatus: mocks.gscStatus, listSites: vi.fn() },
+  vigilApi: { clients: mocks.vigilClients },
 }))
 vi.mock("@/lib/query-keys", () => ({ invalidateClientChange: vi.fn() }))
 
@@ -38,6 +40,7 @@ describe("ClientSettingsTab permissions", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.canWrite = true
+    mocks.vigilClients.mockResolvedValue({ configured: true, clients: [{ slug: "parklex", name: "Parklex", linked_to: null }] })
     mocks.update.mockResolvedValue({})
     mocks.engineProjects.mockResolvedValue([])
     mocks.gscStatus.mockResolvedValue({ configured: true, connection: null, sites: [] })
@@ -66,6 +69,7 @@ describe("ClientSettingsTab permissions", () => {
     expect(mocks.update).toHaveBeenCalledWith(5, {
       ga4_property_id: "654321",
       gsc_url: "https://example.com",
+      vigil_slug: null,
     })
   })
 
@@ -80,5 +84,14 @@ describe("ClientSettingsTab permissions", () => {
 
     expect(await screen.findByText(/Datos importados hasta el 15 de octubre de 2026/)).toBeInTheDocument()
     expect(screen.getByText("La cuenta conectada no tiene acceso a esta propiedad.")).toBeInTheDocument()
+  })
+
+  it("links the client to Vigil by its slug", async () => {
+    mocks.update.mockResolvedValue({})
+    show()
+    const input = screen.getByLabelText("Cliente en Vigil")
+    await userEvent.type(input, "parklex")
+    await userEvent.click(screen.getByRole("button", { name: /Guardar/ }))
+    expect(mocks.update).toHaveBeenCalledWith(5, expect.objectContaining({ vigil_slug: "parklex" }))
   })
 })
