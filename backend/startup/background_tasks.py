@@ -179,6 +179,16 @@ async def _gsc_sync_once():
         raise JobFailure("partial_failure")
 
 
+async def _ga4_sync_once():
+    from backend.db.database import async_session
+    from backend.services.ga4_service import sync_all
+    from backend.services.job_runtime import JobFailure
+
+    result = await sync_all(async_session)
+    if result["failed"]:
+        raise JobFailure("partial_failure")
+
+
 async def _vigil_sync_once():
     from backend.db.database import async_session
     from backend.services.vigil_service import sync
@@ -300,6 +310,7 @@ def start_background_tasks() -> list[asyncio.Task]:
         "inbox_classification": ("inbox-classification", _inbox_classification_once),
         "gsc": ("gsc-sync", _gsc_sync_once),
         "vigil": ("vigil-sync", _vigil_sync_once),
+        "ga4": ("ga4-sync", _ga4_sync_once),
     }
 
     for key, (task_name, operation) in operations.items():

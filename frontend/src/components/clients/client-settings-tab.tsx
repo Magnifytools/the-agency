@@ -1,7 +1,8 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { clientsApi, engineApi, gscApi, vigilApi } from "@/lib/api"
+import { clientsApi, engineApi, ga4Api, gscApi, vigilApi } from "@/lib/api"
+import { ga4ErrorLabel } from "@/lib/ga4"
 import { formatDay, gscErrorLabel } from "@/lib/gsc"
 import type { Client } from "@/lib/types"
 import { Button } from "@/components/ui/button"
@@ -57,6 +58,9 @@ export function ClientSettingsTab({ client }: Props) {
     onError: (e) => toast.error(getErrorMessage(e)),
   })
 
+  const { data: ga4Status } = useQuery({ queryKey: ["ga4-status"], queryFn: ga4Api.getStatus, staleTime: 60_000 })
+  const savedGa4 = client.ga4_property_id?.trim().replace(/^properties\//, "")
+  const ga4State = ga4Status?.properties.find((p) => p.property_id === savedGa4)
   const { data: vigil } = useQuery({ queryKey: ["vigil-clients"], queryFn: vigilApi.clients, staleTime: 5 * 60_000 })
   const vigilSaved = vigil?.clients.find((c) => c.slug === client.vigil_slug)
 
@@ -103,8 +107,18 @@ export function ClientSettingsTab({ client }: Props) {
                   disabled={!canWriteClients}
                 />
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  ID numerico de la propiedad de Google Analytics 4
+                  ID numérico de la propiedad de Google Analytics 4
                 </p>
+                {savedGa4 && ga4Status && (
+                  <p className="text-[11px] mt-1">
+                    {ga4State?.last_data_date ? (
+                      <span className="text-muted-foreground">Datos importados hasta el {formatDay(ga4State.last_data_date)}.</span>
+                    ) : (
+                      <span className="text-muted-foreground">Se importará en la próxima pasada diaria.</span>
+                    )}
+                    {ga4ErrorLabel(ga4State?.error_code) && <span className="block text-amber-600">{ga4ErrorLabel(ga4State?.error_code)}</span>}
+                  </p>
+                )}
               </div>
               <div>
                 <Label className="flex items-center gap-1.5">

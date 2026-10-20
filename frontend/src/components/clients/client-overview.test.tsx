@@ -128,4 +128,14 @@ describe("ClientOverview", () => {
     show()
     expect(screen.queryByText("Cambios en la web")).not.toBeInTheDocument()
   })
+
+  it("shows GA4 visits, conversions and AI traffic from the last 28 days", () => {
+    show({ status: { ...status, ga4: {
+      current: { start: "2026-09-21", end: "2026-10-18", days: 28, sessions: 1234, key_events: 25, ai_sessions: 50, ai_key_events: 2.5 },
+      previous: null, vs_previous: { sessions_pct: 10, key_events_pct: 25, ai_sessions_pct: null }, as_of: "2026-10-18",
+    } } })
+    const results = block("Resultados")
+    expect(within(results).getByText(/1\.234 visitas · 25 conversiones/)).toBeInTheDocument()
+    expect(within(results).getByText(/Desde IA: 50 visitas · 2,5 conversiones/)).toBeInTheDocument()
+  })
 })

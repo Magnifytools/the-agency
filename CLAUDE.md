@@ -283,6 +283,27 @@ admin_users, admin_settings
   `report_unsent`).
 - Cada cifra es `null` si quien mira no lee su fuente; el front no la pinta.
 
+## GA4 propio (visitas, conversiones y tráfico desde IA)
+
+- **Qué es**: con las mismas cuentas de Google que Search Console (permiso
+  `analytics.readonly`), el job diario `ga4` importa por propiedad
+  (`Client.ga4_property_id`, se normaliza a sólo dígitos) sesiones, eventos
+  clave (conversiones) y la parte que llega desde asistentes de IA
+  (`AI_SOURCES` en `services/ga4_service.py`, por `sessionSource`).
+  Tablas `ga4_daily` y `ga4_property_sync` (migración `ga4_v1`).
+- **Cuentas**: la Admin API dice qué cuenta ve cada propiedad. Una cuenta
+  conectada antes de pedir el permiso de Analytics da `missing_scope`: se
+  apunta en la propiedad y la cuenta NO se marca para reconectar (Search
+  Console sigue funcionando con ella); hay que reconectarla para dar permiso.
+- **Uso**: la ficha enseña 28 días frente a los 28 anteriores (sólo se
+  enseña, no es señal de estado). Los resúmenes de mes natural llevan
+  `raw_context["ga4"]` y un bloque pintado con código (`digest_ga4.py`),
+  quitable con `content.include_ga4`. Un mes cuenta como cerrado cuando se ha
+  importado al menos 3 días después de su último día.
+- **Producción necesita**: en Google Cloud, activar Google Analytics Data API
+  y Google Analytics Admin API y añadir el scope `analytics.readonly` a la
+  pantalla de consentimiento; luego reconectar cada cuenta en Ajustes.
+
 ## Vigil (cambios en las webs de los clientes)
 
 - **Qué es**: Vigil (`/Código/Vigil`, vigil.magnifytools.com) vigila cambios en

@@ -11,6 +11,7 @@ import { CommunicationSchedules } from "@/components/communication-schedules"
 import { JobRuntimeStatusPanel } from "@/components/job-runtime-status"
 import { OperationalUsagePanel } from "@/components/admin/operational-usage"
 import { SearchConsoleSection } from "@/components/settings/search-console-section"
+import { Ga4Section } from "@/components/settings/ga4-section"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Button } from "@/components/ui/button"
 
@@ -556,6 +557,7 @@ export default function SettingsPage() {
       <CalendarSection />
 
       {isAdmin && <SearchConsoleSection />}
+      {isAdmin && <Ga4Section />}
 
       {/* Holiday management — admin only */}
       {isAdmin && (
