@@ -45,7 +45,7 @@ export function SeoCell({ seo }: { seo: ClientStatusRow["seo"] }) {
 const DIGEST_STATE = { ok: "Al día", due: "Toca enviarlo", late: "Atrasado" } as const
 
 export function DigestCell({ digest }: { digest: ClientStatusRow["digest"] }) {
-  if (!digest) return <span className="text-xs text-muted-foreground">Sin política</span>
+  if (!digest) return <p className="text-xs text-muted-foreground">Sin política</p>
   const last = digest.last_sent_period_end
     ? new Date(`${digest.last_sent_period_end}T12:00:00`).toLocaleDateString("es-ES", { day: "numeric", month: "short" })
     : null
