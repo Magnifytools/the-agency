@@ -34,6 +34,7 @@ import type {
   BalanceSnapshot,
   BalanceSnapshotCreate,
   DashboardOverview,
+  DashboardOperations,
   DashboardFinancialOverview,
   ProfitabilityResponse,
   TeamMemberSummary,
@@ -434,6 +435,7 @@ export const usersApi = {
 export const dashboardApi = {
   overview: (params?: { year?: number; month?: number }) =>
     api.get<DashboardOverview>("/dashboard/overview", { params }).then((r) => r.data),
+  operations: () => api.get<DashboardOperations>("/dashboard/operations").then((r) => r.data),
   financialOverview: (params?: { year?: number; month?: number }) =>
     api.get<DashboardFinancialOverview>("/dashboard/overview/financial", { params }).then((r) => r.data),
   profitability: (params?: { year?: number; month?: number }) =>

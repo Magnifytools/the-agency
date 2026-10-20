@@ -80,7 +80,12 @@ def _hours(value: float) -> str:
     return f"{value:.1f}h".replace(".0h", "h")
 
 
-def _project_rows(now: datetime):
+def project_measure_rows(now: datetime):
+    """Eligible projects with their closing date and logged minutes, unscoped.
+
+    Owner-scoped notices and the dashboard's "Operación" row read the same
+    measures, so a project late for one is late for the other.
+    """
     today = business_today(now=now)
     month_start = today.replace(day=1)
     next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
@@ -144,10 +149,30 @@ def _project_rows(now: datetime):
     ).outerjoin(
         total_minutes, total_minutes.c.project_id == Project.id,
     ).where(
-        Project.owner_id.is_not(None),
         Project.status.in_(_ELIGIBLE_STATUSES),
-        module_permission(Project.owner_id, "projects"),
     ).order_by(Project.id)
+
+
+def _project_rows(now: datetime):
+    return project_measure_rows(now).where(
+        Project.owner_id.is_not(None),
+        module_permission(Project.owner_id, "projects"),
+    )
+
+
+def monthly_hours_usage(row) -> tuple[float, float] | None:
+    """(hours logged this month, monthly ceiling), or None when there is no ceiling."""
+    project_view = SimpleNamespace(
+        monthly_hours_budget=row.monthly_hours_budget,
+        weekly_hours_budget=row.weekly_hours_budget,
+        is_recurring=row.is_recurring,
+        pricing_model=row.pricing_model,
+        budget_hours=row.budget_hours,
+    )
+    _, monthly_budget = effective_budgets(project_view)
+    if not monthly_budget or monthly_budget <= 0:
+        return None
+    return float(row.month_minutes or 0) / 60, float(monthly_budget)
 
 
 async def collect_project_conditions(db, user_id: int, now: datetime) -> dict[str, Condition]:
@@ -206,17 +231,10 @@ async def collect_project_conditions(db, user_id: int, now: datetime) -> dict[st
 
         if not row.timesheet_read or not is_enabled("timesheet"):
             continue
-        project_view = SimpleNamespace(
-            monthly_hours_budget=row.monthly_hours_budget,
-            weekly_hours_budget=row.weekly_hours_budget,
-            is_recurring=row.is_recurring,
-            pricing_model=row.pricing_model,
-            budget_hours=row.budget_hours,
-        )
-        _, monthly_budget = effective_budgets(project_view)
-        if monthly_budget and monthly_budget > 0:
-            used = float(row.month_minutes or 0) / 60
-            ratio = used / float(monthly_budget)
+        monthly = monthly_hours_usage(row)
+        if monthly is not None:
+            used, monthly_budget = monthly
+            ratio = used / monthly_budget
             if ratio >= 1:
                 kind, severity = PROJECT_MONTHLY_HOURS_EXCEEDED, "critical"
             elif ratio >= 0.8:

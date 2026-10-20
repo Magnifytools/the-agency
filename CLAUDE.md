@@ -265,6 +265,20 @@ admin_users, admin_settings
   el último periodo con entrega externa confirmada, lo más reciente. Sin columnas
   nuevas. Lo pinta el bloque Trabajo de la Vista general.
 
+## Fila "Operación" del dashboard
+- Cuatro cifras de HOY (no del mes elegido) en `/` bajo la visión general:
+  `GET /api/dashboard/operations` → `services/operations_summary.py`. No hay
+  pantalla ni módulo propio (el ejecutivo oculto no vuelve).
+- Ninguna fórmula propia, cada cifra llama a quien ya decide esa regla:
+  cuota recurrente = `services/recurring_fee.py` (SUM `Project.monthly_fee` de
+  proyectos activos de clientes externos activos; sólo admin); proyectos en
+  riesgo = `project_measure_rows` + `monthly_hours_usage` de
+  `incident_project_conditions.py` (cierre vencido u horas del mes ≥ 100 %);
+  clientes en Actuar = `client_status.portfolio`; resúmenes sin entregar =
+  `unsent_monthly_clients` de `incident_report_conditions.py` (regla de
+  `report_unsent`).
+- Cada cifra es `null` si quien mira no lee su fuente; el front no la pinta.
+
 ## No tocar
 - Módulos financieros custom: tax_service, forecast_service, income, expenses, taxes, forecasts
 - Se reemplazarán por integración Holded en fase posterior

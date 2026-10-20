@@ -8,6 +8,7 @@ import type { PricingOption, Task } from "@/lib/types"
 import { useAuth } from "@/context/auth-context"
 import { MetricCard } from "@/components/dashboard/metric-card"
 import { OperationalOverview } from "@/components/dashboard/operational-overview"
+import { OperationsRow } from "@/components/dashboard/operations-row"
 import { ProfitabilityChart } from "@/components/dashboard/profitability-chart"
 import { InsightsPanel } from "@/components/pm/insights-panel"
 import { DailyBriefingButton } from "@/components/pm/daily-briefing"
@@ -100,6 +101,12 @@ export default function DashboardPage() {
     retry: false,
   })
   const overview = overviewQuery.data
+  const operationsQuery = useQuery({
+    queryKey: dashboardKeys.operations(user?.id, dashboardPermissionSignature),
+    queryFn: () => dashboardApi.operations(),
+    enabled: !!user,
+    retry: false,
+  })
   const financialOverviewQuery = useQuery({
     queryKey: dashboardKeys.financialOverview(year, month, user?.id, dashboardPermissionSignature),
     queryFn: () => dashboardApi.financialOverview(params),
@@ -704,6 +711,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 2xl:gap-6">
         <div className="xl:col-span-2 space-y-4 2xl:space-y-6">
           <OperationalOverview overview={overview} isLoading={overviewQuery.isLoading} isError={overviewQuery.isError} onRetry={() => void overviewQuery.refetch()} />
+          <OperationsRow operations={operationsQuery.data} isError={operationsQuery.isError} onRetry={() => void operationsQuery.refetch()} />
           {financeEnabled && !financialOverviewForbidden && (
             financialOverviewQuery.isError ? <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6"><p role="alert" className="text-sm">No se pudo cargar el resumen financiero.</p><Button type="button" variant="outline" size="sm" onClick={() => void financialOverviewQuery.refetch()}>Reintentar</Button></CardContent></Card> : financialOverviewQuery.data ? <div className="space-y-2"><div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><MetricCard icon={DollarSign} label="Presupuesto total" value={financialOverviewQuery.data.total_budget == null ? "—" : formatCurrency(financialOverviewQuery.data.total_budget)} tooltip="Suma de presupuestos del mes seleccionado." /><MetricCard icon={DollarSign} label="Coste total" value={financialOverviewQuery.data.total_cost == null ? "—" : formatCurrency(financialOverviewQuery.data.total_cost)} subtitle={financialOverviewQuery.data.margin == null ? undefined : `Margen: ${formatCurrency(financialOverviewQuery.data.margin)}`} tooltip="Coste registrado del mes seleccionado." /></div></div> : null
           )}

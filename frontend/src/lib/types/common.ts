@@ -254,3 +254,17 @@ export interface SearchResults {
   leads: { id: number; company_name: string; contact_name: string | null; status: string }[]
 }
 
+
+/** Fila "Operación" del dashboard. `null` = sin acceso a la fuente de esa cifra. */
+export interface DashboardOperations {
+  recurring_fee: { total: number; clients: number } | null
+  projects_at_risk: { count: number; items: { id: number; name: string; reasons: string[] }[] } | null
+  clients_to_act: { count: number; items: { id: number; name: string; reason: string | null }[] } | null
+  digests_unsent: {
+    count: number
+    month: string
+    period_start: string
+    period_end: string
+    items: { id: number; name: string; reason?: string | null }[]
+  } | null
+}
