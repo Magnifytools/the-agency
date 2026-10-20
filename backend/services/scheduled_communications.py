@@ -21,7 +21,8 @@ TEAM_KINDS = ("weekly", "team_morning")
 SCHEDULER_STARTED_AT = utc_now_naive()
 CALENDAR_FRESHNESS = timedelta(minutes=20)
 EXTENSION_MIN_VERSION = "2.2.0"
-EXTENSION_DOWNLOAD_URL = "/extension/agency-manager.crx"
+# Ajustes → Extensión de Chrome: zip de la versión desplegada (el .crx de dist/ se arma a mano).
+EXTENSION_DOWNLOAD_URL = "/settings#extension"
 
 
 def policy_key(kind, user_id):

@@ -17,6 +17,7 @@ vi.mock("@/lib/api", () => ({
   calendarApi: { getStatus: vi.fn().mockResolvedValue({ connected: false }), getAuthUrl: vi.fn(), disconnect: vi.fn(), sync: vi.fn() },
   gscApi: { getStatus: vi.fn().mockResolvedValue({ configured: true, connections: [], sites: [] }), getAuthUrl: vi.fn(), disconnect: vi.fn(), sync: vi.fn(), listSites: vi.fn() },
   ga4Api: { getStatus: vi.fn().mockResolvedValue({ configured: true, properties: [] }), sync: vi.fn() },
+  extensionApi: { info: vi.fn().mockResolvedValue({ version: "2.2.7", filename: "the-agency-extension-v2.2.7.zip", download_url: "/api/extension/download" }) },
 }))
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 

@@ -357,6 +357,19 @@ admin_users, admin_settings
 - **Tráfico**: `gsc_daily` de `Client.gsc_url`, 16 meses naturales CERRADOS
   (hasta el último con datos hasta su último día, según `gsc_site_sync`).
 
+## Extensión de Chrome: descarga
+- Ajustes → "Extensión de Chrome" (`components/settings/extension-section.tsx`):
+  botón "Descargar extensión" con la versión desplegada y pasos para instalar
+  (cargar descomprimida) o actualizar (sustituir la carpeta y recargar).
+- `GET /api/extension` (versión) y `GET /api/extension/download` (zip), ambos con
+  sesión. El zip lo arma el backend en memoria desde los ficheros de
+  `chrome-extension/` que copia el Dockerfile (`services/extension_package.py`,
+  `RUNTIME_FILES`), con la versión de su `manifest.json`: no hay artefacto a mano.
+  Si añades un fichero a la extensión, añádelo a `RUNTIME_FILES` y al Dockerfile
+  (lo vigila `tests/test_extension_download.py`).
+- Nada de zips sueltos en la raíz (`.gitignore`). Al cambiar código de la
+  extensión, sube la versión del `manifest.json`.
+
 ## No tocar
 - Módulos financieros custom: tax_service, forecast_service, income, expenses, taxes, forecasts
 - Se reemplazarán por integración Holded en fase posterior

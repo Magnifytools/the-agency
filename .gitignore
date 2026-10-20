@@ -31,3 +31,6 @@ chrome-extension/dist/key.pem
 chrome-extension.zip
 chrome-extension-*.zip
 chrome-extension/dist/*.zip
+
+# Zips de la extensión hechos a mano: ahora se descargan de Ajustes → Extensión de Chrome
+the-agency-extension-v*.zip
