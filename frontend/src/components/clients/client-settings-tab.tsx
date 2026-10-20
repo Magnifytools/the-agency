@@ -13,6 +13,7 @@ import { BarChart3, Search, Save, Globe, Radar } from "lucide-react"
 import { getErrorMessage } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
 import { invalidateClientChange } from "@/lib/query-keys"
+import { ClientShareLinkCard } from "@/components/clients/client-share-link-card"
 
 interface Props {
   client: Client
@@ -228,6 +229,8 @@ export function ClientSettingsTab({ client }: Props) {
           </form>
         </CardContent>
       </Card>
+
+      <ClientShareLinkCard clientId={client.id} />
     </div>
   )
 }

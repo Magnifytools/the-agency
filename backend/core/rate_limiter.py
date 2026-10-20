@@ -136,5 +136,19 @@ class LoginRateLimiter:
         self._limiter.check(key, max_requests, window_seconds)
 
 
+class PublicLinkRateLimiter:
+    """Sliding-window limiter for the public client link, keyed by IP."""
+
+    def __init__(self) -> None:
+        self._limiter = _SlidingWindowLimiter(
+            prefix="rate:public-link",
+            detail_fn=lambda _max_requests, _window_seconds: "Demasiadas visitas seguidas. Espera un minuto y vuelve a intentarlo.",
+        )
+
+    def check(self, key: str, max_requests: int, window_seconds: int) -> None:
+        self._limiter.check(key, max_requests, window_seconds)
+
+
 ai_limiter = RateLimiter()
 login_limiter = LoginRateLimiter()
+public_link_limiter = PublicLinkRateLimiter()

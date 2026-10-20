@@ -21,7 +21,7 @@ from backend.api.routes import (
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
     service_templates, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     changes, commands,
-    client_dashboard, engine_integration, investments,
+    client_dashboard, client_share_links, engine_integration, investments,
     search, balance,
     inbox,
     extension,
@@ -116,7 +116,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # setdefault: el enlace público del cliente pide "no-referrer".
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         content_type = response.headers.get("content-type", "")
         if "text/html" in content_type:
             response.headers["Content-Security-Policy"] = (
@@ -216,6 +217,8 @@ _CORE_ROUTERS = [
     projects, pm, report_policies, digests, sync, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     client_dashboard, engine_integration, inbox, extension, google_calendar,
     gsc, ga4, vigil, usage_stats, job_runtime,
+    # client_share_links: el enlace de sólo lectura del cliente (/c/:token).
+    client_share_links,
     # holidays: los festivos de empresa (Ajustes → Festivos, plan de la mañana).
     holidays,
     # changes: el Undo del shell. No es una pantalla, es la red de seguridad
@@ -304,4 +307,9 @@ if _frontend_dist.is_dir():
         # Prevent path traversal: resolved path must stay inside frontend/dist
         if file_path.is_file() and file_path.is_relative_to(_frontend_dist.resolve()):
             return FileResponse(str(file_path))
+        if full_path.startswith("c/"):
+            # Enlace de sólo lectura del cliente: fuera de buscadores y del Referer.
+            return FileResponse(str(_frontend_dist / "index.html"), headers={
+                "X-Robots-Tag": "noindex, nofollow, noarchive", "Referrer-Policy": "no-referrer",
+            })
         return FileResponse(str(_frontend_dist / "index.html"))

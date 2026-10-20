@@ -333,6 +333,30 @@ admin_users, admin_settings
   Vigilar si hay cambios críticos sin revisar. Un resumen de más de 48 h se
   enseña pero no cuenta (`services/vigil_service.py`).
 
+## Enlace para el cliente (fase 3 Agency 2.0)
+
+- **Qué es**: página pública `/c/:token` (sin login, fuera del shell) con SÓLO
+  los resúmenes entregados del cliente y sus clics/impresiones/posición de
+  Google por mes. Nada de tareas, borradores ni notas. Se gestiona en Ajustes
+  del cliente → "Enlace para el cliente" (`client-share-link-card.tsx`).
+- **Token**: `secrets.token_urlsafe(32)`; en `client_share_links` sólo se guarda
+  su SHA-256. El enlace completo se enseña UNA vez al crearlo; después, "activo
+  desde…" y última visita (se apunta como mucho una vez por hora). Un enlace
+  activo por cliente (índice único parcial); regenerar revoca el anterior.
+  Revocar no entra en el Deshacer: el token no existe en ningún sitio.
+- **API**: `GET/POST/DELETE /api/clients/{id}/share-link` (ver: lectura de
+  `clients`; crear/revocar: escritura de `clients`, y crear pide además leer
+  `digests`, porque el enlace los enseña). Pública: `GET /api/public/clients/{token}`
+  (`api/routes/client_share_links.py`, `services/client_share_links.py`),
+  limitada a 30/min por IP; desconocido, revocado o mal formado → el mismo 404.
+  Cabeceras `noindex`, `no-store` y `no-referrer` (también en el HTML de `/c/`).
+- **Qué resúmenes**: la regla de `report_unsent` (`delivery_is_confirmed`): la
+  última acción de entrega externa es una confirmación. `DigestStatus.sent` NO
+  cuenta. Una versión por periodo (la última entregada), pintada con
+  `render_email` y mostrada en un iframe `sandbox` sin scripts.
+- **Tráfico**: `gsc_daily` de `Client.gsc_url`, 16 meses naturales CERRADOS
+  (hasta el último con datos hasta su último día, según `gsc_site_sync`).
+
 ## No tocar
 - Módulos financieros custom: tax_service, forecast_service, income, expenses, taxes, forecasts
 - Se reemplazarán por integración Holded en fase posterior
@@ -430,4 +454,4 @@ cd mcp-server && .venv/bin/python -m pytest -q
 
 ---
 
-*Actualizado: 18 Oct 2026*
+*Actualizado: 20 Oct 2026*

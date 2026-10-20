@@ -44,6 +44,7 @@ const InboxPage = lazy(() => import("@/pages/inbox-page"))
 const DeliveryPage = lazy(() => import("@/pages/delivery-page"))
 const IncidentsPage = lazy(() => import("@/pages/incidents-page"))
 const SettingsPage = lazy(() => import("@/pages/settings-page"))
+const PublicClientPage = lazy(() => import("@/pages/public-client-page"))
 
 function PageLoader() {
   return (
@@ -82,6 +83,8 @@ export default function App() {
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            {/* Enlace de sólo lectura del cliente: sin login y fuera del shell. */}
+            <Route path="/c/:token" element={<ErrorBoundary section="Enlace del cliente"><Suspense fallback={null}><PublicClientPage /></Suspense></ErrorBoundary>} />
             <Route
               element={
                 <ProtectedRoute>
