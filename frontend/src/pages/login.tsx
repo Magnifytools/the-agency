@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { AxiosError } from "axios"
 import { useAuth } from "@/context/auth-context"
 import { Button } from "@/components/ui/button"
@@ -86,6 +86,11 @@ export default function LoginPage() {
             </Button>
           </form>
         </div>
+        <p className="mt-6 text-center text-xs text-muted-foreground">
+          <Link to="/acerca" className="hover:text-foreground">Qué es The Agency</Link>
+          {" · "}
+          <Link to="/privacidad" className="hover:text-foreground">Privacidad</Link>
+        </p>
       </div>
     </div>
   )

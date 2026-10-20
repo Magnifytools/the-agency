@@ -45,6 +45,8 @@ const DeliveryPage = lazy(() => import("@/pages/delivery-page"))
 const IncidentsPage = lazy(() => import("@/pages/incidents-page"))
 const SettingsPage = lazy(() => import("@/pages/settings-page"))
 const PublicClientPage = lazy(() => import("@/pages/public-client-page"))
+const AboutPage = lazy(() => import("@/pages/public-legal").then((m) => ({ default: m.AboutPage })))
+const PrivacyPage = lazy(() => import("@/pages/public-legal").then((m) => ({ default: m.PrivacyPage })))
 const CredentialsPage = lazy(() => import("@/pages/credentials-page"))
 
 function PageLoader() {
@@ -85,6 +87,9 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             {/* Enlace de sólo lectura del cliente: sin login y fuera del shell. */}
+            {/* Páginas públicas para la verificación de Google OAuth (noindex). */}
+            <Route path="/acerca" element={<Suspense fallback={null}><AboutPage /></Suspense>} />
+            <Route path="/privacidad" element={<Suspense fallback={null}><PrivacyPage /></Suspense>} />
             <Route path="/c/:token" element={<ErrorBoundary section="Enlace del cliente"><Suspense fallback={null}><PublicClientPage /></Suspense></ErrorBoundary>} />
             <Route
               element={
