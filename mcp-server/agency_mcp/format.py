@@ -109,7 +109,8 @@ def task_detail(
     if comments:
         lines += ["", f"Comentarios ({len(comments)}):"]
         lines += [
-            f"- {day(c.get('created_at'))} {c.get('user_name') or 'alguien'}: {c['text']}"
+            f"- {day(c.get('created_at'))} {c.get('user_name') or 'alguien'}"
+            f"{' (borrador de IA, sin revisar)' if c.get('is_ai_draft') else ''}: {c['text']}"
             for c in comments
         ]
     return "\n".join(lines)

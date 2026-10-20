@@ -746,6 +746,8 @@ class TaskComment(TimestampMixin, Base):
     task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     text = Column(Text, nullable=False)
+    # Borrador de IA pedido por user_id desde el procedimiento de la tarea.
+    is_ai_draft = Column(Boolean, nullable=False, default=False, server_default="false")
 
     user = relationship("User", lazy="selectin")
 

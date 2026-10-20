@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   deleteChecklist: vi.fn(),
   deleteAttachment: vi.fn(),
   deleteComment: vi.fn(),
+  draft: vi.fn(),
 }));
 vi.mock("@/context/auth-context", () => ({
   useAuth: () => ({
@@ -63,6 +64,7 @@ vi.mock("@/lib/api", () => ({
     update: mocks.update,
     restore: mocks.restore,
     recurrencePreview: mocks.recurrencePreview,
+    draft: mocks.draft,
     checklist: {
       list: mocks.checklist,
       create: mocks.createChecklist,
@@ -707,5 +709,72 @@ describe("TaskPanel", () => {
     expect(screen.getByRole("link", { name: /Abrir documento de referencia/ })).toHaveAttribute("href", "https://docs.example.test/proc");
     expect(screen.getByText(/Copiado de Informe mensual/)).toBeInTheDocument();
     expect(screen.queryByLabelText("Pasos")).not.toBeInTheDocument();
+  });
+
+  describe("AI draft from the procedure", () => {
+    const occurrence = {
+      ...task,
+      is_recurring: false,
+      recurrence_pattern: null,
+      recurrence_day: null,
+      recurrence_end_date: null,
+      recurring_parent_id: 5,
+      recurring_parent_title: "Informe mensual",
+      procedure_text: "1. Exportar\n2. Revisar",
+      procedure_url: null,
+    };
+    const aiDraft = {
+      id: 51, task_id: 9, user_id: 2, text: "## Informe\n- [PENDIENTE: clics]",
+      user_name: "Violeta", is_ai_draft: true,
+      created_at: "2026-10-20T08:00:00", updated_at: "2026-10-20T08:00:00",
+    };
+
+    it("generates a draft with a loading state and shows it labeled with a copy button", async () => {
+      mocks.get.mockResolvedValue(occurrence);
+      let resolveDraft: (value: unknown) => void = () => {};
+      mocks.draft.mockReturnValue(new Promise((resolve) => { resolveDraft = resolve; }));
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+      setup({ taskId: 9 });
+      await userEvent.click(await screen.findByRole("button", { name: "Generar borrador" }));
+      expect(mocks.draft).toHaveBeenCalledWith(9);
+      const pending = screen.getByRole("button", { name: /Generando borrador/ });
+      expect(pending).toBeDisabled();
+      mocks.comments.mockResolvedValue([aiDraft, { id: 41, text: "Hecho", user_name: "Violeta", is_ai_draft: false }]);
+      resolveDraft(aiDraft);
+      await screen.findByRole("button", { name: "Generar borrador" });
+      await userEvent.click(screen.getByText("Checklist, comentarios y archivos"));
+      const card = await screen.findByRole("article", { name: "Borrador de IA pedido por Violeta" });
+      expect(card).toHaveTextContent("Borrador de IA — revisar antes de usar");
+      expect(card).toHaveTextContent("Pedido por Violeta");
+      expect(card).toHaveTextContent("[PENDIENTE: clics]");
+      await userEvent.click(screen.getByRole("button", { name: "Copiar borrador" }));
+      expect(writeText).toHaveBeenCalledWith(aiDraft.text);
+      expect(mocks.update).not.toHaveBeenCalled();
+    });
+
+    it("shows the error and keeps the button available after a failure", async () => {
+      mocks.get.mockResolvedValue(occurrence);
+      mocks.draft.mockRejectedValue(new Error("boom"));
+      setup({ taskId: 9 });
+      await userEvent.click(await screen.findByRole("button", { name: "Generar borrador" }));
+      await waitFor(() => expect(mocks.toastError).toHaveBeenCalled());
+      expect(screen.getByRole("button", { name: "Generar borrador" })).toBeEnabled();
+    });
+
+    it("hides the button when the procedure has no written steps", async () => {
+      mocks.get.mockResolvedValue({ ...occurrence, procedure_text: null, procedure_url: "https://docs.example.test/proc" });
+      setup({ taskId: 9 });
+      await screen.findByDisplayValue("Auditar");
+      expect(screen.queryByRole("button", { name: "Generar borrador" })).not.toBeInTheDocument();
+    });
+
+    it("hides the button for readers", async () => {
+      mocks.canWrite = false;
+      mocks.get.mockResolvedValue(occurrence);
+      setup({ taskId: 9 });
+      expect(await screen.findByText(/1\. Exportar/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Generar borrador" })).not.toBeInTheDocument();
+    });
   });
 });

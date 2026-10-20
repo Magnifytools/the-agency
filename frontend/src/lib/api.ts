@@ -364,6 +364,9 @@ export const tasksApi = {
     delete: (taskId: number, commentId: number) =>
       api.delete(`/tasks/${taskId}/comments/${commentId}`).then((r) => r.data),
   },
+  // Claude redacta hasta ~8.000 tokens: el backend corta a 100 s.
+  draft: (taskId: number) =>
+    api.post<TaskComment>(`/tasks/${taskId}/draft`, {}, { timeout: 120_000 }).then((r) => r.data),
   attachments: {
     list: (taskId: number) =>
       api.get<TaskAttachment[]>(`/tasks/${taskId}/attachments`).then((r) => r.data),
