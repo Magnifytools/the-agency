@@ -1068,6 +1068,20 @@ export const vigilApi = {
   clients: () => api.get<VigilClients>("/vigil/clients").then((r) => r.data),
 }
 
+export interface Ga4PropertyStatus {
+  property_id: string
+  clients: { id: number; name: string }[]
+  last_data_date: string | null
+  last_synced_at: string | null
+  error_code: string | null
+  google_email: string | null
+}
+
+export const ga4Api = {
+  getStatus: () => api.get<{ configured: boolean; properties: Ga4PropertyStatus[] }>("/ga4/status").then((r) => r.data),
+  sync: () => api.post<{ status: string; synced: number; failed: number }>("/ga4/sync").then((r) => r.data),
+}
+
 export const gscApi = {
   getStatus: () => api.get<GscStatus>("/gsc/status").then((r) => r.data),
   getAuthUrl: () => api.get<{ url: string }>("/gsc/auth-url").then((r) => r.data),

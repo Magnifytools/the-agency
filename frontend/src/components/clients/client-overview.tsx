@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Briefcase, ExternalLink, Heart, LineChart, Users } from "lucide-react"
 import { contactsApi } from "@/lib/api"
+import { ga4Change, ga4Number } from "@/lib/ga4"
 import type { Client, ClientStatusRow, Task } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -137,6 +138,21 @@ export function ClientOverview({ client, status, statusFailed, onRetryStatus, ta
               <p className="mb-0.5 text-xs font-medium">Resumen al cliente</p>
               <DigestCell digest={status?.digest ?? null} />
               <GoTo onClick={() => onNavigate("resumenes")}>Abrir resúmenes</GoTo>
+            </div>
+          )}
+          {status?.ga4 && (
+            <div>
+              <p className="mb-0.5 text-xs font-medium">Visitas y conversiones (GA4, 28 días)</p>
+              <p className="text-sm">
+                {ga4Number(status.ga4.current.sessions)} visitas · {ga4Number(status.ga4.current.key_events)} conversiones
+                {ga4Change(status.ga4.vs_previous?.key_events_pct) && (
+                  <span className="text-xs text-muted-foreground"> ({ga4Change(status.ga4.vs_previous?.key_events_pct)} conversiones)</span>
+                )}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Desde IA: {ga4Number(status.ga4.current.ai_sessions)} visitas · {ga4Number(status.ga4.current.ai_key_events)} conversiones
+                {` · hasta el ${day(status.ga4.as_of)}`}
+              </p>
             </div>
           )}
           {status?.vigil && (

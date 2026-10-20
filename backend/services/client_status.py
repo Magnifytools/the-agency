@@ -47,6 +47,7 @@ from backend.services.recurring_fee import active_monthly_fees
 from backend.services.seo_traffic import STABLE_BAND_PCT, is_traffic_drop, seo_traffic
 from backend.services.temporal import business_today, civil_day_utc_bounds
 from backend.services.time_entry_dates import time_entry_civil_period
+from backend.services import ga4_service
 from backend.services.vigil_service import client_block, summaries as vigil_summaries
 
 Status = Literal["ok", "watch", "act", "no_data"]
@@ -289,6 +290,8 @@ async def portfolio(
     effort = (await _month_effort(db, clients, today, with_money=viewer.is_admin)
               if viewer.timesheet else {})
     vigil = await vigil_summaries(db, {c.vigil_slug for c in clients if c.vigil_slug})
+    ga4_props = {c.id: ga4_service.normalize_property(c.ga4_property_id) for c in clients}
+    ga4 = await ga4_service.windows(db, {p for p in ga4_props.values() if p})
 
     rows = []
     for client in clients:
@@ -368,6 +371,9 @@ async def portfolio(
             row["month"] = month
         else:
             row["month"] = None
+
+        # GA4 (sólo se enseña; no es señal de estado): sesiones, conversiones e IA en 28 días.
+        row["ga4"] = ga4.get(ga4_props.get(client.id) or "")
 
         # 6. Cambios en la web (Vigil): un cambio crítico sin revisar pide mirar.
         summary = vigil.get(client.vigil_slug) if client.vigil_slug else None

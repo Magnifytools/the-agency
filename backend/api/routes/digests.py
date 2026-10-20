@@ -740,6 +740,7 @@ async def render_digest(
         client_template = digest.client.slack_template
 
     seo = (digest.raw_context or {}).get("seo")
+    ga4 = (digest.raw_context or {}).get("ga4")
     if format == "slack":
         rendered = render_slack(
             content,
@@ -748,6 +749,7 @@ async def render_digest(
             period_start=digest.period_start,
             period_end=digest.period_end,
             seo=seo,
+            ga4=ga4,
         )
     elif format == "discord":
         rendered = render_discord(
@@ -756,6 +758,7 @@ async def render_digest(
             period_start=digest.period_start,
             period_end=digest.period_end,
             seo=seo,
+            ga4=ga4,
         )
     elif format == "email_plain":
         rendered = render_email_plain(
@@ -764,6 +767,7 @@ async def render_digest(
             period_start=digest.period_start,
             period_end=digest.period_end,
             seo=seo,
+            ga4=ga4,
         )
     else:
         rendered = render_email(
@@ -772,6 +776,7 @@ async def render_digest(
             period_start=digest.period_start,
             period_end=digest.period_end,
             seo=seo,
+            ga4=ga4,
         )
 
     return DigestRenderResponse(format=format, rendered=rendered)

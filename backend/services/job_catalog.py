@@ -53,6 +53,10 @@ def job_definitions() -> tuple[JobDefinition, ...]:
                       "Guarda los datos diarios finales de las propiedades de los clientes activos.",
                       None if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET
                       else "Google OAuth no está configurado."),
+        JobDefinition(JobSpec("ga4", 14, 86400, 1800, retry_seconds=3600), "Importar Google Analytics 4",
+                      "Guarda sesiones, conversiones y tráfico desde IA de las propiedades GA4 de los clientes activos.",
+                      None if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET
+                      else "Google OAuth no está configurado."),
         # Cada 6 h y no diario: el turno diario corre a las 00:01 y el barrido
         # de Vigil termina hacia las 06:30, así que leería el resumen de ayer.
         JobDefinition(JobSpec("vigil", 13, 6 * 3600, 120, retry_seconds=1800), "Leer cambios en las webs (Vigil)",

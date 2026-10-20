@@ -40,6 +40,8 @@ class DigestContent(BaseModel):
     # Bloque de Search Console (sólo resúmenes mensuales con datos): el editor
     # puede quitarlo de todos los formatos sin tocar los datos guardados.
     include_seo: bool = True
+    # Bloque de GA4 (visitas, conversiones e IA), con la misma regla.
+    include_ga4: bool = True
 
 
 # --- API schemas ---

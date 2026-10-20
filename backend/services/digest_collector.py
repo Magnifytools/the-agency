@@ -20,6 +20,7 @@ from backend.db.models import (
     User,
 )
 from backend.services.gsc_service import is_full_month, month_summary
+from backend.services.ga4_service import month_summary as ga4_month_summary
 from backend.services.temporal import civil_day_utc_bounds
 from backend.services.time_entry_dates import time_entry_civil_period
 
@@ -355,5 +356,8 @@ async def collect_digest_data(
     if is_full_month(period_start, period_end):
         gsc_url = await db.scalar(select(Client.gsc_url).where(Client.id == client_id))
         result["seo"] = await month_summary(db, gsc_url, period_start, period_end)
+        # GA4 con la misma regla: sólo mes natural, desde la BD propia.
+        ga4_property = await db.scalar(select(Client.ga4_property_id).where(Client.id == client_id))
+        result["ga4"] = await ga4_month_summary(db, ga4_property, period_start, period_end)
     result["source_catalog"] = catalog
     return result

@@ -60,6 +60,35 @@ export interface DigestContent {
   closing: string
   /** Bloque de Search Console en el resumen mensual. Ausente = incluido. */
   include_seo?: boolean
+  /** Bloque de GA4 (visitas, conversiones, IA) en el resumen mensual. Ausente = incluido. */
+  include_ga4?: boolean
+}
+
+export interface Ga4Totals {
+  start: string
+  end: string
+  days: number
+  sessions: number
+  key_events: number
+  ai_sessions: number
+  ai_key_events: number
+}
+
+export interface Ga4Changes {
+  sessions_pct: number | null
+  key_events_pct: number | null
+  ai_sessions_pct: number | null
+}
+
+/** raw_context.ga4 de un resumen mensual. */
+export interface DigestGa4 {
+  status: "ok" | "no_property" | "not_synced" | "incomplete" | "no_data"
+  property_id?: string
+  error_code?: string | null
+  last_data_date?: string | null
+  month?: Ga4Totals
+  previous?: Ga4Totals | null
+  vs_previous?: Ga4Changes | null
 }
 
 export interface DigestSeoPeriod {

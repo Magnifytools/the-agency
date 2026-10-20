@@ -1806,6 +1806,30 @@ Index(
 )
 
 
+class Ga4Daily(Base):
+    """Totales diarios de una propiedad de GA4: sesiones, eventos clave y lo que llega desde asistentes de IA."""
+    __tablename__ = "ga4_daily"
+
+    property_id = Column(String(32), primary_key=True)
+    date = Column(Date, primary_key=True)
+    sessions = Column(Integer, nullable=False)
+    key_events = Column(Float, nullable=False)
+    ai_sessions = Column(Integer, nullable=False)
+    ai_key_events = Column(Float, nullable=False)
+
+
+class Ga4PropertySync(Base):
+    """Estado de importación por propiedad de GA4 y con qué cuenta de Google se lee."""
+    __tablename__ = "ga4_property_sync"
+
+    property_id = Column(String(32), primary_key=True)
+    connection_id = Column(SmallInteger, ForeignKey("gsc_connection.id", ondelete="SET NULL"), nullable=True)
+    backfilled_at = Column(DateTime(timezone=True), nullable=True)
+    last_synced_at = Column(DateTime(timezone=True), nullable=True)
+    last_data_date = Column(Date, nullable=True)
+    error_code = Column(String(64), nullable=True)
+
+
 class GscDaily(Base):
     """Totales diarios finales de una propiedad de Search Console."""
     __tablename__ = "gsc_daily"

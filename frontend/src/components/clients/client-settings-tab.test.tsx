@@ -20,6 +20,7 @@ vi.mock("@/lib/api", () => ({
   clientsApi: { update: mocks.update },
   engineApi: { listProjects: mocks.engineProjects },
   gscApi: { getStatus: mocks.gscStatus, listSites: vi.fn() },
+  ga4Api: { getStatus: vi.fn().mockResolvedValue({ configured: true, properties: [] }), sync: vi.fn() },
   vigilApi: { clients: mocks.vigilClients },
 }))
 vi.mock("@/lib/query-keys", () => ({ invalidateClientChange: vi.fn() }))

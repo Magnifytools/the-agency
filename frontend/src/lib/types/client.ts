@@ -210,6 +210,13 @@ export interface ClientStatusRow {
    * confirmada cubre todavía. `count` va sin límite; `items`, las 5 últimas.
    */
   ready?: { since: string; count: number; items: { id: number; title: string; completed_on: string }[] } | null
+  /** GA4 de los últimos 28 días con datos frente a los 28 anteriores. Sólo se enseña. */
+  ga4?: {
+    current: import("./integration").Ga4Totals
+    previous: import("./integration").Ga4Totals | null
+    vs_previous: import("./integration").Ga4Changes | null
+    as_of: string
+  } | null
   /** Cambios en la web (Vigil). null = cliente sin enlazar o sin resumen todavía. */
   vigil: {
     slug: string

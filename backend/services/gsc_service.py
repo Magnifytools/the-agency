@@ -33,7 +33,12 @@ from backend.services.temporal import business_today
 
 logger = logging.getLogger(__name__)
 
-SCOPES = ["https://www.googleapis.com/auth/webmasters.readonly", "openid", "email"]
+# Una misma cuenta de Google sirve para Search Console y para GA4 (lectura).
+SCOPES = [
+    "https://www.googleapis.com/auth/webmasters.readonly",
+    "https://www.googleapis.com/auth/analytics.readonly",
+    "openid", "email",
+]
 # 16 meses: lo máximo que guarda Search Console.
 BACKFILL_DAYS = 486
 # GSC revisa los últimos días: se vuelven a pedir en cada pasada.

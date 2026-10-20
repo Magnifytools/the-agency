@@ -1,0 +1,29 @@
+{
+  "version": "20261020_ga4_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS ga4_daily (\n property_id VARCHAR(32) NOT NULL,\n date DATE NOT NULL,\n sessions INTEGER NOT NULL,\n key_events DOUBLE PRECISION NOT NULL,\n ai_sessions INTEGER NOT NULL,\n ai_key_events DOUBLE PRECISION NOT NULL,\n PRIMARY KEY (property_id, date)\n)",
+    "CREATE TABLE IF NOT EXISTS ga4_property_sync (\n property_id VARCHAR(32) PRIMARY KEY,\n connection_id SMALLINT REFERENCES gsc_connection(id) ON DELETE SET NULL,\n backfilled_at TIMESTAMPTZ,\n last_synced_at TIMESTAMPTZ,\n last_data_date DATE,\n error_code VARCHAR(64)\n)"
+  ],
+  "tables": {
+    "ga4_daily": {
+      "property_id": ["varchar", false, 32],
+      "date": ["date", false, null],
+      "sessions": ["int4", false, null],
+      "key_events": ["float8", false, null],
+      "ai_sessions": ["int4", false, null],
+      "ai_key_events": ["float8", false, null]
+    },
+    "ga4_property_sync": {
+      "property_id": ["varchar", false, 32],
+      "connection_id": ["int2", true, null],
+      "backfilled_at": ["timestamptz", true, null],
+      "last_synced_at": ["timestamptz", true, null],
+      "last_data_date": ["date", true, null],
+      "error_code": ["varchar", true, 64]
+    }
+  },
+  "primary_keys": {
+    "ga4_daily": ["property_id", "date"],
+    "ga4_property_sync": ["property_id"]
+  }
+}
