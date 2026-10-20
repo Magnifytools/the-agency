@@ -25,7 +25,7 @@ _ADMIN_UPDATABLE = _MEMBER_UPDATABLE | {"role", "hourly_rate", "cost_per_hour", 
 # module is introduced — silent failure here means stored permissions never
 # take effect because no route checks them.
 _VALID_MODULES = frozenset({
-    "clients", "communications", "dashboard", "digests",
+    "clients", "communications", "credentials", "dashboard", "digests",
     "finance_advisor", "finance_expenses", "finance_forecasts", "finance_import",
     "finance_income", "finance_taxes",
     "growth", "leads", "pm", "projects", "proposals", "tasks", "timesheet",

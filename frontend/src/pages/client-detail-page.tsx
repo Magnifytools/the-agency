@@ -33,6 +33,7 @@ import { formatCurrency } from "@/lib/format"
 import { TaskPanel } from "@/components/tasks/task-panel"
 import { ClientLifecycleButton, FormerClientNotice } from "@/components/clients/client-lifecycle"
 import { ClientOverview } from "@/components/clients/client-overview"
+import { ClientCredentialsTab } from "@/components/credentials/client-credentials-tab"
 import { InvoiceStatusBadge } from "@/components/finance/invoice-status-badge"
 
 function formatMinutes(m: number): string {
@@ -81,7 +82,7 @@ export default function ClientDetailPage() {
   const [creatingTask, setCreatingTask] = useState(false)
   const [whatIfOpen, setWhatIfOpen] = useState(false)
 
-  const validTabs = ["ficha", "contexto", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "seo", "ajustes", "facturas"] as const
+  const validTabs = ["ficha", "contexto", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "seo", "ajustes", "facturas", "accesos"] as const
   type Tab = (typeof validTabs)[number]
 
   // Pestaña -> módulo que la sirve. Si el módulo está oculto, sus endpoints no
@@ -97,6 +98,7 @@ export default function ClientDetailPage() {
     proyectos: "projects",
     resumenes: "digests",
     comunicaciones: "communications",
+    accesos: "credentials",
   }
   const isTabVisible = (tab: Tab) => {
     if (tab === "tiempo") return canReadTime
@@ -324,7 +326,11 @@ export default function ClientDetailPage() {
           {
             key: "relacion",
             label: "Relación",
-            tabs: ["contexto", "contactos"],
+            tabs: [
+              "contexto",
+              "contactos",
+              ...(isTabVisible("accesos") ? (["accesos"] as TabKey[]) : []),
+            ],
           },
           {
             // Fuera de la fila de áreas: se abre con el engranaje de la cabecera.
@@ -352,6 +358,7 @@ export default function ClientDetailPage() {
           comunicaciones: "Comunicaciones",
           seo: "SEO",
           contactos: "Contactos",
+          accesos: "Accesos",
           facturas: "Facturas",
           ajustes: "Configuración",
         }
@@ -616,6 +623,9 @@ export default function ClientDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Tab: Accesos (sólo los que quien mira puede ver) */}
+      {activeTab === "accesos" && <ClientCredentialsTab clientId={clientId} />}
 
       {/* Tab: Tiempo */}
       {activeTab === "tiempo" && (

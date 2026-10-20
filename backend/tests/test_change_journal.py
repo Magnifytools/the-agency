@@ -191,3 +191,11 @@ def test_paused_desactiva_la_captura():
     with cj.paused():
         assert cj._paused.get() is True
     assert cj._paused.get() is False
+
+
+def test_accesos_quedan_fuera_del_journal():
+    """El journal guarda valores de columnas en JSON: un secreto no puede ir ahí."""
+    from backend.db.models import Credential, CredentialAccessLog, CredentialShare
+
+    for model in (Credential, CredentialShare, CredentialAccessLog):
+        assert model not in cj._SPECS

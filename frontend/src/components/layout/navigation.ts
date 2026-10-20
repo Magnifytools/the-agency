@@ -29,6 +29,7 @@ const areas: NavigationArea[] = [
   ] },
   { id: "settings", label: "Ajustes", icon: Settings, links: [
     { to: "/settings", label: "Preferencias" },
+    { to: "/credentials", label: "Accesos", module: "credentials" },
     { to: "/users", label: "Equipo y permisos", admin: true },
     { to: "/capacity", label: "Capacidad", admin: true, hidden: "capacity" },
     { to: "/discord", label: "Integraciones", admin: true, hidden: "discord" },

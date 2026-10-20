@@ -149,6 +149,20 @@ class PublicLinkRateLimiter:
         self._limiter.check(key, max_requests, window_seconds)
 
 
+class CredentialRevealLimiter:
+    """Sliding-window limiter for revealing/copying shared credentials, per user."""
+
+    def __init__(self) -> None:
+        self._limiter = _SlidingWindowLimiter(
+            prefix="rate:credential-reveal",
+            detail_fn=lambda _max_requests, _window_seconds: "Demasiadas contraseñas vistas seguidas. Espera un minuto.",
+        )
+
+    def check(self, user_id: int, max_requests: int, window_seconds: int) -> None:
+        self._limiter.check(user_id, max_requests, window_seconds)
+
+
 ai_limiter = RateLimiter()
 login_limiter = LoginRateLimiter()
 public_link_limiter = PublicLinkRateLimiter()
+credential_reveal_limiter = CredentialRevealLimiter()

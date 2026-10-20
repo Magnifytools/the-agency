@@ -30,6 +30,7 @@ from backend.api.routes import (
     holidays,
     bank_import,
     usage_stats, job_runtime, vigil, ga4,
+    credentials,
 )
 
 # ── Re-export migration/seed functions so scripts/init_db.py keeps working ──
@@ -219,6 +220,8 @@ _CORE_ROUTERS = [
     gsc, ga4, vigil, usage_stats, job_runtime,
     # client_share_links: el enlace de sólo lectura del cliente (/c/:token).
     client_share_links,
+    # credentials: Accesos (contraseñas compartidas, cifradas con VAULT_KEY).
+    credentials,
     # holidays: los festivos de empresa (Ajustes → Festivos, plan de la mañana).
     holidays,
     # changes: el Undo del shell. No es una pantalla, es la red de seguridad
