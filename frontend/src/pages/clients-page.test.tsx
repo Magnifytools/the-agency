@@ -202,11 +202,12 @@ describe("ClientsPage recovery states", () => {
 
   it("puts what needs action first, with its reasons", async () => {
     api.health.mockResolvedValueOnce([
-      { client_id: 4, client_name: "Cliente urgente", status: "act", reasons: ["3 tareas vencidas", "Toca enviar el resumen mensual"],
+      { client_id: 4, client_name: "Cliente urgente", status: "act", reasons: ["3 tareas vencidas", "Toca enviar el informe mensual"],
         seo: { source: "search_console", clicks: 300, clicks_previous: 1000, change_pct: -70, trend: "drop_alert", as_of: "2026-10-16" },
+        digests: [{ cadence: "monthly", last_sent_period_end: null, expected_period_end: "2026-09-30", state: "due" }],
         digest: { cadence: "monthly", last_sent_period_end: null, expected_period_end: "2026-09-30", state: "due" },
         tasks: { overdue: 3, waiting: 1, followups_late: 0 }, month: { hours: 12.5, fee: 1000, consumption_pct: 40 } },
-      { client_id: 5, client_name: "Cliente tranquilo", status: "ok", reasons: [], seo: null, digest: null,
+      { client_id: 5, client_name: "Cliente tranquilo", status: "ok", reasons: [], seo: null, digests: [], digest: null,
         tasks: { overdue: 0, waiting: 0, followups_late: 0 }, month: { hours: 2 } },
     ])
     showPortfolio()

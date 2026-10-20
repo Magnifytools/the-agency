@@ -124,7 +124,7 @@ async def test_member_can_generate_after_explicit_policy_setup(
     assert "administrador" in missing.json()["detail"]["message"]
 
     configured = await admin_client.put(f"/api/digests/policies/{client_id}", json={
-        "enabled": True, "cadence": "weekly", "responsible_user_id": member_id, "revision": 0,
+        "weekly_enabled": True, "monthly_enabled": False, "responsible_user_id": member_id, "revision": 0,
     })
     assert configured.status_code == 200, configured.text
     assert configured.json()["revision"] == 1
@@ -147,7 +147,7 @@ async def test_individual_generation_rechecks_policy_revision_after_provider(eng
         await setup.flush()
         setup.add_all([
             UserPermission(user_id=actor.id, module="digests", can_read=True, can_write=True),
-            ClientReportPolicy(client_id=client.id, enabled=True, responsible_user_id=actor.id, revision=1),
+            ClientReportPolicy(client_id=client.id, weekly_enabled=True, responsible_user_id=actor.id, revision=1),
         ])
         await setup.commit()
         actor_id, client_id = actor.id, client.id

@@ -11,7 +11,7 @@ it("uses scoped preview and submits only the reviewed cohort and exact periods",
   expect(api.post).toHaveBeenCalledWith("/digests/generate-cohort", body, { timeout: 300_000 })
 })
 it("preserves revision and explicit external event identity", async () => {
-  const body = { enabled: true, cadence: "monthly" as const, responsible_user_id: 2, revision: 4 }
+  const body = { weekly_enabled: true, monthly_enabled: true, responsible_user_id: 2, revision: 4 }
   await reportPolicyApi.getPolicy(9)
   await reportPolicyApi.updatePolicy(9, body)
   await reportPolicyApi.responsibles()

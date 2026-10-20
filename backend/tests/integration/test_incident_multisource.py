@@ -7,7 +7,7 @@ from sqlalchemy.orm import noload
 
 from backend.db.models import (
     Client, ClientReportPolicy, ClientStatus, Delivery, Notification,
-    Project, ProjectStatus, ReportCadence, Task, TaskStatus, WeeklyDigest,
+    Project, ProjectStatus, Task, TaskStatus, WeeklyDigest,
 )
 from backend.schemas.incident import IncidentDecision
 from backend.services.digest_periods import policy_digest_period
@@ -24,7 +24,7 @@ async def setup_sources(db, actor_id):
                       status=ProjectStatus.active, target_end_date=NOW + timedelta(days=3))
     task = Task(title="Tarea sintética", assigned_to=actor_id, status=TaskStatus.pending,
                 due_date=NOW - timedelta(days=1))
-    policy = ClientReportPolicy(client_id=client.id, enabled=True, cadence=ReportCadence.weekly,
+    policy = ClientReportPolicy(client_id=client.id, weekly_enabled=True,
                                 responsible_user_id=actor_id)
     start, end = policy_digest_period("weekly", today=NOW.date())
     digest = WeeklyDigest(client_id=client.id, period_start=start - timedelta(days=7),

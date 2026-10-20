@@ -28,11 +28,11 @@ function PeriodLinkHarness() {
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); mocks.auth = {id: 2, admin: false, write: true}; mocks.preview.mockResolvedValue(response([item(1), item(2, {cadence: "monthly", period_start: "2026-08-01", period_end: "2026-08-31"}), item(3, {eligible: false, reason: "policy_missing", policy_revision: null})])); mocks.generate.mockResolvedValue({results: []}); mocks.recover.mockRejectedValue({ response: { status: 404 } }) })
 it("starts unselected, explains exclusions, and sends only selected monthly period/revision", async () => {
   setup()
-  const monthly = await screen.findByRole("checkbox", {name: "Preparar Cliente 2"})
+  const monthly = await screen.findByRole("checkbox", {name: /^Preparar Cliente 2\b/})
   expect(monthly).not.toBeChecked()
   expect(screen.getByRole("button", {name: "Preparar selección (0)"})).toBeDisabled()
-  expect(screen.getByRole("checkbox", {name: "Preparar Cliente 3"})).toBeDisabled()
-  expect(screen.getByText("Falta configurar la frecuencia y el responsable")).toBeInTheDocument()
+  expect(screen.getByRole("checkbox", {name: /^Preparar Cliente 3\b/})).toBeDisabled()
+  expect(screen.getByText("Falta configurar los resúmenes y el responsable")).toBeInTheDocument()
   expect(screen.queryByLabelText("Responsabilidad")).not.toBeInTheDocument()
   fireEvent.click(monthly)
   fireEvent.click(screen.getByRole("button", {name: "Preparar selección (1)"}))
@@ -57,7 +57,7 @@ it("recovers every version from a persisted cohort after reload", async () => {
 it("admin can choose team, and changing scope discards the old selection", async () => {
   mocks.auth.admin = true
   setup()
-  fireEvent.click(await screen.findByRole("checkbox", {name: "Preparar Cliente 1"}))
+  fireEvent.click(await screen.findByRole("checkbox", {name: /^Preparar Cliente 1\b/}))
   fireEvent.change(screen.getByLabelText("Responsabilidad"), {target: {value: "team"}})
   await waitFor(() => expect(mocks.preview).toHaveBeenCalledWith("team"))
   expect(screen.getByRole("button", {name: "Preparar selección (0)"})).toBeDisabled()
@@ -66,7 +66,7 @@ it("shows independent generated/skipped/failed results and links exact versions"
   mocks.preview.mockResolvedValue(response([item(1), item(2), item(3)]))
   mocks.generate.mockResolvedValue({results: [{client_id: 1, outcome: "generated", digest_id: 20}, {client_id: 2, outcome: "skipped", reason: "already_exists", digest_id: 19}, {client_id: 3, outcome: "failed", reason: "generation_failed"}]})
   setup()
-  await screen.findByRole("checkbox", {name: "Preparar Cliente 1"})
+  await screen.findByRole("checkbox", {name: /^Preparar Cliente 1\b/})
   for (const checkbox of screen.getAllByRole("checkbox")) fireEvent.click(checkbox)
   fireEvent.click(screen.getByRole("button", {name: "Preparar selección (3)"}))
   const result = await screen.findByRole("region", {name: "Resultado de la preparación"})
@@ -79,7 +79,7 @@ it("network uncertainty requires a fresh preview before another attempt", async 
   mocks.generate.mockRejectedValue(new Error("Timeout"))
   const existing = item(1, {eligible: false, reason: "already_exists"})
   setup()
-  fireEvent.click(await screen.findByRole("checkbox", {name: "Preparar Cliente 1"}))
+  fireEvent.click(await screen.findByRole("checkbox", {name: /^Preparar Cliente 1\b/}))
   fireEvent.click(screen.getByRole("button", {name: "Preparar selección (1)"}))
   await screen.findByText(/No se pudo confirmar toda la selección/)
   expect(screen.getByRole("button", {name: "Preparar selección (1)"})).toBeDisabled()
@@ -91,10 +91,10 @@ it("network uncertainty requires a fresh preview before another attempt", async 
 it("read-only users can inspect reasons without preparing anything", async () => {
   mocks.auth.write = false
   setup()
-  expect(await screen.findByText("Falta configurar la frecuencia y el responsable")).toBeInTheDocument()
+  expect(await screen.findByText("Falta configurar los resúmenes y el responsable")).toBeInTheDocument()
   expect(screen.getByRole("heading", {name: "Resúmenes pendientes"})).toBeInTheDocument()
   expect(screen.getByRole("button", {name: "Actualizar datos"})).not.toBeDisabled()
-  expect(screen.queryByRole("checkbox", {name: "Preparar Cliente 1"})).not.toBeInTheDocument()
+  expect(screen.queryByRole("checkbox", {name: /^Preparar Cliente 1\b/})).not.toBeInTheDocument()
   expect(screen.queryByLabelText("Tono de los nuevos resúmenes")).not.toBeInTheDocument()
   expect(screen.queryByText(/seleccionados · Máximo 50/)).not.toBeInTheDocument()
   expect(screen.queryByRole("button", {name: /Preparar selección/})).not.toBeInTheDocument()
@@ -114,20 +114,20 @@ it("preview failure remains visible and retry recovers", async () => {
   mocks.preview.mockRejectedValueOnce(new Error("offline"))
   setup()
   fireEvent.click(await screen.findByRole("button", {name: "Reintentar consulta"}))
-  await screen.findByRole("checkbox", {name: "Preparar Cliente 1"})
+  await screen.findByRole("checkbox", {name: /^Preparar Cliente 1\b/})
 })
 it("revision changes revoke selection and refresh never invents new selections", async () => {
   setup()
-  fireEvent.click(await screen.findByRole("checkbox", {name: "Preparar Cliente 1"}))
+  fireEvent.click(await screen.findByRole("checkbox", {name: /^Preparar Cliente 1\b/}))
   mocks.preview.mockResolvedValue(response([item(1, {policy_revision: 4})]))
   fireEvent.click(screen.getByRole("button", {name: "Actualizar selección"}))
-  await waitFor(() => expect(screen.getByRole("checkbox", {name: "Preparar Cliente 1"})).not.toBeChecked())
+  await waitFor(() => expect(screen.getByRole("checkbox", {name: /^Preparar Cliente 1\b/})).not.toBeChecked())
 })
 it("double-click while pending produces one request and old identity completion stays hidden", async () => {
   let resolve!: (value: unknown) => void
   mocks.generate.mockReturnValue(new Promise(done => {resolve = done}))
   const view = setup()
-  fireEvent.click(await screen.findByRole("checkbox", {name: "Preparar Cliente 1"}))
+  fireEvent.click(await screen.findByRole("checkbox", {name: /^Preparar Cliente 1\b/}))
   const button = screen.getByRole("button", {name: "Preparar selección (1)"})
   fireEvent.click(button); fireEvent.click(button)
   await waitFor(() => expect(mocks.generate).toHaveBeenCalledTimes(1))
@@ -141,11 +141,11 @@ it("double-click while pending produces one request and old identity completion 
 
 it("filters the cohort with the page client and drops selection on a new filter", async () => {
   const view = setup(1)
-  fireEvent.click(await screen.findByRole("checkbox", {name: "Preparar Cliente 1"}))
-  expect(screen.queryByRole("checkbox", {name: "Preparar Cliente 2"})).not.toBeInTheDocument()
+  fireEvent.click(await screen.findByRole("checkbox", {name: /^Preparar Cliente 1\b/}))
+  expect(screen.queryByRole("checkbox", {name: /^Preparar Cliente 2\b/})).not.toBeInTheDocument()
   expect(screen.getByText(/1 pendientes · 0 fuera/)).toBeInTheDocument()
   view.rerender(<QueryClientProvider client={view.client}><MemoryRouter><DigestCohort clientId={2} /></MemoryRouter></QueryClientProvider>)
-  expect(await screen.findByRole("checkbox", {name: "Preparar Cliente 2"})).not.toBeChecked()
+  expect(await screen.findByRole("checkbox", {name: /^Preparar Cliente 2\b/})).not.toBeChecked()
   expect(screen.getByRole("button", {name: "Preparar selección (0)"})).toBeDisabled()
 })
 it("labels an older confirmed delivery without claiming the latest version was delivered", async () => {
@@ -158,7 +158,7 @@ it("labels an older confirmed delivery without claiming the latest version was d
 it("prepares the exact monthly period linked by an incident", async () => {
   mocks.preview.mockResolvedValue(response([item(2, {cadence: "monthly", period_start: "2026-08-01", period_end: "2026-08-31"})]))
   setup(2, {start: "2026-08-01", end: "2026-08-31"})
-  const monthly = await screen.findByRole("checkbox", {name: "Preparar Cliente 2"})
+  const monthly = await screen.findByRole("checkbox", {name: /^Preparar Cliente 2\b/})
   expect(await screen.findByText(/Período del aviso: 1 ago 2026 — 31 ago 2026/)).toBeInTheDocument()
   fireEvent.click(monthly)
   fireEvent.click(screen.getByRole("button", {name: "Preparar selección (1)"}))
@@ -169,9 +169,33 @@ it("does not prepare a newer policy period from an old incident link and recover
   const client = new QueryClient({defaultOptions: {queries: {retry: false}, mutations: {retry: false}}})
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/digests?client_id=2&period_start=2026-08-01&period_end=2026-08-31"]}><PeriodLinkHarness /></MemoryRouter></QueryClientProvider>)
   expect(await screen.findByRole("alert")).toHaveTextContent("La política actual usa otro período")
-  expect(screen.queryByRole("checkbox", {name: "Preparar Cliente 2"})).not.toBeInTheDocument()
+  expect(screen.queryByRole("checkbox", {name: /^Preparar Cliente 2\b/})).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole("link", {name: "Ver períodos actuales"}))
-  expect(await screen.findByRole("checkbox", {name: "Preparar Cliente 2"})).toBeInTheDocument()
+  expect(await screen.findByRole("checkbox", {name: /^Preparar Cliente 2\b/})).toBeInTheDocument()
   expect(screen.queryByText(/Período del aviso:/)).not.toBeInTheDocument()
   expect(mocks.generate).not.toHaveBeenCalled()
+})
+it("lists both cadences of one client as separate rows and keys results by period", async () => {
+  mocks.preview.mockResolvedValue(response([
+    item(4, {cadence: "monthly", period_start: "2026-08-01", period_end: "2026-08-31"}),
+    item(4, {cadence: "weekly"}),
+  ]))
+  mocks.generate.mockResolvedValue({results: [
+    {client_id: 4, period_start: "2026-08-01", period_end: "2026-08-31", outcome: "generated", digest_id: 51},
+    {client_id: 4, period_start: "2026-09-07", period_end: "2026-09-13", outcome: "skipped", reason: "policy_disabled"},
+  ]})
+  setup()
+  const monthly = await screen.findByRole("checkbox", {name: "Preparar Cliente 4 · Informe mensual"})
+  const weekly = screen.getByRole("checkbox", {name: "Preparar Cliente 4 · Seguimiento semanal"})
+  fireEvent.click(monthly)
+  expect(weekly).not.toBeChecked()
+  fireEvent.click(weekly)
+  fireEvent.click(screen.getByRole("button", {name: "Preparar selección (2)"}))
+  await waitFor(() => expect(mocks.generate).toHaveBeenCalledWith({tone: "cercano", items: [
+    expect.objectContaining({client_id: 4, period_start: "2026-08-01", period_end: "2026-08-31"}),
+    expect.objectContaining({client_id: 4, period_start: "2026-09-07", period_end: "2026-09-13"}),
+  ]}))
+  const results = within(await screen.findByRole("region", {name: "Resultado de la preparación"}))
+  expect(results.getByText("Cliente 4 · Informe mensual").closest("li")).toHaveTextContent("Generado")
+  expect(results.getByText("Cliente 4 · Seguimiento semanal").closest("li")).toHaveTextContent("Omitido")
 })

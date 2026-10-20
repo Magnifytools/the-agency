@@ -11,7 +11,6 @@ from backend.db.models import (
     DigestExternalDeliveryEvent,
     ExternalDeliveryAction,
     Notification,
-    ReportCadence,
     User,
     UserPermission,
     UserRole,
@@ -33,11 +32,11 @@ async def _member(db, *, write=True):
     return user
 
 
-async def _client(db, responsible, *, cadence=ReportCadence.monthly, enabled=True, status=ClientStatus.active, internal=False):
+async def _client(db, responsible, *, weekly=False, monthly=True, status=ClientStatus.active, internal=False):
     client = Client(name=f"Cliente {uuid4().hex[:8]}", status=status, is_internal=internal)
     db.add(client)
     await db.flush()
-    db.add(ClientReportPolicy(client_id=client.id, enabled=enabled, cadence=cadence, responsible_user_id=responsible.id))
+    db.add(ClientReportPolicy(client_id=client.id, weekly_enabled=weekly, monthly_enabled=monthly, responsible_user_id=responsible.id))
     await db.flush()
     return client
 
@@ -106,8 +105,8 @@ async def test_confirmed_delivery_of_any_version_clears_it_and_revocation_reopen
 async def test_only_active_external_clients_with_enabled_monthly_policy(db_session, admin_user):
     owner = await _member(db_session)
     excluded = [
-        await _client(db_session, owner, cadence=ReportCadence.weekly),
-        await _client(db_session, owner, enabled=False),
+        await _client(db_session, owner, weekly=True, monthly=False),
+        await _client(db_session, owner, monthly=False),
         await _client(db_session, owner, internal=True),
         await _client(db_session, owner, status=ClientStatus.finished),
     ]

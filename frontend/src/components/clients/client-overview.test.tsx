@@ -13,6 +13,7 @@ const status: ClientStatusRow = {
   client_id: 5, client_name: "Parklex", status: "act",
   reasons: ["3 tareas vencidas"],
   seo: null,
+  digests: [{ cadence: "monthly", last_sent_period_end: null, expected_period_end: "2026-09-30", state: "late" }],
   digest: { cadence: "monthly", last_sent_period_end: null, expected_period_end: "2026-09-30", state: "late" },
   tasks: { overdue: 3, waiting: 1, followups_late: 1 },
   month: { hours: 12.5 },

@@ -44,17 +44,26 @@ export function SeoCell({ seo }: { seo: ClientStatusRow["seo"] }) {
 
 const DIGEST_STATE = { ok: "Al día", due: "Toca enviarlo", late: "Atrasado" } as const
 
-export function DigestCell({ digest }: { digest: ClientStatusRow["digest"] }) {
-  if (!digest) return <p className="text-xs text-muted-foreground">Sin política</p>
-  const last = digest.last_sent_period_end
-    ? new Date(`${digest.last_sent_period_end}T12:00:00`).toLocaleDateString("es-ES", { day: "numeric", month: "short" })
-    : null
+const CADENCE = { monthly: "Informe mensual", weekly: "Seguimiento semanal" } as const
+
+/** Una línea por cadencia encendida (informe mensual y/o seguimiento semanal). */
+export function DigestCell({ digests }: { digests: ClientStatusRow["digests"] | null | undefined }) {
+  if (!digests?.length) return <p className="text-xs text-muted-foreground">Sin política</p>
   return (
-    <div className="text-xs">
-      <span className={digest.state === "late" ? "font-medium text-red-600 dark:text-red-400" : digest.state === "due" ? "font-medium text-amber-600 dark:text-amber-400" : ""}>
-        {DIGEST_STATE[digest.state]}
-      </span>
-      <p className="text-muted-foreground">{digest.cadence === "monthly" ? "Mensual" : "Semanal"}{last ? ` · último hasta ${last}` : " · nunca enviado"}</p>
+    <div className="space-y-1 text-xs">
+      {digests.map(digest => {
+        const last = digest.last_sent_period_end
+          ? new Date(`${digest.last_sent_period_end}T12:00:00`).toLocaleDateString("es-ES", { day: "numeric", month: "short" })
+          : null
+        return (
+          <div key={digest.cadence}>
+            <span className={digest.state === "late" ? "font-medium text-red-600 dark:text-red-400" : digest.state === "due" ? "font-medium text-amber-600 dark:text-amber-400" : ""}>
+              {CADENCE[digest.cadence]} · {DIGEST_STATE[digest.state]}
+            </span>
+            <p className="text-muted-foreground">{last ? `Último entregado hasta ${last}` : "Nunca entregado"}</p>
+          </div>
+        )
+      })}
     </div>
   )
 }

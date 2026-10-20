@@ -24,7 +24,9 @@ from backend.services.digest_access import user_has_digest_permission
 from backend.services.digest_collector import collect_digest_data
 from backend.services.digest_generator import generate_digest_content
 from backend.services.digest_periods import (
+    CADENCES,
     canonicalize_digest_content,
+    enabled_cadences,
     policy_digest_period,
 )
 from backend.services.temporal import utc_now_naive
@@ -121,8 +123,8 @@ async def _snapshot(
         await db.execute(
             select(
                 ClientReportPolicy.revision,
-                ClientReportPolicy.enabled,
-                ClientReportPolicy.cadence,
+                ClientReportPolicy.weekly_enabled,
+                ClientReportPolicy.monthly_enabled,
                 ClientReportPolicy.responsible_user_id,
             ).where(ClientReportPolicy.client_id == client_id)
         )
@@ -139,7 +141,7 @@ async def _snapshot(
         raise DigestGenerationRejected("policy_changed")
     if expected_revision is not None and policy.revision != expected_revision:
         raise DigestGenerationRejected("policy_changed")
-    if require_enabled and not policy.enabled:
+    if require_enabled and not enabled_cadences(policy):
         raise DigestGenerationRejected("policy_disabled")
     if require_enabled or actor.role != UserRole.admin:
         if policy.responsible_user_id is None or not await user_has_digest_permission(
@@ -148,11 +150,14 @@ async def _snapshot(
             raise DigestGenerationRejected("responsible_unavailable")
         if actor.role != UserRole.admin and policy.responsible_user_id != actor_id:
             raise DigestGenerationRejected("permission_changed")
-    if (
-        expected_period is not None
-        and policy_digest_period(policy.cadence.value) != expected_period
-    ):
-        raise DigestGenerationRejected("period_changed")
+    if expected_period is not None:
+        # El periodo pedido decide la cadencia: debe ser el que toca ahora para
+        # alguna, y esa cadencia tiene que seguir encendida.
+        matching = {c for c in CADENCES if policy_digest_period(c) == expected_period}
+        if not matching:
+            raise DigestGenerationRejected("period_changed")
+        if not matching & set(enabled_cadences(policy)):
+            raise DigestGenerationRejected("policy_disabled")
     return policy
 
 

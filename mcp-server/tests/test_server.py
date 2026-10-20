@@ -442,7 +442,7 @@ async def test_send_daily_esta_marcada_como_publicacion(agency):
 
 STATUS = {
     "client_id": 4, "client_name": "Fit Generation", "status": "act",
-    "reasons": ["3 tareas vencidas", "Toca enviar el resumen mensual"],
+    "reasons": ["3 tareas vencidas", "Toca enviar el informe mensual"],
     "seo": {"source": "search_console", "clicks": 800, "clicks_previous": 1000, "change_pct": -20.0,
             "trend": "drop_alert", "as_of": "2026-10-17"},
     "digest": {"cadence": "monthly", "last_sent_period_end": "2026-08-31",
@@ -481,12 +481,30 @@ async def test_client_overview_por_nombre(fake, agency):
     assert not is_error, text
     assert text.startswith("Cliente #4 Fit Generation\nEstado: Actuar\n- 3 tareas vencidas")
     assert "800 clics frente a 1000 (caída fuerte, -20 %)" in text
-    assert "Resumen mensual: toca enviarlo" in text
+    # Backend antiguo (sólo ``digest``): una línea con esa señal.
+    assert "Informe mensual: toca enviarlo · periodo esperado hasta 2026-09-30 · último entregado hasta 2026-08-31" in text
     assert "Este mes: 12.5 h" in text
     waiting = [r for r in fake.requests if r.url.path == "/api/tasks" and r.url.params["status"] == "waiting"][0]
     assert waiting.url.params["client_id"] == "4" and "assigned_to" not in waiting.url.params
     assert "#8 Accesos GA4" in text and "esperando a cliente, seguimiento 2026-10-21" in text
     assert "Último resumen: #50 2026-09-01 → 2026-09-30 · revisado · entregado al cliente el 2026-10-02 por David" in text
+
+
+async def test_client_overview_una_linea_por_cadencia(fake, agency):
+    _overview_routes(fake)
+    fake.route("GET", "/api/clients/4/status", {**STATUS, "digests": [
+        {"cadence": "monthly", "last_sent_period_end": "2026-09-30", "expected_period_end": "2026-09-30", "state": "ok"},
+        {"cadence": "weekly", "last_sent_period_end": None, "expected_period_end": "2026-10-18", "state": "late"},
+    ]})
+
+    is_error, text = await call(agency, "client_overview", {"client_id": 4})
+
+    assert not is_error, text
+    monthly = text.index("Informe mensual: ")
+    weekly = text.index("Seguimiento semanal: ")
+    assert monthly < weekly
+    assert "· periodo esperado hasta 2026-10-18 · ninguno entregado" in text[weekly:]
+    assert "toca enviarlo" not in text  # ``digest`` se ignora si llegan ``digests``
 
 
 async def test_client_overview_nombre_ambiguo_pide_id(fake, agency):

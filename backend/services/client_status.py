@@ -22,14 +22,13 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from backend.config import settings
 from backend.db.models import (
     ACTIVE_TASK_STATUSES,
     Client,
     ClientReportPolicy,
-    DigestStatus,
     GscDaily,
     GscSiteSync,
     Task,
@@ -40,7 +39,7 @@ from backend.db.models import (
     WeeklyDigest,
 )
 from backend.services.dashboard_access import has_module_read
-from backend.services.digest_periods import policy_digest_period
+from backend.services.digest_periods import enabled_cadences, period_cadence_sql, policy_digest_period
 from backend.services.gsc_service import normalize_site_url
 from backend.services.incident_report_conditions import delivery_is_confirmed
 from backend.services.recurring_fee import active_monthly_fees
@@ -167,16 +166,27 @@ async def _overdue_and_waiting(db, client_ids: list[int], today: date) -> dict[i
             for r in rows}
 
 
-async def _digests(db, client_ids: list[int]) -> tuple[dict[int, ClientReportPolicy], dict[int, date]]:
+async def _digests(db, client_ids: list[int]) -> tuple[dict[int, ClientReportPolicy], dict[tuple[int, str], date]]:
+    """Políticas con alguna cadencia encendida y último periodo ENTREGADO por cadencia.
+
+    Entregado = entrega externa confirmada (la regla de ``report_unsent``);
+    ``DigestStatus.sent`` es una etiqueta sin evidencia y no cuenta.
+    """
     policies = {p.client_id: p for p in (await db.scalars(select(ClientReportPolicy).where(
-        ClientReportPolicy.client_id.in_(client_ids), ClientReportPolicy.enabled.is_(True),
+        ClientReportPolicy.client_id.in_(client_ids),
+        or_(ClientReportPolicy.weekly_enabled.is_(True), ClientReportPolicy.monthly_enabled.is_(True)),
     ))).all()}
-    last_sent = dict((await db.execute(select(
-        WeeklyDigest.client_id, func.max(WeeklyDigest.period_end),
-    ).where(
-        WeeklyDigest.client_id.in_(client_ids), WeeklyDigest.status == DigestStatus.sent,
-    ).group_by(WeeklyDigest.client_id))).all())
-    return policies, last_sent
+    if not policies:
+        return policies, {}
+    delivered = select(
+        WeeklyDigest.client_id,
+        period_cadence_sql(WeeklyDigest.period_start, WeeklyDigest.period_end).label("cadence"),
+        WeeklyDigest.period_end,
+    ).where(WeeklyDigest.client_id.in_(list(policies)), delivery_is_confirmed()).subquery()
+    rows = (await db.execute(select(
+        delivered.c.client_id, delivered.c.cadence, func.max(delivered.c.period_end),
+    ).where(delivered.c.cadence.isnot(None)).group_by(delivered.c.client_id, delivered.c.cadence))).all()
+    return policies, {(client_id, value): last for client_id, value, last in rows}
 
 
 async def _month_effort(db, clients: list[Client], today: date, *, with_money: bool) -> dict[int, dict]:
@@ -221,7 +231,8 @@ async def _ready_to_deliver(db, client_id: int, policy: ClientReportPolicy | Non
     entregado, lo más reciente: lo anterior sin entregar ya lo avisa la señal
     del resumen.
     """
-    cadence = policy.cadence.value if policy else "monthly"
+    # Con las dos cadencias manda el mes (es lo que se entrega al cliente).
+    cadence = "weekly" if policy and policy.weekly_enabled and not policy.monthly_enabled else "monthly"
     since, _ = policy_digest_period(cadence, today=today)
     delivered_end = await db.scalar(select(func.max(WeeklyDigest.period_end)).where(
         WeeklyDigest.client_id == client_id, delivery_is_confirmed(),
@@ -252,22 +263,31 @@ async def _ready_to_deliver(db, client_id: int, policy: ClientReportPolicy | Non
 # ── Estado ───────────────────────────────────────────────────────────
 
 
-def _digest_signal(policy: ClientReportPolicy | None, last_sent: date | None, today: date) -> dict | None:
-    if policy is None:
-        return None
-    period_start, period_end = policy_digest_period(policy.cadence.value, today=today)
-    if last_sent is not None and last_sent >= period_end:
-        state = "ok"
-    elif today <= period_end + timedelta(days=DIGEST_GRACE_DAYS):
-        state = "due"
-    else:
-        state = "late"
-    return {
-        "cadence": policy.cadence.value,
-        "last_sent_period_end": last_sent.isoformat() if last_sent else None,
-        "expected_period_end": period_end.isoformat(),
-        "state": state,
-    }
+_DIGEST_WORST = {"ok": 0, "due": 1, "late": 2}
+_CADENCE_NAME = {"monthly": "el informe mensual", "weekly": "el seguimiento semanal"}
+
+
+def _digest_signals(
+    policy: ClientReportPolicy | None, last_sent: dict[tuple[int, str], date], today: date,
+) -> list[dict]:
+    """Una señal por cadencia encendida (mensual primero)."""
+    signals = []
+    for cadence in enabled_cadences(policy):
+        sent = last_sent.get((policy.client_id, cadence))
+        _, period_end = policy_digest_period(cadence, today=today)
+        if sent is not None and sent >= period_end:
+            state = "ok"
+        elif today <= period_end + timedelta(days=DIGEST_GRACE_DAYS):
+            state = "due"
+        else:
+            state = "late"
+        signals.append({
+            "cadence": cadence,
+            "last_sent_period_end": sent.isoformat() if sent else None,
+            "expected_period_end": period_end.isoformat(),
+            "state": state,
+        })
+    return signals
 
 
 async def portfolio(
@@ -322,15 +342,17 @@ async def portfolio(
             else:
                 signals.add("ok")
 
-        # 2. Resumen
-        digest = _digest_signal(policies.get(client.id), last_sent.get(client.id), today) if viewer.digests else None
-        row["digest"] = digest
-        if digest:
-            label = "mensual" if digest["cadence"] == "monthly" else "semanal"
+        # 2. Resúmenes: una señal por cadencia encendida. ``digest`` (la peor)
+        # se mantiene para quien aún lee una sola.
+        digests = _digest_signals(policies.get(client.id), last_sent, today) if viewer.digests else []
+        row["digests"] = digests
+        row["digest"] = max(digests, key=lambda d: _DIGEST_WORST[d["state"]]) if digests else None
+        for digest in digests:
+            name = _CADENCE_NAME[digest["cadence"]]
             if digest["state"] == "late":
-                signals.add("act", f"El resumen {label} está atrasado")
+                signals.add("act", f"{name[0].upper()}{name[1:]} está atrasado")
             elif digest["state"] == "due":
-                signals.add("watch", f"Toca enviar el resumen {label}")
+                signals.add("watch", f"Toca enviar {name}")
             else:
                 signals.add("ok")
 

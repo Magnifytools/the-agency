@@ -19,7 +19,6 @@ from backend.db.models import (
     ExternalDeliveryAction,
     Project,
     ProjectStatus,
-    ReportCadence,
     Task,
     TaskStatus,
     TimeEntry,
@@ -119,9 +118,11 @@ async def test_digests_unsent_follow_the_confirmed_delivery_rule(db_session, adm
     pending = await _client(db_session, "Sin entregar")
     delivered = await _client(db_session, "Entregado")
     weekly = await _client(db_session, "Semanal")
-    for client, cadence in ((pending, ReportCadence.monthly), (delivered, ReportCadence.monthly),
-                            (weekly, ReportCadence.weekly)):
-        db_session.add(ClientReportPolicy(client_id=client.id, enabled=True, cadence=cadence))
+    both = await _client(db_session, "Mensual y semanal")
+    for client, flags in ((pending, {"monthly_enabled": True}), (delivered, {"monthly_enabled": True}),
+                          (weekly, {"weekly_enabled": True}),
+                          (both, {"monthly_enabled": True, "weekly_enabled": True})):
+        db_session.add(ClientReportPolicy(client_id=client.id, **flags))
     await db_session.flush()
     digest = WeeklyDigest(client_id=delivered.id, period_start=SEPT[0], period_end=SEPT[1], created_by=admin_user.id)
     draft = WeeklyDigest(client_id=pending.id, period_start=SEPT[0], period_end=SEPT[1], created_by=admin_user.id)
@@ -135,10 +136,11 @@ async def test_digests_unsent_follow_the_confirmed_delivery_rule(db_session, adm
 
     digests = (await operations_summary(db_session, admin_user, now=NOW))["digests_unsent"]
 
-    # Un borrador sin entrega confirmada sigue pendiente; el semanal no entra.
+    # Un borrador sin entrega confirmada sigue pendiente; el sólo semanal no
+    # entra y el que tiene las dos cadencias cuenta por su informe mensual.
     assert digests == {
-        "count": 1, "month": "septiembre de 2026", "period_start": "2026-09-01", "period_end": "2026-09-30",
-        "items": [{"id": pending.id, "name": "Sin entregar"}],
+        "count": 2, "month": "septiembre de 2026", "period_start": "2026-09-01", "period_end": "2026-09-30",
+        "items": [{"id": pending.id, "name": "Sin entregar"}, {"id": both.id, "name": "Mensual y semanal"}],
     }
 
 
