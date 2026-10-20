@@ -1852,6 +1852,29 @@ class VigilSummary(Base):
     fetched_at = Column(DateTime(timezone=True), nullable=False)
 
 
+class ClientShareLink(Base):
+    """Enlace de sólo lectura para el cliente: sus resúmenes entregados y su tráfico.
+
+    Sólo se guarda el SHA-256 del token; el enlace completo se enseña una vez al
+    crearlo. Un enlace activo por cliente (índice único parcial).
+    """
+    __tablename__ = "client_share_links"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    token_hash = Column(String(64), nullable=False, unique=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+    last_viewed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+Index(
+    "uq_client_share_links_active", ClientShareLink.client_id, unique=True,
+    postgresql_where=ClientShareLink.revoked_at.is_(None),
+)
+
+
 class GscSiteSync(Base):
     """Estado de importación por propiedad: decide si un mes está completo."""
     __tablename__ = "gsc_site_sync"

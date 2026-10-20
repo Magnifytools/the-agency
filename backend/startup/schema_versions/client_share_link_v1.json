@@ -1,0 +1,30 @@
+{
+  "version": "20261020_client_share_link_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS client_share_links (\n id SERIAL PRIMARY KEY,\n client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,\n token_hash VARCHAR(64) NOT NULL,\n created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,\n created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n revoked_at TIMESTAMPTZ,\n last_viewed_at TIMESTAMPTZ\n)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_client_share_links_token_hash ON client_share_links (token_hash)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_client_share_links_active ON client_share_links (client_id) WHERE revoked_at IS NULL"
+  ],
+  "columns": {
+    "client_share_links": {
+      "id": ["int4", false, null],
+      "client_id": ["int4", false, null],
+      "token_hash": ["varchar", false, 64],
+      "created_by": ["int4", true, null],
+      "created_at": ["timestamptz", false, null],
+      "revoked_at": ["timestamptz", true, null],
+      "last_viewed_at": ["timestamptz", true, null]
+    }
+  },
+  "primary_keys": {
+    "client_share_links": ["id"]
+  },
+  "foreign_keys": [
+    {"table": "client_share_links", "column": "client_id", "references": "clients", "on_delete": "c"},
+    {"table": "client_share_links", "column": "created_by", "references": "users", "on_delete": "n"}
+  ],
+  "unique_indexes": [
+    {"table": "client_share_links", "columns": ["token_hash"]},
+    {"table": "client_share_links", "columns": ["client_id"], "predicate": "(revoked_at IS NULL)"}
+  ]
+}
