@@ -293,6 +293,22 @@ async def readiness_check():
     return {"status": "ready", "revision": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "local"), "schema_revision": EXPECTED_SCHEMA_VERSION}
 
 
+# Páginas públicas sin login. Ninguna se indexa: /acerca y /privacidad existen
+# para la verificación de Google OAuth (robots.txt las deja leer para que el
+# noindex se vea), y el enlace del cliente además no manda Referer.
+PUBLIC_LEGAL_PATHS = ("acerca", "privacidad")
+_NOINDEX = "noindex, nofollow, noarchive"
+
+
+def spa_headers(full_path: str) -> dict[str, str]:
+    path = full_path.strip("/")
+    if path.startswith("c/"):
+        return {"X-Robots-Tag": _NOINDEX, "Referrer-Policy": "no-referrer"}
+    if path in PUBLIC_LEGAL_PATHS:
+        return {"X-Robots-Tag": _NOINDEX}
+    return {}
+
+
 # Serve frontend static files in production
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 if _frontend_dist.is_dir():
@@ -310,9 +326,4 @@ if _frontend_dist.is_dir():
         # Prevent path traversal: resolved path must stay inside frontend/dist
         if file_path.is_file() and file_path.is_relative_to(_frontend_dist.resolve()):
             return FileResponse(str(file_path))
-        if full_path.startswith("c/"):
-            # Enlace de sólo lectura del cliente: fuera de buscadores y del Referer.
-            return FileResponse(str(_frontend_dist / "index.html"), headers={
-                "X-Robots-Tag": "noindex, nofollow, noarchive", "Referrer-Policy": "no-referrer",
-            })
-        return FileResponse(str(_frontend_dist / "index.html"))
+        return FileResponse(str(_frontend_dist / "index.html"), headers=spa_headers(full_path))

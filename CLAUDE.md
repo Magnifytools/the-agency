@@ -359,6 +359,18 @@ admin_users, admin_settings
 - **Tráfico**: `gsc_daily` de `Client.gsc_url`, 16 meses naturales CERRADOS
   (hasta el último con datos hasta su último día, según `gsc_site_sync`).
 
+## Páginas públicas /acerca y /privacidad
+- Existen para la verificación de Google OAuth (página de inicio de la app y
+  política de privacidad de los datos de Google). Sin login, fuera del shell:
+  `frontend/src/pages/public-legal.tsx`. Enlazadas desde el login.
+- **No se indexan**: meta robots en la página + `X-Robots-Tag` desde
+  `spa_headers()` en `backend/main.py`. `robots.txt` las deja leer (Allow) para
+  que el noindex se vea; el resto sigue en `Disallow: /`.
+- **Lo que dicen tiene que ser verdad en el código**: qué se guarda de Search
+  Console, GA4 y Calendar, que nada de eso va a la IA, que desconectar borra el
+  token pero no las cifras. Si cambias qué se lee o se guarda de Google, cambia
+  la política en el mismo PR.
+
 ## Extensión de Chrome: descarga
 - Ajustes → "Extensión de Chrome" (`components/settings/extension-section.tsx`):
   botón "Descargar extensión" con la versión desplegada y pasos para instalar
