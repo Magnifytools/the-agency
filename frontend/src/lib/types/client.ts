@@ -22,6 +22,7 @@ export interface Client {
   ga4_property_id: string | null
   gsc_url: string | null
   engine_project_id: number | null
+  vigil_slug: string | null
   engine_content_count: number | null
   engine_keyword_count: number | null
   engine_avg_position: number | null
@@ -69,6 +70,7 @@ export interface ClientCreate {
   ga4_property_id?: string | null
   gsc_url?: string | null
   engine_project_id?: number | null
+  vigil_slug?: string | null
   // Revenue intelligence
   is_internal?: boolean
   intermediary_name?: string | null
@@ -208,6 +210,26 @@ export interface ClientStatusRow {
    * confirmada cubre todavía. `count` va sin límite; `items`, las 5 últimas.
    */
   ready?: { since: string; count: number; items: { id: number; title: string; completed_on: string }[] } | null
+  /** Cambios en la web (Vigil). null = cliente sin enlazar o sin resumen todavía. */
+  vigil: {
+    slug: string
+    critical: number
+    warning: number
+    info: number
+    watches_active: number
+    watches_with_error: number
+    last_checked_at: string | null
+    last_run_status: string | null
+    fetched_at: string
+    /** false = el resumen tiene más de 48 h y no cuenta para el estado. */
+    fresh: boolean
+    url: string
+  } | null
+}
+
+export interface VigilClients {
+  configured: boolean
+  clients: { slug: string; name: string; linked_to: string | null }[]
 }
 
 export type ClientCohort = "all" | "external" | "internal"

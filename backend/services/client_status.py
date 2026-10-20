@@ -11,6 +11,9 @@ datos vivos y lleva su motivo; el estado global es la peor señal medida:
 Cada señal sólo se calcula si quien mira puede leer su fuente; el consumo de
 cuota (dinero) es sólo para admins. Las comunicaciones ya no cuentan (decisión
 de David, 19 oct 2026): el módulo está oculto y sin uso.
+
+Vigil (cambios en la web): un cambio crítico sin revisar es Vigilar; un
+resumen de más de 48 h se enseña pero no cuenta.
 """
 
 from __future__ import annotations
@@ -44,6 +47,7 @@ from backend.services.recurring_fee import active_monthly_fees
 from backend.services.seo_traffic import STABLE_BAND_PCT, is_traffic_drop, seo_traffic
 from backend.services.temporal import business_today, civil_day_utc_bounds
 from backend.services.time_entry_dates import time_entry_civil_period
+from backend.services.vigil_service import client_block, summaries as vigil_summaries
 
 Status = Literal["ok", "watch", "act", "no_data"]
 _RANK = {"no_data": 0, "ok": 1, "watch": 2, "act": 3}
@@ -284,6 +288,7 @@ async def portfolio(
     policies, last_sent = (await _digests(db, client_ids)) if viewer.digests else ({}, {})
     effort = (await _month_effort(db, clients, today, with_money=viewer.is_admin)
               if viewer.timesheet else {})
+    vigil = await vigil_summaries(db, {c.vigil_slug for c in clients if c.vigil_slug})
 
     rows = []
     for client in clients:
@@ -363,6 +368,16 @@ async def portfolio(
             row["month"] = month
         else:
             row["month"] = None
+
+        # 6. Cambios en la web (Vigil): un cambio crítico sin revisar pide mirar.
+        summary = vigil.get(client.vigil_slug) if client.vigil_slug else None
+        row["vigil"] = client_block(summary) if summary else None
+        if row["vigil"] and row["vigil"]["fresh"]:
+            critical = row["vigil"]["critical"]
+            if critical:
+                signals.add("watch", f"{critical} cambio{'s' if critical > 1 else ''} crítico{'s' if critical > 1 else ''} en la web sin revisar (Vigil)")
+            else:
+                signals.add("ok")
 
         status = signals.overall()
         row["status"] = status

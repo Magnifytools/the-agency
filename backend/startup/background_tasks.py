@@ -179,6 +179,13 @@ async def _gsc_sync_once():
         raise JobFailure("partial_failure")
 
 
+async def _vigil_sync_once():
+    from backend.db.database import async_session
+    from backend.services.vigil_service import sync
+
+    await sync(async_session)
+
+
 # ── Retention cleanup ───────────────────────────────────────
 
 async def _retention_cleanup_once():
@@ -292,6 +299,7 @@ def start_background_tasks() -> list[asyncio.Task]:
         "retention": ("retention-cleanup", _retention_cleanup_once),
         "inbox_classification": ("inbox-classification", _inbox_classification_once),
         "gsc": ("gsc-sync", _gsc_sync_once),
+        "vigil": ("vigil-sync", _vigil_sync_once),
     }
 
     for key, (task_name, operation) in operations.items():

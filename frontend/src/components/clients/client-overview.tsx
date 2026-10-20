@@ -139,6 +139,27 @@ export function ClientOverview({ client, status, statusFailed, onRetryStatus, ta
               <GoTo onClick={() => onNavigate("resumenes")}>Abrir resúmenes</GoTo>
             </div>
           )}
+          {status?.vigil && (
+            <div>
+              <p className="mb-0.5 text-xs font-medium">Cambios en la web</p>
+              <p className={`text-sm ${status.vigil.critical && status.vigil.fresh ? "font-medium text-red-600 dark:text-red-400" : ""}`}>
+                {status.vigil.critical || status.vigil.warning
+                  ? [status.vigil.critical && `${status.vigil.critical} crítico${status.vigil.critical > 1 ? "s" : ""}`,
+                     status.vigil.warning && `${status.vigil.warning} aviso${status.vigil.warning > 1 ? "s" : ""}`]
+                    .filter(Boolean).join(" · ") + " sin revisar"
+                  : "Nada importante sin revisar"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {status.vigil.watches_active} páginas vigiladas
+                {status.vigil.watches_with_error ? ` · ${status.vigil.watches_with_error} con error` : ""}
+                {status.vigil.last_checked_at ? ` · revisado el ${day(status.vigil.last_checked_at)}` : ""}
+                {!status.vigil.fresh && " · dato antiguo"}
+              </p>
+              <a href={status.vigil.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-brand hover:underline">
+                Abrir en Vigil <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          )}
           {engineReportsUrl && (
             <a href={engineReportsUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-brand hover:underline">
               Informe SEO en PDF (The Engine) <ExternalLink className="h-3 w-3" />
