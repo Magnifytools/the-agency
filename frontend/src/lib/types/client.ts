@@ -202,6 +202,12 @@ export interface ClientStatusRow {
   tasks: { overdue: number; waiting: number; followups_late: number } | null
   /** null = quien mira no puede leer horas. fee y consumption_pct sólo para admins con cuota. */
   month: { hours: number; fee?: number; consumption_pct?: number } | null
+  /**
+   * Sólo en el estado de un cliente (no en la cartera) y si quien mira lee tareas
+   * y resúmenes: tareas completadas desde `since` que ningún resumen con entrega
+   * confirmada cubre todavía. `count` va sin límite; `items`, las 5 últimas.
+   */
+  ready?: { since: string; count: number; items: { id: number; title: string; completed_on: string }[] } | null
 }
 
 export type ClientCohort = "all" | "external" | "internal"

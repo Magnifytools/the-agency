@@ -75,11 +75,12 @@ def _monthly_cycle_clause():
     )
 
 
-def delivery_confirmed_clause(client_id, period_start, period_end):
-    """Some version of the period has, as its latest event, a confirmed delivery.
+def delivery_is_confirmed():
+    """The digest version's latest external delivery event is a confirmation.
 
     The external delivery event is the only proof that a digest reached the
     client; ``DigestStatus.sent`` is a legacy label nobody records evidence for.
+    A later revocation cancels the confirmation.
     """
     latest_action = (
         select(DigestExternalDeliveryEvent.action)
@@ -89,11 +90,16 @@ def delivery_confirmed_clause(client_id, period_start, period_end):
         .correlate(WeeklyDigest)
         .scalar_subquery()
     )
+    return latest_action == ExternalDeliveryAction.confirmed
+
+
+def delivery_confirmed_clause(client_id, period_start, period_end):
+    """Some version of the period has, as its latest event, a confirmed delivery."""
     return exists().where(
         WeeklyDigest.client_id == client_id,
         WeeklyDigest.period_start == period_start,
         WeeklyDigest.period_end == period_end,
-        latest_action == ExternalDeliveryAction.confirmed,
+        delivery_is_confirmed(),
     )
 
 

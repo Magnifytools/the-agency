@@ -41,8 +41,9 @@ from backend.db.models import (
 from backend.services.dashboard_access import has_module_read
 from backend.services.digest_periods import policy_digest_period
 from backend.services.gsc_service import normalize_site_url
+from backend.services.incident_report_conditions import delivery_is_confirmed
 from backend.services.seo_traffic import STABLE_BAND_PCT, is_traffic_drop, seo_traffic
-from backend.services.temporal import business_today
+from backend.services.temporal import business_today, civil_day_utc_bounds
 from backend.services.time_entry_dates import time_entry_civil_period
 
 Status = Literal["ok", "watch", "act", "no_data"]
@@ -55,6 +56,8 @@ DIGEST_GRACE_DAYS = 5
 OVERDUE_ACT = 3
 CONSUMPTION_WATCH_PCT = 90.0
 CONSUMPTION_ACT_PCT = 110.0
+# Tareas listas para entregar que se listan (el contador va sin límite).
+READY_ITEMS = 5
 
 
 @dataclass(frozen=True)
@@ -206,6 +209,46 @@ async def _month_effort(db, clients: list[Client], today: date, *, with_money: b
     return effort
 
 
+async def _ready_to_deliver(db, client_id: int, policy: ClientReportPolicy | None, today: date) -> dict:
+    """Trabajo terminado que aún no ha llegado al cliente en un resumen entregado.
+
+    Una tarea cuenta desde que se completa (la revisión, si el proyecto la exige,
+    ocurre antes: sólo su responsable la cierra). Llega al cliente con el
+    resumen de un periodo que cubre su ``completed_at`` (así lo recoge el
+    collector) cuando ese resumen tiene la entrega externa confirmada. Se mira
+    desde el inicio del periodo que toca entregar ahora (cadencia de la
+    política; mensual si no hay) o desde el día siguiente al último periodo
+    entregado, lo más reciente: lo anterior sin entregar ya lo avisa la señal
+    del resumen.
+    """
+    cadence = policy.cadence.value if policy else "monthly"
+    since, _ = policy_digest_period(cadence, today=today)
+    delivered_end = await db.scalar(select(func.max(WeeklyDigest.period_end)).where(
+        WeeklyDigest.client_id == client_id, delivery_is_confirmed(),
+    ))
+    if delivered_end is not None and delivered_end >= since:
+        since = delivered_end + timedelta(days=1)
+    start_dt, _ = civil_day_utc_bounds(since)
+    done = (
+        Task.client_id == client_id,
+        Task.status == TaskStatus.completed,
+        Task.completed_at >= start_dt,
+        Task.retired_at.is_(None),
+        Task.is_recurring.is_(False),
+    )
+    count = await db.scalar(select(func.count(Task.id)).where(*done))
+    items = (await db.execute(
+        select(Task.id, Task.title, Task.completed_at).where(*done)
+        .order_by(Task.completed_at.desc(), Task.id.desc()).limit(READY_ITEMS)
+    )).all()
+    return {
+        "since": since.isoformat(),
+        "count": int(count or 0),
+        "items": [{"id": t.id, "title": t.title,
+                   "completed_on": business_today(now=t.completed_at).isoformat()} for t in items],
+    }
+
+
 # ── Estado ───────────────────────────────────────────────────────────
 
 
@@ -227,8 +270,14 @@ def _digest_signal(policy: ClientReportPolicy | None, last_sent: date | None, to
     }
 
 
-async def portfolio(db, clients: list[Client], viewer: Viewer, *, today: date | None = None) -> list[dict]:
-    """Una fila por cliente con sus señales y su estado. Consultas por lotes."""
+async def portfolio(
+    db, clients: list[Client], viewer: Viewer, *, today: date | None = None, detail: bool = False,
+) -> list[dict]:
+    """Una fila por cliente con sus señales y su estado. Consultas por lotes.
+
+    ``detail`` añade lo que sólo pinta la ficha de un cliente (``ready``: lo
+    listo para entregar); la cartera no lo muestra y no lo calcula.
+    """
     today = today or business_today()
     client_ids = [c.id for c in clients]
     if not client_ids:
@@ -296,6 +345,12 @@ async def portfolio(db, clients: list[Client], viewer: Viewer, *, today: date | 
                 signals.add("watch", f"{t['followups_late']} seguimiento{'s' if t['followups_late'] > 1 else ''} con el cliente sin hacer")
         else:
             row["tasks"] = None
+
+        # Listo para entregar: no es un motivo de estado, sólo lo que hay que contar.
+        row["ready"] = (
+            await _ready_to_deliver(db, client.id, policies.get(client.id), today)
+            if detail and viewer.tasks and viewer.digests else None
+        )
 
         # 5. Horas del mes (y consumo de la cuota, sólo admin)
         if viewer.timesheet:

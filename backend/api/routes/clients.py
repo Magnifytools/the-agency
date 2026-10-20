@@ -317,7 +317,7 @@ async def client_status(
     client = await db.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
-    return (await portfolio(db, [client], Viewer.of(current_user)))[0]
+    return (await portfolio(db, [client], Viewer.of(current_user), detail=True))[0]
 
 
 @router.get("/{client_id}", response_model=ClientResponse)

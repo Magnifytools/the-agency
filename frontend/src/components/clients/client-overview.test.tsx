@@ -16,6 +16,7 @@ const status: ClientStatusRow = {
   digest: { cadence: "monthly", last_sent_period_end: null, expected_period_end: "2026-09-30", state: "late" },
   tasks: { overdue: 3, waiting: 1, followups_late: 1 },
   month: { hours: 12.5 },
+  ready: { since: "2026-09-01", count: 7, items: [{ id: 9, title: "Informe de enlaces", completed_on: "2026-10-14" }] },
 }
 const task = (id: number, title: string, extra: Partial<Task>) => ({ id, title, status: "pending", due_date: null, ...extra }) as Task
 const tasks = [
@@ -65,6 +66,25 @@ describe("ClientOverview", () => {
     expect(within(relation).getByText("Esperando al cliente (1)")).toBeInTheDocument()
     expect(within(relation).getByText("Accesos GSC")).toBeInTheDocument()
     expect(within(relation).getByText(/Fabricante de paneles/)).toBeInTheDocument()
+  })
+
+  it("shows what is ready to deliver in the work block", () => {
+    show()
+    const work = block("Trabajo")
+    expect(within(work).getByText("Listo para entregar (7)")).toBeInTheDocument()
+    expect(within(work).getByText(/Terminado desde el 1 sept/)).toBeInTheDocument()
+    expect(within(work).getByText("Informe de enlaces")).toBeInTheDocument()
+    expect(within(work).getByText("14 oct")).toBeInTheDocument()
+  })
+
+  it("says when nothing is pending to deliver", () => {
+    show({ status: { ...status, ready: { since: "2026-10-01", count: 0, items: [] } } })
+    expect(screen.getByText("Nada pendiente de contar.")).toBeInTheDocument()
+  })
+
+  it("leaves the ready block out when the status has none", () => {
+    show({ status: { ...status, ready: null } })
+    expect(screen.queryByText(/Listo para entregar/)).not.toBeInTheDocument()
   })
 
   it("links each block to its tab", () => {
