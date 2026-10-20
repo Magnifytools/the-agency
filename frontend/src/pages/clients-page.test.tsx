@@ -102,7 +102,7 @@ describe("ClientsPage recovery states", () => {
 
     expect(await screen.findAllByText("Cliente conservado")).not.toHaveLength(0)
     expect(screen.queryByRole("button", { name: "Más opciones" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Finalizar" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Marcar como antiguo" })).not.toBeInTheDocument()
   })
 
   it("hides client bulk selection and status changes from read-only users", async () => {
@@ -121,7 +121,7 @@ describe("ClientsPage recovery states", () => {
     show()
 
     await userEvent.click(await screen.findByRole("button", { name: "Más opciones" }))
-    expect(screen.getByRole("button", { name: "Finalizar" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Marcar como antiguo" })).toBeInTheDocument()
   })
 
   it("offers retry for an initial 503 without claiming the list is empty", async () => {
@@ -475,7 +475,7 @@ describe("ClientsPage recovery states", () => {
     expect(screen.queryByRole("button", { name: "Nuevo cliente" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Editar cliente" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Más opciones" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Finalizar" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Marcar como antiguo" })).not.toBeInTheDocument()
     expect(screen.queryByRole("columnheader", { name: "Acciones" })).not.toBeInTheDocument()
   })
 

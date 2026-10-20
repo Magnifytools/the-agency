@@ -31,6 +31,7 @@ import { useAuth } from "@/context/auth-context"
 import { clientKeys, holdedKeys, projectKeys, timeKeys } from "@/lib/query-keys"
 import { formatCurrency } from "@/lib/format"
 import { TaskPanel } from "@/components/tasks/task-panel"
+import { ClientLifecycleButton, FormerClientNotice } from "@/components/clients/client-lifecycle"
 import { ClientOverview } from "@/components/clients/client-overview"
 import { InvoiceStatusBadge } from "@/components/finance/invoice-status-badge"
 
@@ -46,7 +47,7 @@ const statusBadge = (status: string) => {
   const map: Record<string, { label: string; variant: "success" | "warning" | "secondary" }> = {
     active: { label: "Activo", variant: "success" },
     paused: { label: "Pausado", variant: "warning" },
-    finished: { label: "Finalizado", variant: "secondary" },
+    finished: { label: "Antiguo", variant: "secondary" },
   }
   const { label, variant } = map[status] || { label: status, variant: "secondary" }
   return <Badge variant={variant}>{label}</Badge>
@@ -270,6 +271,7 @@ export default function ClientDetailPage() {
           {client.company && <p className="text-muted-foreground">{client.company}</p>}
         </div>
         <div className="flex items-center gap-2">
+          <ClientLifecycleButton client={client} />
           {canReadFinancialPanel && activeTab === "panel" && <Button variant="outline" size="sm" onClick={() => setWhatIfOpen(true)}>
             ¿Y si pierdo este cliente?
           </Button>}
@@ -284,6 +286,8 @@ export default function ClientDetailPage() {
           </Button>
         </div>
       </div>
+
+      <FormerClientNotice client={client} />
 
       {/* Cuatro áreas estables; las URLs ?tab= heredadas siguen seleccionando
           su vista concreta dentro del área correspondiente. */}

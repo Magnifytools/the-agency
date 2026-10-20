@@ -33,7 +33,7 @@ const STATUS_TABS: { label: string; value: ClientStatus | "all" }[] = [
   { label: "En cartera", value: "all" },
   { label: "Activos", value: "active" },
   { label: "Pausados", value: "paused" },
-  { label: "Finalizados", value: "finished" },
+  { label: "Antiguos", value: "finished" },
 ]
 
 const COHORTS: { label: string; value: ClientCohort }[] = [
@@ -96,7 +96,7 @@ const statusBadge = (status: ClientStatus) => {
   const map: Record<ClientStatus, { label: string; variant: "success" | "warning" | "secondary" }> = {
     active: { label: "Activo", variant: "success" },
     paused: { label: "Pausado", variant: "warning" },
-    finished: { label: "Finalizado", variant: "secondary" },
+    finished: { label: "Antiguo", variant: "secondary" },
   }
   const { label, variant } = map[status]
   return <Badge variant={variant}>{label}</Badge>
@@ -303,9 +303,18 @@ function ClientsPageBody() {
     mutationFn: (id: number) => clientsApi.delete(id),
     onSuccess: (_result, id) => {
       void invalidateClientChange(queryClient, [id])
-      toast.success("Cliente finalizado")
+      toast.success("Cliente pasado a antiguos")
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al finalizar cliente")),
+    onError: (err) => toast.error(getErrorMessage(err, "Error al pasar el cliente a antiguos")),
+  })
+
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: ClientStatus }) => clientsApi.update(id, { status }),
+    onSuccess: (_result, { id }) => {
+      void invalidateClientChange(queryClient, [id])
+      toast.success("Cliente reactivado")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "No se pudo reactivar el cliente")),
   })
 
   const hardDeleteMutation = useMutation({
@@ -680,12 +689,21 @@ function ClientsPageBody() {
                       </Button>
                       {openMenuId === c.id && (
                         <div className="absolute right-0 top-full z-50 mt-1 w-52 rounded-md border bg-background shadow-md">
-                          <button
-                            className="flex w-full items-center px-3 py-2 text-left text-sm hover:bg-accent"
-                            onClick={() => { setDeleteId(c.id); setOpenMenuId(null) }}
-                          >
-                            Finalizar
-                          </button>
+                          {c.status === "finished" ? (
+                            <button
+                              className="flex w-full items-center px-3 py-2 text-left text-sm hover:bg-accent"
+                              onClick={() => { updateStatusMutation.mutate({ id: c.id, status: "active" }); setOpenMenuId(null) }}
+                            >
+                              Reactivar
+                            </button>
+                          ) : (
+                            <button
+                              className="flex w-full items-center px-3 py-2 text-left text-sm hover:bg-accent"
+                              onClick={() => { setDeleteId(c.id); setOpenMenuId(null) }}
+                            >
+                              Marcar como antiguo
+                            </button>
+                          )}
                           {isAdmin && (
                             <button
                               className="flex w-full items-center px-3 py-2 text-left text-sm text-destructive hover:bg-accent"
@@ -782,7 +800,7 @@ function ClientsPageBody() {
               <Select id="status" name="status" defaultValue={editing?.status ?? "active"}>
                 <option value="active">Activo</option>
                 <option value="paused">Pausado</option>
-                <option value="finished">Finalizado</option>
+                <option value="finished">Antiguo</option>
               </Select>
             </div>
           </div>
@@ -904,9 +922,9 @@ function ClientsPageBody() {
       <ConfirmDialog
         open={deleteId !== null}
         onOpenChange={(open) => !open && setDeleteId(null)}
-        title="Finalizar cliente"
-        description="El cliente se marcará como finalizado. Sus tareas y datos no se eliminarán."
-        confirmLabel="Finalizar"
+        title="Marcar como cliente antiguo"
+        description="Dejará de salir en la cartera, las alertas y las importaciones. No se borra nada y se puede reactivar cuando quieras."
+        confirmLabel="Marcar como antiguo"
         onConfirm={() => {
           if (deleteId !== null) {
             deleteMutation.mutate(deleteId)
@@ -936,7 +954,7 @@ function ClientsPageBody() {
           <option value="">Cambiar estado…</option>
           <option value="active">Activo</option>
           <option value="paused">Pausado</option>
-          <option value="finished">Finalizado</option>
+          <option value="finished">Antiguo</option>
         </Select>
         <Button
           size="sm"
