@@ -62,13 +62,27 @@ Una PR propia, antes de la de my_week:
    comunidad (afecta al plan de mañana del equipo).
 4. Aparte: `_seed_national_holidays` sólo trae los festivos móviles de 2026 y 2027.
 
-## Qué necesita la decisión de David
+## Decisiones de David (19 oct 2026)
 
-- **export**: está en la lista de borrado, pero es la exportación CSV de
-  finanzas (`/api/finance/export`). ¿Se borra ya o espera a Holded con el resto
-  de finanzas?
-- **billing**: ¿se va también la pestaña de facturación de proyecto y sus tres
-  endpoints que crean `Income` («Marcar facturado»)? Si se quedan, la clave
-  `billing` no puede desaparecer.
-- **communications**: ¿salud de cliente, digests e insights siguen leyendo el
-  histórico de `communication_logs` o se quitan esas lecturas?
+- **export**: no se toca. Es finanzas, y todo lo de finanzas espera a Holded.
+- **billing**: se borró entero en #132, antes de este plan.
+- **communications**: no se borra. Sigue oculto, y su histórico lo siguen
+  leyendo resúmenes, insights y la línea de actividad. El estado del cliente
+  ya no lo lee (#134).
+
+## Estado final (fase 0 cerrada el 19 oct 2026)
+
+| Módulo | PR |
+|---|---|
+| core_updates | #131 |
+| invitations | #140 |
+| cfo | #142 |
+| vault | #143 |
+| resources | #144 |
+| evidence | #145 |
+| reports | #146 |
+| automations | #147 |
+| festivos al núcleo, luego my_week | #149, #150 |
+| campos decorativos del cliente, beautifulsoup4 y aiofiles | #151 |
+| migración final (tablas y columnas retiradas) | #152 |
+| export, communications | se quedan (ver arriba) |
