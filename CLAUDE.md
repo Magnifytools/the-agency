@@ -85,7 +85,7 @@ frontend/src/
 - JWT auth via `Depends(get_current_user)` on all routes
 - Module-based permissions via `require_module(module_name)`
 - Admin role bypasses permission checks
-- Client DELETE is soft delete (status=finished)
+- Client DELETE is soft delete (status=finished). En la UI es **"Antiguo"**: fuera de la cartera, alertas e importaciones, con todo su historial; se reactiva desde la ficha o la lista (`components/clients/client-lifecycle.tsx`). El borrado duro (`/hard`) es otra cosa e irreversible
 - Eager loading (`lazy="selectin"`) for denormalized responses
 - TanStack Query for server state, React Context for auth
 - Path alias: `@/` -> `src/`
