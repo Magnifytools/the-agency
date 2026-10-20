@@ -8,6 +8,7 @@ from backend.startup.client_onboarding_schema import (
 from backend.startup.inbox_recovery_schema_v2 import (
     MIGRATION as INBOX_RECOVERY_MIGRATION,
 )
+from backend.startup.gsc_accounts_schema import MIGRATION as GSC_ACCOUNTS_MIGRATION
 from backend.startup.gsc_schema import MIGRATION as GSC_MIGRATION
 from backend.startup.job_runtime_schema import MIGRATION as JOB_RUNTIME_MIGRATION
 from backend.startup.phase0_retirement_schema import MIGRATION as PHASE0_RETIREMENT_MIGRATION
@@ -24,7 +25,7 @@ MIGRATIONS = (
     *schema_baseline.MIGRATIONS, JOB_RUNTIME_MIGRATION, INBOX_RECOVERY_MIGRATION,
     TASK_RETIREMENT_MIGRATION, CLIENT_ONBOARDING_MIGRATION, PROJECT_REVIEW_MIGRATION,
     USAGE_ORIGIN_MIGRATION, GSC_MIGRATION, TASK_PROCEDURE_MIGRATION,
-    PHASE0_RETIREMENT_MIGRATION, VIGIL_MIGRATION,
+    PHASE0_RETIREMENT_MIGRATION, VIGIL_MIGRATION, GSC_ACCOUNTS_MIGRATION,
 )
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 

@@ -1,0 +1,20 @@
+{
+  "version": "20261020_gsc_accounts_v1",
+  "statements": [
+    "ALTER TABLE gsc_connection DROP CONSTRAINT IF EXISTS ck_gsc_connection_singleton",
+    "CREATE SEQUENCE IF NOT EXISTS gsc_connection_id_seq AS SMALLINT OWNED BY gsc_connection.id",
+    "SELECT setval('gsc_connection_id_seq', COALESCE((SELECT max(id) FROM gsc_connection), 0) + 1, false)",
+    "ALTER TABLE gsc_connection ALTER COLUMN id SET DEFAULT nextval('gsc_connection_id_seq')",
+    "UPDATE gsc_connection SET google_email = lower(google_email) WHERE google_email IS NOT NULL",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_gsc_connection_google_email ON gsc_connection (google_email) WHERE google_email IS NOT NULL",
+    "ALTER TABLE gsc_site_sync ADD COLUMN IF NOT EXISTS connection_id SMALLINT REFERENCES gsc_connection(id) ON DELETE SET NULL"
+  ],
+  "columns": {
+    "gsc_site_sync": {
+      "connection_id": ["int2", true, null]
+    }
+  },
+  "unique_indexes": [
+    {"table": "gsc_connection", "columns": ["google_email"], "predicate": "(google_email IS NOT NULL)"}
+  ]
+}

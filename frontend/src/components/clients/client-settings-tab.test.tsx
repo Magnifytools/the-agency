@@ -43,7 +43,7 @@ describe("ClientSettingsTab permissions", () => {
     mocks.vigilClients.mockResolvedValue({ configured: true, clients: [{ slug: "parklex", name: "Parklex", linked_to: null }] })
     mocks.update.mockResolvedValue({})
     mocks.engineProjects.mockResolvedValue([])
-    mocks.gscStatus.mockResolvedValue({ configured: true, connection: null, sites: [] })
+    mocks.gscStatus.mockResolvedValue({ configured: true, connections: [], sites: [] })
   })
 
   it("shows current analytics settings without a save action to a client reader", () => {
@@ -76,7 +76,7 @@ describe("ClientSettingsTab permissions", () => {
   it("shows how far the saved Search Console property has been imported", async () => {
     mocks.gscStatus.mockResolvedValue({
       configured: true,
-      connection: { status: "connected", google_email: "seo@magnify.ing", connected_by: "David", connected_at: "2026-10-01T10:00:00Z" },
+      connections: [{ id: 1, status: "connected", google_email: "seo@magnify.ing", connected_by: "David", connected_at: "2026-10-01T10:00:00Z" }],
       sites: [{ site_url: "https://example.com/", clients: [{ id: 5, name: "Ejemplo" }], backfilled: true,
                 last_data_date: "2026-10-15", last_synced_at: "2026-10-18T06:00:00Z", error_code: "no_access" }],
     })

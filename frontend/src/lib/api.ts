@@ -1046,11 +1046,21 @@ export interface GscSiteStatus {
   last_data_date: string | null
   last_synced_at: string | null
   error_code: string | null
+  /** Cuenta de Google con la que se importa (la que ve la propiedad). */
+  google_email: string | null
+}
+
+export interface GscConnectionStatus {
+  id: number
+  status: "connected" | "reconnect_required"
+  google_email: string | null
+  connected_by: string | null
+  connected_at: string
 }
 
 export interface GscStatus {
   configured: boolean
-  connection: { status: "connected" | "reconnect_required"; google_email: string | null; connected_by: string | null; connected_at: string } | null
+  connections: GscConnectionStatus[]
   sites: GscSiteStatus[]
 }
 
@@ -1061,8 +1071,8 @@ export const vigilApi = {
 export const gscApi = {
   getStatus: () => api.get<GscStatus>("/gsc/status").then((r) => r.data),
   getAuthUrl: () => api.get<{ url: string }>("/gsc/auth-url").then((r) => r.data),
-  disconnect: () => api.post("/gsc/disconnect").then((r) => r.data),
-  listSites: () => api.get<{ sites: { site_url: string; permission: string | null }[] }>("/gsc/sites").then((r) => r.data),
+  disconnect: (connectionId: number) => api.post(`/gsc/connections/${connectionId}/disconnect`).then((r) => r.data),
+  listSites: () => api.get<{ sites: { site_url: string; permission: string | null; google_email: string | null }[] }>("/gsc/sites").then((r) => r.data),
   sync: () => api.post<{ status: string; synced: number; failed: number }>("/gsc/sync").then((r) => r.data),
 }
 

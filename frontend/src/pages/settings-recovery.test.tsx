@@ -15,7 +15,7 @@ vi.mock("@/lib/api", () => ({
   categoriesApi: { list: api.categories, create: vi.fn(), update: vi.fn(), delete: api.deleteCategory },
   holidaysApi: { list: api.holidays, create: vi.fn(), delete: api.deleteHoliday },
   calendarApi: { getStatus: vi.fn().mockResolvedValue({ connected: false }), getAuthUrl: vi.fn(), disconnect: vi.fn(), sync: vi.fn() },
-  gscApi: { getStatus: vi.fn().mockResolvedValue({ configured: true, connection: null, sites: [] }), getAuthUrl: vi.fn(), disconnect: vi.fn(), sync: vi.fn(), listSites: vi.fn() },
+  gscApi: { getStatus: vi.fn().mockResolvedValue({ configured: true, connections: [], sites: [] }), getAuthUrl: vi.fn(), disconnect: vi.fn(), sync: vi.fn(), listSites: vi.fn() },
 }))
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
