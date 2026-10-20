@@ -29,6 +29,7 @@ from backend.db.models import (
 from backend.schemas.dashboard import (
     DashboardOverview,
     DashboardFinancialOverview,
+    DashboardOperations,
     ClientProfitability,
     ProfitabilityResponse,
     TeamMemberSummary,
@@ -41,6 +42,7 @@ from backend.api.deps import get_current_user, require_module, require_admin
 from backend.core.security import encrypt_vault_secret
 from backend.services.csv_utils import build_csv_response
 from backend.core.modules import is_enabled
+from backend.services.operations_summary import operations_summary
 from backend.services.profitability import classify_profitability
 from backend.api.utils.db_helpers import safe_refresh
 from backend.services.report_period import (
@@ -142,6 +144,17 @@ async def get_overview(
             else "mine"
         ),
     )
+
+
+@router.get("/operations", response_model=DashboardOperations)
+async def get_operations(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("dashboard")),
+):
+    """Fila "Operación": cuota recurrente, proyectos en riesgo, clientes en
+    Actuar y resúmenes mensuales sin entregar. Cada cifra sale del servicio que
+    ya decide esa regla y sólo llega si quien mira puede leer su fuente."""
+    return await operations_summary(db, current_user)
 
 
 @router.get("/overview/financial", response_model=DashboardFinancialOverview)

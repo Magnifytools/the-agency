@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   user: null as null | { id: number; role: "admin" | "member"; permissions: Array<{ module: string; can_read: boolean; can_write: boolean }> },
   financeEnabled: false,
   usersEnabled: false,
-  overview: vi.fn(), financialOverview: vi.fn(), profitability: vi.fn(), team: vi.fn(), utilization: vi.fn(),
+  overview: vi.fn(), operations: vi.fn(), financialOverview: vi.fn(), profitability: vi.fn(), team: vi.fn(), utilization: vi.fn(),
   monthlyClose: vi.fn(), financialSettings: vi.fn(), updateMonthlyClose: vi.fn(), updateFinancialSettings: vi.fn(), exportMonthlyClose: vi.fn(),
   preview: vi.fn(), send: vi.fn(), settings: vi.fn(), weekly: vi.fn(),
   tasks: vi.fn(), taskUpdate: vi.fn(), timeWeekly: vi.fn(), active: vi.fn(), start: vi.fn(), stop: vi.fn(),
@@ -29,7 +29,7 @@ vi.mock("@/lib/hidden-modules", () => ({
 }))
 vi.mock("@/hooks/use-business-date", () => ({ useBusinessDate: () => "2026-09-20" }))
 vi.mock("@/lib/api", () => ({
-  dashboardApi: { overview: mocks.overview, financialOverview: mocks.financialOverview, profitability: mocks.profitability, team: mocks.team, utilization: mocks.utilization, monthlyClose: mocks.monthlyClose, financialSettings: mocks.financialSettings, updateMonthlyClose: mocks.updateMonthlyClose, updateFinancialSettings: mocks.updateFinancialSettings, exportMonthlyClose: mocks.exportMonthlyClose },
+  dashboardApi: { overview: mocks.overview, operations: mocks.operations, financialOverview: mocks.financialOverview, profitability: mocks.profitability, team: mocks.team, utilization: mocks.utilization, monthlyClose: mocks.monthlyClose, financialSettings: mocks.financialSettings, updateMonthlyClose: mocks.updateMonthlyClose, updateFinancialSettings: mocks.updateFinancialSettings, exportMonthlyClose: mocks.exportMonthlyClose },
   discordApi: { preview: mocks.preview, send: mocks.send, settings: mocks.settings, sendWeeklyReport: mocks.weekly },
   tasksApi: { listAll: mocks.tasks, update: mocks.taskUpdate }, timeEntriesApi: { weekly: mocks.timeWeekly }, timerApi: { active: mocks.active, start: mocks.start, stop: mocks.stop },
   usersApi: { listAll: mocks.users }, clientsApi: { listAll: mocks.clients }, engineApi: { getConfig: mocks.engine }, leadsApi: { reminders: mocks.leads }, proposalsApi: { list: mocks.proposals }, holdedApi: { config: vi.fn(), dashboard: vi.fn() },
@@ -55,6 +55,7 @@ beforeEach(() => {
   mocks.financeEnabled = false
   mocks.usersEnabled = false
   mocks.overview.mockResolvedValue(operational)
+  mocks.operations.mockResolvedValue({ recurring_fee: null, projects_at_risk: null, clients_to_act: null, digests_unsent: null })
   mocks.financialOverview.mockResolvedValue({ total_budget: 10, total_cost: 2, margin: 8, margin_percent: 80 })
   mocks.team.mockResolvedValue([]); mocks.utilization.mockResolvedValue({ global_utilization_pct: 0, total_logged_hours: 0, total_available_hours: 0 })
   mocks.monthlyClose.mockResolvedValue({}); mocks.financialSettings.mockResolvedValue({}); mocks.users.mockResolvedValue([]); mocks.clients.mockResolvedValue([]); mocks.engine.mockResolvedValue({})

@@ -321,11 +321,12 @@ async def collect_report_conditions(db, user_id: int, now: datetime) -> dict[str
     return conditions
 
 
-async def _collect_unsent_monthly(db, user_id: int, today, *, skip_clients: set[int]) -> dict[str, Condition]:
-    """From day 1, every monthly client whose last month nobody confirmed as delivered.
+async def unsent_monthly_clients(db, user_id: int, today):
+    """Monthly clients of last month with no confirmed delivery, as this user sees them.
 
-    A responsible already told to prepare the digest (``report_pending``) does
-    not get a second notice for the same client until a version exists.
+    Admins see every one; a responsible sees theirs while they can still
+    prepare digests. Returns ``(period_start, period_end, rows)`` with
+    ``rows`` of ``(id, name)`` ordered by client id.
     """
     start, end = policy_digest_period("monthly", today=today)
     rows = (await db.execute(
@@ -338,6 +339,16 @@ async def _collect_unsent_monthly(db, user_id: int, today, *, skip_clients: set[
         )
         .order_by(Client.id)
     )).all()
+    return start, end, rows
+
+
+async def _collect_unsent_monthly(db, user_id: int, today, *, skip_clients: set[int]) -> dict[str, Condition]:
+    """From day 1, every monthly client whose last month nobody confirmed as delivered.
+
+    A responsible already told to prepare the digest (``report_pending``) does
+    not get a second notice for the same client until a version exists.
+    """
+    start, end, rows = await unsent_monthly_clients(db, user_id, today)
     rows = [row for row in rows if row.id not in skip_clients]
     if not rows:
         return {}

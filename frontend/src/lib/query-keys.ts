@@ -23,6 +23,7 @@ export const projectKeys = {
 export const dashboardKeys = {
   all: () => ["dashboard"] as const,
   overview: (year: number, month: number, userId?: number, permissionSignature = "") => ["dashboard", "overview", userId ?? "anonymous", permissionSignature, year, month] as const,
+  operations: (userId?: number, permissionSignature = "") => ["dashboard", "operations", userId ?? "anonymous", permissionSignature] as const,
   financialOverview: (year: number, month: number, userId?: number, permissionSignature = "") => ["dashboard", "financial-overview", userId ?? "anonymous", permissionSignature, year, month] as const,
   profitability: (year: number, month: number, userId?: number, permissionSignature = "") => ["dashboard", "profitability", userId ?? "anonymous", permissionSignature, year, month] as const,
   team: (year: number, month: number, userId?: number, permissionSignature = "") => ["dashboard", "team", userId ?? "anonymous", permissionSignature, year, month] as const,

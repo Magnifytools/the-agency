@@ -29,8 +29,6 @@ from backend.db.models import (
     DigestStatus,
     GscDaily,
     GscSiteSync,
-    Project,
-    ProjectStatus,
     Task,
     TaskStatus,
     TimeEntry,
@@ -42,6 +40,7 @@ from backend.services.dashboard_access import has_module_read
 from backend.services.digest_periods import policy_digest_period
 from backend.services.gsc_service import normalize_site_url
 from backend.services.incident_report_conditions import delivery_is_confirmed
+from backend.services.recurring_fee import active_monthly_fees
 from backend.services.seo_traffic import STABLE_BAND_PCT, is_traffic_drop, seo_traffic
 from backend.services.temporal import business_today, civil_day_utc_bounds
 from backend.services.time_entry_dates import time_entry_civil_period
@@ -197,13 +196,9 @@ async def _month_effort(db, clients: list[Client], today: date, *, with_money: b
     )).all()
     effort = {cid: {"minutes": int(m), "cost": float(c)} for cid, m, c in rows}
     if with_money:
-        fees = dict((await db.execute(select(
-            Project.client_id, func.coalesce(func.sum(Project.monthly_fee), 0),
-        ).where(
-            Project.client_id.in_(client_ids), Project.status == ProjectStatus.active,
-        ).group_by(Project.client_id))).all())
+        fees = await active_monthly_fees(db, client_ids)
         for client in clients:
-            fee = float(fees.get(client.id) or 0) or float(client.monthly_budget or 0)
+            fee = fees.get(client.id) or float(client.monthly_budget or 0)
             entry = effort.setdefault(client.id, {"minutes": 0, "cost": 0.0})
             entry["fee"] = fee or None
     return effort
