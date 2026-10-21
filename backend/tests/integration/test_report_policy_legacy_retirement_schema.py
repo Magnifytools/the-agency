@@ -60,10 +60,13 @@ async def clean(engine):
 async def published_previous(engine):
     prior = deployment_schema.MIGRATIONS[:deployment_schema.MIGRATIONS.index(MIGRATION)]
     await run_schema_migrations(engine, prior, schema_baseline.preflight)
-    async with AsyncSession(engine) as db:
-        db.add_all([Client(id=i, name=f"Cliente {i}", status=ClientStatus.active) for i in POLICIES])
-        await db.commit()
     async with engine.begin() as conn:
+        # Clientes en SQL: el ORM ya conoce columnas de pasos posteriores (brand_terms).
+        for client_id in POLICIES:
+            await conn.execute(text("""
+                INSERT INTO clients (id,name,contract_type,status,currency,is_internal,is_intermediary_deal,created_at,updated_at)
+                VALUES (:id,:name,'monthly','active','EUR',false,false,'2026-01-01','2026-01-02')
+            """), {"id": client_id, "name": f"Cliente {client_id}"})
         # SQL crudo: el ORM ya no conoce enabled/cadence.
         for client_id, (enabled, cadence, weekly, monthly) in POLICIES.items():
             await conn.execute(text("""

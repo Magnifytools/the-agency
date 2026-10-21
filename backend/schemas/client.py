@@ -2,8 +2,9 @@ from __future__ import annotations
 from typing import Optional
 
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 from backend.db.models import ContractType, ClientStatus
+from backend.services.seo_control import clean_brand_terms
 from backend.services.seo_traffic import SeoTrend, seo_traffic
 
 
@@ -48,6 +49,16 @@ class ClientUpdate(BaseModel):
     # Revenue intelligence
     context: Optional[str] = None
     slack_template: Optional[dict] = None
+    # Control SEO: búsquedas que cuentan como "de marca".
+    brand_terms: Optional[list[str]] = None
+
+    @field_validator("brand_terms", mode="before")
+    @classmethod
+    def _brand_terms(cls, value):
+        # null = sin términos (la columna no admite NULL).
+        if value is not None and not isinstance(value, list):
+            raise ValueError("Los términos de marca son una lista")
+        return clean_brand_terms(value)
 
 
 class ClientResponse(BaseModel):
@@ -63,6 +74,7 @@ class ClientResponse(BaseModel):
     notes: Optional[str] = None
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
+    brand_terms: list[str] = Field(default_factory=list)
     engine_project_id: Optional[int] = None
     vigil_slug: Optional[str] = None
     engine_content_count: Optional[int] = None
@@ -85,6 +97,11 @@ class ClientResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("brand_terms", mode="before")
+    @classmethod
+    def _brand_terms_list(cls, value):
+        return value or []
 
     # Semáforo SEO: derivado del summary de Engine, sin almacenamiento propio.
     @computed_field
