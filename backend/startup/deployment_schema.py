@@ -19,6 +19,9 @@ from backend.startup.project_review_schema import MIGRATION as PROJECT_REVIEW_MI
 from backend.startup.report_policy_cadences_schema import (
     MIGRATION as REPORT_POLICY_CADENCES_MIGRATION,
 )
+from backend.startup.report_policy_legacy_retirement_schema import (
+    MIGRATION as REPORT_POLICY_LEGACY_RETIREMENT_MIGRATION,
+)
 from backend.startup.schema_runner import run_schema_migrations
 from backend.startup.task_comment_ai_draft_schema import MIGRATION as TASK_COMMENT_AI_DRAFT_MIGRATION
 from backend.startup.task_procedure_schema import MIGRATION as TASK_PROCEDURE_MIGRATION
@@ -35,6 +38,7 @@ MIGRATIONS = (
     PHASE0_RETIREMENT_MIGRATION, VIGIL_MIGRATION, GSC_ACCOUNTS_MIGRATION, GA4_MIGRATION,
     TASK_COMMENT_AI_DRAFT_MIGRATION, CLIENT_SHARE_LINK_MIGRATION,
     CREDENTIALS_MIGRATION, REPORT_POLICY_CADENCES_MIGRATION,
+    REPORT_POLICY_LEGACY_RETIREMENT_MIGRATION,
 )
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 

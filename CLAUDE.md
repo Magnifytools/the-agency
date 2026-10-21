@@ -161,9 +161,10 @@ admin_users, admin_settings
   (`digest_periods.period_cadence` / `period_cadence_sql`): `weekly_digests` no
   guarda cadencia. `generation-preview` da una fila por cadencia encendida y
   la cohorte se identifica por (cliente, periodo). Las columnas antiguas
-  `enabled`/`cadence` siguen en BD (P12) como `legacy_enabled`/`legacy_cadence`
-  en el ORM: el PUT las mantiene en sincronía y nada nuevo debe leerlas;
-  pendientes de retirar (migración `report_policy_cadences_v1`).
+  `enabled`/`cadence` (una sola cadencia) se rellenaron en
+  `report_policy_cadences_v1` y se retiraron en
+  `report_policy_legacy_retirement_v1` (21 oct 2026). `ReportCadence` sigue
+  vivo: es la cadencia de un periodo en la API de resúmenes.
 - **`report_pending`**: uno por cada (cliente, cadencia) encendida sin versión
   de su periodo. Sólo un pendiente MENSUAL tapa el `report_unsent` del cliente.
 - **"Entregado" = evento de entrega externa** (`digest_external_delivery_events`,
@@ -510,11 +511,16 @@ cd mcp-server && .venv/bin/python -m pytest -q
   servir si falta una versión. Ejemplo reciente: `gsc_schema.py`. Las versiones
   ya publicadas son inmutables (su checksum se comprueba).
 - **Borrar una tabla o columna publicada no es un `DROP` suelto.** P12 se
-  verifica en cada arranque y exige todas sus tablas y columnas. El paso
-  `startup/phase0_retirement_schema.py` borra las de los módulos eliminados y
-  `schema_baseline` sólo perdona lo retirado cuando ya no existe. Para retirar
-  algo más: paso nuevo con su contrato, ampliar ese perdón y probar subida con
-  datos e instalación limpia (`test_phase0_retirement_schema.py`).
+  verifica en cada arranque y exige todas sus tablas y columnas. Los pasos de
+  retirada usan `startup/retirement_schema.py` (`Retirement("<x>_v1.json")`,
+  contrato con `drop_tables`/`drop_columns`) y `schema_baseline` sólo perdona lo
+  de su tupla `RETIREMENTS` cuando ya no existe. Para retirar algo más: contrato
+  + módulo de 5 líneas (ver `report_policy_legacy_retirement_schema.py`),
+  añadirlo a `RETIREMENTS` y al final de `MIGRATIONS`, quitar la columna del ORM
+  y de `readiness.py`, y probar subida con datos e instalación limpia
+  (`test_report_policy_legacy_retirement_schema.py`). Ojo: el `DROP` corre en el
+  pre-deploy, con el contenedor viejo aún sirviendo; si el ORM viejo mapea la
+  columna, sus consultas a esa tabla fallan hasta el relevo.
 - **`parse_claude_json` no puede exigir que la respuesta empiece por el JSON.** Con
   notas vacías el parser de dailys recibía una frase inventada antes del bloque
   ```json y respondía 502 en cada reintento (daily 129 de Nacho, oct 2026). Ahora

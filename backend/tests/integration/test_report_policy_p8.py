@@ -66,7 +66,7 @@ async def test_policy_is_opt_in_revisioned_and_disabled_keeps_responsible_access
     await member.aclose()
 
 
-async def test_policy_toggles_each_cadence_and_keeps_legacy_columns_in_sync(admin_client, admin_user, db_session):
+async def test_policy_toggles_each_cadence_independently(admin_client, admin_user, db_session):
     client = Client(name="Cliente dos cadencias", status=ClientStatus.active)
     db_session.add(client)
     await db_session.flush()
@@ -78,18 +78,13 @@ async def test_policy_toggles_each_cadence_and_keeps_legacy_columns_in_sync(admi
     assert orphan.status_code == 422
     assert orphan.json()["detail"]["code"] == "responsible_required"
 
-    async def legacy_columns():
-        return (await db_session.execute(text(
-            "SELECT enabled, cadence FROM client_report_policies WHERE client_id=:id"
-        ), {"id": client.id})).one()
+    async def stored():
+        return tuple((await db_session.execute(text(
+            "SELECT weekly_enabled, monthly_enabled FROM client_report_policies WHERE client_id=:id"
+        ), {"id": client.id})).one())
 
     revision = 0
-    for weekly, monthly, expected in (
-        (True, True, (True, "weekly")),
-        (False, True, (True, "monthly")),
-        (True, False, (True, "weekly")),
-        (False, False, (False, "weekly")),
-    ):
+    for weekly, monthly in ((True, True), (False, True), (True, False), (False, False)):
         response = await admin_client.put(url, json={
             "weekly_enabled": weekly, "monthly_enabled": monthly,
             "responsible_user_id": admin_user.id, "revision": revision,
@@ -99,7 +94,7 @@ async def test_policy_toggles_each_cadence_and_keeps_legacy_columns_in_sync(admi
         revision = body["revision"]
         assert (body["weekly_enabled"], body["monthly_enabled"], body["enabled"]) == (weekly, monthly, weekly or monthly)
         assert "cadence" not in body
-        assert tuple(await legacy_columns()) == expected
+        assert await stored() == (weekly, monthly)
 
 
 async def test_preview_lists_one_item_per_enabled_cadence(admin_client, admin_user, db_session):

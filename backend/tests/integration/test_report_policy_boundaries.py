@@ -32,8 +32,8 @@ async def test_report_upgrade_is_concurrent_idempotent_and_does_not_opt_in_clien
         async with isolated.begin() as conn:
             assert await conn.scalar(text("SELECT count(*) FROM client_report_policies")) == 0
             await conn.execute(text("INSERT INTO client_report_policies (client_id,created_at,updated_at) VALUES (1,now(),now())"))
-            row = (await conn.execute(text("SELECT enabled,cadence,responsible_user_id,revision FROM client_report_policies"))).one()
-            assert row == (False, "weekly", None, 1)
+            row = (await conn.execute(text("SELECT weekly_enabled,monthly_enabled,responsible_user_id,revision FROM client_report_policies"))).one()
+            assert row == (False, False, None, 1)
             await conn.execute(text("""INSERT INTO digest_external_delivery_events
                 (digest_id,action,actor_id,request_key,request_hash,created_at)
                 VALUES (1,'confirmed',1,'preserved-request-key','test-hash',now())"""))
