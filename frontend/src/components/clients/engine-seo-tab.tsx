@@ -10,7 +10,6 @@ import {
   MousePointerClick,
   Eye,
   TrendingUp,
-  TrendingDown,
   AlertTriangle,
   AlertCircle,
   CheckCircle,
@@ -22,6 +21,7 @@ import { toast } from "sonner"
 import { formatTimeAgo, getErrorMessage } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
 import { invalidateClientChange } from "@/lib/query-keys"
+import { DeltaBadge } from "@/components/clients/delta-badge"
 
 interface Props {
   client: Client
@@ -37,17 +37,6 @@ function formatNumber(n: number): string {
   return n.toLocaleString("es-ES")
 }
 
-
-function DeltaBadge({ value, invert }: { value: number | null; invert?: boolean }) {
-  if (value == null) return null
-  const positive = invert ? value < 0 : value > 0
-  return (
-    <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${positive ? "text-green-600" : value === 0 ? "text-muted-foreground" : "text-red-500"}`}>
-      {value > 0 ? <TrendingUp className="h-3 w-3" /> : value < 0 ? <TrendingDown className="h-3 w-3" /> : null}
-      {value > 0 ? "+" : ""}{value}%
-    </span>
-  )
-}
 
 function SeverityIcon({ severity }: { severity: string }) {
   if (severity === "critical") return <AlertCircle className="h-4 w-4 text-red-500" />

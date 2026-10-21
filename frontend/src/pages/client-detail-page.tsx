@@ -26,6 +26,7 @@ import { ClientReportPolicy } from "@/components/clients/client-report-policy"
 import { ClientSettingsTab } from "@/components/clients/client-settings-tab"
 import { EngineMetricsWidget } from "@/components/clients/engine-metrics-widget"
 import { EngineSeoTab } from "@/components/clients/engine-seo-tab"
+import { SeoControlTab } from "@/components/clients/seo-control/seo-control-tab"
 import { FichaTab } from "@/components/clients/ficha-tab"
 import { useAuth } from "@/context/auth-context"
 import { clientKeys, holdedKeys, projectKeys, timeKeys } from "@/lib/query-keys"
@@ -83,7 +84,7 @@ export default function ClientDetailPage() {
   const [creatingTask, setCreatingTask] = useState(false)
   const [whatIfOpen, setWhatIfOpen] = useState(false)
 
-  const validTabs = ["ficha", "contexto", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "seo", "ajustes", "facturas", "accesos", "web"] as const
+  const validTabs = ["ficha", "contexto", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "control_seo", "seo", "ajustes", "facturas", "accesos", "web"] as const
   type Tab = (typeof validTabs)[number]
 
   // Pestaña -> módulo que la sirve. Si el módulo está oculto, sus endpoints no
@@ -96,6 +97,8 @@ export default function ClientDetailPage() {
     web: "web",
   }
   const TAB_PERMISSION: Partial<Record<Tab, string>> = {
+    // Control SEO lee /api/clients/{id}/seo: lectura de clientes (la de la ficha).
+    control_seo: "clients",
     tareas: "tasks",
     proyectos: "projects",
     resumenes: "digests",
@@ -319,6 +322,9 @@ export default function ClientDetailPage() {
             label: "Resultados",
             tabs: [
               ...(isTabVisible("resumenes") ? (["resumenes"] as TabKey[]) : []),
+              // Control SEO (Search Console propio) con propiedad; "seo" es la de
+              // Engine: se llama "Engine" pero conserva la clave (?tab=seo).
+              ...(client.gsc_url ? (["control_seo"] as TabKey[]) : []),
               ...(client.engine_project_id ? (["seo"] as TabKey[]) : []),
               ...(isTabVisible("web") ? (["web"] as TabKey[]) : []),
               "panel",
@@ -360,7 +366,8 @@ export default function ClientDetailPage() {
           tiempo: "Tiempo",
           resumenes: "Resúmenes",
           comunicaciones: "Comunicaciones",
-          seo: "SEO",
+          control_seo: "Control SEO",
+          seo: "Engine",
           contactos: "Contactos",
           accesos: "Accesos",
           web: "Web",
@@ -679,7 +686,12 @@ export default function ClientDetailPage() {
         </Card>
       )}
 
-      {/* Tab: SEO */}
+      {/* Tab: Control SEO (Search Console por consulta y página) */}
+      {activeTab === "control_seo" && client.gsc_url && (
+        <SeoControlTab client={client} onOpenSettings={() => setActiveTab("ajustes")} />
+      )}
+
+      {/* Tab: Engine (antes "SEO"; la clave ?tab=seo se mantiene) */}
       {activeTab === "seo" && client.engine_project_id && <EngineSeoTab client={client} />}
 
       {/* Tab: Web (disponibilidad) */}

@@ -1,0 +1,11 @@
+{
+  "version": "20261022_client_brand_terms_v1",
+  "sql": "ALTER TABLE clients ADD COLUMN IF NOT EXISTS brand_terms JSONB NOT NULL DEFAULT '[]'::jsonb",
+  "columns": {
+    "brand_terms": [
+      "jsonb",
+      false,
+      "'[]'::jsonb"
+    ]
+  }
+}

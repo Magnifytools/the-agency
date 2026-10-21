@@ -192,7 +192,7 @@ def test_el_job_usa_el_lock_17_y_la_misma_puerta_que_gsc():
 
 # ── Las consultas y páginas no van a la IA (lo promete la política de privacidad) ──
 
-_FORBIDDEN = re.compile(r"GscQueryDaily|GscPageDaily|gsc_query_daily|gsc_page_daily|gsc_detail_service")
+_FORBIDDEN = re.compile(r"GscQueryDaily|GscPageDaily|gsc_query_daily|gsc_page_daily|gsc_detail_service|seo_control|client_seo")
 
 
 def _ai_paths() -> list[Path]:

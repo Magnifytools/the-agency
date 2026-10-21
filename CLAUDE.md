@@ -315,6 +315,43 @@ admin_users, admin_settings
   el editor enlaza ahí. Su `report-data` NO se usa: traga errores como ceros y
   no pondera la posición.
 
+## Control SEO por cliente
+
+- **Qué es**: pestaña "Control SEO" de la ficha (área Resultados, sólo si el
+  cliente tiene `gsc_url`). Lee lo que importan los jobs `gsc` (totales) y
+  `gsc_detail` (consultas y páginas, 120 días). La pestaña de The Engine se
+  llama ahora "Engine" y conserva la clave `?tab=seo`.
+- **API** (lectura de `clients`, mismo 404 que `/{id}/status`;
+  `api/routes/client_seo.py` → `services/seo_control.py`):
+  `GET /api/clients/{id}/seo?days=7|28` (totales, marca/sin marca/sin
+  clasificar + 16 semanas, secciones, 5 que más suben/bajan),
+  `/seo/queries` y `/seo/pages` (`sort=clicks_gain|clicks_loss|position_gain|position_loss`,
+  `brand` sólo en consultas, `section` sólo en páginas, `q`, `min_impressions`
+  (30; por posición vale en las dos ventanas, por clics en la mayor), `limit` ≤ 100).
+  `status`: `no_property | not_connected | reconnect_required | not_synced | backfilling | error | ok`.
+- **Ventana**: `seo_window(end, days)` es el MISMO helper que usa
+  `client_status._gsc_windows` (28 días; la anterior, los 28 de antes). Aquí
+  `end` = el último día que tienen a la vez `gsc_site_sync` y `gsc_detail_sync`.
+  Una agregación por tabla sobre el rango de la PK con `SUM(...) FILTER`.
+  Caché en proceso de 1 h por (propiedad, final, días, pasada de los jobs); la
+  marca se aplica después, así que cambiar los términos se ve al momento.
+- **Marca**: `clients.brand_terms` (JSONB, migración `client_brand_terms_v1`,
+  ≤ 20 términos de 3–60 caracteres, recortados y sin duplicados tras
+  normalizar). Una consulta es de marca si contiene un término por SUBCADENA
+  (sin regex), sin acentos ni mayúsculas, con o sin espacios. Se edita en
+  Configuración del cliente (chips + "Sugerir", que sólo propone). Entra en el
+  Deshacer como cualquier cambio del cliente.
+- **Sin clasificar** = total de `gsc_daily` − suma de consultas (nunca < 0):
+  son las búsquedas que Google oculta.
+- **Secciones**: primer tramo de la ruta (decodificado, en minúsculas; un
+  fichero suelto cuenta como sección; ruta vacía = "Inicio"; en propiedades de
+  dominio, otros subdominios se agrupan por host; en las de prefijo, la ruta
+  cuenta desde el prefijo). Reparto por CLICS: las impresiones por página no
+  suman el total, sólo se enseñan en absoluto.
+- **Fuera de la IA y del MCP a propósito** (política de privacidad): lo vigila
+  `test_el_detalle_de_search_console_no_llega_a_la_ia`, que también prohíbe
+  `seo_control`/`client_seo` en cualquier camino de IA.
+
 ## Estado del cliente (cartera)
 
 - **Qué es**: la antigua salud 0-100 se sustituyó (19 oct 2026) por un estado
