@@ -20,6 +20,10 @@ export function gscErrorLabel(code: string | null | undefined): string | null {
       return "La propiedad no existe en Search Console. Revisa cómo está escrita."
     case "rate_limited":
       return "Google ha limitado las peticiones. Se reintentará en la próxima pasada."
+    case "pending_access":
+      return "Aún sin cuenta asignada: se importará cuando la importación diaria encuentre una cuenta que la vea."
+    case "reconnect_required":
+      return "La cuenta de Google de esta propiedad necesita reconectarse."
     default:
       return "Search Console no respondió. Se reintentará en la próxima pasada."
   }

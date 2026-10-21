@@ -248,6 +248,7 @@ def test_startup_loops_match_enabled_catalog(monkeypatch):
         "inbox_classification": "inbox-classification",
         "vigil": "vigil-sync",
         "ga4": "ga4-sync",
+        "gsc_detail": "gsc-detail-sync",
     }
     definitions = {definition.spec.key: definition for definition in job_definitions()}
     expected = {

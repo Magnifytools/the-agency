@@ -179,6 +179,18 @@ async def _gsc_sync_once():
         raise JobFailure("partial_failure")
 
 
+async def _gsc_detail_sync_once():
+    from backend.db.database import async_session
+    from backend.services.gsc_detail_service import sync_all_detail
+    from backend.services.job_runtime import JobFailure
+
+    result = await sync_all_detail(async_session)
+    if result["status"] == "reconnect_required":
+        raise JobFailure("reconnect_required")
+    if result["failed"]:
+        raise JobFailure("partial_failure")
+
+
 async def _ga4_sync_once():
     from backend.db.database import async_session
     from backend.services.ga4_service import sync_all
@@ -314,6 +326,7 @@ def start_background_tasks() -> list[asyncio.Task]:
         "retention": ("retention-cleanup", _retention_cleanup_once),
         "inbox_classification": ("inbox-classification", _inbox_classification_once),
         "gsc": ("gsc-sync", _gsc_sync_once),
+        "gsc_detail": ("gsc-detail-sync", _gsc_detail_sync_once),
         "vigil": ("vigil-sync", _vigil_sync_once),
         "ga4": ("ga4-sync", _ga4_sync_once),
     }

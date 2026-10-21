@@ -283,6 +283,33 @@ admin_users, admin_settings
   siguiente pasada las reimporta desde cero. `delete()` masivo: fuera del Deshacer
   a propósito. Ojo: Google revoca el permiso ENTERO de esa cuenta para la app
   (mismo `GOOGLE_CLIENT_ID` que Calendar).
+- **Detalle por consulta y página (Control SEO, PR1)**: job `gsc_detail`
+  (lock **17**; 15/16 son de Webs; diario, timeout 1 h, misma puerta OAuth que
+  `gsc`) → `services/gsc_detail_service.py`. Tablas `gsc_query_daily` y
+  `gsc_page_daily` (PK sitio+día+consulta/página; página recortada a 2.000
+  caracteres) y `gsc_detail_sync` (estado + filas guardadas), migración
+  `gsc_detail_v1`. NO elige cuenta: usa `gsc_site_sync.connection_id` (lo decide
+  el job `gsc`); sin cuenta válida apunta `pending_access`/`no_access` y sigue.
+  Primera vez 120 días en tramos de 14; luego los últimos 7 (como `TAIL_DAYS`).
+  Por tramo y dimensión: llamada a Google sin transacción y después borrar el
+  tramo + insertar en lotes de 5.000 (reemplazo, no upsert: así desaparecen las
+  consultas que ya no salen). Paginación de 25.000 filas con 0,2 s entre páginas.
+  `POST /api/gsc/detail-sync` (admin) lo lanza a mano tomando el mismo lock (409
+  si hay una pasada en marcha); `/api/gsc/status` trae `detail` por propiedad.
+- **Retención del detalle (es lo que promete la política)**: se borra lo de más
+  de 120 días antes del último día con datos (si la propiedad se para, la
+  ventana avanza con el calendario, 7 días de margen) y todo lo de webs que
+  ningún cliente activo sigue (cliente Antiguo o `gsc_url` cambiada). Corre en
+  cada pasada, haya cuenta conectada o no. Desconectar con `purge_data` borra
+  también el detalle de esas propiedades.
+- **Dos trampas al leer el detalle**: (1) Google anonimiza las consultas poco
+  frecuentes, así que la suma de consultas < total de `gsc_daily`; "sin
+  clasificar" = total − suma de consultas. (2) Las impresiones por página NO
+  suman el total de la propiedad (una búsqueda que enseña dos páginas cuenta en
+  las dos): el total sale siempre de `gsc_daily`.
+- **El detalle no va a la IA**: ni resúmenes, ni borradores, ni asesor, ni
+  enlace del cliente, ni MCP. Lo vigila `test_el_detalle_de_search_console_no_llega_a_la_ia`
+  (`tests/test_gsc_detail.py`). Si lo cambias, cambia antes la política.
 - El PDF SEO completo sigue en The Engine (`/p/{engine_project_id}/reports`):
   el editor enlaza ahí. Su `report-data` NO se usa: traga errores como ceros y
   no pondera la posición.
@@ -393,7 +420,7 @@ admin_users, admin_settings
   `spa_headers()` en `backend/main.py`. `robots.txt` las deja leer (Allow) para
   que el noindex se vea; el resto sigue en `Disallow: /`.
 - **Lo que dicen tiene que ser verdad en el código**: qué se guarda de Search
-  Console, GA4 y Calendar, que nada de eso va a la IA, que desconectar borra el
+  Console (totales y 120 días de detalle por consulta y página), GA4 y Calendar, que nada de eso va a la IA, que desconectar borra el
   token y revoca en Google, que las cifras sólo se borran si el admin lo marca,
   que desconectar Calendar borra sus eventos importados y que los eventos de
   Google se borran 30 días después de terminar. Si cambias qué se lee o se
