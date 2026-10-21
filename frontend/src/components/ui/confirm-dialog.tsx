@@ -1,4 +1,5 @@
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import type { ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 
 interface ConfirmDialogProps {
@@ -9,6 +10,8 @@ interface ConfirmDialogProps {
   onConfirm: () => void
   confirmLabel?: string
   cancelLabel?: string
+  /** Contenido extra entre la descripción y los botones (p. ej. una casilla). */
+  children?: ReactNode
 }
 
 export function ConfirmDialog({
@@ -19,6 +22,7 @@ export function ConfirmDialog({
   onConfirm,
   confirmLabel = "Confirmar",
   cancelLabel = "Cancelar",
+  children,
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -26,6 +30,7 @@ export function ConfirmDialog({
         <DialogTitle>{title}</DialogTitle>
       </DialogHeader>
       <p className="text-sm text-muted-foreground mb-4">{description}</p>
+      {children}
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={() => onOpenChange(false)}>
           {cancelLabel}

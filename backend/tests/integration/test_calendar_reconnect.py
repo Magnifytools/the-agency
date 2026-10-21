@@ -120,7 +120,7 @@ async def test_stale_invalid_grant_cannot_disable_a_new_callback(fixture, monkey
         assert provider.decrypt_vault_secret((await db.get(User, ids["member"])).google_refresh_token) == "newer-synthetic-grant"
 
 
-async def test_disconnect_distinguishes_removed_credentials_and_preserves_events(fixture):
+async def test_disconnect_distinguishes_removed_credentials_and_deletes_imported_events(fixture):
     maker, ids, _ = fixture
     event_id = await connected(fixture)
     async with maker() as db:
@@ -132,7 +132,8 @@ async def test_disconnect_distinguishes_removed_credentials_and_preserves_events
         assert status["connection_status"] == "disconnected"
     async with maker() as db:
         assert (await db.get(User, ids["member"])).google_refresh_token is None
-        assert await db.get(Event, event_id) is not None
+        # Desconectar borra los eventos importados de Google de esa persona.
+        assert await db.get(Event, event_id) is None
 
 
 async def test_connected_flag_without_credential_is_effectively_disconnected(

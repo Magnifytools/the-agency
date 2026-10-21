@@ -29,6 +29,7 @@ from backend.services.google_calendar_service import (
     fetch_events,
     get_auth_url,
 )
+from backend.services.google_oauth import plain_refresh_token, revoke_token
 from backend.services.temporal import business_zone, utc_isoformat, utc_now_naive
 
 logger = logging.getLogger(__name__)
@@ -184,15 +185,27 @@ async def calendar_disconnect(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Disconnect Google Calendar."""
+    """Desconecta Google Calendar: borra el token, lo revoca en Google y borra
+    los eventos importados de esa persona (son suyos y sólo servían para sus
+    avisos). Los eventos manuales se quedan."""
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
+    token = plain_refresh_token(user.google_refresh_token)
     user.google_refresh_token = None
     user.google_calendar_id = None
     user.google_calendar_connected = False
     user.google_calendar_synced_at = None
+    # delete() masivo: no entra en el Deshacer, a propósito (Event tampoco está
+    # en change_journal y un undo no podría devolver el permiso de Google).
+    deleted = (await db.execute(
+        delete(Event).where(Event.user_id == user.id, Event.source == "google")
+    )).rowcount or 0
     await db.commit()
-    return {"ok": True}
+    # Después del commit: la copia local desaparece aunque Google no conteste.
+    revoked = await revoke_token(token) if token else False
+    if token and not revoked:
+        logger.warning("Calendar de user_id=%s desconectado sin confirmación de revocación en Google", user.id)
+    return {"ok": True, "google_revoked": revoked, "events_deleted": deleted}
 
 
 # ── Alert Settings ──────────────────────────────────────────

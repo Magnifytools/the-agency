@@ -732,9 +732,10 @@ export function CalendarSection() {
 
   const disconnectMut = useMutation({
     mutationFn: calendarApi.disconnect,
-    onSuccess: () => {
+    onSuccess: (result) => {
       void invalidateCalendarViews(queryClient)
-      toast.success("Google Calendar desconectado")
+      if (result.google_revoked) toast.success("Google Calendar desconectado: acceso revocado en Google y reuniones importadas borradas")
+      else toast.warning("Google Calendar desconectado y reuniones importadas borradas, pero Google no confirmó la revocación: retira el acceso en myaccount.google.com/permissions")
     },
     onError: () => toast.error("Error al desconectar"),
   })

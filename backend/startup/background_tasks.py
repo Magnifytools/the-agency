@@ -203,12 +203,15 @@ async def _retention_cleanup_once():
 
     Runs once shortly after startup and then every 24h. Logs and
     audit-style rows older than 90 days are deleted; notifications
-    that have already been read get a 30-day window.
+    that have already been read get a 30-day window. Eventos importados de
+    Google Calendar: se borran 30 días después de terminar (política de
+    privacidad); los manuales no se tocan.
     """
     from datetime import datetime, timedelta
     from sqlalchemy import delete
     from backend.db.database import async_session
     from backend.db.models import AuditLog, ChangeLog, SyncLog, HoldedSyncLog, Notification
+    from backend.services.google_calendar_service import purge_past_google_events
 
     now = utc_now_naive()
     cutoff_90d = now - timedelta(days=90)
@@ -234,10 +237,12 @@ async def _retention_cleanup_once():
             )
         )
         total += r.rowcount or 0
+        google_events = await purge_past_google_events(db)
         await db.commit()
         logging.info(
-            "Retention sweep: deleted %d rows (logs >90d, read notifications >30d)",
-            total,
+            "Retention sweep: deleted %d rows (logs >90d, read notifications >30d) "
+            "and %d imported Google events ended >30d ago",
+            total, google_events,
         )
 
 

@@ -272,6 +272,16 @@ admin_users, admin_settings
 - **Producción necesita** (una vez, en Google Cloud del cliente OAuth): activar
   la Search Console API, añadir el redirect `https://agency.magnifytools.com/api/gsc/callback`
   y el scope `webmasters.readonly` en la pantalla de consentimiento.
+- **Desconectar** (`POST /api/gsc/connections/{id}/disconnect`, sólo admin):
+  borra la fila y su token y DESPUÉS revoca en Google
+  (`services/google_oauth.revoke_token`, 10 s, nunca lanza). Si Google no lo
+  confirma, se desconecta igual y la respuesta lleva `google_revoked: false`
+  para que el front lo diga. Con `{"purge_data": true}` (casilla del diálogo)
+  borra además `gsc_daily`/`gsc_site_sync` y `ga4_daily`/`ga4_property_sync` de
+  las propiedades cuyo `connection_id` era esa cuenta; si otra cuenta las ve, la
+  siguiente pasada las reimporta desde cero. `delete()` masivo: fuera del Deshacer
+  a propósito. Ojo: Google revoca el permiso ENTERO de esa cuenta para la app
+  (mismo `GOOGLE_CLIENT_ID` que Calendar).
 - El PDF SEO completo sigue en The Engine (`/p/{engine_project_id}/reports`):
   el editor enlaza ahí. Su `report-data` NO se usa: traga errores como ceros y
   no pondera la posición.
@@ -383,8 +393,23 @@ admin_users, admin_settings
   que el noindex se vea; el resto sigue en `Disallow: /`.
 - **Lo que dicen tiene que ser verdad en el código**: qué se guarda de Search
   Console, GA4 y Calendar, que nada de eso va a la IA, que desconectar borra el
-  token pero no las cifras. Si cambias qué se lee o se guarda de Google, cambia
-  la política en el mismo PR.
+  token y revoca en Google, que las cifras sólo se borran si el admin lo marca,
+  que desconectar Calendar borra sus eventos importados y que los eventos de
+  Google se borran 30 días después de terminar. Si cambias qué se lee o se
+  guarda de Google, cambia la política en el mismo PR.
+
+## Google Calendar: desconexión y retención
+- `POST /api/calendar/disconnect`: borra el token, borra SIEMPRE los `events`
+  con `source="google"` de esa persona (los manuales se quedan) y, tras el
+  commit, revoca el token en Google con `google_oauth.revoke_token` (mismo
+  criterio que Search Console: no bloquea; `google_revoked` en la respuesta).
+- Retención: el job diario `retention` (`_retention_cleanup_once`) llama a
+  `google_calendar_service.purge_past_google_events`: borra los eventos de
+  Google cuyo fin (o inicio si no hay fin) es de hace más de 30 días, en hora
+  civil de la agencia. Ambos borrados son `delete()` masivos: fuera del Deshacer
+  (Event tampoco está en el journal).
+- En tests, el fixture autouse `_no_real_google_revoke` (`backend/tests/conftest.py`)
+  sustituye la revocación en las rutas: nunca sale a la red.
 
 ## Extensión de Chrome: descarga
 - Ajustes → "Extensión de Chrome" (`components/settings/extension-section.tsx`):

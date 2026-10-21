@@ -140,3 +140,19 @@ async def member_client(member_user):
         yield client
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_real_google_revoke(monkeypatch):
+    """Desconectar Google revoca el token en Google: en los tests nunca sale a la red.
+
+    Se sustituye donde lo usan las rutas; los tests de ``google_oauth.revoke_token``
+    llaman a la función real con httpx simulado. Un test que quiera ver la
+    llamada usa este fixture (``_no_real_google_revoke``) y mira sus llamadas.
+    """
+    from backend.api.routes import google_calendar, gsc
+
+    fake = AsyncMock(return_value=True)
+    monkeypatch.setattr(gsc, "revoke_token", fake)
+    monkeypatch.setattr(google_calendar, "revoke_token", fake)
+    return fake

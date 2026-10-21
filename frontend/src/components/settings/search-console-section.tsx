@@ -2,8 +2,11 @@ import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { Search } from "lucide-react"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { gscApi } from "@/lib/api"
-import { formatDay, gscErrorLabel } from "@/lib/gsc"
+import { disconnectMessage, formatDay, gscErrorLabel } from "@/lib/gsc"
+
+type Pending = { id: number; email: string | null }
 
 /** Conexión de la agencia con Search Console. Sólo para admins. */
 export function SearchConsoleSection() {
@@ -30,11 +33,14 @@ export function SearchConsoleSection() {
     },
     onError: () => toast.error("No se pudo iniciar la conexión con Google"),
   })
+  const [pending, setPending] = useState<Pending | null>(null)
+  const [purgeData, setPurgeData] = useState(false)
   const disconnectMut = useMutation({
-    mutationFn: (connectionId: number) => gscApi.disconnect(connectionId),
-    onSuccess: () => {
+    mutationFn: ({ id, purge }: { id: number; purge: boolean }) => gscApi.disconnect(id, purge),
+    onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ["gsc-status"] })
-      toast.success("Cuenta desconectada. Los datos importados se conservan.")
+      if (result.google_revoked) toast.success(disconnectMessage(result))
+      else toast.warning(disconnectMessage(result))
     },
     onError: () => toast.error("Error al desconectar"),
   })
@@ -91,7 +97,8 @@ export function SearchConsoleSection() {
                         Reconectar
                       </button>
                     )}
-                    <button onClick={() => disconnectMut.mutate(connection.id)} disabled={disconnectMut.isPending}
+                    <button onClick={() => { setPurgeData(false); setPending({ id: connection.id, email: connection.google_email }) }}
+                      disabled={disconnectMut.isPending}
                       aria-label={`Desconectar ${connection.google_email ?? "cuenta"}`}
                       className="px-3 py-1.5 text-xs text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50">
                       Desconectar
@@ -101,6 +108,25 @@ export function SearchConsoleSection() {
               ))}
             </ul>
           )}
+          <ConfirmDialog
+            open={pending !== null}
+            onOpenChange={(open) => !open && setPending(null)}
+            title={`¿Desconectar ${pending?.email ?? "esta cuenta"}?`}
+            description="Se borra su token y se revoca en Google el acceso de The Agency a esa cuenta. Google lo retira entero: si alguien tiene conectado aquí el Calendar de esa misma cuenta, tendrá que reconectarlo."
+            confirmLabel="Desconectar"
+            onConfirm={() => pending && disconnectMut.mutate({ id: pending.id, purge: purgeData })}
+          >
+            <label className="mb-4 flex items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-0.5" checked={purgeData} onChange={(e) => setPurgeData(e.target.checked)} />
+              <span>
+                Borrar también las cifras importadas de sus propiedades
+                <span className="block text-xs text-muted-foreground">
+                  Search Console y Analytics de las propiedades que se importaban con esta cuenta. Si otra cuenta conectada
+                  también las ve, se volverán a importar desde cero.
+                </span>
+              </span>
+            </label>
+          </ConfirmDialog>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => connectMut.mutate()} disabled={connectMut.isPending}
               className="px-4 py-2 bg-brand text-black text-sm font-semibold rounded-xl hover:bg-brand/90 transition-colors disabled:opacity-50">

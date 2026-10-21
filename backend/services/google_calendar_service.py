@@ -159,3 +159,30 @@ def fetch_events(
 def encrypt_refresh_token(token: str) -> str:
     """Encrypt a refresh token for storage."""
     return encrypt_vault_secret(token)
+
+
+# Los eventos importados de Google sólo sirven para la próxima reunión y sus
+# avisos: pasado este plazo desde que terminan, se borran (retención diaria).
+IMPORTED_EVENT_RETENTION_DAYS = 30
+
+
+async def purge_past_google_events(db, *, now: datetime | None = None) -> int:
+    """Borra los eventos importados de Google que terminaron hace más de 30 días.
+
+    Las horas de ``events`` son civiles (zona de la agencia, sin tz), así que el
+    corte también. Sin ``end_time`` cuenta el inicio. Los eventos manuales no se
+    tocan. ``delete()`` masivo: no entra en el Deshacer (Event no está en el
+    journal) y no hace commit; lo hace quien llama.
+    """
+    from sqlalchemy import delete, func
+
+    from backend.db.models import Event
+    from backend.services.temporal import business_zone
+
+    now = now or datetime.now(business_zone()).replace(tzinfo=None)
+    cutoff = now - timedelta(days=IMPORTED_EVENT_RETENTION_DAYS)
+    result = await db.execute(delete(Event).where(
+        Event.source == "google",
+        func.coalesce(Event.end_time, Event.start_time) < cutoff,
+    ))
+    return result.rowcount or 0

@@ -40,6 +40,7 @@ class TestCalendarDisconnect:
     async def test_disconnect_returns_ok(self, admin_client):
         resp = await admin_client.post("/api/calendar/disconnect")
         assert resp.status_code == 200
+        assert resp.json()["ok"] is True
 
 
 @pytest.mark.asyncio
