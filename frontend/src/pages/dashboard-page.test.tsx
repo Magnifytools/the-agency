@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   user: null as null | { id: number; role: "admin" | "member"; permissions: Array<{ module: string; can_read: boolean; can_write: boolean }> },
   financeEnabled: false,
   usersEnabled: false,
+  extraModules: [] as string[],
   overview: vi.fn(), operations: vi.fn(), financialOverview: vi.fn(), profitability: vi.fn(), team: vi.fn(), utilization: vi.fn(),
   monthlyClose: vi.fn(), financialSettings: vi.fn(), updateMonthlyClose: vi.fn(), updateFinancialSettings: vi.fn(), exportMonthlyClose: vi.fn(),
   preview: vi.fn(), send: vi.fn(), settings: vi.fn(), weekly: vi.fn(),
@@ -25,7 +26,7 @@ vi.mock("@/context/auth-context", () => ({
   }),
 }))
 vi.mock("@/lib/hidden-modules", () => ({
-  isEnabled: (module: string) => module === "finance" ? mocks.financeEnabled : module === "users" ? mocks.usersEnabled : module === "tasks" || module === "timesheet",
+  isEnabled: (module: string) => mocks.extraModules.includes(module) || (module === "finance" ? mocks.financeEnabled : module === "users" ? mocks.usersEnabled : module === "tasks" || module === "timesheet"),
 }))
 vi.mock("@/hooks/use-business-date", () => ({ useBusinessDate: () => "2026-09-20" }))
 vi.mock("@/lib/api", () => ({
@@ -38,7 +39,6 @@ vi.mock("@/components/dashboard/daily-update-widget", () => ({ DailyUpdateWidget
 vi.mock("@/components/dashboard/deberes-widget", () => ({ DeberesWidget: () => <div /> }))
 vi.mock("@/components/dashboard/today-block", () => ({ TodayBlock: () => <div /> }))
 vi.mock("@/components/dashboard/inbox-widget", () => ({ InboxWidget: () => <div /> }))
-vi.mock("@/components/dashboard/engine-alerts-widget", () => ({ EngineAlertsWidget: () => <div /> }))
 vi.mock("@/components/pm/insights-panel", () => ({ InsightsPanel: () => <div /> }))
 vi.mock("@/components/pm/daily-briefing", () => ({ DailyBriefingButton: () => <div /> }))
 vi.mock("@/components/delivery-receipts", () => ({ ManualDeliveryReceipts: () => <div />, deliveryToast: vi.fn() }))
@@ -54,6 +54,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.financeEnabled = false
   mocks.usersEnabled = false
+  mocks.extraModules = []
   mocks.overview.mockResolvedValue(operational)
   mocks.operations.mockResolvedValue({ recurring_fee: null, projects_at_risk: null, clients_to_act: null, digests_unsent: null })
   mocks.financialOverview.mockResolvedValue({ total_budget: 10, total_cost: 2, margin: 8, margin_percent: 80 })
@@ -83,6 +84,16 @@ describe("DashboardPage", () => {
       "title",
       "Enviar por Discord DM el último informe laboral cerrado (lunes a viernes)",
     )
+  })
+
+  it("no depende de The Engine: ni alertas de Engine ni lista de clientes para enlazarlo", async () => {
+    mocks.user = { id: 1, role: "admin", permissions: [] }
+    mocks.extraModules = ["clients", "engine"]
+    show()
+    await screen.findByText("Clientes externos activos")
+    expect(screen.queryByText(/Alertas SEO Engine/)).not.toBeInTheDocument()
+    expect(mocks.clients).not.toHaveBeenCalled()
+    expect(mocks.engine).not.toHaveBeenCalled()
   })
 
   it("does not fetch team, finance, or task sources for a member without those permissions", async () => {

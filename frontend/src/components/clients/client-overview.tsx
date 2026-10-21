@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { ClientStatusBadge, ClientStatusReasons, DigestCell, SeoCell } from "@/components/clients/client-status"
 
-type Section = "tareas" | "resumenes" | "seo" | "contexto" | "contactos"
+type Section = "tareas" | "resumenes" | "control_seo" | "contexto" | "contactos"
 
 const OPEN = new Set(["backlog", "pending", "in_progress", "advanced", "in_review", "waiting"])
 const day = (value: string) => new Date(value.length > 10 ? value : `${value}T12:00:00`)
@@ -34,12 +34,11 @@ interface Props {
   tasks: Task[] | null
   canReadDigests: boolean
   canReadContacts: boolean
-  engineReportsUrl: string | null
   onNavigate: (section: Section) => void
 }
 
 /** Vista general de la ficha: estado arriba y Trabajo · Resultados · Relación debajo. */
-export function ClientOverview({ client, status, statusFailed, onRetryStatus, tasks, canReadDigests, canReadContacts, engineReportsUrl, onNavigate }: Props) {
+export function ClientOverview({ client, status, statusFailed, onRetryStatus, tasks, canReadDigests, canReadContacts, onNavigate }: Props) {
   const { data: contacts = [] } = useQuery({
     queryKey: ["client-contacts", client.id],
     queryFn: () => contactsApi.list(client.id),
@@ -131,7 +130,7 @@ export function ClientOverview({ client, status, statusFailed, onRetryStatus, ta
           <div>
             <p className="mb-0.5 text-xs font-medium">Tráfico de Google</p>
             <SeoCell seo={status?.seo ?? null} />
-            {client.engine_project_id && <GoTo onClick={() => onNavigate("seo")}>Ver SEO</GoTo>}
+            {client.gsc_url && <GoTo onClick={() => onNavigate("control_seo")}>Ver Control SEO</GoTo>}
           </div>
           {canReadDigests && (
             <div>
@@ -175,11 +174,6 @@ export function ClientOverview({ client, status, statusFailed, onRetryStatus, ta
                 Abrir en Vigil <ExternalLink className="h-3 w-3" />
               </a>
             </div>
-          )}
-          {engineReportsUrl && (
-            <a href={engineReportsUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-brand hover:underline">
-              Informe SEO en PDF (The Engine) <ExternalLink className="h-3 w-3" />
-            </a>
           )}
         </CardContent></Card>
 

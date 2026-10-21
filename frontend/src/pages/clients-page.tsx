@@ -166,15 +166,18 @@ function ClientsPageBody() {
     return () => window.removeEventListener("storage", onStorage)
   }, [userId])
 
+  const clientsQuery = useQuery({
+    queryKey: [...clientKeys.all(), tab, cohort, page, pageSize, seoSort],
+    queryFn: () => clientsApi.list({ status: tab === "all" ? undefined : tab, cohort, page, page_size: pageSize, sort: seoSort }),
+  })
+
+  // The Engine está congelado (21 oct 2026): sólo hace falta su URL para el
+  // enlace "Engine" de los clientes que siguen vinculados.
   const { data: engineConfig } = useQuery({
     queryKey: ["engine-config"],
     queryFn: () => engineApi.getConfig(),
     staleTime: 10 * 60_000,
-  })
-
-  const clientsQuery = useQuery({
-    queryKey: [...clientKeys.all(), tab, cohort, page, pageSize, seoSort],
-    queryFn: () => clientsApi.list({ status: tab === "all" ? undefined : tab, cohort, page, page_size: pageSize, sort: seoSort }),
+    enabled: !!clientsQuery.data?.items.some((c) => c.engine_project_id != null),
   })
   const clientsDenied = [401, 403].includes((clientsQuery.error as { response?: { status?: number } } | null)?.response?.status ?? 0)
   const data = clientsQuery.isError ? undefined : clientsQuery.data
@@ -585,7 +588,7 @@ function ClientsPageBody() {
                 <div className="flex flex-wrap items-center gap-2">
                   {statusBadge(c.status)}
                   {isAdmin && c.monthly_budget != null && <Badge variant="outline" className="text-xs">{formatCurrency(c.monthly_budget)}</Badge>}
-                  {c.engine_project_id != null && <SeoTrendBadge linked trend={c.seo_trend} changePct={c.seo_clicks_change_pct} />}
+                  {c.gsc_url && <SeoTrendBadge linked trend={c.seo_trend} changePct={c.seo_clicks_change_pct} />}
                 </div>
               </div>
             )
@@ -670,7 +673,7 @@ function ClientsPageBody() {
                 {isAdmin && <TableCell className="mono">{c.monthly_budget != null ? formatCurrency(c.monthly_budget) : "-"}</TableCell>}
                 <TableCell>{statusBadge(c.status)}</TableCell>
                 <TableCell className="hidden md:table-cell">
-                  <SeoTrendBadge linked={c.engine_project_id != null} trend={c.seo_trend} changePct={c.seo_clicks_change_pct} />
+                  <SeoTrendBadge linked={!!c.gsc_url} trend={c.seo_trend} changePct={c.seo_clicks_change_pct} />
                 </TableCell>
                 {canWriteClients && <TableCell>
                   <div className="flex gap-1">

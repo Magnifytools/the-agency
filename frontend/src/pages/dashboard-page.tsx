@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { dashboardApi, discordApi, tasksApi, timeEntriesApi, timerApi, usersApi, clientsApi, leadsApi, proposalsApi, engineApi, holdedApi } from "@/lib/api"
+import { dashboardApi, discordApi, tasksApi, timeEntriesApi, timerApi, usersApi, leadsApi, proposalsApi, holdedApi } from "@/lib/api"
 import { dashboardKeys, holdedKeys, invalidateTaskChange, invalidateTimeChange, taskKeys, timeKeys } from "@/lib/query-keys"
 import { profitabilityStatus } from "@/lib/profitability"
 import { isEnabled } from "@/lib/hidden-modules"
@@ -14,7 +14,6 @@ import { InsightsPanel } from "@/components/pm/insights-panel"
 import { DailyBriefingButton } from "@/components/pm/daily-briefing"
 import { deliveryToast, ManualDeliveryReceipts } from "@/components/delivery-receipts"
 import { OverdueTasks } from "@/components/dashboard/overdue-tasks"
-import { EngineAlertsWidget } from "@/components/dashboard/engine-alerts-widget"
 import { LeadFollowups } from "@/components/dashboard/lead-followups"
 import { MonthlyCloseChecklist } from "@/components/dashboard/monthly-close-checklist"
 import { TeamSummaryTable } from "@/components/dashboard/team-summary-table"
@@ -25,7 +24,7 @@ import { Select } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { InfoTooltip } from "@/components/ui/tooltip"
-import { CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink, Play, Square, Check, UserCog, AlertTriangle, ChevronLeft, ChevronRight, BarChart3 } from "lucide-react"
+import { CheckSquare, Clock, DollarSign, Send, Eye, FileText, Play, Square, Check, UserCog, AlertTriangle, ChevronLeft, ChevronRight, BarChart3 } from "lucide-react"
 import { toast } from "sonner"
 import { Link } from "react-router-dom"
 import { InboxWidget } from "@/components/dashboard/inbox-widget"
@@ -138,17 +137,7 @@ export default function DashboardPage() {
   const financialOverviewForbidden = isForbidden(financialOverviewQuery.error)
   const monthlyCloseForbidden = isForbidden(monthlyCloseFailure)
   const financialSettingsForbidden = isForbidden(financialSettingsFailure)
-  const { data: allClients, isError: allClientsError, refetch: refetchClients } = useQuery({
-    queryKey: ["dashboard", "clients-active", user?.id ?? "anonymous", dashboardPermissionSignature],
-    queryFn: () => clientsApi.listAll("active"),
-    enabled: !!user && hasPermission("clients") && isEnabled("clients"),
-  })
-  const { data: engineConfig } = useQuery({
-    queryKey: ["dashboard", "engine-config", user?.id ?? "anonymous", dashboardPermissionSignature],
-    queryFn: () => engineApi.getConfig(),
-    staleTime: 10 * 60_000,
-    enabled: !!user && isEnabled("engine"),
-  })
+  // The Engine está congelado (21 oct 2026): el panel ya no lee nada de Engine.
   // `enabled` corta la petición de raíz cuando el módulo está oculto: su router
   // no está registrado, así que la llamada sería un 404 en cada carga del panel.
   const { data: leadReminders } = useQuery({
@@ -724,14 +713,6 @@ export default function DashboardPage() {
       <InsightsPanel />
 
       {isAdmin && allOverdueTasks && allOverdueTasks.length > 0 && <OverdueTasks tasks={allOverdueTasks} showAssigned title="Tareas vencidas del equipo" />}
-      {allClientsError ? (
-        <Card>
-          <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
-            <p role="alert" className="text-sm">No se pudo cargar la relación de clientes para las métricas de Engine.</p>
-            <Button variant="outline" size="sm" onClick={() => void refetchClients()}>Reintentar</Button>
-          </CardContent>
-        </Card>
-      ) : allClients ? <EngineAlertsWidget clients={allClients} /> : null}
       {leadReminders && <LeadFollowups reminders={leadReminders} />}
 
       {/* Proposals pipeline */}
@@ -815,26 +796,9 @@ export default function DashboardPage() {
                 </TableHeader>
                 <TableBody>
                   {profitability.clients.map((c) => {
-                    const linkedClient = allClients?.find((cl) => cl.id === c.client_id)
-                    const enginePid = linkedClient?.engine_project_id
                     return (
                     <TableRow key={c.client_id}>
-                      <TableCell className="font-medium">
-                        <span className="flex items-center gap-1.5">
-                          {c.client_name}
-                          {enginePid && engineConfig?.engine_frontend_url && (
-                            <a
-                              href={`${engineConfig.engine_frontend_url}/p/${enginePid}/dashboard`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title="Abrir en Engine"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground hover:text-brand" />
-                            </a>
-                          )}
-                        </span>
-                      </TableCell>
+                      <TableCell className="font-medium">{c.client_name}</TableCell>
                       <TableCell className="mono">{formatCurrency(c.budget)}</TableCell>
                       <TableCell className="mono">{formatCurrency(c.cost)}</TableCell>
                       <TableCell className="mono">{Math.round((c.estimated_minutes || 0) / 60)}h</TableCell>

@@ -32,8 +32,6 @@ from backend.db.models import (
     ACTIVE_TASK_STATUSES,
     Client,
     ClientReportPolicy,
-    GscDaily,
-    GscSiteSync,
     Task,
     TaskStatus,
     TimeEntry,
@@ -46,8 +44,7 @@ from backend.services.digest_periods import enabled_cadences, period_cadence_sql
 from backend.services.gsc_service import normalize_site_url
 from backend.services.incident_report_conditions import delivery_is_confirmed
 from backend.services.recurring_fee import active_monthly_fees
-from backend.services.seo_control import SEO_WINDOW_DAYS, seo_window
-from backend.services.seo_traffic import STABLE_BAND_PCT, is_traffic_drop, seo_traffic
+from backend.services.seo_traffic import traffic_by_site
 from backend.services.temporal import business_today, civil_day_utc_bounds
 from backend.services.time_entry_dates import time_entry_civil_period
 from backend.services import ga4_service
@@ -57,7 +54,10 @@ from backend.services.web.uptime_views import client_blocks as uptime_blocks, st
 Status = Literal["ok", "watch", "act", "no_data"]
 _RANK = {"no_data": 0, "ok": 1, "watch": 2, "act": 3}
 
-# Ventana del tráfico: SEO_WINDOW_DAYS (28) de `seo_control`, la misma que Control SEO.
+# Ventana del tráfico: `seo_window` (28 días) de `seo_control`, vía `seo_traffic`:
+# la misma que Control SEO, el semáforo de la lista y la incidencia de caída.
+# Sin propiedad de Search Console no hay señal de tráfico: The Engine está
+# congelado desde el 21 oct 2026 y ya no hace de respaldo.
 # Días de margen para enviar un resumen tras cerrar su periodo.
 DIGEST_GRACE_DAYS = 5
 OVERDUE_ACT = 3
@@ -103,50 +103,21 @@ class _Signals:
         return next(k for k, v in _RANK.items() if v == worst)
 
 
-def _pct(current: int, previous: int) -> float | None:
-    if previous <= 0:
-        return None
-    return round((current - previous) * 100 / previous, 1)
-
-
-def _trend(clicks: int, previous: int) -> tuple[str | None, float | None]:
-    change = _pct(clicks, previous)
-    if is_traffic_drop(clicks, previous):
-        return "drop_alert", change
-    if change is None:
-        return None, None
-    if change > STABLE_BAND_PCT:
-        return "up", change
-    if change < -STABLE_BAND_PCT:
-        return "down", change
-    return "stable", change
-
-
 # ── Señales por lotes ────────────────────────────────────────────────
 
 
 async def _gsc_windows(db, sites: set[str]) -> dict[str, dict]:
-    """Clics de los últimos 28 días con datos finales y de los 28 anteriores."""
-    if not sites:
-        return {}
-    states = (await db.scalars(select(GscSiteSync).where(
-        GscSiteSync.site_url.in_(sites), GscSiteSync.backfilled_at.isnot(None),
-        GscSiteSync.last_data_date.isnot(None),
-    ))).all()
-    out = {}
-    for state in states:
-        # La misma ventana que la pestaña Control SEO (helper compartido).
-        window = seo_window(state.last_data_date, SEO_WINDOW_DAYS)
-        end = window.end
-        row = (await db.execute(select(
-            func.coalesce(func.sum(GscDaily.clicks).filter(GscDaily.date >= window.start), 0),
-            func.coalesce(func.sum(GscDaily.clicks).filter(GscDaily.date < window.start), 0),
-        ).where(
-            GscDaily.site_url == state.site_url,
-            GscDaily.date >= window.previous_start, GscDaily.date <= end,
-        ))).one()
-        out[state.site_url] = {"clicks": int(row[0]), "previous": int(row[1]), "as_of": end}
-    return out
+    """Clics de los últimos 28 días con datos finales y de los 28 anteriores.
+
+    Lo calcula `seo_traffic` (una consulta para todas las propiedades) con la
+    ventana compartida `seo_window`: el semáforo de la lista, la incidencia de
+    caída y Control SEO dan la misma cifra.
+    """
+    return {
+        site: {"clicks": t.clicks, "previous": t.clicks_previous, "as_of": t.as_of,
+               "trend": t.trend, "change_pct": t.clicks_change_pct}
+        for site, t in (await traffic_by_site(db, sites)).items()
+    }
 
 
 async def _overdue_and_waiting(db, client_ids: list[int], today: date) -> dict[int, dict]:
@@ -330,15 +301,8 @@ async def portfolio(
         site = sites.get(client.id)
         if site and site in gsc:
             g = gsc[site]
-            trend, change = _trend(g["clicks"], g["previous"])
             seo = {"source": "search_console", "clicks": g["clicks"], "clicks_previous": g["previous"],
-                   "change_pct": change, "trend": trend, "as_of": g["as_of"].isoformat()}
-        else:
-            engine = seo_traffic(client.engine_summary_data) if client.engine_project_id else None
-            if engine is not None:
-                seo = {"source": "engine", "clicks": engine.clicks, "clicks_previous": engine.clicks_previous,
-                       "change_pct": engine.clicks_change_pct, "trend": engine.trend,
-                       "as_of": (client.engine_summary_data or {}).get("as_of")}
+                   "change_pct": g["change_pct"], "trend": g["trend"], "as_of": g["as_of"].isoformat()}
         row["seo"] = seo
         if seo and seo["trend"]:
             change = seo["change_pct"]
