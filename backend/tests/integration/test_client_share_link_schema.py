@@ -41,7 +41,8 @@ async def test_upgrade_twice_keeps_clients_and_starts_without_links(engine):
     await deployment_schema.migrate_schema(engine)
     await deployment_schema.check_deployment_ready(engine)
     async with engine.connect() as conn:
-        assert await conn.scalar(text("SELECT to_jsonb(c) FROM clients c WHERE id=1")) == before
+        # brand_terms llega con un paso posterior, vacío.
+        assert await conn.scalar(text("SELECT to_jsonb(c) - 'brand_terms' FROM clients c WHERE id=1")) == before
         assert await conn.scalar(text("SELECT count(*) FROM client_share_links")) == 0
 
 

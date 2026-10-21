@@ -15,6 +15,7 @@ import { useAuth } from "@/context/auth-context"
 import { invalidateClientChange } from "@/lib/query-keys"
 import { ClientShareLinkCard } from "@/components/clients/client-share-link-card"
 import { ClientSlackCard } from "@/components/web/client-slack-card"
+import { BrandTermsEditor } from "@/components/clients/seo-control/brand-terms-editor"
 
 interface Props {
   client: Client
@@ -30,12 +31,16 @@ export function ClientSettingsTab({ client }: Props) {
     client.engine_project_id?.toString() ?? ""
   )
   const [vigilSlug, setVigilSlug] = useState(client.vigil_slug ?? "")
+  const savedBrandTerms = client.brand_terms ?? []
+  const [brandTerms, setBrandTerms] = useState<string[]>(savedBrandTerms)
+  const brandTermsDirty = brandTerms.join("\n") !== savedBrandTerms.join("\n")
 
   const isDirty =
     ga4 !== (client.ga4_property_id ?? "") ||
     gsc !== (client.gsc_url ?? "") ||
     engineProjectId !== (client.engine_project_id?.toString() ?? "") ||
-    vigilSlug !== (client.vigil_slug ?? "")
+    vigilSlug !== (client.vigil_slug ?? "") ||
+    brandTermsDirty
 
   const { data: engineProjects = [] } = useQuery({
     queryKey: ["engine-projects"],
@@ -51,6 +56,8 @@ export function ClientSettingsTab({ client }: Props) {
         ga4_property_id: ga4.trim() || null,
         gsc_url: gsc.trim() || null,
         vigil_slug: vigilSlug.trim() || null,
+        // Sólo si cambian: así guardar otro campo no pisa términos editados por otra persona.
+        ...(brandTermsDirty ? { brand_terms: brandTerms } : {}),
         ...(isAdmin ? { engine_project_id: engineProjectId.trim() ? parseInt(engineProjectId) : null } : {}),
       }),
     onSuccess: () => {
@@ -157,6 +164,15 @@ export function ClientSettingsTab({ client }: Props) {
                 )}
               </div>
             </div>
+
+            {/* Control SEO: separa las búsquedas de marca de las demás. */}
+            <BrandTermsEditor
+              value={brandTerms}
+              onChange={setBrandTerms}
+              disabled={!canWriteClients}
+              client={client}
+              gscDraft={gsc}
+            />
 
             {/* Engine Integration */}
             {isAdmin && <div>

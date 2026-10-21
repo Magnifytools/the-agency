@@ -48,6 +48,7 @@ from backend.services.digest_periods import enabled_cadences, period_cadence_sql
 from backend.services.gsc_service import normalize_site_url
 from backend.services.incident_report_conditions import delivery_is_confirmed
 from backend.services.recurring_fee import active_monthly_fees
+from backend.services.seo_control import SEO_WINDOW_DAYS, seo_window
 from backend.services.seo_traffic import STABLE_BAND_PCT, is_traffic_drop, seo_traffic
 from backend.services.temporal import business_today, civil_day_utc_bounds
 from backend.services.time_entry_dates import time_entry_civil_period
@@ -61,8 +62,7 @@ from backend.services.web.uptime_views import client_blocks as uptime_blocks, st
 Status = Literal["ok", "watch", "act", "no_data"]
 _RANK = {"no_data": 0, "ok": 1, "watch": 2, "act": 3}
 
-# Ventana del tráfico: 28 días (4 semanas completas, sin sesgo de día de la semana).
-SEO_WINDOW_DAYS = 28
+# Ventana del tráfico: SEO_WINDOW_DAYS (28) de `seo_control`, la misma que Control SEO.
 # Días de margen para enviar un resumen tras cerrar su periodo.
 DIGEST_GRACE_DAYS = 5
 OVERDUE_ACT = 3
@@ -140,15 +140,15 @@ async def _gsc_windows(db, sites: set[str]) -> dict[str, dict]:
     ))).all()
     out = {}
     for state in states:
-        end = state.last_data_date
-        start = end - timedelta(days=SEO_WINDOW_DAYS - 1)
-        prev_start = start - timedelta(days=SEO_WINDOW_DAYS)
+        # La misma ventana que la pestaña Control SEO (helper compartido).
+        window = seo_window(state.last_data_date, SEO_WINDOW_DAYS)
+        end = window.end
         row = (await db.execute(select(
-            func.coalesce(func.sum(GscDaily.clicks).filter(GscDaily.date >= start), 0),
-            func.coalesce(func.sum(GscDaily.clicks).filter(GscDaily.date < start), 0),
+            func.coalesce(func.sum(GscDaily.clicks).filter(GscDaily.date >= window.start), 0),
+            func.coalesce(func.sum(GscDaily.clicks).filter(GscDaily.date < window.start), 0),
         ).where(
             GscDaily.site_url == state.site_url,
-            GscDaily.date >= prev_start, GscDaily.date <= end,
+            GscDaily.date >= window.previous_start, GscDaily.date <= end,
         ))).one()
         out[state.site_url] = {"clicks": int(row[0]), "previous": int(row[1]), "as_of": end}
     return out
