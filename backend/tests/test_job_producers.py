@@ -249,6 +249,7 @@ def test_startup_loops_match_enabled_catalog(monkeypatch):
         "vigil": "vigil-sync",
         "ga4": "ga4-sync",
         "uptime": "web-uptime",
+        "web_sweep": "web-sweep",
         "gsc_detail": "gsc-detail-sync",
     }
     definitions = {definition.spec.key: definition for definition in job_definitions()}

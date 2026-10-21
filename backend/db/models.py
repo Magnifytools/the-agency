@@ -1,4 +1,5 @@
 import enum
+import uuid
 from datetime import datetime
 
 from sqlalchemy import (
@@ -22,7 +23,7 @@ from sqlalchemy import (
     func,
     literal_column, Sequence, REAL, BigInteger,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -2111,6 +2112,10 @@ class ClientWebSettings(Base):
             "slack_webhook_url IS NULL OR slack_webhook_url LIKE 'v1:%'",
             name="ck_client_web_settings_webhook_encrypted",
         ),
+        CheckConstraint(
+            "digest_min_severity IS NULL OR digest_min_severity IN ('critical','warning','info')",
+            name="ck_client_web_settings_digest_min_severity",
+        ),
     )
 
     client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
@@ -2120,5 +2125,232 @@ class ClientWebSettings(Base):
     slack_revoked_at = Column(DateTime(timezone=True), nullable=True)
     downtime_to_slack = Column(Boolean, nullable=False, server_default="true", default=True)
     user_agent = Column(String(300), nullable=True)
+    # ── Vigilancia de cambios (migración ``web_changes_v1``) ──
+    # Sin DEFAULT a propósito: NULL = el valor de ``services/web/capture_defaults.py``.
+    # Así corregir un default en código corrige a todos los clientes que no lo
+    # cambiaron (lección de Vigil: el DEFAULT de una columna se queda congelado).
+    digest_min_severity = Column(String(16), nullable=True)
+    default_content_selector = Column(String(500), nullable=True)
+    default_ignore_selectors = Column(JSONB, nullable=True)
+    default_ignore_regexes = Column(JSONB, nullable=True)
+    max_concurrency = Column(SmallInteger, nullable=True)
+    request_timeout_s = Column(SmallInteger, nullable=True)
+    crawl_delay_ms = Column(Integer, nullable=True)
+    sweep_weekdays = Column(JSONB, nullable=True)
+    sweep_skip_dates = Column(JSONB, nullable=True)
+    sweep_summary_to_slack = Column(Boolean, nullable=True)
     updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+# ── Webs: vigilancia de cambios (portado de Vigil, migración ``web_changes_v1``) ──
+# EXCEPCIÓN a la convención de PK enteras: estas tablas usan UUID para que la
+# importación de Vigil (fase 3) conserve sus ids (enlaces de Slack ya enviados,
+# ``last_snapshot_id``, ``prev_snapshot_id``…). Fuera del journal de Deshacer:
+# datos de máquina y revisiones (``test_cambios_web_quedan_fuera_del_journal``).
+
+_WEB_SEVERITIES = "('critical','warning','info')"
+
+
+def _uuid_pk():
+    return Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4,
+                  server_default=func.gen_random_uuid())
+
+
+class WebWatch(Base):
+    """Una URL de un cliente cuyos cambios se vigilan (SEO, texto, enlaces, HTML)."""
+    __tablename__ = "web_watches"
+    __table_args__ = (
+        UniqueConstraint("client_id", "url", name="uq_web_watches_client_url"),
+        CheckConstraint("source IN ('manual','bulk','sitemap','csv')", name="ck_web_watches_source"),
+    )
+
+    id = _uuid_pk()
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    url = Column(String(500), nullable=False)
+    label = Column(String(200), nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default="true", default=True)
+    # Archivada = fuera de la lista y del barrido, con su historial intacto.
+    archived_at = Column(DateTime(timezone=True), nullable=True)
+    watch_seo = Column(Boolean, nullable=False, server_default="true", default=True)
+    watch_content = Column(Boolean, nullable=False, server_default="true", default=True)
+    watch_links = Column(Boolean, nullable=False, server_default="false", default=False)
+    watch_html = Column(Boolean, nullable=False, server_default="false", default=False)
+    # NULL = hereda de ``client_web_settings`` (y ésta, de ``capture_defaults``).
+    content_selector = Column(String(500), nullable=True)
+    ignore_selectors = Column(JSONB, nullable=True)
+    ignore_regexes = Column(JSONB, nullable=True)
+    muted = Column(Boolean, nullable=False, server_default="false", default=False)
+    source = Column(String(16), nullable=False, server_default="manual", default="manual")
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # "Comprobar ahora": la petición deja la marca y el job ``web_sweep`` la recoge.
+    check_requested_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+Index("ix_web_watches_client_active", WebWatch.client_id, WebWatch.is_active)
+Index("ix_web_watches_check_requested", WebWatch.check_requested_at,
+      postgresql_where=WebWatch.check_requested_at.is_not(None))
+
+
+class WebSweepRun(Base):
+    """Un barrido de un cliente (programado o pedido a mano)."""
+    __tablename__ = "web_sweep_runs"
+    __table_args__ = (
+        CheckConstraint("trigger IN ('scheduler','manual','api')", name="ck_web_sweep_runs_trigger"),
+        CheckConstraint("status IN ('running','done','partial','failed')", name="ck_web_sweep_runs_status"),
+    )
+
+    id = _uuid_pk()
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    # Fecha civil de la agencia (Europe/Madrid): el programado es uno por día.
+    run_date = Column(Date, nullable=False)
+    trigger = Column(String(16), nullable=False, server_default="scheduler", default="scheduler")
+    status = Column(String(16), nullable=False, server_default="running", default="running")
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    watches_total = Column(Integer, nullable=False, server_default="0", default=0)
+    watches_done = Column(Integer, nullable=False, server_default="0", default=0)
+    watches_error = Column(Integer, nullable=False, server_default="0", default=0)
+    changes_found = Column(Integer, nullable=False, server_default="0", default=0)
+    notified_at = Column(DateTime(timezone=True), nullable=True)
+    # no_procede | disabled | revoked | sent | failed | skipped_no_changes | summary_sent
+    notify_status = Column(String(32), nullable=True)
+    notify_error = Column(String(500), nullable=True)
+
+
+# Sólo el PROGRAMADO es único por cliente y día (lección 0bis de Vigil): lo
+# manual se repite tantas veces como haga falta.
+Index("uq_web_sweep_runs_scheduler_day", WebSweepRun.client_id, WebSweepRun.run_date, unique=True,
+      postgresql_where=WebSweepRun.trigger == "scheduler")
+Index("ix_web_sweep_runs_client_started", WebSweepRun.client_id, WebSweepRun.started_at)
+Index("ix_web_sweep_runs_started", WebSweepRun.started_at)
+
+
+class WebSnapshot(Base):
+    """Cuerpos de una captura. Sólo se escriben cuando algún hash cambió."""
+    __tablename__ = "web_snapshots"
+
+    id = _uuid_pk()
+    watch_id = Column(UUID(as_uuid=True), ForeignKey("web_watches.id", ondelete="CASCADE"), nullable=False)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("web_sweep_runs.id", ondelete="SET NULL"), nullable=True)
+    captured_at = Column(DateTime(timezone=True), nullable=False)
+    content_hash = Column(String(64), nullable=True)
+    html_hash = Column(String(64), nullable=True)
+    status_code = Column(Integer, nullable=True)
+    byte_size = Column(Integer, nullable=True)
+    # gzip. NULL = ese cuerpo no se guardó en esta captura.
+    text_gz = Column(LargeBinary, nullable=True)
+    html_gz = Column(LargeBinary, nullable=True)
+    # Texto sin comprimir si cabe en 32 KB (el diff de la noche siguiente no descomprime).
+    text_inline = Column(Text, nullable=True)
+    is_pinned = Column(Boolean, nullable=False, server_default="false", default=False)
+
+
+Index("ix_web_snapshots_watch_captured", WebSnapshot.watch_id, WebSnapshot.captured_at)
+
+
+class WebWatchState(Base):
+    """Estado ACTUAL de cada URL: hashes, última extracción y si se está mirando."""
+    __tablename__ = "web_watch_state"
+
+    watch_id = Column(UUID(as_uuid=True), ForeignKey("web_watches.id", ondelete="CASCADE"), primary_key=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    last_checked_at = Column(DateTime(timezone=True), nullable=True)
+    last_changed_at = Column(DateTime(timezone=True), nullable=True)
+    last_status_code = Column(Integer, nullable=True)
+    last_final_url = Column(Text, nullable=True)
+    last_error = Column(String(500), nullable=True)
+    consecutive_errors = Column(Integer, nullable=False, server_default="0", default=0)
+    hash_seo = Column(String(64), nullable=True)
+    hash_content = Column(String(64), nullable=True)
+    hash_links = Column(String(64), nullable=True)
+    hash_html = Column(String(64), nullable=True)
+    # Última extracción normalizada = la "versión anterior" del diff.
+    seo_json = Column(JSONB, nullable=True)
+    links_json = Column(JSONB, nullable=True)
+    needs_js_render = Column(Boolean, nullable=False, server_default="false", default=False)
+    scope_missed = Column(Boolean, nullable=False, server_default="false", default=False)
+    checking_since = Column(DateTime(timezone=True), nullable=True)
+    last_snapshot_id = Column(UUID(as_uuid=True), ForeignKey("web_snapshots.id", ondelete="SET NULL"),
+                              nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+Index("ix_web_watch_state_client_changed", WebWatchState.client_id, WebWatchState.last_changed_at)
+
+
+class WebRunError(Base):
+    """Sólo fallos de un barrido (una URL que no se pudo mirar, un host cortado)."""
+    __tablename__ = "web_run_errors"
+
+    id = _uuid_pk()
+    run_id = Column(UUID(as_uuid=True), ForeignKey("web_sweep_runs.id", ondelete="CASCADE"), nullable=False)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    watch_id = Column(UUID(as_uuid=True), ForeignKey("web_watches.id", ondelete="CASCADE"), nullable=True)
+    kind = Column(String(32), nullable=False)
+    message = Column(String(500), nullable=True)
+    status_code = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+Index("ix_web_run_errors_run", WebRunError.run_id)
+
+
+class WebChange(Base):
+    """Un cambio detectado en una URL (uno por URL y barrido), con su revisión."""
+    __tablename__ = "web_changes"
+    __table_args__ = (
+        UniqueConstraint("watch_id", "run_id", name="uq_web_changes_watch_run"),
+        CheckConstraint(f"max_severity IN {_WEB_SEVERITIES}", name="ck_web_changes_max_severity"),
+    )
+
+    id = _uuid_pk()
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    watch_id = Column(UUID(as_uuid=True), ForeignKey("web_watches.id", ondelete="CASCADE"), nullable=False)
+    # SET NULL, NO cascade: el histórico de cambios sobrevive a la retención de barridos.
+    run_id = Column(UUID(as_uuid=True), ForeignKey("web_sweep_runs.id", ondelete="SET NULL"), nullable=True)
+    snapshot_id = Column(UUID(as_uuid=True), ForeignKey("web_snapshots.id", ondelete="SET NULL"), nullable=True)
+    prev_snapshot_id = Column(UUID(as_uuid=True), ForeignKey("web_snapshots.id", ondelete="SET NULL"),
+                              nullable=True)
+    max_severity = Column(String(16), nullable=False)
+    detected_at = Column(DateTime(timezone=True), nullable=False)
+    acknowledged_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Nombre de quien lo revisó: sobrevive al borrado del usuario y, en la
+    # importación de Vigil, lleva el suyo cuando el email no casa con nadie.
+    acknowledged_by_label = Column(String(120), nullable=True)
+    acknowledged_at = Column(DateTime(timezone=True), nullable=True)
+    note = Column(Text, nullable=True)
+
+
+Index("ix_web_changes_client_detected", WebChange.client_id, WebChange.detected_at)
+Index("ix_web_changes_watch_detected", WebChange.watch_id, WebChange.detected_at)
+Index("ix_web_changes_pending", WebChange.client_id, WebChange.max_severity,
+      postgresql_where=WebChange.acknowledged_at.is_(None))
+
+
+class WebChangeItem(Base):
+    """Detalle de un cambio: un item por campo que se movió."""
+    __tablename__ = "web_change_items"
+    __table_args__ = (
+        CheckConstraint("kind IN ('seo','content','links','html','availability')",
+                        name="ck_web_change_items_kind"),
+        CheckConstraint(f"severity IN {_WEB_SEVERITIES}", name="ck_web_change_items_severity"),
+    )
+
+    id = _uuid_pk()
+    change_id = Column(UUID(as_uuid=True), ForeignKey("web_changes.id", ondelete="CASCADE"), nullable=False)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    kind = Column(String(16), nullable=False)
+    field = Column(String(64), nullable=False)
+    severity = Column(String(16), nullable=False)
+    rule_code = Column(String(64), nullable=False)
+    before_val = Column(Text, nullable=True)
+    after_val = Column(Text, nullable=True)
+    detail = Column(JSONB, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+Index("ix_web_change_items_change", WebChangeItem.change_id)

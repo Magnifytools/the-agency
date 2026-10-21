@@ -12,8 +12,10 @@ Cada señal sólo se calcula si quien mira puede leer su fuente; el consumo de
 cuota (dinero) es sólo para admins. Las comunicaciones ya no cuentan (decisión
 de David, 19 oct 2026): el módulo está oculto y sin uso.
 
-Vigil (cambios en la web): un cambio crítico sin revisar es Vigilar; un
-resumen de más de 48 h se enseña pero no cuenta.
+Cambios en la web: si el cliente tiene URLs propias en la vigilancia de
+cambios de The Agency (``web_watches``, módulo ``web``), mandan ellas: un cambio
+crítico sin revisar es Vigilar. Si no tiene, se mira el resumen de Vigil como
+hasta ahora (un resumen de más de 48 h se enseña pero no cuenta). Nunca las dos.
 
 Disponibilidad de la web (monitor de caídas, módulo ``web``): una caída abierta
 es Actuar; un bloqueo largo (no podemos comprobarla) es Vigilar.
@@ -51,6 +53,9 @@ from backend.services.temporal import business_today, civil_day_utc_bounds
 from backend.services.time_entry_dates import time_entry_civil_period
 from backend.services import ga4_service
 from backend.services.vigil_service import client_block, summaries as vigil_summaries
+from backend.services.web.changes_views import (
+    client_blocks as web_change_blocks, status_reason as web_change_reason,
+)
 from backend.services.web.uptime_views import client_blocks as uptime_blocks, status_reason as uptime_reason
 
 Status = Literal["ok", "watch", "act", "no_data"]
@@ -319,6 +324,9 @@ async def portfolio(
     ga4_props = {c.id: ga4_service.normalize_property(c.ga4_property_id) for c in clients}
     ga4 = await ga4_service.windows(db, {p for p in ga4_props.values() if p})
     uptime = await uptime_blocks(db, client_ids) if viewer.web else {}
+    # Quién tiene vigilancia de cambios propia se decide igual para todos los que
+    # miran; el bloque y la señal, sólo para quien lee ``web``.
+    web_changes = await web_change_blocks(db, client_ids)
 
     rows = []
     for client in clients:
@@ -404,10 +412,18 @@ async def portfolio(
         # GA4 (sólo se enseña; no es señal de estado): sesiones, conversiones e IA en 28 días.
         row["ga4"] = ga4.get(ga4_props.get(client.id) or "")
 
-        # 6. Cambios en la web (Vigil): un cambio crítico sin revisar pide mirar.
+        # 6. Cambios en la web: las URLs propias mandan; si no hay, Vigil.
+        own = web_changes.get(client.id)
+        row["web_changes"] = own if viewer.web else None
+        if row["web_changes"] and row["web_changes"]["last_checked_at"]:
+            reason = web_change_reason(row["web_changes"])
+            if reason:
+                signals.add(*reason)
+            else:
+                signals.add("ok")
         summary = vigil.get(client.vigil_slug) if client.vigil_slug else None
         row["vigil"] = client_block(summary) if summary else None
-        if row["vigil"] and row["vigil"]["fresh"]:
+        if row["vigil"] and row["vigil"]["fresh"] and own is None:
             critical = row["vigil"]["critical"]
             if critical:
                 signals.add("watch", f"{critical} cambio{'s' if critical > 1 else ''} crítico{'s' if critical > 1 else ''} en la web sin revisar (Vigil)")
