@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -47,6 +47,12 @@ vi.mock("@/components/clients/client-dashboard-tab", () => ({ ClientDashboardTab
 vi.mock("@/components/clients/client-settings-tab", () => ({ ClientSettingsTab: () => <div>Settings</div> }))
 vi.mock("@/components/clients/engine-metrics-widget", () => ({ EngineMetricsWidget: () => null }))
 vi.mock("@/components/clients/engine-seo-tab", () => ({ EngineSeoTab: () => <div>SEO</div> }))
+vi.mock("@/components/clients/seo-control/seo-control-tab", () => ({
+  SeoControlTab: ({ onOpenSettings }: { onOpenSettings: () => void }) => (
+    <div>ControlSeoTab<button onClick={onOpenSettings}>Ir a configuración</button></div>
+  ),
+}))
+vi.mock("@/components/web/web-tab", () => ({ WebTab: () => <div>WebTab</div> }))
 vi.mock("@/components/communications/communication-list", () => ({ CommunicationList: () => <div>Communications</div> }))
 vi.mock("@/components/timer/timer-button", () => ({ TimerButton: () => null }))
 vi.mock("@/components/timer/time-log-dialog", () => ({ TimeLogDialog: () => null }))
@@ -346,6 +352,35 @@ describe("client detail areas", () => {
     show("contexto")
     expect(await screen.findByText("FichaTab")).toBeInTheDocument()
     expect(screen.getByLabelText("Área del cliente")).toHaveValue("relacion")
+  })
+
+  it("shows Control SEO in Resultados when the client has a Search Console property", async () => {
+    mocks.summary.mockResolvedValue({ ...summary, client: { ...summary.client, gsc_url: "sc-domain:acme.com", engine_project_id: 9 } })
+    show("control_seo")
+    expect(await screen.findByText("ControlSeoTab")).toBeInTheDocument()
+    expect(screen.getByLabelText("Área del cliente")).toHaveValue("outputs")
+    const sections = screen.getByLabelText("Sección del área")
+    expect(within(sections).getByRole("option", { name: "Control SEO" })).toBeInTheDocument()
+    expect(within(sections).getByRole("option", { name: "Engine" })).toBeInTheDocument()
+    expect(within(sections).queryByRole("option", { name: "SEO" })).not.toBeInTheDocument()
+    // Sin propiedad todavía, el enlace del estado vacío lleva a Configuración.
+    await userEvent.click(screen.getByRole("button", { name: "Ir a configuración" }))
+    expect(await screen.findByText("Settings")).toBeInTheDocument()
+  })
+
+  it("keeps old ?tab=seo links on the Engine tab, now labelled Engine", async () => {
+    mocks.summary.mockResolvedValue({ ...summary, client: { ...summary.client, gsc_url: "sc-domain:acme.com", engine_project_id: 9 } })
+    show("seo")
+    expect(await screen.findByText("SEO")).toBeInTheDocument()
+    expect(screen.getByLabelText("Sección del área")).toHaveValue("seo")
+    expect(screen.getByRole("button", { name: "Engine" })).toBeInTheDocument()
+  })
+
+  it("hides Control SEO without a Search Console property, even from a saved URL", async () => {
+    show("control_seo")
+    expect(await screen.findByLabelText("Área del cliente")).toHaveValue("resumen")
+    expect(screen.queryByText("ControlSeoTab")).not.toBeInTheDocument()
+    expect(screen.queryByRole("option", { name: "Control SEO" })).not.toBeInTheDocument()
   })
 
   it("opens client settings from the header gear", async () => {
