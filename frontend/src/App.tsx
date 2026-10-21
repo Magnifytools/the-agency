@@ -49,6 +49,8 @@ const AboutPage = lazy(() => import("@/pages/public-legal").then((m) => ({ defau
 const PrivacyPage = lazy(() => import("@/pages/public-legal").then((m) => ({ default: m.PrivacyPage })))
 const CredentialsPage = lazy(() => import("@/pages/credentials-page"))
 const WebPage = lazy(() => import("@/pages/web-page"))
+const WebChangesPage = lazy(() => import("@/pages/web-changes-page"))
+const WebChangeDetailPage = lazy(() => import("@/pages/web-change-detail-page"))
 
 function PageLoader() {
   return (
@@ -113,6 +115,9 @@ export default function App() {
               <Route path="/leads/:id" element={<PermissionRoute module="growth"><ErrorBoundary section="LeadDetail"><Suspense fallback={<PageLoader />}><LeadDetailPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/clients" element={<PermissionRoute module="clients"><ErrorBoundary section="Clients"><Suspense fallback={<PageLoader />}><ClientsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/web" element={<PermissionRoute module="web"><ErrorBoundary section="Disponibilidad"><Suspense fallback={<PageLoader />}><WebPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              {/* Enlaces del digest de Slack y de la incidencia: no cambiar sin cambiar services/web/digest.py */}
+              <Route path="/web/cambios" element={<PermissionRoute module="web"><ErrorBoundary section="CambiosWeb"><Suspense fallback={<PageLoader />}><WebChangesPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/web/cambios/:id" element={<PermissionRoute module="web"><ErrorBoundary section="CambioWeb"><Suspense fallback={<PageLoader />}><WebChangeDetailPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/credentials" element={<PermissionRoute module="credentials"><ErrorBoundary section="Credentials"><Suspense fallback={<PageLoader />}><CredentialsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/clients/:id" element={<PermissionRoute module="clients"><ErrorBoundary section="ClientDetail"><Suspense fallback={<PageLoader />}><ClientDetailPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/tasks" element={<ErrorBoundary section="Tasks"><Suspense fallback={<PageLoader />}><TasksPage /></Suspense></ErrorBoundary>} />

@@ -444,7 +444,7 @@ admin_users, admin_settings
   `python -m backend.scripts.seed_uptime_targets --dry-run|--apply` (home desde
   `Client.website`).
 
-## Webs: cambios (vigilancia de cambios, fase 2a: backend y API)
+## Webs: cambios (vigilancia de cambios, fases 2a y 2b)
 
 - **Qué es**: Vigil portado dentro de The Agency. Por cada URL vigilada de un
   cliente se compara SEO (title, description, H1/H2, canonical, robots meta +
@@ -452,7 +452,7 @@ admin_users, admin_settings
   con la última captura, y se avisa en el **Slack de cada cliente** (el mismo
   webhook cifrado del monitor de caídas). Mismo módulo de permisos `web`: leer =
   ver; escribir = URLs, "Comprobar ahora", previsualizar, ajustes de captura y
-  calendario, y marcar como revisado. Frontend: fase 2b (pendiente).
+  calendario, y marcar como revisado. Pantallas: ver "Interfaz (fase 2b)" abajo.
 - **Código** (`backend/services/web/`): `extractor.py`, `classifier.py`,
   `html_diff.py`, `capture_defaults.py`, `calendario.py`, `sitemap.py` y
   `digest.py` son copia casi literal de Vigil (mismas reglas: los cambios
@@ -514,7 +514,7 @@ admin_users, admin_settings
   `incident_web_conditions.py`: abierta mientras haya cambios críticos sin
   revisar de URLs no archivadas ni silenciadas de clientes activos; se resuelve
   al revisarlos; huella con los ids de los cambios. Mismos destinatarios que las
-  caídas. Enlace `/web/cambios?cliente={id}` (lo pinta la fase 2b).
+  caídas. Enlace `/web/cambios?cliente={id}`.
 - **Estado del cliente**: si tiene URLs propias (no archivadas), mandan ellas
   (crítico sin revisar = Vigilar; bloque `web_changes`, sólo si quien mira lee
   `web`) y Vigil deja de contar; si no, sigue el resumen de Vigil.
@@ -536,6 +536,33 @@ admin_users, admin_settings
     `truncated` dice si el `limit` dejó cosas fuera.
   - *0octies* (Railway desplegaba un snapshot) no aplica: Agency despliega desde
     `main`.
+- **Interfaz (fase 2b)**:
+  - Pestaña **Web** de la ficha (`components/web/web-tab.tsx`): debajo de la
+    disponibilidad, `web-watches-card.tsx` (URLs: alta suelta, lista/CSV y
+    sitemap; silenciar, archivar/recuperar, "Comprobar ahora"/"Comprobar todas"
+    con progreso cada 3 s mientras hay barrido vivo o cola; con el job apagado lo
+    dice en vez de girar), cambios del cliente (`web-changes-list.tsx`, abre en
+    "Sin revisar"), `web-runs-card.tsx` (últimos barridos, errores por URL, estado
+    del aviso a Slack) y, sólo con escritura en `web`,
+    `web-change-settings-card.tsx` (días, festivos, resumen a Slack,
+    `digest_min_severity`, selectores/regex por defecto; vacío = default del código).
+  - Ficha de una URL: panel lateral `watch-drawer.tsx` (estado, último error,
+    `scope_missed`/`needs_js_render`, cambios, capturas, configuración y "Probar
+    esta configuración", que prueba lo ESCRITO, no lo guardado).
+  - `/web/cambios` (`pages/web-changes-page.tsx`, menú Clientes → "Cambios web")
+    y `/web/cambios/:id` (`pages/web-change-detail-page.tsx`): son las rutas del
+    digest de Slack y de la incidencia; no cambiarlas sin `services/web/digest.py`.
+    Filtros en la URL (`cliente`, `sev`, `estado=todo`; sin `estado` = sin revisar).
+  - Reglas de Vigil en pantalla: severidad y revisado son controles segmentados
+    con recuento, y el recuento sale de `counts`/`counts_pending` (ignoran el
+    filtro activo); "Marcar todo" confirma con el número del servidor y se acota a
+    cliente + severidad; "Solo maquetación · +x/−y líneas de T" (sin medida, se
+    dice; los miles con `formatInt`, porque es-ES no agrupa 4 cifras); el diff de
+    HTML vacío explica su `reason`; el de texto es por frases (`sentenceDiff`, con
+    tope de celdas: si no cabe, enseña los trozos guardados en `detail.diff`); el
+    estado de Slack se lee de `slack` de la configuración, no del último barrido.
+  - Query keys en `webKeys` (`lib/query-keys.ts`); revisar invalida listas y
+    fichas (`invalidateWebReview`), nunca los diffs (inmutables).
 - **Fuera del Deshacer** (`test_cambios_web_quedan_fuera_del_journal` y
   `test_nada_de_la_vigilancia_de_cambios_entra_en_el_deshacer`). Dependencias:
   `lxml` y `cssselect` (ruedas cp312 manylinux, sin compilar).

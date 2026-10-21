@@ -47,6 +47,44 @@ export const timeKeys = {
   reports: () => ["time-entries", "reports"] as const,
 }
 
+// Webs: vigilancia de cambios. Todo cuelga de ["web-changes"] para poder
+// invalidar por familias: revisar toca listas y fichas, no los diffs (caros e
+// inmutables: el antes y el después de un cambio no cambian).
+export const webKeys = {
+  all: () => ["web-changes"] as const,
+  changeLists: () => ["web-changes", "list"] as const,
+  changes: (filters: object) => ["web-changes", "list", filters] as const,
+  change: (changeId: string) => ["web-changes", "change", changeId] as const,
+  diff: (changeId: string) => ["web-changes", "diff", changeId] as const,
+  htmlDiff: (changeId: string) => ["web-changes", "html-diff", changeId] as const,
+  watchLists: () => ["web-changes", "watches"] as const,
+  watches: (clientId: number, includeArchived = false) => ["web-changes", "watches", clientId, includeArchived] as const,
+  watchDetails: () => ["web-changes", "watch"] as const,
+  watch: (watchId: string) => ["web-changes", "watch", watchId] as const,
+  watchHistory: (watchId: string) => ["web-changes", "watch-history", watchId] as const,
+  progress: (clientId: number) => ["web-changes", "progress", clientId] as const,
+  runs: (clientId: number) => ["web-changes", "runs", clientId] as const,
+  runErrors: (runId: string) => ["web-changes", "run-errors", runId] as const,
+  settings: (clientId: number) => ["web-changes", "settings", clientId] as const,
+}
+
+/** Tras revisar: listas, fichas de cambio y fichas de URL. Los diffs no. */
+export function invalidateWebReview(queryClient: QueryClient) {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: webKeys.changeLists() }),
+    queryClient.invalidateQueries({ queryKey: ["web-changes", "change"] }),
+    queryClient.invalidateQueries({ queryKey: webKeys.watchDetails() }),
+  ])
+}
+
+/** Tras un barrido o un cambio en las URLs: todo lo de webs menos los diffs. */
+export function invalidateWebWatches(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({
+    predicate: (query) => query.queryKey[0] === "web-changes"
+      && query.queryKey[1] !== "diff" && query.queryKey[1] !== "html-diff",
+  })
+}
+
 export type OperationalImpact = {
   projectId?: number | null
   previousProjectId?: number | null
