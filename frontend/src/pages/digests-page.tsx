@@ -14,6 +14,7 @@ import type { Digest, DigestStatus, DigestTone } from "@/lib/types"
 import { clearDigestGeneration, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type IndividualDigestIntent } from "@/lib/digest-generation-recovery"
 
 import { Button } from "@/components/ui/button"
+import { DownloadPdfButton } from "@/components/digests/download-pdf-button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
@@ -489,6 +490,13 @@ function DigestList() {
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
+                        <DownloadPdfButton
+                          iconOnly
+                          variant="ghost"
+                          size="sm"
+                          ariaLabel={`Descargar PDF del resumen de ${digest.client_name}, versión #${digest.id}`}
+                          download={() => digestsApi.pdf(digest.id)}
+                        />
                         <span className="w-px h-5 bg-border mx-0.5" />
                         {/* Copiar para pegar en Slack / email */}
                         <Button

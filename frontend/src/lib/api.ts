@@ -1,4 +1,5 @@
 import type { ProjectTasksResponse } from "@/lib/project-work"
+import { filenameFromDisposition, type PdfFile } from "@/lib/pdf-download"
 import axios, { type GenericAbortSignal, type InternalAxiosRequestConfig } from "axios"
 import { toast } from "sonner"
 import type {
@@ -785,6 +786,10 @@ export const digestsApi = {
     api.patch<Digest>(`/digests/${id}/status`, { status }).then((r) => r.data),
   render: (id: number, format: "slack" | "email" | "email_plain" | "discord") =>
     api.get<DigestRenderResponse>(`/digests/${id}/render`, { params: { format } }).then((r) => r.data),
+  /** El resumen guardado en PDF (A4), como lo recibe el cliente. */
+  pdf: (id: number): Promise<PdfFile> =>
+    api.get<Blob>(`/digests/${id}/pdf`, { responseType: "blob", timeout: 60_000 })
+      .then((r) => ({ blob: r.data, filename: filenameFromDisposition(r.headers["content-disposition"], `informe-${id}.pdf`) })),
   delete: (id: number) => api.delete(`/digests/${id}`).then((r) => r.data),
 }
 

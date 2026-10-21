@@ -1,11 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { AxiosError } from "axios"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { beforeEach, expect, it, vi } from "vitest"
 import PublicClientPage from "./public-client-page"
 
-const api = vi.hoisted(() => ({ status: vi.fn(), create: vi.fn(), revoke: vi.fn(), publicView: vi.fn() }))
+const api = vi.hoisted(() => ({ status: vi.fn(), create: vi.fn(), revoke: vi.fn(), publicView: vi.fn(), publicDigestPdf: vi.fn() }))
 vi.mock("@/lib/client-share-link-api", () => ({ clientShareLinkApi: api }))
 
 const view = {
@@ -18,8 +18,8 @@ const view = {
     ],
   },
   digests: [
-    { period_start: "2026-09-01", period_end: "2026-09-30", period_label: "Septiembre 2026", delivered_at: "2026-10-02T09:00:00+00:00", html: "<p>SEPTIEMBRE</p>" },
-    { period_start: "2026-08-01", period_end: "2026-08-31", period_label: "Agosto 2026", delivered_at: "2026-09-03T09:00:00+00:00", html: "<p>AGOSTO</p>" },
+    { id: 91, period_start: "2026-09-01", period_end: "2026-09-30", period_label: "Septiembre 2026", delivered_at: "2026-10-02T09:00:00+00:00", html: "<p>SEPTIEMBRE</p>" },
+    { id: 82, period_start: "2026-08-01", period_end: "2026-08-31", period_label: "Agosto 2026", delivered_at: "2026-09-03T09:00:00+00:00", html: "<p>AGOSTO</p>" },
   ],
 }
 
@@ -65,4 +65,19 @@ it("an unknown or revoked link shows a neutral message", async () => {
   setup()
   expect(await screen.findByRole("alert")).toHaveTextContent("Este enlace no está disponible")
   expect(screen.queryByText("Fit Generation")).not.toBeInTheDocument()
+})
+
+it("downloads the PDF of the digest on screen through the same link", async () => {
+  api.publicView.mockResolvedValue(view)
+  api.publicDigestPdf.mockResolvedValue({ blob: new Blob(["%PDF"]), filename: "informe-fit-generation-2026-08.pdf" })
+  URL.createObjectURL = vi.fn(() => "blob:pdf")
+  URL.revokeObjectURL = vi.fn()
+  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+  setup("tok_1")
+  await screen.findByTitle("Resumen Septiembre 2026")
+  fireEvent.click(screen.getByRole("button", { name: /Agosto 2026/ }))
+  fireEvent.click(screen.getByRole("button", { name: "Descargar PDF del resumen Agosto 2026" }))
+  await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
+  expect(api.publicDigestPdf).toHaveBeenCalledWith("tok_1", 82)
+  click.mockRestore()
 })

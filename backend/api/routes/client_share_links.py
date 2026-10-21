@@ -6,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import require_module
-from backend.core.rate_limiter import public_link_limiter
+from backend.api.routes.digests import build_pdf_or_error, pdf_response
+from backend.core.rate_limiter import public_link_limiter, public_pdf_limiter
 from backend.db.database import get_db
 from backend.db.models import Client, User
 from backend.services import client_share_links as links
@@ -102,3 +103,18 @@ async def public_client_view(token: str, request: Request, response: Response,
     await links.touch_view(db, link)
     response.headers.update(_PUBLIC_HEADERS)
     return body
+
+
+@router.get("/api/public/clients/{token}/digests/{digest_id}/pdf")
+async def public_digest_pdf(token: str, digest_id: int, request: Request,
+                            db: AsyncSession = Depends(get_db)):
+    """PDF de un resumen ENTREGADO desde el enlace público. Mismo 404 para todo lo demás."""
+    client_ip = request.client.host if request.client else "unknown"
+    public_pdf_limiter.check(client_ip, max_requests=10, window_seconds=60)
+    link = await links.resolve_token(db, token)
+    digest = await links.delivered_digest(db, link.client_id, digest_id) if link else None
+    if digest is None:
+        raise HTTPException(status_code=404, detail=_NOT_FOUND, headers=_PUBLIC_HEADERS)
+    client_name = await db.scalar(select(Client.name).where(Client.id == link.client_id)) or ""
+    data, filename = await build_pdf_or_error(digest, client_name)
+    return pdf_response(data, filename, _PUBLIC_HEADERS)
