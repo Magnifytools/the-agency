@@ -3,9 +3,12 @@ import axios, { type GenericAbortSignal, type InternalAxiosRequestConfig } from 
 import { toast } from "sonner"
 import type {
   ClientSeoSummary,
+  SeoGroupsResponse,
   SeoMoversParams,
   SeoMoversResponse,
+  SeoPageGroup,
   SeoPageRow,
+  SeoQueryHistory,
   SeoQueryRow,
   SeoWindowDays,
   VigilClients,
@@ -907,6 +910,13 @@ export const clientSeoApi = {
     api.get<SeoMoversResponse<SeoQueryRow>>(`/clients/${clientId}/seo/queries`, { params }).then((r) => r.data),
   pages: (clientId: number, params: SeoMoversParams) =>
     api.get<SeoMoversResponse<SeoPageRow>>(`/clients/${clientId}/seo/pages`, { params }).then((r) => r.data),
+  queryHistory: (clientId: number, query: string) =>
+    api.get<SeoQueryHistory>(`/clients/${clientId}/seo/queries/history`, { params: { query } }).then((r) => r.data),
+  groups: (clientId: number, days: SeoWindowDays) =>
+    api.get<SeoGroupsResponse>(`/clients/${clientId}/seo/groups`, { params: { days } }).then((r) => r.data),
+  /** Prueba grupos sin guardarlos (sólo lee). */
+  previewGroups: (clientId: number, groups: SeoPageGroup[]) =>
+    api.post<SeoGroupsResponse>(`/clients/${clientId}/seo/groups/preview`, { groups }).then((r) => r.data),
 }
 
 // --- Capacity Planning ---

@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 from backend.db.models import ContractType, ClientStatus
-from backend.services.seo_control import clean_brand_terms
+from backend.services.seo_control import clean_brand_terms, clean_page_groups
 from backend.services.seo_traffic import SeoTrend, seo_traffic
 
 
@@ -60,6 +60,15 @@ class ClientUpdate(BaseModel):
             raise ValueError("Los términos de marca son una lista")
         return clean_brand_terms(value)
 
+    # Control SEO: grupos de URL [{name, rules: [{type, value}]}].
+    seo_page_groups: Optional[list[dict]] = None
+
+    @field_validator("seo_page_groups", mode="before")
+    @classmethod
+    def _page_groups(cls, value):
+        # null = sin grupos (la columna no admite NULL).
+        return clean_page_groups(value)
+
 
 class ClientResponse(BaseModel):
     id: int
@@ -75,6 +84,7 @@ class ClientResponse(BaseModel):
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
     brand_terms: list[str] = Field(default_factory=list)
+    seo_page_groups: list[dict] = Field(default_factory=list)
     engine_project_id: Optional[int] = None
     vigil_slug: Optional[str] = None
     engine_content_count: Optional[int] = None
@@ -101,6 +111,11 @@ class ClientResponse(BaseModel):
     @field_validator("brand_terms", mode="before")
     @classmethod
     def _brand_terms_list(cls, value):
+        return value or []
+
+    @field_validator("seo_page_groups", mode="before")
+    @classmethod
+    def _page_groups_list(cls, value):
         return value or []
 
     # Semáforo SEO: derivado del summary de Engine, sin almacenamiento propio.

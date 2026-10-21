@@ -11,11 +11,15 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   queries: vi.fn(),
   pages: vi.fn(),
+  queryHistory: vi.fn(),
+  groups: vi.fn(),
   admin: false,
   canWrite: true,
 }))
 
-vi.mock("@/lib/api", () => ({ clientSeoApi: { get: mocks.get, queries: mocks.queries, pages: mocks.pages } }))
+vi.mock("@/lib/api", () => ({
+  clientSeoApi: { get: mocks.get, queries: mocks.queries, pages: mocks.pages, queryHistory: mocks.queryHistory, groups: mocks.groups },
+}))
 vi.mock("@/context/auth-context", () => ({
   useAuth: () => ({ isAdmin: mocks.admin, hasPermission: (_m: string, write = false) => (write ? mocks.canWrite : true) }),
 }))
@@ -23,7 +27,8 @@ vi.mock("@/context/auth-context", () => ({
 vi.mock("recharts", () => {
   const Box = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>
   const Empty = () => null
-  return { ResponsiveContainer: Box, BarChart: Box, Bar: Empty, XAxis: Empty, YAxis: Empty, Tooltip: Empty, Legend: Empty }
+  return { ResponsiveContainer: Box, BarChart: Box, ComposedChart: Box, Bar: Empty, Line: Empty, CartesianGrid: Empty,
+           XAxis: Empty, YAxis: Empty, Tooltip: Empty, Legend: Empty }
 })
 
 const client = { id: 5, name: "Acme", gsc_url: "sc-domain:acme.com" } as never
@@ -140,6 +145,87 @@ describe("SeoControlTab", () => {
     show()
     expect(await screen.findByText("Google no registra clics ni impresiones de esta propiedad en la ventana.")).toBeInTheDocument()
     expect(screen.queryByText("Secciones")).not.toBeInTheDocument()
+  })
+})
+
+describe("SeoControlTab history and URL groups", () => {
+  const history = {
+    status: "ok", site_url: "sc-domain:acme.com", error_code: null, last_synced_at: null,
+    query: "acme tienda", is_brand: true, monthly_backfilled: true,
+    months: [
+      { month: "2026-08-01", clicks: 10, impressions: 100, position: 5 },
+      { month: "2026-09-01", clicks: 20, impressions: 200, position: 3 },
+    ],
+    days: [
+      { date: "2026-10-16", clicks: 1, impressions: 10, position: 4 },
+      { date: "2026-10-17", clicks: 0, impressions: 0, position: null },
+      { date: "2026-10-18", clicks: 2, impressions: 20, position: 2 },
+    ],
+  }
+
+  it("opens a query's position history with months and the last days", async () => {
+    mocks.queryHistory.mockResolvedValue(history)
+    show()
+    await userEvent.click(await screen.findByRole("button", { name: "acme tienda" }))
+    const dialog = await screen.findByRole("dialog")
+    expect(mocks.queryHistory).toHaveBeenCalledWith(5, "acme tienda")
+    expect(await within(dialog).findByText("Por meses (2)")).toBeInTheDocument()
+    expect(within(dialog).getByText("Últimos 3 días")).toBeInTheDocument()
+    expect(within(dialog).getByText(/20 clics, posición 3,0/)).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cerrar" }))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("says the older months are still importing", async () => {
+    mocks.queryHistory.mockResolvedValue({ ...history, months: [], monthly_backfilled: false })
+    show()
+    await userEvent.click(await screen.findByRole("button", { name: "acme tienda" }))
+    expect(await screen.findByText("Importando los meses anteriores; listo tras la próxima pasada.")).toBeInTheDocument()
+  })
+
+  it("draws the monthly position trend next to each query", async () => {
+    const base = summary()
+    mocks.get.mockResolvedValue(summary({
+      queries: { ...base.queries!, trend_months: ["2026-08-01", "2026-09-01"],
+                 gainers: [query("acme tienda", { trend: [5, 3] })] },
+    }))
+    show()
+    expect(await screen.findByText("2 meses")).toBeInTheDocument()
+    expect(screen.getByRole("img", { name: /Posición por mes: .*5,0.*3,0/ })).toBeInTheDocument()
+  })
+
+  it("switches to URL groups and filters pages by the clicked group", async () => {
+    mocks.groups.mockResolvedValue({
+      status: "ok", site_url: "sc-domain:acme.com", error_code: null, last_synced_at: null, window: summary().window,
+      configured: 1,
+      groups: [
+        { key: "Blog", label: "Blog", clicks: 40, previous_clicks: 5, clicks_pct: 700, clicks_share: 0.4,
+          impressions: 400, position: 5.75, position_delta: 1, pages: 2 },
+        { key: "Sin grupo", label: "Sin grupo", clicks: 60, previous_clicks: 60, clicks_pct: 0, clicks_share: 0.6,
+          impressions: 600, position: 3, position_delta: 0, pages: 4 },
+      ],
+    })
+    show()
+    await screen.findByText("acme tienda")
+    await userEvent.click(screen.getByRole("button", { name: "Grupos" }))
+    expect(await screen.findByText("Grupos de URL")).toBeInTheDocument()
+    expect(mocks.groups).toHaveBeenCalledWith(5, 28)
+    await userEvent.click(screen.getByRole("button", { name: "Blog" }))
+    await waitFor(() => expect(mocks.pages).toHaveBeenLastCalledWith(5, expect.objectContaining({ group: "Blog" })))
+    expect(screen.getByText("Grupo Blog")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Secciones" }))
+    expect(await screen.findByRole("button", { name: "/blog" })).toBeInTheDocument()
+    expect(screen.queryByText("Grupo Blog")).not.toBeInTheDocument()
+  })
+
+  it("invites a client writer to create groups when there are none", async () => {
+    const onOpenSettings = vi.fn()
+    mocks.groups.mockResolvedValue({ ...blocked("ok"), window: summary().window, groups: [], configured: 0 })
+    show(onOpenSettings)
+    await screen.findByText("acme tienda")
+    await userEvent.click(screen.getByRole("button", { name: "Grupos" }))
+    await userEvent.click(await screen.findByRole("button", { name: "Crear grupos en Configuración" }))
+    expect(onOpenSettings).toHaveBeenCalled()
   })
 })
 

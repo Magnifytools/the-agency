@@ -89,12 +89,16 @@ interface SeoMoverBase {
 export interface SeoQueryRow extends SeoMoverBase {
   query: string
   is_brand: boolean
+  /** Posición en los últimos meses guardados (`trend_months`); null = no salió ese mes. */
+  trend?: (number | null)[]
 }
 
 export interface SeoPageRow extends SeoMoverBase {
   page: string
   section: string
   section_label: string
+  /** Grupo de URL de la página (sólo en el listado de páginas). */
+  group?: string
 }
 
 interface SeoSourceInfo {
@@ -114,7 +118,7 @@ export interface ClientSeoSummary extends SeoSourceInfo {
     trend: SeoBrandWeek[]
   } | null
   sections: SeoSection[]
-  queries: { gainers: SeoQueryRow[]; losers: SeoQueryRow[] } | null
+  queries: { gainers: SeoQueryRow[]; losers: SeoQueryRow[]; trend_months?: string[] } | null
   pages: { gainers: SeoPageRow[]; losers: SeoPageRow[] } | null
   coverage: { query_clicks_share: number | null } | null
 }
@@ -127,6 +131,7 @@ export interface SeoMoversParams {
   sort: SeoMoverSort
   brand?: SeoBrandFilter
   section?: string
+  group?: string
   q?: string
   min_impressions: number
   limit: number
@@ -136,4 +141,49 @@ export interface SeoMoversResponse<Row> extends SeoSourceInfo {
   window: SeoWindow | null
   rows: Row[]
   total: number
+  /** Sólo en consultas: meses de `trend` (día 1, ISO). */
+  trend_months?: string[]
+}
+
+// ── Historial de una consulta (GET /seo/queries/history?query=) ──
+
+export interface SeoHistoryPoint {
+  clicks: number
+  impressions: number
+  /** Ponderada por impresiones; null si no hubo impresiones. */
+  position: number | null
+}
+
+export interface SeoQueryHistory extends SeoSourceInfo {
+  query: string
+  is_brand: boolean | null
+  /** Meses completos guardados (hasta 16). */
+  months: (SeoHistoryPoint & { month: string })[]
+  /** Días del detalle (hasta 120). */
+  days: (SeoHistoryPoint & { date: string })[]
+  /** false mientras no se hayan traído los meses de antes de los 120 días. */
+  monthly_backfilled: boolean
+}
+
+// ── Grupos de URL ──
+
+export type SeoGroupRuleType = "prefix" | "contains" | "regex"
+
+export interface SeoPageGroupRule {
+  type: SeoGroupRuleType
+  value: string
+}
+
+export interface SeoPageGroup {
+  name: string
+  rules: SeoPageGroupRule[]
+}
+
+/** Misma forma que una sección; `key` = nombre del grupo ("Sin grupo" al final). */
+export type SeoGroupRow = SeoSection
+
+export interface SeoGroupsResponse extends SeoSourceInfo {
+  window: SeoWindow | null
+  groups: SeoGroupRow[]
+  configured: number
 }

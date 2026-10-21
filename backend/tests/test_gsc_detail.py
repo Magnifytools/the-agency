@@ -192,7 +192,11 @@ def test_el_job_usa_el_lock_17_y_la_misma_puerta_que_gsc():
 
 # ── Las consultas y páginas no van a la IA (lo promete la política de privacidad) ──
 
-_FORBIDDEN = re.compile(r"GscQueryDaily|GscPageDaily|gsc_query_daily|gsc_page_daily|gsc_detail_service|seo_control|client_seo")
+# También el historial mensual por consulta y los grupos de URL del Control SEO.
+_FORBIDDEN = re.compile(
+    r"GscQueryDaily|GscPageDaily|GscQueryMonthly|gsc_query_daily|gsc_page_daily|gsc_query_monthly"
+    r"|gsc_detail_service|seo_control|client_seo|seo_page_groups|query_history"
+)
 
 
 def _ai_paths() -> list[Path]:
@@ -209,6 +213,11 @@ def _ai_paths() -> list[Path]:
     paths |= {p for p in services.glob("*.py") if "ai_utils" in p.read_text(encoding="utf-8")}
     paths |= set((ROOT / "mcp-server" / "agency_mcp").rglob("*.py"))
     return sorted(paths)
+
+
+def test_la_guardia_reconoce_el_historial_y_los_grupos():
+    for name in ("GscQueryMonthly", "gsc_query_monthly", "seo_page_groups", "query_history"):
+        assert _FORBIDDEN.search(f"x = {name}")
 
 
 def test_el_detalle_de_search_console_no_llega_a_la_ia():

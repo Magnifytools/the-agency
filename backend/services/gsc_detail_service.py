@@ -16,6 +16,11 @@ Dos avisos para quien lea estas tablas:
 - Las impresiones por página no suman el total de la propiedad (una búsqueda
   que enseña dos páginas cuenta en las dos).
 
+Historial mensual (`gsc_query_monthly`, hasta 16 meses): tras cada pasada se
+resume cada mes COMPLETO del detalle diario en un total por consulta (los
+120 días no llegan a 16 meses). Los meses anteriores a esos 120 días se piden
+una sola vez a Google, un mes por petición (marca `monthly_backfilled_at`).
+
 Reglas de las cifras (globales): clics e impresiones se suman en la ventana;
 la posición es la media ponderada por impresiones.
 """
@@ -28,10 +33,12 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from backend.db.models import GscConnection, GscDetailSync, GscPageDaily, GscQueryDaily, GscSiteSync
+from backend.db.models import (
+    GscConnection, GscDetailSync, GscPageDaily, GscQueryDaily, GscQueryMonthly, GscSiteSync,
+)
 from backend.services import gsc_service
 from backend.services.gsc_service import GscAuthError, GscSiteError, TAIL_DAYS
 from backend.services.temporal import business_today
@@ -49,6 +56,10 @@ MAX_PAGE_LENGTH = 2000
 PAGE_PAUSE_SECONDS = 0.2
 DIMENSIONS = ("query", "page")
 _MODELS = {"query": GscQueryDaily, "page": GscPageDaily}
+
+# Historial mensual por consulta: 16 meses contando el actual (lo que guarda
+# Google). El mes actual nunca está completo, así que como mucho hay 15 cerrados.
+HISTORY_MONTHS = 16
 
 _sleep = time.sleep
 
@@ -129,6 +140,55 @@ def _query_dim_sync(encrypted_refresh_token: str, site_url: str, start: date, en
 async def query_dimension(encrypted_refresh_token: str, site_url: str, start: date, end: date,
                           dimension: str) -> list[DetailRow]:
     return await asyncio.to_thread(_query_dim_sync, encrypted_refresh_token, site_url, start, end, dimension)
+
+
+@dataclass(frozen=True)
+class MonthRow:
+    query: str
+    clicks: int
+    impressions: int
+    position: float
+
+
+def _query_month_sync(encrypted_refresh_token: str, site_url: str, start: date, end: date) -> list[MonthRow]:
+    """Totales por consulta de un mes entero (dimensión `query`, sin día): una
+    petición por mes, paginando de 25.000 en 25.000."""
+    rows: list[MonthRow] = []
+    start_row = 0
+    try:
+        service = gsc_service._service(encrypted_refresh_token)
+        while True:
+            body = {
+                "startDate": start.isoformat(),
+                "endDate": end.isoformat(),
+                "dimensions": ["query"],
+                "type": "web",
+                "dataState": "final",
+                "rowLimit": PAGE_SIZE,
+                "startRow": start_row,
+            }
+            result = service.searchanalytics().query(siteUrl=site_url, body=body).execute()
+            page = result.get("rows", [])
+            for row in page:
+                rows.append(MonthRow(
+                    query=row["keys"][0],
+                    clicks=int(row.get("clicks", 0)),
+                    impressions=int(row.get("impressions", 0)),
+                    position=float(row.get("position", 0.0)),
+                ))
+            if len(page) < PAGE_SIZE:
+                break
+            start_row += PAGE_SIZE
+            _sleep(PAGE_PAUSE_SECONDS)
+    except (GscAuthError, GscSiteError):
+        raise
+    except Exception as exc:  # noqa: BLE001 — se traduce a un error con código
+        raise gsc_service._translate(exc) from exc
+    return rows
+
+
+async def query_month(encrypted_refresh_token: str, site_url: str, start: date, end: date) -> list[MonthRow]:
+    return await asyncio.to_thread(_query_month_sync, encrypted_refresh_token, site_url, start, end)
 
 
 # ── Importación ──────────────────────────────────────────────────────
@@ -221,7 +281,7 @@ async def _record_state(db, site_url: str, *, error_code: str | None, backfilled
 
 
 async def sync_site_detail(db, encrypted_refresh_token: str, site_url: str, *, fetch=query_dimension,
-                           today: date | None = None) -> dict:
+                           fetch_month=None, today: date | None = None) -> dict:
     """Importa el detalle de una propiedad. Devuelve las filas guardadas por dimensión.
 
     Por tramo y dimensión: llamada a Google SIN transacción abierta y después
@@ -256,24 +316,181 @@ async def sync_site_detail(db, encrypted_refresh_token: str, site_url: str, *, f
     counts = await _row_counts(db, site_url)
     await _record_state(db, site_url, error_code=None, backfilled=backfill,
                         last_data_date=last_data, counts=counts)
+    await sync_monthly(db, encrypted_refresh_token, site_url, fetch_month=fetch_month, today=today)
     return written
 
 
+# ── Historial mensual por consulta ───────────────────────────────────
+
+
+def add_months(month: date, n: int) -> date:
+    """Día 1 del mes que está `n` meses después (o antes) del de `month`."""
+    index = month.year * 12 + month.month - 1 + n
+    return date(index // 12, index % 12 + 1, 1)
+
+
+def month_end(month: date) -> date:
+    return add_months(month, 1) - timedelta(days=1)
+
+
+def history_floor(today: date) -> date:
+    """Primer mes que se guarda: 16 meses contando el actual (22 oct 2026 →
+    jul 2025). Lo anterior se borra: es el límite que promete la política."""
+    return add_months(today.replace(day=1), -(HISTORY_MONTHS - 1))
+
+
+def coverage_start(first_day: date | None, last_data_date: date | None, today: date) -> date | None:
+    """Primer día desde el que el detalle diario está entero hasta `last_data_date`.
+
+    El más tardío entre el primer día guardado de consultas y el siguiente al
+    último que borra la retención. Un mes cuenta como completo sólo si todos
+    sus días caen desde aquí. Si el primer día guardado es posterior al real
+    (días sin ninguna consulta), ese mes se pide a Google entero: sale bien
+    por el lado seguro.
+    """
+    if last_data_date is None:
+        return None
+    floor = _retention_cutoff(last_data_date, today) + timedelta(days=1)
+    return max(first_day, floor) if first_day is not None else floor
+
+
+def complete_months(coverage: date | None, last_data_date: date | None) -> list[date]:
+    """Meses que el detalle diario tiene ENTEROS: todos sus días desde
+    `coverage` y con datos finales hasta su último día."""
+    if coverage is None or last_data_date is None:
+        return []
+    month = coverage if coverage.day == 1 else add_months(coverage, 1)
+    out = []
+    while month_end(month) <= last_data_date:
+        out.append(month)
+        month = add_months(month, 1)
+    return out
+
+
+def backfill_months(coverage: date | None, last_data_date: date | None, today: date) -> list[date]:
+    """Meses del historial que el detalle diario NO tiene enteros (empiezan
+    antes de `coverage`): se piden a Google una vez, un mes por petición."""
+    if coverage is None or last_data_date is None:
+        return []
+    out = []
+    month = history_floor(today)
+    while month < coverage and month_end(month) <= last_data_date:
+        out.append(month)
+        month = add_months(month, 1)
+    return out
+
+
+def month_values(month: date, site_url: str, rows: list[MonthRow]) -> list[dict]:
+    """Filas a guardar de un mes pedido a Google. Su posición ya es la media
+    ponderada del mes, así que SUM(posición × impresiones) = posición ×
+    impresiones. Una consulta repetida se suma."""
+    merged: dict[str, list[float]] = {}
+    for r in rows:
+        acc = merged.setdefault(r.query, [0, 0, 0.0])
+        acc[0] += r.clicks
+        acc[1] += r.impressions
+        acc[2] += r.position * r.impressions
+    return [
+        {"site_url": site_url, "month": month, "query": query, "clicks": int(clicks),
+         "impressions": int(impressions), "weighted_position_sum": float(weighted)}
+        for query, (clicks, impressions, weighted) in merged.items()
+    ]
+
+
+async def _replace_month(db, site_url: str, month: date, rows: list[MonthRow]) -> None:
+    await db.execute(delete(GscQueryMonthly).where(
+        GscQueryMonthly.site_url == site_url, GscQueryMonthly.month == month,
+    ))
+    values = month_values(month, site_url, rows)
+    for i in range(0, len(values), INSERT_BATCH):
+        await db.execute(pg_insert(GscQueryMonthly).values(values[i:i + INSERT_BATCH]))
+    await db.commit()
+
+
+_ROLLUP_SQL = text("""
+    INSERT INTO gsc_query_monthly (site_url, month, query, clicks, impressions, weighted_position_sum)
+    SELECT site_url, CAST(date_trunc('month', CAST(date AS timestamp)) AS date), query,
+           SUM(clicks), SUM(impressions), SUM(CAST(position AS double precision) * impressions)
+    FROM gsc_query_daily
+    WHERE site_url = :site AND date >= :start AND date <= :end
+    GROUP BY site_url, CAST(date_trunc('month', CAST(date AS timestamp)) AS date), query
+""")
+
+
+async def rollup_months(db, site_url: str, months: list[date]) -> None:
+    """Resume en `gsc_query_monthly` los meses completos del detalle diario.
+
+    Reemplaza cada mes entero (borra e inserta): repetirlo da lo mismo y
+    recoge las revisiones de Google de los últimos días. Los meses son seguidos.
+    """
+    if not months:
+        return
+    start, end = months[0], month_end(months[-1])
+    await db.execute(delete(GscQueryMonthly).where(
+        GscQueryMonthly.site_url == site_url,
+        GscQueryMonthly.month >= start, GscQueryMonthly.month <= months[-1],
+    ))
+    await db.execute(_ROLLUP_SQL, {"site": site_url, "start": start, "end": end})
+    await db.commit()
+
+
+async def sync_monthly(db, encrypted_refresh_token: str, site_url: str, *, fetch_month=None,
+                       today: date | None = None) -> None:
+    """Historial mensual de una propiedad, justo después de importar su detalle diario.
+
+    1. Si falta la importación inicial (`monthly_backfilled_at` NULL), pide a
+       Google cada mes del historial que el detalle diario no tiene entero.
+       Un fallo de la propiedad se apunta en el log y se reintenta en la
+       próxima pasada sin bloquear el Control SEO; los de cuenta sí suben.
+    2. Resume los meses completos del detalle diario.
+    """
+    today = today or business_today()
+    # Se resuelve aquí (no en la firma) para que los tests puedan sustituirla en el módulo.
+    fetch_month = fetch_month or query_month
+    state = await db.get(GscDetailSync, site_url)
+    if state is None or state.backfilled_at is None or state.last_data_date is None:
+        return
+    first_day = await db.scalar(select(func.min(GscQueryDaily.date)).where(GscQueryDaily.site_url == site_url))
+    coverage = coverage_start(first_day, state.last_data_date, today)
+    last_data_date = state.last_data_date
+    pending = state.monthly_backfilled_at is None
+    await db.commit()
+
+    if pending:
+        try:
+            for month in backfill_months(coverage, last_data_date, today):
+                # Llamada a Google sin transacción abierta; luego reemplazo del mes.
+                rows = await fetch_month(encrypted_refresh_token, site_url, month, month_end(month))
+                await _replace_month(db, site_url, month, rows)
+        except GscSiteError as exc:
+            await db.rollback()
+            logger.warning("Search Console (historial mensual): fallo al importar %s (%s)", site_url, exc.code)
+        else:
+            state = await db.get(GscDetailSync, site_url)
+            if state is not None:
+                state.monthly_backfilled_at = datetime.now(UTC)
+                await db.commit()
+
+    await rollup_months(db, site_url, complete_months(coverage, last_data_date))
+
+
 async def prune(db, *, today: date | None = None) -> None:
-    """Retención: fuera lo de más de 120 días y todo lo de webs que ya no sigue
-    ningún cliente activo (cliente Antiguo o propiedad cambiada).
+    """Retención: fuera el detalle diario de más de 120 días, el historial
+    mensual anterior a los 16 meses y todo lo de webs que ya no sigue ningún
+    cliente activo (cliente Antiguo o propiedad cambiada).
 
     `delete()` masivos: no pasan por el ORM ni entran en el Deshacer, a propósito.
     """
     today = today or business_today()
     tracked = set(await gsc_service.tracked_sites(db))
     stored: set[str] = set()
-    for model in (GscQueryDaily, GscPageDaily, GscDetailSync):
+    for model in (GscQueryDaily, GscPageDaily, GscQueryMonthly, GscDetailSync):
         stored |= set((await db.scalars(select(model.site_url).distinct())).all())
     untracked = sorted(stored - tracked)
     if untracked:
-        for model in (GscQueryDaily, GscPageDaily, GscDetailSync):
+        for model in (GscQueryDaily, GscPageDaily, GscQueryMonthly, GscDetailSync):
             await db.execute(delete(model).where(model.site_url.in_(untracked)))
+    await db.execute(delete(GscQueryMonthly).where(GscQueryMonthly.month < history_floor(today)))
     states = {s.site_url: s.last_data_date for s in (await db.scalars(
         select(GscDetailSync).where(GscDetailSync.site_url.in_(sorted(stored & tracked)))
     )).all()} if stored & tracked else {}
@@ -282,7 +499,8 @@ async def prune(db, *, today: date | None = None) -> None:
     await db.commit()
 
 
-async def sync_all_detail(session_factory, *, fetch=query_dimension, today: date | None = None) -> dict:
+async def sync_all_detail(session_factory, *, fetch=query_dimension, fetch_month=None,
+                          today: date | None = None) -> dict:
     """Una pasada sobre todas las propiedades de clientes activos, con la cuenta
     que el job `gsc` les asignó. Cada propiedad en su sesión; un fallo no para
     a las demás. La retención se aplica siempre, haya cuenta o no."""
@@ -314,7 +532,8 @@ async def sync_all_detail(session_factory, *, fetch=query_dimension, today: date
             continue
         try:
             async with session_factory() as db:
-                await sync_site_detail(db, tokens[connection_id], site, fetch=fetch, today=today)
+                await sync_site_detail(db, tokens[connection_id], site, fetch=fetch, fetch_month=fetch_month,
+                                       today=today)
             synced += 1
         except GscAuthError:
             await gsc_service._mark_reconnect(session_factory, connection_id)

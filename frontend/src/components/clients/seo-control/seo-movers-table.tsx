@@ -19,6 +19,7 @@ import { Select } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DeltaBadge } from "@/components/clients/delta-badge"
 import { formatInt, formatPosition } from "@/lib/seo-control"
+import { SeoQueryHistoryDialog, SeoSparkline } from "./seo-query-history"
 
 type Kind = "queries" | "pages"
 type Row = SeoQueryRow | SeoPageRow
@@ -35,10 +36,13 @@ interface Props {
   clientId: number
   kind: Kind
   days: SeoWindowDays
-  summaryRows: { gainers: Row[]; losers: Row[] } | null
+  summaryRows: { gainers: Row[]; losers: Row[]; trend_months?: string[] } | null
   section?: string | null
   sectionLabel?: string | null
   onClearSection?: () => void
+  /** Grupo de URL (sólo páginas). */
+  group?: string | null
+  onClearGroup?: () => void
 }
 
 function rowKey(row: Row): string {
@@ -55,7 +59,9 @@ function pagePath(url: string): string {
 }
 
 /** Consultas o páginas que más suben o bajan, por clics o por posición. */
-export function SeoMoversTable({ clientId, kind, days, summaryRows, section, sectionLabel, onClearSection }: Props) {
+export function SeoMoversTable({
+  clientId, kind, days, summaryRows, section, sectionLabel, onClearSection, group, onClearGroup,
+}: Props) {
   const [direction, setDirection] = useState<Direction>("gain")
   const [metric, setMetric] = useState<Metric>("clicks")
   const [brand, setBrand] = useState<SeoBrandFilter>("all")
@@ -63,6 +69,7 @@ export function SeoMoversTable({ clientId, kind, days, summaryRows, section, sec
   const [q, setQ] = useState("")
   const [minImpressions, setMinImpressions] = useState(DEFAULT_MIN_IMPRESSIONS)
   const [limit, setLimit] = useState(SUMMARY_LIMIT)
+  const [historyQuery, setHistoryQuery] = useState<string | null>(null)
 
   const params: SeoMoversParams = {
     days,
@@ -71,11 +78,12 @@ export function SeoMoversTable({ clientId, kind, days, summaryRows, section, sec
     limit,
     ...(kind === "queries" && brand !== "all" ? { brand } : {}),
     ...(kind === "pages" && section ? { section } : {}),
+    ...(kind === "pages" && group ? { group } : {}),
     ...(q ? { q } : {}),
   }
   const fromSummary =
     summaryRows != null && metric === "clicks" && limit === SUMMARY_LIMIT && minImpressions === DEFAULT_MIN_IMPRESSIONS
-    && brand === "all" && !q && !section
+    && brand === "all" && !q && !section && !group
 
   const listQuery = useQuery<SeoMoversResponse<Row>>({
     queryKey: clientSeoKeys.list(clientId, kind, params),
@@ -90,6 +98,8 @@ export function SeoMoversTable({ clientId, kind, days, summaryRows, section, sec
     ? (direction === "gain" ? summaryRows.gainers : summaryRows.losers)
     : listQuery.data?.rows ?? []
   const total = fromSummary ? null : listQuery.data?.total ?? null
+  const trendMonths = (fromSummary ? summaryRows.trend_months : listQuery.data?.trend_months) ?? []
+  const showTrend = kind === "queries" && trendMonths.length > 0
   const nextLimit = LIMIT_STEPS.find((step) => step > limit)
   const canShowMore = nextLimit != null && (total == null ? rows.length >= limit : total > rows.length)
 
@@ -153,6 +163,14 @@ export function SeoMoversTable({ clientId, kind, days, summaryRows, section, sec
               )}
             </Badge>
           )}
+          {kind === "pages" && group && (
+            <Badge variant="secondary" className="gap-1">
+              Grupo {group}
+              {onClearGroup && (
+                <button type="button" aria-label="Quitar filtro de grupo" onClick={onClearGroup}><X className="h-3 w-3" /></button>
+              )}
+            </Badge>
+          )}
         </div>
         {metric === "position" && (
           <p className="text-[11px] text-muted-foreground">
@@ -177,6 +195,7 @@ export function SeoMoversTable({ clientId, kind, days, summaryRows, section, sec
                   <TableHead className="text-right">Δ clics</TableHead>
                   <TableHead className="text-right">Impresiones</TableHead>
                   <TableHead className="text-right">Posición</TableHead>
+                  {showTrend && <TableHead className="text-right">{trendMonths.length} meses</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -185,7 +204,10 @@ export function SeoMoversTable({ clientId, kind, days, summaryRows, section, sec
                     <TableCell className="max-w-[320px]">
                       <div className="flex flex-wrap items-center gap-1.5">
                         {"query" in row ? (
-                          <span className="break-words">{row.query}</span>
+                          <button type="button" className="break-words text-left hover:underline focus-visible:outline-2 focus-visible:outline-brand"
+                            title="Ver su historial de posiciones" onClick={() => setHistoryQuery(row.query)}>
+                            {row.query}
+                          </button>
                         ) : (
                           <a href={row.page} target="_blank" rel="noopener noreferrer"
                             className="break-all hover:underline inline-flex items-center gap-1" title={row.page}>
@@ -210,6 +232,11 @@ export function SeoMoversTable({ clientId, kind, days, summaryRows, section, sec
                       <span className="mono">{formatPosition(row.previous_position)} → {formatPosition(row.position)}</span>{" "}
                       <DeltaBadge value={row.position_delta} suffix="" digits={1} />
                     </TableCell>
+                    {showTrend && (
+                      <TableCell className="text-right">
+                        {"query" in row && <SeoSparkline values={row.trend ?? []} months={trendMonths} />}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -224,6 +251,9 @@ export function SeoMoversTable({ clientId, kind, days, summaryRows, section, sec
           </div>
         )}
       </CardContent>
+      {kind === "queries" && (
+        <SeoQueryHistoryDialog clientId={clientId} query={historyQuery} onClose={() => setHistoryQuery(null)} />
+      )}
     </Card>
   )
 }

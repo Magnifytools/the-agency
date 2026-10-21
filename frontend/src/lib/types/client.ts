@@ -2,6 +2,7 @@ import type { ContractType, ClientStatus, ProfitabilityStatus } from "./common"
 import type { EngineSummaryData, EngineAlert } from "./integration"
 import type { Task } from "./task"
 import type { ProjectCreate } from "./project"
+import type { SeoPageGroup } from "./seo-control"
 
 export type SeoTrend = "up" | "stable" | "down" | "drop_alert"
 
@@ -23,6 +24,8 @@ export interface Client {
   gsc_url: string | null
   // Control SEO: búsquedas que cuentan como "de marca"
   brand_terms?: string[]
+  // Control SEO: grupos de URL propios (el primero que acepta la página gana)
+  seo_page_groups?: SeoPageGroup[]
   engine_project_id: number | null
   vigil_slug: string | null
   engine_content_count: number | null
@@ -72,6 +75,8 @@ export interface ClientCreate {
   ga4_property_id?: string | null
   gsc_url?: string | null
   brand_terms?: string[]
+  // Control SEO: grupos de URL propios (el primero que acepta la página gana)
+  seo_page_groups?: SeoPageGroup[]
   engine_project_id?: number | null
   vigil_slug?: string | null
   // Revenue intelligence
