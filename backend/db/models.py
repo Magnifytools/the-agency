@@ -20,7 +20,7 @@ from sqlalchemy import (
     LargeBinary,
     UniqueConstraint,
     func,
-    literal_column, Sequence,
+    literal_column, Sequence, BigInteger,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship
@@ -1951,3 +1951,128 @@ class CredentialAccessLog(Base):
 
 
 Index("ix_credential_access_log_credential_at", CredentialAccessLog.credential_id, CredentialAccessLog.at)
+
+
+# ── Webs: disponibilidad (monitor de caídas) ─────────────────────────────────
+# Fuera del journal de Deshacer: son datos de máquina (estado, sondeos, caídas) y
+# un webhook cifrado. Lo guarda ``test_webs_quedan_fuera_del_journal``.
+
+
+class WebUptimeTarget(Base):
+    """Una URL de un cliente que se comprueba cada pocos minutos."""
+    __tablename__ = "web_uptime_targets"
+    __table_args__ = (UniqueConstraint("client_id", "url", name="uq_web_uptime_targets_client_url"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    url = Column(String(500), nullable=False)
+    label = Column(String(120), nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default="true", default=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class WebUptimeState(Base):
+    """Máquina de estados de un objetivo: qué vimos, cuántas veces y cuándo toca mirar."""
+    __tablename__ = "web_uptime_state"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('unknown','up','suspect','down','blocked')", name="ck_web_uptime_state_status",
+        ),
+    )
+
+    target_id = Column(Integer, ForeignKey("web_uptime_targets.id", ondelete="CASCADE"), primary_key=True)
+    status = Column(String(16), nullable=False, server_default="unknown", default="unknown")
+    status_since = Column(DateTime(timezone=True), nullable=True)
+    consecutive_failures = Column(SmallInteger, nullable=False, server_default="0", default=0)
+    consecutive_successes = Column(SmallInteger, nullable=False, server_default="0", default=0)
+    failing_since = Column(DateTime(timezone=True), nullable=True)
+    blocked_since = Column(DateTime(timezone=True), nullable=True)
+    last_checked_at = Column(DateTime(timezone=True), nullable=True)
+    last_outcome = Column(String(16), nullable=True)
+    last_status_code = Column(Integer, nullable=True)
+    last_error = Column(String(32), nullable=True)
+    last_response_ms = Column(Integer, nullable=True)
+    next_check_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+Index("ix_web_uptime_state_next_check", WebUptimeState.next_check_at)
+
+
+class WebOutage(Base):
+    """Una caída (o un bloqueo largo) confirmada, con su aviso a Slack como outbox."""
+    __tablename__ = "web_outages"
+    __table_args__ = (
+        CheckConstraint("kind IN ('down','blocked')", name="ck_web_outages_kind"),
+        CheckConstraint(
+            "slack_down_status IN ('pending','sent','failed','skipped')", name="ck_web_outages_slack_down",
+        ),
+        CheckConstraint(
+            "slack_recovery_status IS NULL OR slack_recovery_status IN ('pending','sent','failed','skipped')",
+            name="ck_web_outages_slack_recovery",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    target_id = Column(Integer, ForeignKey("web_uptime_targets.id", ondelete="CASCADE"), nullable=False)
+    kind = Column(String(16), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    confirmed_at = Column(DateTime(timezone=True), nullable=False)
+    ended_at = Column(DateTime(timezone=True), nullable=True)
+    cause = Column(String(32), nullable=True)
+    status_code = Column(Integer, nullable=True)
+    slack_down_status = Column(String(16), nullable=False, server_default="pending", default="pending")
+    slack_down_sent_at = Column(DateTime(timezone=True), nullable=True)
+    slack_recovery_status = Column(String(16), nullable=True)
+    slack_recovery_sent_at = Column(DateTime(timezone=True), nullable=True)
+    slack_attempts = Column(SmallInteger, nullable=False, server_default="0", default=0)
+
+
+Index("uq_web_outages_open", WebOutage.target_id, unique=True, postgresql_where=WebOutage.ended_at.is_(None))
+Index("ix_web_outages_target_started", WebOutage.target_id, WebOutage.started_at)
+
+
+class WebUptimeProbe(Base):
+    """Cada comprobación programada (30 días). Las de "Probar ahora" no se guardan."""
+    __tablename__ = "web_uptime_probes"
+    __table_args__ = (
+        CheckConstraint("outcome IN ('up','down','blocked')", name="ck_web_uptime_probes_outcome"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    target_id = Column(Integer, ForeignKey("web_uptime_targets.id", ondelete="CASCADE"), nullable=False)
+    checked_at = Column(DateTime(timezone=True), nullable=False)
+    outcome = Column(String(16), nullable=False)
+    status_code = Column(Integer, nullable=True)
+    error = Column(String(32), nullable=True)
+    response_ms = Column(Integer, nullable=True)
+
+
+Index("ix_web_uptime_probes_target_checked", WebUptimeProbe.target_id, WebUptimeProbe.checked_at)
+Index("ix_web_uptime_probes_checked", WebUptimeProbe.checked_at)
+
+
+class ClientWebSettings(Base):
+    """Ajustes web de un cliente: su canal de Slack (webhook cifrado) y su User-Agent.
+
+    El webhook sólo existe cifrado (``encrypt_vault_secret``, prefijo ``v1:``; el
+    CHECK impide guardarlo en claro) y ninguna respuesta lo devuelve.
+    """
+    __tablename__ = "client_web_settings"
+    __table_args__ = (
+        CheckConstraint(
+            "slack_webhook_url IS NULL OR slack_webhook_url LIKE 'v1:%'",
+            name="ck_client_web_settings_webhook_encrypted",
+        ),
+    )
+
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
+    slack_webhook_url = Column(Text, nullable=True)
+    slack_channel_hint = Column(String(100), nullable=True)
+    slack_enabled = Column(Boolean, nullable=False, server_default="false", default=False)
+    slack_revoked_at = Column(DateTime(timezone=True), nullable=True)
+    downtime_to_slack = Column(Boolean, nullable=False, server_default="true", default=True)
+    user_agent = Column(String(300), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

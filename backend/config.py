@@ -60,6 +60,18 @@ class Settings(BaseSettings):
     # frente a los 30 anteriores, si el periodo anterior llegaba a este mínimo.
     SEO_DROP_ALERT_PCT: float = 20.0
     SEO_DROP_MIN_CLICKS: int = 100
+    # Webs: disponibilidad (job ``uptime``, lock 15). Apagado por defecto: en
+    # Railway se enciende con UPTIME_ENABLED=true. Umbrales en
+    # backend/services/web/uptime.py (CLAUDE.md, "Webs: disponibilidad").
+    UPTIME_ENABLED: bool = False
+    UPTIME_INTERVAL_SECONDS: int = 300
+    UPTIME_RECHECK_SECONDS: int = 60
+    UPTIME_FAILURES_TO_ALERT: int = 2
+    UPTIME_RECOVERIES_TO_CLOSE: int = 2
+    UPTIME_BLOCKED_ALERT_MINUTES: int = 60
+    # Canario de conectividad: si NINGUNA responde, el problema es nuestro y no
+    # se mira nada en ese ciclo. Separadas por comas.
+    UPTIME_CANARY_URLS: str = "https://www.google.com/generate_204,https://www.cloudflare.com/cdn-cgi/trace"
     VOYAGE_API_KEY: Optional[str] = None
     AGENCY_TIMEZONE: str = "Europe/Madrid"
 

@@ -162,7 +162,21 @@ class CredentialRevealLimiter:
         self._limiter.check(user_id, max_requests, window_seconds)
 
 
+class WebProbeLimiter:
+    """Sliding-window limiter for one-off website probes ("Probar ahora"), per user."""
+
+    def __init__(self) -> None:
+        self._limiter = _SlidingWindowLimiter(
+            prefix="rate:web-probe",
+            detail_fn=lambda _max_requests, _window_seconds: "Demasiadas comprobaciones seguidas. Espera un minuto.",
+        )
+
+    def check(self, user_id: int, max_requests: int, window_seconds: int) -> None:
+        self._limiter.check(user_id, max_requests, window_seconds)
+
+
 ai_limiter = RateLimiter()
+web_probe_limiter = WebProbeLimiter()
 login_limiter = LoginRateLimiter()
 public_link_limiter = PublicLinkRateLimiter()
 credential_reveal_limiter = CredentialRevealLimiter()

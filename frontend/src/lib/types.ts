@@ -7,6 +7,7 @@ export * from "./types/task"
 export * from "./types/project"
 export * from "./types/finance"
 export * from "./types/integration"
+export * from "./types/web"
 
 // --- Undo: journal de cambios ---
 // Una entrada = una acción del usuario (una transacción), no una fila tocada.

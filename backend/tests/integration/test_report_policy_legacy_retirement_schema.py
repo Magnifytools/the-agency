@@ -76,7 +76,7 @@ async def published_previous(engine):
 def test_contract_only_retires_the_two_legacy_columns():
     assert RETIRED_TABLES == frozenset()
     assert RETIRED_COLUMNS == LEGACY
-    assert deployment_schema.MIGRATIONS[-1] is MIGRATION
+    assert MIGRATION in deployment_schema.MIGRATIONS
     assert LEGACY <= schema_baseline.RETIRED_COLUMNS
 
 
