@@ -7,12 +7,12 @@ import { Link } from "react-router-dom"
  * política que explique qué datos de Google lee y qué hace con ellos.
  * No se indexan (meta aquí + X-Robots-Tag en backend/main.py).
  *
- * Lo que cuentan debe coincidir con el código: gsc_service, ga4_service,
- * google_calendar_service y sus rutas. Si cambia qué se guarda, se cambia aquí.
+ * Lo que cuentan debe coincidir con el código: gsc_service, gsc_detail_service,
+ * ga4_service, google_calendar_service y sus rutas. Si cambia qué se guarda, se cambia aquí.
  */
 
 const CONTACT = "david@magnify.ing"
-const UPDATED = "21 de octubre de 2026"
+const UPDATED = "22 de octubre de 2026"
 
 function LegalLayout({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -58,8 +58,8 @@ export function AboutPage() {
       <ul>
         <li>
           <strong>Search Console</strong> (sólo lectura): importa cada día los clics, impresiones y posición
-          media de las webs de nuestros clientes, para seguir su tráfico y añadir un bloque de cifras al
-          resumen mensual que reciben.
+          media de las webs de nuestros clientes, y el detalle por búsqueda y página de los últimos 120 días,
+          para seguir su tráfico y añadir un bloque de cifras al resumen mensual que reciben.
         </li>
         <li>
           <strong>Google Analytics</strong> (sólo lectura): importa cada día las visitas, las conversiones
@@ -83,7 +83,8 @@ export function AboutPage() {
         <p>
           The Agency is the operations tool of Magnify, an SEO consultancy. It is used by our team and by
           collaborators and clients we invite; there is no public sign-up. It reads Google Search Console
-          and Google Analytics data (read-only) for our clients' websites to track their traffic and to add
+          (including per-query and per-page detail for the last 120 days) and Google Analytics data
+          (read-only) for our clients' websites to track their traffic and to add
           a block of figures to the monthly report each client receives. Each user may optionally connect
           their own Google Calendar (read-only) to see their next meeting. The app never writes to, changes
           or deletes anything in Google accounts; the only request it makes is to revoke its own access when
@@ -110,7 +111,10 @@ export function PrivacyPage() {
       <p>
         Un administrador conecta una cuenta de Google con acceso a las webs de nuestros clientes. Guardamos
         el email de esa cuenta y su token de acceso cifrado. De cada web guardamos un total por día: clics,
-        impresiones y posición media. No guardamos consultas, páginas, países ni dispositivos.
+        impresiones y posición media. Además, durante 120 días, guardamos esas mismas cifras por día para cada
+        búsqueda (consulta) y cada página de la web, para ver qué búsquedas, páginas y secciones suben o bajan
+        y separar el tráfico de marca. Las consultas son las que Google ya muestra agregadas y anonimizadas en
+        Search Console: no identifican a ninguna persona. No guardamos países ni dispositivos.
       </p>
       <h3>Google Analytics (permiso analytics.readonly)</h3>
       <p>
@@ -129,6 +133,7 @@ export function PrivacyPage() {
       <h2>Para qué los usamos</h2>
       <ul>
         <li>Seguir el tráfico de las webs de nuestros clientes en su ficha.</li>
+        <li>Ver en la ficha qué búsquedas, páginas y secciones ganan o pierden tráfico y cuánto viene de la marca.</li>
         <li>Añadir un bloque de cifras al resumen mensual que enviamos a cada cliente y a la página de sólo lectura que el cliente puede abrir con su enlace privado.</li>
         <li>Enseñar a cada persona su próxima reunión, avisarla antes y, si su equipo lo tiene activado, incluir el título y la hora en su plan de la mañana, que puede publicarse en el canal interno del equipo.</li>
       </ul>
@@ -160,8 +165,9 @@ export function PrivacyPage() {
       <h2>Cuánto tiempo los guardamos y cómo borrarlos</h2>
       <p>
         Las cifras diarias de Search Console y Analytics se conservan mientras dure la relación con el cliente,
-        para poder comparar con meses anteriores. Los eventos de calendario importados se borran
-        automáticamente 30 días después de terminar.
+        para poder comparar con meses anteriores. El detalle por búsqueda y página se borra a los 120 días, y
+        también cuando la web deja de estar asociada a un cliente activo. Los eventos de calendario importados
+        se borran automáticamente 30 días después de terminar.
       </p>
       <ul>
         <li>
@@ -170,7 +176,8 @@ export function PrivacyPage() {
         </li>
         <li>
           Al desconectar una cuenta de Search Console y Analytics, el administrador puede elegir borrar también
-          las cifras importadas de las webs y propiedades que se leían con ella. Si no lo elige, se conservan.
+          las cifras importadas de las webs y propiedades que se leían con ella; el borrado incluye el detalle
+          por búsqueda y página. Si no lo elige, se conservan.
         </li>
         <li>Al desconectar Google Calendar se borran todos los eventos importados de esa persona.</li>
       </ul>
@@ -188,7 +195,9 @@ export function PrivacyPage() {
         <p>
           <strong>Google Search Console (webmasters.readonly)</strong>: an admin connects a Google account
           with access to our clients' websites. We store that account's email and an encrypted token, and for
-          each website one daily total of clicks, impressions and average position. No queries, pages,
+          each website one daily total of clicks, impressions and average position, and for 120 days the
+          same daily figures per search query and per page, as aggregated and anonymised by Google, to see
+          which searches, pages and sections gain or lose traffic and how much comes from the brand. No
           countries or devices.
         </p>
         <p>
@@ -219,11 +228,13 @@ export function PrivacyPage() {
         </p>
         <p>
           Tokens are stored encrypted and all traffic uses HTTPS. Search Console and Analytics daily figures
-          are kept for the duration of the client relationship to allow comparisons with previous months;
-          imported calendar events are deleted automatically 30 days after they end. Disconnecting any Google
+          are kept for the duration of the client relationship to allow comparisons with previous months.
+          Query and page detail is deleted after 120 days or when the site is no longer linked to an active
+          client. Imported calendar events are deleted automatically 30 days after they end. Disconnecting any Google
           account deletes the stored token and asks Google to revoke The Agency's access to it. When
           disconnecting a Search Console and Analytics account, the admin can choose to also delete the
-          figures imported for the websites and properties read through it; otherwise they are kept.
+          figures imported for the websites and properties read through it, including query and page detail;
+          otherwise they are kept.
           Disconnecting Google Calendar deletes all of that user's imported events. To have other data
           deleted, email {CONTACT}. You can revoke The Agency's access at any time at
           myaccount.google.com/permissions.

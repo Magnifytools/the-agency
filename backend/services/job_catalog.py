@@ -53,6 +53,12 @@ def job_definitions() -> tuple[JobDefinition, ...]:
                       "Guarda los datos diarios finales de las propiedades de los clientes activos.",
                       None if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET
                       else "Google OAuth no está configurado."),
+        # Lock 17 (15/16 son de Webs). Usa la cuenta que `gsc` asigna a cada propiedad.
+        JobDefinition(JobSpec("gsc_detail", 17, 86400, 3600, retry_seconds=3600),
+                      "Importar consultas y páginas de Search Console",
+                      "Guarda 120 días de cifras diarias por consulta y por página de las propiedades de los clientes activos.",
+                      None if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET
+                      else "Google OAuth no está configurado."),
         JobDefinition(JobSpec("ga4", 14, 86400, 1800, retry_seconds=3600), "Importar Google Analytics 4",
                       "Guarda sesiones, conversiones y tráfico desde IA de las propiedades GA4 de los clientes activos.",
                       None if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET

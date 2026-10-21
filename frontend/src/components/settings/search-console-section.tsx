@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { Search } from "lucide-react"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { gscApi } from "@/lib/api"
+import { gscApi, type GscSiteStatus } from "@/lib/api"
 import { disconnectMessage, formatDay, gscErrorLabel } from "@/lib/gsc"
 
 type Pending = { id: number; email: string | null }
@@ -150,7 +150,8 @@ export function SearchConsoleSection() {
                     <th className="py-2 pr-3 font-medium">Propiedad</th>
                     <th className="py-2 pr-3 font-medium">Clientes</th>
                     <th className="py-2 pr-3 font-medium">Cuenta</th>
-                    <th className="py-2 font-medium">Datos hasta</th>
+                    <th className="py-2 pr-3 font-medium">Datos hasta</th>
+                    <th className="py-2 font-medium">Consultas y páginas (120 días)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -161,9 +162,12 @@ export function SearchConsoleSection() {
                         <td className="py-2 pr-3 font-mono text-xs break-all">{site.site_url}</td>
                         <td className="py-2 pr-3">{site.clients.map((c) => c.name).join(", ")}</td>
                         <td className="py-2 pr-3 text-xs text-muted-foreground break-all">{site.google_email ?? "—"}</td>
-                        <td className="py-2">
+                        <td className="py-2 pr-3">
                           {site.last_data_date ? formatDay(site.last_data_date) : <span className="text-muted-foreground">Pendiente</span>}
                           {error && <p className="text-xs text-amber-600 mt-1">{error}</p>}
+                        </td>
+                        <td className="py-2">
+                          <DetailCell detail={site.detail} />
                         </td>
                       </tr>
                     )
@@ -175,5 +179,27 @@ export function SearchConsoleSection() {
         </div>
       )}
     </div>
+  )
+}
+
+const count = (n: number | null) => (n ?? 0).toLocaleString("es-ES")
+
+/** Estado del detalle por consulta y página (job `gsc_detail`). */
+function DetailCell({ detail }: { detail: GscSiteStatus["detail"] }) {
+  const error = gscErrorLabel(detail?.error_code)
+  return (
+    <>
+      {detail?.last_data_date ? (
+        <>
+          {formatDay(detail.last_data_date)}
+          <p className="text-xs text-muted-foreground mono">
+            {count(detail.query_rows)} filas de consultas · {count(detail.page_rows)} de páginas
+          </p>
+        </>
+      ) : (
+        <span className="text-muted-foreground">Pendiente</span>
+      )}
+      {error && <p className="text-xs text-amber-600 mt-1">{error}</p>}
+    </>
   )
 }

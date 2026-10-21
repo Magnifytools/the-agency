@@ -20,7 +20,7 @@ from sqlalchemy import (
     LargeBinary,
     UniqueConstraint,
     func,
-    literal_column, Sequence, BigInteger,
+    literal_column, Sequence, REAL, BigInteger,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship
@@ -1889,6 +1889,52 @@ class GscSiteSync(Base):
     error_code = Column(String(64), nullable=True)
     # Cuenta con la que se importa (la que tiene acceso a la propiedad).
     connection_id = Column(SmallInteger, ForeignKey("gsc_connection.id", ondelete="SET NULL"), nullable=True)
+
+
+class GscQueryDaily(Base):
+    """Cifras diarias finales por consulta de una propiedad (sólo los últimos 120 días).
+
+    Google anonimiza las consultas poco frecuentes: la suma de consultas de un
+    día es MENOR que el total de `gsc_daily` (la diferencia es "sin clasificar").
+    """
+    __tablename__ = "gsc_query_daily"
+
+    site_url = Column(String(255), primary_key=True)
+    date = Column(Date, primary_key=True)
+    query = Column(Text, primary_key=True)
+    clicks = Column(Integer, nullable=False)
+    impressions = Column(Integer, nullable=False)
+    position = Column(REAL, nullable=False)
+
+
+class GscPageDaily(Base):
+    """Cifras diarias finales por página de una propiedad (sólo los últimos 120 días).
+
+    Las impresiones por página NO suman el total de la propiedad: una búsqueda
+    que enseña dos páginas cuenta una impresión en cada una.
+    """
+    __tablename__ = "gsc_page_daily"
+
+    site_url = Column(String(255), primary_key=True)
+    date = Column(Date, primary_key=True)
+    page = Column(Text, primary_key=True)  # recortada a 2.000 caracteres
+    clicks = Column(Integer, nullable=False)
+    impressions = Column(Integer, nullable=False)
+    position = Column(REAL, nullable=False)
+
+
+class GscDetailSync(Base):
+    """Estado de importación del detalle (consultas y páginas) por propiedad."""
+    __tablename__ = "gsc_detail_sync"
+
+    site_url = Column(String(255), primary_key=True)
+    backfilled_at = Column(DateTime(timezone=True), nullable=True)
+    last_synced_at = Column(DateTime(timezone=True), nullable=True)
+    last_data_date = Column(Date, nullable=True)
+    error_code = Column(String(64), nullable=True)
+    # Filas guardadas en la ventana de 120 días tras la última pasada.
+    query_rows = Column(Integer, nullable=True)
+    page_rows = Column(Integer, nullable=True)
 
 
 # ── Accesos (credenciales compartidas) ───────────────────────────────────────

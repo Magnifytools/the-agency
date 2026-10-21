@@ -28,6 +28,7 @@ describe("SearchConsoleSection with several Google accounts", () => {
       sites: [{
         site_url: "sc-domain:fitgeneration.es", clients: [{ id: 1, name: "Fit Generation" }], backfilled: true,
         last_data_date: "2026-10-17", last_synced_at: "2026-10-18T05:00:00Z", error_code: null, google_email: "digital@magnify.ing",
+        detail: { backfilled_at: "2026-10-18T05:00:00Z", last_data_date: "2026-10-17", error_code: null, query_rows: 12345, page_rows: 678 },
       }],
     })
   })
@@ -40,6 +41,7 @@ describe("SearchConsoleSection with several Google accounts", () => {
     expect(screen.getByRole("button", { name: "Añadir cuenta de Google" })).toBeInTheDocument()
     const row = screen.getByText("sc-domain:fitgeneration.es").closest("tr") as HTMLElement
     expect(within(row).getByText("digital@magnify.ing")).toBeInTheDocument()
+    expect(within(row).getByText(/12\.345 filas de consultas · 678 de páginas/)).toBeInTheDocument()
   })
 
   it("asks before disconnecting and keeps the figures by default", async () => {
@@ -58,7 +60,7 @@ describe("SearchConsoleSection with several Google accounts", () => {
 
   it("can also purge the imported figures and warns when Google did not confirm the revocation", async () => {
     mocks.disconnect.mockResolvedValue({
-      status: "disconnected", google_revoked: false, purged: { gsc_sites: 1, gsc_rows: 30, ga4_properties: 0, ga4_rows: 0 },
+      status: "disconnected", google_revoked: false, purged: { gsc_sites: 1, gsc_rows: 30, gsc_query_rows: 0, gsc_page_rows: 0, ga4_properties: 0, ga4_rows: 0 },
     })
     show()
     await userEvent.click(await screen.findByRole("button", { name: "Desconectar digital@magnify.ing" }))

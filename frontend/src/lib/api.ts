@@ -1058,6 +1058,14 @@ export interface GscSiteStatus {
   error_code: string | null
   /** Cuenta de Google con la que se importa (la que ve la propiedad). */
   google_email: string | null
+  /** Detalle por consulta y página (120 días, job `gsc_detail`); null si aún no ha pasado. */
+  detail: {
+    backfilled_at: string | null
+    last_data_date: string | null
+    error_code: string | null
+    query_rows: number | null
+    page_rows: number | null
+  } | null
 }
 
 export interface GscConnectionStatus {
@@ -1126,7 +1134,7 @@ export const gscApi = {
   getStatus: () => api.get<GscStatus>("/gsc/status").then((r) => r.data),
   getAuthUrl: () => api.get<{ url: string }>("/gsc/auth-url").then((r) => r.data),
   disconnect: (connectionId: number, purgeData = false) =>
-    api.post<{ status: string; google_revoked: boolean; purged: { gsc_sites: number; gsc_rows: number; ga4_properties: number; ga4_rows: number } | null }>(
+    api.post<{ status: string; google_revoked: boolean; purged: { gsc_sites: number; gsc_rows: number; gsc_query_rows: number; gsc_page_rows: number; ga4_properties: number; ga4_rows: number } | null }>(
       `/gsc/connections/${connectionId}/disconnect`, { purge_data: purgeData },
     ).then((r) => r.data),
   listSites: () => api.get<{ sites: { site_url: string; permission: string | null; google_email: string | null }[] }>("/gsc/sites").then((r) => r.data),

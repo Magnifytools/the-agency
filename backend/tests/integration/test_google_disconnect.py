@@ -74,7 +74,8 @@ async def test_desconectar_purgando_borra_solo_las_propiedades_de_esa_cuenta(adm
     assert resp.status_code == 200
     body = resp.json()
     assert body["google_revoked"] is True
-    assert body["purged"] == {"gsc_sites": 1, "gsc_rows": 2, "ga4_properties": 1, "ga4_rows": 1}
+    assert body["purged"] == {"gsc_sites": 1, "gsc_rows": 2, "gsc_query_rows": 0, "gsc_page_rows": 0,
+                              "ga4_properties": 1, "ga4_rows": 1}
     db_session.expire_all()
     assert await _count(db_session, GscDaily, GscDaily.site_url == "sc-domain:a.com") == 0
     assert await db_session.get(GscSiteSync, "sc-domain:a.com") is None

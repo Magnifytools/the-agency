@@ -41,7 +41,7 @@ async def test_upgrade_twice_keeps_clients_and_starts_empty(engine):
     await deployment_schema.migrate_schema(engine)
     await deployment_schema.migrate_schema(engine)
     await deployment_schema.check_deployment_ready(engine)
-    assert deployment_schema.EXPECTED_SCHEMA_VERSION == MIGRATION.version
+    assert MIGRATION in deployment_schema.MIGRATIONS
     async with engine.connect() as conn:
         assert await conn.scalar(text("SELECT to_jsonb(c) FROM clients c WHERE id=1")) == before
         for table in ("web_uptime_targets", "web_uptime_state", "web_outages", "web_uptime_probes",
