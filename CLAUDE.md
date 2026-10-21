@@ -392,6 +392,17 @@ admin_users, admin_settings
   por su cuenta (ver "Webs: cambios"). Si un cliente tiene URLs propias en
   `web_watches`, su estado ya NO cuenta Vigil. La integración se quita en la
   fase 3, tras importar los datos; hasta entonces, no la borres.
+- **Corte** (fase 3a): runbook en `docs/vigil-migration.md` (congelar Vigil,
+  importar, calibrar sin Slack, encender `WEB_SWEEP_ENABLED`, y la retirada 3b/3c).
+  `python -m backend.scripts.import_vigil --sqlite vigil.db --dry-run` copia
+  `vigil.db` (sólo lectura) a las tablas `web_*` conservando los ids, en UNA
+  transacción idempotente (`ON CONFLICT (id) DO NOTHING`); slug → `vigil_slug`
+  (o `--map slug=id` / `--skip slug`; un slug sin pareja aborta todo), usuarios
+  por email (si no, `acknowledged_by_label`), webhook re-cifrado con
+  `encrypt_vault_secret` (`VIGIL_SECRET_KEY` por entorno o teclado, nunca por
+  argumento) y lo que en Vigil era default entra como NULL. Lo de The Agency
+  manda en `client_web_settings`. `python -m backend.scripts.web_calibrate`
+  barre sin avisar a Slack (`notify=False`): se corre en Railway tras importar.
 
 ## Webs: disponibilidad (monitor de caídas, fase 1)
 
@@ -536,6 +547,9 @@ admin_users, admin_settings
     `truncated` dice si el `limit` dejó cosas fuera.
   - *0octies* (Railway desplegaba un snapshot) no aplica: Agency despliega desde
     `main`.
+- **Datos de Vigil**: se importan con `scripts/import_vigil.py` (ver sección
+  Vigil y `docs/vigil-migration.md`). El `watch_state` importado es la "versión
+  anterior" del primer barrido: sin él, todo saldría como primera captura.
 - **Fuera del Deshacer** (`test_cambios_web_quedan_fuera_del_journal` y
   `test_nada_de_la_vigilancia_de_cambios_entra_en_el_deshacer`). Dependencias:
   `lxml` y `cssselect` (ruedas cp312 manylinux, sin compilar).
