@@ -46,7 +46,7 @@ def job_definitions() -> tuple[JobDefinition, ...]:
                       None if settings.GOOGLE_CLIENT_ID and settings.SCHEDULED_COMMUNICATIONS_ENABLED
                       else "La sincronización de calendarios no está configurada o los avisos están pausados."),
         JobDefinition(JobSpec("retention", 10, 86400), "Limpiar registros antiguos",
-                      "Aplica la retención de logs y notificaciones antiguas; conserva las incidencias actuales."),
+                      "Aplica la retención de logs, notificaciones antiguas y eventos de Google Calendar pasados; conserva las incidencias actuales."),
         JobDefinition(JobSpec("inbox_classification", 11, 30, 180), "Clasificar notas de Inbox",
                       "Recupera notas pendientes y propone asociaciones. Nunca crea tareas sin tu decisión."),
         JobDefinition(JobSpec("gsc", 12, 86400, 1800, retry_seconds=3600), "Importar Search Console",

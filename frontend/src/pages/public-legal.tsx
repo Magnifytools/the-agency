@@ -12,7 +12,7 @@ import { Link } from "react-router-dom"
  */
 
 const CONTACT = "david@magnify.ing"
-const UPDATED = "20 de octubre de 2026"
+const UPDATED = "21 de octubre de 2026"
 
 function LegalLayout({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -70,7 +70,10 @@ export function AboutPage() {
           su calendario para ver su próxima reunión en su lista de tareas.
         </li>
       </ul>
-      <p>The Agency nunca escribe, modifica ni borra nada en las cuentas de Google.</p>
+      <p>
+        The Agency nunca escribe, modifica ni borra nada en las cuentas de Google. Lo único que pide a Google
+        es retirar su propio acceso cuando se desconecta una cuenta.
+      </p>
       <p>
         Detalle completo en la <Link to="/privacidad">política de privacidad</Link>.
       </p>
@@ -83,7 +86,8 @@ export function AboutPage() {
           and Google Analytics data (read-only) for our clients' websites to track their traffic and to add
           a block of figures to the monthly report each client receives. Each user may optionally connect
           their own Google Calendar (read-only) to see their next meeting. The app never writes to, changes
-          or deletes anything in Google accounts. See the <Link to="/privacidad">privacy policy</Link>.
+          or deletes anything in Google accounts; the only request it makes is to revoke its own access when
+          an account is disconnected. See the <Link to="/privacidad">privacy policy</Link>.
         </p>
       </div>
     </LegalLayout>
@@ -119,7 +123,7 @@ export function PrivacyPage() {
         Cada persona puede conectar su propio calendario. Leemos de los próximos 7 días el título, la
         descripción, el inicio y el fin de cada evento, y los guardamos para enseñarle su próxima reunión y
         avisarle antes de que empiece. No leemos asistentes, organizador, ubicación ni adjuntos. Sólo esa
-        persona ve sus eventos dentro de la app.
+        persona ve sus eventos dentro de la app. Cada evento importado se borra 30 días después de terminar.
       </p>
 
       <h2>Para qué los usamos</h2>
@@ -155,13 +159,24 @@ export function PrivacyPage() {
 
       <h2>Cuánto tiempo los guardamos y cómo borrarlos</h2>
       <p>
-        Las cifras diarias se conservan mientras dure la relación con el cliente, para poder comparar con meses
-        anteriores. Los eventos de calendario importados se conservan en la app aunque pasen.
+        Las cifras diarias de Search Console y Analytics se conservan mientras dure la relación con el cliente,
+        para poder comparar con meses anteriores. Los eventos de calendario importados se borran
+        automáticamente 30 días después de terminar.
       </p>
+      <ul>
+        <li>
+          Al desconectar cualquier cuenta de Google en la app, The Agency borra el token guardado y pide a Google
+          que revoque su acceso a esa cuenta.
+        </li>
+        <li>
+          Al desconectar una cuenta de Search Console y Analytics, el administrador puede elegir borrar también
+          las cifras importadas de las webs y propiedades que se leían con ella. Si no lo elige, se conservan.
+        </li>
+        <li>Al desconectar Google Calendar se borran todos los eventos importados de esa persona.</li>
+      </ul>
       <p>
-        Al desconectar una cuenta en la app se borra su token. Las cifras ya importadas no se borran solas: si
-        quieres que borremos tus datos, escríbenos a <a href={`mailto:${CONTACT}`}>{CONTACT}</a> y lo haremos.
-        También puedes retirar el acceso de The Agency en cualquier momento desde{" "}
+        Si quieres que borremos otros datos, escríbenos a <a href={`mailto:${CONTACT}`}>{CONTACT}</a> y lo
+        haremos. También puedes retirar el acceso de The Agency en cualquier momento desde{" "}
         <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.
       </p>
 
@@ -187,6 +202,7 @@ export function PrivacyPage() {
           that user their next meeting and remind them before it starts; if their team enables it, the title
           and time appear in their morning plan, which can be posted to the team's internal channel. We do not
           read attendees, organizer, location or attachments. Only that user sees their events in the app.
+          Each imported event is deleted 30 days after it ends.
         </p>
         <p>
           Search Console and Analytics figures are shown to app users with read access to clients or reports,
@@ -202,10 +218,15 @@ export function PrivacyPage() {
           including the Limited Use requirements.
         </p>
         <p>
-          Tokens are stored encrypted and all traffic uses HTTPS. Daily figures are kept for the duration of
-          the client relationship to allow comparisons with previous months; imported calendar events are
-          kept in the app. Disconnecting an account deletes its token; to have your data deleted, email{" "}
-          {CONTACT}. You can revoke The Agency's access at any time at myaccount.google.com/permissions.
+          Tokens are stored encrypted and all traffic uses HTTPS. Search Console and Analytics daily figures
+          are kept for the duration of the client relationship to allow comparisons with previous months;
+          imported calendar events are deleted automatically 30 days after they end. Disconnecting any Google
+          account deletes the stored token and asks Google to revoke The Agency's access to it. When
+          disconnecting a Search Console and Analytics account, the admin can choose to also delete the
+          figures imported for the websites and properties read through it; otherwise they are kept.
+          Disconnecting Google Calendar deletes all of that user's imported events. To have other data
+          deleted, email {CONTACT}. You can revoke The Agency's access at any time at
+          myaccount.google.com/permissions.
         </p>
       </div>
     </LegalLayout>

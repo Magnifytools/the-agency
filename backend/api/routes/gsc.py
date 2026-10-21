@@ -10,14 +10,18 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from pydantic import BaseModel
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import require_admin, require_module
 from backend.config import settings
 from backend.db.database import async_session, get_db
-from backend.db.models import Client, ClientStatus, GscConnection, GscSiteSync, User
+from backend.db.models import (
+    Client, ClientStatus, Ga4Daily, Ga4PropertySync, GscConnection, GscDaily, GscSiteSync, User,
+)
 from backend.services import gsc_service
+from backend.services.google_oauth import plain_refresh_token, revoke_token
 
 router = APIRouter(prefix="/api/gsc", tags=["search-console"])
 logger = logging.getLogger(__name__)
@@ -152,16 +156,61 @@ async def gsc_callback(
     return RedirectResponse(url="/settings?gsc=connected")
 
 
+class DisconnectRequest(BaseModel):
+    # Borrar también las cifras de las propiedades que se importaban con esta cuenta.
+    purge_data: bool = False
+
+
+async def _purge_connection_data(db: AsyncSession, connection_id: int) -> dict:
+    """Borra las cifras diarias (y su estado) de las propiedades de Search Console
+    y GA4 que se importaban con esta cuenta. Si otra cuenta conectada también
+    las ve, la próxima importación las vuelve a traer desde cero.
+
+    Son ``delete()`` masivos: no pasan por el ORM y no entran en el Deshacer, a
+    propósito (el admin lo ha pedido explícitamente al desconectar).
+    """
+    sites = list((await db.scalars(
+        select(GscSiteSync.site_url).where(GscSiteSync.connection_id == connection_id)
+    )).all())
+    properties = list((await db.scalars(
+        select(Ga4PropertySync.property_id).where(Ga4PropertySync.connection_id == connection_id)
+    )).all())
+    gsc_rows = ga4_rows = 0
+    if sites:
+        gsc_rows = (await db.execute(delete(GscDaily).where(GscDaily.site_url.in_(sites)))).rowcount or 0
+        await db.execute(delete(GscSiteSync).where(GscSiteSync.site_url.in_(sites)))
+    if properties:
+        ga4_rows = (await db.execute(delete(Ga4Daily).where(Ga4Daily.property_id.in_(properties)))).rowcount or 0
+        await db.execute(delete(Ga4PropertySync).where(Ga4PropertySync.property_id.in_(properties)))
+    return {"gsc_sites": len(sites), "gsc_rows": gsc_rows, "ga4_properties": len(properties), "ga4_rows": ga4_rows}
+
+
 @router.post("/connections/{connection_id}/disconnect")
-async def gsc_disconnect(connection_id: int, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
-    """Quita una cuenta. Los datos ya importados se conservan; sus propiedades
-    pasan a la siguiente cuenta que las vea en la próxima importación."""
+async def gsc_disconnect(
+    connection_id: int,
+    body: DisconnectRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Quita una cuenta: borra su token y lo revoca en Google.
+
+    Sin ``purge_data`` las cifras importadas se conservan y sus propiedades pasan
+    a la siguiente cuenta que las vea. Con ``purge_data`` se borran las de las
+    propiedades que se importaban con esta cuenta.
+    """
     connection = await db.get(GscConnection, connection_id)
     if connection is None:
         raise HTTPException(status_code=404, detail="Cuenta no encontrada")
+    token = plain_refresh_token(connection.refresh_token)
+    # Antes de borrar la cuenta: el FK pone connection_id a NULL al borrarla.
+    purged = await _purge_connection_data(db, connection_id) if body and body.purge_data else None
     await db.delete(connection)
     await db.commit()
-    return {"status": "disconnected"}
+    # Después de borrar: la copia local desaparece aunque Google no conteste.
+    revoked = await revoke_token(token)
+    if not revoked:
+        logger.warning("Cuenta de Search Console %s borrada sin confirmación de revocación en Google", connection_id)
+    return {"status": "disconnected", "google_revoked": revoked, "purged": purged}
 
 
 @router.get("/sites")

@@ -1031,7 +1031,7 @@ export const calendarApi = {
   getStatus: () =>
     api.get<{ connected: boolean; connection_status: "connected" | "disconnected" | "reconnect_required"; calendar_id: string | null; last_synced_at: string | null; meeting_alerts: { minutes_before: number; discord_dm: boolean; extension: boolean } | null }>("/calendar/status").then((r) => r.data),
   disconnect: () =>
-    api.post("/calendar/disconnect").then((r) => r.data),
+    api.post<{ ok: boolean; google_revoked: boolean; events_deleted: number }>("/calendar/disconnect").then((r) => r.data),
   updateAlerts: (data: { minutes_before: number; discord_dm: boolean; extension: boolean }) =>
     api.put("/calendar/alerts", data).then((r) => r.data),
   sync: () =>
@@ -1092,7 +1092,10 @@ export const ga4Api = {
 export const gscApi = {
   getStatus: () => api.get<GscStatus>("/gsc/status").then((r) => r.data),
   getAuthUrl: () => api.get<{ url: string }>("/gsc/auth-url").then((r) => r.data),
-  disconnect: (connectionId: number) => api.post(`/gsc/connections/${connectionId}/disconnect`).then((r) => r.data),
+  disconnect: (connectionId: number, purgeData = false) =>
+    api.post<{ status: string; google_revoked: boolean; purged: { gsc_sites: number; gsc_rows: number; ga4_properties: number; ga4_rows: number } | null }>(
+      `/gsc/connections/${connectionId}/disconnect`, { purge_data: purgeData },
+    ).then((r) => r.data),
   listSites: () => api.get<{ sites: { site_url: string; permission: string | null; google_email: string | null }[] }>("/gsc/sites").then((r) => r.data),
   sync: () => api.post<{ status: string; synced: number; failed: number }>("/gsc/sync").then((r) => r.data),
 }
