@@ -18,6 +18,12 @@ describe("agency areas and permission boundaries", () => {
     expect(areas.find(area => area.id === "work")?.links[0].to).toBe("/projects")
     expect(areas.flatMap((area) => area.links).some((link) => ["/users", "/clients", "/tasks?view=all", "/digests"].includes(link.to))).toBe(false)
   })
+  it("shows website availability under Clientes only with the web module", () => {
+    const withWeb = navigationFor((module) => module === "web", false)
+    expect(withWeb.find((area) => area.id === "clients")?.links.map((link) => link.to)).toEqual(["/web"])
+    expect(navigationFor((module) => module === "clients", false).flatMap((area) => area.links).some((link) => link.to === "/web")).toBe(false)
+    expect(activeArea("/web", "")).toBe("clients")
+  })
   it("distinguishes agenda from work while preserving legacy and QA task links", () => {
     expect(activeArea("/tasks", "?id=27")).toBe("today")
     expect(activeArea("/tasks", "?view=all")).toBe("work")

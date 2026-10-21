@@ -22,6 +22,7 @@ const areas: NavigationArea[] = [
   ] },
   { id: "clients", label: "Clientes", icon: Users, links: [
     { to: "/clients", label: "Clientes", module: "clients" },
+    { to: "/web", label: "Disponibilidad web", mobileLabel: "Webs", module: "web" },
   ] },
   { id: "summaries", label: "Resúmenes", icon: ClipboardList, links: [
     { to: "/dailys", label: "Mi resumen diario", mobileLabel: "Diario" },
@@ -49,7 +50,7 @@ export function activeArea(pathname: string, search: string): AreaId {
     return params.has("qaFilter") || (params.has("view") && params.get("view") !== "my_day") ? "work" : "today"
   }
   if (pathname === "/dashboard" || pathname === "/incidents" || pathname.startsWith("/deliveries/")) return "today"
-  if (pathname.startsWith("/clients")) return "clients"
+  if (pathname.startsWith("/clients") || pathname === "/web") return "clients"
   if (["/dailys", "/digests"].some((path) => pathname === path || pathname.startsWith(path + "/"))) return "summaries"
   if (["/projects", "/timesheet", "/inbox", "/leads", "/growth", "/proposals"].some((path) => pathname === path || pathname.startsWith(path + "/"))) return "work"
   return "settings"

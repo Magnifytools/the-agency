@@ -230,6 +230,8 @@ export interface ClientStatusRow {
     fresh: boolean
     url: string
   } | null
+  /** Disponibilidad de la web. null = quien mira no lee "web" o el cliente no tiene URLs. */
+  uptime?: import("./web").ClientUptimeBlock | null
 }
 
 export interface VigilClients {
