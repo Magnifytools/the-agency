@@ -94,6 +94,7 @@ frontend/src/
 ```
 dashboard, clients, projects, tasks, timesheet, proposals,
 reports, growth (Pipeline + Buffer), communications, digests, credentials (Accesos),
+web (Webs: disponibilidad),
 finance_income, finance_expenses, finance_taxes, finance_forecasts,
 finance_advisor, finance_import, finance_dashboard,
 admin_users, admin_settings
@@ -387,6 +388,57 @@ admin_users, admin_settings
 - **Uso**: la ficha lo enseña en Resultados y el estado del cliente da
   Vigilar si hay cambios críticos sin revisar. Un resumen de más de 48 h se
   enseña pero no cuenta (`services/vigil_service.py`).
+
+## Webs: disponibilidad (monitor de caídas, fase 1)
+
+- **Qué es**: The Agency comprueba si responde cada URL vigilada de cada cliente
+  (independiente de Vigil). Módulo de permisos `web` ("Webs"): leer = ver;
+  escribir = gestionar URLs y "Probar ahora". El Slack del cliente, sólo admin.
+  Código en `backend/services/web/` (`uptime.py`, `uptime_notify.py`,
+  `uptime_views.py`, `safe_http.py`, `headers.py`, `slack.py`); API en
+  `api/routes/web_uptime.py`; tablas `web_uptime_targets`, `web_uptime_state`,
+  `web_outages`, `web_uptime_probes`, `client_web_settings` (migración `web_uptime_v1`).
+- **Clasificación**: arriba = 2xx/3xx; caída = 5xx, 404/410 y demás 4xx,
+  timeout, DNS, conexión, TLS, demasiadas redirecciones, IP no pública;
+  **bloqueo ≠ caída** = 401/403/429 o desafío de Cloudflare (responde, pero no a
+  nosotros). Bloqueo > `UPTIME_BLOCKED_ALERT_MINUTES` (60) abre una "caída" de
+  tipo `blocked`: sólo aviso en la bandeja, nunca a Slack.
+- **Umbrales** (settings): se mira cada `UPTIME_INTERVAL_SECONDS` (300); tras un
+  fallo, `UPTIME_RECHECK_SECONDS` (60); `UPTIME_FAILURES_TO_ALERT` (2) ciclos
+  fallidos = caída (empieza en el primer fallo); `UPTIME_RECOVERIES_TO_CLOSE` (2)
+  ciclos buenos = recuperada. Un fallo se reintenta una vez a los 5-10 s dentro
+  del ciclo. GET con cuerpo ≤ 64 KB, 15 s en total, ≤ 5 redirecciones.
+- **Falsas alarmas**: canario `UPTIME_CANARY_URLS` al empezar (si ninguna
+  responde, ciclo saltado y job `provider_unavailable`); correlación: ≥ 3 hosts
+  y ≥ 50 % fallando por red (sin respuesta HTTP) en el mismo ciclo = red nuestra,
+  no avanzan contadores. Cada host en serie, máx. 8 a la vez; User-Agent del
+  cliente (`client_web_settings.user_agent`) o el de `headers.py`.
+- **SSRF**: toda petición pasa por `safe_http.fetch` (DNS una vez, TODAS las IPs
+  globales, IP fijada con SNI, cada redirección revalidada, sólo puertos 80/443,
+  sin credenciales en la URL). Al guardar, `check_url_syntax` (sin red). No
+  pidas una URL de cliente con `httpx` a pelo.
+- **Avisos**: incidencias `client_site_down` (crítica) y `client_site_blocked`
+  (aviso) en `services/incident_web_conditions.py`, clave
+  `...:client:{id}:open`, huella con los ids de las caídas (un descarte vale para
+  ESA caída). Destinatarios: admins y responsables de proyectos activos/planificados
+  del cliente con lectura de `web`. Además, "web caída" y "web recuperada" (con
+  duración) al **Slack de cada cliente** (webhook cifrado con
+  `encrypt_vault_secret`, CHECK `v1:%`, nunca vuelve en una respuesta). Sin canal
+  interno.
+- **Slack como outbox**: la caída se guarda con `slack_down_status='pending'` en
+  la misma transacción que el estado; luego se publica y se anota. Lo pendiente se
+  reintenta al empezar cada ciclo (10 intentos). Webhook revocado (404/410) →
+  `slack_enabled=false` + `slack_revoked_at`.
+- **Estado del cliente**: caída = Actuar ("La web no responde desde …"), bloqueo
+  largo = Vigilar; bloque `uptime` en `/status` y `/portfolio`, sólo si quien
+  mira lee `web`.
+- **Job** `uptime`: lock **15** (16 reservado para `web_sweep`, 17 para
+  `gsc_detail`), cada 60 s, timeout 150 s, sólo clientes activos no internos.
+  **Apagado por defecto**: en Railway `UPTIME_ENABLED=true`. Sondeos 30 días
+  (`_retention_cleanup_once`); las caídas se conservan.
+- Fuera del Deshacer (`test_webs_quedan_fuera_del_journal`). Alta inicial:
+  `python -m backend.scripts.seed_uptime_targets --dry-run|--apply` (home desde
+  `Client.website`).
 
 ## Enlace para el cliente (fase 3 Agency 2.0)
 

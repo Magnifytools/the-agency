@@ -34,6 +34,7 @@ const ALL_MODULES: { key: string; label: string; group: string; hint: string }[]
   { key: "digests", label: "Digests", group: "General", hint: "Resúmenes semanales con IA para clientes" },
   { key: "communications", label: "Comunicaciones", group: "General", hint: "Seguimiento de emails y contactos" },
   { key: "credentials", label: "Accesos", group: "General", hint: "Contraseñas compartidas: sólo ve las que le compartan" },
+  { key: "web", label: "Webs", group: "General", hint: "Disponibilidad de las webs: ver (lectura) y gestionar URLs (escritura). Slack, sólo admin" },
   { key: "growth", label: "Pipeline + Buffer", group: "Crecimiento", hint: "CRM de leads y buffer de ideas ICE" },
   { key: "proposals", label: "Presupuestos", group: "Crecimiento", hint: "Creación y envío de propuestas" },
   { key: "finance_dashboard", label: "Dashboard Financiero", group: "Finanzas", hint: "Resumen financiero global" },

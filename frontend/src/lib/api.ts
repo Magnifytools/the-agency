@@ -3,6 +3,13 @@ import axios, { type GenericAbortSignal, type InternalAxiosRequestConfig } from 
 import { toast } from "sonner"
 import type {
   VigilClients,
+  UptimeOverview,
+  ClientUptimeTargets,
+  UptimeTarget,
+  UptimeProbeResult,
+  UptimeHistory,
+  ClientSlackSettings,
+  ClientSlackSettingsInput,
   TaskAgendaSection,
   SearchResults,
   PaginatedResponse,
@@ -1073,6 +1080,32 @@ export interface GscStatus {
   configured: boolean
   connections: GscConnectionStatus[]
   sites: GscSiteStatus[]
+}
+
+// --- Webs: disponibilidad (monitor de caídas) ---
+export const webApi = {
+  overview: () => api.get<UptimeOverview>("/web/uptime").then((r) => r.data),
+  targets: (clientId: number) =>
+    api.get<ClientUptimeTargets>(`/clients/${clientId}/web/uptime-targets`).then((r) => r.data),
+  createTarget: (clientId: number, data: { url: string; label?: string | null }) =>
+    api.post<UptimeTarget>(`/clients/${clientId}/web/uptime-targets`, data).then((r) => r.data),
+  updateTarget: (clientId: number, targetId: number, data: { url?: string; label?: string | null; is_active?: boolean }) =>
+    api.patch<UptimeTarget>(`/clients/${clientId}/web/uptime-targets/${targetId}`, data).then((r) => r.data),
+  deleteTarget: (clientId: number, targetId: number) =>
+    api.delete(`/clients/${clientId}/web/uptime-targets/${targetId}`).then(() => undefined),
+  probe: (targetId: number) =>
+    api.post<UptimeProbeResult>(`/web/uptime-targets/${targetId}/probe`, undefined, { timeout: 30_000 }).then((r) => r.data),
+  history: (targetId: number, days = 30) =>
+    api.get<UptimeHistory>(`/web/uptime-targets/${targetId}/history`, { params: { days } }).then((r) => r.data),
+  slack: (clientId: number) =>
+    api.get<ClientSlackSettings>(`/clients/${clientId}/web/settings/slack`).then((r) => r.data),
+  saveSlack: (clientId: number, data: ClientSlackSettingsInput) =>
+    api.put<ClientSlackSettings>(`/clients/${clientId}/web/settings/slack`, data).then((r) => r.data),
+  removeSlack: (clientId: number) =>
+    api.delete<ClientSlackSettings>(`/clients/${clientId}/web/settings/slack`).then((r) => r.data),
+  testSlack: (clientId: number) =>
+    api.post<{ ok: boolean; revoked: boolean; error: string | null }>(`/clients/${clientId}/web/settings/slack/test`)
+      .then((r) => r.data),
 }
 
 export const vigilApi = {

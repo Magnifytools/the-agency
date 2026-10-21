@@ -14,6 +14,7 @@ import { getErrorMessage } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
 import { invalidateClientChange } from "@/lib/query-keys"
 import { ClientShareLinkCard } from "@/components/clients/client-share-link-card"
+import { ClientSlackCard } from "@/components/web/client-slack-card"
 
 interface Props {
   client: Client
@@ -231,6 +232,9 @@ export function ClientSettingsTab({ client }: Props) {
       </Card>
 
       <ClientShareLinkCard clientId={client.id} />
+
+      {/* Avisos de caída de su web al Slack del cliente: sólo admin. */}
+      {isAdmin && <ClientSlackCard clientId={client.id} />}
     </div>
   )
 }

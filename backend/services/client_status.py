@@ -14,6 +14,9 @@ de David, 19 oct 2026): el módulo está oculto y sin uso.
 
 Vigil (cambios en la web): un cambio crítico sin revisar es Vigilar; un
 resumen de más de 48 h se enseña pero no cuenta.
+
+Disponibilidad de la web (monitor de caídas, módulo ``web``): una caída abierta
+es Actuar; un bloqueo largo (no podemos comprobarla) es Vigilar.
 """
 
 from __future__ import annotations
@@ -48,6 +51,7 @@ from backend.services.temporal import business_today, civil_day_utc_bounds
 from backend.services.time_entry_dates import time_entry_civil_period
 from backend.services import ga4_service
 from backend.services.vigil_service import client_block, summaries as vigil_summaries
+from backend.services.web.uptime_views import client_blocks as uptime_blocks, status_reason as uptime_reason
 
 Status = Literal["ok", "watch", "act", "no_data"]
 _RANK = {"no_data": 0, "ok": 1, "watch": 2, "act": 3}
@@ -69,6 +73,7 @@ class Viewer:
     tasks: bool
     digests: bool
     timesheet: bool
+    web: bool = False
 
     @classmethod
     def of(cls, user: User) -> "Viewer":
@@ -77,6 +82,7 @@ class Viewer:
             tasks=has_module_read(user, "tasks"),
             digests=has_module_read(user, "digests"),
             timesheet=has_module_read(user, "timesheet"),
+            web=has_module_read(user, "web"),
         )
 
 
@@ -312,6 +318,7 @@ async def portfolio(
     vigil = await vigil_summaries(db, {c.vigil_slug for c in clients if c.vigil_slug})
     ga4_props = {c.id: ga4_service.normalize_property(c.ga4_property_id) for c in clients}
     ga4 = await ga4_service.windows(db, {p for p in ga4_props.values() if p})
+    uptime = await uptime_blocks(db, client_ids) if viewer.web else {}
 
     rows = []
     for client in clients:
@@ -404,6 +411,15 @@ async def portfolio(
             critical = row["vigil"]["critical"]
             if critical:
                 signals.add("watch", f"{critical} cambio{'s' if critical > 1 else ''} crítico{'s' if critical > 1 else ''} en la web sin revisar (Vigil)")
+            else:
+                signals.add("ok")
+
+        # 7. Disponibilidad de la web: caída = Actuar, bloqueo largo = Vigilar.
+        row["uptime"] = uptime.get(client.id) if viewer.web else None
+        if row["uptime"] and row["uptime"]["last_checked_at"]:
+            reason = uptime_reason(row["uptime"])
+            if reason:
+                signals.add(*reason)
             else:
                 signals.add("ok")
 

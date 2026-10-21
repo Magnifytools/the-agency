@@ -28,7 +28,7 @@ _VALID_MODULES = frozenset({
     "clients", "communications", "credentials", "dashboard", "digests",
     "finance_advisor", "finance_expenses", "finance_forecasts", "finance_import",
     "finance_income", "finance_taxes",
-    "growth", "leads", "pm", "projects", "proposals", "tasks", "timesheet",
+    "growth", "leads", "pm", "projects", "proposals", "tasks", "timesheet", "web",
 })
 
 

@@ -69,4 +69,9 @@ def job_definitions() -> tuple[JobDefinition, ...]:
                       "Copia el resumen de Vigil: cambios sin revisar y páginas con error por cliente.",
                       None if settings.VIGIL_API_URL and settings.VIGIL_SERVICE_KEY
                       else "Vigil no está configurado."),
+        # Cada 60 s mira sólo las URLs que tocan (cada 5 min; 60 s si fallan).
+        # Lock 15; el 16 queda reservado para web_sweep y el 17 para gsc_detail.
+        JobDefinition(JobSpec("uptime", 15, 60, timeout_seconds=150, retry_seconds=60), "Comprobar las webs de los clientes",
+                      "Mira si responden las URLs vigiladas y avisa de caídas y recuperaciones (bandeja y Slack del cliente).",
+                      None if settings.UPTIME_ENABLED else "El monitor de caídas está apagado (UPTIME_ENABLED)."),
     )
