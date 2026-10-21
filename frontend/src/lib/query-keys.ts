@@ -182,6 +182,15 @@ export const clientKeys = {
   summaries: () => ["client-summary"] as const,
 }
 
+// Control SEO: todo lo de un cliente cuelga de ["client-seo", id] (los términos
+// de marca cambian el reparto, así que guardar la ficha lo invalida entero).
+export const clientSeoKeys = {
+  all: (clientId: number) => ["client-seo", clientId] as const,
+  summary: (clientId: number, days: number) => ["client-seo", clientId, "summary", days] as const,
+  list: (clientId: number, kind: "queries" | "pages", params: object) =>
+    ["client-seo", clientId, kind, params] as const,
+}
+
 export async function invalidateClientChange(queryClient: QueryClient, clientIds: number[] = []) {
   const invalidations = [
     queryClient.invalidateQueries({ queryKey: clientKeys.all() }),
@@ -207,6 +216,7 @@ export async function invalidateClientChange(queryClient: QueryClient, clientIds
       queryClient.invalidateQueries({ queryKey: clientKeys.dashboard(clientId) }),
       queryClient.invalidateQueries({ queryKey: ["client-activity", clientId] }),
       queryClient.invalidateQueries({ queryKey: ["client-status", clientId] }),
+      queryClient.invalidateQueries({ queryKey: clientSeoKeys.all(clientId) }),
     )
   }
   await Promise.all(invalidations)

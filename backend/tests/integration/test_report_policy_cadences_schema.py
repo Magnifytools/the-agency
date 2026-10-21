@@ -2,9 +2,8 @@
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import Base, Client, ClientStatus
+from backend.db.models import Base
 from backend.startup import deployment_schema, schema_baseline
 from backend.startup.report_policy_cadences_schema import MIGRATION, verify
 from backend.startup.schema_runner import run_schema_migrations
@@ -31,10 +30,13 @@ async def published_previous(engine):
     await reset(engine)
     prior = deployment_schema.MIGRATIONS[:deployment_schema.MIGRATIONS.index(MIGRATION)]
     await run_schema_migrations(engine, prior, schema_baseline.preflight)
-    async with AsyncSession(engine) as db:
-        db.add_all([Client(id=client_id, name=f"Cliente {client_id}", status=ClientStatus.active) for client_id in LEGACY])
-        await db.commit()
     async with engine.begin() as conn:
+        # Clientes en SQL: el ORM ya conoce columnas de pasos posteriores (brand_terms).
+        for client_id in LEGACY:
+            await conn.execute(text("""
+                INSERT INTO clients (id,name,contract_type,status,currency,is_internal,is_intermediary_deal,created_at,updated_at)
+                VALUES (:id,:name,'monthly','active','EUR',false,false,'2026-01-01','2026-01-02')
+            """), {"id": client_id, "name": f"Cliente {client_id}"})
         # Esquema antiguo: sólo enabled/cadence. SQL crudo, el ORM ya no lo conoce.
         for client_id, ((enabled, cadence), _) in LEGACY.items():
             await conn.execute(text("""

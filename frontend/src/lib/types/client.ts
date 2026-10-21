@@ -21,6 +21,8 @@ export interface Client {
   monthly_fee: number | null
   ga4_property_id: string | null
   gsc_url: string | null
+  // Control SEO: búsquedas que cuentan como "de marca"
+  brand_terms?: string[]
   engine_project_id: number | null
   vigil_slug: string | null
   engine_content_count: number | null
@@ -69,6 +71,7 @@ export interface ClientCreate {
   monthly_fee?: number | null
   ga4_property_id?: string | null
   gsc_url?: string | null
+  brand_terms?: string[]
   engine_project_id?: number | null
   vigil_slug?: string | null
   // Revenue intelligence
