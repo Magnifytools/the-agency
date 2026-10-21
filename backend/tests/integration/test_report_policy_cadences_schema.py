@@ -55,8 +55,13 @@ async def flags(conn):
     return {row.client_id: row for row in rows}
 
 
+# Hasta este paso incluido: el siguiente (report_policy_legacy_retirement_v1)
+# retira enabled/cadence, así que lo antiguo sólo se puede mirar antes.
+THROUGH = deployment_schema.MIGRATIONS[:deployment_schema.MIGRATIONS.index(MIGRATION) + 1]
+
+
 async def test_backfill_keeps_each_policy_cadence_and_is_idempotent(engine):
-    await deployment_schema.migrate_schema(engine)
+    await run_schema_migrations(engine, THROUGH, schema_baseline.preflight)
     async with engine.connect() as conn:
         rows = await flags(conn)
     for client_id, ((enabled, cadence), expected) in LEGACY.items():
@@ -70,10 +75,18 @@ async def test_backfill_keeps_each_policy_cadence_and_is_idempotent(engine):
     async with engine.begin() as conn:
         await conn.execute(text("UPDATE client_report_policies SET weekly_enabled = true WHERE client_id = 3"))
         await MIGRATION.apply(conn)
+    await run_schema_migrations(engine, THROUGH, schema_baseline.preflight)
+    async with engine.connect() as conn:
+        assert (await flags(conn))[3].weekly_enabled is True
+        await verify(conn)
+
+    # Y sobrevive al plan completo, que ya retira las columnas antiguas.
     await deployment_schema.migrate_schema(engine)
     await deployment_schema.check_deployment_ready(engine)
     async with engine.connect() as conn:
-        assert (await flags(conn))[3].weekly_enabled is True
+        assert await conn.scalar(text(
+            "SELECT weekly_enabled AND monthly_enabled FROM client_report_policies WHERE client_id = 3"
+        )) is True
         await verify(conn)
 
 

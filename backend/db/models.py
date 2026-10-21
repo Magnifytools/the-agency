@@ -1201,10 +1201,6 @@ class ClientReportPolicy(UTCTimestampMixin, Base):
     # un resumen sale de su periodo (``digest_periods.period_cadence``).
     weekly_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
     monthly_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
-    # Columnas antiguas (una sola cadencia). Siguen en P12 y el PUT las mantiene
-    # en sincronía, pero ningún código nuevo debe leerlas: pendientes de retirar.
-    legacy_enabled = Column("enabled", Boolean, nullable=False, default=False, server_default="false")
-    legacy_cadence = Column("cadence", Enum(ReportCadence, native_enum=False), nullable=False, default=ReportCadence.weekly, server_default="weekly")
     responsible_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     revision = Column(Integer, nullable=False, default=1, server_default="1")
 

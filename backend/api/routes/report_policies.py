@@ -18,7 +18,6 @@ from backend.db.models import (
     ClientReportPolicy,
     DigestExternalDeliveryEvent,
     ExternalDeliveryAction,
-    ReportCadence,
     User,
     UserPermission,
     UserRole,
@@ -131,11 +130,6 @@ async def put_report_policy(
 def _set_cadences(policy: ClientReportPolicy, request: ReportPolicyUpdate) -> None:
     policy.weekly_enabled = request.weekly_enabled
     policy.monthly_enabled = request.monthly_enabled
-    # Columnas antiguas en sincronía mientras no se retiren.
-    policy.legacy_enabled = request.weekly_enabled or request.monthly_enabled
-    policy.legacy_cadence = (
-        ReportCadence.monthly if request.monthly_enabled and not request.weekly_enabled else ReportCadence.weekly
-    )
 
 
 @router.get("/generation-preview", response_model=GenerationPreviewResponse)

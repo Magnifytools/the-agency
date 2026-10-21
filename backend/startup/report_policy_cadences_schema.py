@@ -2,7 +2,7 @@
 
 Aditivo. Cada política activa pasa a tener encendida sólo la cadencia que ya
 tenía; las desactivadas quedan con las dos apagadas. ``enabled``/``cadence``
-siguen (las exige P12) hasta que un paso las retire.
+las retira después ``report_policy_legacy_retirement_v1``.
 """
 import hashlib
 import json

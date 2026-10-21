@@ -7,6 +7,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import Client, Project, Task, User, UserRole
 from backend.startup.readiness import check_database_ready
+from backend.startup.report_policy_legacy_retirement_schema import MIGRATION as LEGACY_RETIREMENT
+
+
+async def as_unretired_predecessor(engine):
+    """La BD de la sesión sale del ORM, que ya no tiene enabled/cadence.
+
+    Una BD real sin ese paso en el registro aún las tiene (P12) y
+    ``report_policy_cadences_v1`` las lee, así que se devuelven antes de migrar.
+    """
+    async with engine.begin() as conn:
+        ledger = await conn.scalar(text("SELECT to_regclass('agency_schema_versions') IS NOT NULL"))
+        if ledger and await conn.scalar(text(
+            "SELECT count(*) FROM agency_schema_versions WHERE version=:v"
+        ), {"v": LEGACY_RETIREMENT.version}):
+            return
+        await conn.execute(text(
+            "ALTER TABLE client_report_policies"
+            " ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT false,"
+            " ADD COLUMN IF NOT EXISTS cadence VARCHAR(7) NOT NULL DEFAULT 'weekly'"
+        ))
 
 
 async def test_readiness_checks_real_schema(engine):
@@ -27,6 +47,7 @@ async def test_release_step_adds_owner_before_readonly_web_startup(engine, monke
         await conn.execute(text("ALTER TABLE projects DROP COLUMN owner_id CASCADE"))
     async with engine.begin() as conn:
         await conn.execute(text("DROP TABLE IF EXISTS agency_schema_versions"))
+    await as_unretired_predecessor(engine)
     await migrate_schema(engine)
     lifecycle = main.lifespan(main.app)
     try:
@@ -99,6 +120,7 @@ async def test_web_startup_preserves_business_rows(engine, monkeypatch):
         ids = (user.id, fit.id, sage.id, qa.id, project.id, task.id)
     try:
         from backend.startup.deployment_schema import migrate_schema
+        await as_unretired_predecessor(engine)
         await migrate_schema(engine)
         for _ in range(2):
             lifecycle = main.lifespan(main.app)
