@@ -393,6 +393,8 @@ class Client(UTCTimestampMixin, Base):
     # Analytics settings
     ga4_property_id = Column(String(50), nullable=True)
     gsc_url = Column(String(255), nullable=True)
+    # Control SEO: términos que marcan una búsqueda como "de marca" (≤ 20).
+    brand_terms = Column(JSONB, nullable=False, default=list, server_default="[]")
     # Billing settings
     billing_cycle = Column(Enum(BillingCycle), nullable=True)
     billing_day = Column(Integer, nullable=True)  # 1-28

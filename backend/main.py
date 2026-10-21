@@ -21,7 +21,7 @@ from backend.api.routes import (
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
     service_templates, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     changes, commands,
-    client_dashboard, client_share_links, engine_integration, investments,
+    client_dashboard, client_seo, client_share_links, engine_integration, investments,
     search, balance,
     inbox,
     extension,
@@ -219,6 +219,8 @@ _CORE_ROUTERS = [
     projects, pm, report_policies, digests, sync, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     client_dashboard, engine_integration, inbox, extension, google_calendar,
     gsc, ga4, vigil, usage_stats, job_runtime,
+    # client_seo: Control SEO de la ficha (consultas y páginas de Search Console).
+    client_seo,
     # client_share_links: el enlace de sólo lectura del cliente (/c/:token).
     client_share_links,
     # credentials: Accesos (contraseñas compartidas, cifradas con VAULT_KEY).

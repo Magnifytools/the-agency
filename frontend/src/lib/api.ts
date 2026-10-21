@@ -2,6 +2,12 @@ import type { ProjectTasksResponse } from "@/lib/project-work"
 import axios, { type GenericAbortSignal, type InternalAxiosRequestConfig } from "axios"
 import { toast } from "sonner"
 import type {
+  ClientSeoSummary,
+  SeoMoversParams,
+  SeoMoversResponse,
+  SeoPageRow,
+  SeoQueryRow,
+  SeoWindowDays,
   VigilClients,
   UptimeOverview,
   ClientUptimeTargets,
@@ -891,6 +897,16 @@ export const clientStatusApi = {
     api.get<ClientStatusRow>(`/clients/${clientId}/status`).then((r) => r.data),
   portfolio: (cohort: ClientCohort = "external") =>
     api.get<ClientStatusRow[]>("/clients/portfolio", { params: { cohort } }).then((r) => r.data),
+}
+
+// --- Control SEO (Search Console por consulta y página; no va a la IA) ---
+export const clientSeoApi = {
+  get: (clientId: number, days: SeoWindowDays) =>
+    api.get<ClientSeoSummary>(`/clients/${clientId}/seo`, { params: { days } }).then((r) => r.data),
+  queries: (clientId: number, params: SeoMoversParams) =>
+    api.get<SeoMoversResponse<SeoQueryRow>>(`/clients/${clientId}/seo/queries`, { params }).then((r) => r.data),
+  pages: (clientId: number, params: SeoMoversParams) =>
+    api.get<SeoMoversResponse<SeoPageRow>>(`/clients/${clientId}/seo/pages`, { params }).then((r) => r.data),
 }
 
 // --- Capacity Planning ---
