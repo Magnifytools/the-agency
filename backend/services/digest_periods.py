@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from sqlalchemy import Date, case, cast, extract, func, literal_column
+
 from backend.services.temporal import business_today
 
 _MONTHS = (
@@ -44,6 +46,41 @@ def policy_digest_period(cadence: str, *, today: date | None = None) -> tuple[da
     if cadence == "monthly":
         return last_closed_monthly_period(today=today)
     raise ValueError("Cadencia de resumen no válida")
+
+
+CADENCES = ("monthly", "weekly")
+
+
+def enabled_cadences(policy) -> list[str]:
+    """Cadencias encendidas de una política (mensual primero); vacía sin política."""
+    if policy is None:
+        return []
+    return [c for c, on in (("monthly", policy.monthly_enabled), ("weekly", policy.weekly_enabled)) if on]
+
+
+def period_cadence(period_start: date, period_end: date) -> str | None:
+    """La cadencia sale del periodo: semana lunes-domingo o mes natural completo."""
+    if period_start.weekday() == 0 and period_end == period_start + timedelta(days=6):
+        return "weekly"
+    if period_start.day == 1 and period_end == (period_start + timedelta(days=32)).replace(day=1) - timedelta(days=1):
+        return "monthly"
+    return None
+
+
+def period_cadence_sql(start_col, end_col):
+    """Gemelo SQL de ``period_cadence``: NULL si el periodo no es de ninguna cadencia."""
+    month_end = cast(func.date_trunc("month", start_col) + literal_column("interval '1 month - 1 day'"), Date)
+    return case(
+        (
+            (extract("isodow", start_col) == 1) & (end_col == start_col + literal_column("6")),
+            "weekly",
+        ),
+        (
+            (extract("day", start_col) == 1) & (end_col == month_end),
+            "monthly",
+        ),
+        else_=None,
+    )
 
 
 def resolve_digest_period(

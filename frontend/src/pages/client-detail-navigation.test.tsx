@@ -207,27 +207,27 @@ describe("client detail areas", () => {
 
   it("hides cached status after an error until a fresh response succeeds", async () => {
     const status = {
-      client_id: 5, client_name: "Acme", status: "watch", reasons: ["Toca enviar el resumen mensual"],
-      seo: null, digest: { cadence: "monthly", last_sent_period_end: null, expected_period_end: "2026-09-30", state: "due" },
+      client_id: 5, client_name: "Acme", status: "watch", reasons: ["Toca enviar el informe mensual"],
+      seo: null, digests: [{ cadence: "monthly", last_sent_period_end: null, expected_period_end: "2026-09-30", state: "due" }], digest: { cadence: "monthly", last_sent_period_end: null, expected_period_end: "2026-09-30", state: "due" },
       tasks: null, month: null,
     }
     mocks.health.mockResolvedValueOnce(status)
     const { client } = show("ficha")
-    expect(await screen.findByText("Toca enviar el resumen mensual")).toBeInTheDocument()
+    expect(await screen.findByText("Toca enviar el informe mensual")).toBeInTheDocument()
 
     mocks.health.mockRejectedValueOnce({ response: { status: 403 } })
     await act(async () => { await client.invalidateQueries({ queryKey: ["client-status", 5] }) })
     expect(await screen.findByText("No se pudo calcular el estado del cliente.")).toBeInTheDocument()
-    expect(screen.queryByText("Toca enviar el resumen mensual")).not.toBeInTheDocument()
+    expect(screen.queryByText("Toca enviar el informe mensual")).not.toBeInTheDocument()
 
     mocks.health.mockResolvedValueOnce(status)
     await userEvent.click(screen.getAllByRole("button", { name: "Reintentar" }).at(-1)!)
-    expect(await screen.findByText("Toca enviar el resumen mensual")).toBeInTheDocument()
+    expect(await screen.findByText("Toca enviar el informe mensual")).toBeInTheDocument()
   })
 
   it("does not request or render health without current client permission", async () => {
     mocks.permissions.delete("clients")
-    mocks.health.mockResolvedValue({ client_id: 5, client_name: "Acme", status: "act", reasons: ["3 tareas vencidas"], seo: null, digest: null, tasks: null, month: null })
+    mocks.health.mockResolvedValue({ client_id: 5, client_name: "Acme", status: "act", reasons: ["3 tareas vencidas"], seo: null, digests: [], digest: null, tasks: null, month: null })
     show("ficha")
 
     expect(screen.getByRole("alert")).toHaveTextContent("No tienes acceso a este cliente.")
@@ -251,7 +251,7 @@ describe("client detail areas", () => {
   it("removes cached task signals after task access is revoked", async () => {
     const full = {
       client_id: 5, client_name: "Acme", status: "act", reasons: ["3 tareas vencidas"],
-      seo: null, digest: null, tasks: { overdue: 3, waiting: 0, followups_late: 0 }, month: null,
+      seo: null, digests: [], digest: null, tasks: { overdue: 3, waiting: 0, followups_late: 0 }, month: null,
     }
     const redacted = { ...full, status: "no_data", reasons: [], tasks: null }
     mocks.health.mockResolvedValueOnce(full).mockResolvedValueOnce(redacted)

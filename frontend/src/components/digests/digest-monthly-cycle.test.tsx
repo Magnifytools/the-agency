@@ -21,7 +21,9 @@ const items = [
   item(3, "Acme", {}),
   item(4, "Sin config", { eligible: false, reason: "policy_missing", policy_revision: null, cadence: null, state: "not_configured" }),
   item(5, "Semanal", { cadence: "weekly", period_start: "2026-10-05", period_end: "2026-10-11" }),
-  item(8, "Desactivada", { eligible: false, reason: "policy_disabled", state: "disabled" }),
+  item(8, "Desactivada", { eligible: false, reason: "policy_disabled", policy_revision: 4, cadence: null, period_start: null, period_end: null, state: "disabled" }),
+  // Con las dos cadencias, la fila semanal no entra en el ciclo mensual.
+  item(3, "Acme", { cadence: "weekly", period_start: "2026-10-12", period_end: "2026-10-18" }),
   item(6, "Interno", { eligible: false, reason: "internal_client" }),
   item(7, "Inactivo", { eligible: false, reason: "client_inactive" }),
 ]
@@ -40,13 +42,14 @@ beforeEach(() => {
   mocks.preview.mockResolvedValue({ as_of: "2026-10-19", scope: "team", items, counts: { eligible: 1, excluded: 6 } })
 })
 
-it("lists active external clients with their month state, problems first", async () => {
+it("lists active external clients with the monthly report on, problems first", async () => {
   setup()
-  expect(await screen.findByText(/Resumen de septiembre de 2026/)).toBeInTheDocument()
+  expect(await screen.findByText(/Informe de septiembre de 2026/)).toBeInTheDocument()
   expect(mocks.preview).toHaveBeenCalledWith("team")
   const names = screen.getAllByRole("listitem").map(li => li.querySelector("p")?.textContent)
-  expect(names).toEqual(["Acme", "Fit Generation", "Desactivada", "Sin config", "Semanal", "Sage"])
-  expect(screen.getByLabelText("Recuento del ciclo mensual")).toHaveTextContent("1 de 6 entregados · 1 sin preparar · 1 sin entregar · 3 fuera del ciclo mensual")
+  // Sin política, apagada o sólo semanal: fuera del ciclo mensual.
+  expect(names).toEqual(["Acme", "Fit Generation", "Sage"])
+  expect(screen.getByLabelText("Recuento del ciclo mensual")).toHaveTextContent("1 de 3 entregados · 1 sin preparar · 1 sin entregar")
   expect(within(await row("Acme")).getByText("Pendiente de generar")).toBeInTheDocument()
   const fit = await row("Fit Generation")
   // Legacy "sent" status is not proof of delivery.
@@ -56,11 +59,15 @@ it("lists active external clients with their month state, problems first", async
   const sage = await row("Sage")
   expect(within(sage).getByText("Entregado")).toBeInTheDocument()
   expect(within(sage).getByText(/Entregado por David el 2 oct/)).toBeInTheDocument()
-  expect(within(await row("Sin config")).getByRole("link", { name: "Configurar" })).toHaveAttribute("href", "/clients/4?tab=resumenes")
-  expect(within(await row("Semanal")).getByText("Frecuencia semanal")).toBeInTheDocument()
-  expect(within(await row("Desactivada")).getByText("Política desactivada")).toBeInTheDocument()
+  for (const name of ["Sin config", "Semanal", "Desactivada"]) expect(screen.queryByText(name)).not.toBeInTheDocument()
   expect(screen.queryByText("Interno")).not.toBeInTheDocument()
   expect(screen.queryByText("Inactivo")).not.toBeInTheDocument()
+})
+
+it("says so when no client has the monthly report on", async () => {
+  mocks.preview.mockResolvedValue({ as_of: "2026-10-19", scope: "team", items: [items[3], items[4]], counts: { eligible: 1, excluded: 1 } })
+  setup()
+  expect(await screen.findByText("Ningún cliente tiene activado el informe mensual.")).toBeInTheDocument()
 })
 
 it("generates the missing month and opens the new version", async () => {

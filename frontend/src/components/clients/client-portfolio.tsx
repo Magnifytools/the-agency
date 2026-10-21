@@ -52,7 +52,7 @@ export function ClientPortfolio({ cohort }: { cohort: ClientCohort }) {
             <ClientStatusReasons row={row} />
             <div className="grid grid-cols-2 gap-2 border-t pt-2">
               <SeoCell seo={row.seo} />
-              <DigestCell digest={row.digest} />
+              <DigestCell digests={row.digests} />
             </div>
             <WorkCell tasks={row.tasks} month={row.month} />
           </div>
@@ -77,7 +77,7 @@ export function ClientPortfolio({ cohort }: { cohort: ClientCohort }) {
                 <TableCell><Link to={`/clients/${row.client_id}`} className="font-medium text-brand hover:underline">{row.client_name}</Link></TableCell>
                 <TableCell className="min-w-56 space-y-1"><ClientStatusBadge status={row.status} /><ClientStatusReasons row={row} limit={3} /></TableCell>
                 <TableCell><SeoCell seo={row.seo} /></TableCell>
-                <TableCell><DigestCell digest={row.digest} /></TableCell>
+                <TableCell><DigestCell digests={row.digests} /></TableCell>
                 <TableCell><WorkCell tasks={row.tasks} month={row.month} /></TableCell>
               </TableRow>
             ))}

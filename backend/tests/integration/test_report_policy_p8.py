@@ -17,7 +17,6 @@ from backend.db.models import (
     DigestStatus,
     DigestTone,
     ExternalDeliveryAction,
-    ReportCadence,
     UserPermission,
     User,
     UserRole,
@@ -46,12 +45,13 @@ async def test_policy_is_opt_in_revisioned_and_disabled_keeps_responsible_access
 
     absent = await admin_client.get(f"/api/digests/policies/{client.id}")
     assert absent.json() == {
-        "client_id": client.id, "configured": False, "enabled": False, "cadence": "weekly",
+        "client_id": client.id, "configured": False, "enabled": False,
+        "weekly_enabled": False, "monthly_enabled": False,
         "responsible_user_id": None, "responsible_name": None, "responsible_active": None,
         "responsible_can_prepare": None, "revision": 0, "updated_at": None,
     }
     created = await admin_client.put(f"/api/digests/policies/{client.id}", json={
-        "enabled": False, "cadence": "monthly", "responsible_user_id": actor_id, "revision": 0,
+        "weekly_enabled": False, "monthly_enabled": False, "responsible_user_id": actor_id, "revision": 0,
     })
     assert created.status_code == 200, created.text
     assert created.json()["revision"] == 1
@@ -60,10 +60,126 @@ async def test_policy_is_opt_in_revisioned_and_disabled_keeps_responsible_access
     assert own.json()["enabled"] is False
 
     stale = await admin_client.put(f"/api/digests/policies/{client.id}", json={
-        "enabled": True, "cadence": "weekly", "responsible_user_id": actor.id, "revision": 0,
+        "weekly_enabled": True, "monthly_enabled": False, "responsible_user_id": actor.id, "revision": 0,
     })
     assert stale.status_code == 409
     await member.aclose()
+
+
+async def test_policy_toggles_each_cadence_and_keeps_legacy_columns_in_sync(admin_client, admin_user, db_session):
+    client = Client(name="Cliente dos cadencias", status=ClientStatus.active)
+    db_session.add(client)
+    await db_session.flush()
+    url = f"/api/digests/policies/{client.id}"
+
+    legacy = await admin_client.put(url, json={"enabled": True, "cadence": "weekly", "responsible_user_id": admin_user.id, "revision": 0})
+    assert legacy.status_code == 422
+    orphan = await admin_client.put(url, json={"weekly_enabled": False, "monthly_enabled": True, "responsible_user_id": None, "revision": 0})
+    assert orphan.status_code == 422
+    assert orphan.json()["detail"]["code"] == "responsible_required"
+
+    async def legacy_columns():
+        return (await db_session.execute(text(
+            "SELECT enabled, cadence FROM client_report_policies WHERE client_id=:id"
+        ), {"id": client.id})).one()
+
+    revision = 0
+    for weekly, monthly, expected in (
+        (True, True, (True, "weekly")),
+        (False, True, (True, "monthly")),
+        (True, False, (True, "weekly")),
+        (False, False, (False, "weekly")),
+    ):
+        response = await admin_client.put(url, json={
+            "weekly_enabled": weekly, "monthly_enabled": monthly,
+            "responsible_user_id": admin_user.id, "revision": revision,
+        })
+        assert response.status_code == 200, response.text
+        body = response.json()
+        revision = body["revision"]
+        assert (body["weekly_enabled"], body["monthly_enabled"], body["enabled"]) == (weekly, monthly, weekly or monthly)
+        assert "cadence" not in body
+        assert tuple(await legacy_columns()) == expected
+
+
+async def test_preview_lists_one_item_per_enabled_cadence(admin_client, admin_user, db_session):
+    both = Client(name="AAA dos cadencias", status=ClientStatus.active)
+    off = Client(name="AAA apagada", status=ClientStatus.active)
+    none = Client(name="AAA sin política", status=ClientStatus.active)
+    db_session.add_all([both, off, none])
+    await db_session.flush()
+    db_session.add_all([
+        ClientReportPolicy(client_id=both.id, weekly_enabled=True, monthly_enabled=True, responsible_user_id=admin_user.id),
+        ClientReportPolicy(client_id=off.id, responsible_user_id=admin_user.id),
+    ])
+    await db_session.commit()
+
+    items = (await admin_client.get("/api/digests/generation-preview?scope=team")).json()["items"]
+    by_client = {}
+    for item in items:
+        by_client.setdefault(item["client_id"], []).append(item)
+    monthly, weekly = by_client[both.id]
+    assert (monthly["cadence"], weekly["cadence"]) == ("monthly", "weekly")
+    assert monthly["period_start"].endswith("-01") and monthly["eligible"] and weekly["eligible"]
+    assert date.fromisoformat(weekly["period_start"]).weekday() == 0
+    [disabled] = by_client[off.id]
+    assert (disabled["cadence"], disabled["reason"], disabled["state"]) == (None, "policy_disabled", "disabled")
+    [missing] = by_client[none.id]
+    assert (missing["cadence"], missing["reason"]) == (None, "policy_missing")
+
+
+async def test_cohort_generates_both_cadences_and_rejects_a_disabled_one(
+    admin_client, admin_user, db_session, monkeypatch,
+):
+    client = Client(name="Cohorte dos cadencias", status=ClientStatus.active)
+    db_session.add_all([client, UserPermission(user_id=admin_user.id, module="digests", can_read=True, can_write=True)])
+    await db_session.flush()
+    db_session.add(ClientReportPolicy(client_id=client.id, weekly_enabled=True, monthly_enabled=True, responsible_user_id=admin_user.id))
+    await db_session.commit()
+    client_id = client.id
+
+    async def collect(*args, **kwargs):
+        return {"client_name": "Cohorte", "source_catalog": {}}
+
+    async def generate(*args, **kwargs):
+        return content()
+
+    monkeypatch.setattr("backend.api.routes.report_policies.collect_digest_data", collect)
+    monkeypatch.setattr("backend.api.routes.report_policies.generate_digest_content", generate)
+    items = [item for item in (await admin_client.get("/api/digests/generation-preview?scope=team")).json()["items"]
+             if item["client_id"] == client_id]
+    assert [item["cadence"] for item in items] == ["monthly", "weekly"]
+
+    duplicated = await admin_client.post("/api/digests/generate-cohort", json={"items": [
+        {"client_id": client_id, "policy_revision": 1, "period_start": items[0]["period_start"],
+         "period_end": items[0]["period_end"], "generation_key": f"cohort-dup-{index}-key00"}
+        for index in range(2)
+    ]})
+    assert duplicated.status_code == 422
+
+    response = await admin_client.post("/api/digests/generate-cohort", json={"items": [
+        {"client_id": client_id, "policy_revision": 1, "period_start": item["period_start"],
+         "period_end": item["period_end"], "generation_key": f"cohort-both-{item['cadence']}-key"}
+        for item in items
+    ]})
+    assert response.status_code == 200, response.text
+    results = response.json()["results"]
+    assert [r["outcome"] for r in results] == ["generated", "generated"]
+    assert {(r["period_start"], r["period_end"]) for r in results} == {(i["period_start"], i["period_end"]) for i in items}
+
+    # Apagar el semanal: su periodo sigue siendo el actual, pero ya no toca.
+    await db_session.execute(update(ClientReportPolicy).where(ClientReportPolicy.client_id == client_id).values(weekly_enabled=False, revision=2))
+    await db_session.execute(delete(WeeklyDigest).where(WeeklyDigest.client_id == client_id))
+    await db_session.commit()
+    weekly = items[1]
+    response = await admin_client.post("/api/digests/generate-cohort", json={"items": [
+        {"client_id": client_id, "policy_revision": 2, "period_start": weekly["period_start"],
+         "period_end": weekly["period_end"], "generation_key": "cohort-weekly-off-key"},
+        {"client_id": client_id, "policy_revision": 2, "period_start": "2026-01-05",
+         "period_end": "2026-01-11", "generation_key": "cohort-old-period-key"},
+    ]})
+    reasons = {r["period_start"]: r["reason"] for r in response.json()["results"]}
+    assert reasons == {weekly["period_start"]: "policy_disabled", "2026-01-05": "period_changed"}
 
 
 async def test_current_responsible_can_use_admin_authored_digest_and_change_revokes_assignment(
@@ -74,7 +190,7 @@ async def test_current_responsible_can_use_admin_authored_digest_and_change_revo
     client = Client(name="Cliente ACL", status=ClientStatus.active)
     db_session.add(client)
     await db_session.flush()
-    db_session.add(ClientReportPolicy(client_id=client.id, enabled=False, cadence=ReportCadence.weekly, responsible_user_id=responsible.test_user.id))
+    db_session.add(ClientReportPolicy(client_id=client.id, responsible_user_id=responsible.test_user.id))
     digest = WeeklyDigest(client_id=client.id, period_start=date(2026, 9, 7), period_end=date(2026, 9, 13), status=DigestStatus.draft, tone=DigestTone.cercano, content=content(), created_by=admin_user.id)
     db_session.add(digest)
     await db_session.commit()
@@ -157,7 +273,7 @@ async def test_preview_marks_older_confirmation_and_revocation_with_tied_timesta
     monkeypatch.setattr("backend.services.report_policy.policy_digest_period", lambda cadence: period)
     client = Client(name="Version evidence", status=ClientStatus.active)
     db_session.add(client); await db_session.flush()
-    db_session.add(ClientReportPolicy(client_id=client.id, enabled=True, cadence=ReportCadence.weekly, responsible_user_id=admin_user.id, revision=1))
+    db_session.add(ClientReportPolicy(client_id=client.id, weekly_enabled=True, responsible_user_id=admin_user.id, revision=1))
     tied = datetime(2026, 9, 19, 8, 0)
     old = WeeklyDigest(client_id=client.id, period_start=period[0], period_end=period[1], status=DigestStatus.reviewed, tone=DigestTone.cercano, content=content(), created_by=admin_user.id, created_at=tied)
     db_session.add(old); await db_session.flush()
@@ -193,8 +309,7 @@ async def test_cohort_revalidates_permission_after_provider_and_persists_nothing
     db_session.add(
         ClientReportPolicy(
             client_id=client.id,
-            enabled=True,
-            cadence=ReportCadence.weekly,
+            weekly_enabled=True,
             responsible_user_id=actor_id,
             revision=1,
         )
@@ -246,6 +361,8 @@ async def test_cohort_revalidates_permission_after_provider_and_persists_nothing
     assert response.json()["results"] == [
         {
             "client_id": client_id,
+            "period_start": "2026-09-07",
+            "period_end": "2026-09-13",
             "outcome": "skipped",
             "digest_id": None,
             "reason": "permission_changed",
@@ -332,8 +449,7 @@ async def test_tone_regeneration_revalidates_responsibility_after_provider(
     await db_session.flush()
     policy = ClientReportPolicy(
         client_id=client.id,
-        enabled=True,
-        cadence=ReportCadence.weekly,
+        weekly_enabled=True,
         responsible_user_id=member_id,
         revision=1,
     )
@@ -385,12 +501,12 @@ async def test_policy_create_is_serialized_when_revision_zero_races(engine):
         client = Client(name="Policy race", status=ClientStatus.active)
         setup.add(client); await setup.commit(); client_id = client.id
     actor = User(id=999999, email="detached@test", full_name="Detached", hashed_password="x", role=UserRole.admin, is_active=True)
-    request = ReportPolicyUpdate(enabled=False, cadence=ReportCadence.weekly, responsible_user_id=None, revision=0)
+    request = ReportPolicyUpdate(weekly_enabled=False, monthly_enabled=False, responsible_user_id=None, revision=0)
     async with AsyncSession(engine, expire_on_commit=False) as holder, AsyncSession(engine, expire_on_commit=False) as contender:
         await holder.execute(text("SELECT pg_advisory_xact_lock(76241313, :client_id)"), {"client_id": client_id})
         waiting = asyncio.create_task(put_report_policy(client_id, request, contender, actor))
         await asyncio.sleep(0.05)
-        holder.add(ClientReportPolicy(client_id=client_id, enabled=False, cadence=ReportCadence.weekly, revision=1))
+        holder.add(ClientReportPolicy(client_id=client_id, revision=1))
         await holder.commit()
         with pytest.raises(HTTPException) as conflict:
             await waiting
@@ -416,8 +532,7 @@ async def test_individual_and_cohort_share_coverage_lock(engine):
         setup.add(
             ClientReportPolicy(
                 client_id=client.id,
-                enabled=True,
-                cadence=ReportCadence.weekly,
+                weekly_enabled=True,
                 responsible_user_id=actor.id,
                 revision=1,
             )

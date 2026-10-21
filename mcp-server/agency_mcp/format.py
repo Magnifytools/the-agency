@@ -172,6 +172,7 @@ SEO_TREND = {"up": "sube", "stable": "estable", "down": "baja", "drop_alert": "c
 
 DIGEST_STATUS = {"draft": "borrador", "reviewed": "revisado", "sent": "marcado como enviado"}
 
+DIGEST_CADENCE = {"monthly": "Informe mensual", "weekly": "Seguimiento semanal"}
 DIGEST_SIGNAL = {"ok": "al día", "due": "toca enviarlo", "late": "atrasado"}
 
 
@@ -230,13 +231,17 @@ def client_status_block(s: dict[str, Any]) -> list[str]:
         as_of = f", datos hasta {day(seo['as_of'])}" if seo.get("as_of") else ""
         lines.append(f"Tráfico de Google (28 días): {seo.get('clicks')} clics frente a "
                      f"{seo.get('clicks_previous')} ({trend}{change_txt}) · {source}{as_of}")
-    digest = s.get("digest")
-    if digest:
-        label = "mensual" if digest.get("cadence") == "monthly" else "semanal"
+    # Una línea por cadencia encendida; ``digest`` (la peor) sólo si el backend
+    # aún no manda ``digests``.
+    digests = s.get("digests")
+    if digests is None:
+        digests = [s["digest"]] if s.get("digest") else []
+    for digest in digests:
+        label = DIGEST_CADENCE.get(digest.get("cadence"), "Resumen")
         last = digest.get("last_sent_period_end")
-        lines.append(f"Resumen {label}: {DIGEST_SIGNAL.get(digest.get('state'), digest.get('state'))}"
+        lines.append(f"{label}: {DIGEST_SIGNAL.get(digest.get('state'), digest.get('state'))}"
                      f" · periodo esperado hasta {digest.get('expected_period_end')}"
-                     + (f" · último enviado hasta {last}" if last else " · ninguno enviado"))
+                     + (f" · último entregado hasta {last}" if last else " · ninguno entregado"))
     tasks = s.get("tasks")
     if tasks:
         lines.append(f"Tareas: {tasks.get('overdue', 0)} vencidas · {tasks.get('waiting', 0)} esperando al cliente"

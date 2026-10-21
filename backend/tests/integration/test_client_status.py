@@ -18,7 +18,6 @@ from backend.db.models import (
     GscSiteSync,
     Project,
     ProjectStatus,
-    ReportCadence,
     Task,
     TaskStatus,
     TimeEntry,
@@ -95,26 +94,64 @@ async def test_engine_summary_is_the_fallback_without_own_property(db_session):
 
 async def test_monthly_summary_due_then_late_then_ok(db_session, admin_user):
     client = await _client(db_session)
-    db_session.add(ClientReportPolicy(client_id=client.id, enabled=True, cadence=ReportCadence.monthly))
+    db_session.add(ClientReportPolicy(client_id=client.id, monthly_enabled=True))
     await db_session.flush()
 
     due = await _row(db_session, client, today=date(2026, 10, 3))   # septiembre cerrado hace 3 días
     late = await _row(db_session, client, today=date(2026, 10, 9))  # más de 5 días
     assert due["digest"]["state"] == "due" and due["status"] == "watch"
-    assert "Toca enviar el resumen mensual" in due["reasons"]
+    assert "Toca enviar el informe mensual" in due["reasons"]
     assert late["digest"]["state"] == "late" and late["status"] == "act"
+    assert "El informe mensual está atrasado" in late["reasons"]
 
+    # La etiqueta "sent" sin entrega externa confirmada no cuenta.
     db_session.add(WeeklyDigest(client_id=client.id, period_start=date(2026, 9, 1),
                                 period_end=date(2026, 9, 30), status=DigestStatus.sent,
                                 created_by=admin_user.id))
     await db_session.flush()
+    assert (await _row(db_session, client, today=date(2026, 10, 9)))["digest"]["state"] == "late"
+
+    await _delivered(db_session, client, admin_user, date(2026, 9, 1), date(2026, 9, 30),
+                     ExternalDeliveryAction.confirmed)
     sent = await _row(db_session, client, today=date(2026, 10, 9))
     assert sent["digest"]["state"] == "ok" and sent["status"] == "ok"
 
 
+async def test_both_cadences_give_one_signal_each_and_digest_is_the_worst(db_session, admin_user):
+    client = await _client(db_session)
+    db_session.add(ClientReportPolicy(client_id=client.id, weekly_enabled=True, monthly_enabled=True))
+    await db_session.flush()
+    # Septiembre entregado; la semana del 12 al 18 de octubre, no.
+    await _delivered(db_session, client, admin_user, date(2026, 9, 1), date(2026, 9, 30),
+                     ExternalDeliveryAction.confirmed)
+    # Una entrega semanal confirmada no cuenta como mensual (ni al revés).
+    await _delivered(db_session, client, admin_user, date(2026, 9, 28), date(2026, 10, 4),
+                     ExternalDeliveryAction.confirmed)
+
+    row = await _row(db_session, client, today=date(2026, 10, 24))  # semana 12-18 + 5 días
+
+    assert [(d["cadence"], d["state"]) for d in row["digests"]] == [("monthly", "ok"), ("weekly", "late")]
+    assert row["digests"][1]["last_sent_period_end"] == "2026-10-04"
+    assert row["digest"]["cadence"] == "weekly" and row["digest"]["state"] == "late"
+    assert "El seguimiento semanal está atrasado" in row["reasons"]
+    assert row["status"] == "act"
+
+    due = await _row(db_session, client, today=date(2026, 10, 19))
+    assert [(d["cadence"], d["state"]) for d in due["digests"]] == [("monthly", "ok"), ("weekly", "due")]
+    assert "Toca enviar el seguimiento semanal" in due["reasons"]
+
+
+async def test_policy_with_both_cadences_off_has_no_digest_signal(db_session):
+    client = await _client(db_session)
+    db_session.add(ClientReportPolicy(client_id=client.id))
+    await db_session.flush()
+    row = await _row(db_session, client)
+    assert row["digests"] == [] and row["digest"] is None
+
+
 async def test_draft_summary_does_not_count_as_sent(db_session, admin_user):
     client = await _client(db_session)
-    db_session.add(ClientReportPolicy(client_id=client.id, enabled=True, cadence=ReportCadence.monthly))
+    db_session.add(ClientReportPolicy(client_id=client.id, monthly_enabled=True))
     db_session.add(WeeklyDigest(client_id=client.id, period_start=date(2026, 9, 1),
                                 period_end=date(2026, 9, 30), status=DigestStatus.draft,
                                 created_by=admin_user.id))
@@ -252,7 +289,7 @@ async def test_ready_lists_completed_work_of_the_period_due(db_session):
 
 async def test_confirmed_delivery_moves_the_start_and_revocation_undoes_it(db_session, admin_user):
     client = await _client(db_session)
-    db_session.add(ClientReportPolicy(client_id=client.id, enabled=True, cadence=ReportCadence.monthly))
+    db_session.add(ClientReportPolicy(client_id=client.id, monthly_enabled=True))
     db_session.add_all([
         _done(client, "Entregada", datetime(2026, 9, 20, 10)),
         _done(client, "Nueva", datetime(2026, 10, 5, 10)),
@@ -301,3 +338,16 @@ async def test_ready_needs_tasks_and_digests_and_is_not_in_the_portfolio(db_sess
     assert await _ready(db_session, client, no_digests) is None
     assert (await _row(db_session, client))["ready"] is None
     assert (await _ready(db_session, client))["count"] == 1
+
+
+async def test_ready_uses_the_week_only_when_the_weekly_is_the_only_cadence(db_session):
+    weekly = await _client(db_session, "Semanal")
+    both = await _client(db_session, "Ambas")
+    db_session.add_all([
+        ClientReportPolicy(client_id=weekly.id, weekly_enabled=True),
+        ClientReportPolicy(client_id=both.id, weekly_enabled=True, monthly_enabled=True),
+    ])
+    await db_session.flush()
+    assert (await _ready(db_session, weekly))["since"] == "2026-10-12"
+    # Con las dos cadencias manda el informe mensual.
+    assert (await _ready(db_session, both))["since"] == "2026-09-01"

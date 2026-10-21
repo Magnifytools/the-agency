@@ -9,13 +9,18 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 
-type PolicyDraft = { enabled: boolean; cadence: "weekly" | "monthly"; responsible_user_id: number | null; revision: number }
+type PolicyDraft = { monthly_enabled: boolean; weekly_enabled: boolean; responsible_user_id: number | null; revision: number }
 const draftFrom = (policy: ReportPolicy): PolicyDraft => ({
-  enabled: policy.enabled,
-  cadence: policy.cadence ?? "weekly",
+  monthly_enabled: policy.monthly_enabled,
+  weekly_enabled: policy.weekly_enabled,
   responsible_user_id: policy.responsible_user_id,
   revision: policy.revision ?? 0,
 })
+// Cada cadencia se enciende por separado; el responsable es el mismo para las dos.
+const CADENCES = [
+  { field: "monthly_enabled", label: "Informe mensual", period: "mes anterior completo" },
+  { field: "weekly_enabled", label: "Seguimiento semanal", period: "última semana cerrada" },
+] as const
 
 export function ClientReportPolicy({ clientId, clientName }: { clientId: number; clientName: string }) {
   // A different client gets independent edits, errors and mutation callbacks.
@@ -39,7 +44,7 @@ function PolicyPanel({ clientId, clientName }: { clientId: number; clientName: s
       void cache.invalidateQueries({ queryKey: ["digests"] })
       void cache.invalidateQueries({ queryKey: ["incidents"] })
       setDraft(null); setError(""); setConflict(null)
-      toast.success("Frecuencia del resumen guardada")
+      toast.success("Resúmenes del cliente guardados")
     },
     onError: (err) => {
       if (isAxiosError(err) && err.response?.status === 409 && err.response.data?.detail?.current) {
@@ -54,12 +59,13 @@ function PolicyPanel({ clientId, clientName }: { clientId: number; clientName: s
     },
   })
   const current = policy.data
+  const anyOn = !!draft && (draft.monthly_enabled || draft.weekly_enabled)
   const denied = isAxiosError(policy.error) && policy.error.response?.status === 403
   return (
     <section className="space-y-5 rounded-xl border p-5 sm:p-6" aria-labelledby="client-report-heading">
       <div>
         <h2 id="client-report-heading" className="text-lg font-semibold">Resúmenes de {clientName}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Define quién los prepara y con qué frecuencia. La preparación y la entrega se revisan en Resúmenes.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Elige qué resúmenes lleva y quién los prepara. La preparación y la entrega se revisan en Resúmenes.</p>
       </div>
       {policy.isPending ? <p role="status">Cargando configuración…</p> : policy.isError ? (
         <div className="space-y-2">
@@ -68,29 +74,30 @@ function PolicyPanel({ clientId, clientName }: { clientId: number; clientName: s
         </div>
       ) : current && !draft ? (
         <div className="space-y-3">
-          {!current.configured ? <p className="text-sm">Sin frecuencia definida. Ningún resumen se preparará por este criterio hasta que lo configures.</p> : (
+          {!current.configured ? <p className="text-sm">Sin resúmenes configurados. Ningún resumen se preparará por este criterio hasta que lo configures.</p> : (
             <dl className="flex flex-wrap gap-x-10 gap-y-3 text-sm">
-              <div><dt className="text-muted-foreground">Preparación periódica</dt><dd className="font-medium">{current.enabled ? "Incluida al preparar resúmenes" : "Pausada"}</dd></div>
-              <div><dt className="text-muted-foreground">Frecuencia</dt><dd className="font-medium">{current.cadence === "monthly" ? "Mensual · mes anterior completo" : "Semanal · última semana cerrada"}</dd></div>
+              {CADENCES.map(cadence => <div key={cadence.field}><dt className="text-muted-foreground">{cadence.label}</dt><dd className="font-medium">{current[cadence.field] ? `Activo · ${cadence.period}` : "No"}</dd></div>)}
               <div><dt className="text-muted-foreground">Responsable</dt><dd className="font-medium">{current.responsible_name || "Sin asignar"}</dd></div>
             </dl>
           )}
           {current.enabled && (!current.responsible_active || !current.responsible_can_prepare) && <p role="alert" className="text-sm">El responsable ya no está disponible o no tiene permiso para preparar resúmenes. Un administrador debe revisar la asignación.</p>}
-          {isAdmin && <Button variant="outline" onClick={() => { setDraft(draftFrom(current)); setError(""); setConflict(null) }}>{current.configured ? "Cambiar frecuencia o responsable" : "Configurar resumen"}</Button>}
+          {isAdmin && <Button variant="outline" onClick={() => { setDraft(draftFrom(current)); setError(""); setConflict(null) }}>{current.configured ? "Cambiar resúmenes o responsable" : "Configurar resúmenes"}</Button>}
         </div>
       ) : null}
       {isAdmin && draft && (
         <form className="space-y-4" onSubmit={event => { event.preventDefault(); if (!conflict && !save.isPending) { setError(""); save.mutate(draft) } }}>
           <fieldset disabled={save.isPending} className="space-y-4">
-            <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1 h-4 w-4" checked={draft.enabled} onChange={event => setDraft({ ...draft, enabled: event.target.checked })} /><span>Incluir este cliente al preparar resúmenes periódicos<span className="block text-muted-foreground">Podrás revisar el período y seleccionar los clientes antes de generar. No activa envíos automáticos.</span></span></label>
+            <div className="space-y-3">
+              {CADENCES.map(cadence => <label key={cadence.field} className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1 h-4 w-4" checked={draft[cadence.field]} onChange={event => setDraft({ ...draft, [cadence.field]: event.target.checked })} /><span>{cadence.label} · {cadence.period}</span></label>)}
+              <p className="text-sm text-muted-foreground">Podrás revisar el período y seleccionar los clientes antes de generar. No activa envíos automáticos.</p>
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2"><Label htmlFor="report-cadence">Frecuencia</Label><Select id="report-cadence" value={draft.cadence} onChange={event => setDraft({ ...draft, cadence: event.target.value as PolicyDraft["cadence"] })}><option value="weekly">Semanal · última semana cerrada</option><option value="monthly">Mensual · mes anterior completo</option></Select></div>
-              <div className="space-y-2"><Label htmlFor="report-responsible">Responsable</Label><Select id="report-responsible" required={draft.enabled} value={draft.responsible_user_id ?? ""} onChange={event => setDraft({ ...draft, responsible_user_id: event.target.value ? Number(event.target.value) : null })} disabled={candidates.isPending || candidates.isError}><option value="">Sin asignar</option>{draft.responsible_user_id && !candidates.data?.some(person => person.id === draft.responsible_user_id) && <option value={draft.responsible_user_id} disabled>{current?.responsible_name || "Responsable anterior"} · no disponible</option>}{candidates.data?.map(person => <option key={person.id} value={person.id}>{person.full_name}</option>)}</Select></div>
+              <div className="space-y-2"><Label htmlFor="report-responsible">Responsable</Label><Select id="report-responsible" required={anyOn} value={draft.responsible_user_id ?? ""} onChange={event => setDraft({ ...draft, responsible_user_id: event.target.value ? Number(event.target.value) : null })} disabled={candidates.isPending || candidates.isError}><option value="">Sin asignar</option>{draft.responsible_user_id && !candidates.data?.some(person => person.id === draft.responsible_user_id) && <option value={draft.responsible_user_id} disabled>{current?.responsible_name || "Responsable anterior"} · no disponible</option>}{candidates.data?.map(person => <option key={person.id} value={person.id}>{person.full_name}</option>)}</Select></div>
             </div>
             {candidates.isError && <div role="alert" className="text-sm">No se pudo cargar el equipo. <Button type="button" variant="ghost" onClick={() => void candidates.refetch()}>Reintentar equipo</Button></div>}
             {error && <p role="alert" className="text-sm">{error}</p>}
             {conflict && <Button type="button" variant="outline" onClick={() => { cache.setQueryData(key, conflict); setDraft(draftFrom(conflict)); setConflict(null); setError("") }}>Cargar configuración actual</Button>}
-            <div className="flex flex-wrap gap-2"><Button type="submit" disabled={!!conflict || candidates.isPending || candidates.isError || (draft.enabled && !draft.responsible_user_id)}>{save.isPending ? "Guardando…" : "Guardar configuración"}</Button><Button type="button" variant="ghost" onClick={() => { setDraft(null); setConflict(null); setError("") }}>Cancelar</Button></div>
+            <div className="flex flex-wrap gap-2"><Button type="submit" disabled={!!conflict || candidates.isPending || candidates.isError || (anyOn && !draft.responsible_user_id)}>{save.isPending ? "Guardando…" : "Guardar configuración"}</Button><Button type="button" variant="ghost" onClick={() => { setDraft(null); setConflict(null); setError("") }}>Cancelar</Button></div>
           </fieldset>
         </form>
       )}

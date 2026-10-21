@@ -6,7 +6,7 @@ from sqlalchemy import event
 
 from backend.db.models import (
     Client, ClientReportPolicy, ClientStatus, Delivery, DigestExternalDeliveryEvent,
-    DigestStatus, DigestTone, ExternalDeliveryAction, ReportCadence, User,
+    DigestStatus, DigestTone, ExternalDeliveryAction, User,
     UserPermission, UserRole, WeeklyDigest,
 )
 from backend.services.report_policy import preview_items
@@ -25,7 +25,7 @@ async def test_cohort_batches_queries_and_keeps_latest_receipts_per_exact_covera
     for index in range(30):
         client = Client(name=f"Cohort {index}", status=ClientStatus.active)
         db_session.add(client); await db_session.flush()
-        policy = ClientReportPolicy(client_id=client.id, enabled=True, cadence=ReportCadence.weekly, responsible_user_id=responsible.id)
+        policy = ClientReportPolicy(client_id=client.id, weekly_enabled=True, responsible_user_id=responsible.id)
         db_session.add(policy)
         versions = [WeeklyDigest(client_id=client.id, period_start=period[0], period_end=period[1], status=DigestStatus.draft, tone=DigestTone.cercano, created_by=admin_user.id, created_at=stamp, content={"greeting": "Large content must not be loaded"}) for _ in range(4)]
         unrelated = WeeklyDigest(client_id=client.id, period_start=date(2026, 8, 1), period_end=date(2026, 8, 31), status=DigestStatus.sent, tone=DigestTone.cercano, created_by=admin_user.id, created_at=stamp + timedelta(days=1))

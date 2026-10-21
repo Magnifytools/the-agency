@@ -6,8 +6,10 @@ export type ReportScope = "mine" | "team"
 export interface ReportPolicy {
   client_id: number
   configured: boolean
+  /** Alguna de las dos cadencias encendida. */
   enabled: boolean
-  cadence: ReportCadence | null
+  weekly_enabled: boolean
+  monthly_enabled: boolean
   responsible_user_id: number | null
   responsible_name: string | null
   responsible_active: boolean | null
@@ -16,8 +18,8 @@ export interface ReportPolicy {
   updated_at: string | null
 }
 export interface ReportPolicyUpdate {
-  enabled: boolean
-  cadence: ReportCadence
+  weekly_enabled: boolean
+  monthly_enabled: boolean
   responsible_user_id: number | null
   revision: number
 }
@@ -81,10 +83,20 @@ export interface CohortGenerateItem {
 }
 export interface CohortGenerateResult {
   client_id: number
+  period_start?: string | null
+  period_end?: string | null
   outcome: "generated" | "skipped" | "failed"
   digest_id?: number | null
   reason?: GenerationReason | "policy_changed" | "permission_changed" | "period_changed" | "concurrent_generation" | "generation_failed" | null
 }
+
+export const CADENCE_LABEL: Record<ReportCadence, string> = {
+  monthly: "Informe mensual",
+  weekly: "Seguimiento semanal",
+}
+/** Una fila de la cohorte es un cliente y un periodo (puede tener las dos cadencias). */
+export const previewItemKey = (item: { client_id: number; period_start?: string | null; period_end?: string | null }) =>
+  `${item.client_id}:${item.period_start ?? ""}:${item.period_end ?? ""}`
 
 // Prefix keys shared by the policy editor, generation preview and version actions.
 export const reportPolicyKeys = {

@@ -136,7 +136,7 @@ export function ClientOverview({ client, status, statusFailed, onRetryStatus, ta
           {canReadDigests && (
             <div>
               <p className="mb-0.5 text-xs font-medium">Resumen al cliente</p>
-              <DigestCell digest={status?.digest ?? null} />
+              <DigestCell digests={status?.digests} />
               <GoTo onClick={() => onNavigate("resumenes")}>Abrir resúmenes</GoTo>
             </div>
           )}

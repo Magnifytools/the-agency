@@ -194,12 +194,10 @@ export interface ClientStatusRow {
     trend: "up" | "stable" | "down" | "drop_alert" | null
     as_of: string | null
   } | null
-  digest: {
-    cadence: "weekly" | "monthly"
-    last_sent_period_end: string | null
-    expected_period_end: string
-    state: "ok" | "due" | "late"
-  } | null
+  /** Una señal por cadencia encendida (mensual primero); vacía sin política. */
+  digests: ClientDigestSignal[]
+  /** La peor de `digests` (compatibilidad). */
+  digest: ClientDigestSignal | null
   /** null = quien mira no puede leer tareas. */
   tasks: { overdue: number; waiting: number; followups_late: number } | null
   /** null = quien mira no puede leer horas. fee y consumption_pct sólo para admins con cuota. */
@@ -265,4 +263,12 @@ export interface ClientTimeReport {
   entries_count: number
   cost_eur: number
   team_breakdown: ClientTeamBreakdown[]
+}
+
+export interface ClientDigestSignal {
+  cadence: "weekly" | "monthly"
+  /** Último periodo de esa cadencia con entrega externa confirmada. */
+  last_sent_period_end: string | null
+  expected_period_end: string
+  state: "ok" | "due" | "late"
 }

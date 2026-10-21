@@ -119,8 +119,8 @@ admin_users, admin_settings
 - **Flujo**: Generar → Editar → Copiar al portapapeles → Pegar en Gmail/Slack manualmente
 - NO se envían emails ni mensajes desde la app. Discord solo para uso interno.
 - **Vista "Resúmenes de este mes"** (`components/digests/digest-monthly-cycle.tsx`,
-  arriba en `/digests`): una fila por cliente externo activo con el estado de su
-  resumen del mes anterior. Entregado = entrega externa confirmada
+  arriba en `/digests`): una fila por cliente externo activo con el informe
+  mensual encendido y el estado de su informe del mes anterior. Entregado = entrega externa confirmada
   (`digest_external_delivery_events`); `DigestStatus.sent` es histórico y no
   cuenta. Sin endpoint propio: lee `generation-preview` (Equipo para admins) y
   genera con `generate-cohort`, guardando la clave de recuperación como cohorte.
@@ -153,11 +153,24 @@ admin_users, admin_settings
   mantiene mientras dure la misma caída.
 
 ## Ciclo mensual de resúmenes (fase 1 Agency 2.0)
+- **Política por cliente** (`client_report_policies`): dos interruptores
+  independientes, `monthly_enabled` (Informe mensual, mes natural anterior) y
+  `weekly_enabled` (Seguimiento semanal, última semana lunes-domingo cerrada).
+  Un cliente puede tener los dos; un solo responsable y una sola revisión.
+  Nada encendido por defecto. La cadencia de un resumen sale de su periodo
+  (`digest_periods.period_cadence` / `period_cadence_sql`): `weekly_digests` no
+  guarda cadencia. `generation-preview` da una fila por cadencia encendida y
+  la cohorte se identifica por (cliente, periodo). Las columnas antiguas
+  `enabled`/`cadence` siguen en BD (P12) como `legacy_enabled`/`legacy_cadence`
+  en el ORM: el PUT las mantiene en sincronía y nada nuevo debe leerlas;
+  pendientes de retirar (migración `report_policy_cadences_v1`).
+- **`report_pending`**: uno por cada (cliente, cadencia) encendida sin versión
+  de su periodo. Sólo un pendiente MENSUAL tapa el `report_unsent` del cliente.
 - **"Entregado" = evento de entrega externa** (`digest_external_delivery_events`,
   botón "Marcar como entregado al cliente" del editor): guarda quién y cuándo.
   `DigestStatus.sent` es una etiqueta histórica sin evidencia: no cuenta.
 - **Incidencia `report_unsent`** (`services/incident_report_conditions.py`): desde
-  el día 1, por cada cliente externo activo con política mensual habilitada cuyo
+  el día 1, por cada cliente externo activo con el informe mensual encendido cuyo
   mes anterior no tiene ninguna versión con entrega confirmada. Destinatarios:
   admins y el responsable de la política (con escritura en `digests`). Al
   responsable no le llega mientras tenga `report_pending` (aún no hay versión).
@@ -272,8 +285,10 @@ admin_users, admin_settings
   clientes abre en la vista Cartera (`?vista=listado` para la tabla clásica) y
   la ficha muestra la misma tarjeta.
 - **Señales** (umbrales en el propio módulo): tráfico de Google 28 días
-  (`gsc_daily` propio; si no hay propiedad, summary de Engine), resumen según
-  `ClientReportPolicy` (toca / atrasado tras 5 días), tareas vencidas (≥ 3 =
+  (`gsc_daily` propio; si no hay propiedad, summary de Engine), una señal por
+  cadencia encendida en `ClientReportPolicy` (`digests`, mensual primero; toca /
+  atrasado tras 5 días; cuenta sólo la entrega externa confirmada de un periodo
+  de esa cadencia; `digest` = la peor, por compatibilidad), tareas vencidas (≥ 3 =
   Actuar; las tareas en espera no cuentan), seguimientos con el cliente
   vencidos y consumo de la cuota del mes (sólo admin, ≥ 90 % / ≥ 110 %).
 - **No lee comunicaciones** (decisión de David): no añadas esa señal.
@@ -282,7 +297,7 @@ admin_users, admin_settings
 - **Listo para entregar** (`ready`, sólo en `/{id}/status`, no en la cartera;
   pide leer tareas y resúmenes): tareas completadas (la revisión, si el proyecto
   la exige, ya pasó: sólo el responsable cierra) desde el inicio del periodo que
-  toca entregar (cadencia de la política, mensual si no hay) o desde el día tras
+  toca entregar (semanal sólo si es la única cadencia encendida; si no, mensual) o desde el día tras
   el último periodo con entrega externa confirmada, lo más reciente. Sin columnas
   nuevas. Lo pinta el bloque Trabajo de la Vista general.
 

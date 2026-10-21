@@ -1,0 +1,12 @@
+{
+  "version": "20261020_report_policy_cadences_v1",
+  "statements": [
+    "ALTER TABLE client_report_policies ADD COLUMN IF NOT EXISTS weekly_enabled BOOLEAN NOT NULL DEFAULT false",
+    "ALTER TABLE client_report_policies ADD COLUMN IF NOT EXISTS monthly_enabled BOOLEAN NOT NULL DEFAULT false",
+    "UPDATE client_report_policies SET weekly_enabled = (cadence = 'weekly'), monthly_enabled = (cadence = 'monthly') WHERE enabled AND NOT weekly_enabled AND NOT monthly_enabled"
+  ],
+  "columns": {
+    "weekly_enabled": ["bool", false, "false"],
+    "monthly_enabled": ["bool", false, "false"]
+  }
+}
