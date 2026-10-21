@@ -425,6 +425,10 @@ admin_users, admin_settings
 - **Uso**: la ficha lo enseña en Resultados y el estado del cliente da
   Vigilar si hay cambios críticos sin revisar. Un resumen de más de 48 h se
   enseña pero no cuenta (`services/vigil_service.py`).
+- **Se retira** (decisión de David, 21 oct 2026): The Agency ya vigila cambios
+  por su cuenta (ver "Webs: cambios"). Si un cliente tiene URLs propias en
+  `web_watches`, su estado ya NO cuenta Vigil. La integración se quita en la
+  fase 3, tras importar los datos; hasta entonces, no la borres.
 
 ## Webs: disponibilidad (monitor de caídas, fase 1)
 
@@ -476,6 +480,102 @@ admin_users, admin_settings
 - Fuera del Deshacer (`test_webs_quedan_fuera_del_journal`). Alta inicial:
   `python -m backend.scripts.seed_uptime_targets --dry-run|--apply` (home desde
   `Client.website`).
+
+## Webs: cambios (vigilancia de cambios, fase 2a: backend y API)
+
+- **Qué es**: Vigil portado dentro de The Agency. Por cada URL vigilada de un
+  cliente se compara SEO (title, description, H1/H2, canonical, robots meta +
+  `X-Robots-Tag`, hreflang, schema), texto visible, enlaces y HTML normalizado
+  con la última captura, y se avisa en el **Slack de cada cliente** (el mismo
+  webhook cifrado del monitor de caídas). Mismo módulo de permisos `web`: leer =
+  ver; escribir = URLs, "Comprobar ahora", previsualizar, ajustes de captura y
+  calendario, y marcar como revisado. Frontend: fase 2b (pendiente).
+- **Código** (`backend/services/web/`): `extractor.py`, `classifier.py`,
+  `html_diff.py`, `capture_defaults.py`, `calendario.py`, `sitemap.py` y
+  `digest.py` son copia casi literal de Vigil (mismas reglas: los cambios
+  importados y los nuevos se leen igual). `sweep.py` está reescrito en
+  SQLAlchemy async; `changes_views.py` son las lecturas. API:
+  `api/routes/web_watches.py` (URLs, alta en bloque/CSV, sitemap, comprobar,
+  progreso, previsualizar, historial), `web_changes.py` (lista global con
+  filtros, detalle, `/diff`, `/html-diff`, revisar, revisar todo, barridos y sus
+  errores) y `web_settings.py` (captura, calendario, festivos).
+- **Tablas** (migración `web_changes_v1`): `web_watches`, `web_watch_state`,
+  `web_sweep_runs`, `web_run_errors`, `web_snapshots` (cuerpos gzip en `bytea`,
+  sólo cuando cambia un hash), `web_changes` (`run_id`/capturas `ON DELETE SET
+  NULL`: purgar barridos no borra el histórico), `web_change_items`. **PK UUID**
+  (excepción a la convención de enteros) para que la importación de Vigil
+  conserve sus ids. `client_web_settings` gana `digest_min_severity`,
+  `default_content_selector`, `default_ignore_selectors/regexes`,
+  `max_concurrency`, `request_timeout_s`, `crawl_delay_ms`, `sweep_weekdays`,
+  `sweep_skip_dates`, `sweep_summary_to_slack`: **sin DEFAULT**, NULL = el valor
+  de `capture_defaults.py` (el contrato lo verifica). En Vigil el DEFAULT de la
+  columna se quedó congelado con `[aria-live]` dentro y hubo que reescribir filas
+  a mano: aquí corregir un default en código corrige a todos los que no lo
+  personalizaron.
+- **Job** `web_sweep`: lock **16**, cada 60 s, timeout 900 s, reintento 300 s.
+  **Apagado por defecto** (`WEB_SWEEP_ENABLED=false`): sin él no corre ni el
+  diario ni "Comprobar ahora" (la API lo dice en `enabled`). Cada ciclo: 1) recoge
+  sin margen los barridos `running` y las marcas `checking_since` (tenemos el
+  lock 16: nada más puede estar vivo); 2) lo pedido a mano (`check_requested_at`;
+  si son TODAS las URLs del cliente es "comprobar todas" y avisa a Slack con
+  resumen; una suelta no avisa); 3) a partir de `WEB_SWEEP_LOCAL_TIME` (06:30,
+  Europe/Madrid), **un** cliente activo externo sin barrido programado hoy y al
+  que el calendario (`toca_barrido`: lunes-viernes y festivos marcados) le toque.
+  El índice único parcial `(client_id, run_date) WHERE trigger='scheduler'` es la
+  guarda: el programado es uno por día; lo manual, los que hagan falta (lección
+  0bis). Retención: barridos de más de 180 días en `_retention_cleanup_once`.
+- **Reglas del barrido** (las de Vigil): una URL que falla no tumba el barrido
+  (`web_run_errors`) ni un cliente a los demás; un fallo de Slack no invalida el
+  barrido (`notify_status`/`notify_error`); primera captura = ningún aviso; sin
+  cambios no se manda digest, pero el barrido completo manda su resumen ("he
+  mirado 6, ninguna cambió") salvo que se apague; `muted` = se guarda pero no se
+  avisa; `digest_min_severity` filtra lo que va a Slack. **Circuit breaker** por
+  host (> 30 % de fallos con ≥ 4 URLs): ese host no se clasifica. Cuenta como
+  fallo no responder Y un bloqueo 401/403/429/desafío (en Vigil un WAF con 403
+  daba un crítico por URL). Se cruza con `web_uptime_state`: si el monitor dice
+  caída, el aviso lo dice; si no, "probable bloqueo".
+- **CPU en un hilo** (regla nueva): extraer, comparar, `difflib` y gzip van en
+  `asyncio.to_thread` (`extract`, `compare`, html-diff, previsualización,
+  sitemap). Este proceso es también la API: lxml sobre 300 KB o un diff
+  cuadrático en el bucle de eventos la congelaría. La red y Slack, sin
+  transacción abierta. Lo vigila `test_el_trabajo_de_cpu_va_en_un_hilo`.
+- **Sin Playwright ni capturas de pantalla** (decisión de David): un Chromium
+  por URL alarga el barrido de minutos a horas, resuelve DNS por su cuenta
+  (reabre la SSRF que cierra `safe_http`) y pide binarios que la imagen
+  `python:3.12-slim` no trae. Una página que necesita JS sale como
+  `needs_js_render` (200 con < 25 palabras), no se renderiza.
+- **User-Agent frágil**: el Cloudflare de fitgeneration.es da 403 a `Chrome/131`
+  y 200 a `Chrome/126` (Vigil, 22-jul-2026). Mismo `headers.py` y mismo UA por
+  cliente que el monitor de caídas: subir la versión de Chrome no es cosmético.
+- **Incidencia** `client_web_critical_change` (crítica) en
+  `incident_web_conditions.py`: abierta mientras haya cambios críticos sin
+  revisar de URLs no archivadas ni silenciadas de clientes activos; se resuelve
+  al revisarlos; huella con los ids de los cambios. Mismos destinatarios que las
+  caídas. Enlace `/web/cambios?cliente={id}` (lo pinta la fase 2b).
+- **Estado del cliente**: si tiene URLs propias (no archivadas), mandan ellas
+  (crítico sin revisar = Vigilar; bloque `web_changes`, sólo si quien mira lee
+  `web`) y Vigil deja de contar; si no, sigue el resumen de Vigil.
+- **Lecciones de Vigil que siguen valiendo**:
+  - *0quater*: un selector de poda mal elegido no hace ruido, hace SILENCIO
+    (`[aria-live]` se comía 1.039 palabras). Antes de añadir uno, medir con
+    `POST /api/web/watches/{id}/preview` (dice cuántas palabras se lleva cada
+    selector). Los selectores y regex se validan al guardar (422).
+  - *0quinquies*: `content_selector` acota texto, enlaces y HTML, no el SEO; si
+    deja de casar se vigila la página entera y se enciende `scope_missed`.
+  - *0sexies / 0nonies*: el estado de Slack se lee de la CONFIGURACIÓN
+    (`slack_state`: `ready`/`disabled`/`revoked`), nunca del último barrido;
+    "configurado" y "activo" no son lo mismo.
+  - *0septies*: `/html-diff` compara el HTML NORMALIZADO (el del hash) y, si no
+    puede, SIEMPRE trae `reason` (`sin_actual`, `sin_anterior`, `demasiado_grande`).
+  - *0decies*: `HTML_CHANGED` lleva el tamaño (+N/−M líneas de T) en pantalla y
+    en Slack; sin medida no se inventa un cero. Los contadores de la lista
+    (`counts`, `counts_pending`) ignoran los filtros de severidad y de revisado, y
+    `truncated` dice si el `limit` dejó cosas fuera.
+  - *0octies* (Railway desplegaba un snapshot) no aplica: Agency despliega desde
+    `main`.
+- **Fuera del Deshacer** (`test_cambios_web_quedan_fuera_del_journal` y
+  `test_nada_de_la_vigilancia_de_cambios_entra_en_el_deshacer`). Dependencias:
+  `lxml` y `cssselect` (ruedas cp312 manylinux, sin compilar).
 
 ## Enlace para el cliente (fase 3 Agency 2.0)
 
@@ -671,4 +771,4 @@ cd mcp-server && .venv/bin/python -m pytest -q
 
 ---
 
-*Actualizado: 20 Oct 2026*
+*Actualizado: 21 Oct 2026*

@@ -165,9 +165,9 @@ class CredentialRevealLimiter:
 class WebProbeLimiter:
     """Sliding-window limiter for one-off website probes ("Probar ahora"), per user."""
 
-    def __init__(self) -> None:
+    def __init__(self, prefix: str = "rate:web-probe") -> None:
         self._limiter = _SlidingWindowLimiter(
-            prefix="rate:web-probe",
+            prefix=prefix,
             detail_fn=lambda _max_requests, _window_seconds: "Demasiadas comprobaciones seguidas. Espera un minuto.",
         )
 
@@ -177,6 +177,9 @@ class WebProbeLimiter:
 
 ai_limiter = RateLimiter()
 web_probe_limiter = WebProbeLimiter()
+# "Probar esta configuración" y leer un sitemap: piden la web del cliente desde
+# la propia petición (como mucho 20 s / 60 s).
+web_preview_limiter = WebProbeLimiter("rate:web-preview")
 login_limiter = LoginRateLimiter()
 public_link_limiter = PublicLinkRateLimiter()
 credential_reveal_limiter = CredentialRevealLimiter()

@@ -223,6 +223,17 @@ async def _uptime_once():
         raise JobFailure("partial_failure")
 
 
+async def _web_sweep_once():
+    """Una pasada de la vigilancia de cambios (ver backend/services/web/sweep.py)."""
+    from backend.db.database import async_session
+    from backend.services.job_runtime import JobFailure
+    from backend.services.web.sweep import run_cycle
+
+    result = await run_cycle(async_session)
+    if result.failed:
+        raise JobFailure("partial_failure")
+
+
 # ── Retention cleanup ───────────────────────────────────────
 
 async def _retention_cleanup_once():
@@ -233,13 +244,15 @@ async def _retention_cleanup_once():
     that have already been read get a 30-day window. Eventos importados de
     Google Calendar: se borran 30 días después de terminar (política de
     privacidad); los manuales no se tocan. Sondeos del monitor de caídas: 30
-    días (las caídas se conservan).
+    días (las caídas se conservan). Barridos de la vigilancia de cambios: 180
+    días (los cambios y sus capturas se conservan, con ``run_id`` a NULL).
     """
     from datetime import UTC, datetime, timedelta
     from sqlalchemy import delete
     from backend.db.database import async_session
     from backend.db.models import AuditLog, ChangeLog, SyncLog, HoldedSyncLog, Notification, WebUptimeProbe
     from backend.services.google_calendar_service import purge_past_google_events
+    from backend.services.web.sweep import purge_old_runs
 
     now = utc_now_naive()
     cutoff_90d = now - timedelta(days=90)
@@ -268,10 +281,12 @@ async def _retention_cleanup_once():
         total += r.rowcount or 0
         r = await db.execute(delete(WebUptimeProbe).where(WebUptimeProbe.checked_at < now_aware - timedelta(days=30)))
         total += r.rowcount or 0
+        total += await purge_old_runs(db, now=now_aware, days=180)
         google_events = await purge_past_google_events(db)
         await db.commit()
         logging.info(
-            "Retention sweep: deleted %d rows (logs >90d, read notifications >30d, uptime probes >30d) "
+            "Retention sweep: deleted %d rows (logs >90d, read notifications >30d, uptime probes >30d, "
+            "web sweep runs >180d) "
             "and %d imported Google events ended >30d ago",
             total, google_events,
         )
@@ -349,6 +364,7 @@ def start_background_tasks() -> list[asyncio.Task]:
         "vigil": ("vigil-sync", _vigil_sync_once),
         "ga4": ("ga4-sync", _ga4_sync_once),
         "uptime": ("web-uptime", _uptime_once),
+        "web_sweep": ("web-sweep", _web_sweep_once),
     }
 
     for key, (task_name, operation) in operations.items():

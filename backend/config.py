@@ -72,6 +72,12 @@ class Settings(BaseSettings):
     # Canario de conectividad: si NINGUNA responde, el problema es nuestro y no
     # se mira nada en ese ciclo. Separadas por comas.
     UPTIME_CANARY_URLS: str = "https://www.google.com/generate_204,https://www.cloudflare.com/cdn-cgi/trace"
+    # Webs: vigilancia de cambios (job ``web_sweep``, lock 16). Apagado por
+    # defecto: sin él, ni el barrido diario ni "Comprobar ahora" se ejecutan.
+    # El diario de cada cliente arranca a partir de esta hora (Europe/Madrid),
+    # un cliente por ciclo, en los días de su calendario.
+    WEB_SWEEP_ENABLED: bool = False
+    WEB_SWEEP_LOCAL_TIME: str = "06:30"
     VOYAGE_API_KEY: Optional[str] = None
     AGENCY_TIMEZONE: str = "Europe/Madrid"
 

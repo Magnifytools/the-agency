@@ -74,4 +74,11 @@ def job_definitions() -> tuple[JobDefinition, ...]:
         JobDefinition(JobSpec("uptime", 15, 60, timeout_seconds=150, retry_seconds=60), "Comprobar las webs de los clientes",
                       "Mira si responden las URLs vigiladas y avisa de caídas y recuperaciones (bandeja y Slack del cliente).",
                       None if settings.UPTIME_ENABLED else "El monitor de caídas está apagado (UPTIME_ENABLED)."),
+        # Lock 16. Cada 60 s: primero lo pedido a mano ("Comprobar ahora") y, a
+        # partir de WEB_SWEEP_LOCAL_TIME, el barrido diario de UN cliente por ciclo.
+        JobDefinition(JobSpec("web_sweep", 16, 60, timeout_seconds=900, retry_seconds=300),
+                      "Vigilar cambios en las webs de los clientes",
+                      "Compara SEO, texto, enlaces y maquetación de las URLs vigiladas y avisa en el Slack de cada cliente.",
+                      None if settings.WEB_SWEEP_ENABLED
+                      else "La vigilancia de cambios está apagada (WEB_SWEEP_ENABLED)."),
     )
