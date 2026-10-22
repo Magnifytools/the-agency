@@ -135,16 +135,25 @@ admin_users, admin_settings
 - **No confundir** con Pipeline/Leads (`/leads`) que es el CRM comercial
 
 ## Semáforo SEO (tráfico orgánico por cliente)
-- **Datos**: Engine ya manda en `/summary` los clics/impresiones de 30 días y de
-  los 30 anteriores (`clicks_previous_30d`, `impressions_previous_30d`), sumados en
-  la ventana. Se guardan dentro de `clients.engine_summary_data`; NO hay columnas
-  ni snapshots propios. Posición anterior no llega → no se compara.
-- **Cálculo**: `backend/services/seo_traffic.py` (Python + gemelo SQL sobre JSONB).
+- **Datos**: nuestro Search Console (`gsc_daily` de `Client.gsc_url`), NO The
+  Engine. Clics e impresiones se suman en la MISMA ventana que el estado del
+  cliente y Control SEO: `seo_window` (28 días hasta `gsc_site_sync.last_data_date`
+  y los 28 anteriores). Sólo propiedades con histórico importado (`backfilled_at`).
+  Sin columnas ni snapshots propios.
+- **Cálculo**: `backend/services/seo_traffic.py`, una sola agregación SQL
+  (`site_totals` / `client_traffic`, desfases sacados de `seo_window`) + la regla
+  en Python (`trend_of`). `site_url_expr` es el gemelo SQL de
+  `normalize_site_url` (una URL escrita sin barra final casa igual).
   `ClientResponse` expone `seo_clicks_change_pct`, `seo_impressions_change_pct`,
-  `seo_trend` (`up`/`stable`/`down`/`drop_alert`; ±5 % es estable).
-- **Lista de clientes**: columna "Tráfico SEO"; ordenar va al servidor
-  (`GET /api/clients?sort=seo_change_asc|seo_change_desc`) para que los que más
-  caen salgan primero en todas las páginas, no sólo en la visible.
+  `seo_trend` (`up`/`stable`/`down`/`drop_alert`; ±5 % es estable): no son
+  columnas, los rellena `attach_seo_traffic` en la lista y en `GET /{id}` (en el
+  resto de respuestas van a null). Sin propiedad o sin datos → null.
+- **Lista de clientes**: columna "Tráfico SEO" ("Sin Search Console" sin
+  propiedad); ordenar va al servidor (`GET /api/clients?sort=seo_change_asc|seo_change_desc`,
+  `outerjoin` con `client_traffic`) para que los que más caen salgan primero en
+  todas las páginas; sin base o sin propiedad, al final.
+- **Estado del cliente** usa lo mismo (`traffic_by_site`): lista, incidencia y
+  estado dan la misma cifra.
 - **Incidencia**: `client_seo_traffic_drop` en el inbox de incidentes existente
   (`services/incident_client_conditions.py`). Salta si los clics caen
   ≥ `SEO_DROP_ALERT_PCT` (20) con ≥ `SEO_DROP_MIN_CLICKS` (100) en el periodo
@@ -152,6 +161,22 @@ admin_users, admin_settings
   responsables de proyectos activos/planificados del cliente con lectura de
   `clients`. Clave `...:open`: se resuelve sola al recuperarse y un descarte se
   mantiene mientras dure la misma caída.
+
+## The Engine (congelado)
+- **Congelado el 21 oct 2026** (decisión de David): sigue encendido, pero no se
+  trabaja en él y **nada de The Agency depende de él**. Ni el semáforo, ni el
+  orden de la lista, ni la incidencia de caída, ni el estado del cliente, ni el
+  dashboard leen `engine_summary_data` ni ningún `engine_*`.
+- **Lo que sigue enlazando a Engine** (sólo si el cliente tiene
+  `engine_project_id`): pestaña "Engine" (`?tab=seo`), botón "Abrir en Engine" de
+  la ficha, badge "Engine" de la lista, `EngineMetricsWidget` del Panel y el
+  enlace al PDF del editor de resúmenes (`digest-seo-panel.tsx`, hasta que haya
+  PDF propio). `engine-config` sólo se pide si hay un cliente vinculado.
+- **Sigue corriendo**: el job `engine` (copia el summary en `clients.engine_*`
+  para esas pestañas) y las rutas proxy `api/routes/engine_integration.py`.
+- Retirarlo del todo (job, rutas, columnas `engine_*`) es la fase 3 de
+  `tasks/current/2026-10-21-web-y-control-seo/engine-revision.md`. No añadas
+  nada nuevo que lea Engine.
 
 ## Ciclo mensual de resúmenes (fase 1 Agency 2.0)
 - **Política por cliente** (`client_report_policies`): dos interruptores
@@ -361,7 +386,8 @@ admin_users, admin_settings
   clientes abre en la vista Cartera (`?vista=listado` para la tabla clásica) y
   la ficha muestra la misma tarjeta.
 - **Señales** (umbrales en el propio módulo): tráfico de Google 28 días
-  (`gsc_daily` propio; si no hay propiedad, summary de Engine), una señal por
+  (`gsc_daily` propio vía `seo_traffic`; sin propiedad no hay señal, Engine ya
+  no hace de respaldo), una señal por
   cadencia encendida en `ClientReportPolicy` (`digests`, mensual primero; toca /
   atrasado tras 5 días; cuenta sólo la entrega externa confirmada de un periodo
   de esa cadencia; `digest` = la peor, por compatibilidad), tareas vencidas (≥ 3 =
@@ -429,6 +455,17 @@ admin_users, admin_settings
   por su cuenta (ver "Webs: cambios"). Si un cliente tiene URLs propias en
   `web_watches`, su estado ya NO cuenta Vigil. La integración se quita en la
   fase 3, tras importar los datos; hasta entonces, no la borres.
+- **Corte** (fase 3a): runbook en `docs/vigil-migration.md` (congelar Vigil,
+  importar, calibrar sin Slack, encender `WEB_SWEEP_ENABLED`, y la retirada 3b/3c).
+  `python -m backend.scripts.import_vigil --sqlite vigil.db --dry-run` copia
+  `vigil.db` (sólo lectura) a las tablas `web_*` conservando los ids, en UNA
+  transacción idempotente (`ON CONFLICT (id) DO NOTHING`); slug → `vigil_slug`
+  (o `--map slug=id` / `--skip slug`; un slug sin pareja aborta todo), usuarios
+  por email (si no, `acknowledged_by_label`), webhook re-cifrado con
+  `encrypt_vault_secret` (`VIGIL_SECRET_KEY` por entorno o teclado, nunca por
+  argumento) y lo que en Vigil era default entra como NULL. Lo de The Agency
+  manda en `client_web_settings`. `python -m backend.scripts.web_calibrate`
+  barre sin avisar a Slack (`notify=False`): se corre en Railway tras importar.
 
 ## Webs: disponibilidad (monitor de caídas, fase 1)
 
@@ -600,6 +637,9 @@ admin_users, admin_settings
     estado de Slack se lee de `slack` de la configuración, no del último barrido.
   - Query keys en `webKeys` (`lib/query-keys.ts`); revisar invalida listas y
     fichas (`invalidateWebReview`), nunca los diffs (inmutables).
+- **Datos de Vigil**: se importan con `scripts/import_vigil.py` (ver sección
+  Vigil y `docs/vigil-migration.md`). El `watch_state` importado es la "versión
+  anterior" del primer barrido: sin él, todo saldría como primera captura.
 - **Fuera del Deshacer** (`test_cambios_web_quedan_fuera_del_journal` y
   `test_nada_de_la_vigilancia_de_cambios_entra_en_el_deshacer`). Dependencias:
   `lxml` y `cssselect` (ruedas cp312 manylinux, sin compilar).
