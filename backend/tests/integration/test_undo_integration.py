@@ -33,6 +33,7 @@ from backend.db.models import (
     UserRole,
 )
 from backend.services import change_journal as cj
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 pytestmark = pytest.mark.asyncio
 
@@ -696,7 +697,7 @@ async def test_project_edit_started_during_undo_wins_after_locked_conflict_check
             undo_task = asyncio.create_task(changes_route.undo_change(
                 ids["change"], db=undo_db, current_user=actor_view,
             ))
-            await asyncio.wait_for(locked.wait(), timeout=2)
+            await asyncio.wait_for(locked.wait(), timeout=HANG_TIMEOUT)
             other_project = await edit_db.get(Project, ids["project"])
             other_project.name = "Editado por B"
             edit_task = asyncio.create_task(edit_db.commit())
@@ -704,7 +705,7 @@ async def test_project_edit_started_during_undo_wins_after_locked_conflict_check
             assert not edit_task.done(), "el editor concurrente no esperó el bloqueo de Undo"
             release.set()
             await undo_task
-            await asyncio.wait_for(edit_task, timeout=2)
+            await asyncio.wait_for(edit_task, timeout=HANG_TIMEOUT)
 
         async with AsyncSession(engine) as reader:
             assert await reader.scalar(select(Project.name).where(Project.id == ids["project"])) == "Editado por B"

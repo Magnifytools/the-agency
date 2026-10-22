@@ -22,6 +22,7 @@ from backend.db.models import (
 )
 from backend.schemas.time_entry import TimerStartRequest
 from backend.services.domain_writes import update_task
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 pytestmark = pytest.mark.integration
 
@@ -305,7 +306,7 @@ async def test_timer_revalidates_project_after_autostop_commit(engine, monkeypat
             attempt = asyncio.create_task(time_routes.start_timer(
                 TimerStartRequest(task_id=target_id), request_db, actor,
             ))
-            await asyncio.wait_for(reacquire_started.wait(), timeout=3)
+            await asyncio.wait_for(reacquire_started.wait(), timeout=HANG_TIMEOUT)
             await archive_db.execute(
                 update(Project).where(Project.id == target_project_id)
                 .values(status=ProjectStatus.completed)
@@ -313,7 +314,7 @@ async def test_timer_revalidates_project_after_autostop_commit(engine, monkeypat
             await archive_db.commit()
             allow_reacquire.set()
             with pytest.raises(HTTPException) as blocked:
-                await asyncio.wait_for(attempt, timeout=3)
+                await asyncio.wait_for(attempt, timeout=HANG_TIMEOUT)
             assert blocked.value.status_code == 409
             await request_db.rollback()
 

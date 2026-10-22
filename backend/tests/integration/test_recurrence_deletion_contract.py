@@ -15,6 +15,7 @@ from backend.db.models import (
     TaskStatus,
 )
 from backend.services.recurrence import generate_recurring_instances
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 pytestmark = pytest.mark.integration
 
@@ -77,7 +78,7 @@ async def test_project_delete_waits_for_recurrence_transaction(
         with pytest.raises(asyncio.TimeoutError):
             await asyncio.wait_for(asyncio.shield(deleting), timeout=0.1)
         await worker.commit()
-        response = await asyncio.wait_for(deleting, timeout=2)
+        response = await asyncio.wait_for(deleting, timeout=HANG_TIMEOUT)
 
     assert response.status_code == 204, response.text
     await db_session.refresh(template)

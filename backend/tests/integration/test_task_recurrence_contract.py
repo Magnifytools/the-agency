@@ -11,6 +11,7 @@ from backend.db.models import (
     TaskRecurrenceOccurrence, TaskStatus,
 )
 from backend.services.recurrence import generate_recurring_instances
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 pytestmark = pytest.mark.integration
 
@@ -439,13 +440,13 @@ async def test_legacy_adoption_locks_observed_child_before_delete(engine):
             await session.commit()
 
     adoption_task = asyncio.create_task(adopt())
-    await asyncio.wait_for(observed.wait(), timeout=2)
+    await asyncio.wait_for(observed.wait(), timeout=HANG_TIMEOUT)
     deletion_task = asyncio.create_task(delete_child())
     await asyncio.sleep(0.05)
     assert not deletion_task.done()
     finish_adoption.set()
     assert await adoption_task == 0
-    await asyncio.wait_for(deletion_task, timeout=2)
+    await asyncio.wait_for(deletion_task, timeout=HANG_TIMEOUT)
 
     async with sessions() as verify:
         receipt = (await verify.execute(select(TaskRecurrenceOccurrence).where(
