@@ -185,7 +185,9 @@ async def test_http_reads_are_pure_and_permissions_hide_conditions_immediately(d
     await db_session.commit()
     writes = []
     def capture(_conn, _cursor, statement, _parameters, _context, _many):
-        if statement.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+        # El registro de uso (middleware, `audit_logs`) es analítica, no un
+        # efecto de la lectura: se ignora a propósito.
+        if statement.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE")) and "audit_logs" not in statement:
             writes.append(statement)
     event.listen(engine.sync_engine, "before_cursor_execute", capture)
     try:

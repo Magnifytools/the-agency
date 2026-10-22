@@ -16,7 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import require_admin, require_module
 from backend.config import settings
-from backend.db.database import async_session, get_db
+from backend.db import database
+from backend.db.database import get_db
 from backend.db.models import (
     Client, ClientStatus, Ga4Daily, Ga4LeadDaily, Ga4PropertySync, GscConnection, GscDaily, GscDetailSync,
     GscPageDaily, GscQueryDaily, GscQueryMonthly, GscSiteSync, User,
@@ -272,7 +273,7 @@ async def gsc_sync(db: AsyncSession = Depends(get_db), _: User = Depends(require
     _require_configured()
     await _connected_or_409(db)
     await db.commit()
-    return await gsc_service.sync_all(async_session)
+    return await gsc_service.sync_all(database.async_session)
 
 
 @router.post("/detail-sync")
@@ -292,6 +293,6 @@ async def gsc_detail_sync(db: AsyncSession = Depends(get_db), _: User = Depends(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Ya hay una importación del detalle en marcha")
     try:
-        return await gsc_detail_service.sync_all_detail(async_session)
+        return await gsc_detail_service.sync_all_detail(database.async_session)
     finally:
         await db.rollback()  # suelta el lock

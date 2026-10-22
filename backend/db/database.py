@@ -9,6 +9,11 @@ engine = create_async_engine(
     pool_pre_ping=True,
     pool_recycle=1800,
 )
+# Sesión global (la base de `settings.DATABASE_URL`). Quien la use desde una
+# petición (middleware, rutas que lanzan jobs) debe leerla en el momento de
+# usarla (`database.async_session` o un import dentro de la función), nunca con
+# un `from ... import async_session` a nivel de módulo: así los tests pueden
+# sustituirla y nunca escriben en la base de `.env` (ver tests/conftest.py).
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
