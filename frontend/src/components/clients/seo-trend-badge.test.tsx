@@ -17,9 +17,9 @@ describe("SeoTrendBadge", () => {
     expect(screen.getByText("▲ 8,0 %").className).toContain("bg-green-950")
   })
 
-  it("never invents a trend without Engine or without a previous period", () => {
+  it("never invents a trend without Search Console or without a previous period", () => {
     const { rerender } = render(<SeoTrendBadge linked={false} trend={null} changePct={null} />)
-    expect(screen.getByText("Sin Engine")).toBeTruthy()
+    expect(screen.getByText("Sin Search Console")).toBeTruthy()
     rerender(<SeoTrendBadge linked trend={null} changePct={null} />)
     expect(screen.getByText("Sin periodo anterior")).toBeTruthy()
   })

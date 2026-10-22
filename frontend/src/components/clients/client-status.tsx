@@ -37,7 +37,7 @@ export function SeoCell({ seo }: { seo: ClientStatusRow["seo"] }) {
     <div className="text-xs">
       <span className="mono">{seo.clicks.toLocaleString("es-ES")}</span> clics
       {seo.change_pct != null && <span className={`ml-1 font-medium ${color}`}>{pct(seo.change_pct)}</span>}
-      <p className="text-muted-foreground">{seo.source === "search_console" ? "Search Console · 28 días" : "The Engine · 30 días"}</p>
+      <p className="text-muted-foreground">Search Console · 28 días</p>
     </div>
   )
 }

@@ -1,18 +1,14 @@
-"""Semáforo SEO: trend derived from the Engine summary, no stored copy."""
-from datetime import datetime
+"""Semáforo SEO: bandas, umbral y ventana compartida (Search Console propio)."""
+from datetime import date, datetime
+from types import SimpleNamespace
 
 import pytest
 
 from backend.config import settings
 from backend.schemas.client import ClientResponse
+from backend.services import seo_traffic as st
+from backend.services.seo_control import seo_window
 from backend.services.seo_traffic import seo_traffic
-
-
-def _summary(clicks, previous, impressions=1000, impressions_previous=1000):
-    return {
-        "clicks_30d": clicks, "clicks_previous_30d": previous,
-        "impressions_30d": impressions, "impressions_previous_30d": impressions_previous,
-    }
 
 
 @pytest.fixture(autouse=True)
@@ -25,58 +21,56 @@ def thresholds(monkeypatch):
     (120, 100, "up", 20.0),
     (103, 100, "stable", 3.0),
     (90, 100, "down", -10.0),
-    (80, 100, "drop_alert", -20.0),   # exactly at the threshold alerts
+    (80, 100, "drop_alert", -20.0),   # justo en el umbral, alerta
     (81, 100, "down", -19.0),
-    (40, 99, "down", -59.6),          # below the minimum volume: never an alert
-    (5, 0, None, None),               # no base to compare
+    (40, 99, "down", -59.6),          # sin volumen mínimo nunca es alerta
+    (5, 0, None, None),               # sin base no hay comparación
 ])
 def test_trend_bands_and_threshold(clicks, previous, trend, pct):
-    traffic = seo_traffic(_summary(clicks, previous))
+    traffic = seo_traffic(clicks, previous, 1000, 1000)
     assert traffic.trend == trend
     assert traffic.clicks_change_pct == pct
 
 
 def test_threshold_is_configurable(monkeypatch):
     monkeypatch.setattr(settings, "SEO_DROP_ALERT_PCT", 50.0)
-    assert seo_traffic(_summary(60, 100)).trend == "down"
+    assert seo_traffic(60, 100, 0, 0).trend == "down"
     monkeypatch.setattr(settings, "SEO_DROP_MIN_CLICKS", 1000)
     monkeypatch.setattr(settings, "SEO_DROP_ALERT_PCT", 20.0)
-    assert seo_traffic(_summary(60, 100)).trend == "down"
+    assert seo_traffic(60, 100, 0, 0).trend == "down"
 
 
-@pytest.mark.parametrize("summary", [
-    None, {}, _summary(10, None), _summary(10, True), _summary(-1, 10), _summary(10, 10.5),
-])
-def test_incomplete_or_invalid_summary_has_no_trend(summary):
-    assert seo_traffic(summary) is None
+def test_impressions_change_and_no_base():
+    traffic = seo_traffic(500, 1000, 8000, 10000)
+    assert traffic.impressions_change_pct == -20.0
+    assert seo_traffic(500, 1000, 10, 0).impressions_change_pct is None
 
 
-def test_client_response_exposes_flat_sortable_fields():
+def test_sql_window_offsets_come_from_the_shared_window():
+    """La versión SQL usa los mismos 28 + 28 días que el estado y Control SEO."""
+    end = date(2026, 10, 16)
+    window = seo_window(end)
+    assert (end - window.start).days == st._START_BACK == 27
+    assert (end - window.previous_start).days == st._PREVIOUS_BACK == 55
+
+
+def test_client_response_reads_attached_trend_and_defaults_to_null():
     now = datetime(2026, 10, 18)
+    base = {"id": 1, "name": "Acme", "contract_type": "monthly", "status": "active",
+            "created_at": now, "updated_at": now}
     response = ClientResponse.model_validate({
-        "id": 1, "name": "Acme", "contract_type": "monthly", "status": "active",
-        "created_at": now, "updated_at": now,
-        "engine_summary_data": _summary(500, 1000, 8000, 10000),
+        **base, "seo_clicks_change_pct": -50.0, "seo_impressions_change_pct": -20.0,
+        "seo_trend": "drop_alert",
     }).model_dump()
-    assert response["seo_clicks_change_pct"] == -50.0
-    assert response["seo_impressions_change_pct"] == -20.0
-    assert response["seo_trend"] == "drop_alert"
+    assert response["seo_trend"] == "drop_alert" and response["seo_clicks_change_pct"] == -50.0
 
+    # Un resumen de Engine ya no cuenta: sin semáforo propio, null.
     unlinked = ClientResponse.model_validate({
-        "id": 2, "name": "Sin Engine", "contract_type": "monthly", "status": "active",
-        "created_at": now, "updated_at": now,
+        **base, "engine_project_id": 7,
+        "engine_summary_data": {"clicks_30d": 10, "clicks_previous_30d": 1000},
     }).model_dump()
     assert unlinked["seo_trend"] is None and unlinked["seo_clicks_change_pct"] is None
 
-
-def test_drop_clause_casts_only_inside_the_type_guard():
-    """Postgres may reorder AND operands, so every cast must sit behind a CASE."""
-    from sqlalchemy.dialects import postgresql
-
-    from backend.db.models import Client
-    from backend.services.seo_traffic import traffic_drop_clause
-
-    sql = str(traffic_drop_clause(Client.engine_summary_data).compile(dialect=postgresql.dialect()))
-    guard, _, rest = sql.partition(" THEN ")
-    assert guard.startswith("CASE WHEN") and "jsonb_typeof" in guard and "CAST" not in guard
-    assert "CAST" in rest and rest.rstrip().endswith("END")
+    # Desde el ORM sin `attach_seo_traffic`: los campos quedan a null, no fallan.
+    orm_like = SimpleNamespace(**base, brand_terms=[])
+    assert ClientResponse.model_validate(orm_like).seo_trend is None

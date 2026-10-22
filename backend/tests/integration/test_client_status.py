@@ -82,14 +82,22 @@ async def test_mild_dip_is_watch_and_small_base_never_alerts(db_session):
     assert tiny_row["seo"]["trend"] == "down" and tiny_row["status"] == "watch"
 
 
-async def test_engine_summary_is_the_fallback_without_own_property(db_session):
+async def test_engine_summary_is_no_longer_a_fallback(db_session):
+    """The Engine está congelado (21 oct 2026): sin propiedad propia no hay señal de tráfico."""
     client = await _client(db_session, engine_project_id=7, engine_summary_data={
-        "clicks_30d": 1200, "clicks_previous_30d": 1000,
+        "clicks_30d": 100, "clicks_previous_30d": 1000,
         "impressions_30d": 1, "impressions_previous_30d": 1, "as_of": "2026-10-18",
     })
-    row = await _row(db_session, client)
-    assert row["seo"]["source"] == "engine" and row["seo"]["trend"] == "up"
-    assert row["status"] == "ok"
+    row = await _row(db_session, client, NOTHING)
+    assert row["seo"] is None
+    assert row["status"] == "no_data" and row["reasons"] == []
+
+
+async def test_property_typed_without_trailing_slash_still_matches(db_session):
+    client = await _client(db_session, gsc_url="https://sube.es")
+    await _gsc(db_session, "https://sube.es/", recent=1200, previous=1000)
+    row = await _row(db_session, client, NOTHING)
+    assert row["seo"]["trend"] == "up" and row["status"] == "ok"
 
 
 async def test_monthly_summary_due_then_late_then_ok(db_session, admin_user):
