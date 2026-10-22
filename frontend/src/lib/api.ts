@@ -12,7 +12,6 @@ import type {
   SeoQueryHistory,
   SeoQueryRow,
   SeoWindowDays,
-  VigilClients,
   UptimeOverview,
   ClientUptimeTargets,
   UptimeTarget,
@@ -1214,10 +1213,6 @@ export const webChangesApi = {
     api.post<WebChange>(`/web/changes/${changeId}/ack`, { note }).then((r) => r.data),
   ackAll: (data: { client_id?: number | null; severity?: WebSeverity | null }) =>
     api.post<{ acknowledged: number }>("/web/changes/ack-all", data).then((r) => r.data),
-}
-
-export const vigilApi = {
-  clients: () => api.get<VigilClients>("/vigil/clients").then((r) => r.data),
 }
 
 export interface Ga4PropertyStatus {

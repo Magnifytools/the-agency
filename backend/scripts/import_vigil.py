@@ -26,7 +26,9 @@ de lo que de verdad cambió.
 
 Clientes
 --------
-``clients.slug`` de Vigil → ``Client.vigil_slug`` de The Agency. Un slug sin
+``clients.slug`` de Vigil → columna ``clients.vigil_slug`` de The Agency (leída
+con SQL: desde la fase 3b ya no está en el ORM; tras la 3c la columna no existe
+y sólo vale ``--map``). Un slug sin
 cliente aborta la importación ENTERA (nada escrito) salvo que se diga qué hacer
 con él: ``--map slug=client_id`` o ``--skip slug``. Dos slugs al mismo cliente
 también abortan: mezclarían URLs y barridos programados del mismo día.
@@ -100,7 +102,7 @@ from typing import Any, Callable
 from urllib.parse import urlsplit
 
 from cryptography.fernet import Fernet, InvalidToken
-from sqlalchemy import func, null, select
+from sqlalchemy import func, null, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from backend.config import DEFAULT_SECRET_KEY, settings
@@ -303,12 +305,26 @@ def parse_map(items: list[str] | None) -> dict[str, int]:
     return out
 
 
+async def _slug_links(db) -> dict[str, tuple[int, str]]:
+    """{vigil_slug: (client_id, nombre)} desde ``clients.vigil_slug`` con SQL.
+
+    La fase 3b quitó la columna del ORM (sigue en la BD hasta la 3c); tras la 3c
+    no existe y no hay enlaces por slug: sólo ``--map``.
+    """
+    exists = await db.scalar(text(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()"
+        " AND table_name = 'clients' AND column_name = 'vigil_slug')"
+    ))
+    if not exists:
+        return {}
+    rows = await db.execute(text("SELECT id, name, vigil_slug FROM clients WHERE vigil_slug IS NOT NULL"))
+    return {r.vigil_slug: (r.id, r.name) for r in rows.all()}
+
+
 async def resolve_clients(db, vigil_clients: list[dict], *, mapping: dict[str, int],
                           skip: set[str]) -> tuple[dict[str, tuple[int, str]], list[str]]:
     """{id de cliente en Vigil: (client_id en Agency, nombre)} y los slugs saltados."""
-    by_slug = {r.vigil_slug: (r.id, r.name) for r in (await db.execute(
-        select(Client.id, Client.name, Client.vigil_slug).where(Client.vigil_slug.isnot(None))
-    )).all()}
+    by_slug = await _slug_links(db)
     wanted_ids = set(mapping.values())
     names = {r.id: r.name for r in (await db.execute(
         select(Client.id, Client.name).where(Client.id.in_(wanted_ids))
@@ -341,7 +357,7 @@ async def resolve_clients(db, vigil_clients: list[dict], *, mapping: dict[str, i
     if unmapped:
         raise ImportAborted(
             "Clientes de Vigil sin cliente en The Agency (nada escrito): " + ", ".join(unmapped)
-            + ". Pon su slug en Ajustes del cliente (vigil_slug) o usa --map slug=client_id / --skip slug."
+            + ". Usa --map slug=client_id / --skip slug."
         )
     targets = Counter(agency_id for agency_id, _ in resolved.values())
     dup = sorted(agency_id for agency_id, n in targets.items() if n > 1)

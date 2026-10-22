@@ -167,9 +167,11 @@ Cuando lleve unos días barriendo bien desde The Agency:
   el ORM deja de usarlas, pero P12 las sigue exigiendo hasta la 3c. Borrar ORM y
   datos en el mismo despliegue rompería el arranque de la versión anterior si
   hubiera que volver atrás.
-- `scripts/import_vigil.py` lee `Client.vigil_slug`: o se borra en la 3b (el
-  corte ya está hecho) o se cambia a sólo `--map`. Mejor borrarlo con sus tests y
-  las migraciones copiadas en `tests/fixtures/vigil/`.
+- `scripts/import_vigil.py` se queda (por si hay que repetir la importación) y
+  lee `clients.vigil_slug` con SQL, no con el ORM; si la columna ya no existe
+  (tras la 3c), sólo vale `--map`. Se puede borrar, con sus tests y
+  `tests/fixtures/vigil/`, cuando Vigil esté apagado.
+- El lock 13 (job `vigil`) no se reutiliza.
 
 ### 3c — Migración de retirada (otro PR, después de la 3b en producción)
 

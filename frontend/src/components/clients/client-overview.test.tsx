@@ -18,7 +18,6 @@ const status: ClientStatusRow = {
   tasks: { overdue: 3, waiting: 1, followups_late: 1 },
   month: { hours: 12.5 },
   ready: { since: "2026-09-01", count: 7, items: [{ id: 9, title: "Informe de enlaces", completed_on: "2026-10-14" }] },
-  vigil: null,
 }
 const task = (id: number, title: string, extra: Partial<Task>) => ({ id, title, status: "pending", due_date: null, ...extra }) as Task
 const tasks = [
@@ -121,21 +120,9 @@ describe("ClientOverview", () => {
     expect(onRetryStatus).toHaveBeenCalled()
   })
 
-  it("shows Vigil's unreviewed changes with a link to Vigil", () => {
-    show({ status: { ...status, vigil: {
-      slug: "parklex", critical: 2, warning: 1, info: 4, watches_active: 12, watches_with_error: 1,
-      last_checked_at: "2026-10-20T04:32:00+00:00", last_run_status: "done",
-      fetched_at: "2026-10-20T07:00:00+00:00", fresh: true, url: "https://vigil.magnifytools.com",
-    } } })
-    const results = block("Resultados")
-    expect(within(results).getByText("2 críticos · 1 aviso sin revisar")).toHaveClass("text-red-600")
-    expect(within(results).getByText(/12 páginas vigiladas · 1 con error/)).toBeInTheDocument()
-    expect(within(results).getByRole("link", { name: /Abrir en Vigil/ })).toHaveAttribute("href", "https://vigil.magnifytools.com")
-  })
-
-  it("leaves Vigil out for clients that are not linked", () => {
+  it("no longer shows a Vigil block", () => {
     show()
-    expect(screen.queryByText("Cambios en la web")).not.toBeInTheDocument()
+    expect(screen.queryByText(/Abrir en Vigil/)).not.toBeInTheDocument()
   })
 
   it("shows GA4 visits, conversions and AI traffic from the last 28 days", () => {

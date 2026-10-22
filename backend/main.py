@@ -29,7 +29,7 @@ from backend.api.routes import (
     gsc,
     holidays,
     bank_import,
-    usage_stats, job_runtime, vigil, ga4,
+    usage_stats, job_runtime, ga4,
     credentials,
     web_uptime, web_watches, web_changes, web_settings,
 )
@@ -218,7 +218,7 @@ _CORE_ROUTERS = [
     auth, clients, tasks, task_categories, time_entries, users, dashboard,
     projects, pm, report_policies, digests, sync, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     client_dashboard, engine_integration, inbox, extension, google_calendar,
-    gsc, ga4, vigil, usage_stats, job_runtime,
+    gsc, ga4, usage_stats, job_runtime,
     # client_seo: Control SEO de la ficha (consultas y páginas de Search Console).
     client_seo,
     # client_share_links: el enlace de sólo lectura del cliente (/c/:token).

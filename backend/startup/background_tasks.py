@@ -201,13 +201,6 @@ async def _ga4_sync_once():
         raise JobFailure("partial_failure")
 
 
-async def _vigil_sync_once():
-    from backend.db.database import async_session
-    from backend.services.vigil_service import sync
-
-    await sync(async_session)
-
-
 async def _uptime_once():
     """Una pasada del monitor de caídas (ver backend/services/web/uptime.py)."""
     from backend.db.database import async_session
@@ -361,7 +354,6 @@ def start_background_tasks() -> list[asyncio.Task]:
         "inbox_classification": ("inbox-classification", _inbox_classification_once),
         "gsc": ("gsc-sync", _gsc_sync_once),
         "gsc_detail": ("gsc-detail-sync", _gsc_detail_sync_once),
-        "vigil": ("vigil-sync", _vigil_sync_once),
         "ga4": ("ga4-sync", _ga4_sync_once),
         "uptime": ("web-uptime", _uptime_once),
         "web_sweep": ("web-sweep", _web_sweep_once),
