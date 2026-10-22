@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { MemoryRouter } from "react-router-dom"
 import { beforeEach, expect, it, vi } from "vitest"
 import { WebTab } from "./web-tab"
 
@@ -12,6 +13,11 @@ vi.mock("@/context/auth-context", () => ({
   useAuth: () => ({ hasPermission: (module: string, write = false) => module === "web" && (!write || perms.write) }),
 }))
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+// La vigilancia de cambios tiene sus propios tests: aquí sólo importa qué se monta.
+vi.mock("./web-watches-card", () => ({ WebWatchesCard: () => <div>urls-vigiladas</div> }))
+vi.mock("./web-changes-list", () => ({ WebChangesList: () => <div>lista-cambios</div> }))
+vi.mock("./web-runs-card", () => ({ WebRunsCard: () => <div>barridos</div> }))
+vi.mock("./web-change-settings-card", () => ({ WebChangeSettingsCard: () => <div>calendario-captura</div> }))
 
 const down = {
   id: 3, client_id: 7, url: "https://fit.es/", label: "Home", is_active: true, status: "down",
@@ -32,7 +38,7 @@ const down = {
 
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  return render(<QueryClientProvider client={client}><WebTab clientId={7} website="https://fit.es" /></QueryClientProvider>)
+  return render(<QueryClientProvider client={client}><MemoryRouter><WebTab clientId={7} website="https://fit.es" /></MemoryRouter></QueryClientProvider>)
 }
 
 beforeEach(() => {
@@ -92,4 +98,19 @@ it("deleting asks first", async () => {
   const dialog = await screen.findByRole("dialog")
   fireEvent.click(within(dialog).getByRole("button", { name: "Borrar" }))
   await waitFor(() => expect(api.deleteTarget).toHaveBeenCalledWith(7, 3))
+})
+
+it("mounts change watching under availability; calendar and capture only for writers", async () => {
+  api.targets.mockResolvedValue({ enabled: true, monitored: true, website: null, targets: [] })
+  const { unmount } = setup()
+  expect(await screen.findByText("urls-vigiladas")).toBeInTheDocument()
+  expect(screen.getByText("lista-cambios")).toBeInTheDocument()
+  expect(screen.getByText("barridos")).toBeInTheDocument()
+  expect(screen.getByText("calendario-captura")).toBeInTheDocument()
+  expect(screen.getByRole("link", { name: "Abrir en Cambios web" })).toHaveAttribute("href", "/web/cambios?cliente=7")
+  unmount()
+  perms.write = false
+  setup()
+  expect(await screen.findByText("urls-vigiladas")).toBeInTheDocument()
+  expect(screen.queryByText("calendario-captura")).not.toBeInTheDocument()
 })
