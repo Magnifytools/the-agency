@@ -1,8 +1,8 @@
 import { formatCivilDate, timeEntryBusinessDate } from "@/lib/dates"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useParams, Link, useSearchParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { clientsApi, projectsApi, holdedApi, clientStatusApi, engineApi } from "@/lib/api"
+import { clientsApi, projectsApi, holdedApi, clientStatusApi } from "@/lib/api"
 import type { TaskStatus } from "@/lib/types"
 import { isEnabled } from "@/lib/hidden-modules"
 import { Select } from "@/components/ui/select"
@@ -24,8 +24,6 @@ import { ClientDashboardTab } from "@/components/clients/client-dashboard-tab"
 import { ClientAiAdvisor } from "@/components/clients/client-ai-advisor"
 import { ClientReportPolicy } from "@/components/clients/client-report-policy"
 import { ClientSettingsTab } from "@/components/clients/client-settings-tab"
-import { EngineMetricsWidget } from "@/components/clients/engine-metrics-widget"
-import { EngineSeoTab } from "@/components/clients/engine-seo-tab"
 import { SeoControlTab } from "@/components/clients/seo-control/seo-control-tab"
 import { FichaTab } from "@/components/clients/ficha-tab"
 import { useAuth } from "@/context/auth-context"
@@ -84,7 +82,7 @@ export default function ClientDetailPage() {
   const [creatingTask, setCreatingTask] = useState(false)
   const [whatIfOpen, setWhatIfOpen] = useState(false)
 
-  const validTabs = ["ficha", "contexto", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "control_seo", "seo", "ajustes", "facturas", "accesos", "web"] as const
+  const validTabs = ["ficha", "contexto", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "control_seo", "ajustes", "facturas", "accesos", "web"] as const
   type Tab = (typeof validTabs)[number]
 
   // Pestaña -> módulo que la sirve. Si el módulo está oculto, sus endpoints no
@@ -113,7 +111,13 @@ export default function ClientDetailPage() {
     return (!mod || isEnabled(mod)) && (!permission || hasPermission(permission))
   }
 
-  const tabParam = searchParams.get("tab") as Tab
+  // ?tab=seo era la pestaña de The Engine (retirada el 22 oct 2026): los
+  // enlaces guardados van a Control SEO.
+  const rawTab = searchParams.get("tab")
+  const tabParam = (rawTab === "seo" ? "control_seo" : rawTab) as Tab
+  useEffect(() => {
+    if (rawTab === "seo") setSearchParams({ tab: "control_seo" }, { replace: true })
+  }, [rawTab, setSearchParams])
   const activeTab =
     validTabs.includes(tabParam) && isTabVisible(tabParam) ? tabParam : "ficha"
   const setActiveTab = (tab: Tab) => setSearchParams({ tab }, { replace: true })
@@ -147,15 +151,6 @@ export default function ClientDetailPage() {
     queryKey: holdedKeys.clientInvoices(clientId),
     queryFn: () => holdedApi.clientInvoices(clientId),
     enabled: !!clientId && holdedEnabled,
-  })
-
-  // The Engine está congelado (21 oct 2026): sólo se pregunta por él si el
-  // cliente sigue vinculado (enlaces "Abrir en Engine" y pestaña Engine).
-  const { data: engineConfig } = useQuery({
-    queryKey: ["engine-config"],
-    queryFn: () => engineApi.getConfig(),
-    staleTime: 10 * 60_000,
-    enabled: !!summary?.client.engine_project_id,
   })
 
   const canReadClientHealth = canReadClient
@@ -266,16 +261,17 @@ export default function ClientDetailPage() {
             <h2 className="text-2xl font-bold uppercase tracking-wide">{client.name}</h2>
             {statusBadge(client.status)}
             {client.is_internal && <Badge variant="outline" className="border-purple-500/50 text-purple-400">Interno</Badge>}
-            {client.engine_project_id && engineConfig?.engine_frontend_url && (
+            {/* Engine (= Anvil): sólo un enlace a su ficha del cliente, sin datos. */}
+            {client.content_engine_url && (
               <a
-                href={`${engineConfig.engine_frontend_url}/p/${client.engine_project_id}/dashboard`}
+                href={client.content_engine_url}
                 target="_blank"
                 rel="noopener noreferrer"
                 title="Abrir en Engine"
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD600]"
               >
-                <Button variant="ghost" size="icon" aria-label="Abrir en Engine" className="h-7 w-7">
-                  <ExternalLink className="h-4 w-4" />
-                </Button>
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                Abrir en Engine
               </a>
             )}
           </div>
@@ -325,10 +321,8 @@ export default function ClientDetailPage() {
             label: "Resultados",
             tabs: [
               ...(isTabVisible("resumenes") ? (["resumenes"] as TabKey[]) : []),
-              // Control SEO (Search Console propio) con propiedad; "seo" es la de
-              // Engine: se llama "Engine" pero conserva la clave (?tab=seo).
+              // Control SEO (Search Console propio) con propiedad.
               ...(client.gsc_url ? (["control_seo"] as TabKey[]) : []),
-              ...(client.engine_project_id ? (["seo"] as TabKey[]) : []),
               ...(isTabVisible("web") ? (["web"] as TabKey[]) : []),
               "panel",
               ...(isTabVisible("comunicaciones")
@@ -370,7 +364,6 @@ export default function ClientDetailPage() {
           resumenes: "Resúmenes",
           comunicaciones: "Comunicaciones",
           control_seo: "Control SEO",
-          seo: "Engine",
           contactos: "Contactos",
           accesos: "Accesos",
           web: "Web",
@@ -609,7 +602,6 @@ export default function ClientDetailPage() {
       {/* Tab: Panel */}
       {activeTab === "panel" && (
         <div className="space-y-6">
-          <EngineMetricsWidget client={client} />
           {canReadFinancialPanel && canReadTime && <ClientDashboardTab client={client} />}
         </div>
       )}
@@ -691,9 +683,6 @@ export default function ClientDetailPage() {
       {activeTab === "control_seo" && client.gsc_url && (
         <SeoControlTab client={client} onOpenSettings={() => setActiveTab("ajustes")} />
       )}
-
-      {/* Tab: Engine (antes "SEO"; la clave ?tab=seo se mantiene) */}
-      {activeTab === "seo" && client.engine_project_id && <EngineSeoTab client={client} />}
 
       {/* Tab: Web (disponibilidad) */}
       {activeTab === "web" && <WebTab clientId={clientId} website={client.website ?? null} />}

@@ -26,7 +26,6 @@ vi.mock("@/lib/api", () => ({
   projectsApi: { listAll: mocks.projects },
   holdedApi: { config: vi.fn(), clientInvoices: vi.fn() },
   clientStatusApi: { get: mocks.health },
-  engineApi: { getConfig: vi.fn().mockResolvedValue({}) },
 }))
 
 vi.mock("@/components/clients/ficha-tab", () => ({ FichaTab: () => <div>FichaTab</div> }))
@@ -45,8 +44,6 @@ vi.mock("@/components/clients/client-ai-advisor", () => ({ ClientAiAdvisor: () =
 vi.mock("@/components/clients/contact-list", () => ({ ContactList: () => <div>ContactList</div> }))
 vi.mock("@/components/clients/client-dashboard-tab", () => ({ ClientDashboardTab: () => <div>Dashboard</div> }))
 vi.mock("@/components/clients/client-settings-tab", () => ({ ClientSettingsTab: () => <div>Settings</div> }))
-vi.mock("@/components/clients/engine-metrics-widget", () => ({ EngineMetricsWidget: () => null }))
-vi.mock("@/components/clients/engine-seo-tab", () => ({ EngineSeoTab: () => <div>SEO</div> }))
 vi.mock("@/components/clients/seo-control/seo-control-tab", () => ({
   SeoControlTab: ({ onOpenSettings }: { onOpenSettings: () => void }) => (
     <div>ControlSeoTab<button onClick={onOpenSettings}>Ir a configuración</button></div>
@@ -61,7 +58,7 @@ vi.mock("@/components/tasks/task-panel", () => ({
 }))
 
 const summary = {
-  client: { id: 5, name: "Acme", status: "active", engine_project_id: null },
+  client: { id: 5, name: "Acme", status: "active", content_engine_url: null },
   tasks: [], total_tasks: 0, total_tracked_minutes: 0,
   total_estimated_minutes: 0, total_actual_minutes: 0,
 }
@@ -355,25 +352,40 @@ describe("client detail areas", () => {
   })
 
   it("shows Control SEO in Resultados when the client has a Search Console property", async () => {
-    mocks.summary.mockResolvedValue({ ...summary, client: { ...summary.client, gsc_url: "sc-domain:acme.com", engine_project_id: 9 } })
+    mocks.summary.mockResolvedValue({ ...summary, client: { ...summary.client, gsc_url: "sc-domain:acme.com" } })
     show("control_seo")
     expect(await screen.findByText("ControlSeoTab")).toBeInTheDocument()
     expect(screen.getByLabelText("Área del cliente")).toHaveValue("outputs")
     const sections = screen.getByLabelText("Sección del área")
     expect(within(sections).getByRole("option", { name: "Control SEO" })).toBeInTheDocument()
-    expect(within(sections).getByRole("option", { name: "Engine" })).toBeInTheDocument()
+    expect(within(sections).queryByRole("option", { name: "Engine" })).not.toBeInTheDocument()
     expect(within(sections).queryByRole("option", { name: "SEO" })).not.toBeInTheDocument()
     // Sin propiedad todavía, el enlace del estado vacío lleva a Configuración.
     await userEvent.click(screen.getByRole("button", { name: "Ir a configuración" }))
     expect(await screen.findByText("Settings")).toBeInTheDocument()
   })
 
-  it("keeps old ?tab=seo links on the Engine tab, now labelled Engine", async () => {
-    mocks.summary.mockResolvedValue({ ...summary, client: { ...summary.client, gsc_url: "sc-domain:acme.com", engine_project_id: 9 } })
+  it("sends old ?tab=seo links (the retired Engine tab) to Control SEO", async () => {
+    mocks.summary.mockResolvedValue({ ...summary, client: { ...summary.client, gsc_url: "sc-domain:acme.com" } })
     show("seo")
-    expect(await screen.findByText("SEO")).toBeInTheDocument()
-    expect(screen.getByLabelText("Sección del área")).toHaveValue("seo")
-    expect(screen.getByRole("button", { name: "Engine" })).toBeInTheDocument()
+    expect(await screen.findByText("ControlSeoTab")).toBeInTheDocument()
+    expect(screen.getByLabelText("Sección del área")).toHaveValue("control_seo")
+    expect(screen.queryByRole("button", { name: "Engine" })).not.toBeInTheDocument()
+  })
+
+  it("links to Engine only when the client has an Engine client", async () => {
+    const first = show("ficha")
+    await screen.findByText("VistaGeneral")
+    expect(screen.queryByRole("link", { name: /Abrir en Engine/ })).not.toBeInTheDocument()
+    first.unmount()
+
+    const url = "https://engine.magnifytools.com/?client=3f2b8c1e-9d4a-4f6b-8e2a-1c5d7e9f0a3b"
+    mocks.summary.mockResolvedValue({ ...summary, client: { ...summary.client, content_engine_url: url } })
+    show("ficha")
+    const link = await screen.findByRole("link", { name: /Abrir en Engine/ })
+    expect(link).toHaveAttribute("href", url)
+    expect(link).toHaveAttribute("target", "_blank")
+    expect(link).toHaveAttribute("rel", "noopener noreferrer")
   })
 
   it("hides Control SEO without a Search Console property, even from a saved URL", async () => {

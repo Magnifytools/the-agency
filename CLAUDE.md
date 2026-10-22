@@ -188,20 +188,28 @@ admin_users, admin_settings
   `informe-<cliente>-<AAAA-MM>.pdf`, `Cache-Control: no-store`.
 - Se genera en `asyncio.to_thread` con 20 s de techo (504 si se agota).
 
-## The Engine (congelado)
-- **Congelado el 21 oct 2026** (decisión de David): sigue encendido, pero no se
-  trabaja en él y **nada de The Agency depende de él**. Ni el semáforo, ni el
-  orden de la lista, ni la incidencia de caída, ni el estado del cliente, ni el
-  dashboard leen `engine_summary_data` ni ningún `engine_*`.
-- **Lo que sigue enlazando a Engine** (sólo si el cliente tiene
-  `engine_project_id`): pestaña "Engine" (`?tab=seo`), botón "Abrir en Engine" de
-  la ficha, badge "Engine" de la lista, `EngineMetricsWidget` del Panel. El PDF del
-  resumen ya es propio (ver "PDF del resumen"). `engine-config` sólo se pide si hay un cliente vinculado.
-- **Sigue corriendo**: el job `engine` (copia el summary en `clients.engine_*`
-  para esas pestañas) y las rutas proxy `api/routes/engine_integration.py`.
-- Retirarlo del todo (job, rutas, columnas `engine_*`) es la fase 3 de
-  `tasks/current/2026-10-21-web-y-control-seo/engine-revision.md`. No añadas
-  nada nuevo que lea Engine.
+## Engine (Anvil)
+- **Decisión de David (22 oct 2026)**: "The Agency enlaza a Engine sólo con un
+  enlace por cliente, sin datos". Engine es ahora Anvil (la app de contenidos)
+  con otro nombre; el viejo The Engine se retira.
+- **Lo único que hay**: `clients.content_engine_client_id` (uuid del cliente en
+  Anvil, migración `client_content_engine_v1`), editable en Configuración del
+  cliente (escritura en `clients`; se valida como uuid). `ClientResponse` añade
+  `content_engine_url` = `{ENGINE_FRONTEND_URL}/?client=<uuid>` (por defecto
+  `https://engine.magnifytools.com`) y la cabecera de la ficha enseña "Abrir en
+  Engine" sólo si existe. **Nada se sincroniza ni se lee de Engine**: no añadas
+  jobs, rutas proxy ni columnas con sus datos.
+- **Retirado** del viejo The Engine: job `engine` (su lock 3 queda reservado),
+  `engine_sync_service`, rutas `/api/engine/*`, `ENGINE_API_URL` /
+  `ENGINE_SERVICE_KEY` / `ENGINE_SYNC_*`, pestaña Engine (`?tab=seo` redirige a
+  `control_seo`), `EngineMetricsWidget`, badge de la lista y `engineApi`.
+- **Columnas `clients.engine_*` y `projects.engine_project_id`**: fuera del ORM
+  y de la API, pero siguen en la BD (`schema_baseline.ORM_RETIRED_COLUMNS` las
+  perdona si faltan). Su `DROP` es un paso de retirada en un despliegue
+  POSTERIOR (contrato `Retirement` + `RETIREMENTS`), nunca en el mismo: el
+  pre-deploy correría con el contenedor viejo, que aún las mapea.
+- **Orden**: esto se despliega ANTES de mover engine.magnifytools.com a Anvil,
+  para que The Agency no enlace al viejo Engine con ids que ya no existen.
 
 ## Ciclo mensual de resúmenes (fase 1 Agency 2.0)
 - **Política por cliente** (`client_report_policies`): dos interruptores
@@ -381,7 +389,7 @@ admin_users, admin_settings
 - **El detalle no va a la IA**: ni resúmenes, ni borradores, ni asesor, ni
   enlace del cliente, ni MCP. Lo vigila `test_el_detalle_de_search_console_no_llega_a_la_ia`
   (`tests/test_gsc_detail.py`). Si lo cambias, cambia antes la política.
-- El PDF ya no es el de The Engine (congelado; el enlace se quitó el 21 oct
+- El PDF ya no es el de The Engine (retirado; el enlace se quitó el 21 oct
   2026): ver "PDF del resumen". Su `report-data` tampoco se usa: traga errores
   como ceros y no pondera la posición.
 
@@ -389,8 +397,8 @@ admin_users, admin_settings
 
 - **Qué es**: pestaña "Control SEO" de la ficha (área Resultados, sólo si el
   cliente tiene `gsc_url`). Lee lo que importan los jobs `gsc` (totales) y
-  `gsc_detail` (consultas y páginas, 120 días). La pestaña de The Engine se
-  llama ahora "Engine" y conserva la clave `?tab=seo`.
+  `gsc_detail` (consultas y páginas, 120 días). La antigua `?tab=seo` (pestaña
+  de The Engine, retirada) redirige aquí.
 - **API** (lectura de `clients`, mismo 404 que `/{id}/status`;
   `api/routes/client_seo.py` → `services/seo_control.py`):
   `GET /api/clients/{id}/seo?days=7|28` (totales, marca/sin marca/sin

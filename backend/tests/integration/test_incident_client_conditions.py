@@ -20,13 +20,6 @@ NOW = datetime(2026, 10, 18, 9)  # noqa: DTZ001 - application stores naive UTC
 LAST = date(2026, 10, 16)
 START = LAST - timedelta(days=27)  # primer día de la ventana compartida (28 días)
 
-# Un resumen de Engine que sería una caída: ya no debe contar para nada.
-ENGINE_DROP = {
-    "clicks_30d": 10, "clicks_previous_30d": 1000,
-    "impressions_30d": 1, "impressions_previous_30d": 1, "as_of": "2026-10-17",
-}
-
-
 @pytest.fixture(autouse=True)
 def thresholds(monkeypatch):
     monkeypatch.setattr(settings, "SEO_DROP_ALERT_PCT", 20.0)
@@ -100,8 +93,6 @@ async def test_only_real_drops_on_active_clients_with_own_data_raise_a_condition
         await _client(db_session, (400, 1000), is_internal=True),
         await _client(db_session, None),                             # propiedad sin datos
         await _client(db_session, None, gsc_url=None),
-        # The Engine está congelado: su resumen ya no abre incidencias.
-        await _client(db_session, None, gsc_url=None, engine_project_id=7, engine_summary_data=ENGINE_DROP),
     ]:
         await _own(db_session, client, owner)
 
@@ -194,8 +185,7 @@ async def test_client_list_sorts_biggest_drops_first_across_pages(db_session, ad
     dips = await _client(db_session, (900, 1000), name=f"{cohort} dips")
     grows = await _client(db_session, (1500, 1000), name=f"{cohort} grows")
     no_base = await _client(db_session, (50, 0), name=f"{cohort} no base")
-    no_site = await _client(db_session, None, gsc_url=None, name=f"{cohort} no site",
-                            engine_project_id=7, engine_summary_data=ENGINE_DROP)
+    no_site = await _client(db_session, None, gsc_url=None, name=f"{cohort} no site")
     await db_session.commit()
     ours = {falls.id, dips.id, grows.id, no_base.id, no_site.id}
 
@@ -211,7 +201,7 @@ async def test_client_list_sorts_biggest_drops_first_across_pages(db_session, ad
     by_id = {item["id"]: item for item in items}
     assert by_id[falls.id]["seo_trend"] == "drop_alert" and by_id[falls.id]["seo_clicks_change_pct"] == -70.0
     assert by_id[falls.id]["seo_impressions_change_pct"] == -10.0
-    assert by_id[no_site.id]["seo_trend"] is None  # el resumen de Engine ya no cuenta
+    assert by_id[no_site.id]["seo_trend"] is None  # sin propiedad, sin semáforo
     assert (await order("seo_change_desc"))[0] == [grows.id, dips.id, falls.id, no_site.id, no_base.id]
 
     # El orden por defecto también trae el semáforo, y la ficha igual.

@@ -1,8 +1,11 @@
 from __future__ import annotations
 from typing import Optional
+from urllib.parse import urlencode
+from uuid import UUID
 
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from backend.config import settings
 from backend.db.models import ContractType, ClientStatus
 from backend.services.seo_control import clean_brand_terms, clean_page_groups
 from backend.services.seo_traffic import SeoTrend
@@ -42,7 +45,8 @@ class ClientUpdate(BaseModel):
     vat_number: Optional[str] = None
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
-    engine_project_id: Optional[int] = None
+    # Cliente en Engine (= Anvil): su uuid. Vacío = sin enlace.
+    content_engine_client_id: Optional[str] = None
     vigil_slug: Optional[str] = None
     intermediary_name: Optional[str] = None
     is_intermediary_deal: Optional[bool] = None
@@ -59,6 +63,16 @@ class ClientUpdate(BaseModel):
         if value is not None and not isinstance(value, list):
             raise ValueError("Los términos de marca son una lista")
         return clean_brand_terms(value)
+
+    @field_validator("content_engine_client_id", mode="before")
+    @classmethod
+    def _content_engine_client_id(cls, value):
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        try:
+            return str(UUID(str(value).strip()))
+        except ValueError:
+            raise ValueError("El cliente de Engine es su identificador (uuid)") from None
 
     # Control SEO: grupos de URL [{name, rules: [{type, value}]}].
     seo_page_groups: Optional[list[dict]] = None
@@ -85,16 +99,8 @@ class ClientResponse(BaseModel):
     gsc_url: Optional[str] = None
     brand_terms: list[str] = Field(default_factory=list)
     seo_page_groups: list[dict] = Field(default_factory=list)
-    engine_project_id: Optional[int] = None
+    content_engine_client_id: Optional[str] = None
     vigil_slug: Optional[str] = None
-    engine_content_count: Optional[int] = None
-    engine_keyword_count: Optional[int] = None
-    engine_avg_position: Optional[float] = None
-    engine_clicks_30d: Optional[int] = None
-    engine_impressions_30d: Optional[int] = None
-    engine_metrics_synced_at: Optional[datetime] = None
-    engine_summary_data: Optional[dict] = None
-    engine_alerts_data: Optional[dict] = None
     # Revenue intelligence
     is_internal: bool = False
     intermediary_name: Optional[str] = None
@@ -117,6 +123,15 @@ class ClientResponse(BaseModel):
     @classmethod
     def _page_groups_list(cls, value):
         return value or []
+
+    @computed_field
+    @property
+    def content_engine_url(self) -> Optional[str]:
+        """Botón "Abrir en Engine": sólo con cliente de Engine asociado."""
+        if not self.content_engine_client_id:
+            return None
+        base = settings.ENGINE_FRONTEND_URL.rstrip("/")
+        return f"{base}/?{urlencode({'client': self.content_engine_client_id})}"
 
     # Semáforo SEO (Search Console propio, misma ventana que el estado). No
     # son columnas: los rellena `seo_traffic.attach_seo_traffic` en la lista y

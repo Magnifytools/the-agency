@@ -227,7 +227,8 @@ def client_status_block(s: dict[str, Any]) -> list[str]:
         change = seo.get("change_pct")
         change_txt = f", {change:+.0f} %" if change is not None else ""
         trend = SEO_TREND.get(seo.get("trend"), seo.get("trend") or "sin tendencia")
-        source = "Search Console" if seo.get("source") == "search_console" else "The Engine"
+        # La única fuente es nuestro Search Console (The Engine se retiró).
+        source = "Search Console"
         as_of = f", datos hasta {day(seo['as_of'])}" if seo.get("as_of") else ""
         lines.append(f"Tráfico de Google (28 días): {seo.get('clicks')} clics frente a "
                      f"{seo.get('clicks_previous')} ({trend}{change_txt}) · {source}{as_of}")

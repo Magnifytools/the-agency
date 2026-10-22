@@ -27,10 +27,8 @@ def job_definitions() -> tuple[JobDefinition, ...]:
         JobDefinition(JobSpec("deliveries", 2, 5), "Procesar entregas",
                       "Comprueba la cola. La confirmación de cada envío figura en su recibo.",
                       None if settings.DELIVERY_WORKER_ENABLED else "El procesamiento de entregas está pausado."),
-        JobDefinition(JobSpec("engine", 3, max(1, settings.ENGINE_SYNC_INTERVAL_HOURS) * 3600, 900, retry_seconds=900),
-                      "Actualizar datos de Engine", "Actualiza las métricas, resúmenes y alertas de clientes vinculados.",
-                      None if settings.ENGINE_SYNC_ENABLED and settings.ENGINE_API_URL and settings.ENGINE_SERVICE_KEY
-                      else "La sincronización de Engine está desactivada o falta su conexión."),
+        # Lock 3 reservado: era el job `engine` (copia de The Engine), retirado
+        # el 22 oct 2026. No reutilizar el número.
         JobDefinition(JobSpec("holded", 4, 86400, 900, retry_seconds=1800), "Actualizar datos de Holded",
                       "Sincroniza contactos, facturas y gastos de la integración configurada.",
                       None if settings.HOLDED_API_KEY else "Holded no está conectado."),

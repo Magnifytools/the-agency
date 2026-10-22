@@ -69,8 +69,8 @@ async def test_upgrade_drops_retired_tables_and_columns_and_keeps_the_rest(engin
     async with engine.connect() as conn:
         assert not RETIRED_TABLES & await tables(conn)
         assert not RETIRED_COLUMNS & await columns(conn)
-        # vigil_slug, brand_terms y seo_page_groups llegan con pasos posteriores, vacíos.
-        assert await conn.scalar(text("SELECT to_jsonb(c) - 'vigil_slug' - 'brand_terms' - 'seo_page_groups' FROM clients c WHERE id=1")) == client_before
+        # vigil_slug, brand_terms, seo_page_groups y content_engine_client_id llegan con pasos posteriores, vacíos.
+        assert await conn.scalar(text("SELECT to_jsonb(c) - 'vigil_slug' - 'brand_terms' - 'seo_page_groups' - 'content_engine_client_id' FROM clients c WHERE id=1")) == client_before
 
 
 async def test_fresh_install_reaches_the_same_shape(engine):

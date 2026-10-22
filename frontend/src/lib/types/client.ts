@@ -1,5 +1,4 @@
 import type { ContractType, ClientStatus, ProfitabilityStatus } from "./common"
-import type { EngineSummaryData, EngineAlert } from "./integration"
 import type { Task } from "./task"
 import type { ProjectCreate } from "./project"
 import type { SeoPageGroup } from "./seo-control"
@@ -26,17 +25,11 @@ export interface Client {
   brand_terms?: string[]
   // Control SEO: grupos de URL propios (el primero que acepta la página gana)
   seo_page_groups?: SeoPageGroup[]
-  engine_project_id: number | null
+  // Cliente en Engine (= Anvil): su uuid; la URL la construye el backend.
+  content_engine_client_id: string | null
+  content_engine_url: string | null
   vigil_slug: string | null
-  engine_content_count: number | null
-  engine_keyword_count: number | null
-  engine_avg_position: number | null
-  engine_clicks_30d: number | null
-  engine_impressions_30d: number | null
-  engine_metrics_synced_at: string | null
-  engine_summary_data: EngineSummaryData | null
-  engine_alerts_data: { alerts: EngineAlert[] } | null
-  // Semáforo SEO, derivado en backend del summary de Engine
+  // Semáforo SEO, derivado en backend de nuestro Search Console
   seo_clicks_change_pct: number | null
   seo_impressions_change_pct: number | null
   seo_trend: SeoTrend | null
@@ -77,7 +70,7 @@ export interface ClientCreate {
   brand_terms?: string[]
   // Control SEO: grupos de URL propios (el primero que acepta la página gana)
   seo_page_groups?: SeoPageGroup[]
-  engine_project_id?: number | null
+  content_engine_client_id?: string | null
   vigil_slug?: string | null
   // Revenue intelligence
   is_internal?: boolean

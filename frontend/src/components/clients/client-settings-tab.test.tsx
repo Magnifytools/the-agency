@@ -8,7 +8,6 @@ import { ClientSettingsTab } from "./client-settings-tab"
 const mocks = vi.hoisted(() => ({
   canWrite: true,
   update: vi.fn(),
-  engineProjects: vi.fn(),
   gscStatus: vi.fn(),
   vigilClients: vi.fn(),
 }))
@@ -18,7 +17,6 @@ vi.mock("@/context/auth-context", () => ({
 }))
 vi.mock("@/lib/api", () => ({
   clientsApi: { update: mocks.update },
-  engineApi: { listProjects: mocks.engineProjects },
   gscApi: { getStatus: mocks.gscStatus, listSites: vi.fn() },
   ga4Api: { getStatus: vi.fn().mockResolvedValue({ configured: true, properties: [] }), sync: vi.fn() },
   vigilApi: { clients: mocks.vigilClients },
@@ -29,7 +27,7 @@ const client = {
   id: 5,
   ga4_property_id: "123456",
   gsc_url: "https://example.com",
-  engine_project_id: null,
+  content_engine_client_id: null,
 } as never
 
 function show() {
@@ -43,7 +41,6 @@ describe("ClientSettingsTab permissions", () => {
     mocks.canWrite = true
     mocks.vigilClients.mockResolvedValue({ configured: true, clients: [{ slug: "parklex", name: "Parklex", linked_to: null }] })
     mocks.update.mockResolvedValue({})
-    mocks.engineProjects.mockResolvedValue([])
     mocks.gscStatus.mockResolvedValue({ configured: true, connections: [], sites: [] })
   })
 
@@ -71,6 +68,7 @@ describe("ClientSettingsTab permissions", () => {
       ga4_property_id: "654321",
       gsc_url: "https://example.com",
       vigil_slug: null,
+      content_engine_client_id: null,
     })
   })
 
@@ -94,5 +92,21 @@ describe("ClientSettingsTab permissions", () => {
     await userEvent.type(input, "parklex")
     await userEvent.click(screen.getByRole("button", { name: "Guardar" }))
     expect(mocks.update).toHaveBeenCalledWith(5, expect.objectContaining({ vigil_slug: "parklex" }))
+  })
+
+  it("links the client to Engine only by a valid uuid", async () => {
+    show()
+    const input = screen.getByLabelText("Cliente en Engine")
+    await userEvent.type(input, "42")
+    expect(screen.getByText(/identificador del cliente en Engine \(uuid\)/)).toBeInTheDocument()
+    expect(input).toHaveAttribute("aria-invalid", "true")
+    expect(screen.getByRole("button", { name: "Guardar" })).toBeDisabled()
+
+    await userEvent.clear(input)
+    await userEvent.type(input, " 3f2b8c1e-9d4a-4f6b-8e2a-1c5d7e9f0a3b ")
+    await userEvent.click(screen.getByRole("button", { name: "Guardar" }))
+    expect(mocks.update).toHaveBeenCalledWith(5, expect.objectContaining({
+      content_engine_client_id: "3f2b8c1e-9d4a-4f6b-8e2a-1c5d7e9f0a3b",
+    }))
   })
 })

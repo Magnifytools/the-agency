@@ -61,7 +61,7 @@ def test_numeric_usa_la_escala_persistida_y_acepta_snapshot_legacy_number():
 
 def test_float_no_se_convierte_en_decimal():
     """Float hereda de Numeric en SQLAlchemy; el orden de los isinstance importa."""
-    column = Client.__mapper__.column_attrs["engine_avg_position"].expression
+    column = Project.__mapper__.column_attrs["budget_hours"].expression
     assert cj.deserialize(column, 41.5) == 41.5
     assert isinstance(cj.deserialize(column, 41.5), float)
 

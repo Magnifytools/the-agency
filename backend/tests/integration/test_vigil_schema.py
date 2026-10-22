@@ -41,7 +41,7 @@ async def test_upgrade_twice_keeps_clients_and_leaves_slug_empty(engine):
     await deployment_schema.migrate_schema(engine)
     await deployment_schema.check_deployment_ready(engine)
     async with engine.connect() as conn:
-        after = await conn.scalar(text("SELECT to_jsonb(c) - 'vigil_slug' - 'brand_terms' - 'seo_page_groups' FROM clients c WHERE id=1"))
+        after = await conn.scalar(text("SELECT to_jsonb(c) - 'vigil_slug' - 'brand_terms' - 'seo_page_groups' - 'content_engine_client_id' FROM clients c WHERE id=1"))
         assert after == before
         assert await conn.scalar(text("SELECT vigil_slug FROM clients WHERE id=1")) is None
 

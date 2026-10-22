@@ -221,7 +221,6 @@ async def test_startup_does_not_register_retired_billing_producer(monkeypatch):
 
     monkeypatch.setattr(background_tasks.settings, "INCIDENTS_ENABLED", False)
     monkeypatch.setattr(background_tasks.settings, "DELIVERY_WORKER_ENABLED", False)
-    monkeypatch.setattr(background_tasks.settings, "ENGINE_SYNC_ENABLED", False)
     monkeypatch.setattr(background_tasks.settings, "HOLDED_API_KEY", "")
     monkeypatch.setattr(
         background_tasks.settings, "SCHEDULED_COMMUNICATIONS_ENABLED", False

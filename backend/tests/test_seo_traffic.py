@@ -64,13 +64,6 @@ def test_client_response_reads_attached_trend_and_defaults_to_null():
     }).model_dump()
     assert response["seo_trend"] == "drop_alert" and response["seo_clicks_change_pct"] == -50.0
 
-    # Un resumen de Engine ya no cuenta: sin semáforo propio, null.
-    unlinked = ClientResponse.model_validate({
-        **base, "engine_project_id": 7,
-        "engine_summary_data": {"clicks_30d": 10, "clicks_previous_30d": 1000},
-    }).model_dump()
-    assert unlinked["seo_trend"] is None and unlinked["seo_clicks_change_pct"] is None
-
     # Desde el ORM sin `attach_seo_traffic`: los campos quedan a null, no fallan.
     orm_like = SimpleNamespace(**base, brand_terms=[])
     assert ClientResponse.model_validate(orm_like).seo_trend is None

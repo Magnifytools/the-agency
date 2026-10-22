@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   monthlyClose: vi.fn(), financialSettings: vi.fn(), updateMonthlyClose: vi.fn(), updateFinancialSettings: vi.fn(), exportMonthlyClose: vi.fn(),
   preview: vi.fn(), send: vi.fn(), settings: vi.fn(), weekly: vi.fn(),
   tasks: vi.fn(), taskUpdate: vi.fn(), timeWeekly: vi.fn(), active: vi.fn(), start: vi.fn(), stop: vi.fn(),
-  users: vi.fn(), clients: vi.fn(), engine: vi.fn(), leads: vi.fn(), proposals: vi.fn(),
+  users: vi.fn(), clients: vi.fn(), leads: vi.fn(), proposals: vi.fn(),
   toastSuccess: vi.fn(), toastError: vi.fn(),
 }))
 
@@ -33,7 +33,7 @@ vi.mock("@/lib/api", () => ({
   dashboardApi: { overview: mocks.overview, operations: mocks.operations, financialOverview: mocks.financialOverview, profitability: mocks.profitability, team: mocks.team, utilization: mocks.utilization, monthlyClose: mocks.monthlyClose, financialSettings: mocks.financialSettings, updateMonthlyClose: mocks.updateMonthlyClose, updateFinancialSettings: mocks.updateFinancialSettings, exportMonthlyClose: mocks.exportMonthlyClose },
   discordApi: { preview: mocks.preview, send: mocks.send, settings: mocks.settings, sendWeeklyReport: mocks.weekly },
   tasksApi: { listAll: mocks.tasks, update: mocks.taskUpdate }, timeEntriesApi: { weekly: mocks.timeWeekly }, timerApi: { active: mocks.active, start: mocks.start, stop: mocks.stop },
-  usersApi: { listAll: mocks.users }, clientsApi: { listAll: mocks.clients }, engineApi: { getConfig: mocks.engine }, leadsApi: { reminders: mocks.leads }, proposalsApi: { list: mocks.proposals }, holdedApi: { config: vi.fn(), dashboard: vi.fn() },
+  usersApi: { listAll: mocks.users }, clientsApi: { listAll: mocks.clients }, leadsApi: { reminders: mocks.leads }, proposalsApi: { list: mocks.proposals }, holdedApi: { config: vi.fn(), dashboard: vi.fn() },
 }))
 vi.mock("@/components/dashboard/daily-update-widget", () => ({ DailyUpdateWidget: () => <div /> }))
 vi.mock("@/components/dashboard/deberes-widget", () => ({ DeberesWidget: () => <div /> }))
@@ -59,7 +59,7 @@ beforeEach(() => {
   mocks.operations.mockResolvedValue({ recurring_fee: null, projects_at_risk: null, clients_to_act: null, digests_unsent: null })
   mocks.financialOverview.mockResolvedValue({ total_budget: 10, total_cost: 2, margin: 8, margin_percent: 80 })
   mocks.team.mockResolvedValue([]); mocks.utilization.mockResolvedValue({ global_utilization_pct: 0, total_logged_hours: 0, total_available_hours: 0 })
-  mocks.monthlyClose.mockResolvedValue({}); mocks.financialSettings.mockResolvedValue({}); mocks.users.mockResolvedValue([]); mocks.clients.mockResolvedValue([]); mocks.engine.mockResolvedValue({})
+  mocks.monthlyClose.mockResolvedValue({}); mocks.financialSettings.mockResolvedValue({}); mocks.users.mockResolvedValue([]); mocks.clients.mockResolvedValue([])
   mocks.tasks.mockResolvedValue([]); mocks.timeWeekly.mockResolvedValue({ users: [] }); mocks.active.mockResolvedValue(null); mocks.settings.mockResolvedValue({ webhook_configured: true }); mocks.preview.mockResolvedValue({ summary: "Resumen", date: "2026-09-20", revision: "sha-1" })
 })
 
@@ -86,14 +86,13 @@ describe("DashboardPage", () => {
     )
   })
 
-  it("no depende de The Engine: ni alertas de Engine ni lista de clientes para enlazarlo", async () => {
+  it("no lee Engine: ni alertas de Engine ni lista de clientes para enlazarlo", async () => {
     mocks.user = { id: 1, role: "admin", permissions: [] }
-    mocks.extraModules = ["clients", "engine"]
+    mocks.extraModules = ["clients"]
     show()
     await screen.findByText("Clientes externos activos")
     expect(screen.queryByText(/Alertas SEO Engine/)).not.toBeInTheDocument()
     expect(mocks.clients).not.toHaveBeenCalled()
-    expect(mocks.engine).not.toHaveBeenCalled()
   })
 
   it("does not fetch team, finance, or task sources for a member without those permissions", async () => {

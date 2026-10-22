@@ -13,7 +13,6 @@ const api = vi.hoisted(() => ({
   recoverOnboarding: vi.fn(),
   extractContext: vi.fn(),
   health: vi.fn(),
-  engineConfig: vi.fn(),
 }))
 
 vi.mock("@/lib/api", () => ({
@@ -28,7 +27,6 @@ vi.mock("@/lib/api", () => ({
     extractContext: api.extractContext,
   },
   clientStatusApi: { portfolio: api.health },
-  engineApi: { getConfig: api.engineConfig },
 }))
 const auth = vi.hoisted(() => ({
   user: { id: 7 },
@@ -79,7 +77,6 @@ describe("ClientsPage recovery states", () => {
     vi.clearAllMocks()
     api.clients.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 })
     api.health.mockResolvedValue([])
-    api.engineConfig.mockResolvedValue({ engine_frontend_url: null })
     api.onboard.mockResolvedValue({ status: "confirmed", client_id: 18, contact_ids: [], project_id: null, replayed: false, undo_state: "available", change_log_id: 1 })
     api.recoverOnboarding.mockResolvedValue({ status: "not_committed", client_id: null, contact_ids: [], project_id: null, replayed: false, undo_state: "unavailable", change_log_id: null })
     auth.user = { id: 7 }

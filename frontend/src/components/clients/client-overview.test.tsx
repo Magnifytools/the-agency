@@ -8,7 +8,7 @@ import { ClientOverview } from "./client-overview"
 const mocks = vi.hoisted(() => ({ contacts: vi.fn() }))
 vi.mock("@/lib/api", () => ({ contactsApi: { list: mocks.contacts } }))
 
-const client = { id: 5, name: "Parklex", context: "Fabricante de paneles. Decide Marta.", engine_project_id: 9 } as unknown as Client
+const client = { id: 5, name: "Parklex", context: "Fabricante de paneles. Decide Marta." } as unknown as Client
 const status: ClientStatusRow = {
   client_id: 5, client_name: "Parklex", status: "act",
   reasons: ["3 tareas vencidas"],
@@ -60,7 +60,7 @@ describe("ClientOverview", () => {
     expect(within(work).queryByText("Hecha")).not.toBeInTheDocument()
     expect(within(work).getByText("Por revisar (1)")).toBeInTheDocument()
 
-    // The Engine está congelado: la vista general no enlaza a Engine.
+    // La vista general no enlaza fuera (ni a Engine ni a un PDF ajeno).
     const results = block("Resultados")
     expect(within(results).queryByRole("link", { name: /Engine|PDF/ })).not.toBeInTheDocument()
     expect(within(results).queryByText("Ver SEO")).not.toBeInTheDocument()

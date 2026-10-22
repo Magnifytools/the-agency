@@ -18,19 +18,6 @@ def _log_task_error(t: asyncio.Task) -> None:
         logging.error("Background task %s failed: %s", t.get_name(), exc)
 
 
-# ── Engine sync ──────────────────────────────────────────────
-
-async def _engine_sync_once():
-    from backend.services.engine_sync_service import sync_engine_metrics
-    from backend.services.job_runtime import JobFailure
-
-    result = await sync_engine_metrics()
-    if result.get("detail") == "not configured":
-        raise JobFailure("provider_unavailable")
-    if result.get("failed", 0):
-        raise JobFailure("partial_failure")
-
-
 # ── Holded sync ──────────────────────────────────────────────
 
 async def _holded_sync_once():
@@ -349,7 +336,6 @@ def start_background_tasks() -> list[asyncio.Task]:
     definitions = {item.spec.key: item for item in job_definitions()}
     operations = {
         "incidents": ("operational-incidents", _incident_once),
-        "engine": ("engine-sync", _engine_sync_once),
         "holded": ("holded-sync", _holded_sync_once),
         "advanced_reset": ("advanced-reset", _reset_advanced_tasks),
         "recurrence": ("recurring-reconcile", _generate_recurring_instances),

@@ -1010,41 +1010,6 @@ export const searchApi = {
     api.get<SearchResults>("/search", { params: { q } }).then((r) => r.data),
 }
 
-// --- Engine Integration ---
-export interface EngineProject {
-  id: number
-  name: string
-  domain: string
-  logo_url: string | null
-  agency_client_id: number | null
-  agency_project_id: number | null
-  agency_synced_at: string | null
-}
-
-export interface EngineMetrics {
-  project_id: number
-  project_name: string
-  domain: string
-  content_count: number
-  keyword_count: number
-  avg_position: number | null
-  clicks_30d: number
-  impressions_30d: number
-}
-
-export const engineApi = {
-  listProjects: () =>
-    api.get<EngineProject[]>("/engine/projects").then((r) => r.data),
-  getMetrics: (projectId: number) =>
-    api.get<EngineMetrics>(`/engine/projects/${projectId}/metrics`).then((r) => r.data),
-  getReportData: (projectId: number, from?: string, to?: string) =>
-    api.get(`/engine/projects/${projectId}/report-data`, { params: { from_date: from, to_date: to } }).then((r) => r.data),
-  getConfig: () =>
-    api.get<{ engine_frontend_url: string | null }>("/engine/config").then((r) => r.data),
-  triggerSync: () =>
-    api.post<{ synced: number; failed: number; detail?: string }>("/engine/sync").then((r) => r.data),
-}
-
 // ── Inbox Quick Capture ────────────────────────────────────
 
 export const inboxApi = {

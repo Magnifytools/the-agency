@@ -82,12 +82,9 @@ async def test_mild_dip_is_watch_and_small_base_never_alerts(db_session):
     assert tiny_row["seo"]["trend"] == "down" and tiny_row["status"] == "watch"
 
 
-async def test_engine_summary_is_no_longer_a_fallback(db_session):
-    """The Engine está congelado (21 oct 2026): sin propiedad propia no hay señal de tráfico."""
-    client = await _client(db_session, engine_project_id=7, engine_summary_data={
-        "clicks_30d": 100, "clicks_previous_30d": 1000,
-        "impressions_30d": 1, "impressions_previous_30d": 1, "as_of": "2026-10-18",
-    })
+async def test_without_own_property_there_is_no_traffic_signal(db_session):
+    """Sin propiedad propia de Search Console no hay señal de tráfico."""
+    client = await _client(db_session)
     row = await _row(db_session, client, NOTHING)
     assert row["seo"] is None
     assert row["status"] == "no_data" and row["reasons"] == []

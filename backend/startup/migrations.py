@@ -123,14 +123,6 @@ async def _ensure_columns():
 
     logging.info("Running _ensure_columns DDL...")
     stmts = [
-        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_project_id INTEGER",
-        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_content_count INTEGER",
-        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_keyword_count INTEGER",
-        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_avg_position DOUBLE PRECISION",
-        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_clicks_30d INTEGER",
-        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_impressions_30d INTEGER",
-        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_metrics_synced_at TIMESTAMPTZ",
-        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS engine_project_id INTEGER",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS owner_id INTEGER",
         """DO $$ BEGIN
             IF NOT EXISTS (
@@ -143,8 +135,6 @@ async def _ensure_columns():
             END IF;
         END $$""",
         "CREATE INDEX IF NOT EXISTS ix_projects_owner_id ON projects (owner_id)",
-        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_summary_data JSONB",
-        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_alerts_data JSONB",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN NOT NULL DEFAULT FALSE",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_one_active_timer ON time_entries (user_id) WHERE minutes IS NULL",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_internal BOOLEAN NOT NULL DEFAULT FALSE",

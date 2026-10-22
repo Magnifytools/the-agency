@@ -31,11 +31,10 @@ describe("DigestSeoPanel", () => {
     expect(onIncludeChange).toHaveBeenCalledWith(false)
   })
 
-  it("no longer links to The Engine's frozen PDF", () => {
+  it("has no external links (the PDF is our own)", () => {
     show(ok)
 
     expect(screen.queryByRole("link")).not.toBeInTheDocument()
-    expect(screen.queryByText(/The Engine/)).not.toBeInTheDocument()
   })
 
   it("explains why a monthly summary has no Search Console block", () => {
