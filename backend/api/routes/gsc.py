@@ -19,7 +19,7 @@ from backend.config import settings
 from backend.db.database import async_session, get_db
 from backend.db.models import (
     Client, ClientStatus, Ga4Daily, Ga4PropertySync, GscConnection, GscDaily, GscDetailSync,
-    GscPageDaily, GscQueryDaily, GscSiteSync, User,
+    GscPageDaily, GscQueryDaily, GscQueryMonthly, GscSiteSync, User,
 )
 from backend.services import gsc_detail_service, gsc_service
 from backend.services.job_catalog import job_definitions
@@ -179,7 +179,7 @@ class DisconnectRequest(BaseModel):
 
 async def _purge_connection_data(db: AsyncSession, connection_id: int) -> dict:
     """Borra las cifras diarias (y su estado) de las propiedades de Search Console
-    (totales y detalle por consulta y página) y GA4 que se importaban con esta
+    (totales, detalle por consulta y página e historial mensual por consulta) y GA4 que se importaban con esta
     cuenta. Si otra cuenta conectada también las ve, la próxima importación las
     vuelve a traer desde cero.
 
@@ -201,6 +201,8 @@ async def _purge_connection_data(db: AsyncSession, connection_id: int) -> dict:
             delete(GscQueryDaily).where(GscQueryDaily.site_url.in_(sites)))).rowcount or 0
         page_rows = (await db.execute(
             delete(GscPageDaily).where(GscPageDaily.site_url.in_(sites)))).rowcount or 0
+        # Y su historial mensual por consulta (hasta 16 meses).
+        await db.execute(delete(GscQueryMonthly).where(GscQueryMonthly.site_url.in_(sites)))
         await db.execute(delete(GscDetailSync).where(GscDetailSync.site_url.in_(sites)))
     if properties:
         ga4_rows = (await db.execute(delete(Ga4Daily).where(Ga4Daily.property_id.in_(properties)))).rowcount or 0

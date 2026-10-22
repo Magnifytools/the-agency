@@ -20,9 +20,13 @@ describe("agency areas and permission boundaries", () => {
   })
   it("shows website availability under Clientes only with the web module", () => {
     const withWeb = navigationFor((module) => module === "web", false)
-    expect(withWeb.find((area) => area.id === "clients")?.links.map((link) => link.to)).toEqual(["/web"])
-    expect(navigationFor((module) => module === "clients", false).flatMap((area) => area.links).some((link) => link.to === "/web")).toBe(false)
+    expect(withWeb.find((area) => area.id === "clients")?.links.map((link) => link.to)).toEqual(["/web", "/web/cambios"])
+    expect(navigationFor((module) => module === "clients", false).flatMap((area) => area.links).some((link) => link.to.startsWith("/web"))).toBe(false)
     expect(activeArea("/web", "")).toBe("clients")
+    // Los enlaces del digest de Slack caen en Clientes y encienden "Cambios web", no "Disponibilidad".
+    expect(activeArea("/web/cambios/0b9c", "")).toBe("clients")
+    expect(activeAreaLink("/web/cambios", "/web/cambios/0b9c", "")).toBe(true)
+    expect(activeAreaLink("/web", "/web/cambios", "?cliente=7")).toBe(false)
   })
   it("distinguishes agenda from work while preserving legacy and QA task links", () => {
     expect(activeArea("/tasks", "?id=27")).toBe("today")

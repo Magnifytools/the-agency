@@ -58,6 +58,18 @@ it("la política cuenta el detalle por consulta y página de Search Console y su
   expect(text).not.toContain("No queries, pages")
 })
 
+it("la política cuenta el total mensual por búsqueda (historial de posiciones) y su retención", () => {
+  renderPage(<PrivacyPage />)
+  const text = (document.body.textContent ?? "").replace(/\s+/g, " ")
+  expect(text).toContain("Actualizada el 22 de octubre de 2026")
+  expect(text).toContain("Pasados esos 120 días, de cada búsqueda sólo conservamos un total por mes (clics, impresiones y posición media), durante un máximo de 16 meses y mientras la web esté asociada a un cliente activo")
+  expect(text).toContain("El total mensual por búsqueda se conserva como mucho 16 meses y se borra antes si la web deja de estar asociada a un cliente activo")
+  expect(text).toContain("el borrado incluye el detalle por búsqueda y página y el total mensual por búsqueda")
+  expect(text).toContain("Beyond those 120 days, we keep only a monthly total per search query (clicks, impressions and average position) for up to 16 months while the site is linked to an active client")
+  expect(text).toContain("Monthly per-query totals are kept for up to 16 months and deleted earlier when the site is no longer linked to an active client")
+  expect(text).toContain("including query and page detail and monthly per-query totals")
+})
+
 it("la página de inicio menciona el detalle por búsqueda y página", () => {
   renderPage(<AboutPage />)
   const text = (document.body.textContent ?? "").replace(/\s+/g, " ")

@@ -23,6 +23,7 @@ const areas: NavigationArea[] = [
   { id: "clients", label: "Clientes", icon: Users, links: [
     { to: "/clients", label: "Clientes", module: "clients" },
     { to: "/web", label: "Disponibilidad web", mobileLabel: "Webs", module: "web" },
+    { to: "/web/cambios", label: "Cambios web", mobileLabel: "Cambios", module: "web" },
   ] },
   { id: "summaries", label: "Resúmenes", icon: ClipboardList, links: [
     { to: "/dailys", label: "Mi resumen diario", mobileLabel: "Diario" },
@@ -50,7 +51,7 @@ export function activeArea(pathname: string, search: string): AreaId {
     return params.has("qaFilter") || (params.has("view") && params.get("view") !== "my_day") ? "work" : "today"
   }
   if (pathname === "/dashboard" || pathname === "/incidents" || pathname.startsWith("/deliveries/")) return "today"
-  if (pathname.startsWith("/clients") || pathname === "/web") return "clients"
+  if (pathname.startsWith("/clients") || pathname === "/web" || pathname.startsWith("/web/")) return "clients"
   if (["/dailys", "/digests"].some((path) => pathname === path || pathname.startsWith(path + "/"))) return "summaries"
   if (["/projects", "/timesheet", "/inbox", "/leads", "/growth", "/proposals"].some((path) => pathname === path || pathname.startsWith(path + "/"))) return "work"
   return "settings"
@@ -59,5 +60,7 @@ export function activeArea(pathname: string, search: string): AreaId {
 export function activeAreaLink(to: string, pathname: string, search: string): boolean {
   const [path, query] = to.split("?")
   if (path === "/tasks") return pathname === path && activeArea(pathname, search) === (query === "view=my_day" ? "today" : "work")
+  // "/web" (disponibilidad) no se enciende en "/web/cambios", que tiene su propio enlace.
+  if (path === "/web") return pathname === path
   return pathname === path || pathname.startsWith(path + "/")
 }

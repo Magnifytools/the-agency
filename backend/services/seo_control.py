@@ -15,6 +15,11 @@ Ventana: la misma que el estado del cliente (`seo_window`, 28 días por
 defecto, o 7). Termina en el último día que tienen a la vez los totales y el
 detalle; la anterior son los `days` días justo antes.
 
+Historial por consulta: los meses de `gsc_query_monthly` (hasta 16, sólo
+completos) más los días del detalle diario (120). Grupos de URL: reglas
+propias del cliente (`clients.seo_page_groups`); cada página va al PRIMER
+grupo que la acepta y, si ninguno, a "Sin grupo".
+
 Dos trampas del detalle:
 - Google anonimiza las consultas poco frecuentes: "sin clasificar" = total de
   `gsc_daily` − suma de consultas (nunca por debajo de 0).
@@ -25,6 +30,7 @@ Dos trampas del detalle:
 
 from __future__ import annotations
 
+import re
 import time
 import unicodedata
 from dataclasses import dataclass, field
@@ -35,7 +41,13 @@ from urllib.parse import unquote, urlsplit
 from sqlalchemy import select, text
 
 from backend.db.models import Client, GscConnection, GscDetailSync, GscSiteSync
+from backend.services.gsc_detail_service import DETAIL_DAYS, history_floor
 from backend.services.gsc_service import normalize_site_url
+
+try:  # Python ≥ 3.11
+    from re import _parser as _sre_parse
+except ImportError:  # pragma: no cover
+    import sre_parse as _sre_parse  # type: ignore[no-redef]
 
 # Ventana del tráfico: 28 días (4 semanas completas, sin sesgo de día de la semana).
 SEO_WINDOW_DAYS = 28
@@ -51,6 +63,21 @@ MAX_LIMIT = 100
 MAX_BRAND_TERMS = 20
 MIN_TERM_LENGTH = 3
 MAX_TERM_LENGTH = 60
+
+# Historial por consulta: meses de la miniatura de tendencia en los listados.
+TREND_MONTHS = 6
+
+# Grupos de URL.
+MAX_PAGE_GROUPS = 30
+MAX_GROUP_RULES = 20
+MAX_GROUP_NAME = 60
+MAX_RULE_VALUE = 200
+RULE_TYPES = ("prefix", "contains", "regex")
+UNGROUPED = "Sin grupo"
+# Repeticiones sin tope (*, +, {n,}) que admite una regex.
+MAX_REGEX_UNBOUNDED = 2
+# Tope de tiempo para repartir las páginas entre grupos (ver PageGroupMatcher).
+GROUP_MATCH_SECONDS = 5.0
 
 SeoStatus = Literal[
     "no_property", "not_connected", "reconnect_required", "not_synced", "backfilling", "error", "ok",
@@ -195,6 +222,214 @@ def section_of(page_url: str, site_url: str | None) -> tuple[str, str]:
         return "/", "Inicio"
     first = unquote(segments[0]).lower()
     return f"/{first}", f"/{first}"
+
+
+# ── Grupos de URL ────────────────────────────────────────────────────
+#
+# Cada grupo: {"name", "rules": [{"type": "prefix"|"contains"|"regex", "value"}]}.
+# - prefix: la RUTA empieza por el valor ("/blog/"; sin barra inicial se le
+#   pone). La ruta es como en las secciones: decodificada, en minúsculas, con
+#   su ?query y, en propiedades de prefijo, contada desde el prefijo. Si el
+#   valor es una URL entera (http…), se compara con la URL entera.
+# - contains: el valor aparece en cualquier parte de la URL entera
+#   (decodificada, sin mayúsculas): sirve también para subdominios.
+# - regex: `re.search` sobre la ruta, sin distinguir mayúsculas.
+#
+# Regex segura sin timeout: `re` de Python no tiene tope de tiempo, así que se
+# validan al guardar: ≤ 200 caracteres, sin repeticiones anidadas ((a+)+),
+# sin alternativas dentro de una repetición sin tope ((a|ab)*), sin
+# referencias hacia atrás ni lookarounds y como mucho 2 repeticiones sin tope.
+# Eso deja fuera el retroceso exponencial; lo polinómico queda acotado porque
+# la ruta es corta (la URL se guarda recortada a 2.000 caracteres). Además el
+# reparto entero tiene un tope de 5 s (`PageGroupTimeout`).
+
+
+class PageGroupTimeout(Exception):
+    """Las reglas tardan demasiado en repartir las páginas."""
+
+
+_REPEATS = {getattr(_sre_parse, name) for name in ("MAX_REPEAT", "MIN_REPEAT", "POSSESSIVE_REPEAT")
+            if hasattr(_sre_parse, name)}
+_LOOKAROUNDS = {_sre_parse.ASSERT, _sre_parse.ASSERT_NOT}
+_BACKREFS = {_sre_parse.GROUPREF, _sre_parse.GROUPREF_EXISTS}
+# A partir de aquí una repetición cuenta como "sin tope".
+_LARGE_REPEAT = 100
+
+
+def regex_problem(pattern: str) -> str | None:
+    """Motivo por el que una regex no se admite, o None si vale."""
+    if len(pattern) > MAX_RULE_VALUE:
+        return f"tiene más de {MAX_RULE_VALUE} caracteres"
+    try:
+        re.compile(pattern, re.IGNORECASE)
+        parsed = _sre_parse.parse(pattern)
+    except re.error:
+        return "no es una expresión regular válida"
+    unbounded = 0
+
+    def children(op, av) -> list:
+        if op in _REPEATS:
+            return [av[2]]
+        if op is _sre_parse.SUBPATTERN:
+            return [av[-1]]
+        if op is _sre_parse.BRANCH:
+            return list(av[1])
+        if op is getattr(_sre_parse, "ATOMIC_GROUP", None):
+            return [av]
+        return []
+
+    def walk(items, repeat_depth: int, in_unbounded: bool) -> str | None:
+        nonlocal unbounded
+        for op, av in items:
+            if op in _BACKREFS:
+                return "no admite referencias hacia atrás (\\1)"
+            if op in _LOOKAROUNDS:
+                return "no admite lookarounds ((?=…), (?!…), (?<=…))"
+            if op is _sre_parse.BRANCH and in_unbounded:
+                return "no admite alternativas (a|b) dentro de una repetición sin tope"
+            if op in _REPEATS:
+                low, high, _ = av
+                if high > 1 and repeat_depth > 0:
+                    return "no admite repeticiones anidadas como (a+)+"
+                is_unbounded = high == _sre_parse.MAXREPEAT or high > _LARGE_REPEAT
+                if is_unbounded:
+                    unbounded += 1
+                for child in children(op, av):
+                    problem = walk(child, repeat_depth + (1 if high > 1 else 0), in_unbounded or is_unbounded)
+                    if problem:
+                        return problem
+                continue
+            for child in children(op, av):
+                problem = walk(child, repeat_depth, in_unbounded)
+                if problem:
+                    return problem
+        return None
+
+    problem = walk(parsed, 0, False)
+    if problem:
+        return problem
+    if unbounded > MAX_REGEX_UNBOUNDED:
+        return f"tiene más de {MAX_REGEX_UNBOUNDED} repeticiones sin tope (*, +)"
+    return None
+
+
+def clean_page_groups(values: list | None) -> list[dict]:
+    """Valida los grupos que llegan del editor: como mucho 30 grupos de 20
+    reglas, nombres de 1–60 caracteres sin repetir (ni "Sin grupo"), valores
+    de 1–200 caracteres y regex seguras (`regex_problem`)."""
+    if values is None:
+        return []
+    if not isinstance(values, list):
+        raise ValueError("Los grupos de URL son una lista")
+    if len(values) > MAX_PAGE_GROUPS:
+        raise ValueError(f"Como mucho {MAX_PAGE_GROUPS} grupos de URL")
+    out: list[dict] = []
+    seen: set[str] = set()
+    for raw in values:
+        if not isinstance(raw, dict) or not isinstance(raw.get("name"), str):
+            raise ValueError("Cada grupo necesita un nombre y sus reglas")
+        name = " ".join(raw["name"].split())
+        if not 1 <= len(name) <= MAX_GROUP_NAME:
+            raise ValueError(f"El nombre de cada grupo debe tener entre 1 y {MAX_GROUP_NAME} caracteres")
+        key = name.casefold()
+        if key == UNGROUPED.casefold():
+            raise ValueError(f"«{UNGROUPED}» está reservado para las páginas que no entran en ningún grupo")
+        if key in seen:
+            raise ValueError(f"Hay dos grupos llamados «{name}»")
+        seen.add(key)
+        rules = raw.get("rules")
+        if not isinstance(rules, list) or not rules:
+            raise ValueError(f"El grupo «{name}» necesita al menos una regla")
+        if len(rules) > MAX_GROUP_RULES:
+            raise ValueError(f"El grupo «{name}» tiene más de {MAX_GROUP_RULES} reglas")
+        clean_rules = []
+        for rule in rules:
+            if not isinstance(rule, dict) or rule.get("type") not in RULE_TYPES or not isinstance(rule.get("value"), str):
+                raise ValueError(f"Regla no válida en «{name}»: el tipo es prefix, contains o regex, con su valor")
+            value = rule["value"].strip()
+            if not 1 <= len(value) <= MAX_RULE_VALUE:
+                raise ValueError(f"Cada regla de «{name}» debe tener entre 1 y {MAX_RULE_VALUE} caracteres")
+            if rule["type"] == "regex":
+                problem = regex_problem(value)
+                if problem:
+                    raise ValueError(f"La regex «{value}» de «{name}» {problem}")
+            clean_rules.append({"type": rule["type"], "value": value})
+        out.append({"name": name, "rules": clean_rules})
+    return out
+
+
+def page_path(page_url: str, site_url: str | None) -> str:
+    """Ruta de la página para las reglas: decodificada, en minúsculas, con su
+    ?query; en propiedades de prefijo, desde el prefijo (como las secciones)."""
+    parts = urlsplit(page_url or "")
+    path = parts.path or "/"
+    site = site_url or ""
+    if site and not site.startswith("sc-domain:"):
+        prefix_path = urlsplit(site).path or "/"
+        if prefix_path != "/" and path.startswith(prefix_path):
+            path = path[len(prefix_path) - 1:]
+    if parts.query:
+        path = f"{path}?{parts.query}"
+    return unquote(path).lower()
+
+
+def _compile_rule(rule: dict):
+    kind, value = rule.get("type"), str(rule.get("value") or "")
+    if kind == "prefix":
+        lowered = unquote(value).lower()
+        if lowered.startswith(("http://", "https://")):
+            return lambda path, url: url.startswith(lowered)
+        if not lowered.startswith("/"):
+            lowered = f"/{lowered}"
+        return lambda path, url: path.startswith(lowered)
+    if kind == "contains":
+        lowered = unquote(value).lower()
+        return lambda path, url: lowered in url
+    if kind == "regex" and regex_problem(value) is None:
+        pattern = re.compile(value, re.IGNORECASE)
+        return lambda path, url: pattern.search(path) is not None
+    return None  # regla vieja o rota: no acepta nada
+
+
+class PageGroupMatcher:
+    """Grupo de cada página: el PRIMERO (en el orden guardado) con alguna
+    regla que la acepte; si ninguno, "Sin grupo". Recuerda lo ya resuelto."""
+
+    def __init__(self, groups: list | None, site_url: str | None):
+        self.site_url = site_url
+        self.names: list[str] = []
+        self._groups: list[tuple[str, list]] = []
+        for group in groups or []:
+            if not isinstance(group, dict) or not group.get("name"):
+                continue
+            rules = [r for r in (_compile_rule(rule) for rule in group.get("rules") or [] if isinstance(rule, dict)) if r]
+            self.names.append(group["name"])
+            self._groups.append((group["name"], rules))
+        self._seen: dict[str, str] = {}
+
+    def __call__(self, page_url: str) -> str:
+        name = self._seen.get(page_url)
+        if name is None:
+            name = UNGROUPED
+            if self._groups:
+                path = page_path(page_url, self.site_url)
+                url = unquote(page_url or "").lower()
+                for group_name, rules in self._groups:
+                    if any(rule(path, url) for rule in rules):
+                        name = group_name
+                        break
+            self._seen[page_url] = name
+        return name
+
+    def assign(self, pages, *, budget_seconds: float = GROUP_MATCH_SECONDS) -> dict[str, str]:
+        """Grupo de cada página, con tope de tiempo para todo el reparto."""
+        deadline = time.monotonic() + budget_seconds
+        out = {}
+        for i, page in enumerate(pages):
+            if i % 200 == 0 and time.monotonic() > deadline:
+                raise PageGroupTimeout()
+            out[page] = self(page)
+        return out
 
 
 # ── Cifras ───────────────────────────────────────────────────────────
@@ -442,6 +677,110 @@ async def _trend_rows(db, source: SeoSource, end: date):
     return await _cached(("trend", source.site_url, end, source.version), compute)
 
 
+# ── Historial por consulta (meses + días) ────────────────────────────
+
+# Meses con datos de la propiedad (una búsqueda por mes, con la PK).
+_SITE_MONTHS_SQL = text("""
+    SELECT CAST(m AS date) AS month
+    FROM generate_series(CAST(:floor AS date), CAST(:last AS date), interval '1 month') AS m
+    WHERE EXISTS (
+        SELECT 1 FROM gsc_query_monthly g WHERE g.site_url = :site AND g.month = CAST(m AS date)
+    )
+    ORDER BY 1
+""")
+_HISTORY_MONTHS_SQL = text("""
+    SELECT month, clicks, impressions, weighted_position_sum AS weighted
+    FROM gsc_query_monthly
+    WHERE site_url = :site AND query = :query AND month >= :floor
+""")
+_HISTORY_DAYS_SQL = text("""
+    SELECT date, clicks, impressions, position
+    FROM gsc_query_daily
+    WHERE site_url = :site AND query = :query AND date >= :start AND date <= :end
+""")
+_FIRST_DAY_SQL = text("SELECT MIN(date) FROM gsc_query_daily WHERE site_url = :site")
+_TREND_MONTHLY_SQL = text("""
+    SELECT query, month, impressions, weighted_position_sum AS weighted
+    FROM gsc_query_monthly
+    WHERE site_url = :site AND query = ANY(CAST(:queries AS text[])) AND month >= :first
+""")
+
+
+async def _site_months(db, source: SeoSource) -> list[date]:
+    """Meses completos guardados de la propiedad dentro de los 16 del historial."""
+    async def compute():
+        params = {"site": source.site_url, "floor": history_floor(source.end), "last": source.end.replace(day=1)}
+        return [r.month for r in (await db.execute(_SITE_MONTHS_SQL, params)).all()]
+    return await _cached(("months", source.site_url, source.end, source.version), compute)
+
+
+def _point(clicks: int, impressions: int, weighted: float) -> dict:
+    return {"clicks": int(clicks), "impressions": int(impressions),
+            "position": _round(weighted_position(float(weighted), int(impressions)))}
+
+
+async def _attach_trends(db, source: SeoSource, rows: list[dict]) -> list[str]:
+    """Añade a cada consulta `trend`: su posición en los últimos 6 meses
+    guardados (None si ese mes no salió). Devuelve esos meses."""
+    months = (await _site_months(db, source))[-TREND_MONTHS:]
+    if not months or not rows:
+        for row in rows:
+            row["trend"] = []
+        return [m.isoformat() for m in months]
+    found: dict[tuple[str, date], float | None] = {}
+    params = {"site": source.site_url, "queries": [r["query"] for r in rows], "first": months[0]}
+    for r in (await db.execute(_TREND_MONTHLY_SQL, params)).all():
+        found[(r.query, r.month)] = _round(weighted_position(float(r.weighted), int(r.impressions)))
+    for row in rows:
+        row["trend"] = [found.get((row["query"], m)) for m in months]
+    return [m.isoformat() for m in months]
+
+
+async def query_history(db, client: Client, query: str) -> dict:
+    """Historial de una consulta: un punto por mes guardado (hasta 16, sólo
+    completos) y uno por día del detalle (hasta 120, días sin fila = 0 clics
+    y sin posición). Posición ponderada por impresiones."""
+    source = await load_source(db, client)
+    if source.status != "ok":
+        return {**_blocked_payload(source), "query": query, "is_brand": None,
+                "months": [], "days": [], "monthly_backfilled": False}
+    site = source.site_url
+    floor = history_floor(source.end)
+    site_months = await _site_months(db, source)
+    monthly = {r.month: r for r in (await db.execute(
+        _HISTORY_MONTHS_SQL, {"site": site, "query": query, "floor": floor})).all()}
+    months = [
+        {"month": m.isoformat(), **(_point(monthly[m].clicks, monthly[m].impressions, monthly[m].weighted)
+                                    if m in monthly else _point(0, 0, 0.0))}
+        for m in site_months
+    ]
+
+    first_day = await db.scalar(_FIRST_DAY_SQL, {"site": site})
+    start = source.end - timedelta(days=DETAIL_DAYS - 1)
+    if first_day is not None:
+        start = max(start, first_day)
+    daily = {r.date: r for r in (await db.execute(
+        _HISTORY_DAYS_SQL, {"site": site, "query": query, "start": start, "end": source.end})).all()}
+    days = []
+    day = start
+    while day <= source.end:
+        r = daily.get(day)
+        days.append({"date": day.isoformat(), **(
+            _point(r.clicks, r.impressions, float(r.position) * r.impressions) if r else _point(0, 0, 0.0))})
+        day += timedelta(days=1)
+
+    detail = await db.get(GscDetailSync, site)
+    return {
+        **_blocked_payload(source),
+        "query": query,
+        "is_brand": BrandMatcher(list(client.brand_terms or []))(query),
+        "months": months,
+        "days": days,
+        # False mientras no se hayan traído de Google los meses de antes de los 120 días.
+        "monthly_backfilled": bool(detail and detail.monthly_backfilled_at),
+    }
+
+
 # ── Respuestas ───────────────────────────────────────────────────────
 
 
@@ -529,26 +868,52 @@ def _sections(pages: dict[str, Agg], site_url: str) -> list[dict]:
         total.add(agg)
         groups[key] = (label, total, count + (1 if agg.impressions > 0 else 0))
     all_clicks = sum(agg.clicks for _, agg, _ in groups.values())
-    out = []
-    for key, (label, agg, count) in groups.items():
-        if agg.impressions <= 0 and agg.prev_impressions <= 0:
-            continue
-        position = weighted_position(agg.weighted, agg.impressions)
-        previous = weighted_position(agg.prev_weighted, agg.prev_impressions)
-        out.append({
-            "key": key,
-            "label": label,
-            "clicks": agg.clicks,
-            "previous_clicks": agg.prev_clicks,
-            "clicks_pct": pct_change(agg.clicks, agg.prev_clicks),
-            # Reparto por clics: las impresiones por página no suman el total.
-            "clicks_share": round(agg.clicks / all_clicks, 4) if all_clicks else None,
-            "impressions": agg.impressions,
-            "position": _round(position),
-            "position_delta": position_delta(previous, position),
-            "pages": count,
-        })
+    out = [
+        _bucket_row(key, label, agg, count, all_clicks)
+        for key, (label, agg, count) in groups.items()
+        if agg.impressions > 0 or agg.prev_impressions > 0
+    ]
     out.sort(key=lambda s: (-s["clicks"], -s["impressions"], s["key"]))
+    return out
+
+
+def _bucket_row(key: str, label: str, agg: Agg, pages: int, all_clicks: int) -> dict:
+    """Fila de una sección o grupo de páginas."""
+    position = weighted_position(agg.weighted, agg.impressions)
+    previous = weighted_position(agg.prev_weighted, agg.prev_impressions)
+    return {
+        "key": key,
+        "label": label,
+        "clicks": agg.clicks,
+        "previous_clicks": agg.prev_clicks,
+        "clicks_pct": pct_change(agg.clicks, agg.prev_clicks),
+        # Reparto por clics: las impresiones por página no suman el total.
+        "clicks_share": round(agg.clicks / all_clicks, 4) if all_clicks else None,
+        "impressions": agg.impressions,
+        "position": _round(position),
+        "position_delta": position_delta(previous, position),
+        "pages": pages,
+    }
+
+
+def group_rows(pages: dict[str, Agg], matcher: PageGroupMatcher) -> list[dict]:
+    """Cifras por grupo de URL, en el orden guardado (también los que no
+    recogen ninguna página) y "Sin grupo" al final si tiene algo.
+
+    Como las secciones: clics e impresiones sumados, posición ponderada y
+    reparto por clics. "Páginas" = las que tienen impresiones en la ventana.
+    """
+    assigned = matcher.assign(list(pages))
+    buckets: dict[str, list] = {name: [Agg(), 0] for name in [*matcher.names, UNGROUPED]}
+    for page, agg in pages.items():
+        bucket = buckets[assigned[page]]
+        bucket[0].add(agg)
+        bucket[1] += 1 if agg.impressions > 0 else 0
+    all_clicks = sum(agg.clicks for agg in pages.values())
+    out = [_bucket_row(name, name, *buckets[name], all_clicks) for name in matcher.names]
+    ungrouped, count = buckets[UNGROUPED]
+    if ungrouped.impressions > 0 or ungrouped.prev_impressions > 0:
+        out.append(_bucket_row(UNGROUPED, UNGROUPED, ungrouped, count, all_clicks))
     return out
 
 
@@ -556,11 +921,14 @@ def _query_rows(queries: dict[str, Agg], matcher: BrandMatcher) -> list[dict]:
     return [{"key": q, "query": q, "is_brand": matcher(q), **mover_row(a)} for q, a in queries.items()]
 
 
-def _page_rows(pages: dict[str, Agg], site_url: str) -> list[dict]:
+def _page_rows(pages: dict[str, Agg], site_url: str, groups: PageGroupMatcher | None = None) -> list[dict]:
     rows = []
     for page, agg in pages.items():
         key, label = section_of(page, site_url)
-        rows.append({"key": page, "page": page, "section": key, "section_label": label, **mover_row(agg)})
+        row = {"key": page, "page": page, "section": key, "section_label": label, **mover_row(agg)}
+        if groups is not None:
+            row["group"] = groups(page)
+        rows.append(row)
     return rows
 
 
@@ -593,6 +961,9 @@ async def summary(db, client: Client, *, days: int = SEO_WINDOW_DAYS) -> dict:
     query_rows = _query_rows(queries, matcher)
     page_rows = _page_rows(pages, source.site_url)
     query_clicks = sum(a.clicks for a in queries.values())
+    query_gainers = _public(select_movers(query_rows, "clicks_gain")[:MOVERS_IN_SUMMARY])
+    query_losers = _public(select_movers(query_rows, "clicks_loss")[:MOVERS_IN_SUMMARY])
+    trend_months = await _attach_trends(db, source, query_gainers + query_losers)
     return {
         **_blocked_payload(source),
         "window": window.as_dict(),
@@ -604,10 +975,7 @@ async def summary(db, client: Client, *, days: int = SEO_WINDOW_DAYS) -> dict:
             "trend": _trend(source.end, trend_queries, trend_totals, matcher),
         },
         "sections": _sections(pages, source.site_url),
-        "queries": {
-            "gainers": _public(select_movers(query_rows, "clicks_gain")[:MOVERS_IN_SUMMARY]),
-            "losers": _public(select_movers(query_rows, "clicks_loss")[:MOVERS_IN_SUMMARY]),
-        },
+        "queries": {"gainers": query_gainers, "losers": query_losers, "trend_months": trend_months},
         "pages": {
             "gainers": _public(select_movers(page_rows, "clicks_gain")[:MOVERS_IN_SUMMARY]),
             "losers": _public(select_movers(page_rows, "clicks_loss")[:MOVERS_IN_SUMMARY]),
@@ -622,9 +990,13 @@ async def movers(
     db, client: Client, dimension: Literal["query", "page"], *,
     days: int = SEO_WINDOW_DAYS, sort: MoverSort = "clicks_gain", brand: BrandFilter = "all",
     q: str | None = None, min_impressions: int = DEFAULT_MIN_IMPRESSIONS,
-    limit: int = 25, section: str | None = None,
+    limit: int = 25, section: str | None = None, group: str | None = None,
 ) -> dict:
-    """Lista completa (paginada por `limit`) de consultas o páginas que se mueven."""
+    """Lista completa (paginada por `limit`) de consultas o páginas que se mueven.
+
+    Las consultas llevan `trend` (posición de los últimos 6 meses guardados,
+    `trend_months`); las páginas, su grupo de URL (`group`).
+    """
     source = await load_source(db, client)
     if source.status != "ok":
         return {**_blocked_payload(source), "window": None, "rows": [], "total": 0}
@@ -636,16 +1008,45 @@ async def movers(
             wanted = brand == "brand"
             rows = [r for r in rows if r["is_brand"] is wanted]
     else:
-        rows = _page_rows(aggregates, source.site_url)
+        groups = PageGroupMatcher(client.seo_page_groups, source.site_url)
+        groups.assign(list(aggregates))  # con tope de tiempo; luego sale de la memoria
+        rows = _page_rows(aggregates, source.site_url, groups)
         if section:
             rows = [r for r in rows if r["section"] == section]
+        if group:
+            rows = [r for r in rows if r["group"] == group]
     needle = normalize(q or "")
     if needle:
         rows = [r for r in rows if needle in normalize(r["key"])]
     picked = select_movers(rows, sort, min_impressions=min_impressions)
+    page = _public(picked[:min(limit, MAX_LIMIT)])
+    out = {
+        **_blocked_payload(source),
+        "window": window.as_dict(),
+        "rows": page,
+        "total": len(picked),
+    }
+    if dimension == "query":
+        out["trend_months"] = await _attach_trends(db, source, page)
+    return out
+
+
+async def page_groups(db, client: Client, *, days: int = SEO_WINDOW_DAYS, groups: list | None = None) -> dict:
+    """Cifras por grupo de URL en la ventana y la anterior.
+
+    `groups` permite probar unos grupos sin guardarlos (editor); si no llega,
+    se usan los del cliente.
+    """
+    configured = client.seo_page_groups if groups is None else groups
+    source = await load_source(db, client)
+    if source.status != "ok":
+        return {**_blocked_payload(source), "window": None, "groups": [], "configured": len(configured or [])}
+    window = seo_window(source.end, days)
+    pages = await detail_aggregates(db, source, window, "page")
+    matcher = PageGroupMatcher(configured, source.site_url)
     return {
         **_blocked_payload(source),
         "window": window.as_dict(),
-        "rows": _public(picked[:min(limit, MAX_LIMIT)]),
-        "total": len(picked),
+        "groups": group_rows(pages, matcher),
+        "configured": len(matcher.names),
     }

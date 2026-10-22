@@ -1,4 +1,8 @@
-"""Client SEO traffic condition, read from the synced Engine summary."""
+"""Caída del tráfico SEO de un cliente, desde nuestro Search Console (`gsc_daily`).
+
+Misma ventana y mismas cifras que el semáforo de la lista y el estado del
+cliente (`services/seo_traffic.py`). No lee The Engine (congelado).
+"""
 from __future__ import annotations
 
 import hashlib
@@ -10,7 +14,7 @@ from backend.config import settings
 from backend.core.modules import is_enabled
 from backend.db.models import Client, ClientStatus, Notification, Project, ProjectStatus, User, UserRole
 from backend.services.incident_conditions import Condition, module_permission
-from backend.services.seo_traffic import seo_traffic, traffic_drop_clause
+from backend.services.seo_traffic import client_traffic, seo_traffic, traffic_drop_clause
 
 CLIENT_SEO_TRAFFIC_DROP = "client_seo_traffic_drop"
 CLIENT_CONDITIONS = (CLIENT_SEO_TRAFFIC_DROP,)
@@ -36,12 +40,12 @@ def _recipient_clause(user_id):
     )
 
 
-def _source_clause():
+def _source_clause(traffic):
     return and_(
         Client.status == ClientStatus.active,
         Client.is_internal.is_(False),
-        Client.engine_project_id.is_not(None),
-        traffic_drop_clause(Client.engine_summary_data),
+        traffic.c.client_id == Client.id,
+        traffic_drop_clause(traffic),
     )
 
 
@@ -56,24 +60,25 @@ def _pct(value: float) -> str:
 async def collect_client_conditions(db, user_id: int, now: datetime) -> dict[str, Condition]:
     if not is_enabled("clients"):
         return {}
-    rows = (await db.execute(select(Client.id, Client.name, Client.engine_summary_data).where(
-        _source_clause(), _recipient_clause(user_id), module_permission(user_id, "clients"),
+    traffic_q = client_traffic()
+    rows = (await db.execute(select(Client.id, Client.name, traffic_q).where(
+        _source_clause(traffic_q), _recipient_clause(user_id), module_permission(user_id, "clients"),
     ).order_by(Client.id))).all()
     result: dict[str, Condition] = {}
     for row in rows:
-        traffic = seo_traffic(row.engine_summary_data)
-        if traffic is None or traffic.trend != "drop_alert":
+        traffic = seo_traffic(
+            int(row.clicks), int(row.clicks_previous), int(row.impressions), int(row.impressions_previous),
+        )
+        if traffic.trend != "drop_alert":
             continue
         drop = traffic.clicks_change_pct or 0.0
         message = (
-            f"Clics orgánicos en 30 días: {_number(traffic.clicks)} frente a "
-            f"{_number(traffic.clicks_previous)} en los 30 anteriores ({_pct(drop)})."
+            f"Clics orgánicos en 28 días: {_number(traffic.clicks)} frente a "
+            f"{_number(traffic.clicks_previous)} en los 28 anteriores ({_pct(drop)})."
         )
         if traffic.impressions_change_pct is not None:
             message += f" Impresiones: {_pct(traffic.impressions_change_pct)}."
-        as_of = row.engine_summary_data.get("as_of")
-        if isinstance(as_of, str):
-            message += f" Datos de Engine a {as_of}."
+        message += f" Search Console hasta el {row.as_of.strftime('%d/%m/%Y')}."
         key = _key(row.id)
         result[key] = Condition(
             key=key,
@@ -95,7 +100,8 @@ def client_visibility_clause(user_id: int, *, current_only: bool = False):
         return false()
     source = [Client.id == Notification.entity_id, _recipient_clause(user_id)]
     if current_only:
-        source += [_source_clause(), Notification.dedupe_key == func.concat(CLIENT_SEO_TRAFFIC_DROP, ":client:", Client.id, ":open")]
+        traffic = client_traffic()
+        source += [_source_clause(traffic), Notification.dedupe_key == func.concat(CLIENT_SEO_TRAFFIC_DROP, ":client:", Client.id, ":open")]
     return and_(
         Notification.user_id == user_id,
         Notification.entity_type == "client",

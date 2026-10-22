@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { DeltaBadge } from "@/components/clients/delta-badge"
 import { SeoBrandSplit } from "./seo-brand-split"
 import { SeoSectionsTable } from "./seo-sections-table"
+import { SeoGroupsCard } from "./seo-groups-card"
 import { SeoMoversTable } from "./seo-movers-table"
 
 interface Props {
@@ -34,6 +35,24 @@ export function SeoControlTab({ client, onOpenSettings }: Props) {
   const canWriteClient = hasPermission("clients", true)
   const [days, setDays] = useState<SeoWindowDays>(28)
   const [section, setSection] = useState<string | null>(null)
+  const [view, setView] = useState<"sections" | "groups">("sections")
+  const [group, setGroup] = useState<string | null>(null)
+
+  const changeView = (next: "sections" | "groups") => {
+    setView(next)
+    setSection(null)
+    setGroup(null)
+  }
+  const viewToggle = (
+    <div className="flex items-center gap-1" role="group" aria-label="Agrupar páginas por">
+      {(["sections", "groups"] as const).map((value) => (
+        <Button key={value} size="sm" variant={view === value ? "secondary" : "ghost"} className="h-7 text-xs"
+          aria-pressed={view === value} onClick={() => changeView(value)}>
+          {value === "sections" ? "Secciones" : "Grupos"}
+        </Button>
+      ))}
+    </div>
+  )
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: clientSeoKeys.summary(client.id, days),
@@ -55,7 +74,7 @@ export function SeoControlTab({ client, onOpenSettings }: Props) {
       <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-lg border border-border" role="group" aria-label="Ventana">
         {([7, 28] as const).map((value) => (
           <Button key={value} size="sm" variant={days === value ? "default" : "ghost"} className="h-7 text-xs"
-            aria-pressed={days === value} onClick={() => { setDays(value); setSection(null) }}>
+            aria-pressed={days === value} onClick={() => { setDays(value); setSection(null); setGroup(null) }}>
             {value} d
           </Button>
         ))}
@@ -121,10 +140,16 @@ export function SeoControlTab({ client, onOpenSettings }: Props) {
       ) : (
         <>
           <SeoBrandSplit brand={data.brand} canEditTerms={canWriteClient} onEditTerms={onOpenSettings} />
-          <SeoSectionsTable sections={data.sections} selected={section} onSelect={setSection} />
+          {view === "sections" ? (
+            <SeoSectionsTable sections={data.sections} selected={section} onSelect={setSection} actions={viewToggle} />
+          ) : (
+            <SeoGroupsCard clientId={client.id} days={days} selected={group} onSelect={setGroup} actions={viewToggle}
+              canEdit={canWriteClient} onOpenSettings={onOpenSettings} />
+          )}
           <SeoMoversTable key={`queries-${days}`} clientId={client.id} kind="queries" days={days} summaryRows={data.queries} />
           <SeoMoversTable key={`pages-${days}`} clientId={client.id} kind="pages" days={days} summaryRows={data.pages}
-            section={section} sectionLabel={sectionLabel} onClearSection={() => setSection(null)} />
+            section={section} sectionLabel={sectionLabel} onClearSection={() => setSection(null)}
+            group={group} onClearGroup={() => setGroup(null)} />
         </>
       )}
     </div>
