@@ -29,3 +29,8 @@ export function ga4Change(value: number | null | undefined): string | null {
   if (value == null) return null
   return `${value > 0 ? "+" : ""}${value.toFixed(1).replace(".", ",")} %`
 }
+
+/** "generate_lead, form_*" → ["generate_lead", "form_*"] (eventos que cuentan como lead). */
+export function parseLeadEvents(value: string): string[] {
+  return value.split(/[\s,]+/).map((v) => v.trim()).filter(Boolean)
+}

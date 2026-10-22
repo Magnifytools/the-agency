@@ -63,7 +63,8 @@ export function AboutPage() {
         </li>
         <li>
           <strong>Google Analytics</strong> (sólo lectura): importa cada día las visitas, las conversiones
-          (eventos clave) y la parte de las visitas que llega desde asistentes de IA, con el mismo fin.
+          (eventos clave), la parte de las visitas que llega desde asistentes de IA y los leads por página de
+          entrada y canal, con el mismo fin.
         </li>
         <li>
           <strong>Google Calendar</strong> (sólo lectura, opcional y personal): cada persona puede conectar
@@ -84,8 +85,8 @@ export function AboutPage() {
           The Agency is the operations tool of Magnify, an SEO consultancy. It is used by our team and by
           collaborators and clients we invite; there is no public sign-up. It reads Google Search Console
           (including per-query and per-page detail for the last 120 days and monthly per-query totals for
-          up to 16 months) and Google Analytics data
-          (read-only) for our clients' websites to track their traffic and to add
+          up to 16 months) and Google Analytics data (including daily lead events per landing page and
+          channel) (read-only) for our clients' websites to track their traffic and to add
           a block of figures to the monthly report each client receives. Each user may optionally connect
           their own Google Calendar (read-only) to see their next meeting. The app never writes to, changes
           or deletes anything in Google accounts; the only request it makes is to revoke its own access when
@@ -116,14 +117,21 @@ export function PrivacyPage() {
         búsqueda (consulta) y cada página de la web, para ver qué búsquedas, páginas y secciones suben o bajan
         y separar el tráfico de marca. Pasados esos 120 días, de cada búsqueda sólo conservamos un total por
         mes (clics, impresiones y posición media), durante un máximo de 16 meses y mientras la web esté
-        asociada a un cliente activo, para ver cómo evoluciona su posición. Las consultas son las que Google ya muestra agregadas y anonimizadas en
+        asociada a un cliente activo, para ver cómo evoluciona su posición. De algunas webs conservamos además
+        totales mensuales por búsqueda anteriores a esos 16 meses, con los mismos datos de Search Console, que
+        importamos una sola vez de nuestra herramienta anterior; se guardan mientras la web esté asociada a un
+        cliente activo. Las consultas son las que Google ya muestra agregadas y anonimizadas en
         Search Console: no identifican a ninguna persona. No guardamos países ni dispositivos.
       </p>
       <h3>Google Analytics (permiso analytics.readonly)</h3>
       <p>
         Con las mismas cuentas, guardamos por propiedad y día: visitas (sesiones), conversiones (eventos
         clave) y las visitas y conversiones que llegan desde asistentes de IA. La fuente de cada visita sólo
-        se usa para calcular esa parte; no se guarda. No guardamos datos de usuarios individuales.
+        se usa para calcular esa parte; no se guarda. Además, por día, página de entrada y canal (búsqueda
+        orgánica, de pago, redes sociales…), guardamos el número de eventos que cuentan como lead para ese
+        cliente (los que configuramos en su ficha, como el envío de un formulario), ya agregados por Google,
+        durante un máximo de 16 meses; de algunas propiedades incluyen días que importamos una sola vez de
+        nuestra herramienta anterior. No guardamos datos de usuarios individuales.
       </p>
       <h3>Google Calendar (permiso calendar.readonly)</h3>
       <p>
@@ -138,6 +146,7 @@ export function PrivacyPage() {
         <li>Seguir el tráfico de las webs de nuestros clientes en su ficha.</li>
         <li>Ver en la ficha qué búsquedas, páginas y secciones ganan o pierden tráfico y cuánto viene de la marca.</li>
         <li>Ver cómo ha evolucionado la posición de cada búsqueda en los últimos meses.</li>
+        <li>Ver qué páginas de entrada y qué canales traen leads a cada cliente.</li>
         <li>Añadir un bloque de cifras al resumen mensual que enviamos a cada cliente y a la página de sólo lectura que el cliente puede abrir con su enlace privado.</li>
         <li>Enseñar a cada persona su próxima reunión, avisarla antes y, si su equipo lo tiene activado, incluir el título y la hora en su plan de la mañana, que puede publicarse en el canal interno del equipo.</li>
       </ul>
@@ -171,8 +180,10 @@ export function PrivacyPage() {
         Las cifras diarias de Search Console y Analytics se conservan mientras dure la relación con el cliente,
         para poder comparar con meses anteriores. El detalle por búsqueda y página se borra a los 120 días, y
         también cuando la web deja de estar asociada a un cliente activo. El total mensual por búsqueda se
-        conserva como mucho 16 meses y se borra antes si la web deja de estar asociada a un cliente activo.
-        Los eventos de calendario importados
+        conserva como mucho 16 meses y se borra antes si la web deja de estar asociada a un cliente activo; el
+        importado de nuestra herramienta anterior se conserva mientras la web esté asociada a un cliente activo.
+        Los leads por página de entrada y canal se conservan como mucho 16 meses y se borran antes si la
+        propiedad de Analytics deja de estar asociada a un cliente activo. Los eventos de calendario importados
         se borran automáticamente 30 días después de terminar.
       </p>
       <ul>
@@ -183,7 +194,8 @@ export function PrivacyPage() {
         <li>
           Al desconectar una cuenta de Search Console y Analytics, el administrador puede elegir borrar también
           las cifras importadas de las webs y propiedades que se leían con ella; el borrado incluye el detalle
-          por búsqueda y página y el total mensual por búsqueda. Si no lo elige, se conservan.
+          por búsqueda y página, el total mensual por búsqueda (también el importado de nuestra herramienta
+          anterior) y los leads por página de entrada. Si no lo elige, se conservan.
         </li>
         <li>Al desconectar Google Calendar se borran todos los eventos importados de esa persona.</li>
       </ul>
@@ -206,12 +218,17 @@ export function PrivacyPage() {
           which searches, pages and sections gain or lose traffic and how much comes from the brand. Beyond
           those 120 days, we keep only a monthly total per search query (clicks, impressions and average
           position) for up to 16 months while the site is linked to an active client, to show how its
-          position evolves. No countries or devices.
+          position evolves. For some sites we also keep monthly per-query totals older than those 16 months,
+          with the same Search Console data, imported once from our previous tool; they are kept while the
+          site is linked to an active client. No countries or devices.
         </p>
         <p>
           <strong>Google Analytics (analytics.readonly)</strong>: per property and day, sessions, key events,
           and sessions and key events coming from AI assistants. The session source is only used to compute
-          that share and is not stored. No user-level data.
+          that share and is not stored. We also store, per day, landing page and channel (organic search,
+          paid search, social…), the number of events that count as a lead for that client (as configured in
+          the app, such as a form submission), already aggregated by Google, for up to 16 months; for some
+          properties this includes days imported once from our previous tool. No user-level data.
         </p>
         <p>
           <strong>Google Calendar (calendar.readonly)</strong>: each user may connect their own calendar. We
@@ -239,12 +256,16 @@ export function PrivacyPage() {
           are kept for the duration of the client relationship to allow comparisons with previous months.
           Query and page detail is deleted after 120 days or when the site is no longer linked to an active
           client. Monthly per-query totals are kept for up to 16 months and deleted earlier when the site is
-          no longer linked to an active client. Imported calendar events are deleted automatically 30 days
+          no longer linked to an active client; those imported from our previous tool are kept while the site
+          is linked to an active client. Lead events per landing page and channel are kept for up to 16 months
+          and deleted earlier when the Analytics property is no longer linked to an active client. Imported
+          calendar events are deleted automatically 30 days
           after they end. Disconnecting any Google
           account deletes the stored token and asks Google to revoke The Agency's access to it. When
           disconnecting a Search Console and Analytics account, the admin can choose to also delete the
-          figures imported for the websites and properties read through it, including query and page detail
-          and monthly per-query totals; otherwise they are kept.
+          figures imported for the websites and properties read through it, including query and page detail,
+          monthly per-query totals (also those imported from our previous tool) and lead events per landing
+          page; otherwise they are kept.
           Disconnecting Google Calendar deletes all of that user's imported events. To have other data
           deleted, email {CONTACT}. You can revoke The Agency's access at any time at
           myaccount.google.com/permissions.

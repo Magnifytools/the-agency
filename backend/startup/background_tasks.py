@@ -197,7 +197,7 @@ async def _ga4_sync_once():
     from backend.services.job_runtime import JobFailure
 
     result = await sync_all(async_session)
-    if result["failed"]:
+    if result["failed"] or result.get("leads_failed"):
         raise JobFailure("partial_failure")
 
 

@@ -514,6 +514,33 @@ admin_users, admin_settings
   y Google Analytics Admin API y añadir el scope `analytics.readonly` a la
   pantalla de consentimiento; luego reconectar cada cuenta en Ajustes.
 
+## Leads por landing (GA4) e historial heredado de The Engine
+
+- **Qué es**: The Engine se retira (22 oct 2026) y The Agency se queda sus dos
+  datos únicos. En la misma pasada del job `ga4`, `services/ga4_leads.py` pide
+  por propiedad los eventos que el cliente cuenta como lead
+  (`clients.ga4_lead_events`, por defecto `["generate_lead"]`; nombre exacto o
+  prefijo con `*`, p. ej. `generate_lead_*`) por día, landing y canal →
+  `ga4_lead_daily` (migración `leads_engine_v1`). Landing = host + ruta sin
+  `utm_*`/`gclid`/`fbclid`… (`clean_landing`); canal =
+  `sessionDefaultChannelGroup`.
+- **Importación**: 16 meses la primera vez o si cambian los eventos (estado en
+  `ga4_property_sync.leads_*`), luego la última semana; sustituye el tramo. Un
+  fallo de leads no tumba los totales (`leads_failed`). Retención 16 meses y
+  poda de propiedades sin cliente activo en cada pasada; la purga al
+  desconectar los borra.
+- **Uso**: `GET /api/clients/{id}/leads?days=28|7` (lectura de `clients`):
+  total, top landings y canales frente a la ventana anterior. Bloque "Leads por
+  landing" en Resultados de la Vista general; eventos editables en Ajustes del
+  cliente. Fuera de la IA, del MCP y de los resúmenes.
+- **Historial de Engine**: `gsc_query_monthly.source` = `google` | `engine`.
+  Lo de `engine` NO caduca a los 16 meses (sí con la web: poda y purga) y el
+  historial de una consulta lo enseña antes de los meses de Google.
+- **Importaciones únicas** (`scripts/import_engine_positions.py`,
+  `scripts/import_engine_leads.py`, guía en `docs/engine-data-import.md`):
+  sólo meses/días anteriores a los propios de The Agency, idempotentes,
+  `--dry-run`. Nunca pisan datos de Google.
+
 ## Vigil (cambios en las webs de los clientes)
 
 - **Qué es**: Vigil (`/Código/Vigil`, vigil.magnifytools.com) vigila cambios en

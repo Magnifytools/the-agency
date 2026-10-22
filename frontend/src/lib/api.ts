@@ -3,6 +3,7 @@ import { filenameFromDisposition, type PdfFile } from "@/lib/pdf-download"
 import axios, { type GenericAbortSignal, type InternalAxiosRequestConfig } from "axios"
 import { toast } from "sonner"
 import type {
+  ClientLeads,
   ClientSeoSummary,
   SeoGroupsResponse,
   SeoMoversParams,
@@ -945,6 +946,9 @@ export const clientSeoApi = {
   /** Prueba grupos sin guardarlos (sólo lee). */
   previewGroups: (clientId: number, groups: SeoPageGroup[]) =>
     api.post<SeoGroupsResponse>(`/clients/${clientId}/seo/groups/preview`, { groups }).then((r) => r.data),
+  /** Leads por landing (GA4) de los últimos 28 días frente a los 28 anteriores. */
+  leads: (clientId: number) =>
+    api.get<ClientLeads>(`/clients/${clientId}/leads`).then((r) => r.data),
 }
 
 // --- Capacity Planning ---

@@ -168,3 +168,15 @@ def _no_real_gsc_monthly(monkeypatch):
     fake = AsyncMock(return_value=[])
     monkeypatch.setattr(gsc_detail_service, "query_month", fake)
     return fake
+
+
+@pytest.fixture(autouse=True)
+def _no_real_ga4_leads(monkeypatch):
+    """Los leads por landing se piden a GA4 detrás de los totales: en los tests
+    nunca salen a la red. Por defecto GA4 "no devuelve nada"; un test que
+    quiera otra respuesta pasa `fetch_leads=`."""
+    from backend.services import ga4_leads
+
+    fake = AsyncMock(return_value=[])
+    monkeypatch.setattr(ga4_leads, "query_leads", fake)
+    return fake

@@ -1,0 +1,10 @@
+date,landing_host,landing_page,event_name,channel,leads
+2025-08-10,go.acme.com,/cpe/,generate_lead_cpe,Paid Search,3
+2025-08-10,go.acme.com,/cpe/?fbclid=AAA,generate_lead_cpe,Paid Search,2
+2025-08-10,acme.com,/cpe/,generate_lead_tsaf,Organic Search,1
+2025-08-11,,/blog/x/?utm_source=nl&ref=1,generate_lead_cpe,unknown,4
+2025-08-11,acme.com,/contacto/,newsletter_signup,Organic Search,7
+2025-08-12,acme.com,/cpe/,generate_lead_cpe,Organic Search,0
+2025-06-01,acme.com,/old/,generate_lead_cpe,Organic Search,5
+2026-09-01,acme.com,/cpe/,generate_lead_cpe,Organic Search,9
+not-a-date,acme.com,/cpe/,generate_lead_cpe,Organic Search,1

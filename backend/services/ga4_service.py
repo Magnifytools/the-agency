@@ -240,14 +240,22 @@ async def sync_property(db, token: str, property_id: str, *, connection_id: int 
     return len(rows)
 
 
-async def sync_all(session_factory, *, fetch=query_daily, list_fn=list_properties, today: date | None = None) -> dict:
+async def sync_all(session_factory, *, fetch=query_daily, list_fn=list_properties, fetch_leads=None,
+                   today: date | None = None) -> dict:
+    """Una pasada: totales diarios y, detrás, los leads por landing
+    (`ga4_leads`) de cada propiedad. Un fallo de los leads no tumba los totales:
+    se cuenta en ``leads_failed``. La retención de los leads se aplica siempre."""
+    from backend.services import ga4_leads
+
     async with session_factory() as db:
+        await ga4_leads.prune(db, today=today)
         connections = [(c.id, c.refresh_token) for c in (await db.scalars(
             select(GscConnection).where(GscConnection.status == "connected").order_by(GscConnection.id)
         )).all()]
         properties = await tracked_properties(db)
+        lead_events = await ga4_leads.property_lead_events(db)
     if not connections:
-        return {"status": "not_connected", "synced": 0, "failed": 0}
+        return {"status": "not_connected", "synced": 0, "failed": 0, "leads_failed": 0}
 
     access: dict[str, int] = {}
     scope_missing: list[int] = []
@@ -263,7 +271,7 @@ async def sync_all(session_factory, *, fetch=query_daily, list_fn=list_propertie
             logger.warning("GA4: no se pudo listar la cuenta %s (%s)", connection_id, exc.code)
     tokens = dict(connections)
 
-    synced = failed = 0
+    synced = failed = leads_failed = 0
     for pid in properties:
         connection_id = access.get(pid)
         if connection_id is None:
@@ -282,10 +290,23 @@ async def sync_all(session_factory, *, fetch=query_daily, list_fn=list_propertie
         except GscAuthError:
             await _mark_reconnect(session_factory, connection_id)
             failed += 1
+            continue
         except Ga4Error as exc:
             failed += 1
             logger.warning("GA4: fallo al importar %s (%s)", pid, exc.code)
-    return {"status": "ok", "synced": synced, "failed": failed}
+            continue
+        try:
+            async with session_factory() as db:
+                await ga4_leads.sync_property_leads(db, tokens[connection_id], pid,
+                                                    lead_events.get(pid, list(ga4_leads.DEFAULT_EVENTS)),
+                                                    fetch=fetch_leads, today=today)
+        except GscAuthError:
+            await _mark_reconnect(session_factory, connection_id)
+            leads_failed += 1
+        except Ga4Error as exc:
+            leads_failed += 1
+            logger.warning("GA4: fallo al importar los leads de %s (%s)", pid, exc.code)
+    return {"status": "ok", "synced": synced, "failed": failed, "leads_failed": leads_failed}
 
 
 # ── Lectura: ficha y resumen mensual ─────────────────────────────────
