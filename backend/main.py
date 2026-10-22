@@ -21,7 +21,7 @@ from backend.api.routes import (
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
     service_templates, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     changes, commands,
-    client_dashboard, client_seo, client_share_links, engine_integration, investments,
+    client_dashboard, client_seo, client_share_links, investments,
     search, balance,
     inbox,
     extension,
@@ -217,7 +217,7 @@ _HIDDEN = hidden_modules()
 _CORE_ROUTERS = [
     auth, clients, tasks, task_categories, time_entries, users, dashboard,
     projects, pm, report_policies, digests, sync, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
-    client_dashboard, engine_integration, inbox, extension, google_calendar,
+    client_dashboard, inbox, extension, google_calendar,
     gsc, ga4, vigil, usage_stats, job_runtime,
     # client_seo: Control SEO de la ficha (consultas y páginas de Search Console).
     client_seo,

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { clientsApi, engineApi, type ClientSort } from "@/lib/api"
+import { clientsApi, type ClientSort } from "@/lib/api"
 import type { Client, ClientCohort, ClientContactCreate, ClientCreate, ClientExtract, ClientOnboardingCreate, ClientOnboardingResult, ClientOnboardingProjectCreate, ClientStatus } from "@/lib/types"
 import { usePagination } from "@/hooks/use-pagination"
 import { Pagination } from "@/components/ui/pagination"
@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { Plus, Pencil, MoreVertical, Users, Loader2, ExternalLink, Sparkles, Upload } from "lucide-react"
+import { Plus, Pencil, MoreVertical, Users, Loader2, Sparkles, Upload } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
@@ -171,14 +171,6 @@ function ClientsPageBody() {
     queryFn: () => clientsApi.list({ status: tab === "all" ? undefined : tab, cohort, page, page_size: pageSize, sort: seoSort }),
   })
 
-  // The Engine está congelado (21 oct 2026): sólo hace falta su URL para el
-  // enlace "Engine" de los clientes que siguen vinculados.
-  const { data: engineConfig } = useQuery({
-    queryKey: ["engine-config"],
-    queryFn: () => engineApi.getConfig(),
-    staleTime: 10 * 60_000,
-    enabled: !!clientsQuery.data?.items.some((c) => c.engine_project_id != null),
-  })
   const clientsDenied = [401, 403].includes((clientsQuery.error as { response?: { status?: number } } | null)?.response?.status ?? 0)
   const data = clientsQuery.isError ? undefined : clientsQuery.data
   const isLoading = clientsQuery.isLoading
@@ -643,21 +635,6 @@ function ClientsPageBody() {
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-purple-500/50 text-purple-400">
                           Interno
                         </Badge>
-                      )}
-                      {c.engine_project_id && engineConfig?.engine_frontend_url && (
-                        <a
-                          href={`${engineConfig.engine_frontend_url}/p/${c.engine_project_id}/dashboard`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="Abrir en Engine"
-                          onClick={(e) => e.stopPropagation()}
-                          className="inline-flex items-center gap-0.5"
-                        >
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 gap-0.5">
-                            <ExternalLink className="h-3 w-3" />
-                            Engine
-                          </Badge>
-                        </a>
                       )}
                     </div>
                     {c.is_intermediary_deal && (

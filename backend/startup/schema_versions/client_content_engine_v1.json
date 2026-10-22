@@ -1,0 +1,12 @@
+{
+  "version": "20261022_client_content_engine_v1",
+  "sql": "ALTER TABLE clients ADD COLUMN IF NOT EXISTS content_engine_client_id VARCHAR(64)",
+  "columns": {
+    "content_engine_client_id": [
+      "varchar",
+      64,
+      true,
+      null
+    ]
+  }
+}

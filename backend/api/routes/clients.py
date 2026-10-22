@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.database import get_db
 from backend.db.models import (
-    Client, ClientStatus, Task, TaskRecurrenceOccurrence, TimeEntry, User, UserRole,
+    Client, ClientStatus, Task, TaskRecurrenceOccurrence, TimeEntry, User,
     Project, ProjectPhase,
     ClientContact, BillingEvent,
     CommunicationLog, WeeklyDigest, Invoice, InvoiceItem,
@@ -352,13 +352,6 @@ async def update_client(
     client = result.scalar_one_or_none()
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
-    if "engine_project_id" in update_data:
-        if user.role != UserRole.admin:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo administración puede cambiar el proyecto Engine")
-        incoming_project_id = update_data["engine_project_id"]
-        if incoming_project_id is not None and incoming_project_id != client.engine_project_id:
-            from backend.api.routes.engine_integration import validate_link_target
-            await validate_link_target(incoming_project_id)
     if "vigil_slug" in update_data:
         slug = (update_data["vigil_slug"] or "").strip().lower() or None
         if slug is not None and not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,99}", slug):
@@ -378,13 +371,9 @@ async def update_client(
     _UPDATABLE_CLIENT_FIELDS = {
         "name", "email", "phone", "company", "website", "contract_type",
         "monthly_budget", "status", "notes", "is_internal", "ga4_property_id",
-        "gsc_url", "engine_project_id", "vigil_slug", "context",
+        "gsc_url", "content_engine_client_id", "vigil_slug", "context",
         "vat_number", "slack_template", "brand_terms", "seo_page_groups",
     }
-    if "engine_project_id" in update_data:
-        if update_data["engine_project_id"] != client.engine_project_id:
-            for field in ("engine_content_count", "engine_keyword_count", "engine_avg_position", "engine_clicks_30d", "engine_impressions_30d", "engine_metrics_synced_at", "engine_summary_data", "engine_alerts_data"):
-                setattr(client, field, None)
     for field, value in update_data.items():
         if field in _UPDATABLE_CLIENT_FIELDS:
             setattr(client, field, value)

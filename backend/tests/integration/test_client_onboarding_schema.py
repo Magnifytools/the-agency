@@ -14,10 +14,10 @@ from backend.startup.phase0_retirement_schema import RETIRED_COLUMNS
 from backend.startup.schema_runner import run_schema_migrations
 
 # Las columnas que retira la fase 0 desaparecen y las de pasos posteriores
-# llegan vacías (vigil_slug, brand_terms, seo_page_groups); el resto de la fila no cambia.
+# llegan vacías (vigil_slug, brand_terms, seo_page_groups, content_engine_client_id); el resto de la fila no cambia.
 CLIENT_ROWS = "SELECT to_jsonb(c)" + "".join(
     f" - '{column}'" for table, column in sorted(RETIRED_COLUMNS) if table == "clients"
-) + " - 'vigil_slug' - 'brand_terms' - 'seo_page_groups' FROM clients c"
+) + " - 'vigil_slug' - 'brand_terms' - 'seo_page_groups' - 'content_engine_client_id' FROM clients c"
 
 
 async def reset(engine):

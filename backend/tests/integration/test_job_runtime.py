@@ -263,7 +263,7 @@ async def test_daily_next_run_uses_business_midnight_across_dst():
     assert spec.next_run(before, failed=True) == before + timedelta(seconds=60)
 
 
-@pytest.mark.parametrize("key,delay", [("engine", 900), ("holded", 1800)])
+@pytest.mark.parametrize("key,delay", [("holded", 1800), ("gsc", 3600)])
 async def test_external_failure_preserves_retry_delay_across_worker_calls(engine, key, delay):
     from backend.services.job_catalog import job_definitions
 

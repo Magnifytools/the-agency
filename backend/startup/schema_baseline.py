@@ -20,6 +20,20 @@ from backend.startup.schema_runner import Migration, run_schema_migrations
 RETIREMENTS = (phase0_retirement_schema.STEP, report_policy_legacy_retirement_schema.STEP)
 RETIRED_TABLES = frozenset().union(*(step.tables for step in RETIREMENTS))
 RETIRED_COLUMNS = frozenset().union(*(step.columns for step in RETIREMENTS))
+# Columnas de P12 que ya salieron del ORM pero siguen en la BD hasta su paso de
+# retirada, en un despliegue posterior (el DROP corre en el pre-deploy con el
+# contenedor viejo aún sirviendo: si su ORM las mapea, sus consultas fallarían).
+# Mientras tanto se perdonan si faltan (una BD creada desde el ORM no las
+# tiene) y se exigen con su tipo si están. Al publicar el paso, pásalas a su
+# contrato de retirada y quítalas de aquí.
+ORM_RETIRED_COLUMNS = frozenset(
+    # The Engine (retirado el 22 oct 2026; Engine = Anvil sólo se enlaza).
+    [("clients", c) for c in (
+        "engine_project_id", "engine_content_count", "engine_keyword_count",
+        "engine_avg_position", "engine_clicks_30d", "engine_impressions_30d",
+        "engine_metrics_synced_at", "engine_summary_data", "engine_alerts_data",
+    )] + [("projects", "engine_project_id")]
+)
 
 
 _ARTIFACT = Path(__file__).with_name("schema_versions") / "p12.json"
@@ -57,7 +71,10 @@ async def check_structure(conn, *, allow_upgrade=False):
         optional = set(BASELINE["optional_columns"].get(table, [])) if allow_upgrade else set()
         for column, contract in columns.items():
             row = actual.get((table, column))
-            if row is None and (column in optional or (table, column) in RETIRED_COLUMNS):
+            if row is None and (
+                column in optional or (table, column) in RETIRED_COLUMNS
+                or (table, column) in ORM_RETIRED_COLUMNS
+            ):
                 continue
             if row is None:
                 raise RuntimeError(f"Unsupported schema: missing column {table}.{column}")

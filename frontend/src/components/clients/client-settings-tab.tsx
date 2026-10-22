@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { clientsApi, engineApi, ga4Api, gscApi, vigilApi } from "@/lib/api"
+import { clientsApi, ga4Api, gscApi, vigilApi } from "@/lib/api"
 import { ga4ErrorLabel } from "@/lib/ga4"
 import { formatDay, gscErrorLabel } from "@/lib/gsc"
 import type { Client } from "@/lib/types"
@@ -22,15 +22,17 @@ interface Props {
   client: Client
 }
 
+// Los clientes de Engine (= Anvil) se identifican por uuid.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export function ClientSettingsTab({ client }: Props) {
   const { isAdmin, hasPermission } = useAuth()
   const canWriteClients = hasPermission("clients", true)
   const qc = useQueryClient()
   const [ga4, setGa4] = useState(client.ga4_property_id ?? "")
   const [gsc, setGsc] = useState(client.gsc_url ?? "")
-  const [engineProjectId, setEngineProjectId] = useState(
-    client.engine_project_id?.toString() ?? ""
-  )
+  const [engineClientId, setEngineClientId] = useState(client.content_engine_client_id ?? "")
+  const engineClientIdInvalid = !!engineClientId.trim() && !UUID_RE.test(engineClientId.trim())
   const [vigilSlug, setVigilSlug] = useState(client.vigil_slug ?? "")
   const savedBrandTerms = client.brand_terms ?? []
   const [brandTerms, setBrandTerms] = useState<string[]>(savedBrandTerms)
@@ -39,17 +41,9 @@ export function ClientSettingsTab({ client }: Props) {
   const isDirty =
     ga4 !== (client.ga4_property_id ?? "") ||
     gsc !== (client.gsc_url ?? "") ||
-    engineProjectId !== (client.engine_project_id?.toString() ?? "") ||
+    engineClientId.trim() !== (client.content_engine_client_id ?? "") ||
     vigilSlug !== (client.vigil_slug ?? "") ||
     brandTermsDirty
-
-  const { data: engineProjects = [] } = useQuery({
-    queryKey: ["engine-projects"],
-    queryFn: () => engineApi.listProjects(),
-    staleTime: 5 * 60_000,
-    retry: false,
-    enabled: isAdmin,
-  })
 
   const updateMut = useMutation({
     mutationFn: () =>
@@ -59,7 +53,7 @@ export function ClientSettingsTab({ client }: Props) {
         vigil_slug: vigilSlug.trim() || null,
         // Sólo si cambian: así guardar otro campo no pisa términos editados por otra persona.
         ...(brandTermsDirty ? { brand_terms: brandTerms } : {}),
-        ...(isAdmin ? { engine_project_id: engineProjectId.trim() ? parseInt(engineProjectId) : null } : {}),
+        content_engine_client_id: engineClientId.trim() || null,
       }),
     onSuccess: () => {
       void invalidateClientChange(qc, [client.id])
@@ -88,7 +82,7 @@ export function ClientSettingsTab({ client }: Props) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!canWriteClients) return
+    if (!canWriteClients || engineClientIdInvalid) return
     updateMut.mutate()
   }
 
@@ -175,40 +169,31 @@ export function ClientSettingsTab({ client }: Props) {
               gscDraft={gsc}
             />
 
-            {/* Engine Integration */}
-            {isAdmin && <div>
-              <Label className="flex items-center gap-1.5">
+            {/* Engine (= Anvil): sólo el enlace a su ficha, sin datos. */}
+            <div>
+              <Label htmlFor="content-engine-client-id" className="flex items-center gap-1.5">
                 <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-                Proyecto Engine
+                Cliente en Engine
               </Label>
-              {engineProjects.length > 0 ? (
-                <select
-                  value={engineProjectId}
-                  onChange={(e) => setEngineProjectId(e.target.value)}
-                  className="mt-1 w-full border border-input bg-background text-foreground rounded-md px-3 py-2 text-sm"
-                  disabled={!canWriteClients}
-                >
-                  <option value="">Sin vincular</option>
-                  {engineProjects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.domain})
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <Input
-                  type="number"
-                  value={engineProjectId}
-                  onChange={(e) => setEngineProjectId(e.target.value)}
-                  placeholder="ID del proyecto en Engine"
-                  className="mt-1"
-                  disabled={!canWriteClients}
-                />
-              )}
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Vincula este cliente con un proyecto de The Engine para ver metricas SEO
+              <Input
+                id="content-engine-client-id"
+                value={engineClientId}
+                onChange={(e) => setEngineClientId(e.target.value)}
+                placeholder="3f2b8c1e-9d4a-4f6b-8e2a-1c5d7e9f0a3b"
+                className="mt-1 mono"
+                disabled={!canWriteClients}
+                aria-invalid={engineClientIdInvalid}
+                aria-describedby="content-engine-client-id-help"
+              />
+              <p
+                id="content-engine-client-id-help"
+                className={`text-[11px] mt-1 ${engineClientIdInvalid ? "text-red-500" : "text-muted-foreground"}`}
+              >
+                {engineClientIdInvalid
+                  ? "Tiene que ser el identificador del cliente en Engine (uuid)."
+                  : "Identificador del cliente en Engine. Con él, la ficha muestra \"Abrir en Engine\"; no se lee ningún dato."}
               </p>
-            </div>}
+            </div>
 
             <div>
               <Label htmlFor="vigil-slug" className="flex items-center gap-1.5">
@@ -239,7 +224,7 @@ export function ClientSettingsTab({ client }: Props) {
             </div>
 
             {canWriteClients && <div className="flex justify-end">
-              <Button type="submit" disabled={!isDirty || updateMut.isPending} size="sm">
+              <Button type="submit" disabled={!isDirty || engineClientIdInvalid || updateMut.isPending} size="sm">
                 <Save className="h-4 w-4 mr-1" />
                 {updateMut.isPending ? "Guardando..." : "Guardar"}
               </Button>

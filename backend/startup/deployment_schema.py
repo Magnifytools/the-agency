@@ -3,6 +3,7 @@ from sqlalchemy import text
 
 from backend.startup import schema_baseline
 from backend.startup.client_brand_terms_schema import MIGRATION as CLIENT_BRAND_TERMS_MIGRATION
+from backend.startup.client_content_engine_schema import MIGRATION as CLIENT_CONTENT_ENGINE_MIGRATION
 from backend.startup.client_seo_page_groups_schema import MIGRATION as CLIENT_SEO_PAGE_GROUPS_MIGRATION
 from backend.startup.client_onboarding_schema import (
     MIGRATION as CLIENT_ONBOARDING_MIGRATION,
@@ -46,7 +47,7 @@ MIGRATIONS = (
     CREDENTIALS_MIGRATION, REPORT_POLICY_CADENCES_MIGRATION,
     REPORT_POLICY_LEGACY_RETIREMENT_MIGRATION, WEB_UPTIME_MIGRATION, GSC_DETAIL_MIGRATION,
     CLIENT_BRAND_TERMS_MIGRATION, WEB_CHANGES_MIGRATION, GSC_QUERY_MONTHLY_MIGRATION,
-    CLIENT_SEO_PAGE_GROUPS_MIGRATION,
+    CLIENT_SEO_PAGE_GROUPS_MIGRATION, CLIENT_CONTENT_ENGINE_MIGRATION,
 )
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 

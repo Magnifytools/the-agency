@@ -12,7 +12,6 @@ Los administradores pueden consultar **Ajustes → Procesos programados**. El pa
 |---|---|---|
 | Alertas accionables | 30 segundos | `INCIDENTS_ENABLED` |
 | Entregas | Continua; 5 segundos sin trabajo | `DELIVERY_WORKER_ENABLED` |
-| Engine | `ENGINE_SYNC_INTERVAL_HOURS` | Activado, URL y clave configuradas |
 | Holded | 24 horas | Integración configurada |
 | Reset de tareas avanzadas | 00:01, zona del negocio | Siempre; recuperación al arrancar |
 | Recurrencias | 5 minutos | Siempre; sólo ocurrencias elegibles de hoy |
@@ -24,15 +23,15 @@ Los administradores pueden consultar **Ajustes → Procesos programados**. El pa
 
 Cada barrido, salvo entregas, adquiere un advisory lock de sesión exclusivo por proceso y comprueba después su próxima fecha durable. La segunda instancia no repite un ciclo que acaba de terminar. Un heartbeat verifica que la misma conexión sigue manteniendo el lock; si lo pierde, cancela el trabajo. El cierre cancela todos los workers aunque uno haya fallado previamente y libera sus conexiones.
 
-Al terminar se guardan el resultado y la próxima fecha con el reloj de PostgreSQL. Un fallo programa una nueva revisión en un máximo de 60 segundos para procesos locales; Engine espera 15 minutos y Holded 30 minutos para evitar repetir peticiones costosas cada minuto; una caída deja el ciclo pendiente para recuperarlo. Las reglas de tareas vencidas esperan hasta las 00:01 en su primera activación, pero recuperan un ciclo existente interrumpido. Los horarios diarios contemplan los cambios de hora de la zona del negocio.
+Al terminar se guardan el resultado y la próxima fecha con el reloj de PostgreSQL. Un fallo programa una nueva revisión en un máximo de 60 segundos para procesos locales; Holded espera 30 minutos para evitar repetir peticiones costosas cada minuto; una caída deja el ciclo pendiente para recuperarlo. Las reglas de tareas vencidas esperan hasta las 00:01 en su primera activación, pero recuperan un ciclo existente interrumpido. Los horarios diarios contemplan los cambios de hora de la zona del negocio.
 
-Los ciclos tienen un límite: cinco minutos por defecto, quince para Engine/Holded y diez para Calendar. El control SQL está acotado. La cancelación respeta la liberación de recursos de las operaciones; no puede deshacer una petición que un proveedor ya haya aceptado.
+Los ciclos tienen un límite: cinco minutos por defecto, quince para Holded y diez para Calendar. El control SQL está acotado. La cancelación respeta la liberación de recursos de las operaciones; no puede deshacer una petición que un proveedor ya haya aceptado.
 
 Entregas conserva sus leases, `SKIP LOCKED`, fencing y recibos de cada intento. Su observación de salud se escribe como máximo cada 30 segundos en ciclos correctos, e inmediatamente ante fallo del worker. Un error al guardar esta observación no vuelve a enviar contenido. Recurrencias y avisos conservan sus identidades de ocurrencia y sus transacciones de negocio.
 
 ## Resultados parciales y límites
 
-Incidencias, Calendar, Holded, Engine y preparación de avisos terminan los elementos independientes y reportan fallo si alguno falla de forma inesperada. Los cambios confirmados no se revierten ni se presentan como un éxito global.
+Incidencias, Calendar, Holded y preparación de avisos terminan los elementos independientes y reportan fallo si alguno falla de forma inesperada. Los cambios confirmados no se revierten ni se presentan como un éxito global.
 
 Holded conserva su integración configurada aunque su pantalla esté oculta. Ocultar una pantalla no equivale a apagar una dependencia ya utilizada. El monitor no activa capacidades ocultas ni crea programaciones.
 

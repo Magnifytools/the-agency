@@ -403,7 +403,10 @@ class Client(UTCTimestampMixin, Base):
     billing_day = Column(Integer, nullable=True)  # 1-28
     next_invoice_date = Column(Date, nullable=True)
     last_invoiced_date = Column(Date, nullable=True)
-    engine_project_id = Column(Integer, nullable=True)
+    # Cliente en Engine (= Anvil): su uuid, sólo para el botón "Abrir en Engine".
+    # Las columnas engine_* de The Engine siguen en la BD hasta su paso de
+    # retirada (schema_baseline.ORM_RETIRED_COLUMNS), pero fuera del ORM.
+    content_engine_client_id = Column(String(64), nullable=True)
     # Cliente en Vigil (su slug); el resumen vive en vigil_summary.
     vigil_slug = Column(String(100), nullable=True)
     # Internal flag
@@ -414,15 +417,6 @@ class Client(UTCTimestampMixin, Base):
     intermediary_name = Column(String(200), nullable=True)
     is_intermediary_deal = Column(Boolean, nullable=False, default=False)
     # Revenue intelligence
-    # Engine cached metrics (synced periodically)
-    engine_content_count = Column(Integer, nullable=True)
-    engine_keyword_count = Column(Integer, nullable=True)
-    engine_avg_position = Column(Float, nullable=True)
-    engine_clicks_30d = Column(Integer, nullable=True)
-    engine_impressions_30d = Column(Integer, nullable=True)
-    engine_metrics_synced_at = Column(DateTime(timezone=True), nullable=True)
-    engine_summary_data = Column(JSONB, nullable=True)
-    engine_alerts_data = Column(JSONB, nullable=True)
     # AI-generated onboarding intelligence
     onboarding_intelligence = Column(JSONB, nullable=True)
     # Per-client Slack digest template (null = default format)
@@ -478,7 +472,6 @@ class Project(UTCTimestampMixin, Base):
     ga4_property_id = Column(String(50), nullable=True)
     is_recurring = Column(Boolean, nullable=False, default=False)
     requires_task_review = Column(Boolean, nullable=False, default=False, server_default="false")
-    engine_project_id = Column(Integer, nullable=True)
     # Pricing & scope
     pricing_model = Column(String(20), nullable=True)  # monthly, per_piece, hourly, project
     monthly_fee = Column(Numeric(12, 2), nullable=True)  # retainer mensual que factura este proyecto (BASE sin IVA)

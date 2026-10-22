@@ -137,7 +137,6 @@ export default function DashboardPage() {
   const financialOverviewForbidden = isForbidden(financialOverviewQuery.error)
   const monthlyCloseForbidden = isForbidden(monthlyCloseFailure)
   const financialSettingsForbidden = isForbidden(financialSettingsFailure)
-  // The Engine está congelado (21 oct 2026): el panel ya no lee nada de Engine.
   // `enabled` corta la petición de raíz cuando el módulo está oculto: su router
   // no está registrado, así que la llamada sería un 404 en cada carga del panel.
   const { data: leadReminders } = useQuery({

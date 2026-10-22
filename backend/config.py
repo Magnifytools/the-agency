@@ -46,11 +46,9 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     HOLDED_API_KEY: Optional[str] = None
     DEFAULT_HOURLY_RATE: float = 40.0
-    ENGINE_API_URL: Optional[str] = None
-    ENGINE_SERVICE_KEY: Optional[str] = None
-    ENGINE_SYNC_INTERVAL_HOURS: int = 6
-    ENGINE_SYNC_ENABLED: bool = True
-    ENGINE_FRONTEND_URL: Optional[str] = None
+    # Engine (= Anvil, la app de contenidos): The Agency sólo enlaza a su ficha
+    # de cliente (`{ENGINE_FRONTEND_URL}/?client=<uuid>`), sin leer datos.
+    ENGINE_FRONTEND_URL: str = "https://engine.magnifytools.com"
     # Vigil (cambios en las webs de los clientes): resumen de solo lectura con
     # clave de servicio. Sin URL o sin clave, el job queda en pausa.
     VIGIL_API_URL: Optional[str] = None
