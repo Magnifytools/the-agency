@@ -322,6 +322,97 @@ def build_server(client: AgencyClient, *, timezone: str = "Europe/Madrid") -> MC
             out += ["", "Último resumen: ninguno."]
         return "\n".join(out)
 
+    async def _web(coro) -> Any:
+        """Llamadas del módulo Webs: un 403 se explica en vez de dar el código a pelo."""
+        try:
+            return await coro
+        except AgencyError as exc:
+            if exc.status == 403:
+                raise ToolError("No tienes acceso al módulo Webs (permiso de lectura de 'web'): "
+                                "pídeselo a un admin.") from exc
+            raise ToolError(str(exc)) from exc
+
+    @mcp.tool(annotations=READ)
+    async def web_status(
+        client_id: Annotated[int | None, Field(description="Cliente. Sin él, resumen de todos los clientes.")] = None,
+    ) -> str:
+        """Estado de las webs de los clientes: si responden (monitor de caídas) y los
+        cambios detectados sin revisar. Con client_id: cada URL vigilada con su estado,
+        disponibilidad de 24 h y 30 días y caídas recientes, más los cambios sin revisar
+        por severidad y los últimos críticos/avisos con su enlace. Sin client_id: webs
+        caídas o bloqueadas ahora y clientes con cambios críticos sin revisar."""
+        base = client.base_url
+        if client_id is None:
+            return await _web_global(base)
+        uptime = await _web(client.get(f"/api/clients/{client_id}/web/uptime-targets"))
+        pending = {}
+        latest: list[dict] = []
+        for severity in ("critical", "warning"):
+            page = await _web(client.get(
+                "/api/web/changes", client_id=client_id, severity=severity, acknowledged="false", limit=5))
+            pending = page.get("counts_pending") or pending
+            latest += page.get("changes") or []
+        latest.sort(key=lambda c: c.get("detected_at") or "", reverse=True)
+        latest = latest[:5]
+
+        out = [f"Webs del cliente #{client_id}"]
+        if not uptime.get("enabled", True):
+            out.append("(El monitor de caídas está apagado: los estados pueden estar desfasados.)")
+        if not uptime.get("monitored", True):
+            out.append("(El cliente no está activo o es interno: no se comprueba.)")
+        targets = uptime.get("targets") or []
+        out += ["", f"Disponibilidad ({len(targets)} URL{'s' if len(targets) != 1 else ''}):"]
+        if targets:
+            for t in targets:
+                out += fmt.uptime_target_lines(t, tz)
+        else:
+            out.append("(ninguna URL en el monitor de caídas)")
+        out += ["", f"Cambios sin revisar: {fmt.severity_counts(pending)}"]
+        if latest:
+            out.append("Últimos críticos y avisos sin revisar:")
+            out += [f"- {fmt.web_change_line(c, tz, base)}" for c in latest]
+        out.append(f"Todos: {base}/web/cambios?cliente={client_id}")
+        return "\n".join(out)
+
+    async def _web_global(base: str) -> str:
+        overview = await _web(client.get("/api/web/uptime"))
+        critical = await _web(client.get(
+            "/api/web/changes", severity="critical", acknowledged="false", limit=1000))
+
+        out = ["Webs de todos los clientes"]
+        if not overview.get("enabled", True):
+            out.append("(El monitor de caídas está apagado: los estados pueden estar desfasados.)")
+        rows = overview.get("clients") or []
+        for status, title in (("down", "Caídas ahora"), ("blocked", "Bloqueadas (no nos dejan comprobarlas)")):
+            hit = [r for r in rows if r.get("status") == status]
+            out += ["", f"{title} ({len(hit)}):"]
+            if not hit:
+                out.append("(ninguna)")
+            for r in hit:
+                urls = [t for t in r.get("targets") or [] if t.get("is_active") and t.get("status") == status]
+                for t in urls or [{}]:
+                    since = f" desde {fmt.local_time(t['status_since'], tz)}" if t.get("status_since") else ""
+                    out.append(f"- #{r['client_id']} {r.get('client_name')}: {t.get('url') or r.get('website') or '?'}{since}")
+        suspect = sum(1 for r in rows if r.get("status") == "suspect")
+        watched = sum(1 for r in rows if r.get("targets"))
+        out += ["", f"{watched} clientes con monitor de caídas; {suspect} con un fallo sin confirmar."]
+
+        by_client: dict[int, dict] = {}
+        for c in critical.get("changes") or []:
+            entry = by_client.setdefault(c["client_id"], {"name": c.get("client_name"), "n": 0, "last": None})
+            entry["n"] += 1
+            entry["last"] = max(entry["last"] or "", c.get("detected_at") or "")
+        out += ["", f"Clientes con cambios críticos sin revisar ({len(by_client)}):"]
+        if not by_client:
+            out.append("(ninguno)")
+        for cid, e in sorted(by_client.items(), key=lambda kv: -kv[1]["n"]):
+            out.append(f"- #{cid} {e['name']}: {e['n']} · el último {fmt.local_time(e['last'], tz)}"
+                       f" · {base}/web/cambios?cliente={cid}&sev=critical")
+        if critical.get("truncated"):
+            out.append(f"(Hay más de {len(critical.get('changes') or [])} cambios críticos; la lista está recortada.)")
+        out.append(f"Sin revisar en total: {fmt.severity_counts(critical.get('counts_pending') or {})}")
+        return "\n".join(out)
+
     # ── Escritura ────────────────────────────────────────────────────────
 
     @mcp.tool(annotations=WRITE)

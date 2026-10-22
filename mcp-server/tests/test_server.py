@@ -587,3 +587,155 @@ async def test_get_task_marca_los_borradores_de_ia(fake, agency):
     assert not is_error, text
     assert "David (borrador de IA, sin revisar): ## Informe" in text
     assert "Nacho: Visto" in text
+
+
+# ── Webs ───────────────────────────────────────────────────────────────
+
+FORBIDDEN_WEB = httpx.Response(403, json={"detail": "No tienes acceso al módulo"})
+EMPTY_COUNTS = {"critical": 0, "warning": 0, "info": 0, "all": 0}
+EMPTY_CHANGES = {"changes": [], "counts": EMPTY_COUNTS, "counts_pending": EMPTY_COUNTS,
+                 "total": 0, "truncated": False}
+OUTAGE = {"id": 3, "target_id": 11, "kind": "down", "started_at": "2026-10-20T06:00:00+00:00",
+          "ended_at": "2026-10-20T06:35:00+00:00", "duration_minutes": 35, "cause": "timeout",
+          "cause_label": "No responde a tiempo", "status_code": None}
+TARGETS = {"enabled": True, "monitored": True, "website": "https://fit.es", "targets": [
+    {"id": 11, "client_id": 4, "url": "https://fit.es/", "label": "Home", "is_active": True,
+     "status": "down", "status_since": "2026-10-21T07:00:00+00:00", "last_error_label": "Error 503",
+     "uptime_24h": 87.5, "uptime_30d": 99.12, "open_outage": None, "recent_outages": [OUTAGE]},
+    {"id": 12, "client_id": 4, "url": "https://fit.es/blog", "label": None, "is_active": False,
+     "status": "paused", "status_since": None, "uptime_24h": None, "uptime_30d": None, "recent_outages": []},
+]}
+
+
+def _change(cid, severity, detected, rule="Title cambiado", n_items=1):
+    return {"id": cid, "client_id": 4, "client_name": "Fit Generation", "url": "https://fit.es/precios",
+            "label": None, "max_severity": severity, "detected_at": detected, "acknowledged_at": None,
+            "items": [{"rule_label": rule, "severity": severity}] * n_items}
+
+
+def _changes_route(request):
+    pending = {"critical": 2, "warning": 1, "info": 7, "all": 10}
+    if request.url.params.get("severity") == "critical":
+        changes = [_change("c-1", "critical", "2026-10-21T08:00:00+00:00", "Noindex añadido", 3),
+                   _change("c-2", "critical", "2026-10-19T08:00:00+00:00")]
+    else:
+        changes = [_change("w-1", "warning", "2026-10-20T08:00:00+00:00", "H1 cambiado")]
+    return {"changes": changes, "counts": pending, "counts_pending": pending,
+            "total": len(changes), "truncated": False}
+
+
+async def test_web_status_de_un_cliente(fake, agency):
+    fake.route("GET", "/api/clients/4/web/uptime-targets", TARGETS)
+    fake.route("GET", "/api/web/changes", _changes_route)
+
+    is_error, text = await call(agency, "web_status", {"client_id": 4})
+
+    assert not is_error, text
+    assert ("- Home (https://fit.es/): CAÍDA desde 2026-10-21 09:00 · 24 h 87.5 % · 30 días 99.12 %"
+            " · último error: Error 503") in text
+    assert "  · Caída desde 2026-10-20 08:00, hasta 2026-10-20 08:35 · 35 min · No responde a tiempo" in text
+    assert "- https://fit.es/blog: en pausa · 24 h sin datos" in text
+    assert "Cambios sin revisar: 2 críticos · 1 avisos · 7 menores" in text
+    lines = text.splitlines()
+    first = lines.index("Últimos críticos y avisos sin revisar:")
+    assert lines[first + 1] == ("- [crítico] Noindex añadido (+2 más) · https://fit.es/precios · 2026-10-21 10:00"
+                                " · http://agency.test/web/cambios/c-1")
+    assert lines[first + 2].startswith("- [aviso] H1 cambiado")
+    assert lines[first + 3].startswith("- [crítico] Title cambiado")
+    sent = [r.url.params for r in fake.requests if r.url.path == "/api/web/changes"]
+    assert {p["severity"] for p in sent} == {"critical", "warning"}
+    assert all(p["client_id"] == "4" and p["acknowledged"] == "false" for p in sent)
+
+
+async def test_web_status_cliente_sin_urls_ni_cambios(fake, agency):
+    fake.route("GET", "/api/clients/4/web/uptime-targets",
+               {"enabled": False, "monitored": True, "website": None, "targets": []})
+    fake.route("GET", "/api/web/changes", EMPTY_CHANGES)
+
+    is_error, text = await call(agency, "web_status", {"client_id": 4})
+
+    assert not is_error, text
+    assert "monitor de caídas está apagado" in text
+    assert "(ninguna URL en el monitor de caídas)" in text
+    assert "Cambios sin revisar: 0 críticos · 0 avisos · 0 menores" in text
+    assert "Últimos críticos" not in text
+
+
+async def test_web_status_global(fake, agency):
+    fake.route("GET", "/api/web/uptime", {"enabled": True, "interval_seconds": 300, "clients": [
+        {"client_id": 4, "client_name": "Fit Generation", "website": "https://fit.es", "status": "down",
+         "targets": [TARGETS["targets"][0]]},
+        {"client_id": 5, "client_name": "Sietepar", "website": "https://sietepar.com", "status": "blocked",
+         "targets": [{"url": "https://sietepar.com/", "is_active": True, "status": "blocked",
+                      "status_since": "2026-10-21T05:00:00+00:00"}]},
+        {"client_id": 6, "client_name": "Bisiesto", "website": None, "status": "up",
+         "targets": [{"url": "https://bisiesto.es/", "is_active": True, "status": "up"}]},
+        {"client_id": 7, "client_name": "Sin monitor", "website": None, "status": None, "targets": []},
+    ]})
+    fake.route("GET", "/api/web/changes", _changes_route)
+
+    is_error, text = await call(agency, "web_status")
+
+    assert not is_error, text
+    assert "Caídas ahora (1):\n- #4 Fit Generation: https://fit.es/ desde 2026-10-21 09:00" in text
+    assert ("Bloqueadas (no nos dejan comprobarlas) (1):\n"
+            "- #5 Sietepar: https://sietepar.com/ desde 2026-10-21 07:00") in text
+    assert "3 clientes con monitor de caídas" in text
+    assert ("- #4 Fit Generation: 2 · el último 2026-10-21 10:00"
+            " · http://agency.test/web/cambios?cliente=4&sev=critical") in text
+    assert "Sin revisar en total: 2 críticos · 1 avisos · 7 menores" in text
+    req = fake.last("GET", "/api/web/changes")
+    assert "client_id" not in req.url.params and req.url.params["severity"] == "critical"
+
+
+async def test_web_status_global_sin_nada(fake, agency):
+    fake.route("GET", "/api/web/uptime", {"enabled": True, "clients": []})
+    fake.route("GET", "/api/web/changes", EMPTY_CHANGES)
+
+    is_error, text = await call(agency, "web_status")
+
+    assert not is_error, text
+    assert "Caídas ahora (0):\n(ninguna)" in text
+    assert "Clientes con cambios críticos sin revisar (0):\n(ninguno)" in text
+
+
+@pytest.mark.parametrize("args", [{}, {"client_id": 4}])
+async def test_web_status_sin_modulo_web(fake, agency, args):
+    for path in ("/api/web/uptime", "/api/clients/4/web/uptime-targets", "/api/web/changes"):
+        fake.route("GET", path, FORBIDDEN_WEB)
+
+    is_error, text = await call(agency, "web_status", args)
+
+    assert is_error and "No tienes acceso al módulo Webs" in text
+
+
+async def test_web_status_es_de_lectura(agency):
+    async with Client(build_server(agency)) as client:
+        tools = {t.name: t for t in (await client.list_tools()).tools}
+    assert tools["web_status"].annotations.read_only_hint is True
+
+
+async def test_client_overview_incluye_la_web(fake, agency):
+    _overview_routes(fake)
+    fake.route("GET", "/api/clients/4/status", {
+        **STATUS,
+        "uptime": {"status": "down", "targets": 2, "alert": "down", "down_since": "2026-10-21T07:00:00+00:00",
+                   "blocked_since": None, "last_checked_at": "2026-10-21T08:00:00+00:00"},
+        "web_changes": {"watches_active": 6, "watches_with_error": 0, "last_checked_at": None,
+                        "critical": 1, "warning": 0, "info": 4},
+    })
+
+    is_error, text = await call(agency, "client_overview", {"client_id": 4})
+
+    assert not is_error, text
+    assert ("Web: 2 URLs con monitor de caídas, CAÍDA · cambios sin revisar: 1 críticos · 0 avisos · 4 menores"
+            in text)
+
+
+async def test_client_overview_sin_web_no_dice_nada(fake, agency):
+    _overview_routes(fake)
+
+    is_error, text = await call(agency, "client_overview", {"client_id": 4})
+
+    assert not is_error, text
+    assert "Web:" not in text
