@@ -21,6 +21,7 @@ from backend.db.models import (
 from backend.schemas.task import TaskUpdate
 from backend.services.incidents import reconcile_recipient
 from backend.startup.background_tasks import _reset_advanced_tasks
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 NOW = datetime(2026, 9, 20, 10)  # noqa: DTZ001 - application stores naive UTC
 
@@ -126,7 +127,7 @@ async def test_reset_waits_for_public_edit_and_rechecks_eligibility(
             actor,
         )
     )
-    await asyncio.wait_for(writer_locked.wait(), timeout=5)
+    await asyncio.wait_for(writer_locked.wait(), timeout=HANG_TIMEOUT)
 
     reset_started, listener = _wait_for_task_lock_statement(
         engine,
@@ -134,7 +135,7 @@ async def test_reset_waits_for_public_edit_and_rechecks_eligibility(
     )
     try:
         reset_task = asyncio.create_task(_reset_advanced_tasks())
-        await asyncio.wait_for(reset_started.wait(), timeout=5)
+        await asyncio.wait_for(reset_started.wait(), timeout=HANG_TIMEOUT)
         assert not reset_task.done()
         release_writer.set()
         await asyncio.wait_for(asyncio.gather(writer_task, reset_task), timeout=10)
@@ -167,7 +168,7 @@ async def test_bulk_delete_blocks_reconcile_then_deleted_source_is_not_created(e
             actor,
         )
     )
-    await asyncio.wait_for(writer_locked.wait(), timeout=5)
+    await asyncio.wait_for(writer_locked.wait(), timeout=HANG_TIMEOUT)
 
     reconcile_started, listener = _wait_for_task_lock_statement(
         engine,
@@ -182,7 +183,7 @@ async def test_bulk_delete_blocks_reconcile_then_deleted_source_is_not_created(e
 
     try:
         reconcile_task = asyncio.create_task(reconcile())
-        await asyncio.wait_for(reconcile_started.wait(), timeout=5)
+        await asyncio.wait_for(reconcile_started.wait(), timeout=HANG_TIMEOUT)
         assert not reconcile_task.done()
         release_writer.set()
         deleted, reconciled = await asyncio.wait_for(

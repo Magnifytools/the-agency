@@ -24,7 +24,10 @@ Isolation model: the schema is created ONCE per session via
 ``Base.metadata.create_all`` + the app's ``_ensure_indexes_v11`` migration (so
 the partial unique index ``uq_time_entries_active_timer`` exists). Each test
 runs inside a SAVEPOINT-backed transaction that is rolled back at teardown, so
-tests never see each other's writes and the DB is left clean.
+tests never see each other's writes and the DB is left clean. Tests that commit
+through their own ``AsyncSession(engine)`` (concurrency tests) are cleaned up by
+the autouse ``_no_committed_rows_survive_the_test`` fixture, which truncates any
+table left with rows after the test.
 """
 
 from __future__ import annotations
@@ -195,6 +198,50 @@ async def engine():
     await _ensure_schema(eng)
     yield eng
     await eng.dispose()
+
+
+async def _tables_with_rows(conn) -> list[str]:
+    """Tablas de ``public`` que tienen al menos una fila (consulta única)."""
+    from sqlalchemy import text
+
+    names = (await conn.execute(text(
+        "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename"
+    ))).scalars().all()
+    if not names:
+        return []
+    probe = " UNION ALL ".join(
+        f"SELECT '{name}' WHERE EXISTS (SELECT 1 FROM public.\"{name}\")" for name in names
+    )
+    return list((await conn.execute(text(probe))).scalars().all())
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _no_committed_rows_survive_the_test(engine):
+    """Deja la base vacía al terminar cada test, aunque el test confirme datos.
+
+    ``db_session`` deshace todo lo que pasa por él, pero muchos tests de
+    concurrencia abren sus propias ``AsyncSession(engine)`` y hacen ``commit``
+    de verdad (dos transacciones reales son justo lo que prueban). Esas filas
+    sobrevivían al test y rompían a los siguientes que cuentan filas globales
+    (``collect_operational_usage``, notificaciones, cartera de clientes...):
+    pasaban solos y fallaban según el orden de la suite.
+
+    Esta fixture es autouse y depende de ``engine``, así que se monta antes que
+    ``db_session`` y se desmonta DESPUÉS de su rollback: aquí sólo quedan filas
+    confirmadas. Se vacían con ``TRUNCATE`` (sin reiniciar secuencias: ningún
+    test debe depender de ids concretos). ``lock_timeout`` evita colgar la
+    suite si un test dejó una transacción abierta: en ese caso falla el
+    teardown de ESE test, con su nombre, en vez de un test posterior al azar.
+    """
+    from sqlalchemy import text
+
+    yield
+    async with engine.begin() as conn:
+        dirty = await _tables_with_rows(conn)
+        if dirty:
+            await conn.execute(text("SET LOCAL lock_timeout = '10s'"))
+            tables = ", ".join(f'public."{name}"' for name in dirty)
+            await conn.execute(text(f"TRUNCATE {tables} CASCADE"))
 
 
 @pytest_asyncio.fixture

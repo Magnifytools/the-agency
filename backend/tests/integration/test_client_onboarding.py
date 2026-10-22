@@ -29,6 +29,7 @@ from backend.services.client_onboarding import (
     create_onboarding,
     recover_onboarding,
 )
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 
 pytestmark = pytest.mark.integration
@@ -629,7 +630,7 @@ async def test_create_revalidates_actor_after_waiting_for_advisory_lock(
                 ))
             await admin.commit()
         await holder.rollback()
-        denied = await asyncio.wait_for(attempt, timeout=2)
+        denied = await asyncio.wait_for(attempt, timeout=HANG_TIMEOUT)
         assert denied.status_code == 403
     finally:
         if holder.in_transaction():

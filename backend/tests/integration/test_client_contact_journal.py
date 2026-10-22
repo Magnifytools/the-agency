@@ -20,6 +20,7 @@ from backend.db.models import (
 )
 from backend.services import change_journal as journal
 from backend.services.domain_writes import create_client, create_contact, create_project
+from backend.tests.integration.concurrency import HANG_TIMEOUT, wait_until_blocked_by
 
 pytestmark = pytest.mark.asyncio
 
@@ -266,11 +267,17 @@ async def test_undo_contact_and_primary_writer_serialize_on_client(engine, monke
 
     monkeypatch.setattr(changes_route, "_preflight_contact_primaries", paused_preflight)
     actor = SimpleNamespace(id=actor_id, role=UserRole.admin, permissions=[])
-    async with AsyncSession(engine, expire_on_commit=False) as undo_db, AsyncSession(engine) as writer_db:
+    async with (
+        AsyncSession(engine, expire_on_commit=False) as undo_db,
+        AsyncSession(engine) as writer_db,
+        AsyncSession(engine) as observer,
+    ):
+        undo_pid = await undo_db.scalar(select(func.pg_backend_pid()))
+        writer_pid = await writer_db.scalar(select(func.pg_backend_pid()))
         undo_task = asyncio.create_task(changes_route.undo_change(
             change_id, db=undo_db, current_user=actor,
         ))
-        await asyncio.wait_for(parent_locked.wait(), timeout=2)
+        await asyncio.wait_for(parent_locked.wait(), timeout=HANG_TIMEOUT)
 
         async def write_replacement():
             await create_contact(writer_db, client_id, {
@@ -279,11 +286,13 @@ async def test_undo_contact_and_primary_writer_serialize_on_client(engine, monke
             await writer_db.commit()
 
         writer_task = asyncio.create_task(write_replacement())
-        await asyncio.sleep(0.1)
-        assert not writer_task.done(), "el escritor no esperó el bloqueo del cliente de Undo"
+        # Esperar a que Postgres diga que el escritor está bloqueado POR el
+        # Undo, en vez de dormir 0,1 s y suponerlo: con la máquina cargada
+        # el escritor puede no haber llegado aún al FOR UPDATE.
+        await wait_until_blocked_by(observer, writer_pid, undo_pid, writer_task)
         release_undo.set()
-        await asyncio.wait_for(undo_task, timeout=2)
-        await asyncio.wait_for(writer_task, timeout=2)
+        await asyncio.wait_for(undo_task, timeout=HANG_TIMEOUT)
+        await asyncio.wait_for(writer_task, timeout=HANG_TIMEOUT)
 
     async with AsyncSession(engine) as verify:
         primaries = (await verify.scalars(
