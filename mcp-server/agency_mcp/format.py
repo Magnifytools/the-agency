@@ -252,4 +252,75 @@ def client_status_block(s: dict[str, Any]) -> list[str]:
         if month.get("consumption_pct") is not None:
             line += f" · {month['consumption_pct']:.0f} % de la cuota ({month.get('fee'):.0f} €)"
         lines.append(line)
+    web = web_status_line(s)
+    if web:
+        lines.append(web)
     return lines
+
+
+# ── Webs (disponibilidad y cambios) ────────────────────────────────────
+
+WEB_STATUS = {
+    "up": "responde", "suspect": "dudosa (fallo sin confirmar)", "down": "CAÍDA",
+    "blocked": "bloqueada (no nos deja comprobarla)", "unknown": "sin comprobar aún", "paused": "en pausa",
+}
+OUTAGE_KIND = {"down": "Caída", "blocked": "Bloqueo"}
+SEVERITY = {"critical": "crítico", "warning": "aviso", "info": "menor"}
+SEVERITY_PLURAL = {"critical": "críticos", "warning": "avisos", "info": "menores"}
+
+
+def pct(value: float | None) -> str:
+    return "sin datos" if value is None else f"{value:g} %"
+
+
+def outage_line(o: dict[str, Any], tz: tzinfo) -> str:
+    kind = OUTAGE_KIND.get(o.get("kind"), o.get("kind"))
+    end = f"hasta {local_time(o['ended_at'], tz)}" if o.get("ended_at") else "sigue abierta"
+    cause = o.get("cause_label") or o.get("cause")
+    code = f" (HTTP {o['status_code']})" if o.get("status_code") else ""
+    return (f"{kind} desde {local_time(o.get('started_at'), tz)}, {end} · {hours(o.get('duration_minutes'))}"
+            + (f" · {cause}{code}" if cause else code))
+
+
+def uptime_target_lines(t: dict[str, Any], tz: tzinfo) -> list[str]:
+    name = f"{t['label']} ({t['url']})" if t.get("label") else t["url"]
+    status = WEB_STATUS.get(t.get("status"), t.get("status"))
+    since = ""
+    if t.get("status_since") and t.get("status") != "paused":
+        since = f" desde {local_time(t['status_since'], tz)}"
+    line = f"- {name}: {status}{since} · 24 h {pct(t.get('uptime_24h'))} · 30 días {pct(t.get('uptime_30d'))}"
+    if t.get("status") in ("down", "suspect", "blocked") and t.get("last_error_label"):
+        line += f" · último error: {t['last_error_label']}"
+    lines = [line]
+    lines += [f"  · {outage_line(o, tz)}" for o in t.get("recent_outages") or []]
+    return lines
+
+
+def severity_counts(counts: dict[str, Any]) -> str:
+    return " · ".join(f"{counts.get(s, 0)} {SEVERITY_PLURAL[s]}" for s in ("critical", "warning", "info"))
+
+
+def web_change_line(c: dict[str, Any], tz: tzinfo, base_url: str) -> str:
+    severity = SEVERITY.get(c.get("max_severity"), c.get("max_severity"))
+    page = f"{c['label']} ({c['url']})" if c.get("label") else c.get("url")
+    items = c.get("items") or []
+    what = (items[0].get("rule_label") or items[0].get("rule_code")) if items else "cambio"
+    if len(items) > 1:
+        what += f" (+{len(items) - 1} más)"
+    return (f"[{severity}] {what} · {page} · {local_time(c.get('detected_at'), tz)}"
+            f" · {base_url}/web/cambios/{c['id']}")
+
+
+def web_status_line(s: dict[str, Any]) -> str | None:
+    """Bloques ``uptime`` y ``web_changes`` de /status -> una línea. None si no
+    hay ninguno (sin URLs vigiladas o sin permiso de ``web``): se omite."""
+    parts = []
+    uptime = s.get("uptime")
+    if uptime:
+        n = uptime.get("targets", 0)
+        status = WEB_STATUS.get(uptime.get("status"), uptime.get("status") or "sin comprobar aún")
+        parts.append(f"{n} URL{'s' if n != 1 else ''} con monitor de caídas, {status}")
+    changes = s.get("web_changes")
+    if changes:
+        parts.append(f"cambios sin revisar: {severity_counts(changes)}")
+    return "Web: " + " · ".join(parts) if parts else None

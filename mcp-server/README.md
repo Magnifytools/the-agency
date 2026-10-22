@@ -25,6 +25,7 @@ No tiene herramientas de borrado. Lo destructivo se hace en la web.
 | `list_inbox` | Notas del inbox por procesar |
 | `list_dailys` | Tus dailys recientes, con su estado y si ya salieron en Discord |
 | `client_overview` | Cómo va un cliente (por id o nombre): estado y motivos, tráfico, resumen, horas, tareas abiertas, lo que espera al cliente y el último resumen con su entrega |
+| `web_status` | Webs de un cliente: si responden (estado, % de 24 h y 30 días, caídas recientes) y cambios sin revisar por severidad con los últimos críticos/avisos y su enlace. Sin cliente: webs caídas o bloqueadas ahora y clientes con cambios críticos sin revisar |
 | `create_task` | Crea una tarea (si no dices a quién, te la asigna a ti) |
 | `update_task` | Cambia estado, prioridad, fechas, responsable, espera… |
 | `comment_task` | Comenta una tarea |
@@ -36,7 +37,9 @@ No tiene herramientas de borrado. Lo destructivo se hace en la web.
 | `send_daily_to_discord` | **Publica** uno de tus dailys en Discord. No se deshace con ⌘Z |
 
 `client_overview` omite lo que tu usuario no puede leer (tareas, resúmenes,
-horas) en vez de fallar. `send_daily_to_discord` sólo envía dailys propios,
+horas, web) en vez de fallar. `web_status` necesita lectura del módulo Webs
+(`web`); sin ella lo dice en vez de dar un 403. No enseña nada de Search Console
+ni de GA4. `send_daily_to_discord` sólo envía dailys propios,
 también si eres admin, y manda la revisión leída: si alguien lo edita entre
 medias, el backend lo rechaza.
 

@@ -290,8 +290,13 @@ admin_users, admin_settings
   en el backend.
 - **Si cambias un endpoint que usa** (tasks, tasks/{id}/draft, agenda, timer, time-entries,
   inbox, search, projects, users, auth/me, dailys + reparse + send-discord,
-  clients/{id}/status, digests + external-delivery-events), revisa
-  `mcp-server/agency_mcp/server.py`.
+  clients/{id}/status (incluidos sus bloques `uptime` y `web_changes`),
+  digests + external-delivery-events, web/uptime, clients/{id}/web/uptime-targets,
+  web/changes), revisa `mcp-server/agency_mcp/server.py` y `format.py`.
+- **Webs**: `web_status` (sólo lectura) junta disponibilidad y cambios sin
+  revisar de un cliente, o el resumen global (caídas/bloqueos ahora y clientes
+  con críticos sin revisar). Sin permiso de `web` lo explica en vez de dar un 403.
+  Nada de Search Console ni GA4 (lo vigila `test_gsc_detail.py`).
 - **Dailys**: `POST /api/dailys` sólo guarda; `submit_daily` encadena el
   `reparse` (90 s, como la web). `send_daily_to_discord` es la única
   herramienta que publica fuera (anotación `PUBLISH`) y sólo con dailys propios.
@@ -828,7 +833,7 @@ cd backend && source venv/bin/activate && python -m pytest tests/ -v
 # Frontend (vitest, 45 tests)
 cd frontend && npm run test
 
-# Servidor MCP (pytest, 33 tests, backend falso)
+# Servidor MCP (pytest, 47 tests, backend falso)
 cd mcp-server && .venv/bin/python -m pytest -q
 ```
 
