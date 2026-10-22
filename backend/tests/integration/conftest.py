@@ -200,6 +200,22 @@ async def engine():
     await eng.dispose()
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _test_database_session(_no_real_database_session, engine, monkeypatch):
+    """En integración, la sesión global apunta a la base de PRUEBAS.
+
+    Lo que abre `database.async_session` por su cuenta (middleware de uso,
+    rutas que lanzan importaciones) escribe aquí y no en la base de `.env`.
+    Commitea de verdad, así que lo limpia `_no_committed_rows_survive_the_test`.
+    """
+    from backend.db import database
+
+    monkeypatch.setattr(
+        database, "async_session",
+        async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False),
+    )
+
+
 async def _tables_with_rows(conn) -> list[str]:
     """Tablas de ``public`` que tienen al menos una fila (consulta única)."""
     from sqlalchemy import text
