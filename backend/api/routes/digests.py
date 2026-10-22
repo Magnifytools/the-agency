@@ -8,6 +8,7 @@ Endpoints:
 - PUT  /{id}              — update digest content/tone
 - PATCH /{id}/status      — change digest status
 - GET  /{id}/render       — render digest as Slack or Email HTML
+- GET  /{id}/pdf          — the client-facing digest as an A4 PDF
 - DELETE /{id}            — delete a digest (draft or admin)
 """
 
@@ -17,7 +18,7 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from sqlalchemy import exists, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -25,7 +26,7 @@ from sqlalchemy.orm import selectinload
 from backend.api.deps import require_module
 from backend.api.middleware.audit_log import log_audit
 from backend.api.utils.db_helpers import safe_refresh
-from backend.core.rate_limiter import ai_limiter
+from backend.core.rate_limiter import ai_limiter, pdf_export_limiter
 from backend.db.database import get_db
 from backend.core.modules import is_hidden
 from backend.db.models import (
@@ -57,6 +58,7 @@ from backend.services.digest_generator import (
     DigestProviderError,
     generate_digest_content,
 )
+from backend.services.digest_pdf import digest_pdf
 from backend.services.digest_periods import (
     canonicalize_digest_content,
     resolve_digest_period,
@@ -780,6 +782,47 @@ async def render_digest(
         )
 
     return DigestRenderResponse(format=format, rendered=rendered)
+
+
+# ---------------------------------------------------------------------------
+# GET /{id}/pdf — El resumen en PDF (lo mismo que el email, en A4)
+# ---------------------------------------------------------------------------
+
+
+def pdf_response(data: bytes, filename: str, headers: dict[str, str] | None = None) -> Response:
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            **(headers or {}),
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+async def build_pdf_or_error(digest: WeeklyDigest, client_name: str) -> tuple[bytes, str]:
+    try:
+        return await digest_pdf(digest, client_name)
+    except TimeoutError:
+        logger.warning("PDF del resumen %s: tiempo agotado", digest.id)
+        raise HTTPException(status_code=504, detail="El PDF ha tardado demasiado. Inténtalo de nuevo.")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Este resumen no tiene contenido para el PDF")
+
+
+@router.get("/{digest_id}/pdf")
+async def digest_pdf_download(
+    digest_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("digests")),
+):
+    """PDF de la versión guardada, con las mismas reglas de acceso que verla."""
+    digest = await authorize_digest(db, digest_id, current_user, write=False)
+    pdf_export_limiter.check(current_user.id, max_requests=10, window_seconds=60)
+    client_name = digest.client.name if digest.client else ""
+    data, filename = await build_pdf_or_error(digest, client_name)
+    return pdf_response(data, filename)
 
 
 # ---------------------------------------------------------------------------

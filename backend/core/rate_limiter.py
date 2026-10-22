@@ -183,3 +183,21 @@ web_preview_limiter = WebProbeLimiter("rate:web-preview")
 login_limiter = LoginRateLimiter()
 public_link_limiter = PublicLinkRateLimiter()
 credential_reveal_limiter = CredentialRevealLimiter()
+
+
+class PdfExportLimiter:
+    """Sliding-window limiter for PDF exports (CPU en el servidor), per user or IP."""
+
+    def __init__(self, prefix: str = "rate:pdf-export") -> None:
+        self._limiter = _SlidingWindowLimiter(
+            prefix=prefix,
+            detail_fn=lambda _max_requests, _window_seconds: "Demasiados PDF seguidos. Espera un minuto.",
+        )
+
+    def check(self, key: str | int, max_requests: int, window_seconds: int) -> None:
+        self._limiter.check(key, max_requests, window_seconds)
+
+
+# Descargar el resumen en PDF: con sesión, por usuario; desde el enlace público, por IP.
+pdf_export_limiter = PdfExportLimiter()
+public_pdf_limiter = PdfExportLimiter("rate:public-pdf")

@@ -96,7 +96,7 @@ async def touch_view(db: AsyncSession, link: ClientShareLink) -> None:
         await db.commit()
 
 
-async def delivered_digests(db: AsyncSession, client_id: int) -> list[dict]:
+async def _delivered_versions(db: AsyncSession, client_id: int) -> list[tuple[WeeklyDigest, DigestContent, datetime | None]]:
     """Resúmenes con entrega externa confirmada, uno por periodo (la última versión entregada)."""
     confirmed_at = (
         select(func.max(DigestExternalDeliveryEvent.created_at))
@@ -112,7 +112,7 @@ async def delivered_digests(db: AsyncSession, client_id: int) -> list[dict]:
         .order_by(WeeklyDigest.period_end.desc(), confirmed_at.desc(), WeeklyDigest.id.desc())
     )).all()
     seen: set[tuple[date, date]] = set()
-    out: list[dict] = []
+    out: list[tuple[WeeklyDigest, DigestContent, datetime | None]] = []
     for digest, delivered_at in rows:
         period = (digest.period_start, digest.period_end)
         if period in seen:
@@ -122,16 +122,29 @@ async def delivered_digests(db: AsyncSession, client_id: int) -> list[dict]:
         except Exception:
             continue
         seen.add(period)
-        out.append({
-            "period_start": digest.period_start.isoformat(),
-            "period_end": digest.period_end.isoformat(),
-            "period_label": format_digest_period(*period),
-            "delivered_at": delivered_at.isoformat() if delivered_at else None,
-            "html": render_email(content, tone=digest.tone, period_start=digest.period_start,
-                                 period_end=digest.period_end,
-                                 seo=(digest.raw_context or {}).get("seo")),
-        })
+        out.append((digest, content, delivered_at))
     return out
+
+
+async def delivered_digests(db: AsyncSession, client_id: int) -> list[dict]:
+    """Lo que enseña la página pública: la versión entregada de cada periodo, ya pintada."""
+    return [{
+        "id": digest.id,
+        "period_start": digest.period_start.isoformat(),
+        "period_end": digest.period_end.isoformat(),
+        "period_label": format_digest_period(digest.period_start, digest.period_end),
+        "delivered_at": delivered_at.isoformat() if delivered_at else None,
+        "html": render_email(content, tone=digest.tone, period_start=digest.period_start,
+                             period_end=digest.period_end,
+                             seo=(digest.raw_context or {}).get("seo"),
+                             ga4=(digest.raw_context or {}).get("ga4")),
+    } for digest, content, delivered_at in await _delivered_versions(db, client_id)]
+
+
+async def delivered_digest(db: AsyncSession, client_id: int, digest_id: int) -> WeeklyDigest | None:
+    """La versión entregada con ese id, sólo si es la que enseña la página pública."""
+    return next((digest for digest, _content, _at in await _delivered_versions(db, client_id)
+                 if digest.id == digest_id), None)
 
 
 def _month_start(day: date, back: int = 0) -> date:

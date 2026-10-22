@@ -16,6 +16,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { DigestFacts } from "@/components/digests/digest-facts"
 import { DigestGa4Panel } from "@/components/digests/digest-ga4-panel"
 import { DigestSeoPanel } from "@/components/digests/digest-seo-panel"
+import { DownloadPdfButton } from "@/components/digests/download-pdf-button"
 import { DigestExternalDelivery } from "@/components/digests/digest-external-delivery"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -238,6 +239,20 @@ export default function DigestEditPage() {
       if (active.current) setPreviewSaving(false)
     }
   }
+  // El PDF sale de la versión guardada: con cambios sin guardar, se guarda antes (como la vista previa).
+  const downloadPdf = async () => {
+    if (!canWrite || !unsaved) return digestsApi.pdf(Number(id))
+    const sourceEpoch = viewEpoch.current
+    setPreviewSaving(true)
+    try {
+      const saved = await digestsApi.update(Number(id), { content: draftContent(), tone })
+      if (!active.current || Number(liveId.current) !== Number(id) || viewEpoch.current !== sourceEpoch) return null
+      acceptVersion(saved, Number(id), sourceEpoch)
+      return await digestsApi.pdf(saved.id)
+    } finally {
+      if (active.current) setPreviewSaving(false)
+    }
+  }
   const handleReadPreview = (fmt: "slack" | "email") => {
     if (!digest?.content) {
       setPreviewUnavailable(true)
@@ -340,6 +355,7 @@ export default function DigestEditPage() {
             <Eye className="w-4 h-4 mr-2" />
             Vista previa
           </Button>
+          <DownloadPdfButton download={downloadPdf} disabled={!digest.content && !canWrite} />
           {canWrite && <Button onClick={() => updateMutation.mutate({ sourceId: Number(id), epoch: viewEpoch.current, content: draftContent(), tone })} disabled={updateMutation.isPending}>
             {updateMutation.isPending ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -469,7 +485,7 @@ export default function DigestEditPage() {
         </CardContent>
       </Card>
 
-      {seo && <DigestSeoPanel seo={seo} clientId={digest.client_id} include={includeSeo} canWrite={canWrite} onIncludeChange={setIncludeSeo} />}
+      {seo && <DigestSeoPanel seo={seo} include={includeSeo} canWrite={canWrite} onIncludeChange={setIncludeSeo} />}
       {ga4 && ga4.status !== "no_property" && <DigestGa4Panel ga4={ga4} include={includeGa4} canWrite={canWrite} onIncludeChange={setIncludeGa4} />}
 
       </fieldset>

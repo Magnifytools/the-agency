@@ -6,6 +6,7 @@ import { clientShareLinkApi, type PublicDigest, type PublicTrafficMonth } from "
 import { formatCompact } from "@/lib/format"
 import { parseApiInstant } from "@/lib/dates"
 import { cn } from "@/lib/utils"
+import { DownloadPdfButton } from "@/components/digests/download-pdf-button"
 
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
 const number = new Intl.NumberFormat("es-ES")
@@ -71,7 +72,7 @@ export default function PublicClientPage() {
               <p className="mt-1 text-sm text-muted-foreground">Tus resúmenes y la evolución de tu tráfico en Google.</p>
             </div>
             <TrafficSection traffic={data.traffic} />
-            <DigestsSection digests={data.digests} />
+            <DigestsSection token={token} digests={data.digests} />
           </>
         ) : null}
       </main>
@@ -133,7 +134,7 @@ function TrafficSection({ traffic }: { traffic: { months: PublicTrafficMonth[]; 
   )
 }
 
-function DigestsSection({ digests }: { digests: PublicDigest[] }) {
+function DigestsSection({ token, digests }: { token: string; digests: PublicDigest[] }) {
   const [openKey, setOpenKey] = useState<string | null>(null)
   const keyOf = (d: PublicDigest) => `${d.period_start}:${d.period_end}`
   const open = digests.find((d) => keyOf(d) === openKey) ?? digests[0]
@@ -164,14 +165,23 @@ function DigestsSection({ digests }: { digests: PublicDigest[] }) {
             ))}
           </ul>
           {open && (
-            <iframe
-              key={keyOf(open)}
-              title={`Resumen ${open.period_label}`}
-              srcDoc={open.html}
-              // Sin scripts ni mismo origen: el HTML del resumen no puede tocar la página.
-              sandbox="allow-popups allow-popups-to-escape-sandbox"
-              className="h-[75vh] w-full rounded-md border border-border bg-white"
-            />
+            <div className="space-y-3">
+              <div className="flex justify-end">
+                <DownloadPdfButton
+                  size="sm"
+                  ariaLabel={`Descargar PDF del resumen ${open.period_label}`}
+                  download={() => clientShareLinkApi.publicDigestPdf(token, open.id)}
+                />
+              </div>
+              <iframe
+                key={keyOf(open)}
+                title={`Resumen ${open.period_label}`}
+                srcDoc={open.html}
+                // Sin scripts ni mismo origen: el HTML del resumen no puede tocar la página.
+                sandbox="allow-popups allow-popups-to-escape-sandbox"
+                className="h-[75vh] w-full rounded-md border border-border bg-white"
+              />
+            </div>
           )}
         </div>
       )}

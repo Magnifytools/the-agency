@@ -1,18 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import { DigestSeoPanel } from "./digest-seo-panel"
 import type { DigestSeo } from "@/lib/types"
-
-const mocks = vi.hoisted(() => ({ getClient: vi.fn(), getConfig: vi.fn() }))
-
-vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ hasPermission: () => true }) }))
-vi.mock("@/lib/api", () => ({
-  clientsApi: { get: mocks.getClient },
-  engineApi: { getConfig: mocks.getConfig },
-}))
 
 const ok: DigestSeo = {
   status: "ok",
@@ -25,21 +16,11 @@ const ok: DigestSeo = {
 }
 
 function show(seo: DigestSeo, onIncludeChange = vi.fn()) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
-    <QueryClientProvider client={queryClient}>
-      <DigestSeoPanel seo={seo} clientId={5} include canWrite onIncludeChange={onIncludeChange} />
-    </QueryClientProvider>,
-  )
+  render(<DigestSeoPanel seo={seo} include canWrite onIncludeChange={onIncludeChange} />)
   return onIncludeChange
 }
 
 describe("DigestSeoPanel", () => {
-  beforeEach(() => {
-    mocks.getClient.mockResolvedValue({ id: 5, engine_project_id: 81 })
-    mocks.getConfig.mockResolvedValue({ engine_frontend_url: "https://engine.example" })
-  })
-
   it("shows the month against the previous one and lets the writer leave it out", async () => {
     const onIncludeChange = show(ok)
 
@@ -50,11 +31,11 @@ describe("DigestSeoPanel", () => {
     expect(onIncludeChange).toHaveBeenCalledWith(false)
   })
 
-  it("links to the client's reports in The Engine for the PDF", async () => {
+  it("no longer links to The Engine's frozen PDF", () => {
     show(ok)
 
-    const link = await screen.findByRole("link", { name: /informe SEO en PDF/ })
-    expect(link).toHaveAttribute("href", "https://engine.example/p/81/reports")
+    expect(screen.queryByRole("link")).not.toBeInTheDocument()
+    expect(screen.queryByText(/The Engine/)).not.toBeInTheDocument()
   })
 
   it("explains why a monthly summary has no Search Console block", () => {

@@ -1,4 +1,5 @@
 import { api } from "@/lib/api"
+import { filenameFromDisposition, type PdfFile } from "@/lib/pdf-download"
 
 /** Estado del enlace de sólo lectura de un cliente. El token nunca vuelve del servidor. */
 export interface ShareLinkStatus {
@@ -21,6 +22,7 @@ export interface PublicTrafficMonth {
 }
 
 export interface PublicDigest {
+  id: number
   period_start: string
   period_end: string
   period_label: string
@@ -42,4 +44,8 @@ export const clientShareLinkApi = {
   revoke: (clientId: number) => api.delete<void>(`/clients/${clientId}/share-link`).then(() => undefined),
   publicView: (token: string) =>
     api.get<PublicClientView>(`/public/clients/${encodeURIComponent(token)}`).then((r) => r.data),
+  /** PDF de un resumen entregado, desde el enlace (sin sesión). */
+  publicDigestPdf: (token: string, digestId: number): Promise<PdfFile> =>
+    api.get<Blob>(`/public/clients/${encodeURIComponent(token)}/digests/${digestId}/pdf`, { responseType: "blob", timeout: 60_000 })
+      .then((r) => ({ blob: r.data, filename: filenameFromDisposition(r.headers["content-disposition"], "informe.pdf") })),
 }

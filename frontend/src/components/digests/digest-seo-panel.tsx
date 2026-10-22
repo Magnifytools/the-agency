@@ -1,10 +1,7 @@
-import { useQuery } from "@tanstack/react-query"
-import { ExternalLink, Search } from "lucide-react"
-import { clientsApi, engineApi } from "@/lib/api"
+import { Search } from "lucide-react"
 import { digestSeoUnavailableReason } from "@/lib/gsc"
 import type { DigestSeo, DigestSeoPeriod } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
-import { useAuth } from "@/context/auth-context"
 
 // Mismo formato que el bloque del email (1.234 / 12,3). es-ES no agrupa los
 // números de cuatro cifras y el editor no cuadraría con lo que se envía.
@@ -30,30 +27,13 @@ function Change({ value, unit }: { value: number | null | undefined; unit: "%" |
 
 interface Props {
   seo: DigestSeo
-  clientId: number
   include: boolean
   canWrite: boolean
   onIncludeChange: (value: boolean) => void
 }
 
-/** Bloque de Search Console del resumen mensual: cifras, si se incluye, y enlace al informe de The Engine. */
-export function DigestSeoPanel({ seo, clientId, include, canWrite, onIncludeChange }: Props) {
-  const { hasPermission } = useAuth()
-  const { data: client } = useQuery({
-    queryKey: ["client", clientId],
-    queryFn: () => clientsApi.get(clientId),
-    enabled: hasPermission("clients"),
-    staleTime: 5 * 60_000,
-  })
-  const { data: engineConfig } = useQuery({
-    queryKey: ["engine-config"],
-    queryFn: () => engineApi.getConfig(),
-    staleTime: 10 * 60_000,
-  })
-  const engineReportsUrl = client?.engine_project_id && engineConfig?.engine_frontend_url
-    ? `${engineConfig.engine_frontend_url}/p/${client.engine_project_id}/reports`
-    : null
-
+/** Bloque de Search Console del resumen mensual: cifras y si se incluye (también en el PDF). */
+export function DigestSeoPanel({ seo, include, canWrite, onIncludeChange }: Props) {
   return (
     <Card>
       <CardContent className="space-y-4 pt-6">
@@ -105,20 +85,13 @@ export function DigestSeoPanel({ seo, clientId, include, canWrite, onIncludeChan
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Datos finales de Search Console ({seo.site_url}). Se añaden tal cual al email, Slack y Discord; la IA no los redacta.
+              Datos finales de Search Console ({seo.site_url}). Se añaden tal cual al email, al PDF, a Slack y a Discord; la IA no los redacta.
             </p>
           </>
         ) : (
           <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
             Este resumen mensual no lleva el bloque de Search Console. {digestSeoUnavailableReason(seo)}
           </p>
-        )}
-
-        {engineReportsUrl && (
-          <a href={engineReportsUrl} target="_blank" rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm text-brand hover:underline">
-            Generar el informe SEO en PDF en The Engine <ExternalLink className="h-3.5 w-3.5" />
-          </a>
         )}
       </CardContent>
     </Card>

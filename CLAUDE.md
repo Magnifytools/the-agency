@@ -162,6 +162,32 @@ admin_users, admin_settings
   `clients`. Clave `...:open`: se resuelve sola al recuperarse y un descarte se
   mantiene mientras dure la misma caída.
 
+## PDF del resumen (sustituye al PDF de The Engine)
+- **Qué es**: "Descargar PDF" en el editor, en cada fila de `/digests` y en la
+  página pública `/c/:token` (sólo resúmenes entregados). Contenido = el email
+  que recibe el cliente (`render_email`): mismas secciones, mismos bloques SEO y
+  GA4 pintados por `digest_seo` / `digest_ga4`, mismos interruptores
+  `include_seo` / `include_ga4`. Sale de la versión GUARDADA (el editor guarda
+  antes si hay cambios, como la vista previa).
+- **Motor: fpdf2** (`services/digest_pdf.py`), que ya estaba fijado en
+  `requirements.txt` por las propuestas. Python puro, sin paquetes de sistema
+  en `python:3.12-slim`: cero cambios en el Dockerfile. Se descartó WeasyPrint
+  (pango/cairo por apt) y convertir el HTML del email (xhtml2pdf pinta mal sus
+  tablas y añade dependencias): el PDF se monta con código desde los mismos
+  datos y helpers del email, en A4 con márgenes, marca vectorial (la del
+  favicon) y paleta Magnify.
+- **Sin red**: ni imágenes ni fuentes externas (Helvetica de serie, cp1252: los
+  emojis se quitan). `_OfflinePDF.image()` lanza error, porque fpdf2 descarga
+  con `urlopen` si recibe una URL. El cierre (HTML) se reduce a texto, saltos,
+  negritas y enlaces `http(s)`/`mailto`. Lo guarda `tests/test_digest_pdf.py`.
+- **API**: `GET /api/digests/{id}/pdf` (mismas reglas que verlo:
+  `authorize_digest`; 10/min por usuario) y
+  `GET /api/public/clients/{token}/digests/{id}/pdf` (sólo la versión entregada
+  que enseña la página; todo lo demás el mismo 404; 10/min por IP; cabeceras
+  `noindex`/`no-store`/`no-referrer`). `application/pdf`,
+  `informe-<cliente>-<AAAA-MM>.pdf`, `Cache-Control: no-store`.
+- Se genera en `asyncio.to_thread` con 20 s de techo (504 si se agota).
+
 ## The Engine (congelado)
 - **Congelado el 21 oct 2026** (decisión de David): sigue encendido, pero no se
   trabaja en él y **nada de The Agency depende de él**. Ni el semáforo, ni el
@@ -169,9 +195,8 @@ admin_users, admin_settings
   dashboard leen `engine_summary_data` ni ningún `engine_*`.
 - **Lo que sigue enlazando a Engine** (sólo si el cliente tiene
   `engine_project_id`): pestaña "Engine" (`?tab=seo`), botón "Abrir en Engine" de
-  la ficha, badge "Engine" de la lista, `EngineMetricsWidget` del Panel y el
-  enlace al PDF del editor de resúmenes (`digest-seo-panel.tsx`, hasta que haya
-  PDF propio). `engine-config` sólo se pide si hay un cliente vinculado.
+  la ficha, badge "Engine" de la lista, `EngineMetricsWidget` del Panel. El PDF del
+  resumen ya es propio (ver "PDF del resumen"). `engine-config` sólo se pide si hay un cliente vinculado.
 - **Sigue corriendo**: el job `engine` (copia el summary en `clients.engine_*`
   para esas pestañas) y las rutas proxy `api/routes/engine_integration.py`.
 - Retirarlo del todo (job, rutas, columnas `engine_*`) es la fase 3 de
@@ -356,9 +381,9 @@ admin_users, admin_settings
 - **El detalle no va a la IA**: ni resúmenes, ni borradores, ni asesor, ni
   enlace del cliente, ni MCP. Lo vigila `test_el_detalle_de_search_console_no_llega_a_la_ia`
   (`tests/test_gsc_detail.py`). Si lo cambias, cambia antes la política.
-- El PDF SEO completo sigue en The Engine (`/p/{engine_project_id}/reports`):
-  el editor enlaza ahí. Su `report-data` NO se usa: traga errores como ceros y
-  no pondera la posición.
+- El PDF ya no es el de The Engine (congelado; el enlace se quitó el 21 oct
+  2026): ver "PDF del resumen". Su `report-data` tampoco se usa: traga errores
+  como ceros y no pondera la posición.
 
 ## Control SEO por cliente
 
