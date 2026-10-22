@@ -35,7 +35,7 @@ function show(props: Partial<React.ComponentProps<typeof ClientOverview>> = {}) 
   render(
     <QueryClientProvider client={queryClient}>
       <ClientOverview client={client} status={status} statusFailed={false} onRetryStatus={vi.fn()} tasks={tasks}
-        canReadDigests canReadContacts engineReportsUrl="https://engine/p/9/reports" onNavigate={onNavigate} {...props} />
+        canReadDigests canReadContacts onNavigate={onNavigate} {...props} />
     </QueryClientProvider>,
   )
   return { onNavigate }
@@ -60,8 +60,10 @@ describe("ClientOverview", () => {
     expect(within(work).queryByText("Hecha")).not.toBeInTheDocument()
     expect(within(work).getByText("Por revisar (1)")).toBeInTheDocument()
 
+    // The Engine está congelado: la vista general no enlaza a Engine.
     const results = block("Resultados")
-    expect(within(results).getByRole("link", { name: /Informe SEO en PDF/ })).toHaveAttribute("href", "https://engine/p/9/reports")
+    expect(within(results).queryByRole("link", { name: /Engine|PDF/ })).not.toBeInTheDocument()
+    expect(within(results).queryByText("Ver SEO")).not.toBeInTheDocument()
 
     const relation = block("Relación")
     expect(await within(relation).findByText("Marta")).toBeInTheDocument()
@@ -95,6 +97,12 @@ describe("ClientOverview", () => {
     fireEvent.click(screen.getByText("Abrir resúmenes"))
     fireEvent.click(screen.getByText("Ver contexto"))
     expect(onNavigate.mock.calls.map(([section]) => section)).toEqual(["tareas", "resumenes", "contexto"])
+  })
+
+  it("links SEO traffic to the Control SEO tab when the client has a Search Console property", () => {
+    const { onNavigate } = show({ client: { ...client, gsc_url: "sc-domain:parklex.es" } })
+    fireEvent.click(within(block("Resultados")).getByText("Ver Control SEO"))
+    expect(onNavigate).toHaveBeenCalledWith("control_seo")
   })
 
   it("leaves out what the viewer cannot read", () => {

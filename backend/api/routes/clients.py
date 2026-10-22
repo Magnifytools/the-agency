@@ -39,7 +39,7 @@ from backend.services.client_onboarding import create_onboarding, recover_onboar
 from backend.services.domain_writes import create_client as create_client_write
 from backend.services.temporal import business_today, utc_isoformat
 from backend.config import settings
-from backend.services.seo_traffic import clicks_change_expr
+from backend.services.seo_traffic import attach_seo_traffic, client_traffic, clicks_change_expr
 
 logger = logging.getLogger(__name__)
 
@@ -77,13 +77,17 @@ async def list_clients(
 
     order = [Client.created_at.desc()]
     if sort != "created":
-        # Semáforo SEO across every page, not just the visible one.
-        change = clicks_change_expr(Client.engine_summary_data)
+        # Semáforo SEO en todas las páginas, no sólo en la visible: una sola
+        # agregación sobre gsc_daily; sin propiedad o sin base, al final.
+        traffic = client_traffic()
+        base = base.outerjoin(traffic, traffic.c.client_id == Client.id)
+        change = clicks_change_expr(traffic)
         order.insert(0, (change.asc() if sort == "seo_change_asc" else change.desc()).nulls_last())
     query = base.order_by(*order, Client.id.desc()).offset((page - 1) * page_size).limit(page_size)
-    result = await db.execute(query)
+    clients = list((await db.execute(query)).scalars().all())
+    await attach_seo_traffic(db, clients)
 
-    return PaginatedResponse(items=result.scalars().all(), total=total, page=page, page_size=page_size)
+    return PaginatedResponse(items=clients, total=total, page=page, page_size=page_size)
 
 
 _CLIENT_EXTRACT_PROMPT = """Analiza este texto de contexto sobre un cliente y extrae la información relevante.
@@ -332,6 +336,7 @@ async def get_client(
     client = result.scalar_one_or_none()
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
+    await attach_seo_traffic(db, [client])
     return client
 
 

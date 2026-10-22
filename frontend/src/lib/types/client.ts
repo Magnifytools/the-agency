@@ -195,7 +195,7 @@ export interface ClientStatusRow {
   /** Motivos de Vigilar/Actuar, lo que pide actuar primero. */
   reasons: string[]
   seo: {
-    source: "search_console" | "engine"
+    source: "search_console"
     clicks: number
     clicks_previous: number
     change_pct: number | null

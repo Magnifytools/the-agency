@@ -298,8 +298,9 @@ async def test_reconciliation_reads_stay_bounded_for_many_conditions(db_session,
     finally:
         event.remove(engine.sync_engine, "before_cursor_execute", capture)
     assert result == {"created": 0, "changed": 0}
-    # A fixed budget covers task/project/report collectors, regardless of count.
-    assert len(statements) <= 10
+    # A fixed budget covers task/project/report/client/web collectors, regardless
+    # of count (11: the web collector reads outages and critical web changes).
+    assert len(statements) <= 11
     assert len(await notifications(db_session, admin_user.id)) == 35
 
 

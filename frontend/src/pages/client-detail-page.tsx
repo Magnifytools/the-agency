@@ -149,10 +149,13 @@ export default function ClientDetailPage() {
     enabled: !!clientId && holdedEnabled,
   })
 
+  // The Engine está congelado (21 oct 2026): sólo se pregunta por él si el
+  // cliente sigue vinculado (enlaces "Abrir en Engine" y pestaña Engine).
   const { data: engineConfig } = useQuery({
     queryKey: ["engine-config"],
     queryFn: () => engineApi.getConfig(),
     staleTime: 10 * 60_000,
+    enabled: !!summary?.client.engine_project_id,
   })
 
   const canReadClientHealth = canReadClient
@@ -480,8 +483,6 @@ export default function ClientDetailPage() {
           tasks={canReadTasks ? summary.tasks ?? [] : null}
           canReadDigests={isTabVisible("resumenes")}
           canReadContacts
-          engineReportsUrl={client.engine_project_id && engineConfig?.engine_frontend_url
-            ? `${engineConfig.engine_frontend_url}/p/${client.engine_project_id}/reports` : null}
           onNavigate={(section) => setActiveTab(section)}
         />
       )}

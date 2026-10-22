@@ -19,6 +19,29 @@ import type {
   UptimeHistory,
   ClientSlackSettings,
   ClientSlackSettingsInput,
+  ClientWebWatches,
+  WebWatch,
+  WebWatchInput,
+  WebWatchUpdate,
+  WebBulkResult,
+  WebCheckAccepted,
+  WebCheckProgress,
+  WebWatchDetail,
+  WebSnapshotRow,
+  WebWatchPreview,
+  WebWatchPreviewInput,
+  WebChange,
+  WebChangeList,
+  WebChangeFilters,
+  WebChangeDetail,
+  WebTextDiff,
+  WebHtmlDiff,
+  WebSeverity,
+  WebSweepRun,
+  WebRunError,
+  WebChangeSettings,
+  WebCaptureSettingsInput,
+  WebCalendarSettingsInput,
   TaskAgendaSection,
   SearchResults,
   PaginatedResponse,
@@ -1132,6 +1155,60 @@ export const webApi = {
   testSlack: (clientId: number) =>
     api.post<{ ok: boolean; revoked: boolean; error: string | null }>(`/clients/${clientId}/web/settings/slack/test`)
       .then((r) => r.data),
+}
+
+// --- Webs: cambios (URLs vigiladas, barridos y ajustes) ---
+// "Comprobar" no corre nada en la petición: deja la marca y el job web_sweep la
+// recoge en menos de un minuto (si está encendido: `enabled` lo dice).
+export const webWatchesApi = {
+  list: (clientId: number, params: { include_archived?: boolean; q?: string } = {}) =>
+    api.get<ClientWebWatches>(`/clients/${clientId}/web/watches`, { params }).then((r) => r.data),
+  create: (clientId: number, data: WebWatchInput) =>
+    api.post<WebWatch>(`/clients/${clientId}/web/watches`, data).then((r) => r.data),
+  bulk: (clientId: number, data: { urls: string[]; source?: "bulk" | "csv" }) =>
+    api.post<WebBulkResult>(`/clients/${clientId}/web/watches/bulk`, data).then((r) => r.data),
+  // El backend se da 60 s para leer el sitemap (índices anidados incluidos).
+  importSitemap: (clientId: number, data: { sitemap_url: string; include?: string | null; exclude?: string | null; limit?: number }) =>
+    api.post<WebBulkResult>(`/clients/${clientId}/web/watches/import-sitemap`, data, { timeout: 75_000 }).then((r) => r.data),
+  get: (watchId: string) => api.get<WebWatchDetail>(`/web/watches/${watchId}`).then((r) => r.data),
+  update: (watchId: string, data: WebWatchUpdate) =>
+    api.patch<WebWatch>(`/web/watches/${watchId}`, data).then((r) => r.data),
+  archive: (watchId: string) => api.post<WebWatch>(`/web/watches/${watchId}/archive`).then((r) => r.data),
+  restore: (watchId: string) => api.post<WebWatch>(`/web/watches/${watchId}/restore`).then((r) => r.data),
+  check: (watchId: string) => api.post<WebCheckAccepted>(`/web/watches/${watchId}/check`).then((r) => r.data),
+  checkAll: (clientId: number) =>
+    api.post<WebCheckAccepted>(`/clients/${clientId}/web/watches/check-all`).then((r) => r.data),
+  progress: (clientId: number) =>
+    api.get<WebCheckProgress>(`/clients/${clientId}/web/watches/progress`).then((r) => r.data),
+  // Una petición a la web del cliente (20 s como mucho en el servidor).
+  preview: (watchId: string, data: WebWatchPreviewInput) =>
+    api.post<WebWatchPreview>(`/web/watches/${watchId}/preview`, data, { timeout: 35_000 }).then((r) => r.data),
+  history: (watchId: string, limit = 20) =>
+    api.get<{ snapshots: WebSnapshotRow[] }>(`/web/watches/${watchId}/history`, { params: { limit } }).then((r) => r.data),
+  runs: (clientId: number, limit = 10) =>
+    api.get<{ runs: WebSweepRun[] }>(`/clients/${clientId}/web/runs`, { params: { limit } }).then((r) => r.data),
+  runErrors: (runId: string) =>
+    api.get<{ run: WebSweepRun; errors: WebRunError[] }>(`/web/runs/${runId}/errors`).then((r) => r.data),
+  settings: (clientId: number) =>
+    api.get<WebChangeSettings>(`/clients/${clientId}/web/settings/changes`).then((r) => r.data),
+  saveCapture: (clientId: number, data: WebCaptureSettingsInput) =>
+    api.put<WebChangeSettings>(`/clients/${clientId}/web/settings/capture`, data).then((r) => r.data),
+  saveCalendar: (clientId: number, data: WebCalendarSettingsInput) =>
+    api.put<WebChangeSettings>(`/clients/${clientId}/web/settings/calendar`, data).then((r) => r.data),
+  holidays: (year: number) =>
+    api.get<{ year: number; holidays: string[] }>("/web/settings/holidays", { params: { anio: year } }).then((r) => r.data),
+}
+
+export const webChangesApi = {
+  list: (filters: WebChangeFilters = {}) =>
+    api.get<WebChangeList>("/web/changes", { params: filters }).then((r) => r.data),
+  get: (changeId: string) => api.get<WebChangeDetail>(`/web/changes/${changeId}`).then((r) => r.data),
+  diff: (changeId: string) => api.get<WebTextDiff>(`/web/changes/${changeId}/diff`).then((r) => r.data),
+  htmlDiff: (changeId: string) => api.get<WebHtmlDiff>(`/web/changes/${changeId}/html-diff`).then((r) => r.data),
+  ack: (changeId: string, note: string | null = null) =>
+    api.post<WebChange>(`/web/changes/${changeId}/ack`, { note }).then((r) => r.data),
+  ackAll: (data: { client_id?: number | null; severity?: WebSeverity | null }) =>
+    api.post<{ acknowledged: number }>("/web/changes/ack-all", data).then((r) => r.data),
 }
 
 export const vigilApi = {

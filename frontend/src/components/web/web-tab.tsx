@@ -1,7 +1,8 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Activity, ExternalLink, Pause, Play, Plus, Trash2, Zap } from "lucide-react"
+import { Link } from "react-router-dom"
+import { Activity, ExternalLink, ListChecks, Pause, Play, Plus, Trash2, Zap } from "lucide-react"
 import { webApi } from "@/lib/api"
 import type { UptimeProbeResult, UptimeTarget } from "@/lib/types"
 import { useAuth } from "@/context/auth-context"
@@ -11,6 +12,10 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { UptimeStatusPill, formatInstant, formatMinutes, formatPct } from "@/components/web/uptime-status"
+import { WebWatchesCard } from "@/components/web/web-watches-card"
+import { WebChangesList, type ChangeListFilters } from "@/components/web/web-changes-list"
+import { WebRunsCard } from "@/components/web/web-runs-card"
+import { WebChangeSettingsCard } from "@/components/web/web-change-settings-card"
 
 interface Props {
   clientId: number
@@ -26,11 +31,41 @@ const OUTCOME_LABEL: Record<UptimeProbeResult["outcome"], string> = {
 }
 
 /**
- * Pestaña "Web" de la ficha: si responde cada URL vigilada del cliente, su
- * disponibilidad y sus últimas caídas. Leer = ver; escribir = gestionar URLs
- * y "Probar ahora" (que no cambia el estado: sólo informa).
+ * Pestaña "Web" de la ficha. Arriba la disponibilidad (fase 1); debajo la
+ * vigilancia de cambios (fase 2): URLs vigiladas, cambios sin revisar, últimos
+ * barridos y, con escritura en `web`, calendario y captura.
  */
 export function WebTab({ clientId, website }: Props) {
+  const { hasPermission } = useAuth()
+  const canWrite = hasPermission("web", true)
+  const [changeFilters, setChangeFilters] = useState<ChangeListFilters>({ severity: "all", pending: true })
+  return (
+    <div className="space-y-4">
+      <UptimeCard clientId={clientId} website={website} />
+      <WebWatchesCard clientId={clientId} />
+      <Card>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+          <CardTitle className="flex items-center gap-2 text-base"><ListChecks className="h-4 w-4" /> Cambios detectados</CardTitle>
+          <Link to={`/web/cambios?cliente=${clientId}`} className="text-xs text-brand hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-sm">
+            Abrir en Cambios web
+          </Link>
+        </CardHeader>
+        <CardContent>
+          <WebChangesList clientId={clientId} filters={changeFilters} onFiltersChange={setChangeFilters} limit={50} />
+        </CardContent>
+      </Card>
+      <WebRunsCard clientId={clientId} />
+      {canWrite && <WebChangeSettingsCard clientId={clientId} />}
+    </div>
+  )
+}
+
+/**
+ * Disponibilidad: si responde cada URL vigilada del cliente, su disponibilidad
+ * y sus últimas caídas. Leer = ver; escribir = gestionar URLs y "Probar ahora"
+ * (que no cambia el estado: sólo informa).
+ */
+function UptimeCard({ clientId, website }: Props) {
   const { hasPermission } = useAuth()
   const canWrite = hasPermission("web", true)
   const qc = useQueryClient()

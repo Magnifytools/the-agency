@@ -2,10 +2,10 @@ from __future__ import annotations
 from typing import Optional
 
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from backend.db.models import ContractType, ClientStatus
 from backend.services.seo_control import clean_brand_terms, clean_page_groups
-from backend.services.seo_traffic import SeoTrend, seo_traffic
+from backend.services.seo_traffic import SeoTrend
 
 
 class ClientCreate(BaseModel):
@@ -118,24 +118,12 @@ class ClientResponse(BaseModel):
     def _page_groups_list(cls, value):
         return value or []
 
-    # Semáforo SEO: derivado del summary de Engine, sin almacenamiento propio.
-    @computed_field
-    @property
-    def seo_clicks_change_pct(self) -> Optional[float]:
-        traffic = seo_traffic(self.engine_summary_data)
-        return traffic.clicks_change_pct if traffic else None
-
-    @computed_field
-    @property
-    def seo_impressions_change_pct(self) -> Optional[float]:
-        traffic = seo_traffic(self.engine_summary_data)
-        return traffic.impressions_change_pct if traffic else None
-
-    @computed_field
-    @property
-    def seo_trend(self) -> Optional[SeoTrend]:
-        traffic = seo_traffic(self.engine_summary_data)
-        return traffic.trend if traffic else None
+    # Semáforo SEO (Search Console propio, misma ventana que el estado). No
+    # son columnas: los rellena `seo_traffic.attach_seo_traffic` en la lista y
+    # en la ficha; sin propiedad o sin datos quedan a null.
+    seo_clicks_change_pct: Optional[float] = None
+    seo_impressions_change_pct: Optional[float] = None
+    seo_trend: Optional[SeoTrend] = None
 
 
 class ClientDocumentResponse(BaseModel):

@@ -31,7 +31,7 @@ from backend.api.routes import (
     bank_import,
     usage_stats, job_runtime, vigil, ga4,
     credentials,
-    web_uptime,
+    web_uptime, web_watches, web_changes, web_settings,
 )
 
 # ── Re-export migration/seed functions so scripts/init_db.py keeps working ──
@@ -227,6 +227,11 @@ _CORE_ROUTERS = [
     credentials,
     # web_uptime: Webs, disponibilidad (monitor de caídas, módulo ``web``).
     web_uptime,
+    # web_watches / web_changes / web_settings: Webs, vigilancia de cambios
+    # (portada de Vigil; el barrido lo hace el job ``web_sweep``).
+    web_watches,
+    web_changes,
+    web_settings,
     # holidays: los festivos de empresa (Ajustes → Festivos, plan de la mañana).
     holidays,
     # changes: el Undo del shell. No es una pantalla, es la red de seguridad
