@@ -189,6 +189,8 @@ export const clientSeoKeys = {
   summary: (clientId: number, days: number) => ["client-seo", clientId, "summary", days] as const,
   list: (clientId: number, kind: "queries" | "pages", params: object) =>
     ["client-seo", clientId, kind, params] as const,
+  history: (clientId: number, query: string) => ["client-seo", clientId, "history", query] as const,
+  groups: (clientId: number, days: number) => ["client-seo", clientId, "groups", days] as const,
 }
 
 export async function invalidateClientChange(queryClient: QueryClient, clientIds: number[] = []) {

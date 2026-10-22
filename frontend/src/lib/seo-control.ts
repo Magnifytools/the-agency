@@ -1,5 +1,5 @@
 import { gscErrorLabel } from "@/lib/gsc"
-import type { SeoControlStatus } from "@/lib/types"
+import type { SeoControlStatus, SeoPageGroup } from "@/lib/types"
 
 // Mismos límites que `backend/services/seo_control.py` (el backend manda).
 export const MAX_BRAND_TERMS = 20
@@ -78,6 +78,36 @@ export function suggestBrandTerms(
     if (brandTermProblem(term, [...current, ...out]) === null) out.push(term)
   }
   return out
+}
+
+// Grupos de URL: mismos límites que el backend (que además valida las regex).
+export const MAX_PAGE_GROUPS = 30
+export const MAX_GROUP_RULES = 20
+export const MAX_GROUP_NAME = 60
+export const MAX_RULE_VALUE = 200
+export const UNGROUPED = "Sin grupo"
+
+/** Primer problema de los grupos que se están editando, o null. Las regex las revisa el servidor. */
+export function pageGroupsProblem(groups: SeoPageGroup[]): string | null {
+  if (groups.length > MAX_PAGE_GROUPS) return `Como mucho ${MAX_PAGE_GROUPS} grupos.`
+  const seen = new Set<string>()
+  for (const [index, group] of groups.entries()) {
+    const name = group.name.split(/\s+/).filter(Boolean).join(" ")
+    if (!name) return `El grupo ${index + 1} necesita un nombre.`
+    if (name.length > MAX_GROUP_NAME) return `«${name}»: el nombre tiene más de ${MAX_GROUP_NAME} caracteres.`
+    const key = name.toLocaleLowerCase("es")
+    if (key === UNGROUPED.toLocaleLowerCase("es")) return `«${UNGROUPED}» está reservado.`
+    if (seen.has(key)) return `Hay dos grupos llamados «${name}».`
+    seen.add(key)
+    if (group.rules.length === 0) return `«${name}» necesita al menos una regla.`
+    if (group.rules.length > MAX_GROUP_RULES) return `«${name}» tiene más de ${MAX_GROUP_RULES} reglas.`
+    for (const rule of group.rules) {
+      const value = rule.value.trim()
+      if (!value) return `«${name}» tiene una regla vacía.`
+      if (value.length > MAX_RULE_VALUE) return `«${name}»: cada regla tiene como mucho ${MAX_RULE_VALUE} caracteres.`
+    }
+  }
+  return null
 }
 
 /** Texto para el estado vacío de cada estado de la propiedad. */

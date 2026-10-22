@@ -1,0 +1,26 @@
+{
+  "version": "20261022_gsc_query_monthly_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS gsc_query_monthly (\n site_url VARCHAR(255) NOT NULL,\n month DATE NOT NULL,\n query TEXT NOT NULL,\n clicks INTEGER NOT NULL,\n impressions INTEGER NOT NULL,\n weighted_position_sum DOUBLE PRECISION NOT NULL,\n PRIMARY KEY (site_url, query, month),\n CONSTRAINT ck_gsc_query_monthly_first_day CHECK (EXTRACT(DAY FROM month) = 1)\n)",
+    "ALTER TABLE gsc_detail_sync ADD COLUMN IF NOT EXISTS monthly_backfilled_at TIMESTAMPTZ"
+  ],
+  "tables": {
+    "gsc_query_monthly": {
+      "site_url": ["varchar", false, 255],
+      "month": ["date", false, null],
+      "query": ["text", false, null],
+      "clicks": ["int4", false, null],
+      "impressions": ["int4", false, null],
+      "weighted_position_sum": ["float8", false, null]
+    },
+    "gsc_detail_sync": {
+      "monthly_backfilled_at": ["timestamptz", true, null]
+    }
+  },
+  "primary_keys": {
+    "gsc_query_monthly": ["site_url", "query", "month"]
+  },
+  "checks": {
+    "gsc_query_monthly": ["ck_gsc_query_monthly_first_day"]
+  }
+}

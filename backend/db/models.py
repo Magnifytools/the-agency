@@ -396,6 +396,8 @@ class Client(UTCTimestampMixin, Base):
     gsc_url = Column(String(255), nullable=True)
     # Control SEO: términos que marcan una búsqueda como "de marca" (≤ 20).
     brand_terms = Column(JSONB, nullable=False, default=list, server_default="[]")
+    # Control SEO: grupos de URL propios [{name, rules: [{type, value}]}] (≤ 30).
+    seo_page_groups = Column(JSONB, nullable=False, default=list, server_default="[]")
     # Billing settings
     billing_cycle = Column(Enum(BillingCycle), nullable=True)
     billing_day = Column(Integer, nullable=True)  # 1-28
@@ -1938,6 +1940,30 @@ class GscDetailSync(Base):
     # Filas guardadas en la ventana de 120 días tras la última pasada.
     query_rows = Column(Integer, nullable=True)
     page_rows = Column(Integer, nullable=True)
+    # Cuándo se importaron de Google los meses anteriores a los 120 días
+    # (`gsc_query_monthly`). NULL = pendiente: la próxima pasada lo intenta.
+    monthly_backfilled_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class GscQueryMonthly(Base):
+    """Total MENSUAL por consulta de una propiedad: historial de posiciones más
+    allá de los 120 días del detalle diario (hasta 16 meses).
+
+    Sólo meses completos. `weighted_position_sum` = SUM(posición × impresiones),
+    para recalcular la posición ponderada al juntar meses. PK con la consulta
+    antes del mes: la lectura es "el historial de ESTA consulta".
+    """
+    __tablename__ = "gsc_query_monthly"
+    __table_args__ = (
+        CheckConstraint("EXTRACT(DAY FROM month) = 1", name="ck_gsc_query_monthly_first_day"),
+    )
+
+    site_url = Column(String(255), primary_key=True)
+    query = Column(Text, primary_key=True)
+    month = Column(Date, primary_key=True)  # día 1 del mes
+    clicks = Column(Integer, nullable=False)
+    impressions = Column(Integer, nullable=False)
+    weighted_position_sum = Column(Float, nullable=False)
 
 
 # ── Accesos (credenciales compartidas) ───────────────────────────────────────

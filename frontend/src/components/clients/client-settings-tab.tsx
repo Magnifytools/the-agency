@@ -16,6 +16,7 @@ import { invalidateClientChange } from "@/lib/query-keys"
 import { ClientShareLinkCard } from "@/components/clients/client-share-link-card"
 import { ClientSlackCard } from "@/components/web/client-slack-card"
 import { BrandTermsEditor } from "@/components/clients/seo-control/brand-terms-editor"
+import { SeoPageGroupsEditor } from "@/components/clients/seo-control/seo-page-groups-editor"
 
 interface Props {
   client: Client
@@ -246,6 +247,9 @@ export function ClientSettingsTab({ client }: Props) {
           </form>
         </CardContent>
       </Card>
+
+      {/* Control SEO: grupos de URL propios (se guardan aparte del formulario). */}
+      <SeoPageGroupsEditor client={client} canWrite={canWriteClients} />
 
       <ClientShareLinkCard clientId={client.id} />
 

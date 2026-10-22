@@ -43,8 +43,8 @@ async def test_upgrade_twice_keeps_clients_and_starts_empty(engine):
     await deployment_schema.check_deployment_ready(engine)
     assert MIGRATION in deployment_schema.MIGRATIONS
     async with engine.connect() as conn:
-        # brand_terms llega con un paso posterior, vacío.
-        assert await conn.scalar(text("SELECT to_jsonb(c) - 'brand_terms' FROM clients c WHERE id=1")) == before
+        # brand_terms y seo_page_groups llegan con pasos posteriores, vacíos.
+        assert await conn.scalar(text("SELECT to_jsonb(c) - 'brand_terms' - 'seo_page_groups' FROM clients c WHERE id=1")) == before
         for table in ("web_uptime_targets", "web_uptime_state", "web_outages", "web_uptime_probes",
                       "client_web_settings"):
             assert await conn.scalar(text(f"SELECT count(*) FROM {table}")) == 0

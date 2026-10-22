@@ -92,7 +92,7 @@ describe("ClientSettingsTab permissions", () => {
     show()
     const input = screen.getByLabelText("Cliente en Vigil")
     await userEvent.type(input, "parklex")
-    await userEvent.click(screen.getByRole("button", { name: /Guardar/ }))
+    await userEvent.click(screen.getByRole("button", { name: "Guardar" }))
     expect(mocks.update).toHaveBeenCalledWith(5, expect.objectContaining({ vigil_slug: "parklex" }))
   })
 })

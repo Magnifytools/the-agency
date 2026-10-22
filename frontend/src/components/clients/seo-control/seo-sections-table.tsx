@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import { FolderTree } from "lucide-react"
 import type { SeoSection } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,6 +10,13 @@ interface Props {
   sections: SeoSection[]
   selected: string | null
   onSelect: (key: string | null) => void
+  /** Por defecto, secciones; los grupos de URL reutilizan la tabla. */
+  title?: string
+  hint?: string
+  emptyText?: string
+  columnLabel?: string
+  /** Controles a la derecha del título (p. ej. Secciones / Grupos). */
+  actions?: ReactNode
 }
 
 /**
@@ -16,22 +24,28 @@ interface Props {
  * impresiones por página no suman el total de la propiedad (una búsqueda que
  * enseña dos páginas cuenta en las dos), así que sólo se enseñan en absoluto.
  */
-export function SeoSectionsTable({ sections, selected, onSelect }: Props) {
+export function SeoSectionsTable({
+  sections, selected, onSelect, title = "Secciones", hint = "Pulsa una sección para ver sus páginas abajo.",
+  emptyText = "Sin páginas con impresiones en la ventana.", columnLabel = "Sección", actions,
+}: Props) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base"><FolderTree className="h-4 w-4" /> Secciones</CardTitle>
-        <p className="text-xs text-muted-foreground">Pulsa una sección para ver sus páginas abajo.</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-base"><FolderTree className="h-4 w-4" /> {title}</CardTitle>
+          {actions}
+        </div>
+        <p className="text-xs text-muted-foreground">{hint}</p>
       </CardHeader>
       <CardContent>
         {sections.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Sin páginas con impresiones en la ventana.</p>
+          <p className="text-sm text-muted-foreground">{emptyText}</p>
         ) : (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Sección</TableHead>
+                  <TableHead>{columnLabel}</TableHead>
                   <TableHead className="min-w-[140px]">Reparto de clics</TableHead>
                   <TableHead className="text-right">Clics</TableHead>
                   <TableHead className="text-right">Impresiones</TableHead>

@@ -328,6 +328,26 @@ admin_users, admin_settings
   ningún cliente activo sigue (cliente Antiguo o `gsc_url` cambiada). Corre en
   cada pasada, haya cuenta conectada o no. Desconectar con `purge_data` borra
   también el detalle de esas propiedades.
+- **Historial mensual por consulta (más allá de los 120 días)**: tabla
+  `gsc_query_monthly` (PK sitio+consulta+mes, mes = día 1 con CHECK;
+  `weighted_position_sum` = SUM(posición × impresiones) para recalcular la
+  posición ponderada), migración `gsc_query_monthly_v1` (añade también
+  `gsc_detail_sync.monthly_backfilled_at`). Tras cada pasada del detalle,
+  `sync_monthly` (en `gsc_detail_service.py`): (1) si la marca es NULL, pide a
+  Google UNA vez cada mes del historial (16 meses contando el actual,
+  `history_floor`) que el detalle diario no tiene entero, un mes por petición
+  (`dimensions: ["query"]`, paginado de 25.000); un `GscSiteError` se apunta en
+  el log y se reintenta al día siguiente sin bloquear el Control SEO (los de
+  cuenta suben como siempre); (2) resume en SQL cada mes COMPLETO del detalle
+  diario (borra el mes e inserta: idempotente). "Completo" = todos sus días
+  desde `coverage_start` (el primer día guardado de consultas o el siguiente al
+  que borra la retención, el más tardío) y con datos finales hasta su último
+  día (`last_data_date`). En tests, el fixture autouse `_no_real_gsc_monthly`
+  sustituye `query_month` (nunca sale a la red).
+- **Retención del historial**: se borra lo anterior a `history_floor(hoy)` y,
+  como el detalle, todo lo de webs sin cliente activo; desconectar con
+  `purge_data` también lo borra (y la marca, así que se reimporta si otra
+  cuenta ve la web).
 - **Dos trampas al leer el detalle**: (1) Google anonimiza las consultas poco
   frecuentes, así que la suma de consultas < total de `gsc_daily`; "sin
   clasificar" = total − suma de consultas. (2) Las impresiones por página NO
@@ -373,9 +393,35 @@ admin_users, admin_settings
   dominio, otros subdominios se agrupan por host; en las de prefijo, la ruta
   cuenta desde el prefijo). Reparto por CLICS: las impresiones por página no
   suman el total, sólo se enseñan en absoluto.
+- **Historial de posiciones**: `GET /seo/queries/history?query=` → meses
+  guardados (hasta 16, sólo completos; un mes con datos de la web pero sin esa
+  consulta sale con 0 clics y posición null) + un punto por día del detalle
+  (desde el primer día guardado, días sin fila = 0). `monthly_backfilled`
+  dice si ya se trajeron los meses antiguos. `/seo/queries` y el resumen
+  añaden `trend` (posición de los últimos 6 meses guardados) y `trend_months`.
+  UI: pulsar una consulta abre `seo-query-history.tsx` (recharts, posición en
+  eje invertido) y la columna "N meses" pinta la miniatura.
+- **Grupos de URL**: `clients.seo_page_groups` (JSONB, migración
+  `client_seo_page_groups_v1`), lista ordenada de `{name, rules: [{type:
+  prefix|contains|regex, value}]}`; ≤ 30 grupos, ≤ 20 reglas, nombre 1–60
+  único y nunca "Sin grupo", valor ≤ 200 (`clean_page_groups`). Se guarda con
+  el PUT del cliente (`_UPDATABLE_CLIENT_FIELDS`), así que entra en el Deshacer.
+  Una página va al PRIMER grupo que la acepta; si ninguno, "Sin grupo".
+  `prefix` mira la ruta (como las secciones; con `http…` mira la URL entera),
+  `contains` la URL entera y `regex` la ruta, sin mayúsculas.
+  **Regex sin timeout de `re`**: se validan al guardar (`regex_problem`): sin
+  repeticiones anidadas, sin alternativas dentro de una repetición sin tope,
+  sin referencias hacia atrás ni lookarounds y ≤ 2 repeticiones sin tope; y el
+  reparto entero tiene un tope de 5 s (`PageGroupTimeout` → 422). API:
+  `GET /seo/groups?days=` (mismas cifras que las secciones, en el orden
+  guardado y con los grupos vacíos), `POST /seo/groups/preview` (prueba sin
+  guardar, sólo lectura de `clients`) y `/seo/pages?group=`. UI: conmutador
+  Secciones/Grupos en la pestaña y editor en Configuración
+  (`seo-page-groups-editor.tsx`, con "Probar").
 - **Fuera de la IA y del MCP a propósito** (política de privacidad): lo vigila
   `test_el_detalle_de_search_console_no_llega_a_la_ia`, que también prohíbe
-  `seo_control`/`client_seo` en cualquier camino de IA.
+  `seo_control`/`client_seo`, `gsc_query_monthly`, `seo_page_groups` y
+  `query_history` en cualquier camino de IA.
 
 ## Estado del cliente (cartera)
 
@@ -676,7 +722,8 @@ admin_users, admin_settings
   `spa_headers()` en `backend/main.py`. `robots.txt` las deja leer (Allow) para
   que el noindex se vea; el resto sigue en `Disallow: /`.
 - **Lo que dicen tiene que ser verdad en el código**: qué se guarda de Search
-  Console (totales y 120 días de detalle por consulta y página), GA4 y Calendar, que nada de eso va a la IA, que desconectar borra el
+  Console (totales, 120 días de detalle por consulta y página y un total
+  mensual por consulta de hasta 16 meses), GA4 y Calendar, que nada de eso va a la IA, que desconectar borra el
   token y revoca en Google, que las cifras sólo se borran si el admin lo marca,
   que desconectar Calendar borra sus eventos importados y que los eventos de
   Google se borran 30 días después de terminar. Si cambias qué se lee o se
@@ -838,4 +885,4 @@ cd mcp-server && .venv/bin/python -m pytest -q
 
 ---
 
-*Actualizado: 21 Oct 2026*
+*Actualizado: 22 Oct 2026*

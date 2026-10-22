@@ -3,6 +3,7 @@ from sqlalchemy import text
 
 from backend.startup import schema_baseline
 from backend.startup.client_brand_terms_schema import MIGRATION as CLIENT_BRAND_TERMS_MIGRATION
+from backend.startup.client_seo_page_groups_schema import MIGRATION as CLIENT_SEO_PAGE_GROUPS_MIGRATION
 from backend.startup.client_onboarding_schema import (
     MIGRATION as CLIENT_ONBOARDING_MIGRATION,
 )
@@ -13,6 +14,7 @@ from backend.startup.inbox_recovery_schema_v2 import (
 )
 from backend.startup.ga4_schema import MIGRATION as GA4_MIGRATION
 from backend.startup.gsc_detail_schema import MIGRATION as GSC_DETAIL_MIGRATION
+from backend.startup.gsc_query_monthly_schema import MIGRATION as GSC_QUERY_MONTHLY_MIGRATION
 from backend.startup.gsc_accounts_schema import MIGRATION as GSC_ACCOUNTS_MIGRATION
 from backend.startup.gsc_schema import MIGRATION as GSC_MIGRATION
 from backend.startup.job_runtime_schema import MIGRATION as JOB_RUNTIME_MIGRATION
@@ -43,7 +45,8 @@ MIGRATIONS = (
     TASK_COMMENT_AI_DRAFT_MIGRATION, CLIENT_SHARE_LINK_MIGRATION,
     CREDENTIALS_MIGRATION, REPORT_POLICY_CADENCES_MIGRATION,
     REPORT_POLICY_LEGACY_RETIREMENT_MIGRATION, WEB_UPTIME_MIGRATION, GSC_DETAIL_MIGRATION,
-    CLIENT_BRAND_TERMS_MIGRATION, WEB_CHANGES_MIGRATION,
+    CLIENT_BRAND_TERMS_MIGRATION, WEB_CHANGES_MIGRATION, GSC_QUERY_MONTHLY_MIGRATION,
+    CLIENT_SEO_PAGE_GROUPS_MIGRATION,
 )
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 

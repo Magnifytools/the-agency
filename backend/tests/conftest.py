@@ -156,3 +156,15 @@ def _no_real_google_revoke(monkeypatch):
     monkeypatch.setattr(gsc, "revoke_token", fake)
     monkeypatch.setattr(google_calendar, "revoke_token", fake)
     return fake
+
+
+@pytest.fixture(autouse=True)
+def _no_real_gsc_monthly(monkeypatch):
+    """El historial mensual de Search Console pide meses a Google tras importar
+    el detalle: en los tests nunca sale a la red. Por defecto Google "no
+    devuelve nada"; un test que quiera otra respuesta pasa `fetch_month=`."""
+    from backend.services import gsc_detail_service
+
+    fake = AsyncMock(return_value=[])
+    monkeypatch.setattr(gsc_detail_service, "query_month", fake)
+    return fake

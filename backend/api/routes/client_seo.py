@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import require_module
@@ -66,6 +67,7 @@ async def client_seo_pages(
     days: int = Query(seo_control.SEO_WINDOW_DAYS),
     sort: seo_control.MoverSort = Query("clicks_gain"),
     section: Optional[str] = Query(None, max_length=300),
+    group: Optional[str] = Query(None, max_length=seo_control.MAX_GROUP_NAME),
     q: Optional[str] = Query(None, max_length=200),
     min_impressions: int = Query(seo_control.DEFAULT_MIN_IMPRESSIONS, ge=0, le=1_000_000),
     limit: int = Query(25, ge=1, le=seo_control.MAX_LIMIT),
@@ -73,7 +75,68 @@ async def client_seo_pages(
     _: User = Depends(require_module("clients")),
 ):
     client = await _client_or_404(db, client_id, days)
-    return await seo_control.movers(
-        db, client, "page", days=days, sort=sort, section=section, q=q,
-        min_impressions=min_impressions, limit=limit,
-    )
+    try:
+        return await seo_control.movers(
+            db, client, "page", days=days, sort=sort, section=section, group=group, q=q,
+            min_impressions=min_impressions, limit=limit,
+        )
+    except seo_control.PageGroupTimeout:
+        raise HTTPException(status_code=422, detail=_GROUPS_TOO_SLOW)
+
+
+@router.get("/{client_id}/seo/queries/history")
+async def client_seo_query_history(
+    client_id: int,
+    query: str = Query(..., min_length=1, max_length=1000),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("clients")),
+):
+    """Historial de una consulta: meses guardados (hasta 16) y días del detalle (120)."""
+    client = await _client_or_404(db, client_id, seo_control.SEO_WINDOW_DAYS)
+    return await seo_control.query_history(db, client, query)
+
+
+_GROUPS_TOO_SLOW = "Las reglas de los grupos tardan demasiado; simplifica las regex"
+
+
+@router.get("/{client_id}/seo/groups")
+async def client_seo_groups(
+    client_id: int,
+    days: int = Query(seo_control.SEO_WINDOW_DAYS),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("clients")),
+):
+    """Clics, impresiones y posición por grupo de URL del cliente."""
+    client = await _client_or_404(db, client_id, days)
+    try:
+        return await seo_control.page_groups(db, client, days=days)
+    except seo_control.PageGroupTimeout:
+        raise HTTPException(status_code=422, detail=_GROUPS_TOO_SLOW)
+
+
+class GroupsPreview(BaseModel):
+    groups: list
+
+    @field_validator("groups", mode="before")
+    @classmethod
+    def _groups(cls, value):
+        return seo_control.clean_page_groups(value)
+
+
+@router.post("/{client_id}/seo/groups/preview")
+async def client_seo_groups_preview(
+    client_id: int,
+    body: GroupsPreview,
+    days: int = Query(seo_control.SEO_WINDOW_DAYS),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("clients")),
+):
+    """Prueba unos grupos SIN guardarlos: cuántas páginas y clics recoge cada uno.
+
+    Sólo lee (POST porque los grupos van en el cuerpo); guardar es el PUT del cliente.
+    """
+    client = await _client_or_404(db, client_id, days)
+    try:
+        return await seo_control.page_groups(db, client, days=days, groups=body.groups)
+    except seo_control.PageGroupTimeout:
+        raise HTTPException(status_code=422, detail=_GROUPS_TOO_SLOW)
