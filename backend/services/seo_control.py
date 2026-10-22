@@ -16,7 +16,8 @@ defecto, o 7). Termina en el último día que tienen a la vez los totales y el
 detalle; la anterior son los `days` días justo antes.
 
 Historial por consulta: los meses de `gsc_query_monthly` (hasta 16, sólo
-completos) más los días del detalle diario (120). Grupos de URL: reglas
+completos, más los anteriores importados de The Engine) más los días del
+detalle diario (120). Grupos de URL: reglas
 propias del cliente (`clients.seo_page_groups`); cada página va al PRIMER
 grupo que la acepta y, si ninguno, a "Sin grupo".
 
@@ -698,6 +699,10 @@ _HISTORY_DAYS_SQL = text("""
     FROM gsc_query_daily
     WHERE site_url = :site AND query = :query AND date >= :start AND date <= :end
 """)
+_IMPORTED_MONTHS_SQL = text("""
+    SELECT DISTINCT month FROM gsc_query_monthly
+    WHERE site_url = :site AND source = 'engine' AND month >= :floor
+""")
 _FIRST_DAY_SQL = text("SELECT MIN(date) FROM gsc_query_daily WHERE site_url = :site")
 _TREND_MONTHLY_SQL = text("""
     SELECT query, month, impressions, weighted_position_sum AS weighted
@@ -706,10 +711,19 @@ _TREND_MONTHLY_SQL = text("""
 """)
 
 
+_IMPORTED_FLOOR_SQL = text("""
+    SELECT MIN(month) FROM gsc_query_monthly WHERE site_url = :site AND source = 'engine'
+""")
+
+
 async def _site_months(db, source: SeoSource) -> list[date]:
-    """Meses completos guardados de la propiedad dentro de los 16 del historial."""
+    """Meses completos guardados de la propiedad dentro de los 16 del historial,
+    más los anteriores importados de The Engine (no caducan)."""
     async def compute():
-        params = {"site": source.site_url, "floor": history_floor(source.end), "last": source.end.replace(day=1)}
+        floor = history_floor(source.end)
+        imported = await db.scalar(_IMPORTED_FLOOR_SQL, {"site": source.site_url})
+        params = {"site": source.site_url, "floor": min(floor, imported) if imported else floor,
+                  "last": source.end.replace(day=1)}
         return [r.month for r in (await db.execute(_SITE_MONTHS_SQL, params)).all()]
     return await _cached(("months", source.site_url, source.end, source.version), compute)
 
@@ -745,13 +759,16 @@ async def query_history(db, client: Client, query: str) -> dict:
         return {**_blocked_payload(source), "query": query, "is_brand": None,
                 "months": [], "days": [], "monthly_backfilled": False}
     site = source.site_url
-    floor = history_floor(source.end)
     site_months = await _site_months(db, source)
+    floor = min([history_floor(source.end), *site_months[:1]])
     monthly = {r.month: r for r in (await db.execute(
         _HISTORY_MONTHS_SQL, {"site": site, "query": query, "floor": floor})).all()}
+    # Meses de la web que sólo existen importados de The Engine (antes de los de Google).
+    imported = set((await db.execute(_IMPORTED_MONTHS_SQL, {"site": site, "floor": floor})).scalars().all())
     months = [
         {"month": m.isoformat(), **(_point(monthly[m].clicks, monthly[m].impressions, monthly[m].weighted)
-                                    if m in monthly else _point(0, 0, 0.0))}
+                                    if m in monthly else _point(0, 0, 0.0)),
+         "imported": m in imported}
         for m in site_months
     ]
 

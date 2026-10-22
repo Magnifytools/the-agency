@@ -64,10 +64,31 @@ it("la política cuenta el total mensual por búsqueda (historial de posiciones)
   expect(text).toContain("Actualizada el 22 de octubre de 2026")
   expect(text).toContain("Pasados esos 120 días, de cada búsqueda sólo conservamos un total por mes (clics, impresiones y posición media), durante un máximo de 16 meses y mientras la web esté asociada a un cliente activo")
   expect(text).toContain("El total mensual por búsqueda se conserva como mucho 16 meses y se borra antes si la web deja de estar asociada a un cliente activo")
-  expect(text).toContain("el borrado incluye el detalle por búsqueda y página y el total mensual por búsqueda")
+  expect(text).toContain("el borrado incluye el detalle por búsqueda y página, el total mensual por búsqueda")
   expect(text).toContain("Beyond those 120 days, we keep only a monthly total per search query (clicks, impressions and average position) for up to 16 months while the site is linked to an active client")
   expect(text).toContain("Monthly per-query totals are kept for up to 16 months and deleted earlier when the site is no longer linked to an active client")
-  expect(text).toContain("including query and page detail and monthly per-query totals")
+  expect(text).toContain("including query and page detail, monthly per-query totals")
+})
+
+it("la política cuenta los leads por página de entrada y el historial importado de la herramienta anterior", () => {
+  renderPage(<PrivacyPage />)
+  const text = (document.body.textContent ?? "").replace(/\s+/g, " ")
+  // Leads por landing (GA4): qué se guarda, sin datos personales, y cuánto tiempo.
+  expect(text).toContain("por día, página de entrada y canal (búsqueda orgánica, de pago, redes sociales…), guardamos el número de eventos que cuentan como lead para ese cliente")
+  expect(text).toContain("ya agregados por Google, durante un máximo de 16 meses")
+  expect(text).toContain("Ver qué páginas de entrada y qué canales traen leads a cada cliente")
+  expect(text).toContain("Los leads por página de entrada y canal se conservan como mucho 16 meses y se borran antes si la propiedad de Analytics deja de estar asociada a un cliente activo")
+  expect(text).toContain("y los leads por página de entrada. Si no lo elige, se conservan")
+  expect(text).toContain("per day, landing page and channel (organic search, paid search, social…), the number of events that count as a lead for that client")
+  expect(text).toContain("Lead events per landing page and channel are kept for up to 16 months and deleted earlier when the Analytics property is no longer linked to an active client")
+  expect(text).toContain("and lead events per landing page; otherwise they are kept")
+  // Historial de posiciones traído una vez de la herramienta anterior: no caduca a los 16 meses.
+  expect(text).toContain("totales mensuales por búsqueda anteriores a esos 16 meses, con los mismos datos de Search Console, que importamos una sola vez de nuestra herramienta anterior; se guardan mientras la web esté asociada a un cliente activo")
+  expect(text).toContain("el importado de nuestra herramienta anterior se conserva mientras la web esté asociada a un cliente activo")
+  expect(text).toContain("monthly per-query totals older than those 16 months, with the same Search Console data, imported once from our previous tool; they are kept while the site is linked to an active client")
+  expect(text).toContain("those imported from our previous tool are kept while the site is linked to an active client")
+  // Siguen sin ir a la IA.
+  expect(text).toContain("no se envían a ningún servicio de IA")
 })
 
 it("la página de inicio menciona el detalle por búsqueda y página", () => {
@@ -75,4 +96,6 @@ it("la página de inicio menciona el detalle por búsqueda y página", () => {
   const text = (document.body.textContent ?? "").replace(/\s+/g, " ")
   expect(text).toContain("y el detalle por búsqueda y página de los últimos 120 días")
   expect(text).toContain("per-query and per-page detail for the last 120 days")
+  expect(text).toContain("y los leads por página de entrada y canal")
+  expect(text).toContain("including daily lead events per landing page and channel")
 })

@@ -398,6 +398,10 @@ class Client(UTCTimestampMixin, Base):
     brand_terms = Column(JSONB, nullable=False, default=list, server_default="[]")
     # Control SEO: grupos de URL propios [{name, rules: [{type, value}]}] (≤ 30).
     seo_page_groups = Column(JSONB, nullable=False, default=list, server_default="[]")
+    # Leads por landing (GA4): eventos que cuentan como lead. Nombre exacto o
+    # prefijo terminado en "*" ("generate_lead_*"). Ver `services/ga4_leads.py`.
+    ga4_lead_events = Column(JSONB, nullable=False, default=lambda: ["generate_lead"],
+                             server_default='["generate_lead"]')
     # Billing settings
     billing_cycle = Column(Enum(BillingCycle), nullable=True)
     billing_day = Column(Integer, nullable=True)  # 1-28
@@ -1838,6 +1842,33 @@ class Ga4PropertySync(Base):
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
     last_data_date = Column(Date, nullable=True)
     error_code = Column(String(64), nullable=True)
+    # Leads por landing (`ga4_lead_daily`): cuándo se importaron los 16 meses,
+    # con qué eventos (si cambian, se vuelve a importar todo) y hasta qué día.
+    leads_backfilled_at = Column(DateTime(timezone=True), nullable=True)
+    leads_events = Column(String(1000), nullable=True)
+    leads_synced_through = Column(Date, nullable=True)
+    # Primer día que importó The Agency: lo anterior sólo puede venir de Engine.
+    leads_covered_from = Column(Date, nullable=True)
+    leads_error_code = Column(String(64), nullable=True)
+
+
+class Ga4LeadDaily(Base):
+    """Leads por día, landing y canal de una propiedad de GA4 (hasta 16 meses).
+
+    `leads` = número de eventos que el cliente cuenta como lead
+    (`clients.ga4_lead_events`). `landing_page` = host + ruta sin parámetros de
+    seguimiento (recortada a 2.000 caracteres). Nada por usuario.
+    """
+    __tablename__ = "ga4_lead_daily"
+    __table_args__ = (
+        CheckConstraint("char_length(landing_page) <= 2000", name="ck_ga4_lead_daily_landing_length"),
+    )
+
+    property_id = Column(String(32), primary_key=True)
+    date = Column(Date, primary_key=True)
+    landing_page = Column(Text, primary_key=True)
+    channel = Column(String(64), primary_key=True)
+    leads = Column(Integer, nullable=False)
 
 
 class GscDaily(Base):
@@ -1956,6 +1987,7 @@ class GscQueryMonthly(Base):
     __tablename__ = "gsc_query_monthly"
     __table_args__ = (
         CheckConstraint("EXTRACT(DAY FROM month) = 1", name="ck_gsc_query_monthly_first_day"),
+        CheckConstraint("source IN ('google', 'engine')", name="ck_gsc_query_monthly_source"),
     )
 
     site_url = Column(String(255), primary_key=True)
@@ -1964,6 +1996,11 @@ class GscQueryMonthly(Base):
     clicks = Column(Integer, nullable=False)
     impressions = Column(Integer, nullable=False)
     weighted_position_sum = Column(Float, nullable=False)
+    # 'google' = importado por The Agency (retención de 16 meses);
+    # 'engine' = historial traído una vez de The Engine
+    # (`scripts/import_engine_positions.py`): no caduca a los 16 meses, pero se
+    # borra igual si la web deja de tener cliente activo o al purgar la cuenta.
+    source = Column(String(16), nullable=False, default="google", server_default="google")
 
 
 # ── Accesos (credenciales compartidas) ───────────────────────────────────────

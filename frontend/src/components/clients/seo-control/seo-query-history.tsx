@@ -76,6 +76,7 @@ export function SeoQueryHistoryDialog({ clientId, query, onClose }: Props) {
   })
 
   const lastMonth = data?.months.at(-1)
+  const imported = data?.months.filter((m) => m.imported) ?? []
   return (
     <Dialog open={query != null} onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogHeader>
@@ -116,6 +117,8 @@ export function SeoQueryHistoryDialog({ clientId, query, onClose }: Props) {
           )}
           <p className="text-[11px] text-muted-foreground">
             Sólo meses cerrados (hasta 16). Un mes o día sin impresiones de esta búsqueda sale sin posición.
+            {imported.length > 0 && ` De ${formatMonth(imported[0].month)} a ${formatMonth(imported[imported.length - 1].month)}, `
+              + "importado de The Engine (una URL por búsqueda y día, así que los clics pueden quedarse cortos)."}
           </p>
         </div>
       )}

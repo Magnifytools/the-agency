@@ -2,6 +2,7 @@
 consulta y página (`services/seo_control.py`).
 
 Sólo lectura del módulo `clients`, con el mismo 404 que `/{id}/status`.
+También los leads por landing de GA4 (`/{id}/leads`, `services/ga4_leads.py`).
 Fuera del MCP y de la IA a propósito: el detalle de Search Console no sale de
 la app (política de privacidad).
 """
@@ -16,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.api.deps import require_module
 from backend.db.database import get_db
 from backend.db.models import Client, User
-from backend.services import seo_control
+from backend.services import ga4_leads, seo_control
 
 router = APIRouter(prefix="/api/clients", tags=["client-seo"])
 
@@ -140,3 +141,20 @@ async def client_seo_groups_preview(
         return await seo_control.page_groups(db, client, days=days, groups=body.groups)
     except seo_control.PageGroupTimeout:
         raise HTTPException(status_code=422, detail=_GROUPS_TOO_SLOW)
+
+
+@router.get("/{client_id}/leads")
+async def client_leads(
+    client_id: int,
+    days: int = Query(ga4_leads.WINDOW_CHOICES[-1]),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("clients")),
+):
+    """Leads por landing (GA4): total, landings con más leads y canales, frente
+    a la ventana anterior. Lo pinta la Vista general de la ficha."""
+    client = await db.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if days not in ga4_leads.WINDOW_CHOICES:
+        raise HTTPException(status_code=422, detail="La ventana es de 7 o 28 días")
+    return await ga4_leads.client_leads(db, client, days=days)

@@ -157,8 +157,8 @@ export interface SeoHistoryPoint {
 export interface SeoQueryHistory extends SeoSourceInfo {
   query: string
   is_brand: boolean | null
-  /** Meses completos guardados (hasta 16). */
-  months: (SeoHistoryPoint & { month: string })[]
+  /** Meses completos guardados (hasta 16, más los anteriores importados de The Engine). */
+  months: (SeoHistoryPoint & { month: string; imported?: boolean })[]
   /** Días del detalle (hasta 120). */
   days: (SeoHistoryPoint & { date: string })[]
   /** false mientras no se hayan traído los meses de antes de los 120 días. */
@@ -186,4 +186,30 @@ export interface SeoGroupsResponse extends SeoSourceInfo {
   window: SeoWindow | null
   groups: SeoGroupRow[]
   configured: number
+}
+
+// ── Leads por landing (GA4) ──
+
+export interface LeadsChange {
+  leads: number
+  /** null si no hay datos de la ventana anterior con los que comparar. */
+  previous: number | null
+  change_pct: number | null
+}
+
+export interface ClientLeads {
+  status: "ok" | "no_property" | "not_synced"
+  events: string[]
+  days: number
+  property_id?: string
+  error_code?: string | null
+  start?: string
+  end?: string
+  previous_start?: string
+  previous_end?: string
+  comparable?: boolean
+  total?: LeadsChange
+  landings?: (LeadsChange & { landing_page: string })[]
+  landing_count?: number
+  channels?: (LeadsChange & { channel: string })[]
 }

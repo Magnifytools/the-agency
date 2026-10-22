@@ -74,7 +74,7 @@ async def test_sync_uses_the_account_that_sees_each_property(db_session):
 
     result = await ga4_service.sync_all(_factory(db_session), fetch=fetch, list_fn=list_fn, today=date(2026, 10, 20))
 
-    assert result == {"status": "ok", "synced": 2, "failed": 1}
+    assert result == {"status": "ok", "synced": 2, "failed": 1, "leads_failed": 0}
     assert used["311111111"][0] == "v1:a" and used["322222222"][0] == "v1:b"
     # Primera vez: 16 meses hacia atrás hasta ayer.
     assert used["311111111"][2] == date(2026, 10, 19) and used["311111111"][1] == date(2026, 10, 19) - timedelta(days=486)

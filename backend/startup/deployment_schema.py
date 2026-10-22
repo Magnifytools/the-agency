@@ -18,6 +18,7 @@ from backend.startup.gsc_query_monthly_schema import MIGRATION as GSC_QUERY_MONT
 from backend.startup.gsc_accounts_schema import MIGRATION as GSC_ACCOUNTS_MIGRATION
 from backend.startup.gsc_schema import MIGRATION as GSC_MIGRATION
 from backend.startup.job_runtime_schema import MIGRATION as JOB_RUNTIME_MIGRATION
+from backend.startup.leads_engine_schema import MIGRATION as LEADS_ENGINE_MIGRATION
 from backend.startup.phase0_retirement_schema import MIGRATION as PHASE0_RETIREMENT_MIGRATION
 from backend.startup.project_review_schema import MIGRATION as PROJECT_REVIEW_MIGRATION
 from backend.startup.report_policy_cadences_schema import (
@@ -46,7 +47,7 @@ MIGRATIONS = (
     CREDENTIALS_MIGRATION, REPORT_POLICY_CADENCES_MIGRATION,
     REPORT_POLICY_LEGACY_RETIREMENT_MIGRATION, WEB_UPTIME_MIGRATION, GSC_DETAIL_MIGRATION,
     CLIENT_BRAND_TERMS_MIGRATION, WEB_CHANGES_MIGRATION, GSC_QUERY_MONTHLY_MIGRATION,
-    CLIENT_SEO_PAGE_GROUPS_MIGRATION,
+    CLIENT_SEO_PAGE_GROUPS_MIGRATION, LEADS_ENGINE_MIGRATION,
 )
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 
