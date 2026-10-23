@@ -10,6 +10,11 @@ from backend.startup.schema_runner import Migration
 
 _BYTES = (Path(__file__).with_name("schema_versions") / "vigil_v1.json").read_bytes()
 CONTRACT = json.loads(_BYTES)
+# Lo que crea este paso lo borra ``vigil_retirement_v1``. Leído del contrato (no
+# del módulo) para no importar en círculo; el checksum de ESTE paso no cambia.
+RETIREMENT_VERSION = json.loads(
+    (Path(__file__).with_name("schema_versions") / "vigil_retirement_v1.json").read_bytes()
+)["version"]
 
 
 async def apply(conn):
@@ -19,6 +24,11 @@ async def apply(conn):
 
 
 async def verify(conn):
+    # Ya retirado: que no esté es lo correcto (lo comprueba el paso de retirada).
+    if await conn.scalar(text(
+        "SELECT 1 FROM agency_schema_versions WHERE version=:version"
+    ), {"version": RETIREMENT_VERSION}):
+        return
     for table, expected_columns in CONTRACT["columns"].items():
         rows = (await conn.execute(text("""
             SELECT column_name, udt_name, is_nullable, character_maximum_length
