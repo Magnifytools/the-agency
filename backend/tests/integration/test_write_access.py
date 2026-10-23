@@ -16,6 +16,7 @@ from backend.core.security import create_access_token
 from backend.db.database import get_db
 from backend.db.models import ChangeLog, Task, TaskStatus, User, UserPermission, UserRole
 from backend.services.write_access import require_current_write
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 
 pytestmark = pytest.mark.integration
@@ -176,7 +177,7 @@ async def test_task_http_rechecks_permission_after_waiting_for_task_lock(
                 await sync_user_permissions(member_id, [], revoke_db, admin)
 
             await holder.rollback()
-            response = await asyncio.wait_for(request, timeout=5)
+            response = await asyncio.wait_for(request, timeout=HANG_TIMEOUT)
             assert response.status_code == 403, response.text
         finally:
             if holder.in_transaction():
@@ -239,7 +240,7 @@ async def test_undo_http_rechecks_permission_after_waiting_for_change_lock(
                 await sync_user_permissions(member_id, [], revoke_db, admin)
 
             await holder.rollback()
-            response = await asyncio.wait_for(request, timeout=5)
+            response = await asyncio.wait_for(request, timeout=HANG_TIMEOUT)
             assert response.status_code == 403, response.text
         finally:
             if holder.in_transaction():

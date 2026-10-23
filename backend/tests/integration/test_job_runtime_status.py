@@ -9,6 +9,7 @@ from backend.db.models import JobRuntime
 from backend.services.job_catalog import JobDefinition
 from backend.services.job_runtime import JOB_LOCK_NAMESPACE, JobSpec
 from backend.services.job_runtime_status import record_delivery_cycle
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 
 async def test_member_cannot_read_global_runtime(member_client):
@@ -49,7 +50,7 @@ async def test_delivery_observation_does_not_take_global_job_lock(engine):
         async with engine.connect() as locked:
             await locked.execute(text("SELECT pg_advisory_lock(:namespace,2)"), {"namespace": JOB_LOCK_NAMESPACE})
             try:
-                await asyncio.wait_for(record_delivery_cycle(engine, failed=False), timeout=2)
+                await asyncio.wait_for(record_delivery_cycle(engine, failed=False), timeout=HANG_TIMEOUT)
             finally:
                 await locked.execute(text("SELECT pg_advisory_unlock(:namespace,2)"), {"namespace": JOB_LOCK_NAMESPACE})
         async with engine.connect() as conn:

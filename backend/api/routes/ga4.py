@@ -6,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import require_admin, require_module
-from backend.db.database import async_session, get_db
+from backend.db import database
+from backend.db.database import get_db
 from backend.db.models import Client, ClientStatus, Ga4PropertySync, GscConnection, User
 from backend.services import ga4_service
 
@@ -52,4 +53,4 @@ async def ga4_sync(db: AsyncSession = Depends(get_db), _: User = Depends(require
     if not ga4_service.configured():
         raise HTTPException(status_code=503, detail="Google OAuth no está configurado")
     await db.commit()
-    return await ga4_service.sync_all(async_session)
+    return await ga4_service.sync_all(database.async_session)

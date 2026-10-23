@@ -290,8 +290,13 @@ admin_users, admin_settings
   en el backend.
 - **Si cambias un endpoint que usa** (tasks, tasks/{id}/draft, agenda, timer, time-entries,
   inbox, search, projects, users, auth/me, dailys + reparse + send-discord,
-  clients/{id}/status, digests + external-delivery-events), revisa
-  `mcp-server/agency_mcp/server.py`.
+  clients/{id}/status (incluidos sus bloques `uptime` y `web_changes`),
+  digests + external-delivery-events, web/uptime, clients/{id}/web/uptime-targets,
+  web/changes), revisa `mcp-server/agency_mcp/server.py` y `format.py`.
+- **Webs**: `web_status` (sólo lectura) junta disponibilidad y cambios sin
+  revisar de un cliente, o el resumen global (caídas/bloqueos ahora y clientes
+  con críticos sin revisar). Sin permiso de `web` lo explica en vez de dar un 403.
+  Nada de Search Console ni GA4 (lo vigila `test_gsc_detail.py`).
 - **Dailys**: `POST /api/dailys` sólo guarda; `submit_daily` encadena el
   `reparse` (90 s, como la web). `send_daily_to_discord` es la única
   herramienta que publica fuera (anotación `PUBLISH`) y sólo con dailys propios.
@@ -407,7 +412,9 @@ admin_users, admin_settings
   marca se aplica después, así que cambiar los términos se ve al momento.
 - **Marca**: `clients.brand_terms` (JSONB, migración `client_brand_terms_v1`,
   ≤ 20 términos de 3–60 caracteres, recortados y sin duplicados tras
-  normalizar). Una consulta es de marca si contiene un término por SUBCADENA
+  normalizar). Mientras un cliente activo con `gsc_url` no tenga ninguno, la
+  ficha enseña un aviso (`brand-terms-notice.tsx`) que lleva a Ajustes
+  (`?tab=ajustes&foco=marca`). Una consulta es de marca si contiene un término por SUBCADENA
   (sin regex), sin acentos ni mayúsculas, con o sin espacios. Se edita en
   Configuración del cliente (chips + "Sugerir", que sólo propone). Entra en el
   Deshacer como cualquier cambio del cliente.
@@ -509,6 +516,33 @@ admin_users, admin_settings
   y Google Analytics Admin API y añadir el scope `analytics.readonly` a la
   pantalla de consentimiento; luego reconectar cada cuenta en Ajustes.
 
+## Leads por landing (GA4) e historial heredado de The Engine
+
+- **Qué es**: The Engine se retira (22 oct 2026) y The Agency se queda sus dos
+  datos únicos. En la misma pasada del job `ga4`, `services/ga4_leads.py` pide
+  por propiedad los eventos que el cliente cuenta como lead
+  (`clients.ga4_lead_events`, por defecto `["generate_lead"]`; nombre exacto o
+  prefijo con `*`, p. ej. `generate_lead_*`) por día, landing y canal →
+  `ga4_lead_daily` (migración `leads_engine_v1`). Landing = host + ruta sin
+  `utm_*`/`gclid`/`fbclid`… (`clean_landing`); canal =
+  `sessionDefaultChannelGroup`.
+- **Importación**: 16 meses la primera vez o si cambian los eventos (estado en
+  `ga4_property_sync.leads_*`), luego la última semana; sustituye el tramo. Un
+  fallo de leads no tumba los totales (`leads_failed`). Retención 16 meses y
+  poda de propiedades sin cliente activo en cada pasada; la purga al
+  desconectar los borra.
+- **Uso**: `GET /api/clients/{id}/leads?days=28|7` (lectura de `clients`):
+  total, top landings y canales frente a la ventana anterior. Bloque "Leads por
+  landing" en Resultados de la Vista general; eventos editables en Ajustes del
+  cliente. Fuera de la IA, del MCP y de los resúmenes.
+- **Historial de Engine**: `gsc_query_monthly.source` = `google` | `engine`.
+  Lo de `engine` NO caduca a los 16 meses (sí con la web: poda y purga) y el
+  historial de una consulta lo enseña antes de los meses de Google.
+- **Importaciones únicas** (`scripts/import_engine_positions.py`,
+  `scripts/import_engine_leads.py`, guía en `docs/engine-data-import.md`):
+  sólo meses/días anteriores a los propios de The Agency, idempotentes,
+  `--dry-run`. Nunca pisan datos de Google.
+
 ## Vigil (cambios en las webs de los clientes)
 
 - **Integración retirada del código (3b); columnas pendientes de 3c.** Vigil
@@ -517,6 +551,12 @@ admin_users, admin_settings
   `/api/vigil`, `VIGIL_API_URL`/`VIGIL_SERVICE_KEY`, campo "Cliente en Vigil" ni
   bloque de Vigil en la ficha. Un cliente sin URLs propias en `web_watches` no
   tiene señal de cambios en su estado.
+- **Vigil apagado el 23 oct 2026**: despliegue quitado en Railway (servicio
+  offline; el volumen con `vigil.db` sigue, se vuelve con Redeploy). Fit
+  Generation, su único cliente, se vigila ya desde The Agency (6 URLs, Slack
+  `#seo-equipo`). No se importó su historial: sigue en ese volumen. La limpieza
+  final (volumen, servicio, dominio, repo) está programada para finales de
+  noviembre (tarea `vigil-limpieza-final`).
 - **Lock 13** era el del job `vigil`: no se reutiliza (lo guarda
   `test_job_vigil_retirado_y_su_lock_no_se_reutiliza`).
 - **Pendiente 3c**: `clients.vigil_slug` (+ `uq_clients_vigil_slug`) y la tabla
@@ -596,6 +636,13 @@ admin_users, admin_settings
   webhook cifrado del monitor de caídas). Mismo módulo de permisos `web`: leer =
   ver; escribir = URLs, "Comprobar ahora", previsualizar, ajustes de captura y
   calendario, y marcar como revisado. Pantallas: ver "Interfaz (fase 2b)" abajo.
+- **Se enciende por cliente** (`client_web_settings.changes_enabled`, migración
+  `web_changes_toggle_v1`, apagada por defecto; `PUT /api/clients/{id}/web/settings/changes-enabled`,
+  escritura en `web`). Apagada: ni barrido programado ni "Comprobar" (409), ni
+  incidencia de crítico, ni cuenta en el estado del cliente (`changes_enabled()` de
+  `changes_views.py` en los cuatro sitios). Sus URLs e historial se quedan. En la
+  pestaña Web sólo se ve el interruptor hasta activarla. El global
+  `WEB_SWEEP_ENABLED` sigue mandando por encima.
 - **Código** (`backend/services/web/`): `extractor.py`, `classifier.py`,
   `html_diff.py`, `capture_defaults.py`, `calendario.py`, `sitemap.py` y
   `digest.py` son copia casi literal de Vigil (mismas reglas: los cambios
@@ -826,7 +873,7 @@ cd backend && source venv/bin/activate && python -m pytest tests/ -v
 # Frontend (vitest, 45 tests)
 cd frontend && npm run test
 
-# Servidor MCP (pytest, 33 tests, backend falso)
+# Servidor MCP (pytest, 47 tests, backend falso)
 cd mcp-server && .venv/bin/python -m pytest -q
 ```
 
@@ -904,6 +951,15 @@ cd mcp-server && .venv/bin/python -m pytest -q
   ```json y respondía 502 en cada reintento (daily 129 de Nacho, oct 2026). Ahora
   se extrae el primer objeto del texto, y con notas vacías el prompt lo dice y se
   descartan las tareas sin `fact_keys`. Lo guarda `TestDailySoloConHechos`.
+- **Un INSERT con muchas filas no puede pasar de 32.767 parámetros** (asyncpg).
+  SQLAlchemy manda uno por columna y fila, también las columnas con default de
+  Python que el dict no trae: 5.000 filas de `gsc_query_monthly` (7 columnas)
+  reventaban con Sage. Trocea con `backend/db/bulk.insert_chunks(model, values)`,
+  nunca con un tamaño fijo. Lo guarda `tests/integration/test_bulk_insert_integration.py`.
+- **El volumen de Postgres en Railway es finito** (era de 500 MB; ampliado a 5 GB
+  el 23 oct 2026). Antes de desplegar algo que importa histórico (detalle de
+  Search Console: Sage son ~1,2 M filas, ~1,3 GB), mirar el uso del volumen en
+  Railway. Lleno, falla CUALQUIER escritura de la app.
 - bcrypt pinned a 4.1.3 (incompatibilidad passlib)
 
 ---

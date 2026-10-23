@@ -83,6 +83,19 @@ describe("ClientSettingsTab permissions", () => {
     expect(screen.getByText("La cuenta conectada no tiene acceso a esta propiedad.")).toBeInTheDocument()
   })
 
+  it("edits the GA4 events that count as a lead only when they change", async () => {
+    const user = userEvent.setup()
+    show()
+    const events = screen.getByLabelText("Eventos que cuentan como lead")
+    expect(events).toHaveValue("generate_lead")
+    await user.clear(events)
+    await user.type(events, "generate_lead_*, form_enviado")
+    await user.click(screen.getByRole("button", { name: "Guardar" }))
+    expect(mocks.update).toHaveBeenCalledWith(5, expect.objectContaining({
+      ga4_lead_events: ["generate_lead_*", "form_enviado"],
+    }))
+  })
+
   it("no longer links the client to Vigil", () => {
     show()
     expect(screen.queryByLabelText("Cliente en Vigil")).not.toBeInTheDocument()

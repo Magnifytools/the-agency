@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, exists, func, select
 
-from backend.db.models import WebChange, WebChangeItem, WebWatch, WebWatchState
+from backend.db.models import ClientWebSettings, WebChange, WebChangeItem, WebWatch, WebWatchState
 from backend.services.web.digest import _RULE_LABEL
 from backend.services.web.uptime_views import iso
 
@@ -101,9 +101,15 @@ async def items_by_change(db, change_ids: list) -> dict:
     return out
 
 
+def changes_enabled(client_id_column):
+    """El cliente tiene la vigilancia de cambios encendida (correlado con su id)."""
+    return exists().where(ClientWebSettings.client_id == client_id_column,
+                          ClientWebSettings.changes_enabled.is_(True))
+
+
 async def client_blocks(db, client_ids: list[int]) -> dict[int, dict]:
-    """Resumen por cliente para su estado: sólo clientes con URLs propias
-    (no archivadas). Los cambios sin revisar cuentan si la URL no está
+    """Resumen por cliente para su estado: sólo clientes con la vigilancia
+    encendida y URLs propias (no archivadas). Los cambios sin revisar cuentan si la URL no está
     silenciada: silenciar es "no me avises", y el estado avisa."""
     if not client_ids:
         return {}
@@ -114,7 +120,8 @@ async def client_blocks(db, client_ids: list[int]) -> dict[int, dict]:
             func.count(WebWatchState.last_error).filter(WebWatch.is_active.is_(True)),
             func.max(WebWatchState.last_checked_at),
         ).outerjoin(WebWatchState, WebWatchState.watch_id == WebWatch.id)
-        .where(WebWatch.client_id.in_(client_ids), WebWatch.archived_at.is_(None))
+        .where(WebWatch.client_id.in_(client_ids), WebWatch.archived_at.is_(None),
+               changes_enabled(WebWatch.client_id))
         .group_by(WebWatch.client_id)
     )).all()
     out: dict[int, dict] = {

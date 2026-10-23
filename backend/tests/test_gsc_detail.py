@@ -192,10 +192,12 @@ def test_el_job_usa_el_lock_17_y_la_misma_puerta_que_gsc():
 
 # ── Las consultas y páginas no van a la IA (lo promete la política de privacidad) ──
 
-# También el historial mensual por consulta y los grupos de URL del Control SEO.
+# También el historial mensual por consulta (con lo importado de The Engine),
+# los grupos de URL del Control SEO y los leads por landing de GA4.
 _FORBIDDEN = re.compile(
     r"GscQueryDaily|GscPageDaily|GscQueryMonthly|gsc_query_daily|gsc_page_daily|gsc_query_monthly"
     r"|gsc_detail_service|seo_control|client_seo|seo_page_groups|query_history"
+    r"|Ga4LeadDaily|ga4_lead_daily|ga4_leads|client_leads|import_engine"
 )
 
 
@@ -217,6 +219,12 @@ def _ai_paths() -> list[Path]:
 
 def test_la_guardia_reconoce_el_historial_y_los_grupos():
     for name in ("GscQueryMonthly", "gsc_query_monthly", "seo_page_groups", "query_history"):
+        assert _FORBIDDEN.search(f"x = {name}")
+
+
+def test_la_guardia_reconoce_los_leads_y_lo_importado_de_engine():
+    for name in ("Ga4LeadDaily", "ga4_lead_daily", "ga4_leads", "client_leads",
+                 "import_engine_positions", "import_engine_leads"):
         assert _FORBIDDEN.search(f"x = {name}")
 
 

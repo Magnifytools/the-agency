@@ -380,6 +380,8 @@ export interface WebChangeSettingsValues {
 
 export interface WebChangeSettings {
   enabled: boolean
+  /** Interruptor del cliente: apagada, no se barre, no avisa ni cuenta en su estado. */
+  changes_enabled: boolean
   sweep_local_time: string
   /** Lo guardado: null = el default del código. */
   stored: WebChangeSettingsValues

@@ -269,9 +269,9 @@ async def test_historial_por_meses_y_por_dias(admin_client, acme):
     body = resp.json()
     assert body["status"] == "ok" and body["query"] == "zapatos" and body["monthly_backfilled"] is True
     assert body["months"] == [
-        {"month": "2025-07-01", "clicks": 4, "impressions": 40, "position": 10.0},
-        {"month": "2026-08-01", "clicks": 10, "impressions": 100, "position": 5.0},
-        {"month": "2026-09-01", "clicks": 20, "impressions": 200, "position": 3.0},
+        {"month": "2025-07-01", "clicks": 4, "impressions": 40, "position": 10.0, "imported": False},
+        {"month": "2026-08-01", "clicks": 10, "impressions": 100, "position": 5.0, "imported": False},
+        {"month": "2026-09-01", "clicks": 20, "impressions": 200, "position": 3.0, "imported": False},
     ]
     # Desde el primer día guardado de la propiedad hasta el final; días sin fila = 0 y sin posición.
     days = body["days"]

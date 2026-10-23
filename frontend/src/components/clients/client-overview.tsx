@@ -6,6 +6,7 @@ import type { Client, ClientStatusRow, Task } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { ClientStatusBadge, ClientStatusReasons, DigestCell, SeoCell } from "@/components/clients/client-status"
+import { ClientLeads } from "@/components/clients/client-leads"
 
 type Section = "tareas" | "resumenes" | "control_seo" | "contexto" | "contactos"
 
@@ -154,6 +155,8 @@ export function ClientOverview({ client, status, statusFailed, onRetryStatus, ta
               </p>
             </div>
           )}
+          {/* Leads por landing (GA4): lectura de clientes, igual que esta ficha. */}
+          {client.ga4_property_id && <ClientLeads clientId={client.id} />}
         </CardContent></Card>
 
         {/* 4. Relación */}

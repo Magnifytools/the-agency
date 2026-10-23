@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import Client, Project, ProjectStatus, Task, TaskPriority, TaskStatus, User, UserRole
 from backend.services.project_owner import validate_project_owner
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 
 pytestmark = pytest.mark.integration
@@ -119,7 +120,7 @@ async def test_project_owner_rejects_simultaneous_deactivation(engine):
             )
             async with AsyncSession(engine) as assignment:
                 with pytest.raises(HTTPException) as exc:
-                    await asyncio.wait_for(validate_project_owner(assignment, owner_id), timeout=2)
+                    await asyncio.wait_for(validate_project_owner(assignment, owner_id), timeout=HANG_TIMEOUT)
                 assert exc.value.status_code == 409
                 await assignment.rollback()
             await deactivation.commit()

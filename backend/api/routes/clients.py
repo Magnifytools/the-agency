@@ -370,6 +370,7 @@ async def update_client(
         "monthly_budget", "status", "notes", "is_internal", "ga4_property_id",
         "gsc_url", "engine_project_id", "context",
         "vat_number", "slack_template", "brand_terms", "seo_page_groups",
+        "ga4_lead_events",
     }
     if "engine_project_id" in update_data:
         if update_data["engine_project_id"] != client.engine_project_id:

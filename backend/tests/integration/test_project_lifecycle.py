@@ -26,6 +26,7 @@ from backend.db.models import (
 )
 from backend.services.project_lifecycle import close_project, get_close_preview
 from backend.services.recurrence import generate_recurring_instances
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 pytestmark = pytest.mark.integration
 
@@ -355,7 +356,7 @@ async def test_generator_winning_advisory_makes_close_recheck_and_refuse(engine)
                 generator_db, target_date=date(2026, 9, 21),
             ) == 1
             with pytest.raises(HTTPException) as changed:
-                await asyncio.wait_for(close_attempt, timeout=3)
+                await asyncio.wait_for(close_attempt, timeout=HANG_TIMEOUT)
             assert changed.value.status_code == 409
             assert changed.value.detail["code"] == "project_close_changed"
             await close_db.rollback()
@@ -440,7 +441,7 @@ async def test_permission_revoked_while_waiting_for_advisory_cannot_close(engine
             await permission_db.commit()
             await lock_db.commit()
             with pytest.raises(HTTPException) as denied:
-                await asyncio.wait_for(close_attempt, timeout=3)
+                await asyncio.wait_for(close_attempt, timeout=HANG_TIMEOUT)
             assert denied.value.status_code == 403
             await close_db.rollback()
 

@@ -26,6 +26,8 @@ export interface Client {
   brand_terms?: string[]
   // Control SEO: grupos de URL propios (el primero que acepta la página gana)
   seo_page_groups?: SeoPageGroup[]
+  // Leads por landing (GA4): eventos que cuentan como lead ("generate_lead_*" = prefijo)
+  ga4_lead_events?: string[]
   engine_project_id: number | null
   engine_content_count: number | null
   engine_keyword_count: number | null
@@ -76,6 +78,7 @@ export interface ClientCreate {
   brand_terms?: string[]
   // Control SEO: grupos de URL propios (el primero que acepta la página gana)
   seo_page_groups?: SeoPageGroup[]
+  ga4_lead_events?: string[]
   engine_project_id?: number | null
   // Revenue intelligence
   is_internal?: boolean

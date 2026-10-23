@@ -296,6 +296,10 @@ class CaptureSettingsUpdate(BaseModel):
         return _regexes(value)
 
 
+class ChangesEnabledUpdate(BaseModel):
+    enabled: bool
+
+
 class CalendarSettingsUpdate(BaseModel):
     sweep_weekdays: list[int] = Field(min_length=1, max_length=7)
     sweep_skip_dates: list[str] = Field(default_factory=list, max_length=400)

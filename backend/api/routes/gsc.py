@@ -16,9 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import require_admin, require_module
 from backend.config import settings
-from backend.db.database import async_session, get_db
+from backend.db import database
+from backend.db.database import get_db
 from backend.db.models import (
-    Client, ClientStatus, Ga4Daily, Ga4PropertySync, GscConnection, GscDaily, GscDetailSync,
+    Client, ClientStatus, Ga4Daily, Ga4LeadDaily, Ga4PropertySync, GscConnection, GscDaily, GscDetailSync,
     GscPageDaily, GscQueryDaily, GscQueryMonthly, GscSiteSync, User,
 )
 from backend.services import gsc_detail_service, gsc_service
@@ -179,7 +180,8 @@ class DisconnectRequest(BaseModel):
 
 async def _purge_connection_data(db: AsyncSession, connection_id: int) -> dict:
     """Borra las cifras diarias (y su estado) de las propiedades de Search Console
-    (totales, detalle por consulta y página e historial mensual por consulta) y GA4 que se importaban con esta
+    (totales, detalle por consulta y página e historial mensual por consulta, también
+    el importado de The Engine) y GA4 (totales y leads por landing) que se importaban con esta
     cuenta. Si otra cuenta conectada también las ve, la próxima importación las
     vuelve a traer desde cero.
 
@@ -206,6 +208,8 @@ async def _purge_connection_data(db: AsyncSession, connection_id: int) -> dict:
         await db.execute(delete(GscDetailSync).where(GscDetailSync.site_url.in_(sites)))
     if properties:
         ga4_rows = (await db.execute(delete(Ga4Daily).where(Ga4Daily.property_id.in_(properties)))).rowcount or 0
+        # Y sus leads por landing (también los importados de The Engine).
+        await db.execute(delete(Ga4LeadDaily).where(Ga4LeadDaily.property_id.in_(properties)))
         await db.execute(delete(Ga4PropertySync).where(Ga4PropertySync.property_id.in_(properties)))
     return {"gsc_sites": len(sites), "gsc_rows": gsc_rows, "gsc_query_rows": query_rows,
             "gsc_page_rows": page_rows, "ga4_properties": len(properties), "ga4_rows": ga4_rows}
@@ -269,7 +273,7 @@ async def gsc_sync(db: AsyncSession = Depends(get_db), _: User = Depends(require
     _require_configured()
     await _connected_or_409(db)
     await db.commit()
-    return await gsc_service.sync_all(async_session)
+    return await gsc_service.sync_all(database.async_session)
 
 
 @router.post("/detail-sync")
@@ -289,6 +293,6 @@ async def gsc_detail_sync(db: AsyncSession = Depends(get_db), _: User = Depends(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Ya hay una importación del detalle en marcha")
     try:
-        return await gsc_detail_service.sync_all_detail(async_session)
+        return await gsc_detail_service.sync_all_detail(database.async_session)
     finally:
         await db.rollback()  # suelta el lock

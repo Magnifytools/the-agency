@@ -21,6 +21,11 @@ resume cada mes COMPLETO del detalle diario en un total por consulta (los
 120 días no llegan a 16 meses). Los meses anteriores a esos 120 días se piden
 una sola vez a Google, un mes por petición (marca `monthly_backfilled_at`).
 
+Historial importado de The Engine (`source='engine'`,
+`scripts/import_engine_positions.py`): sólo meses anteriores al primero que
+tiene The Agency; no caduca a los 16 meses, pero se borra con la web (poda de
+webs sin cliente activo y purga al desconectar).
+
 Reglas de las cifras (globales): clics e impresiones se suman en la ventana;
 la posición es la media ponderada por impresiones.
 """
@@ -36,6 +41,7 @@ from datetime import UTC, date, datetime, timedelta
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from backend.db.bulk import insert_chunks
 from backend.db.models import (
     GscConnection, GscDetailSync, GscPageDaily, GscQueryDaily, GscQueryMonthly, GscSiteSync,
 )
@@ -51,7 +57,6 @@ DETAIL_DAYS = 120
 CHUNK_DAYS = 14
 # Máximo de filas por petición que admite la API.
 PAGE_SIZE = 25000
-INSERT_BATCH = 5000
 MAX_PAGE_LENGTH = 2000
 PAGE_PAUSE_SECONDS = 0.2
 DIMENSIONS = ("query", "page")
@@ -226,8 +231,7 @@ async def _replace(db, dimension: str, site_url: str, start: date, end: date, ro
     await db.execute(delete(model).where(
         model.site_url == site_url, model.date >= start, model.date <= end,
     ))
-    for i in range(0, len(rows), INSERT_BATCH):
-        batch = rows[i:i + INSERT_BATCH]
+    for batch in insert_chunks(model, rows):
         await db.execute(pg_insert(model).values([
             {"site_url": site_url, "date": r.date, key_column: r.key, "clicks": r.clicks,
              "impressions": r.impressions, "position": r.position}
@@ -402,8 +406,8 @@ async def _replace_month(db, site_url: str, month: date, rows: list[MonthRow]) -
         GscQueryMonthly.site_url == site_url, GscQueryMonthly.month == month,
     ))
     values = month_values(month, site_url, rows)
-    for i in range(0, len(values), INSERT_BATCH):
-        await db.execute(pg_insert(GscQueryMonthly).values(values[i:i + INSERT_BATCH]))
+    for batch in insert_chunks(GscQueryMonthly, values):
+        await db.execute(pg_insert(GscQueryMonthly).values(batch))
     await db.commit()
 
 
@@ -476,8 +480,9 @@ async def sync_monthly(db, encrypted_refresh_token: str, site_url: str, *, fetch
 
 async def prune(db, *, today: date | None = None) -> None:
     """Retención: fuera el detalle diario de más de 120 días, el historial
-    mensual anterior a los 16 meses y todo lo de webs que ya no sigue ningún
-    cliente activo (cliente Antiguo o propiedad cambiada).
+    mensual anterior a los 16 meses (salvo el importado de The Engine) y todo
+    lo de webs que ya no sigue ningún cliente activo (cliente Antiguo o
+    propiedad cambiada), importado incluido.
 
     `delete()` masivos: no pasan por el ORM ni entran en el Deshacer, a propósito.
     """
@@ -490,7 +495,11 @@ async def prune(db, *, today: date | None = None) -> None:
     if untracked:
         for model in (GscQueryDaily, GscPageDaily, GscQueryMonthly, GscDetailSync):
             await db.execute(delete(model).where(model.site_url.in_(untracked)))
-    await db.execute(delete(GscQueryMonthly).where(GscQueryMonthly.month < history_floor(today)))
+    # Lo importado de The Engine (`source='engine'`) no caduca a los 16 meses:
+    # se queda mientras la web tenga cliente activo (lo de arriba lo borra si no).
+    await db.execute(delete(GscQueryMonthly).where(
+        GscQueryMonthly.month < history_floor(today), GscQueryMonthly.source == "google",
+    ))
     states = {s.site_url: s.last_data_date for s in (await db.scalars(
         select(GscDetailSync).where(GscDetailSync.site_url.in_(sorted(stored & tracked)))
     )).all()} if stored & tracked else {}

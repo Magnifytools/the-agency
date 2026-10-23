@@ -24,6 +24,7 @@ import { ClientDashboardTab } from "@/components/clients/client-dashboard-tab"
 import { ClientAiAdvisor } from "@/components/clients/client-ai-advisor"
 import { ClientReportPolicy } from "@/components/clients/client-report-policy"
 import { ClientSettingsTab } from "@/components/clients/client-settings-tab"
+import { BrandTermsNotice } from "@/components/clients/brand-terms-notice"
 import { EngineMetricsWidget } from "@/components/clients/engine-metrics-widget"
 import { EngineSeoTab } from "@/components/clients/engine-seo-tab"
 import { SeoControlTab } from "@/components/clients/seo-control/seo-control-tab"
@@ -299,6 +300,9 @@ export default function ClientDetailPage() {
       </div>
 
       <FormerClientNotice client={client} />
+      {activeTab !== "ajustes" && (
+        <BrandTermsNotice client={client} onConfigure={() => setSearchParams({ tab: "ajustes", foco: "marca" }, { replace: true })} />
+      )}
 
       {/* Cuatro áreas estables; las URLs ?tab= heredadas siguen seleccionando
           su vista concreta dentro del área correspondiente. */}
@@ -700,7 +704,7 @@ export default function ClientDetailPage() {
 
       {/* Tab: Ajustes */}
       {activeTab === "ajustes" && (
-        <ClientSettingsTab client={client} />
+        <ClientSettingsTab client={client} focus={searchParams.get("foco")} />
       )}
 
       {/* Tab: Facturas (Holded) */}

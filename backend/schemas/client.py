@@ -4,6 +4,7 @@ from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from backend.db.models import ContractType, ClientStatus
+from backend.services.ga4_leads import clean_lead_events
 from backend.services.seo_control import clean_brand_terms, clean_page_groups
 from backend.services.seo_traffic import SeoTrend
 
@@ -68,6 +69,16 @@ class ClientUpdate(BaseModel):
         # null = sin grupos (la columna no admite NULL).
         return clean_page_groups(value)
 
+    # Leads por landing (GA4): eventos que cuentan como lead ("generate_lead",
+    # "generate_lead_*" = todos los que empiezan así).
+    ga4_lead_events: Optional[list[str]] = None
+
+    @field_validator("ga4_lead_events", mode="before")
+    @classmethod
+    def _lead_events(cls, value):
+        # null = vuelve al valor por defecto (la columna no admite NULL).
+        return clean_lead_events(value)
+
 
 class ClientResponse(BaseModel):
     id: int
@@ -84,6 +95,7 @@ class ClientResponse(BaseModel):
     gsc_url: Optional[str] = None
     brand_terms: list[str] = Field(default_factory=list)
     seo_page_groups: list[dict] = Field(default_factory=list)
+    ga4_lead_events: list[str] = Field(default_factory=lambda: ["generate_lead"])
     engine_project_id: Optional[int] = None
     engine_content_count: Optional[int] = None
     engine_keyword_count: Optional[int] = None
@@ -115,6 +127,11 @@ class ClientResponse(BaseModel):
     @classmethod
     def _page_groups_list(cls, value):
         return value or []
+
+    @field_validator("ga4_lead_events", mode="before")
+    @classmethod
+    def _lead_events_list(cls, value):
+        return value or ["generate_lead"]
 
     # Semáforo SEO (Search Console propio, misma ventana que el estado). No
     # son columnas: los rellena `seo_traffic.attach_seo_traffic` en la lista y

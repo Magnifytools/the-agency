@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type CSSProperties } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { MessageSquare, Send } from "lucide-react"
@@ -11,6 +11,10 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { formatInstant } from "@/components/web/uptime-status"
+
+// Ni el navegador ni los gestores de contraseñas deben rellenar estos campos:
+// no son un login (Chrome metía el email en el User-Agent).
+const NOT_A_LOGIN = { autoComplete: "off", "data-1p-ignore": true, "data-lpignore": "true" } as const
 
 interface Props {
   clientId: number
@@ -107,10 +111,14 @@ export function ClientSlackCard({ clientId }: Props) {
             >
               <div className="space-y-1">
                 <Label htmlFor={`slack-webhook-${clientId}`}>Webhook de Slack</Label>
+                {/* Texto enmascarado por CSS, no type="password": con un campo de
+                    contraseña Chrome cree que esto es un login y mete el email y la
+                    contraseña guardados aquí y en el User-Agent. */}
                 <Input
                   id={`slack-webhook-${clientId}`}
-                  type="password"
-                  autoComplete="off"
+                  type="text"
+                  {...NOT_A_LOGIN}
+                  style={{ WebkitTextSecurity: "disc" } as CSSProperties}
                   value={webhook}
                   onChange={(e) => setWebhook(e.target.value)}
                   placeholder={data.configured ? "Guardado (no se muestra). Pega otro para cambiarlo." : "https://hooks.slack.com/services/…"}
@@ -119,11 +127,11 @@ export function ClientSlackCard({ clientId }: Props) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label htmlFor={`slack-channel-${clientId}`}>Canal (sólo como recordatorio)</Label>
-                  <Input id={`slack-channel-${clientId}`} value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="#cliente-avisos" />
+                  <Input id={`slack-channel-${clientId}`} {...NOT_A_LOGIN} value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="#cliente-avisos" />
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor={`slack-ua-${clientId}`}>User-Agent para comprobar su web</Label>
-                  <Input id={`slack-ua-${clientId}`} value={userAgent} onChange={(e) => setUserAgent(e.target.value)} placeholder="El de por defecto" />
+                  <Input id={`slack-ua-${clientId}`} {...NOT_A_LOGIN} value={userAgent} onChange={(e) => setUserAgent(e.target.value)} placeholder="El de por defecto" />
                 </div>
               </div>
               <label className="flex items-center gap-2 text-sm">

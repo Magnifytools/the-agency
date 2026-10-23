@@ -17,7 +17,7 @@ from backend.startup.schema_runner import run_schema_migrations
 # llegan vacías (vigil_slug, brand_terms, seo_page_groups); el resto de la fila no cambia.
 CLIENT_ROWS = "SELECT to_jsonb(c)" + "".join(
     f" - '{column}'" for table, column in sorted(RETIRED_COLUMNS) if table == "clients"
-) + " - 'vigil_slug' - 'brand_terms' - 'seo_page_groups' FROM clients c"
+) + " - 'vigil_slug' - 'brand_terms' - 'seo_page_groups' - 'ga4_lead_events' FROM clients c"
 
 
 async def reset(engine):

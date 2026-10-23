@@ -46,7 +46,7 @@ async def test_upgrade_twice_keeps_clients_without_groups(engine):
     await deployment_schema.migrate_schema(engine)
     await deployment_schema.check_deployment_ready(engine)
     async with engine.connect() as conn:
-        after = await conn.scalar(text("SELECT to_jsonb(c) - 'seo_page_groups' FROM clients c WHERE id=1"))
+        after = await conn.scalar(text("SELECT to_jsonb(c) - 'seo_page_groups' - 'ga4_lead_events' FROM clients c WHERE id=1"))
         assert after == before
         assert await conn.scalar(text("SELECT seo_page_groups = '[]'::jsonb FROM clients WHERE id=1")) is True
 

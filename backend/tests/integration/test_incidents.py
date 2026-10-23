@@ -12,6 +12,7 @@ from sqlalchemy.orm import noload
 from backend.db.models import Notification, Task, TaskStatus, User, UserRole
 from backend.schemas.incident import IncidentDecision
 from backend.services.incidents import decide_incident, reconcile_recipient
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 NOW = datetime(2026, 9, 19, 10)
 
@@ -163,7 +164,7 @@ async def test_reconciler_waits_for_task_writer_and_rechecks_changed_source(engi
             await asyncio.sleep(0.1)
             assert not pending.done(), "Reconciliation must wait for the committed task state"
             await writer.commit()
-        assert await asyncio.wait_for(pending, timeout=5) == {"created": 0, "changed": 0}
+        assert await asyncio.wait_for(pending, timeout=HANG_TIMEOUT) == {"created": 0, "changed": 0}
         async with AsyncSession(engine) as db:
             assert await notifications(db, actor_id) == []
     finally:
@@ -184,7 +185,9 @@ async def test_http_reads_are_pure_and_permissions_hide_conditions_immediately(d
     await db_session.commit()
     writes = []
     def capture(_conn, _cursor, statement, _parameters, _context, _many):
-        if statement.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+        # El registro de uso (middleware, `audit_logs`) es analítica, no un
+        # efecto de la lectura: se ignora a propósito.
+        if statement.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE")) and "audit_logs" not in statement:
             writes.append(statement)
     event.listen(engine.sync_engine, "before_cursor_execute", capture)
     try:

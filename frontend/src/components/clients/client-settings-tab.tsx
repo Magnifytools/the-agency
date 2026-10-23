@@ -1,15 +1,15 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { clientsApi, engineApi, ga4Api, gscApi } from "@/lib/api"
-import { ga4ErrorLabel } from "@/lib/ga4"
+import { ga4ErrorLabel, parseLeadEvents } from "@/lib/ga4"
 import { formatDay, gscErrorLabel } from "@/lib/gsc"
 import type { Client } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { BarChart3, Search, Save, Globe } from "lucide-react"
+import { BarChart3, Search, Save, Globe, Target } from "lucide-react"
 import { getErrorMessage } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
 import { invalidateClientChange } from "@/lib/query-keys"
@@ -20,9 +20,15 @@ import { SeoPageGroupsEditor } from "@/components/clients/seo-control/seo-page-g
 
 interface Props {
   client: Client
+  /** "marca": llega desde el aviso de la ficha y baja a los términos de marca. */
+  focus?: string | null
 }
 
-export function ClientSettingsTab({ client }: Props) {
+export function ClientSettingsTab({ client, focus = null }: Props) {
+  // Desde el aviso de la ficha: lleva directo a los términos de marca.
+  useEffect(() => {
+    if (focus === "marca") document.getElementById("terminos-de-marca")?.scrollIntoView({ behavior: "smooth" })
+  }, [focus])
   const { isAdmin, hasPermission } = useAuth()
   const canWriteClients = hasPermission("clients", true)
   const qc = useQueryClient()
@@ -34,12 +40,16 @@ export function ClientSettingsTab({ client }: Props) {
   const savedBrandTerms = client.brand_terms ?? []
   const [brandTerms, setBrandTerms] = useState<string[]>(savedBrandTerms)
   const brandTermsDirty = brandTerms.join("\n") !== savedBrandTerms.join("\n")
+  const savedLeadEvents = (client.ga4_lead_events ?? ["generate_lead"]).join(", ")
+  const [leadEvents, setLeadEvents] = useState(savedLeadEvents)
+  const leadEventsDirty = leadEvents.trim() !== savedLeadEvents
 
   const isDirty =
     ga4 !== (client.ga4_property_id ?? "") ||
     gsc !== (client.gsc_url ?? "") ||
     engineProjectId !== (client.engine_project_id?.toString() ?? "") ||
-    brandTermsDirty
+    brandTermsDirty ||
+    leadEventsDirty
 
   const { data: engineProjects = [] } = useQuery({
     queryKey: ["engine-projects"],
@@ -56,6 +66,8 @@ export function ClientSettingsTab({ client }: Props) {
         gsc_url: gsc.trim() || null,
         // Sólo si cambian: así guardar otro campo no pisa términos editados por otra persona.
         ...(brandTermsDirty ? { brand_terms: brandTerms } : {}),
+        // Igual: sólo si cambian. El servidor valida los nombres.
+        ...(leadEventsDirty ? { ga4_lead_events: parseLeadEvents(leadEvents) } : {}),
         ...(isAdmin ? { engine_project_id: engineProjectId.trim() ? parseInt(engineProjectId) : null } : {}),
       }),
     onSuccess: () => {
@@ -124,6 +136,22 @@ export function ClientSettingsTab({ client }: Props) {
                     {ga4ErrorLabel(ga4State?.error_code) && <span className="block text-amber-600">{ga4ErrorLabel(ga4State?.error_code)}</span>}
                   </p>
                 )}
+                <Label htmlFor="ga4-lead-events" className="mt-3 flex items-center gap-1.5">
+                  <Target className="h-3.5 w-3.5 text-muted-foreground" />
+                  Eventos que cuentan como lead
+                </Label>
+                <Input
+                  id="ga4-lead-events"
+                  value={leadEvents}
+                  onChange={(e) => setLeadEvents(e.target.value)}
+                  placeholder="generate_lead"
+                  className="mt-1"
+                  disabled={!canWriteClients}
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Nombres de evento de GA4 separados por comas. Termina en * para contar todos los que empiezan
+                  así (generate_lead_*). Si cambian, los leads se vuelven a importar.
+                </p>
               </div>
               <div>
                 <Label className="flex items-center gap-1.5">
@@ -162,6 +190,7 @@ export function ClientSettingsTab({ client }: Props) {
             </div>
 
             {/* Control SEO: separa las búsquedas de marca de las demás. */}
+            <div id="terminos-de-marca" className="scroll-mt-4">
             <BrandTermsEditor
               value={brandTerms}
               onChange={setBrandTerms}
@@ -169,6 +198,7 @@ export function ClientSettingsTab({ client }: Props) {
               client={client}
               gscDraft={gsc}
             />
+            </div>
 
             {/* Engine Integration */}
             {isAdmin && <div>

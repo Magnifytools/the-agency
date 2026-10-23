@@ -39,7 +39,9 @@ def captured_dml(engine):
 
     def capture(_conn, _cursor, statement, _parameters, _context, _executemany):
         operation = statement.lstrip().split(None, 1)[0].upper()
-        if operation in {"INSERT", "UPDATE", "DELETE"}:
+        # El registro de uso (middleware, `audit_logs`) es analítica, no un
+        # efecto de la lectura: se ignora a propósito.
+        if operation in {"INSERT", "UPDATE", "DELETE"} and "audit_logs" not in statement:
             statements.append(statement)
 
     sqlalchemy_event.listen(engine.sync_engine, "before_cursor_execute", capture)
