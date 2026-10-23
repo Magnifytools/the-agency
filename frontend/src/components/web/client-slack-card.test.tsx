@@ -69,3 +69,16 @@ it("removing the webhook asks first", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Quitar" }))
   await waitFor(() => expect(api.removeSlack).toHaveBeenCalledWith(7))
 })
+
+it("no field looks like a login form, so the browser never autofills the email or a password", async () => {
+  api.slack.mockResolvedValue(empty)
+  setup()
+  await screen.findByRole("status")
+  const webhook = screen.getByLabelText("Webhook de Slack")
+  expect(webhook).toHaveAttribute("type", "text")
+  expect(document.querySelector('input[type="password"]')).toBeNull()
+  for (const field of [webhook, screen.getByLabelText(/Canal/), screen.getByLabelText(/User-Agent/)]) {
+    expect(field).toHaveAttribute("autocomplete", "off")
+    expect(field).toHaveAttribute("data-1p-ignore")
+  }
+})
