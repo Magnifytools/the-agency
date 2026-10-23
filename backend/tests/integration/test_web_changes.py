@@ -29,6 +29,7 @@ from backend.services.client_status import Viewer, portfolio
 from backend.services.incident_web_conditions import CLIENT_WEB_CRITICAL_CHANGE
 from backend.services.incidents import reconcile_recipient, visible_incident_clause
 from backend.services.web import sweep
+from backend.services.web.changes_views import client_blocks as change_blocks
 from backend.services.web.safe_http import FetchResult
 from backend.services.web.slack import DeliveryResult
 
@@ -124,13 +125,15 @@ async def _no_sleep(_seconds):
     return None
 
 
-async def _client(db, *, name=None, slack=True, **fields) -> Client:
+async def _client(db, *, name=None, slack=True, changes=True, **fields) -> Client:
+    """Cliente con la vigilancia de cambios encendida (salvo ``changes=False``)."""
     client = Client(name=name or f"Cliente {uuid4().hex[:6]}", website="https://ejemplo.com", **fields)
     db.add(client)
     await db.flush()
-    if slack:
-        db.add(ClientWebSettings(client_id=client.id, slack_webhook_url=encrypt_vault_secret(HOOK),
-                                 slack_enabled=True))
+    if slack or changes:
+        db.add(ClientWebSettings(client_id=client.id, changes_enabled=changes,
+                                 slack_webhook_url=encrypt_vault_secret(HOOK) if slack else None,
+                                 slack_enabled=slack))
     await db.commit()
     return client
 
@@ -880,4 +883,49 @@ async def test_nada_de_la_vigilancia_de_cambios_entra_en_el_deshacer(db_session,
     assert await db_session.scalar(select(func.count()).select_from(ChangeLog)) == before
     # Y el panel de Deshacer de quien lo hizo sigue vacío.
     assert (await writer.get("/api/changes/recent")).json() == []
+    await writer.aclose()
+
+
+# ── Interruptor por cliente ──────────────────────────────────────────
+
+
+async def test_con_la_vigilancia_apagada_ni_se_barre_ni_avisa_ni_cuenta(db_session, make_member_client, monkeypatch):
+    monkeypatch.setattr(settings, "WEB_SWEEP_LOCAL_TIME", "06:30")
+    off = await _client(db_session, name="Apagado", changes=False)
+    watch = await _watch(db_session, off)
+    writer = await make_member_client([("web", True, True)])
+    check = await writer.post(f"/api/web/watches/{watch.id}/check")
+    assert check.status_code == 409 and "apagada" in check.json()["detail"]
+    assert (await writer.post(f"/api/clients/{off.id}/web/watches/check-all")).status_code == 409
+    # Un "Comprobar" que quedó pedido antes de apagarla tampoco se recoge.
+    await db_session.execute(update(WebWatch).where(WebWatch.id == watch.id).values(check_requested_at=datetime.now(UTC)))
+    await db_session.commit()
+    web = Web(pagina())
+    later = datetime(2026, 10, 21, 5, 0, tzinfo=UTC)
+    result = await sweep.run_cycle(_Factory(db_session), now=later, fetcher=web.fetch, sleep=_no_sleep)
+    assert result.manual == [] and result.scheduled is None and web.calls == []
+    # Lo detectado antes (con la vigilancia encendida) ni abre incidencia ni cuenta en su estado.
+    await _change(db_session, off, watch, "critical")
+    admin = await _user(db_session, role=UserRole.admin, modules=())
+    await reconcile_recipient(db_session, admin.id, now=datetime(2026, 10, 21, 9))  # noqa: DTZ001
+    assert await _incidents(db_session, admin) == []
+    assert await change_blocks(db_session, [off.id]) == {}
+    await writer.aclose()
+
+
+async def test_el_interruptor_se_enciende_con_escritura_y_no_borra_nada(db_session, make_member_client):
+    client = await _client(db_session, changes=False, slack=False)
+    watch = await _watch(db_session, client)
+    reader = await make_member_client([("web", True, False)])
+    writer = await make_member_client([("web", True, True)])
+    url = f"/api/clients/{client.id}/web/settings/changes-enabled"
+    assert (await reader.get(f"/api/clients/{client.id}/web/settings/changes")).json()["changes_enabled"] is False
+    assert (await reader.put(url, json={"enabled": True})).status_code == 403
+    on = await writer.put(url, json={"enabled": True})
+    assert on.status_code == 200 and on.json()["changes_enabled"] is True
+    assert (await writer.post(f"/api/web/watches/{watch.id}/check")).status_code == 202
+    off = await writer.put(url, json={"enabled": False})
+    assert off.json()["changes_enabled"] is False
+    assert len(await _rows(db_session, WebWatch, WebWatch.client_id == client.id)) == 1
+    await reader.aclose()
     await writer.aclose()

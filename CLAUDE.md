@@ -412,7 +412,9 @@ admin_users, admin_settings
   marca se aplica después, así que cambiar los términos se ve al momento.
 - **Marca**: `clients.brand_terms` (JSONB, migración `client_brand_terms_v1`,
   ≤ 20 términos de 3–60 caracteres, recortados y sin duplicados tras
-  normalizar). Una consulta es de marca si contiene un término por SUBCADENA
+  normalizar). Mientras un cliente activo con `gsc_url` no tenga ninguno, la
+  ficha enseña un aviso (`brand-terms-notice.tsx`) que lleva a Ajustes
+  (`?tab=ajustes&foco=marca`). Una consulta es de marca si contiene un término por SUBCADENA
   (sin regex), sin acentos ni mayúsculas, con o sin espacios. Se edita en
   Configuración del cliente (chips + "Sugerir", que sólo propone). Entra en el
   Deshacer como cualquier cambio del cliente.
@@ -630,6 +632,13 @@ admin_users, admin_settings
   webhook cifrado del monitor de caídas). Mismo módulo de permisos `web`: leer =
   ver; escribir = URLs, "Comprobar ahora", previsualizar, ajustes de captura y
   calendario, y marcar como revisado. Pantallas: ver "Interfaz (fase 2b)" abajo.
+- **Se enciende por cliente** (`client_web_settings.changes_enabled`, migración
+  `web_changes_toggle_v1`, apagada por defecto; `PUT /api/clients/{id}/web/settings/changes-enabled`,
+  escritura en `web`). Apagada: ni barrido programado ni "Comprobar" (409), ni
+  incidencia de crítico, ni cuenta en el estado del cliente (`changes_enabled()` de
+  `changes_views.py` en los cuatro sitios). Sus URLs e historial se quedan. En la
+  pestaña Web sólo se ve el interruptor hasta activarla. El global
+  `WEB_SWEEP_ENABLED` sigue mandando por encima.
 - **Código** (`backend/services/web/`): `extractor.py`, `classifier.py`,
   `html_diff.py`, `capture_defaults.py`, `calendario.py`, `sitemap.py` y
   `digest.py` son copia casi literal de Vigil (mismas reglas: los cambios

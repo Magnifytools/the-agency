@@ -7,8 +7,9 @@ import { WebTab } from "./web-tab"
 const api = vi.hoisted(() => ({
   targets: vi.fn(), createTarget: vi.fn(), updateTarget: vi.fn(), deleteTarget: vi.fn(), probe: vi.fn(),
 }))
+const watchesApi = vi.hoisted(() => ({ settings: vi.fn(), setChangesEnabled: vi.fn() }))
 const perms = vi.hoisted(() => ({ write: true }))
-vi.mock("@/lib/api", () => ({ webApi: api }))
+vi.mock("@/lib/api", () => ({ webApi: api, webWatchesApi: watchesApi }))
 vi.mock("@/context/auth-context", () => ({
   useAuth: () => ({ hasPermission: (module: string, write = false) => module === "web" && (!write || perms.write) }),
 }))
@@ -44,6 +45,7 @@ function setup() {
 beforeEach(() => {
   vi.resetAllMocks()
   perms.write = true
+  watchesApi.settings.mockResolvedValue({ changes_enabled: true })
 })
 
 it("shows each URL with its state, uptime and the open outage", async () => {
@@ -113,4 +115,37 @@ it("mounts change watching under availability; calendar and capture only for wri
   setup()
   expect(await screen.findByText("urls-vigiladas")).toBeInTheDocument()
   expect(screen.queryByText("calendario-captura")).not.toBeInTheDocument()
+})
+
+it("with change watching off only the switch shows; activating mounts the rest", async () => {
+  api.targets.mockResolvedValue({ enabled: true, monitored: true, website: null, targets: [] })
+  watchesApi.settings.mockResolvedValue({ changes_enabled: false })
+  watchesApi.setChangesEnabled.mockResolvedValue({ changes_enabled: true })
+  setup()
+  fireEvent.click(await screen.findByRole("button", { name: "Activar" }))
+  await waitFor(() => expect(watchesApi.setChangesEnabled).toHaveBeenCalledWith(7, true))
+  expect(await screen.findByText("urls-vigiladas")).toBeInTheDocument()
+  expect(screen.getByText("calendario-captura")).toBeInTheDocument()
+})
+
+it("change watching off: readers see it is off and cannot switch it on", async () => {
+  perms.write = false
+  api.targets.mockResolvedValue({ enabled: true, monitored: true, website: null, targets: [] })
+  watchesApi.settings.mockResolvedValue({ changes_enabled: false })
+  setup()
+  expect(await screen.findByText(/Está apagada para este cliente/)).toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Activar" })).not.toBeInTheDocument()
+  expect(screen.queryByText("urls-vigiladas")).not.toBeInTheDocument()
+})
+
+it("switching change watching off asks first", async () => {
+  api.targets.mockResolvedValue({ enabled: true, monitored: true, website: null, targets: [] })
+  watchesApi.setChangesEnabled.mockResolvedValue({ changes_enabled: false })
+  setup()
+  fireEvent.click(await screen.findByRole("button", { name: "Desactivar" }))
+  expect(watchesApi.setChangesEnabled).not.toHaveBeenCalled()
+  const dialog = await screen.findByRole("dialog")
+  fireEvent.click(within(dialog).getByRole("button", { name: "Desactivar" }))
+  await waitFor(() => expect(watchesApi.setChangesEnabled).toHaveBeenCalledWith(7, false))
+  await waitFor(() => expect(screen.queryByText("urls-vigiladas")).not.toBeInTheDocument())
 })

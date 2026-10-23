@@ -58,6 +58,7 @@ from backend.db.models import (
 from backend.services.temporal import business_zone
 from backend.services.web import capture_defaults as defaults
 from backend.services.web.calendario import toca_barrido
+from backend.services.web.changes_views import changes_enabled
 from backend.services.web.classifier import _ORDER, ChangeItem, classify, max_severity
 from backend.services.web.digest import DigestChange, build_digest, build_summary, changes_url
 from backend.services.web.extractor import Capture, CaptureConfig, extract
@@ -780,7 +781,8 @@ async def manual_requests(db) -> list[tuple[int, list[uuid.UUID], datetime]]:
     rows = (await db.execute(
         select(WebWatch.client_id, WebWatch.id, WebWatch.check_requested_at)
         .join(Client, Client.id == WebWatch.client_id)
-        .where(WebWatch.check_requested_at.is_not(None), watched_clause(), monitored_clients_clause())
+        .where(WebWatch.check_requested_at.is_not(None), watched_clause(), monitored_clients_clause(),
+               changes_enabled(Client.id))
         .order_by(WebWatch.check_requested_at, WebWatch.id)
     )).all()
     grouped: dict[int, tuple[list, datetime]] = {}
@@ -792,10 +794,12 @@ async def manual_requests(db) -> list[tuple[int, list[uuid.UUID], datetime]]:
 
 
 async def scheduled_candidates(db, day: date) -> list[int]:
-    """Clientes activos con alguna URL vigilada y sin barrido programado hoy."""
+    """Clientes activos con la vigilancia encendida, alguna URL vigilada y sin
+    barrido programado hoy."""
     return list((await db.scalars(
         select(Client.id).where(
             monitored_clients_clause(),
+            changes_enabled(Client.id),
             exists().where(WebWatch.client_id == Client.id, watched_clause()),
             ~exists().where(WebSweepRun.client_id == Client.id, WebSweepRun.trigger == "scheduler",
                             WebSweepRun.run_date == day),

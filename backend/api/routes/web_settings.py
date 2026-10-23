@@ -17,7 +17,7 @@ from backend.api.deps import get_client_or_404, require_module
 from backend.config import settings
 from backend.db.database import get_db
 from backend.db.models import ClientWebSettings, User
-from backend.schemas.web import CalendarSettingsUpdate, CaptureSettingsUpdate
+from backend.schemas.web import CalendarSettingsUpdate, CaptureSettingsUpdate, ChangesEnabledUpdate
 from backend.services.web import capture_defaults as defaults
 from backend.services.web.calendario import festivos_nacionales
 from backend.services.web.sweep import effective_settings, slack_state, sweep_start_time
@@ -36,6 +36,8 @@ def _view(web: ClientWebSettings | None) -> dict:
         *_CAPTURE_FIELDS, "sweep_weekdays", "sweep_skip_dates", "sweep_summary_to_slack")}
     return {
         "enabled": settings.WEB_SWEEP_ENABLED,
+        # Interruptor del cliente: apagada, no se barre, no avisa ni cuenta en su estado.
+        "changes_enabled": bool(web is not None and web.changes_enabled),
         "sweep_local_time": sweep_start_time().strftime("%H:%M"),
         # Lo guardado (null = default del código) y lo que de verdad se usa.
         "stored": stored,
@@ -83,6 +85,23 @@ async def get_change_settings(
 ):
     await get_client_or_404(client_id, db)
     return _view(await db.get(ClientWebSettings, client_id))
+
+
+@router.put("/api/clients/{client_id}/web/settings/changes-enabled")
+async def put_changes_enabled(
+    client_id: int,
+    body: ChangesEnabledUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_module(MODULE, write=True)),
+):
+    """Enciende o apaga la vigilancia de cambios del cliente. Apagarla no borra
+    sus URLs ni su historial: deja de barrerlas y de avisar."""
+    await get_client_or_404(client_id, db)
+    web = await _settings_row(db, client_id)
+    web.changes_enabled = body.enabled
+    web.updated_by, web.updated_at = user.id, datetime.now(UTC)
+    await db.commit()
+    return _view(web)
 
 
 @router.put("/api/clients/{client_id}/web/settings/capture")
