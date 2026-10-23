@@ -8,6 +8,10 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useAuth } from "@/context/auth-context"
+import { useFileUpload } from "@/hooks/use-file-upload"
+import { UploadProgress } from "@/components/ui/upload-progress"
+import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -123,10 +127,11 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
     queryFn: () => clientsApi.documents.list(client.id),
   })
 
-  const uploadMut = useMutation({
-    mutationFn: ({ file, description }: { file: File; description?: string }) =>
-      clientsApi.documents.upload(client.id, file, description),
-    onSuccess: () => {
+  const descriptionRef = useRef<string | undefined>(undefined)
+  const uploadMut = useFileUpload({
+    upload: (file, onProgress) =>
+      clientsApi.documents.upload(client.id, file, descriptionRef.current, onProgress),
+    onUploaded: () => {
       queryClient.invalidateQueries({ queryKey: ["client-documents", client.id] })
     },
   })
@@ -136,14 +141,16 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-documents", client.id] })
     },
+    onError: (err) => toast.error(getErrorMessage(err, "No se pudo eliminar el documento")),
   })
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
+    // Vaciar ya: si falla, volver a elegir el mismo archivo tiene que reintentar.
+    e.target.value = ""
     if (!file) return
-    const description = window.prompt("Descripción del documento (opcional):")
-    await uploadMut.mutateAsync({ file, description: description || undefined })
-    if (fileInputRef.current) fileInputRef.current.value = ""
+    descriptionRef.current = window.prompt("Descripción del documento (opcional):") || undefined
+    uploadMut.upload(file)
   }
 
   const primaryContact = contacts.find((c) => c.is_primary) ?? null
@@ -229,14 +236,19 @@ export function FichaTab({ client, onNavigateToContacts }: FichaTabProps) {
               variant="outline"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
-              disabled={uploadMut.isPending}
+              disabled={uploadMut.isUploading}
             >
               <Upload className="h-3.5 w-3.5 mr-1.5" />
-              {uploadMut.isPending ? "Subiendo..." : "Subir documento"}
+              {uploadMut.isUploading ? "Subiendo..." : "Subir documento"}
             </Button>
           </div>}
         </CardHeader>
         <CardContent>
+          {uploadMut.uploading && (
+            <div className="mb-3">
+              <UploadProgress state={uploadMut.uploading} />
+            </div>
+          )}
           {docsLoading ? (
             <p className="text-sm text-muted-foreground">Cargando...</p>
           ) : documents.length === 0 ? (

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import Response
@@ -23,6 +22,7 @@ from backend.schemas.inbox import (
 from backend.core.rate_limiter import ai_limiter
 from backend.services.task_scope import validate_task_scope
 from backend.services.domain_writes import create_task as create_task_write
+from backend.services.file_uploads import stored_file_response_args
 from backend.services.inbox_processing import can_read as _can_read
 from backend.services.notification_service import create_notification
 from backend.services.temporal import as_utc_instant, business_today
@@ -534,10 +534,6 @@ async def send_as_app_suggestion(
 # ── Attachments ──────────────────────────────────────
 
 MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024  # 10 MB
-INLINE_RASTER_MIME_TYPES = frozenset({
-    "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif",
-})
-PDF_MIME_TYPE = "application/pdf"
 
 
 @router.post("/{note_id}/attachments")
@@ -638,22 +634,9 @@ async def download_attachment(
     # Only formats with a known passive browser representation are rendered
     # inline. Existing SVG/HTML and unknown uploads remain downloadable without
     # trusting their stored, client-provided Content-Type.
-    inline = attachment.mime_type in INLINE_RASTER_MIME_TYPES or attachment.mime_type == PDF_MIME_TYPE
-    disposition = "inline" if inline else "attachment"
-    media_type = attachment.mime_type if inline else "application/octet-stream"
-    headers = {
-        "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(attachment.name, safe='')}",
-        "Content-Length": str(attachment.size_bytes),
-        "X-Content-Type-Options": "nosniff",
-    }
-    if attachment.mime_type == PDF_MIME_TYPE:
-        headers["Content-Security-Policy"] = "sandbox; default-src 'none'"
-
-    return Response(
-        content=attachment.content,
-        media_type=media_type,
-        headers=headers,
-    )
+    response_args = stored_file_response_args(attachment.name, attachment.mime_type, inline=True)
+    response_args["headers"]["Content-Length"] = str(attachment.size_bytes)
+    return Response(content=attachment.content, **response_args)
 
 
 @router.delete("/{note_id}/attachments/{attachment_id}", status_code=204)
