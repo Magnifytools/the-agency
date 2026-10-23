@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Literal, Optional
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Path, Query, UploadFile, status
 from pydantic import BaseModel
@@ -34,6 +32,7 @@ from backend.services.dashboard_access import (
     require_financial_dashboard_access,
 )
 from backend.api.utils.db_helpers import safe_refresh
+from backend.services.file_uploads import attachment_type, read_limited, stored_file_response_args
 from backend.services.client_onboarding import create_onboarding, recover_onboarding
 from backend.services.domain_writes import create_client as create_client_write
 from backend.services.temporal import business_today, utc_isoformat
@@ -702,34 +701,13 @@ async def upload_document(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients", write=True)),
 ):
-    _ALLOWED_MIME_TYPES = {
-        "application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp",
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.ms-excel",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "text/plain", "text/csv",
-        "application/zip",
-    }
-    _ALLOWED_EXTENSIONS = {
-        ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp",
-        ".doc", ".docx", ".xls", ".xlsx",
-        ".txt", ".csv", ".zip",
-    }
-    filename = file.filename or ""
-    ext = os.path.splitext(filename.lower())[1]
-    if ext not in _ALLOWED_EXTENSIONS:
-        raise HTTPException(400, f"Extensión no permitida: {ext or '(sin extensión)'}")
-    if not file.content_type or file.content_type not in _ALLOWED_MIME_TYPES:
-        raise HTTPException(400, f"Tipo de archivo no permitido: {file.content_type or '(sin tipo)'}")
-    content = await file.read()
-    if len(content) > 20 * 1024 * 1024:
-        raise HTTPException(400, "Archivo demasiado grande (máx 20 MB)")
+    mime = attachment_type(file.filename or "")
+    content = await read_limited(file, 20 * 1024 * 1024)
     doc = ClientDocument(
         client_id=client_id,
         name=file.filename or "documento",
         description=description,
-        mime_type=file.content_type or "application/octet-stream",
+        mime_type=mime,
         size_bytes=len(content),
         content=content,
     )
@@ -752,11 +730,7 @@ async def download_document(
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(404, "Documento no encontrado")
-    return Response(
-        content=doc.content,
-        media_type=doc.mime_type,
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(doc.name, safe='')}"},
-    )
+    return Response(content=doc.content, **stored_file_response_args(doc.name, doc.mime_type))
 
 
 @router.delete("/{client_id}/documents/{doc_id}", status_code=204)

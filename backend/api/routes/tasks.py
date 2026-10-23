@@ -1026,10 +1026,9 @@ async def list_attachments(
 
 from fastapi import UploadFile, File as FileParam
 
+from backend.services.file_uploads import attachment_type, read_limited, stored_file_response_args
 
-ALLOWED_ATTACHMENT_MIME = {"application/pdf", "image/png", "image/jpeg", "image/gif", "text/plain", "text/csv",
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
@@ -1045,14 +1044,8 @@ async def upload_task_attachment(
     t = await db.execute(select(Task.id).where(Task.id == task_id))
     if not t.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Task not found")
-    # Validate MIME type
-    mime = file.content_type or "application/octet-stream"
-    if mime not in ALLOWED_ATTACHMENT_MIME:
-        raise HTTPException(status_code=400, detail="Tipo de archivo no permitido")
-    # Validate size
-    content = await file.read(MAX_ATTACHMENT_BYTES + 1)
-    if len(content) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=413, detail="Adjunto demasiado grande (máx 10 MB)")
+    mime = attachment_type(file.filename or "")
+    content = await read_limited(file, MAX_ATTACHMENT_BYTES)
     # Deduplicate filename
     original_name = file.filename or "file"
     existing = await db.execute(
@@ -1071,7 +1064,7 @@ async def upload_task_attachment(
         task_id=task_id,
         name=final_name,
         description=description or None,
-        mime_type=file.content_type or "application/octet-stream",
+        mime_type=mime,
         size_bytes=len(content),
         content=content,
         uploaded_by=current_user.id,
@@ -1103,11 +1096,7 @@ async def download_attachment(
     att = r.scalar_one_or_none()
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    return Response(
-        content=att.content,
-        media_type=att.mime_type,
-        headers={"Content-Disposition": f'attachment; filename="{att.name.replace(chr(34), "_").replace(chr(10), "_").replace(chr(13), "_")}"'},
-    )
+    return Response(content=att.content, **stored_file_response_args(att.name, att.mime_type))
 
 
 @router.get("/{task_id}/attachments/{attachment_id}/preview")
@@ -1117,7 +1106,7 @@ async def preview_attachment(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("tasks")),
 ):
-    """Serve attachment inline for browser preview (images, PDFs)."""
+    """Serve attachment inline for browser preview (only images and PDFs; the rest downloads)."""
     from fastapi.responses import Response
     r = await db.execute(
         select(TaskAttachment)
@@ -1126,12 +1115,7 @@ async def preview_attachment(
     att = r.scalar_one_or_none()
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    safe_name = att.name.replace('"', '_').replace('\n', '_').replace('\r', '_')
-    return Response(
-        content=att.content,
-        media_type=att.mime_type,
-        headers={"Content-Disposition": f'inline; filename="{safe_name}"'},
-    )
+    return Response(content=att.content, **stored_file_response_args(att.name, att.mime_type, inline=True))
 
 
 @router.delete("/{task_id}/attachments/{attachment_id}", status_code=204)

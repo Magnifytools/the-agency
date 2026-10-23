@@ -32,6 +32,8 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import { useFileUpload } from "@/hooks/use-file-upload";
+import { UploadProgress } from "@/components/ui/upload-progress";
 import { businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates";
 import { taskStatusPresentation, taskStatusSelectClass } from "@/lib/task-status";
 
@@ -377,11 +379,10 @@ export function TaskPanel({
     onError: (error) =>
       toast.error(getErrorMessage(error, "No se pudo añadir al checklist")),
   });
-  const upload = useMutation({
-    mutationFn: (file: File) => tasksApi.attachments.upload(taskId!, file),
-    onSuccess: () => void attachmentsQuery.refetch(),
-    onError: (error) =>
-      toast.error(getErrorMessage(error, "No se pudo adjuntar el archivo")),
+  const upload = useFileUpload({
+    upload: (file, onProgress) =>
+      tasksApi.attachments.upload(taskId!, file, onProgress),
+    onUploaded: () => void attachmentsQuery.refetch(),
   });
   const addComment = useMutation({
     mutationFn: () => tasksApi.comments.create(taskId!, newComment.trim()),
@@ -1446,15 +1447,21 @@ export function TaskPanel({
                       </div>
                     ))}
                     {canWrite && (
-                      <Input
-                        aria-label="Adjuntar archivo"
-                        type="file"
-                        disabled={upload.isPending}
-                        onChange={(event) =>
-                          event.target.files?.[0] &&
-                          upload.mutate(event.target.files[0])
-                        }
-                      />
+                      <>
+                        <UploadProgress state={upload.uploading} />
+                        <Input
+                          aria-label="Adjuntar archivo"
+                          type="file"
+                          disabled={upload.isUploading}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            // Vaciar el input: volver a elegir el mismo archivo
+                            // tras un error también tiene que subirlo.
+                            event.target.value = "";
+                            if (file) upload.upload(file);
+                          }}
+                        />
+                      </>
                     )}
                   </section>
                 </div>

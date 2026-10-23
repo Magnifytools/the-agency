@@ -2,6 +2,7 @@ import type { ProjectTasksResponse } from "@/lib/project-work"
 import { filenameFromDisposition, type PdfFile } from "@/lib/pdf-download"
 import axios, { type GenericAbortSignal, type InternalAxiosRequestConfig } from "axios"
 import { toast } from "sonner"
+import type { UploadProgressHandler } from "@/hooks/use-file-upload"
 import type {
   ClientLeads,
   ClientSeoSummary,
@@ -173,6 +174,9 @@ import type {
 
 export const CSRF_COOKIE_NAME = "agency_csrf_token"
 
+// Un adjunto de 20 MB con mala conexión pasa de los 30 s por defecto.
+const UPLOAD_TIMEOUT_MS = 300_000
+
 export const api = axios.create({
   baseURL: "/api",
   timeout: 30_000,
@@ -333,11 +337,11 @@ export const clientsApi = {
   documents: {
     list: (clientId: number) =>
       api.get<ClientDocument[]>(`/clients/${clientId}/documents`).then((r) => r.data),
-    upload: (clientId: number, file: File, description?: string) => {
+    upload: (clientId: number, file: File, description?: string, onUploadProgress?: UploadProgressHandler) => {
       const form = new FormData()
       form.append("file", file)
       if (description) form.append("description", description)
-      return api.post<ClientDocument>(`/clients/${clientId}/documents`, form).then((r) => r.data)
+      return api.post<ClientDocument>(`/clients/${clientId}/documents`, form, { onUploadProgress, timeout: UPLOAD_TIMEOUT_MS }).then((r) => r.data)
     },
     downloadUrl: (clientId: number, docId: number) =>
       `/api/clients/${clientId}/documents/${docId}/download`,
@@ -410,12 +414,12 @@ export const tasksApi = {
   attachments: {
     list: (taskId: number) =>
       api.get<TaskAttachment[]>(`/tasks/${taskId}/attachments`).then((r) => r.data),
-    upload: (taskId: number, file: File, description?: string) => {
+    upload: (taskId: number, file: File, onUploadProgress?: UploadProgressHandler) => {
       const fd = new FormData()
       fd.append("file", file)
-      if (description) fd.append("description", description)
       return api.post<TaskAttachment>(`/tasks/${taskId}/attachments`, fd, {
-        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress,
+        timeout: UPLOAD_TIMEOUT_MS,
       }).then((r) => r.data)
     },
     download: (taskId: number, attachmentId: number) =>
@@ -1069,11 +1073,12 @@ export const inboxApi = {
     api.post<InboxNote>(`/inbox/${id}/dismiss`).then((r) => r.data),
   suggest: (id: number) =>
     api.post<InboxNote>(`/inbox/${id}/suggest`).then((r) => r.data),
-  uploadAttachment: (noteId: number, file: File) => {
+  uploadAttachment: (noteId: number, file: File, onUploadProgress?: UploadProgressHandler) => {
     const fd = new FormData()
     fd.append("file", file)
     return api.post<{ id: number; name: string; mime_type: string; size_bytes: number }>(`/inbox/${noteId}/attachments`, fd, {
-      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress,
+      timeout: UPLOAD_TIMEOUT_MS,
     }).then((r) => r.data)
   },
   deleteAttachment: (noteId: number, attachmentId: number) =>

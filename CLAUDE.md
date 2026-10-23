@@ -854,6 +854,22 @@ admin_users, admin_settings
   servidor. Quien tenga a la vez la BD y `VAULT_KEY` (Railway) descifra todo.
   Rotar `VAULT_KEY` deja ilegibles los accesos existentes (no hay re-cifrado).
 
+## Adjuntos (tareas, documentos del cliente, inbox)
+- Reglas en `backend/services/file_uploads.py`. Tareas y documentos del cliente
+  aceptan por EXTENSIÓN (`ATTACHMENT_TYPES`: PDF, imágenes, Office, TXT/CSV/MD,
+  HTML y ZIP) y guardan el tipo canónico; el Content-Type del navegador no
+  cuenta (un .zip llega como `application/x-zip-compressed` en Windows). Lo
+  demás da 415 con la lista; tamaño, 413 (10 MB tareas, 20 MB documentos).
+- Al devolverlos (`stored_file_response_args`) sólo PDF e imágenes raster van
+  inline (PDF con CSP `sandbox`); el resto, HTML incluido, es descarga opaca
+  `application/octet-stream` + `attachment` + `nosniff` + CSP `sandbox`. Un
+  HTML subido nunca se ejecuta en nuestro origen. Lo guarda
+  `tests/integration/test_file_uploads.py`.
+- Front: `hooks/use-file-upload.ts` + `components/ui/upload-progress.tsx`
+  (progreso con `onUploadProgress`, toast al terminar y toast con el `detail`
+  del servidor si falla; 5 min de timeout). Vacía el input al elegir para que
+  reintentar con el mismo archivo funcione.
+
 ## No tocar
 - Módulos financieros custom: tax_service, forecast_service, income, expenses, taxes, forecasts
 - Se reemplazarán por integración Holded en fase posterior

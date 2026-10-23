@@ -15,6 +15,8 @@ import {
 import { toast } from "sonner"
 import { getErrorMessage, formatTimeAgo } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
+import { useFileUpload } from "@/hooks/use-file-upload"
+import { UploadProgress } from "@/components/ui/upload-progress"
 import { getAgencyTimezone, parseApiInstant } from "@/lib/dates"
 
 
@@ -70,13 +72,9 @@ export function InboxNoteCard({ note }: Props) {
     if (user) queryClient.invalidateQueries({ queryKey: inboxKeys.all(user.id) })
   }
 
-  const uploadMutation = useMutation({
-    mutationFn: (file: File) => inboxApi.uploadAttachment(note.id, file),
-    onSuccess: () => {
-      invalidateAll()
-      toast.success("Adjunto subido")
-    },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al subir adjunto")),
+  const uploadMutation = useFileUpload({
+    upload: (file, onProgress) => inboxApi.uploadAttachment(note.id, file, onProgress),
+    onUploaded: invalidateAll,
   })
 
   const deleteAttachmentMutation = useMutation({
@@ -90,7 +88,7 @@ export function InboxNoteCard({ note }: Props) {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) uploadMutation.mutate(file)
+    if (file) uploadMutation.upload(file)
     e.target.value = ""
   }
 
@@ -198,6 +196,11 @@ export function InboxNoteCard({ note }: Props) {
                     </div>
                   )
                 })}
+              </div>
+            )}
+            {uploadMutation.uploading && (
+              <div className="mt-2 max-w-xs">
+                <UploadProgress state={uploadMutation.uploading} />
               </div>
             )}
 
@@ -380,9 +383,9 @@ export function InboxNoteCard({ note }: Props) {
                 variant="ghost"
                 className="h-7 text-xs gap-1.5 px-3"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={uploadMutation.isPending}
+                disabled={uploadMutation.isUploading}
               >
-                {uploadMutation.isPending ? (
+                {uploadMutation.isUploading ? (
                   <Loader2 className="w-3 h-3 animate-spin" />
                 ) : (
                   <Paperclip className="w-3 h-3" />
