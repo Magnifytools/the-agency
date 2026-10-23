@@ -34,6 +34,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from backend.db.bulk import insert_chunks
 from backend.db.models import Client, ClientStatus, Ga4LeadDaily, Ga4PropertySync
 from backend.services.gsc_detail_service import history_floor
 from backend.services.temporal import business_today
@@ -48,7 +49,6 @@ MAX_CHANNEL_LENGTH = 64
 BACKFILL_DAYS = 486
 TAIL_DAYS = 7
 PAGE_SIZE = 100000
-INSERT_BATCH = 5000
 WINDOW_CHOICES = (7, 28)
 TOP_LANDINGS = 10
 
@@ -276,8 +276,8 @@ async def replace_range(db, property_id: str, start: date, end: date, rows: list
     ))
     values = [{"property_id": property_id, "date": r.date, "landing_page": r.landing_page,
                "channel": r.channel, "leads": r.leads} for r in rows if start <= r.date <= end]
-    for i in range(0, len(values), INSERT_BATCH):
-        await db.execute(pg_insert(Ga4LeadDaily).values(values[i:i + INSERT_BATCH]))
+    for batch in insert_chunks(Ga4LeadDaily, values):
+        await db.execute(pg_insert(Ga4LeadDaily).values(batch))
     return len(values)
 
 

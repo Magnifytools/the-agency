@@ -45,12 +45,12 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from backend.config import settings
+from backend.db.bulk import insert_chunks
 from backend.db.models import Client, ClientStatus, GscQueryMonthly
 from backend.services.gsc_detail_service import month_end
 from backend.services.gsc_service import normalize_site_url, tracked_sites
 
 REQUIRED_COLUMNS = ("keyword", "date", "position", "clicks", "impressions")
-INSERT_BATCH = 5000
 
 
 class ImportAborted(Exception):
@@ -156,12 +156,12 @@ async def run_import(db, csv_path: str | Path, *, client_id: int, site_url: str 
                  "impressions": int(impressions), "weighted_position_sum": float(weighted), "source": "engine"}
                 for (query, month), (clicks, impressions, weighted) in sorted(acc.items()) if month in keep
             ]
-            for i in range(0, len(values), INSERT_BATCH):
-                stmt = pg_insert(GscQueryMonthly).values(values[i:i + INSERT_BATCH]).on_conflict_do_nothing()
+            for batch in insert_chunks(GscQueryMonthly, values):
+                stmt = pg_insert(GscQueryMonthly).values(batch).on_conflict_do_nothing()
                 result = await db.execute(stmt.returning(GscQueryMonthly.month))
                 written = len(result.all())
                 report.rows_written += written
-                report.rows_conflicting += len(values[i:i + INSERT_BATCH]) - written
+                report.rows_conflicting += len(batch) - written
         if dry_run:
             await db.rollback()
         else:
