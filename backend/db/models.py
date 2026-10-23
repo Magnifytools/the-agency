@@ -1877,6 +1877,24 @@ class GscDaily(Base):
     position = Column(Float, nullable=False)
 
 
+class AppSuggestion(Base):
+    """Idea o fallo de la app que deja alguien del equipo (botón "Sugerencias").
+
+    Los admins las ven todas y las marcan como hechas; quien la escribió ve
+    las suyas. `page_path` es la pantalla desde la que se envió.
+    """
+    __tablename__ = "app_suggestions"
+    __table_args__ = (CheckConstraint("length(btrim(text)) > 0", name="ck_app_suggestions_text"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    author_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    text = Column(Text, nullable=False)
+    page_path = Column(String(500), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    done_at = Column(DateTime(timezone=True), nullable=True)
+    done_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
 class ClientShareLink(Base):
     """Enlace de sólo lectura para el cliente: sus resúmenes entregados y su tráfico.
 

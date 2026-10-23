@@ -826,6 +826,18 @@ admin_users, admin_settings
 - Nada de zips sueltos en la raíz (`.gitignore`). Al cambiar código de la
   extensión, sube la versión del `manifest.json`.
 
+## Sugerencias (ideas y fallos de la app)
+- Botón "Sugerencias o fallos" en la barra lateral (y en Cuenta, móvil) para
+  TODOS: diálogo de texto → `POST /api/suggestions` (guarda autor, cuándo y la
+  pantalla `page_path`) y avisa en la campana a los admins activos (no a quien
+  la envía). Página `/sugerencias`: los admins ven todas (Pendientes / Hechas /
+  Todas) y marcan hecha o reabren (`PATCH /api/suggestions/{id}`, sólo admin);
+  al marcarla, se avisa a quien la escribió. El resto ve sólo las suyas.
+- Tabla `app_suggestions` (migración `app_suggestions_v1`, que trae las notas
+  del inbox ya enviadas como "Sugerencia para la app"). "Sugerencia para la
+  app" del inbox escribe en la misma tabla (`services/app_suggestions.py`).
+- Nada sale de la app (ni Discord ni email). Fuera del Deshacer y del MCP.
+
 ## Accesos (contraseñas compartidas)
 
 - **Qué es**: `/credentials` (Ajustes → Accesos) y pestaña Accesos de la ficha

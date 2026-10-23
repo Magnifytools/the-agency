@@ -52,7 +52,10 @@ async def published_previous(engine):
 def test_el_contrato_solo_retira_lo_de_vigil():
     assert RETIRED_TABLES == {"vigil_summary"}
     assert RETIRED_COLUMNS == {("clients", "vigil_slug")}
-    assert deployment_schema.MIGRATIONS[-1] is MIGRATION
+    # La retirada va después del paso que creó lo de Vigil (y de cualquier
+    # otro que aún lo leyera); pasos aditivos posteriores no le afectan.
+    migrations = deployment_schema.MIGRATIONS
+    assert migrations.index(MIGRATION) > migrations.index(vigil_schema.MIGRATION)
     assert vigil_schema.RETIREMENT_VERSION == MIGRATION.version
     assert RETIRED_TABLES <= schema_baseline.RETIRED_TABLES
 

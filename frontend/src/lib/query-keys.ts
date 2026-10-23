@@ -243,6 +243,11 @@ export const inboxKeys = {
   count: (userId: number) => ["inbox", userId, "count"] as const,
 }
 
+export const suggestionKeys = {
+  all: ["suggestions"] as const,
+  list: (status: string) => ["suggestions", "list", status] as const,
+}
+
 export const searchKeys = {
   all: () => ["global-search"] as const,
   results: (userId: number, permissionSignature: string, query: string) => ["global-search", userId, permissionSignature, query] as const,

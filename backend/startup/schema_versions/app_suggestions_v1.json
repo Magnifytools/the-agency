@@ -1,0 +1,27 @@
+{
+  "version": "20261023_app_suggestions_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS app_suggestions (\n id SERIAL PRIMARY KEY,\n author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,\n text TEXT NOT NULL,\n page_path VARCHAR(500),\n created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n done_at TIMESTAMPTZ,\n done_by INTEGER REFERENCES users(id) ON DELETE SET NULL,\n CONSTRAINT ck_app_suggestions_text CHECK (length(btrim(text)) > 0)\n)",
+    "CREATE INDEX IF NOT EXISTS ix_app_suggestions_author_id ON app_suggestions (author_id)",
+    "INSERT INTO app_suggestions (author_id, text, created_at) SELECT user_id, raw_text, updated_at FROM inbox_notes WHERE resolved_as = 'app_suggestion' AND length(btrim(raw_text)) > 0 AND NOT EXISTS (SELECT 1 FROM app_suggestions) ORDER BY updated_at, id"
+  ],
+  "columns": {
+    "app_suggestions": {
+      "id": ["int4", false, null],
+      "author_id": ["int4", true, null],
+      "text": ["text", false, null],
+      "page_path": ["varchar", true, 500],
+      "created_at": ["timestamptz", false, null],
+      "done_at": ["timestamptz", true, null],
+      "done_by": ["int4", true, null]
+    }
+  },
+  "primary_keys": {
+    "app_suggestions": ["id"]
+  },
+  "foreign_keys": [
+    {"table": "app_suggestions", "column": "author_id", "references": "users", "on_delete": "n"},
+    {"table": "app_suggestions", "column": "done_by", "references": "users", "on_delete": "n"}
+  ],
+  "unique_indexes": []
+}

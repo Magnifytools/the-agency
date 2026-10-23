@@ -1,4 +1,5 @@
-"""Una nota del inbox enviada como sugerencia para la app llega a los admins."""
+"""Una nota del inbox enviada como sugerencia para la app llega a los admins
+y entra en la lista de Sugerencias (ver test_app_suggestions.py)."""
 from __future__ import annotations
 
 import pytest
@@ -23,8 +24,9 @@ async def test_member_suggestion_notifies_admins_once_and_resolves_the_note(
     assert again.status_code == 200
 
     sent = (await db_session.scalars(select(Notification).where(
-        Notification.type == "app_suggestion", Notification.entity_id == note.id,
+        Notification.type == "app_suggestion",
     ))).all()
+    assert {n.link_url for n in sent} == {"/sugerencias"}
     to_admin = [n.message for n in sent if n.user_id == admin_client.test_user.id]
     assert to_admin == ["Que Hoy enseñe los seguimientos"]
     assert all(n.user_id != member.test_user.id for n in sent)

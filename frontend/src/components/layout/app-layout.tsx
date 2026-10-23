@@ -10,6 +10,7 @@ import { BottomDrawer } from "@/components/ui/bottom-drawer"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
 import { NotificationBell } from "@/components/layout/notification-bell"
 import { UndoPanel } from "@/components/layout/undo-panel"
+import { SuggestionButton } from "@/components/layout/suggestion-button"
 import { SearchPalette } from "@/components/layout/search-palette"
 import { QuickCaptureDialog } from "@/components/inbox/quick-capture-dialog"
 import { ShortcutsHelpModal } from "@/components/shortcuts/shortcuts-help-modal"
@@ -102,7 +103,10 @@ export function AppLayout() {
           </nav>
 
           {/* User info at bottom */}
-          <div className="mt-auto border-t border-border pt-5 px-1">
+          <div className="mt-auto border-t border-border pt-3 px-1">
+            <div className="mb-3 -mx-1">
+              <SuggestionButton />
+            </div>
             <div className="flex items-center justify-between">
               <div className="text-sm truncate pr-2">
                 <p className="font-semibold text-foreground truncate">{user?.full_name}</p>
@@ -152,7 +156,8 @@ export function AppLayout() {
         <h2 className="font-semibold mb-1">Cuenta y avisos</h2>
         <p className="font-semibold mb-1">{user?.full_name}</p>
         <p className="text-sm text-muted-foreground mb-4">{user?.email}</p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-4 gap-2">
+          <SuggestionButton showLabel />
           <UndoPanel showLabel />
           <NotificationBell showLabel onNavigate={() => setMoreDrawerOpen(false)} />
           <button onClick={() => { setMoreDrawerOpen(false); void logout() }} className="flex min-h-11 flex-col items-center justify-center gap-1 rounded-lg p-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"><LogOut className="h-4 w-4" />Cerrar sesión</button>
