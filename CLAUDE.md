@@ -938,6 +938,15 @@ cd mcp-server && .venv/bin/python -m pytest -q
   ```json y respondía 502 en cada reintento (daily 129 de Nacho, oct 2026). Ahora
   se extrae el primer objeto del texto, y con notas vacías el prompt lo dice y se
   descartan las tareas sin `fact_keys`. Lo guarda `TestDailySoloConHechos`.
+- **Un INSERT con muchas filas no puede pasar de 32.767 parámetros** (asyncpg).
+  SQLAlchemy manda uno por columna y fila, también las columnas con default de
+  Python que el dict no trae: 5.000 filas de `gsc_query_monthly` (7 columnas)
+  reventaban con Sage. Trocea con `backend/db/bulk.insert_chunks(model, values)`,
+  nunca con un tamaño fijo. Lo guarda `tests/integration/test_bulk_insert_integration.py`.
+- **El volumen de Postgres en Railway es finito** (era de 500 MB; ampliado a 5 GB
+  el 23 oct 2026). Antes de desplegar algo que importa histórico (detalle de
+  Search Console: Sage son ~1,2 M filas, ~1,3 GB), mirar el uso del volumen en
+  Railway. Lleno, falla CUALQUIER escritura de la app.
 - bcrypt pinned a 4.1.3 (incompatibilidad passlib)
 
 ---
