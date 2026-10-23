@@ -246,7 +246,6 @@ def test_startup_loops_match_enabled_catalog(monkeypatch):
         "calendar": "calendar-sync",
         "retention": "retention-cleanup",
         "inbox_classification": "inbox-classification",
-        "vigil": "vigil-sync",
         "ga4": "ga4-sync",
         "uptime": "web-uptime",
         "web_sweep": "web-sweep",
@@ -260,6 +259,16 @@ def test_startup_loops_match_enabled_catalog(monkeypatch):
     if settings.DELIVERY_WORKER_ENABLED:
         expected.add("manual-deliveries")
     assert set(captured) == expected
+
+
+def test_job_vigil_retirado_y_su_lock_no_se_reutiliza():
+    """Fase 3b de Vigil: el job ``vigil`` ya no existe y su lock 13 queda vacío
+    (durante un despliegue, una réplica con la versión anterior aún lo toma)."""
+    from backend.services.job_catalog import job_definitions
+
+    definitions = job_definitions()
+    assert "vigil" not in {d.spec.key for d in definitions}
+    assert 13 not in {d.spec.lock_id for d in definitions}
 
 
 @pytest.mark.parametrize("failed", [0, 1])

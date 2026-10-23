@@ -44,7 +44,6 @@ class ClientUpdate(BaseModel):
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
     engine_project_id: Optional[int] = None
-    vigil_slug: Optional[str] = None
     intermediary_name: Optional[str] = None
     is_intermediary_deal: Optional[bool] = None
     # Revenue intelligence
@@ -98,7 +97,6 @@ class ClientResponse(BaseModel):
     seo_page_groups: list[dict] = Field(default_factory=list)
     ga4_lead_events: list[str] = Field(default_factory=lambda: ["generate_lead"])
     engine_project_id: Optional[int] = None
-    vigil_slug: Optional[str] = None
     engine_content_count: Optional[int] = None
     engine_keyword_count: Optional[int] = None
     engine_avg_position: Optional[float] = None

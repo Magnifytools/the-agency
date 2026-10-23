@@ -22,7 +22,7 @@ from backend.config import settings
 from backend.core.security import encrypt_vault_secret
 from backend.db.models import (
     ChangeLog, Client, ClientStatus, ClientWebSettings, Notification, Project, ProjectStatus, User, UserPermission,
-    UserRole, VigilSummary, WebChange, WebChangeItem, WebRunError, WebSnapshot, WebSweepRun, WebUptimeState,
+    UserRole, WebChange, WebChangeItem, WebRunError, WebSnapshot, WebSweepRun, WebUptimeState,
     WebUptimeTarget, WebWatch, WebWatchState,
 )
 from backend.services.client_status import Viewer, portfolio
@@ -707,23 +707,20 @@ async def test_cambio_critico_sin_revisar_abre_incidencia_y_revisarlo_la_resuelv
 # ── Estado del cliente ───────────────────────────────────────────────
 
 
-async def test_estado_del_cliente_prefiere_las_urls_propias_a_vigil(db_session):
-    own = await _client(db_session, name="Propia", vigil_slug=f"propia-{uuid4().hex[:6]}")
-    legacy = await _client(db_session, name="Solo Vigil", vigil_slug=f"vigil-{uuid4().hex[:6]}")
+async def test_estado_del_cliente_solo_cuenta_las_urls_propias(db_session):
+    own = await _client(db_session, name="Propia")
+    without = await _client(db_session, name="Sin URLs")
     now = datetime.now(UTC)
-    for c in (own, legacy):
-        db_session.add(VigilSummary(slug=c.vigil_slug, fetched_at=now, data={
-            "changes_unacknowledged": {"critical": 2}, "last_checked_at": now.isoformat()}))
     watch = await _watch(db_session, own)
     db_session.add(WebWatchState(watch_id=watch.id, client_id=own.id, last_checked_at=now))
     await db_session.commit()
     viewer = Viewer(is_admin=False, tasks=False, digests=False, timesheet=False, web=True)
 
-    rows = {r["client_id"]: r for r in await portfolio(db_session, [own, legacy], viewer)}
-    # Propias sin cambios críticos: Bien, aunque Vigil diga 2 críticos.
+    rows = {r["client_id"]: r for r in await portfolio(db_session, [own, without], viewer)}
     assert rows[own.id]["status"] == "ok" and rows[own.id]["web_changes"]["critical"] == 0
-    assert rows[legacy.id]["status"] == "watch"
-    assert rows[legacy.id]["reasons"] == ["2 cambios críticos en la web sin revisar (Vigil)"]
+    # Sin URLs propias no hay señal de cambios (Vigil retirado en la fase 3b).
+    assert rows[without.id]["web_changes"] is None and rows[without.id]["status"] == "no_data"
+    assert "vigil" not in rows[without.id]
 
     await _change(db_session, own, watch, "critical")
     rows = {r["client_id"]: r for r in await portfolio(db_session, [own], viewer)}

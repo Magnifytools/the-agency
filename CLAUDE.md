@@ -545,27 +545,31 @@ admin_users, admin_settings
 
 ## Vigil (cambios en las webs de los clientes)
 
-- **Qué es**: Vigil (`/Código/Vigil`, vigil.magnifytools.com) vigila cambios en
-  las páginas de cada cliente. The Agency lee su resumen con
-  `GET /api/integrations/summary` y la cabecera `X-Service-Key`
-  (`VIGIL_API_URL` + `VIGIL_SERVICE_KEY`, la misma clave que `VIGIL_SERVICE_KEY`
-  en Vigil). Sin URL o sin clave, el job `vigil` queda en pausa.
-- **Enlace**: `Client.vigil_slug` (Ajustes del cliente, único). El job copia un
-  resumen por slug en `vigil_summary` cada 6 h. Cada 6 h y no diario, porque el
-  turno diario sería antes del barrido de Vigil (04:30 UTC).
-- **Uso**: la ficha lo enseña en Resultados y el estado del cliente da
-  Vigilar si hay cambios críticos sin revisar. Un resumen de más de 48 h se
-  enseña pero no cuenta (`services/vigil_service.py`).
-- **Se retira** (decisión de David, 21 oct 2026): The Agency ya vigila cambios
-  por su cuenta (ver "Webs: cambios"). Si un cliente tiene URLs propias en
-  `web_watches`, su estado ya NO cuenta Vigil. La integración se quita en la
-  fase 3, tras importar los datos; hasta entonces, no la borres.
+- **Integración retirada del código (3b); columnas pendientes de 3c.** Vigil
+  (`/Código/Vigil`) vigilaba cambios en las webs; The Agency lo hace ahora por su
+  cuenta (ver "Webs: cambios"). Ya no hay job `vigil`, `vigil_service`,
+  `/api/vigil`, `VIGIL_API_URL`/`VIGIL_SERVICE_KEY`, campo "Cliente en Vigil" ni
+  bloque de Vigil en la ficha. Un cliente sin URLs propias en `web_watches` no
+  tiene señal de cambios en su estado.
+- **Vigil apagado el 23 oct 2026**: despliegue quitado en Railway (servicio
+  offline; el volumen con `vigil.db` sigue, se vuelve con Redeploy). Fit
+  Generation, su único cliente, se vigila ya desde The Agency (6 URLs, Slack
+  `#seo-equipo`). No se importó su historial: sigue en ese volumen. La limpieza
+  final (volumen, servicio, dominio, repo) está programada para finales de
+  noviembre (tarea `vigil-limpieza-final`).
+- **Lock 13** era el del job `vigil`: no se reutiliza (lo guarda
+  `test_job_vigil_retirado_y_su_lock_no_se_reutiliza`).
+- **Pendiente 3c**: `clients.vigil_slug` (+ `uq_clients_vigil_slug`) y la tabla
+  `vigil_summary` siguen en la BD (P12 las exige) pero fuera del ORM: nada las
+  lee salvo `scripts/import_vigil.py`, con SQL. Se borran con un paso de
+  retirada en otro despliegue (ver `docs/vigil-migration.md`, 3c).
 - **Corte** (fase 3a): runbook en `docs/vigil-migration.md` (congelar Vigil,
   importar, calibrar sin Slack, encender `WEB_SWEEP_ENABLED`, y la retirada 3b/3c).
   `python -m backend.scripts.import_vigil --sqlite vigil.db --dry-run` copia
   `vigil.db` (sólo lectura) a las tablas `web_*` conservando los ids, en UNA
-  transacción idempotente (`ON CONFLICT (id) DO NOTHING`); slug → `vigil_slug`
-  (o `--map slug=id` / `--skip slug`; un slug sin pareja aborta todo), usuarios
+  transacción idempotente (`ON CONFLICT (id) DO NOTHING`); slug → columna
+  `clients.vigil_slug` leída con SQL si aún existe (o `--map slug=id` /
+  `--skip slug`; un slug sin pareja aborta todo), usuarios
   por email (si no, `acknowledged_by_label`), webhook re-cifrado con
   `encrypt_vault_secret` (`VIGIL_SECRET_KEY` por entorno o teclado, nunca por
   argumento) y lo que en Vigil era default entra como NULL. Lo de The Agency
@@ -701,9 +705,9 @@ admin_users, admin_settings
   revisar de URLs no archivadas ni silenciadas de clientes activos; se resuelve
   al revisarlos; huella con los ids de los cambios. Mismos destinatarios que las
   caídas. Enlace `/web/cambios?cliente={id}`.
-- **Estado del cliente**: si tiene URLs propias (no archivadas), mandan ellas
-  (crítico sin revisar = Vigilar; bloque `web_changes`, sólo si quien mira lee
-  `web`) y Vigil deja de contar; si no, sigue el resumen de Vigil.
+- **Estado del cliente**: cuentan sus URLs propias (no archivadas): crítico sin
+  revisar = Vigilar; bloque `web_changes`, sólo si quien mira lee `web`. Sin
+  URLs propias no hay señal (el resumen de Vigil se retiró en la 3b).
 - **Lecciones de Vigil que siguen valiendo**:
   - *0quater*: un selector de poda mal elegido no hace ruido, hace SILENCIO
     (`[aria-live]` se comía 1.039 palabras). Antes de añadir uno, medir con

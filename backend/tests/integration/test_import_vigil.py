@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 from cryptography.fernet import Fernet
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from backend.config import settings
 from backend.core.security import decrypt_vault_secret
@@ -147,13 +147,24 @@ def _vault_key(monkeypatch):
 
 
 async def _agency(db, slugs=("fit-vigil", "demo-vigil")):
-    """Dos clientes enlazados por ``vigil_slug`` y la revisora (email en otra caja)."""
-    fit = Client(name=f"Fit {uuid.uuid4().hex[:6]}", status=ClientStatus.active, vigil_slug=slugs[0])
-    demo = Client(name=f"Demo {uuid.uuid4().hex[:6]}", status=ClientStatus.active, vigil_slug=slugs[1])
+    """Dos clientes enlazados por ``vigil_slug`` y la revisora (email en otra caja).
+
+    Desde la fase 3b la columna está en la BD pero no en el ORM (y el esquema de
+    los tests sale del ORM): se crea aquí, dentro de la transacción del test, como
+    la tiene producción hasta la 3c. ``slugs=None``: sin columna (tras la 3c).
+    """
+    if slugs is None:
+        await db.execute(text("ALTER TABLE clients DROP COLUMN IF EXISTS vigil_slug"))
+    else:
+        await db.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS vigil_slug VARCHAR(100)"))
+    fit = Client(name=f"Fit {uuid.uuid4().hex[:6]}", status=ClientStatus.active)
+    demo = Client(name=f"Demo {uuid.uuid4().hex[:6]}", status=ClientStatus.active)
     user = User(email="revisora.vigil@test.com", full_name="Revisora Agency", hashed_password="x",
                 role=UserRole.member, is_active=True)
     db.add_all([fit, demo, user])
     await db.flush()
+    for client, slug in zip((fit, demo), slugs or ()):
+        await db.execute(text("UPDATE clients SET vigil_slug = :slug WHERE id = :id"), {"slug": slug, "id": client.id})
     # Lo de antes de importar queda fuera del SAVEPOINT que deshace el --dry-run.
     await db.commit()
     return fit, demo, user
@@ -339,6 +350,19 @@ async def test_slug_sin_cliente_aborta_y_map_o_skip_lo_resuelven(db_session, tmp
         await run_import(db_session, data, get_vigil_key=_key, mapping={"huerfano": 987654321})
     with pytest.raises(ImportAborted, match="no existen en Vigil"):
         await run_import(db_session, data, get_vigil_key=_key, skip={"huerfano", "nada"})
+
+
+async def test_sin_columna_vigil_slug_solo_vale_map(db_session, tmp_path):
+    """Tras la 3c ``clients.vigil_slug`` no existe: el script no se rompe y pide --map."""
+    data = load_vigil(str(build_vigil_db(tmp_path / "vigil.db", _ids())))
+    fit, demo, _user = await _agency(db_session, slugs=None)
+    fit_id, demo_id = fit.id, demo.id
+
+    with pytest.raises(ImportAborted, match="fit-vigil"):
+        await run_import(db_session, data, get_vigil_key=_key, dry_run=True)
+    mapped = await run_import(db_session, data, get_vigil_key=_key, dry_run=True,
+                              mapping={"fit-vigil": fit_id, "demo-vigil": demo_id})
+    assert {c.slug: c.agency_id for c in mapped.clients} == {"fit-vigil": fit_id, "demo-vigil": demo_id}
 
 
 async def test_skip_deja_fuera_todo_lo_del_cliente(db_session, tmp_path):

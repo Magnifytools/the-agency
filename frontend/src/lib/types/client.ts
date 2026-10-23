@@ -29,7 +29,6 @@ export interface Client {
   // Leads por landing (GA4): eventos que cuentan como lead ("generate_lead_*" = prefijo)
   ga4_lead_events?: string[]
   engine_project_id: number | null
-  vigil_slug: string | null
   engine_content_count: number | null
   engine_keyword_count: number | null
   engine_avg_position: number | null
@@ -81,7 +80,6 @@ export interface ClientCreate {
   seo_page_groups?: SeoPageGroup[]
   ga4_lead_events?: string[]
   engine_project_id?: number | null
-  vigil_slug?: string | null
   // Revenue intelligence
   is_internal?: boolean
   intermediary_name?: string | null
@@ -226,28 +224,8 @@ export interface ClientStatusRow {
     vs_previous: import("./integration").Ga4Changes | null
     as_of: string
   } | null
-  /** Cambios en la web (Vigil). null = cliente sin enlazar o sin resumen todavía. */
-  vigil: {
-    slug: string
-    critical: number
-    warning: number
-    info: number
-    watches_active: number
-    watches_with_error: number
-    last_checked_at: string | null
-    last_run_status: string | null
-    fetched_at: string
-    /** false = el resumen tiene más de 48 h y no cuenta para el estado. */
-    fresh: boolean
-    url: string
-  } | null
   /** Disponibilidad de la web. null = quien mira no lee "web" o el cliente no tiene URLs. */
   uptime?: import("./web").ClientUptimeBlock | null
-}
-
-export interface VigilClients {
-  configured: boolean
-  clients: { slug: string; name: string; linked_to: string | null }[]
 }
 
 export type ClientCohort = "all" | "external" | "internal"

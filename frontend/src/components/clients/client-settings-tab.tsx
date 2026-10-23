@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { clientsApi, engineApi, ga4Api, gscApi, vigilApi } from "@/lib/api"
+import { clientsApi, engineApi, ga4Api, gscApi } from "@/lib/api"
 import { ga4ErrorLabel, parseLeadEvents } from "@/lib/ga4"
 import { formatDay, gscErrorLabel } from "@/lib/gsc"
 import type { Client } from "@/lib/types"
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { BarChart3, Search, Save, Globe, Radar, Target } from "lucide-react"
+import { BarChart3, Search, Save, Globe, Target } from "lucide-react"
 import { getErrorMessage } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
 import { invalidateClientChange } from "@/lib/query-keys"
@@ -37,7 +37,6 @@ export function ClientSettingsTab({ client, focus = null }: Props) {
   const [engineProjectId, setEngineProjectId] = useState(
     client.engine_project_id?.toString() ?? ""
   )
-  const [vigilSlug, setVigilSlug] = useState(client.vigil_slug ?? "")
   const savedBrandTerms = client.brand_terms ?? []
   const [brandTerms, setBrandTerms] = useState<string[]>(savedBrandTerms)
   const brandTermsDirty = brandTerms.join("\n") !== savedBrandTerms.join("\n")
@@ -49,7 +48,6 @@ export function ClientSettingsTab({ client, focus = null }: Props) {
     ga4 !== (client.ga4_property_id ?? "") ||
     gsc !== (client.gsc_url ?? "") ||
     engineProjectId !== (client.engine_project_id?.toString() ?? "") ||
-    vigilSlug !== (client.vigil_slug ?? "") ||
     brandTermsDirty ||
     leadEventsDirty
 
@@ -66,7 +64,6 @@ export function ClientSettingsTab({ client, focus = null }: Props) {
       clientsApi.update(client.id, {
         ga4_property_id: ga4.trim() || null,
         gsc_url: gsc.trim() || null,
-        vigil_slug: vigilSlug.trim() || null,
         // Sólo si cambian: así guardar otro campo no pisa términos editados por otra persona.
         ...(brandTermsDirty ? { brand_terms: brandTerms } : {}),
         // Igual: sólo si cambian. El servidor valida los nombres.
@@ -83,8 +80,6 @@ export function ClientSettingsTab({ client, focus = null }: Props) {
   const { data: ga4Status } = useQuery({ queryKey: ["ga4-status"], queryFn: ga4Api.getStatus, staleTime: 60_000 })
   const savedGa4 = client.ga4_property_id?.trim().replace(/^properties\//, "")
   const ga4State = ga4Status?.properties.find((p) => p.property_id === savedGa4)
-  const { data: vigil } = useQuery({ queryKey: ["vigil-clients"], queryFn: vigilApi.clients, staleTime: 5 * 60_000 })
-  const vigilSaved = vigil?.clients.find((c) => c.slug === client.vigil_slug)
 
   // Estado de importación de la propiedad GUARDADA (no la que se está escribiendo).
   const { data: gscStatus } = useQuery({ queryKey: ["gsc-status"], queryFn: gscApi.getStatus, staleTime: 60_000 })
@@ -239,34 +234,6 @@ export function ClientSettingsTab({ client, focus = null }: Props) {
                 Vincula este cliente con un proyecto de The Engine para ver metricas SEO
               </p>
             </div>}
-
-            <div>
-              <Label htmlFor="vigil-slug" className="flex items-center gap-1.5">
-                <Radar className="h-3.5 w-3.5 text-muted-foreground" />
-                Cliente en Vigil
-              </Label>
-              <Input
-                id="vigil-slug"
-                value={vigilSlug}
-                onChange={(e) => setVigilSlug(e.target.value)}
-                placeholder="fit-generation"
-                className="mt-1"
-                disabled={!canWriteClients}
-                list="vigil-clients"
-              />
-              {vigil && (
-                <datalist id="vigil-clients">
-                  {vigil.clients.filter((c) => !c.linked_to || c.slug === client.vigil_slug).map((c) => (
-                    <option key={c.slug} value={c.slug}>{c.name}</option>
-                  ))}
-                </datalist>
-              )}
-              <p className="text-[11px] text-muted-foreground mt-1">
-                {vigil && !vigil.configured ? "Vigil no está configurado en The Agency."
-                  : client.vigil_slug && !vigilSaved ? "Todavía no hay resumen de Vigil para este cliente: llega en la próxima lectura."
-                  : "Slug del cliente en Vigil. Sus cambios en la web salen en la ficha y en su estado."}
-              </p>
-            </div>
 
             {canWriteClients && <div className="flex justify-end">
               <Button type="submit" disabled={!isDirty || updateMut.isPending} size="sm">

@@ -51,11 +51,6 @@ class Settings(BaseSettings):
     ENGINE_SYNC_INTERVAL_HOURS: int = 6
     ENGINE_SYNC_ENABLED: bool = True
     ENGINE_FRONTEND_URL: Optional[str] = None
-    # Vigil (cambios en las webs de los clientes): resumen de solo lectura con
-    # clave de servicio. Sin URL o sin clave, el job queda en pausa.
-    VIGIL_API_URL: Optional[str] = None
-    VIGIL_SERVICE_KEY: Optional[str] = None
-    VIGIL_FRONTEND_URL: str = "https://vigil.magnifytools.com"
     # Semáforo SEO: incidencia cuando los clics de 30 días caen este % o más
     # frente a los 30 anteriores, si el periodo anterior llegaba a este mínimo.
     SEO_DROP_ALERT_PCT: float = 20.0

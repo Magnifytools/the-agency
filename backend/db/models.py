@@ -408,8 +408,9 @@ class Client(UTCTimestampMixin, Base):
     next_invoice_date = Column(Date, nullable=True)
     last_invoiced_date = Column(Date, nullable=True)
     engine_project_id = Column(Integer, nullable=True)
-    # Cliente en Vigil (su slug); el resumen vive en vigil_summary.
-    vigil_slug = Column(String(100), nullable=True)
+    # ``vigil_slug`` (y la tabla ``vigil_summary``) siguen en la BD pero fuera del
+    # ORM desde la fase 3b de Vigil; se borran en la 3c (docs/vigil-migration.md).
+    # ``scripts/import_vigil.py`` la lee con SQL.
     # Internal flag
     is_internal = Column(Boolean, nullable=False, default=False)
     # Narrative context / dossier
@@ -795,12 +796,6 @@ class TimeEntry(TimestampMixin, Base):
 
 
 # ── Client sub-models (contacts, resources, documents) ────────
-
-Index(
-    "uq_clients_vigil_slug", Client.vigil_slug, unique=True,
-    postgresql_where=Client.vigil_slug.isnot(None),
-)
-
 
 class ClientContact(UTCTimestampMixin, Base):
     __tablename__ = "client_contacts"
@@ -1880,15 +1875,6 @@ class GscDaily(Base):
     clicks = Column(Integer, nullable=False)
     impressions = Column(Integer, nullable=False)
     position = Column(Float, nullable=False)
-
-
-class VigilSummary(Base):
-    """Último resumen de Vigil por cliente de Vigil (slug), copiado por el job ``vigil``."""
-    __tablename__ = "vigil_summary"
-
-    slug = Column(String(100), primary_key=True)
-    data = Column(JSONB, nullable=False)
-    fetched_at = Column(DateTime(timezone=True), nullable=False)
 
 
 class ClientShareLink(Base):

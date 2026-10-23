@@ -63,12 +63,8 @@ def job_definitions() -> tuple[JobDefinition, ...]:
                       "Guarda sesiones, conversiones y tráfico desde IA de las propiedades GA4 de los clientes activos.",
                       None if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET
                       else "Google OAuth no está configurado."),
-        # Cada 6 h y no diario: el turno diario corre a las 00:01 y el barrido
-        # de Vigil termina hacia las 06:30, así que leería el resumen de ayer.
-        JobDefinition(JobSpec("vigil", 13, 6 * 3600, 120, retry_seconds=1800), "Leer cambios en las webs (Vigil)",
-                      "Copia el resumen de Vigil: cambios sin revisar y páginas con error por cliente.",
-                      None if settings.VIGIL_API_URL and settings.VIGIL_SERVICE_KEY
-                      else "Vigil no está configurado."),
+        # Lock 13: era el job ``vigil`` (retirado en la fase 3b). No reutilizarlo:
+        # una réplica con la versión anterior aún podría tomarlo durante el despliegue.
         # Cada 60 s mira sólo las URLs que tocan (cada 5 min; 60 s si fallan).
         # Lock 15; el 16 queda reservado para web_sweep y el 17 para gsc_detail.
         JobDefinition(JobSpec("uptime", 15, 60, timeout_seconds=150, retry_seconds=60), "Comprobar las webs de los clientes",
