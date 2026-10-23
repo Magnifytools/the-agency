@@ -169,6 +169,7 @@ import type {
   InboxNoteUpdate,
   JobRuntimeResponse,
   OperationalUsage,
+  AppSuggestion,
 } from "./types"
 
 export const CSRF_COOKIE_NAME = "agency_csrf_token"
@@ -1049,6 +1050,18 @@ export const engineApi = {
 }
 
 // ── Inbox Quick Capture ────────────────────────────────────
+
+// Sugerencias o fallos de la app (los admins ven todas; el resto, las suyas)
+export type SuggestionStatus = "open" | "done" | "all"
+
+export const suggestionsApi = {
+  list: (status: SuggestionStatus) =>
+    api.get<AppSuggestion[]>("/suggestions", { params: { status } }).then((r) => r.data),
+  create: (data: { text: string; page_path?: string }) =>
+    api.post<AppSuggestion>("/suggestions", data).then((r) => r.data),
+  update: (id: number, data: { done: boolean }) =>
+    api.patch<AppSuggestion>(`/suggestions/${id}`, data).then((r) => r.data),
+}
 
 export const inboxApi = {
   list: (params?: { status?: string; limit?: number; offset?: number }) =>

@@ -24,6 +24,7 @@ from backend.api.routes import (
     client_dashboard, client_seo, client_share_links, engine_integration, investments,
     search, balance,
     inbox,
+    suggestions,
     extension,
     google_calendar,
     gsc,
@@ -234,6 +235,8 @@ _CORE_ROUTERS = [
     web_settings,
     # holidays: los festivos de empresa (Ajustes → Festivos, plan de la mañana).
     holidays,
+    # suggestions: el botón "Sugerencias o fallos" del shell, para todos.
+    suggestions,
     # changes: el Undo del shell. No es una pantalla, es la red de seguridad
     # de todas las demás — se registra siempre.
     changes, commands,

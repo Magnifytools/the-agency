@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.database import get_db
 from backend.db.models import (
     InboxNote, InboxNoteStatus, InboxAttachment, Project, ProjectStatus, Client, ClientStatus,
-    Task, TaskStatus, TaskPriority, User, UserRole,
+    Task, TaskStatus, TaskPriority,
 )
 from backend.api.deps import get_current_user, require_module
 from backend.api.utils.db_helpers import safe_refresh
@@ -24,7 +24,7 @@ from backend.core.rate_limiter import ai_limiter
 from backend.services.task_scope import validate_task_scope
 from backend.services.domain_writes import create_task as create_task_write
 from backend.services.inbox_processing import can_read as _can_read
-from backend.services.notification_service import create_notification
+from backend.services.app_suggestions import APP_SUGGESTION, record_app_suggestion
 from backend.services.temporal import as_utc_instant, business_today
 
 logger = logging.getLogger(__name__)
@@ -484,7 +484,6 @@ async def dismiss_note(
 # POST /{id}/suggest — Send the note to the admins as an app suggestion
 # ---------------------------------------------------------------------------
 
-APP_SUGGESTION = "app_suggestion"
 
 
 @router.post("/{note_id}/suggest", response_model=InboxNoteResponse)
@@ -493,10 +492,10 @@ async def send_as_app_suggestion(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """La nota es una mejora para The Agency: llega a los admins como aviso.
+    """La nota es una mejora para The Agency: entra en la lista de Sugerencias.
 
-    El texto entero va en el aviso porque las notas del inbox son privadas de
-    quien las escribe. Quien la envía no se avisa a sí mismo; la nota queda en
+    Se copia el texto porque las notas del inbox son privadas de quien las
+    escribe. Los admins reciben el aviso (no quien la envía); la nota queda en
     su inbox marcada como sugerencia.
     """
     note = (await db.execute(
@@ -512,17 +511,7 @@ async def send_as_app_suggestion(
     if note.status in (InboxNoteStatus.processed, InboxNoteStatus.dismissed):
         raise HTTPException(status_code=409, detail="La nota ya está resuelta")
 
-    admins = (await db.scalars(select(User.id).where(
-        User.is_active.is_(True), User.role == UserRole.admin, User.id != user.id,
-    ))).all()
-    author = user.short_name or user.full_name
-    for admin_id in admins:
-        await create_notification(
-            db, user_id=admin_id, type=APP_SUGGESTION,
-            title=f"Sugerencia para la app de {author}",
-            message=note.raw_text,
-            entity_type="inbox_note", entity_id=note.id,
-        )
+    await record_app_suggestion(db, author=user, text=note.raw_text)
     note.status = InboxNoteStatus.processed
     note.resolved_as = APP_SUGGESTION
     note.updated_at = _updated_clock()

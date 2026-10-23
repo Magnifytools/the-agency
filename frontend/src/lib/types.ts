@@ -99,3 +99,16 @@ export interface OperationalUsage {
   commands: { executed: number; failed: number; needs_input: number; needs_review: number; undone: number; terminal_total: number; success_percent: number | null; by_channel: { app: number; extension: number; unknown: number } }
   deliveries: { sent: number; failed: number; uncertain: number; expired: number; cancelled: number; pending: number; sending: number; terminal_total: number; confirmation_percent: number | null }
 }
+
+/** Idea o fallo de la app enviado con "Sugerencias o fallos". */
+export interface AppSuggestion {
+  id: number
+  text: string
+  /** Pantalla desde la que se envió (ruta interna). */
+  page_path: string | null
+  author_id: number | null
+  author_name: string | null
+  created_at: string
+  done_at: string | null
+  done_by_name: string | null
+}
