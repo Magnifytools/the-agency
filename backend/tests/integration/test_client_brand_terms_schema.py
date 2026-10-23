@@ -41,7 +41,7 @@ def test_esta_en_el_plan():
 
 async def test_upgrade_twice_keeps_clients_with_empty_terms(engine):
     async with engine.connect() as conn:
-        before = await conn.scalar(text("SELECT to_jsonb(c) FROM clients c WHERE id=1"))
+        before = await conn.scalar(text("SELECT to_jsonb(c) - 'vigil_slug' FROM clients c WHERE id=1"))  # la retira vigil_retirement_v1
     await deployment_schema.migrate_schema(engine)
     await deployment_schema.migrate_schema(engine)
     await deployment_schema.check_deployment_ready(engine)

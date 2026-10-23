@@ -545,7 +545,7 @@ admin_users, admin_settings
 
 ## Vigil (cambios en las webs de los clientes)
 
-- **Integración retirada del código (3b); columnas pendientes de 3c.** Vigil
+- **Integración retirada del código (3b) y de la BD (3c).** Vigil
   (`/Código/Vigil`) vigilaba cambios en las webs; The Agency lo hace ahora por su
   cuenta (ver "Webs: cambios"). Ya no hay job `vigil`, `vigil_service`,
   `/api/vigil`, `VIGIL_API_URL`/`VIGIL_SERVICE_KEY`, campo "Cliente en Vigil" ni
@@ -559,10 +559,11 @@ admin_users, admin_settings
   noviembre (tarea `vigil-limpieza-final`).
 - **Lock 13** era el del job `vigil`: no se reutiliza (lo guarda
   `test_job_vigil_retirado_y_su_lock_no_se_reutiliza`).
-- **Pendiente 3c**: `clients.vigil_slug` (+ `uq_clients_vigil_slug`) y la tabla
-  `vigil_summary` siguen en la BD (P12 las exige) pero fuera del ORM: nada las
-  lee salvo `scripts/import_vigil.py`, con SQL. Se borran con un paso de
-  retirada en otro despliegue (ver `docs/vigil-migration.md`, 3c).
+- **Retirada de la BD (3c)**: `vigil_retirement_v1` borra `vigil_summary` y
+  `clients.vigil_slug` (con `uq_clients_vigil_slug`). Como `vigil_v1` no es de
+  P12, su `verify` comprueba si la retirada ya consta en `agency_schema_versions`
+  y entonces acepta que no estén (`RETIREMENT_VERSION`). `scripts/import_vigil.py`
+  lee el slug con SQL sólo si la columna existe; tras la 3c, sólo `--map`.
 - **Corte** (fase 3a): runbook en `docs/vigil-migration.md` (congelar Vigil,
   importar, calibrar sin Slack, encender `WEB_SWEEP_ENABLED`, y la retirada 3b/3c).
   `python -m backend.scripts.import_vigil --sqlite vigil.db --dry-run` copia

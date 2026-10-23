@@ -35,6 +35,7 @@ from backend.startup.task_retirement_schema import (
 )
 from backend.startup.usage_origin_schema import MIGRATION as USAGE_ORIGIN_MIGRATION
 from backend.startup.vigil_schema import MIGRATION as VIGIL_MIGRATION
+from backend.startup.vigil_retirement_schema import MIGRATION as VIGIL_RETIREMENT_MIGRATION
 from backend.startup.web_changes_schema import MIGRATION as WEB_CHANGES_MIGRATION
 from backend.startup.web_changes_toggle_schema import MIGRATION as WEB_CHANGES_TOGGLE_MIGRATION
 from backend.startup.web_uptime_schema import MIGRATION as WEB_UPTIME_MIGRATION
@@ -49,6 +50,7 @@ MIGRATIONS = (
     REPORT_POLICY_LEGACY_RETIREMENT_MIGRATION, WEB_UPTIME_MIGRATION, GSC_DETAIL_MIGRATION,
     CLIENT_BRAND_TERMS_MIGRATION, WEB_CHANGES_MIGRATION, GSC_QUERY_MONTHLY_MIGRATION,
     CLIENT_SEO_PAGE_GROUPS_MIGRATION, LEADS_ENGINE_MIGRATION, WEB_CHANGES_TOGGLE_MIGRATION,
+    VIGIL_RETIREMENT_MIGRATION,
 )
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 
