@@ -739,3 +739,39 @@ async def test_client_overview_sin_web_no_dice_nada(fake, agency):
 
     assert not is_error, text
     assert "Web:" not in text
+
+
+# ── Sugerencias ────────────────────────────────────────────────────────
+
+
+SUGGESTION = {
+    "id": 4, "text": "Al subir un informe en HTML\n no pasa nada", "page_path": "/clients/1?tab=contexto",
+    "author_id": 2, "author_name": "Nacho", "created_at": "2026-10-20T09:00:00+00:00",
+    "done_at": None, "done_by_name": None,
+}
+
+
+async def test_sugerencias_pendientes_por_defecto(fake, agency):
+    fake.route("GET", "/api/suggestions", [SUGGESTION])
+    error, text = await call(agency, "list_suggestions")
+
+    assert not error
+    assert fake.last("GET", "/api/suggestions").url.params["status"] == "open"
+    assert "#4 Al subir un informe en HTML no pasa nada · Nacho, 2026-10-20 11:00" in text
+    assert "desde http://agency.test/clients/1?tab=contexto" in text
+
+
+async def test_sugerencias_hechas_dicen_quien_y_se_recortan(fake, agency):
+    done = {**SUGGESTION, "done_at": "2026-10-21T08:00:00+00:00", "done_by_name": "David"}
+    fake.route("GET", "/api/suggestions", [done, {**done, "id": 5}, {**done, "id": 6}])
+    _, text = await call(agency, "list_suggestions", {"status": "done", "limit": 2})
+
+    assert fake.last("GET", "/api/suggestions").url.params["status"] == "done"
+    assert "hecha por David (2026-10-21 10:00)" in text
+    assert "#6" not in text and "(y 1 más)" in text
+
+
+async def test_sin_sugerencias_lo_dice(fake, agency):
+    fake.route("GET", "/api/suggestions", [])
+    _, text = await call(agency, "list_suggestions")
+    assert text == "No hay sugerencias pendientes."

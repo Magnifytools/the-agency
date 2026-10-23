@@ -25,6 +25,7 @@ No tiene herramientas de borrado. Lo destructivo se hace en la web.
 | `list_inbox` | Notas del inbox por procesar |
 | `list_dailys` | Tus dailys recientes, con su estado y si ya salieron en Discord |
 | `client_overview` | Cómo va un cliente (por id o nombre): estado y motivos, tráfico, resumen, horas, tareas abiertas, lo que espera al cliente y el último resumen con su entrega |
+| `list_suggestions` | Sugerencias y fallos del botón "Sugerencias o fallos" (pendientes, hechas o todas): texto, quién, cuándo, desde qué página y quién la cerró. Un admin ve las de todos; el resto, las suyas. Sólo lectura |
 | `web_status` | Webs de un cliente: si responden (estado, % de 24 h y 30 días, caídas recientes) y cambios sin revisar por severidad con los últimos críticos/avisos y su enlace. Sin cliente: webs caídas o bloqueadas ahora y clientes con cambios críticos sin revisar |
 | `create_task` | Crea una tarea (si no dices a quién, te la asigna a ti) |
 | `update_task` | Cambia estado, prioridad, fechas, responsable, espera… |
