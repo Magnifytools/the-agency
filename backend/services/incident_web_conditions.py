@@ -30,6 +30,7 @@ from backend.db.models import (
 )
 from backend.services.incident_conditions import Condition, module_permission
 from backend.services.web.digest import _RULE_LABEL, _path, changes_path
+from backend.services.web.changes_views import changes_enabled
 from backend.services.web.sweep import monitored_clients_clause
 from backend.services.web.uptime import cause_label, local_when, monitored_clause
 
@@ -81,6 +82,7 @@ def pending_critical_clause():
         WebWatch.archived_at.is_(None),
         WebWatch.muted.is_(False),
         monitored_clients_clause(),
+        changes_enabled(Client.id),
     )
 
 

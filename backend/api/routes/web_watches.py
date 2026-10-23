@@ -296,6 +296,9 @@ async def restore_watch(
 async def _request_check(db: AsyncSession, client: Client, watch_ids: list[uuid.UUID]) -> datetime:
     if not _monitored(client):
         raise HTTPException(status_code=409, detail="El cliente no está activo: sus webs no se comprueban")
+    web = await db.get(ClientWebSettings, client.id)
+    if web is None or not web.changes_enabled:
+        raise HTTPException(status_code=409, detail="La vigilancia de cambios de este cliente está apagada")
     now = datetime.now(UTC)
     await db.execute(update(WebWatch).where(WebWatch.id.in_(watch_ids)).values(check_requested_at=now))
     await db.commit()

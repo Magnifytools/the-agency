@@ -2191,6 +2191,9 @@ class ClientWebSettings(Base):
     downtime_to_slack = Column(Boolean, nullable=False, server_default="true", default=True)
     user_agent = Column(String(300), nullable=True)
     # ── Vigilancia de cambios (migración ``web_changes_v1``) ──
+    # Se enciende por cliente (``web_changes_toggle_v1``): apagada, ni se barre,
+    # ni avisa, ni cuenta en su estado. Sus URLs y su historial se quedan.
+    changes_enabled = Column(Boolean, nullable=False, server_default="false", default=False)
     # Sin DEFAULT a propósito: NULL = el valor de ``services/web/capture_defaults.py``.
     # Así corregir un default en código corrige a todos los clientes que no lo
     # cambiaron (lección de Vigil: el DEFAULT de una columna se queda congelado).

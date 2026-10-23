@@ -43,8 +43,8 @@ async def published_previous(engine):
         await conn.execute(text("CREATE UNIQUE INDEX uq_time_entries_active_timer ON time_entries(user_id) WHERE minutes IS NULL"))
 
 
-def test_esta_al_final_del_plan():
-    assert deployment_schema.MIGRATIONS[-1] is MIGRATION
+def test_esta_en_el_plan():
+    assert MIGRATION in deployment_schema.MIGRATIONS
     assert MIGRATION.version == "20261022_leads_engine_v1"
 
 

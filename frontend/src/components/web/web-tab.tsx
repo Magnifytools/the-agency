@@ -2,11 +2,12 @@ import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { Link } from "react-router-dom"
-import { Activity, ExternalLink, ListChecks, Pause, Play, Plus, Trash2, Zap } from "lucide-react"
-import { webApi } from "@/lib/api"
+import { Activity, ExternalLink, ListChecks, Pause, Play, Plus, Radar, Trash2, Zap } from "lucide-react"
+import { webApi, webWatchesApi } from "@/lib/api"
 import type { UptimeProbeResult, UptimeTarget } from "@/lib/types"
 import { useAuth } from "@/context/auth-context"
 import { getErrorMessage } from "@/lib/utils"
+import { webKeys } from "@/lib/query-keys"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -32,16 +33,32 @@ const OUTCOME_LABEL: Record<UptimeProbeResult["outcome"], string> = {
 
 /**
  * Pestaña "Web" de la ficha. Arriba la disponibilidad (fase 1); debajo la
- * vigilancia de cambios (fase 2): URLs vigiladas, cambios sin revisar, últimos
+ * vigilancia de cambios (fase 2), que se enciende por cliente: apagada sólo se
+ * ve el interruptor; encendida, URLs vigiladas, cambios sin revisar, últimos
  * barridos y, con escritura en `web`, calendario y captura.
  */
 export function WebTab({ clientId, website }: Props) {
   const { hasPermission } = useAuth()
   const canWrite = hasPermission("web", true)
   const [changeFilters, setChangeFilters] = useState<ChangeListFilters>({ severity: "all", pending: true })
+  const settings = useQuery({ queryKey: webKeys.settings(clientId), queryFn: () => webWatchesApi.settings(clientId) })
   return (
     <div className="space-y-4">
       <UptimeCard clientId={clientId} website={website} />
+      <ChangesSwitchCard clientId={clientId} enabled={settings.data?.changes_enabled ?? null} canWrite={canWrite} />
+      {settings.data?.changes_enabled && <ChangesSections clientId={clientId} canWrite={canWrite} filters={changeFilters} onFiltersChange={setChangeFilters} />}
+    </div>
+  )
+}
+
+function ChangesSections({ clientId, canWrite, filters, onFiltersChange }: {
+  clientId: number
+  canWrite: boolean
+  filters: ChangeListFilters
+  onFiltersChange: (filters: ChangeListFilters) => void
+}) {
+  return (
+    <>
       <WebWatchesCard clientId={clientId} />
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
@@ -51,12 +68,63 @@ export function WebTab({ clientId, website }: Props) {
           </Link>
         </CardHeader>
         <CardContent>
-          <WebChangesList clientId={clientId} filters={changeFilters} onFiltersChange={setChangeFilters} limit={50} />
+          <WebChangesList clientId={clientId} filters={filters} onFiltersChange={onFiltersChange} limit={50} />
         </CardContent>
       </Card>
       <WebRunsCard clientId={clientId} />
       {canWrite && <WebChangeSettingsCard clientId={clientId} />}
-    </div>
+    </>
+  )
+}
+
+/**
+ * Interruptor de la vigilancia de cambios del cliente. Apagarla no borra sus
+ * URLs ni su historial: deja de barrerlas, de avisar y de contar en su estado.
+ */
+function ChangesSwitchCard({ clientId, enabled, canWrite }: { clientId: number; enabled: boolean | null; canWrite: boolean }) {
+  const qc = useQueryClient()
+  const [confirmOff, setConfirmOff] = useState(false)
+  const mut = useMutation({
+    mutationFn: (next: boolean) => webWatchesApi.setChangesEnabled(clientId, next),
+    onSuccess: (data) => {
+      qc.setQueryData(webKeys.settings(clientId), data)
+      toast.success(data.changes_enabled ? "Vigilancia de cambios activada" : "Vigilancia de cambios desactivada")
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  })
+  if (enabled === null) return null
+  return (
+    <Card>
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+        <CardTitle className="flex items-center gap-2 text-base"><Radar className="h-4 w-4" /> Vigilancia de cambios</CardTitle>
+        {canWrite && (enabled ? (
+          <Button size="sm" variant="ghost" disabled={mut.isPending} onClick={() => setConfirmOff(true)}>Desactivar</Button>
+        ) : (
+          <Button size="sm" disabled={mut.isPending} onClick={() => mut.mutate(true)}>
+            {mut.isPending ? "Activando…" : "Activar"}
+          </Button>
+        ))}
+      </CardHeader>
+      {!enabled && (
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Compara cada día las páginas que elijas (SEO, texto, enlaces y código) y avisa de lo que cambia.
+            {canWrite ? " Actívala para añadir URLs y configurarla." : " Está apagada para este cliente."}
+          </p>
+        </CardContent>
+      )}
+      <ConfirmDialog
+        open={confirmOff}
+        onOpenChange={setConfirmOff}
+        title="¿Desactivar la vigilancia de cambios?"
+        description="Sus URLs y su historial se quedan, pero deja de comprobarlas, de avisar y de contar en el estado del cliente."
+        confirmLabel="Desactivar"
+        onConfirm={() => {
+          mut.mutate(false)
+          setConfirmOff(false)
+        }}
+      />
+    </Card>
   )
 }
 

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { clientsApi, engineApi, ga4Api, gscApi, vigilApi } from "@/lib/api"
@@ -20,9 +20,15 @@ import { SeoPageGroupsEditor } from "@/components/clients/seo-control/seo-page-g
 
 interface Props {
   client: Client
+  /** "marca": llega desde el aviso de la ficha y baja a los términos de marca. */
+  focus?: string | null
 }
 
-export function ClientSettingsTab({ client }: Props) {
+export function ClientSettingsTab({ client, focus = null }: Props) {
+  // Desde el aviso de la ficha: lleva directo a los términos de marca.
+  useEffect(() => {
+    if (focus === "marca") document.getElementById("terminos-de-marca")?.scrollIntoView({ behavior: "smooth" })
+  }, [focus])
   const { isAdmin, hasPermission } = useAuth()
   const canWriteClients = hasPermission("clients", true)
   const qc = useQueryClient()
@@ -189,6 +195,7 @@ export function ClientSettingsTab({ client }: Props) {
             </div>
 
             {/* Control SEO: separa las búsquedas de marca de las demás. */}
+            <div id="terminos-de-marca" className="scroll-mt-4">
             <BrandTermsEditor
               value={brandTerms}
               onChange={setBrandTerms}
@@ -196,6 +203,7 @@ export function ClientSettingsTab({ client }: Props) {
               client={client}
               gscDraft={gsc}
             />
+            </div>
 
             {/* Engine Integration */}
             {isAdmin && <div>
