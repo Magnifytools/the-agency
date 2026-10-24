@@ -9,3 +9,16 @@ export const serviceTypeLabels: Record<ServiceType, string> = {
     brand_audit: "Brand Audit",
     custom: "Personalizado",
 }
+
+export const projectTypeLabels: Record<string, string> = {
+    seo_audit: "Auditoría SEO",
+    content_strategy: "Estrategia de contenido",
+    linkbuilding: "Link building",
+    technical_seo: "SEO técnico",
+    local_seo: "SEO local",
+    custom: "Personalizado",
+}
+
+export function projectTypeLabel(type: string): string {
+    return projectTypeLabels[type] ?? type
+}
