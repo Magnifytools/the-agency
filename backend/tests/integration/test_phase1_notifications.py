@@ -2,7 +2,7 @@
 
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -242,6 +242,11 @@ async def test_recurrences_keep_project_and_pause_after_close(
     from backend.db.models import Client, Project, ProjectPhase, ProjectStatus
     from backend.startup.background_tasks import _generate_recurring_instances
 
+    # The background job has no date parameter: pin the generator's civil
+    # "today" so the monthly rule (days 1-28 only) is valid on any real date.
+    today = date(2026, 9, 15)
+    monkeypatch.setattr("backend.services.recurrence.business_today", lambda: today)
+
     client = Client(name="Recurring client")
     db_session.add(client)
     await db_session.flush()
@@ -263,7 +268,7 @@ async def test_recurrences_keep_project_and_pause_after_close(
         assigned_to=admin_user.id,
         is_recurring=True,
         recurrence_pattern="monthly",
-        recurrence_day=business_today().day,
+        recurrence_day=today.day,
     )
     db_session.add(template)
     await db_session.commit()
