@@ -221,6 +221,25 @@ test('timer and manual task selectors load all pages and preserve selection on a
   assert.equal(get('timer-error').classList.contains('hidden'), false);
 });
 
+test('timer and manual selectors hide pending tasks planned beyond two weeks, never started ones', async t => {
+  const { run, get, state } = await setup(t);
+  const horizon = run('timerHorizon()');
+  const later = run('timerHorizon(new Date(Date.now() + 86400000))');
+  state.rows = { '/api/tasks': [
+    { id: 1, title: 'Sin fecha', status: 'pending' },
+    { id: 2, title: 'En el límite', status: 'pending', scheduled_date: horizon },
+    { id: 3, title: 'Dentro de meses', status: 'pending', scheduled_date: later },
+    { id: 4, title: 'Planificada lejos pero vence pronto', status: 'pending', scheduled_date: later, due_date: `${horizon}T00:00:00` },
+    { id: 5, title: 'Empezada aunque sea futura', status: 'in_progress', scheduled_date: later },
+    { id: 6, title: 'Vence dentro de meses', status: 'pending', due_date: `${later}T00:00:00` },
+  ] };
+  await run('loadTimerTasks()');
+  for (const select of ['timer-task-select', 'manual-task-select']) {
+    const ids = [...get(select).options].map(o => o.value).filter(Boolean);
+    assert.deepEqual(ids, ['1', '2', '4', '5'], select);
+  }
+});
+
 test('malformed later page is an error, never a successful partial list', async t => {
   const { run, get, state } = await setup(t);
   state.malformed = true;

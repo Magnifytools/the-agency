@@ -1579,14 +1579,31 @@ function updateTimerDisplay() {
   headerTimerText.textContent = timerIsPaused ? `⏸ ${h}:${String(m).padStart(2, "0")}` : `${h}:${String(m).padStart(2, "0")}`;
 }
 
+// Al elegir tarea para el timer o el registro manual no salen las planificadas a
+// más de dos semanas: dar de alta el trabajo de los próximos meses llenaba el
+// desplegable (sugerencia de Nacho, oct 2026). Lo empezado sale siempre.
+const TIMER_HORIZON_DAYS = 14;
+
+function timerHorizon(today = new Date()) {
+  const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + TIMER_HORIZON_DAYS);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function isTimerCandidate(task, horizon) {
+  if (task.status !== "pending") return true;
+  const dates = [task.scheduled_date, task.due_date].filter(Boolean).map((value) => String(value).slice(0, 10));
+  return dates.length === 0 || dates.some((day) => day <= horizon);
+}
+
 async function loadTimerTasks() {
   const session = captureSession();
   const loadId = ++timerTasksLoadId;
   timerTasksRetry.disabled = true;
   try {
-    const tasks = await fetchAllPages("/api/tasks", {
+    const horizon = timerHorizon();
+    const tasks = (await fetchAllPages("/api/tasks", {
       assigned_to: "me", timer_scope: "assigned_or_created", status: "pending,in_progress,waiting,in_review",
-    }, session);
+    }, session)).filter((task) => isTimerCandidate(task, horizon));
     if (!isCurrentSession(session)) return;
     if (loadId !== timerTasksLoadId || !isCurrentSession(session)) return;
     [timerTaskSelect, manualTaskSelect].forEach((select) => {
