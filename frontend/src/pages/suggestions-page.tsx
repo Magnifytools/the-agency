@@ -106,6 +106,22 @@ function SuggestionRow({
   return (
     <li className="rounded-xl border border-border bg-card p-4 space-y-2">
       <p className={`text-sm whitespace-pre-wrap break-words ${done ? "text-muted-foreground" : ""}`}>{item.text}</p>
+      {item.images.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {item.images.map((image) => (
+            <a
+              key={image.id}
+              href={suggestionsApi.imageUrl(item.id, image.id)}
+              target="_blank"
+              rel="noreferrer"
+              title={image.name}
+              className="block rounded-md border border-border overflow-hidden hover:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            >
+              <img src={suggestionsApi.imageUrl(item.id, image.id)} alt={image.name} className="h-20 w-32 object-cover" loading="lazy" />
+            </a>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <span>
           {item.author_name ?? "Usuario eliminado"} · {formatTimeAgo(item.created_at)}

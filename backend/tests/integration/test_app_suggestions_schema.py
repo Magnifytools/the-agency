@@ -63,7 +63,9 @@ async def test_deleting_the_author_keeps_the_suggestion(engine):
     "ALTER TABLE app_suggestions DROP CONSTRAINT app_suggestions_pkey",
 ])
 async def test_drift_is_rejected(engine, damage):
-    await deployment_schema.migrate_schema(engine)
+    # Sólo este paso: app_suggestion_images (posterior) cuelga de su clave primaria.
+    plan = deployment_schema.MIGRATIONS[:deployment_schema.MIGRATIONS.index(MIGRATION) + 1]
+    await run_schema_migrations(engine, plan, schema_baseline.preflight)
     async with engine.begin() as conn:
         await conn.execute(text(damage))
         with pytest.raises(RuntimeError):

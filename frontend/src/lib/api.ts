@@ -1065,6 +1065,14 @@ export const suggestionsApi = {
     api.post<AppSuggestion>("/suggestions", data).then((r) => r.data),
   update: (id: number, data: { done: boolean }) =>
     api.patch<AppSuggestion>(`/suggestions/${id}`, data).then((r) => r.data),
+  addImage: (id: number, file: File) => {
+    const form = new FormData()
+    form.append("file", file)
+    return api.post<AppSuggestion["images"][number]>(`/suggestions/${id}/images`, form, { timeout: 120_000 })
+      .then((r) => r.data)
+  },
+  /** Ruta de la imagen para `<img src>` (misma sesión por cookie). */
+  imageUrl: (id: number, imageId: number) => `/api/suggestions/${id}/images/${imageId}`,
 }
 
 export const inboxApi = {
