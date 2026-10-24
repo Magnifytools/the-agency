@@ -333,6 +333,26 @@ def build_server(client: AgencyClient, *, timezone: str = "Europe/Madrid") -> MC
             raise ToolError(str(exc)) from exc
 
     @mcp.tool(annotations=READ)
+    async def list_suggestions(
+        status: Annotated[Literal["open", "done", "all"],
+                          Field(description="open: pendientes (por defecto); done: hechas; all: todas")] = "open",
+        limit: Annotated[int, Field(ge=1, le=100)] = 50,
+    ) -> str:
+        """Sugerencias y fallos que el equipo deja con el botón "Sugerencias o fallos"
+        de la app, las más recientes primero. Un admin ve las de todos; el resto, sólo
+        las suyas. Sólo lectura: marcarlas como hechas se hace en la web
+        (Ajustes → Sugerencias)."""
+        rows = await call(client.get("/api/suggestions", status=status))
+        if not rows:
+            return {"open": "No hay sugerencias pendientes.", "done": "No hay sugerencias hechas."}.get(
+                status, "No hay sugerencias.")
+        shown = rows[:limit]
+        out = [f"- {fmt.suggestion_line(s, tz, client.base_url)}" for s in shown]
+        if len(rows) > len(shown):
+            out.append(f"(y {len(rows) - len(shown)} más)")
+        return "\n".join(out)
+
+    @mcp.tool(annotations=READ)
     async def web_status(
         client_id: Annotated[int | None, Field(description="Cliente. Sin él, resumen de todos los clientes.")] = None,
     ) -> str:

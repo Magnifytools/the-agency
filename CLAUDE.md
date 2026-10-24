@@ -292,7 +292,9 @@ admin_users, admin_settings
   inbox, search, projects, users, auth/me, dailys + reparse + send-discord,
   clients/{id}/status (incluidos sus bloques `uptime` y `web_changes`),
   digests + external-delivery-events, web/uptime, clients/{id}/web/uptime-targets,
-  web/changes), revisa `mcp-server/agency_mcp/server.py` y `format.py`.
+  web/changes, suggestions), revisa `mcp-server/agency_mcp/server.py` y `format.py`.
+- **Sugerencias**: `list_suggestions` (sólo lectura) lee las del botón "Sugerencias o
+  fallos" para revisarlas desde Claude; cerrarlas sigue siendo cosa de la web.
 - **Webs**: `web_status` (sólo lectura) junta disponibilidad y cambios sin
   revisar de un cliente, o el resumen global (caídas/bloqueos ahora y clientes
   con críticos sin revisar). Sin permiso de `web` lo explica en vez de dar un 403.
@@ -902,7 +904,7 @@ cd backend && source venv/bin/activate && python -m pytest tests/ -v
 # Frontend (vitest, 45 tests)
 cd frontend && npm run test
 
-# Servidor MCP (pytest, 47 tests, backend falso)
+# Servidor MCP (pytest, 50 tests, backend falso)
 cd mcp-server && .venv/bin/python -m pytest -q
 ```
 

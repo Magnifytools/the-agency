@@ -142,6 +142,19 @@ def inbox_line(n: dict[str, Any]) -> str:
     return " · ".join(p for p in parts if p)
 
 
+def suggestion_line(s: dict[str, Any], tz: tzinfo, base_url: str) -> str:
+    """Una sugerencia de la app: texto, quién y cuándo, desde qué página y si ya está hecha."""
+    text = " ".join((s.get("text") or "").split())
+    if len(text) > 400:
+        text = text[:400] + "…"
+    parts = [f"#{s['id']} {text}", f"{s.get('author_name') or 'alguien'}, {local_time(s.get('created_at'), tz)}"]
+    if s.get("page_path"):
+        parts.append(f"desde {base_url}{s['page_path']}")
+    if s.get("done_at"):
+        parts.append(f"hecha por {s.get('done_by_name') or '?'} ({local_time(s.get('done_at'), tz)})")
+    return " · ".join(parts)
+
+
 def local_time(value: str | None, tz: tzinfo) -> str:
     """Instante ISO de la API (UTC) -> '08:42' en hora local, o con fecha si no es hoy."""
     if not value:
