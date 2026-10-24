@@ -87,3 +87,50 @@ async def test_inbox_suggestion_lands_in_the_same_list(admin_client, member_clie
     # Repetir la acción no duplica la sugerencia.
     await member_client.post(f"/api/inbox/{note.id}/suggest")
     assert len((await db_session.scalars(select(AppSuggestion))).all()) == 1
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+
+
+def _image(name="pantallazo.png", content=PNG, mime="image/png"):
+    return {"file": (name, content, mime)}
+
+
+async def test_pantallazos_los_ve_quien_la_escribio_y_los_admins(admin_client, member_client, make_member_client):
+    sent = (await member_client.post("/api/suggestions", json={"text": "Mira este fallo"})).json()
+    added = await member_client.post(f"/api/suggestions/{sent['id']}/images", files=_image())
+    assert added.status_code == 201, added.text
+    image = added.json()
+    assert image["name"] == "pantallazo.png" and image["size_bytes"] == len(PNG)
+
+    listed = (await admin_client.get("/api/suggestions")).json()
+    assert listed[0]["images"] == [image]
+
+    url = f"/api/suggestions/{sent['id']}/images/{image['id']}"
+    for client in (member_client, admin_client):
+        got = await client.get(url)
+        assert got.status_code == 200 and got.content == PNG
+        assert got.headers["content-type"] == "image/png"
+        assert got.headers["x-content-type-options"] == "nosniff"
+        assert got.headers["content-disposition"].startswith("inline")
+
+    # Otro miembro ni la ve ni le añade nada: el mismo 404.
+    other = await make_member_client([])
+    assert (await other.get(url)).status_code == 404
+    assert (await other.post(f"/api/suggestions/{sent['id']}/images", files=_image())).status_code == 404
+    await other.aclose()
+
+
+async def test_solo_imagenes_cinco_como_mucho_y_hasta_5_mb(member_client):
+    sent = (await member_client.post("/api/suggestions", json={"text": "Con capturas"})).json()
+    url = f"/api/suggestions/{sent['id']}/images"
+    for bad in (_image("informe.html", b"<script>alert(1)</script>", "text/html"),
+                _image("informe.pdf", b"%PDF-1.4", "application/pdf"),
+                _image("dibujo.svg", b"<svg/>", "image/svg+xml")):
+        assert (await member_client.post(url, files=bad)).status_code == 415
+    big = await member_client.post(url, files=_image(content=b"\x00" * (5 * 1024 * 1024 + 1)))
+    assert big.status_code == 413
+    for n in range(5):
+        assert (await member_client.post(url, files=_image(f"captura-{n}.png"))).status_code == 201
+    sixth = await member_client.post(url, files=_image("captura-6.png"))
+    assert sixth.status_code == 409 and "5 imágenes" in sixth.json()["detail"]

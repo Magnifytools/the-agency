@@ -111,4 +111,6 @@ export interface AppSuggestion {
   created_at: string
   done_at: string | null
   done_by_name: string | null
+  /** Pantallazos adjuntos (se ven en `suggestionsApi.imageUrl`). */
+  images: { id: number; name: string; size_bytes: number }[]
 }

@@ -1895,6 +1895,25 @@ class AppSuggestion(Base):
     done_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
+class AppSuggestionImage(Base):
+    """Pantallazo de una sugerencia (sólo imágenes; se borra con ella)."""
+    __tablename__ = "app_suggestion_images"
+    __table_args__ = (
+        CheckConstraint(
+            "mime_type IN ('image/png','image/jpeg','image/gif','image/webp')",
+            name="ck_app_suggestion_images_type",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    suggestion_id = Column(Integer, ForeignKey("app_suggestions.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    mime_type = Column(String(50), nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    content = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class ClientShareLink(Base):
     """Enlace de sólo lectura para el cliente: sus resúmenes entregados y su tráfico.
 

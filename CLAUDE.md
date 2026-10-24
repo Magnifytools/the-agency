@@ -838,7 +838,15 @@ admin_users, admin_settings
 - Tabla `app_suggestions` (migración `app_suggestions_v1`, que trae las notas
   del inbox ya enviadas como "Sugerencia para la app"). "Sugerencia para la
   app" del inbox escribe en la misma tabla (`services/app_suggestions.py`).
-- Nada sale de la app (ni Discord ni email). Fuera del Deshacer y del MCP.
+- **Pantallazos** (`app_suggestion_images`, migración `app_suggestion_images_v1`,
+  en cascada con la sugerencia): hasta 5 imágenes PNG/JPG/GIF/WebP de 5 MB por
+  sugerencia, elegidas o pegadas con ⌘V en el diálogo. Se suben DESPUÉS de crear
+  la sugerencia (`POST /api/suggestions/{id}/images`); si una falla, la
+  sugerencia queda y el aviso dice cuántas no entraron. Sólo las ve y añade
+  quien la escribió o un admin (si no, el mismo 404); se sirven inline con
+  `nosniff`. Límites duplicados en `lib/suggestion-images.ts`.
+- Nada sale de la app (ni Discord ni email). Fuera del Deshacer. En el MCP sólo
+  lectura (`list_suggestions`, sin imágenes).
 
 ## Accesos (contraseñas compartidas)
 
