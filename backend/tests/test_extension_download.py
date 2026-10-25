@@ -47,7 +47,7 @@ async def test_info_reports_the_version_that_would_be_downloaded(member_client):
     res = await member_client.get("/api/extension")
 
     assert res.status_code == 200
-    assert res.json() == {
+    assert {k: res.json()[k] for k in ("version", "filename", "download_url")} == {
         "version": SOURCE_VERSION,
         "filename": f"the-agency-extension-v{SOURCE_VERSION}.zip",
         "download_url": "/api/extension/download",
@@ -99,3 +99,38 @@ def test_docker_image_ships_every_runtime_file():
     }
     for name in RUNTIME_FILES:
         assert f"chrome-extension/{name}" in copied, name
+
+
+def test_cada_version_del_manifest_tiene_sus_novedades():
+    """Subir la versión del manifest sin contar qué cambia deja Ajustes sin fecha."""
+    releases = extension_package.read_release_notes()
+    assert releases, "chrome-extension/novedades.json no existe o está vacío"
+    assert releases[0].version == SOURCE_VERSION, "añade la versión nueva al principio de novedades.json"
+    assert [r.date for r in releases] == sorted((r.date for r in releases), reverse=True)
+    assert len({r.version for r in releases}) == len(releases)
+    assert all(r.changes and all(c.strip() for c in r.changes) for r in releases)
+
+
+def test_las_novedades_no_van_en_el_zip_pero_si_en_la_imagen():
+    names = set(_zip(build_package().content).namelist())
+    assert f"{ZIP_ROOT}/novedades.json" not in names
+    dockerfile = (REPO / "Dockerfile").read_text().replace("\\\n", " ")
+    assert "chrome-extension/novedades.json" in dockerfile
+
+
+async def test_info_trae_fecha_y_novedades(member_client):
+    data = (await member_client.get("/api/extension")).json()
+    releases = extension_package.read_release_notes()
+    assert data["version"] == SOURCE_VERSION
+    assert data["released_on"] == releases[0].date.isoformat()
+    assert data["releases"][0] == {
+        "version": releases[0].version, "date": releases[0].date.isoformat(), "changes": list(releases[0].changes),
+    }
+    assert len(data["releases"]) <= 3
+
+
+async def test_sin_novedades_la_info_sigue_sin_fecha(member_client, monkeypatch, tmp_path):
+    (tmp_path / "manifest.json").write_text('{"version": "9.9.9"}')
+    monkeypatch.setattr(extension_package, "EXTENSION_DIR", tmp_path)
+    data = (await member_client.get("/api/extension")).json()
+    assert data["version"] == "9.9.9" and data["released_on"] is None and data["releases"] == []

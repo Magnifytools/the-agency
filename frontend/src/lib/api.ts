@@ -1256,8 +1256,19 @@ export interface Ga4PropertyStatus {
   google_email: string | null
 }
 
+/** Versión de la extensión que se descarga ahora, cuándo salió y qué trae. */
+export interface ExtensionInfo {
+  version: string
+  filename: string
+  download_url: string
+  /** AAAA-MM-DD; null si la versión no tiene novedades apuntadas. */
+  released_on: string | null
+  /** Esta versión y las dos anteriores, la más reciente primero. */
+  releases: { version: string; date: string; changes: string[] }[]
+}
+
 export const extensionApi = {
-  info: () => api.get<{ version: string; filename: string; download_url: string }>("/extension").then((r) => r.data),
+  info: () => api.get<ExtensionInfo>("/extension").then((r) => r.data),
 }
 
 export const ga4Api = {

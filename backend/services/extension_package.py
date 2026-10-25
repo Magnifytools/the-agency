@@ -12,6 +12,7 @@ import io
 import json
 import zipfile
 from dataclasses import dataclass
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
@@ -26,6 +27,11 @@ RUNTIME_FILES = ("manifest.json", "popup.html", "popup.css", "popup.js", "backgr
 ZIP_ROOT = "the-agency"
 
 _FIXED_DATE = (1980, 1, 1, 0, 0, 0)
+
+# Novedades de cada versión, la más reciente primero. No va en el zip: es lo
+# que enseña Ajustes junto al botón ("actualizada el…"). Al subir la versión del
+# manifest hay que añadir aquí su entrada (lo vigila test_extension_download).
+RELEASE_NOTES = "novedades.json"
 
 
 class ExtensionPackageUnavailable(RuntimeError):
@@ -48,6 +54,26 @@ def read_version(root: Path | None = None) -> str:
     if not isinstance(version, str) or not version:
         raise ExtensionPackageUnavailable("manifest.json sin versión")
     return version
+
+
+@dataclass(frozen=True)
+class Release:
+    version: str
+    date: date
+    changes: tuple[str, ...]
+
+
+def read_release_notes(root: Path | None = None) -> list[Release]:
+    """Entregas de ``novedades.json``, la más reciente primero. Vacío si falta el
+    fichero; mal formado, error (lo caza el test antes de desplegar)."""
+    path = (root or EXTENSION_DIR) / RELEASE_NOTES
+    if not path.is_file():
+        return []
+    return [
+        Release(version=str(item["version"]), date=date.fromisoformat(item["date"]),
+                changes=tuple(str(change) for change in item["changes"]))
+        for item in json.loads(path.read_text(encoding="utf-8"))
+    ]
 
 
 def package_filename(version: str) -> str:

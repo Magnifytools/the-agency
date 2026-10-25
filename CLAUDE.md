@@ -826,7 +826,12 @@ admin_users, admin_settings
   Si añades un fichero a la extensión, añádelo a `RUNTIME_FILES` y al Dockerfile
   (lo vigila `tests/test_extension_download.py`).
 - Nada de zips sueltos en la raíz (`.gitignore`). Al cambiar código de la
-  extensión, sube la versión del `manifest.json`.
+  extensión, sube la versión del `manifest.json` **y añade su entrada al
+  principio de `chrome-extension/novedades.json`** (versión, fecha y qué cambia,
+  en una frase para el equipo). Ajustes enseña "actualizada el…" y las novedades
+  de las 3 últimas versiones (`released_on` y `releases` en `GET /api/extension`).
+  No va en el zip, sí en la imagen. Lo vigila
+  `test_cada_version_del_manifest_tiene_sus_novedades`.
 
 ## Sugerencias (ideas y fallos de la app)
 - Botón "Sugerencias o fallos" en la barra lateral (y en Cuenta, móvil) para

@@ -13,7 +13,7 @@ from backend.api.deps import get_current_user
 from backend.core.rate_limiter import _SlidingWindowLimiter
 from backend.db.models import User
 from backend.services.extension_package import (
-    ExtensionPackageUnavailable, build_package, package_filename, read_version,
+    ExtensionPackageUnavailable, build_package, package_filename, read_release_notes, read_version,
 )
 
 logger = logging.getLogger(__name__)
@@ -88,12 +88,25 @@ DOWNLOAD_PATH = "/api/extension/download"
 
 @router.get("/api/extension")
 async def extension_info(_: User = Depends(get_current_user)):
-    """Versión que se descargaría ahora, para enseñarla junto al botón."""
+    """Versión que se descargaría ahora, cuándo salió y qué trae, para enseñarlo
+    junto al botón. Las novedades son las de esa versión y las dos anteriores."""
     try:
         version = read_version()
     except ExtensionPackageUnavailable:
         raise HTTPException(status_code=503, detail="La extensión no está disponible en este despliegue")
-    return {"version": version, "filename": package_filename(version), "download_url": DOWNLOAD_PATH}
+    try:
+        releases = read_release_notes()
+    except (OSError, ValueError, KeyError, TypeError):
+        logger.error("novedades.json de la extensión mal formado")
+        releases = []
+    current = next((r for r in releases if r.version == version), None)
+    return {
+        "version": version, "filename": package_filename(version), "download_url": DOWNLOAD_PATH,
+        "released_on": current.date.isoformat() if current else None,
+        "releases": [
+            {"version": r.version, "date": r.date.isoformat(), "changes": list(r.changes)} for r in releases[:3]
+        ],
+    }
 
 
 @router.get(DOWNLOAD_PATH)
