@@ -103,7 +103,7 @@ it("saving a delivered version says the changes went to a new version", async ()
   fireEvent.change(greeting, { target: { value: "Corregido tras enviar" } })
   fireEvent.click(screen.getByRole("button", { name: "Guardar" }))
   await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Esta versión ya se había entregado: tus cambios quedan en la versión #11"))
-  expect(screen.getByTestId("location")).toHaveTextContent("/digests/11/edit")
+  await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/digests/11/edit"))
 })
 
 it("shows assertion sources and removes their certification when the text is edited", async () => {
