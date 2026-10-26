@@ -15,6 +15,7 @@ from sqlalchemy.orm import aliased, noload
 from backend.core.modules import is_enabled
 from backend.db.models import Notification, Project, Task, User, WeeklyDigest
 from backend.services.incident_conditions import module_permission
+from backend.services.temporal import business_today
 
 # These rows came from the retired ``/notifications/generate-checks`` writer.
 # They remain stored as history, but the activity feed must not present stale
@@ -108,7 +109,9 @@ class NotificationChecks:
         for row in self.rows:
             if (row.type, row.entity_type, row.entity_id) != identity or row.dedupe_key:
                 continue
-            if row.created_at and row.created_at.date() >= cycle:
+            # created_at es UTC sin zona y el ciclo es un día de Madrid: entre las
+            # 23:00 y las 00:00 UTC la fecha UTC aún es la de ayer allí.
+            if row.created_at and business_today(now=row.created_at) >= cycle:
                 row.dedupe_key = key
                 self.keys.add(key)
                 return True

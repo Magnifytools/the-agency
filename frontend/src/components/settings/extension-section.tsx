@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query"
 import { Download, Puzzle } from "lucide-react"
 import { extensionApi } from "@/lib/api"
+import { formatCivilDate } from "@/lib/dates"
+
+const LONG_DATE: Intl.DateTimeFormatOptions = { day: "numeric", month: "long", year: "numeric" }
 
 /** Descarga de la extensión de Chrome: siempre la versión desplegada ahora mismo. */
 export function ExtensionSection() {
@@ -21,8 +24,29 @@ export function ExtensionSection() {
               className="inline-flex items-center gap-2 px-4 py-2 bg-brand text-black text-sm font-semibold rounded-xl hover:bg-brand/90 transition-colors">
               <Download className="h-4 w-4" aria-hidden="true" /> Descargar extensión
             </a>
-            <span className="text-sm text-muted-foreground">Versión <span className="mono">{data.version}</span></span>
+            <span className="text-sm text-muted-foreground">
+              Versión <span className="mono">{data.version}</span>
+              {data.released_on && <> · actualizada el {formatCivilDate(data.released_on, LONG_DATE)}</>}
+            </span>
           </div>
+          {data.releases.length > 0 && (
+            <div className="text-sm">
+              <h3 className="font-medium text-foreground mb-1">Novedades</h3>
+              <ul className="space-y-2">
+                {data.releases.map((release) => (
+                  <li key={release.version}>
+                    <p className="text-xs text-muted-foreground">
+                      <span className="mono">{release.version}</span> · {formatCivilDate(release.date, LONG_DATE)}
+                      {release.version === data.version && " · la que se descarga ahora"}
+                    </p>
+                    <ul className="list-disc pl-5 text-muted-foreground">
+                      {release.changes.map((change) => <li key={change}>{change}</li>)}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div>
               <h3 className="font-medium text-foreground mb-1">Instalar</h3>
