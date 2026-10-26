@@ -99,6 +99,21 @@ it("read-only users can inspect reasons without preparing anything", async () =>
   expect(screen.queryByText(/seleccionados · Máximo 50/)).not.toBeInTheDocument()
   expect(screen.queryByRole("button", {name: /Preparar selección/})).not.toBeInTheDocument()
 })
+it("discards a stuck selection after checking that its versions never got created", async () => {
+  const operationKey = "stuck-cohort-operation"
+  localStorage.setItem(`agency:digest-generation:2:${operationKey}`, JSON.stringify({ kind: "cohort", operation_key: operationKey, tone: "cercano", items: [
+    { generation_key: "stuck-cohort-generation-1", client_id: 1, policy_revision: 3, period_start: "2026-09-01", period_end: "2026-09-30" },
+    { generation_key: "stuck-cohort-generation-2", client_id: 2, policy_revision: 3, period_start: "2026-09-01", period_end: "2026-09-30" },
+  ] }))
+  mocks.recover.mockRejectedValue({ response: { status: 404 } })
+  setup()
+  expect(await screen.findByText(/0 de 2 versiones están confirmadas/)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole("button", { name: "Descartar la selección" }))
+  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Descartar" }))
+  await waitFor(() => expect(screen.queryByText(/sin respuesta confirmada/)).not.toBeInTheDocument())
+  expect(localStorage.getItem(`agency:digest-generation:2:${operationKey}`)).toBeNull()
+  expect(mocks.generate).not.toHaveBeenCalled()
+})
 it("keeps a persisted cohort visible but cannot retry after write permission is revoked", async () => {
   const operationKey = "revoked-cohort-operation"
   localStorage.setItem(`agency:digest-generation:2:${operationKey}`, JSON.stringify({ kind: "cohort", operation_key: operationKey, tone: "cercano", items: [

@@ -267,8 +267,20 @@ def _build_user_prompt(raw_data: dict, tone: DigestTone) -> str:
 
 SOURCE_RULES = """Cada item debe incluir source_keys (1-8 claves únicas) tomadas
 literalmente del CATÁLOGO DE FUENTES. done usa task_completed; need usa followup
-o task_active; next usa task_active, project o period; metrics usa aggregate.
-Las claves prueban los hechos consultados, no certifican interpretaciones libres."""
+o task_active; next usa task_active, project o period; metrics usa aggregate o
+project (el progreso de un proyecto). Un item sin una fuente válida de su sección
+se descarta. Las claves prueban los hechos consultados, no certifican
+interpretaciones libres."""
+
+# Clases de fuente que admite cada sección. "metrics" admite el proyecto porque
+# el prompt pide su progreso (Claude lo citaba y el resumen entero se perdía).
+SECTION_SOURCE_CLASSES = {
+    "done": {"task_completed", "legacy"},
+    "need": {"followup", "task_active", "legacy"},
+    "next": {"task_active", "project", "period", "legacy"},
+    "metrics": {"aggregate", "project", "legacy"},
+}
+MAX_SOURCES_PER_ITEM = 8
 
 
 def _with_source_contract(prompt: str, raw_data: dict) -> str:
@@ -281,33 +293,38 @@ def _with_source_contract(prompt: str, raw_data: dict) -> str:
 
 
 def _validate_sources(result: dict, raw_data: dict) -> dict:
+    """Deja en cada afirmación sólo las fuentes que existen en el catálogo y son
+    de su sección (sin repetir, como mucho 8) y descarta las que se quedan sin
+    ninguna: así nada llega al resumen sin una fuente que lo respalde, pero una
+    cita mal puesta no tira el resumen entero. ValueError si se descartó todo."""
     catalog = raw_data.get("source_catalog") or {}
-    allowed_classes = {
-        "done": {"task_completed", "legacy"},
-        "need": {"followup", "task_active", "legacy"},
-        "next": {"task_active", "project", "period", "legacy"},
-        "metrics": {"aggregate", "legacy"},
-    }
+    dropped_items: dict[str, int] = {}
+    dropped_keys = 0
+    kept_items = 0
     for section, items in result["sections"].items():
+        allowed = SECTION_SOURCE_CLASSES[section]
+        kept = []
         for item in items:
-            keys = item.get("source_keys")
-            if not isinstance(keys, list) or not 1 <= len(keys) <= 8:
-                raise ValueError(
-                    "Cada afirmación generada necesita entre 1 y 8 fuentes"
-                )
-            if any(not isinstance(key, str) for key in keys) or len(keys) != len(
-                set(keys)
-            ):
-                raise ValueError(
-                    "Las fuentes de una afirmación deben ser claves únicas"
-                )
-            if any(key not in catalog for key in keys):
-                raise ValueError("La respuesta contiene una fuente desconocida")
-            if any(
-                catalog[key].get("class") not in allowed_classes[section]
-                for key in keys
-            ):
-                raise ValueError("La fuente no corresponde a la sección indicada")
+            raw_keys = item.get("source_keys")
+            keys: list[str] = []
+            for key in raw_keys if isinstance(raw_keys, list) else []:
+                if (isinstance(key, str) and key in catalog and key not in keys
+                        and catalog[key].get("class") in allowed):
+                    keys.append(key)
+            dropped_keys += (len(raw_keys) if isinstance(raw_keys, list) else 0) - len(keys)
+            if not keys:
+                dropped_items[section] = dropped_items.get(section, 0) + 1
+                continue
+            kept.append({**item, "source_keys": keys[:MAX_SOURCES_PER_ITEM]})
+        result["sections"][section] = kept
+        kept_items += len(kept)
+    if dropped_items or dropped_keys:
+        logger.warning(
+            "Digest sources reconciled: dropped_items=%s dropped_keys=%d kept_items=%d",
+            dropped_items, dropped_keys, kept_items,
+        )
+    if kept_items == 0 and dropped_items:
+        raise ValueError("Ninguna afirmación del resumen cita una fuente válida")
     return result
 
 

@@ -94,6 +94,28 @@ it("recovers an uncertain individual request after reload and retries the same k
   await waitFor(() => expect(mocks.api.generate).toHaveBeenCalledWith({ generation_key: generationKey, client_id: 1, tone: "formal", period_start: undefined, period_end: undefined }))
   expect(localStorage.getItem(`agency:digest-generation:1:${generationKey}`)).toBeNull()
 })
+it("discards a stuck individual request once the server confirms nothing was created", async () => {
+  const generationKey = "individual-stuck-key"
+  localStorage.setItem(`agency:digest-generation:1:${generationKey}`, JSON.stringify({ kind: "individual", operation_key: generationKey, generation_key: generationKey, client_id: 1, tone: "formal" }))
+  mocks.api.recoverGeneration.mockRejectedValueOnce({ response: { status: 404 } })
+  setup()
+  fireEvent.click(await screen.findByRole("button", { name: "Descartar la solicitud" }))
+  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Descartar" }))
+  await waitFor(() => expect(screen.queryByText(/sin respuesta confirmada/)).not.toBeInTheDocument())
+  expect(localStorage.getItem(`agency:digest-generation:1:${generationKey}`)).toBeNull()
+  expect(mocks.api.generate).not.toHaveBeenCalled()
+})
+it("a definitive 502 from the server does not leave the request stuck", async () => {
+  const generationKey = "individual-invalid-key"
+  localStorage.setItem(`agency:digest-generation:1:${generationKey}`, JSON.stringify({ kind: "individual", operation_key: generationKey, generation_key: generationKey, client_id: 1, tone: "formal" }))
+  mocks.api.recoverGeneration.mockRejectedValueOnce({ response: { status: 404 } })
+  mocks.api.generate.mockRejectedValueOnce({ response: { status: 502, data: { detail: { code: "invalid_provider_response", message: "El proveedor devolvió un resumen no válido." } } } })
+  setup()
+  expect(await screen.findByText(/Todavía no hay una versión confirmada/)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole("button", { name: "Reintentar la misma solicitud" }))
+  await waitFor(() => expect(localStorage.getItem(`agency:digest-generation:1:${generationKey}`)).toBeNull())
+  expect(screen.queryByText(/sin respuesta confirmada/)).not.toBeInTheDocument()
+})
 it("cannot retry a persisted individual request after write permission is revoked", async () => {
   const generationKey = "individual-revoked-key"
   localStorage.setItem(`agency:digest-generation:1:${generationKey}`, JSON.stringify({ kind: "individual", operation_key: generationKey, generation_key: generationKey, client_id: 1, tone: "formal" }))

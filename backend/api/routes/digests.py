@@ -370,8 +370,10 @@ async def generate_digest(
                 else "El proveedor de generación no está disponible.",
             },
         ) from exc
-    except ValueError:
+    except ValueError as exc:
         await db.rollback()
+        # El mensaje es nuestro (qué regla falló), sin datos del cliente.
+        logger.error("Digest generation invalid for client_id=%s: %s", request.client_id, exc)
         raise HTTPException(
             status_code=502,
             detail={

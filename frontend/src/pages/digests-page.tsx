@@ -11,7 +11,7 @@ import { DigestMonthlyCycle } from "@/components/digests/digest-monthly-cycle"
 import { reportPolicyApi, reportPolicyKeys } from "@/lib/report-policy-api"
 import { digestsApi, clientsApi, discordApi } from "@/lib/api"
 import type { Digest, DigestStatus, DigestTone } from "@/lib/types"
-import { clearDigestGeneration, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type IndividualDigestIntent } from "@/lib/digest-generation-recovery"
+import { clearDigestGeneration, httpStatus as httpStatusOf, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type IndividualDigestIntent } from "@/lib/digest-generation-recovery"
 
 import { Button } from "@/components/ui/button"
 import { DownloadPdfButton } from "@/components/digests/download-pdf-button"
@@ -100,6 +100,7 @@ function DigestList() {
   const [discordPreviewContent, setDiscordPreviewContent] = useState("")
   const [discordIsEditing, setDiscordIsEditing] = useState(false)
   const [digestToDelete, setDigestToDelete] = useState<Digest | null>(null)
+  const [discardPending, setDiscardPending] = useState(false)
   const initialRecovery = useRef(readDigestGenerations(userId))
   const [generationStorageFailed] = useState(initialRecovery.current.failed)
   const [pendingIndividual, setPendingIndividual] = useState<IndividualDigestIntent | null>(() =>
@@ -360,10 +361,29 @@ function DigestList() {
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={recoveryQuery.isFetching || generateMutation.isPending} onClick={() => void recoveryQuery.refetch()}>{recoveryQuery.isFetching ? "Comprobando…" : "Comprobar resultado"}</Button>
             {canWrite && <Button size="sm" disabled={recoveryQuery.isFetching || generateMutation.isPending} onClick={() => pendingIndividual && generateMutation.mutate(pendingIndividual)}>Reintentar la misma solicitud</Button>}
+            {/* Salida si nunca llega a generarse: sólo tras comprobar que no hay versión. */}
+            {recoveryQuery.isError && httpStatusOf(recoveryQuery.error) === 404 && (
+              <Button size="sm" variant="ghost" disabled={recoveryQuery.isFetching || generateMutation.isPending} onClick={() => setDiscardPending(true)}>Descartar la solicitud</Button>
+            )}
           </div>
           {recoveryQuery.isError && <p>{(recoveryQuery.error as { response?: { status?: number } })?.response?.status === 404 ? "Todavía no hay una versión confirmada. Puedes comprobar de nuevo o reintentar la misma solicitud." : "No se pudo comprobar el resultado. La solicitud sigue guardada."}</p>}
         </>}
       </div>}
+
+      <ConfirmDialog
+        open={discardPending}
+        onOpenChange={setDiscardPending}
+        title="¿Descartar esta solicitud?"
+        description="No consta ninguna versión creada con ella. Se olvida y podrás preparar el resumen de nuevo."
+        confirmLabel="Descartar"
+        onConfirm={() => {
+          if (pendingIndividual) {
+            clearDigestGeneration(userId, pendingIndividual.operation_key)
+            setPendingIndividual(null)
+          }
+          setDiscardPending(false)
+        }}
+      />
 
       {!filterClient && <DigestMonthlyCycle />}
 

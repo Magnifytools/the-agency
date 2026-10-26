@@ -119,6 +119,17 @@ admin_users, admin_settings
 - Closing soporta HTML en email (para links tipo Google Sheets)
 - **Flujo**: Generar → Editar → Copiar al portapapeles → Pegar en Gmail/Slack manualmente
 - NO se envían emails ni mensajes desde la app. Discord solo para uso interno.
+- **Fuentes de cada afirmación** (`_validate_sources` en `digest_generator.py`):
+  se quitan las claves que no existen o no son de su sección y se descarta la
+  afirmación que se queda sin ninguna (log `Digest sources reconciled`); sólo si
+  se descarta todo es un resumen inválido (502 `invalid_provider_response`). Antes
+  una sola cita mal puesta tiraba el resumen entero (oct 2026: el progreso del
+  proyecto citado en métricas; ahora `metrics` admite `project`).
+- **Generaciones pendientes en el navegador** (`lib/digest-generation-recovery.ts`):
+  un 502 `invalid_provider_response`/`provider_failed` es fallo definitivo (el
+  servidor deshizo todo) y no deja la solicitud guardada. Si se queda alguna sin
+  confirmar, tras "Comprobar resultado" sin versión aparece "Descartar" (individual
+  y selección): sin esa salida, una solicitud que nunca prospera bloqueaba la pantalla.
 - **Vista "Resúmenes de este mes"** (`components/digests/digest-monthly-cycle.tsx`,
   arriba en `/digests`): una fila por cliente externo activo con el informe
   mensual encendido y el estado de su informe del mes anterior. Entregado = entrega externa confirmada

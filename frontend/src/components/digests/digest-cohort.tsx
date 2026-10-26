@@ -9,6 +9,7 @@ import type { DigestTone } from "@/lib/types"
 import { getErrorMessage } from "@/lib/utils"
 import { clearDigestGeneration, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type CohortDigestIntent } from "@/lib/digest-generation-recovery"
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
@@ -44,6 +45,7 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedP
   const [results, setResults] = useState<(CohortGenerateResult & { name: string })[]>([])
   const [needsRefresh, setNeedsRefresh] = useState(false)
   const [submitError, setSubmitError] = useState("")
+  const [discardPending, setDiscardPending] = useState(false)
   const alive = useRef(true)
   const initialRecovery = useRef(readDigestGenerations(userId))
   const [generationStorageFailed] = useState(initialRecovery.current.failed)
@@ -177,10 +179,25 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedP
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={recovery.isFetching || mutation.isPending} onClick={() => void recovery.refetch()}>{recovery.isFetching ? "Comprobando…" : "Comprobar resultado"}</Button>
             {canWrite && <Button size="sm" disabled={recovery.isFetching || mutation.isPending} onClick={() => pendingCohort && mutation.mutate(pendingCohort)}>Reintentar la misma selección</Button>}
+            {/* Salida si alguna no llega a generarse: sólo tras comprobar el resultado. */}
+            {recovery.data && recoveredCount < (pendingCohort?.items.length ?? 0) && (
+              <Button size="sm" variant="ghost" disabled={recovery.isFetching || mutation.isPending} onClick={() => setDiscardPending(true)}>Descartar la selección</Button>
+            )}
           </div>
           {recovery.isError && <p>No se pudo comprobar el resultado. Las claves siguen guardadas.</p>}
         </>}
       </div>}
+      <ConfirmDialog
+        open={discardPending}
+        onOpenChange={setDiscardPending}
+        title="¿Descartar esta selección?"
+        description={`${recoveredCount ? `Las ${recoveredCount} versiones confirmadas ya están en el historial. ` : ""}Las demás no se llegaron a crear: se olvidan y podrás prepararlas de nuevo.`}
+        confirmLabel="Descartar"
+        onConfirm={() => {
+          if (pendingCohort) finishCohort(pendingCohort)
+          setDiscardPending(false)
+        }}
+      />
       {submitError && <p role="alert" className="text-sm">{submitError}</p>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         {canWrite && <p className="text-sm text-muted-foreground">{chosen.length} seleccionados · Máximo 50. Preparar no envía nada al cliente ni a Discord.</p>}
