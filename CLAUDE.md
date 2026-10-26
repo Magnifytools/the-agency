@@ -117,6 +117,12 @@ admin_users, admin_settings
 - Tonos: formal | cercano | equipo
 - Títulos sección: 1ª persona singular (cercano/formal), plural (equipo)
 - Closing soporta HTML en email (para links tipo Google Sheets)
+- **`metrics` es interno** (horas invertidas, tareas cerradas): sale en el editor
+  ("Métricas internas · no las ve el cliente") y en ningún formato para el
+  cliente. `CLIENT_SECTIONS` en `digest_renderer.py`: Slack la ignora aunque la
+  plantilla del cliente la pida (la de Fit la pedía); email, texto plano, PDF y
+  enlace público ya no la pintaban. Lo vigila
+  `test_internal_metrics_never_reach_the_client_in_any_format`.
 - **Flujo**: Generar → Editar → Copiar al portapapeles → Pegar en Gmail/Slack manualmente
 - NO se envían emails ni mensajes desde la app. Discord solo para uso interno.
 - **Fuentes de cada afirmación** (`_validate_sources` en `digest_generator.py`):

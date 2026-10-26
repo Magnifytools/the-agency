@@ -11,6 +11,7 @@ from backend.schemas.digest import DigestContent, DigestSections, DigestItem
 from backend.services.digest_renderer import (
     render_slack,
     render_discord,
+    render_email,
     render_email_plain,
 )
 
@@ -64,3 +65,41 @@ def test_discord_and_email_plain_include_closing():
     c = _content()
     assert "¡Gracias por la semana!" in render_discord(c)
     assert "¡Gracias por la semana!" in render_email_plain(c)
+
+
+def _with_metrics() -> DigestContent:
+    content = _content()
+    content.sections.metrics = [
+        DigestItem(title="Horas invertidas esta semana", description="Se han dedicado 13,2 horas al proyecto"),
+        DigestItem(title="Tareas completadas esta semana", description="Se han cerrado 21 tareas"),
+    ]
+    return content
+
+
+FIT_TEMPLATE = {
+    "item_format": "simple",
+    "sections": [
+        {"key": "done", "title": "✅ Qué ha avanzado esta semana"},
+        {"key": "metrics", "title": "📊 Métrica clave"},
+        {"key": "need", "title": "🚨 Bloqueos o alertas"},
+        {"key": "next", "title": "🎯 Foco de la semana que viene"},
+    ],
+}
+
+
+def test_internal_metrics_never_reach_the_client_in_any_format():
+    """Horas y tareas cerradas son internas (David, oct 2026): ni Slack, ni la
+    plantilla de Fit que las pedía, ni email, ni texto plano."""
+    content = _with_metrics()
+    outputs = {
+        "slack": render_slack(content),
+        "slack_fit": render_slack(content, slack_template=FIT_TEMPLATE),
+        "email": render_email(content),
+        "email_plain": render_email_plain(content),
+    }
+    for name, out in outputs.items():
+        assert "13,2 horas" not in out and "21 tareas" not in out, name
+        assert "Métrica" not in out, name
+        assert "Landing publicada" in out, name
+    assert "✅ Qué ha avanzado esta semana" in outputs["slack_fit"]
+    assert "🎯 Foco de la semana que viene" in outputs["slack_fit"]

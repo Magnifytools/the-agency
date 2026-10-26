@@ -29,7 +29,7 @@ const sectionLabels: Record<keyof DigestSections, { title: string; color: string
   done: { title: "Hecho", color: "bg-green-100 text-green-800" },
   need: { title: "Necesitamos", color: "bg-amber-100 text-amber-800" },
   next: { title: "Próximamente", color: "bg-blue-100 text-blue-800" },
-  metrics: { title: "Métricas", color: "bg-slate-100 text-slate-800" },
+  metrics: { title: "Métricas internas · no las ve el cliente", color: "bg-slate-100 text-slate-800" },
 }
 const toneLabels: Record<DigestTone, string> = { cercano: "Cercano", formal: "Formal", equipo: "Equipo" }
 
