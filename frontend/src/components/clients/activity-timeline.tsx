@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
 import { clientActivityApi } from "@/lib/api"
+import type { ActivityEvent } from "@/lib/types"
 import { useAuth } from "@/context/auth-context"
 import { isEnabled } from "@/lib/hidden-modules"
 import { Card, CardContent } from "@/components/ui/card"
@@ -22,19 +23,6 @@ import { cn } from "@/lib/utils"
 
 interface Props {
   clientId: number
-}
-
-interface ActivityEvent {
-  id: string
-  type: string
-  subtype: string
-  timestamp: string
-  title: string
-  description: string | null
-  detail: string | null
-  user_name: string | null
-  contact_name?: string | null
-  icon: string
 }
 
 const typeConfig: Record<string, { color: string; bgColor: string; label: string }> = {
