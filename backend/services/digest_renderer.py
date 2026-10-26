@@ -33,6 +33,12 @@ SECTION_TITLES_PLURAL = {
 }
 
 
+# "metrics" (horas invertidas, tareas cerradas…) es para nosotros: sale en el
+# editor, pero en ningún formato que llegue al cliente. Email, texto plano y PDF
+# ya no la pintaban; Slack sí, por su plantilla (la de Fit la llevaba).
+CLIENT_SECTIONS = ("done", "need", "next")
+
+
 def _seo_block(content: DigestContent, seo: dict | None) -> dict | None:
     """El bloque de Search Console, si hay datos y no se ha quitado en el editor."""
     return seo if content.include_seo and digest_seo.is_available(seo) else None
@@ -162,7 +168,7 @@ def _render_slack_default(
 
     sections = content.sections
 
-    for key in ("done", "need", "next", "metrics"):
+    for key in CLIENT_SECTIONS:
         items = getattr(sections, key, [])
         if items:
             title = titles.get(key, key.capitalize())
@@ -223,6 +229,8 @@ def _render_slack_custom(
     item_format = template.get("item_format", "simple")
     for sec in template.get("sections", []):
         key = sec.get("key", "")
+        if key not in CLIENT_SECTIONS:
+            continue
         title = sec.get("title", "")
         empty_text = sec.get("empty_text")
         items = getattr(sections_data, key, [])
