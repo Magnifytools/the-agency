@@ -201,7 +201,10 @@ async def generate_cohort(
             results.append(CohortGenerateResult(**period, outcome="skipped", reason=exc.reason))
         except Exception as exc:
             await db.rollback()
-            logger.error("Cohort digest generation failed for client_id=%s type=%s", item.client_id, type(exc).__name__)
+            # ValueError lleva un mensaje nuestro (qué regla falló); el resto, sólo el tipo.
+            detail = f": {exc}" if isinstance(exc, ValueError) else ""
+            logger.error("Cohort digest generation failed for client_id=%s type=%s%s",
+                         item.client_id, type(exc).__name__, detail)
             results.append(CohortGenerateResult(**period, outcome="failed", reason="generation_failed"))
     return CohortGenerateResponse(results=results)
 

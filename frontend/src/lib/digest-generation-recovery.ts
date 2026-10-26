@@ -110,8 +110,14 @@ function errorCode(error: unknown) {
   return (error as { response?: { data?: { detail?: { code?: unknown } } } })?.response?.data?.detail?.code
 }
 
+// 502 que el servidor da tras deshacerlo todo: la respuesta del proveedor no
+// valía o falló algo después. No hay versión creada, así que no se reintenta
+// con la misma clave: se dice y se puede volver a preparar.
+const DEFINITIVE_SERVER_FAILURES = new Set(["invalid_provider_response", "provider_failed"])
+
 export function isConfirmedFailure(error: unknown) {
   const status = httpStatus(error)
+  if (status === 502 && DEFINITIVE_SERVER_FAILURES.has(String(errorCode(error)))) return true
   // A changed source is a definite rejection, but the same persisted intent is
   // still the safe retry vehicle: the server will collect fresh facts under its
   // original generation key.
