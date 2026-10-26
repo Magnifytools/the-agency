@@ -2,6 +2,7 @@
 """Closed-period and durable digest-version regressions."""
 
 from datetime import date, datetime
+from uuid import uuid4
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -10,8 +11,11 @@ from sqlalchemy import func, select
 from backend.db.models import (
     Client,
     ClientStatus,
+    Delivery,
+    DigestExternalDeliveryEvent,
     DigestStatus,
     DigestTone,
+    ExternalDeliveryAction,
     WeeklyDigest,
 )
 from backend.schemas.digest import DigestContent
@@ -205,25 +209,22 @@ async def test_put_is_idempotent_or_creates_new_source_version(
     assert identical.status_code == 200, identical.text
     assert identical.json()["id"] == original.id
 
+    # Sin haber salido de la app, guardar sobrescribe la misma versión.
     changed_content = _content(title="Hecho corregido")
     changed = await admin_client.put(
         f"/api/digests/{original.id}",
         json={"content": changed_content, "tone": "cercano"},
     )
     assert changed.status_code == 200, changed.text
-    assert changed.json()["id"] != original.id
-    assert changed.json()["status"] == "draft"
+    assert changed.json()["id"] == original.id
+    assert changed.json()["status"] == "reviewed"
+    assert changed.json()["content"]["sections"]["done"][0]["title"] == "Hecho corregido"
     assert changed.json()["content"]["date"] == (
         "Período del 7 al 13 de septiembre de 2026"
     )
-
-    await db_session.refresh(original)
-    assert original.status == DigestStatus.reviewed
-    assert original.content["sections"]["done"][0]["title"] == "Hecho"
-    assert original.content["date"] == "FECHA IA HISTÓRICA"
     assert await db_session.scalar(select(func.count(WeeklyDigest.id)).where(
         WeeklyDigest.client_id == client.id
-    )) == 2
+    )) == 1
 
     regenerated_content = _content(title="Regenerado", date_text="otra inventada")
     with patch(
@@ -249,7 +250,43 @@ async def test_put_is_idempotent_or_creates_new_source_version(
     assert original.tone == DigestTone.cercano
     assert await db_session.scalar(select(func.count(WeeklyDigest.id)).where(
         WeeklyDigest.client_id == client.id
-    )) == 3
+    )) == 2
+
+
+@pytest.mark.parametrize("evidence", ["external_event", "discord_delivery", "legacy_sent"])
+async def test_once_it_left_the_app_saving_keeps_what_was_sent(admin_client, db_session, admin_user, evidence):
+    client = Client(name=f"Cliente entregado {evidence}", status=ClientStatus.active)
+    db_session.add(client)
+    await db_session.flush()
+    sent = WeeklyDigest(
+        client_id=client.id, period_start=date(2026, 10, 19), period_end=date(2026, 10, 25),
+        status=DigestStatus.sent if evidence == "legacy_sent" else DigestStatus.reviewed,
+        tone=DigestTone.cercano, content=_content(title="Lo que recibió el cliente"),
+        raw_context={"client_name": client.name}, generated_at=datetime(2026, 10, 26, 8),
+        created_by=admin_user.id,
+    )
+    db_session.add(sent)
+    await db_session.flush()
+    if evidence == "external_event":
+        db_session.add(DigestExternalDeliveryEvent(
+            digest_id=sent.id, action=ExternalDeliveryAction.confirmed, actor_id=admin_user.id,
+            request_key=uuid4().hex, request_hash="a" * 64))
+    elif evidence == "discord_delivery":
+        db_session.add(Delivery(
+            id=str(uuid4()), dedupe_key=uuid4().hex, actor_id=admin_user.id, source_kind="digest",
+            source_id=sent.id, source_version="v1", destination_key="discord", payload={},
+            status="sent", available_at=datetime(2026, 10, 26, 9), expires_at=datetime(2026, 10, 27, 9),
+        ))
+    await db_session.flush()
+
+    changed = await admin_client.put(
+        f"/api/digests/{sent.id}",
+        json={"content": _content(title="Corregido después"), "tone": "cercano"},
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["id"] != sent.id
+    await db_session.refresh(sent)
+    assert sent.content["sections"]["done"][0]["title"] == "Lo que recibió el cliente"
 
 
 async def test_retired_batch_keeps_existing_draft(db_session, admin_client, admin_user):

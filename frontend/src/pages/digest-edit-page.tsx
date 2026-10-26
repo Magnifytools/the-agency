@@ -165,7 +165,11 @@ export default function DigestEditPage() {
     mutationFn: (request: { sourceId: number; epoch: number; content: DigestContent; tone: DigestTone }) => digestsApi.update(request.sourceId, { content: request.content, tone: request.tone }),
     onSuccess: (saved, request) => {
       acceptVersion(saved, request.sourceId, request.epoch)
-      if (active.current) toast.success("Versión guardada; las anteriores se conservan")
+      // Mismo id = se sobrescribió (aún no había salido); otro = ya se había
+      // entregado y el servidor guardó una versión nueva para conservar la enviada.
+      if (active.current) toast.success(saved.id === request.sourceId
+        ? "Guardado"
+        : `Esta versión ya se había entregado: tus cambios quedan en la versión #${saved.id}`)
     },
     onError: (err) => toast.error(getErrorMessage(err, "No se pudo guardar. Tu borrador se conserva.")),
   })
@@ -366,7 +370,7 @@ export default function DigestEditPage() {
           </Button>}
         </div>
       </div>
-      {canWrite && <p className="text-sm text-muted-foreground">Guardar conserva una nueva versión si hay cambios. No envía el resumen: revisa la vista previa antes de compartirlo.</p>}
+      {canWrite && <p className="text-sm text-muted-foreground">Guardar sobrescribe esta versión mientras no se haya entregado; si ya se entregó, guarda los cambios en una versión nueva y conserva la enviada. No envía el resumen: revisa la vista previa antes de compartirlo.</p>}
 
       {/* Tone selector */}
       <div className="flex gap-4 items-center">
@@ -490,7 +494,7 @@ export default function DigestEditPage() {
 
       </fieldset>
       {previewUnavailable && <p role="alert" className="text-sm text-muted-foreground">Esta versión no tiene contenido para previsualizar.</p>}
-      <p className="text-sm text-muted-foreground">Versión #{digest.id} · Las anteriores siguen disponibles en Resúmenes.</p>
+      <p className="text-sm text-muted-foreground">Versión #{digest.id} · Las entregadas y las de otro tono siguen disponibles en Resúmenes.</p>
       <ConfirmDialog open={pendingTone !== null && canWrite} onOpenChange={(open) => { if (!open) setPendingTone(null) }} title="Crear una versión con otro tono" description="Se guardará tu borrador actual y se generará otra versión. Podrás volver a la anterior desde Resúmenes." confirmLabel="Guardar y generar" onConfirm={() => { if (pendingTone && canWrite) toneChangeMutation.mutate({ sourceId: Number(id), epoch: viewEpoch.current, newTone: pendingTone, content: draftContent(), tone }) }} />
 
       {digest.raw_context && <DigestFacts context={digest.raw_context} />}

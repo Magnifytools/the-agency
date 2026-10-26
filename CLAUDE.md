@@ -124,6 +124,13 @@ admin_users, admin_settings
   enlace público ya no la pintaban. Lo vigila
   `test_internal_metrics_never_reach_the_client_in_any_format`.
 - **Flujo**: Generar → Editar → Copiar al portapapeles → Pegar en Gmail/Slack manualmente
+- **Guardar** (`PUT /api/digests/{id}`): mientras la versión no ha salido de la app
+  (`_has_left_the_app`: sin evento de entrega externa, sin envío a Discord y sin la
+  marca histórica `sent`) sobrescribe ESA versión y devuelve el mismo id. Si ya
+  salió, crea una versión nueva y la enviada queda intacta. Cambiar el tono
+  regenera en una versión nueva y NO borra la anterior: el reintento con la misma
+  `generation_key` se hace sobre el id de origen. Antes cada "Guardar" creaba una
+  versión (oct 2026: el historial se llenaba de copias).
 - NO se envían emails ni mensajes desde la app. Discord solo para uso interno.
 - **Fuentes de cada afirmación** (`_validate_sources` en `digest_generator.py`):
   se quitan las claves que no existen o no son de su sección y se descarta la
