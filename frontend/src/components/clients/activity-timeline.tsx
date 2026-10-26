@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
+import { Link } from "react-router-dom"
 import { clientActivityApi } from "@/lib/api"
 import { useAuth } from "@/context/auth-context"
 import { isEnabled } from "@/lib/hidden-modules"
@@ -175,7 +176,9 @@ export function ActivityTimeline({ clientId }: Props) {
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium">{event.title}</span>
+                            {event.link_url
+                              ? <Link to={event.link_url} className="text-sm font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-sm">{event.title}</Link>
+                              : <span className="text-sm font-medium">{event.title}</span>}
                             <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0", config.color)}>
                               {config.label}
                             </Badge>

@@ -25,6 +25,7 @@ import { ClientAiAdvisor } from "@/components/clients/client-ai-advisor"
 import { ClientReportPolicy } from "@/components/clients/client-report-policy"
 import { ClientSettingsTab } from "@/components/clients/client-settings-tab"
 import { BrandTermsNotice } from "@/components/clients/brand-terms-notice"
+import { ClientDigestVersions } from "@/components/clients/client-digest-versions"
 import { EngineMetricsWidget } from "@/components/clients/engine-metrics-widget"
 import { EngineSeoTab } from "@/components/clients/engine-seo-tab"
 import { SeoControlTab } from "@/components/clients/seo-control/seo-control-tab"
@@ -620,7 +621,10 @@ export default function ClientDetailPage() {
 
       {/* Tab: Resúmenes */}
       {activeTab === "resumenes" && (
-        <ClientReportPolicy clientId={clientId} clientName={client.name} />
+        <div className="space-y-6">
+          <ClientReportPolicy clientId={clientId} clientName={client.name} />
+          <ClientDigestVersions clientId={clientId} />
+        </div>
       )}
 
       {/* Tab: Comunicaciones */}

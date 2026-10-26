@@ -177,6 +177,8 @@ export interface ActivityEvent {
   user_name: string | null
   contact_name?: string | null
   icon: string
+  /** A dónde lleva pulsar el evento (tarea, resumen…); null si no tiene página propia. */
+  link_url?: string | null
 }
 
 export interface WeeklyTimesheetTask {
