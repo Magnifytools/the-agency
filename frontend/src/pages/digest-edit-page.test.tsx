@@ -8,6 +8,8 @@ const api = vi.hoisted(() => ({ get: vi.fn(), recoverGeneration: vi.fn(), update
 const auth = vi.hoisted(() => ({ canWrite: true }))
 vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: { id: 1 }, hasPermission: () => auth.canWrite }) }))
 vi.mock("@/lib/api", () => ({ digestsApi: api }))
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn() }))
+vi.mock("sonner", () => ({ toast }))
 vi.mock("@/components/digests/digest-external-delivery", () => ({ DigestExternalDelivery: ({ unsaved }: { unsaved: boolean }) => <output data-testid="delivery-unsaved">{String(unsaved)}</output> }))
 const source = {
   id: 10, client_id: 1, client_name: "Acme", status: "draft", tone: "cercano",
@@ -83,6 +85,27 @@ it("saves metrics and navigates to the returned version without changing the rep
   await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/digests/11/edit"))
   expect(api.update).toHaveBeenCalledWith(10, expect.objectContaining({ content: expect.objectContaining({ greeting: "Hola, equipo", sections: expect.objectContaining({ metrics: source.content.sections.metrics }) }) }))
 })
+it("saving an undelivered version overwrites it in place", async () => {
+  api.update.mockImplementationOnce(async (_id, request) => ({ ...source, ...request }))
+  setup()
+  const greeting = await screen.findByLabelText("Saludo")
+  await waitFor(() => expect(greeting).toHaveValue("Hola Acme"))
+  fireEvent.change(greeting, { target: { value: "Hola de nuevo" } })
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }))
+  await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Guardado"))
+  expect(screen.getByTestId("location")).toHaveTextContent("/digests/10/edit")
+})
+
+it("saving a delivered version says the changes went to a new version", async () => {
+  setup()
+  const greeting = await screen.findByLabelText("Saludo")
+  await waitFor(() => expect(greeting).toHaveValue("Hola Acme"))
+  fireEvent.change(greeting, { target: { value: "Corregido tras enviar" } })
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }))
+  await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Esta versión ya se había entregado: tus cambios quedan en la versión #11"))
+  expect(screen.getByTestId("location")).toHaveTextContent("/digests/11/edit")
+})
+
 it("shows assertion sources and removes their certification when the text is edited", async () => {
   api.get.mockResolvedValueOnce({
     ...source,

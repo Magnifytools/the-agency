@@ -545,6 +545,29 @@ async def get_digest(
 # ---------------------------------------------------------------------------
 
 
+async def _has_distribution_evidence(db: AsyncSession, digest_id: int) -> bool:
+    """Hay rastro de que esta versión salió: un envío (Discord) o un evento de
+    entrega al cliente, confirmado o revocado."""
+    return bool(await db.scalar(
+        select(
+            or_(
+                exists().where(
+                    Delivery.source_kind == "digest", Delivery.source_id == digest_id
+                ),
+                exists().where(DigestExternalDeliveryEvent.digest_id == digest_id),
+            )
+        )
+    ))
+
+
+async def _has_left_the_app(db: AsyncSession, digest: WeeklyDigest) -> bool:
+    """Mientras no haya salido, guardar sobrescribe la misma versión; después,
+    un cambio crea otra para que quede lo que se envió (decisión de David, oct
+    2026: cada "Guardar" llenaba el historial de copias). ``sent`` es la marca
+    histórica del sistema antiguo y también cuenta."""
+    return digest.status == DigestStatus.sent or await _has_distribution_evidence(db, digest.id)
+
+
 @router.put("/{digest_id}", response_model=DigestResponse)
 async def update_digest(
     digest_id: int,
@@ -552,10 +575,14 @@ async def update_digest(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("digests", write=True)),
 ):
-    """Create a new digest version when content or tone changes.
+    """Guarda cambios de contenido o tono.
 
-    If only the tone changes (no content update), auto-regenerate
-    content using stored raw_context. Identical payloads return the same ID.
+    Si la versión no ha salido de la app (`_has_left_the_app`), se sobrescribe y
+    se devuelve el mismo id; si ya salió, se crea una versión nueva y la anterior
+    queda como se envió. Cambiar sólo el tono regenera con la IA desde el
+    `raw_context` en una versión nueva y deja la anterior: el reintento con la
+    misma clave se hace sobre el id de origen, que tiene que seguir existiendo.
+    Sin cambios, el mismo id.
     """
     digest = await authorize_digest(db, digest_id, current_user, write=True)
 
@@ -663,6 +690,19 @@ async def update_digest(
     else:
         generated_at = digest.generated_at
         edited_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    if not await _has_left_the_app(db, digest):
+        digest.content = next_content
+        digest.tone = next_tone
+        digest.edited_at = edited_at
+        await db.commit()
+        saved = (await db.execute(
+            select(WeeklyDigest)
+            .where(WeeklyDigest.id == digest_id)
+            .options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
+            .execution_options(populate_existing=True)
+        )).scalar_one()
+        return _to_response(saved, await _readable_modules(db, current_user))
 
     # An edit/regeneration is a new durable source version. The original ID and
     # any Delivery receipts remain tied to the exact content they represented.
@@ -855,17 +895,7 @@ async def delete_digest(
             status_code=409, detail="No puedes eliminar digests ya enviados"
         )
 
-    has_evidence = await db.scalar(
-        select(
-            or_(
-                exists().where(
-                    Delivery.source_kind == "digest", Delivery.source_id == digest_id
-                ),
-                exists().where(DigestExternalDeliveryEvent.digest_id == digest_id),
-            )
-        )
-    )
-    if has_evidence:
+    if await _has_distribution_evidence(db, digest_id):
         raise HTTPException(
             status_code=409,
             detail={
