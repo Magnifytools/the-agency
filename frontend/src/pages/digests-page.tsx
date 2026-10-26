@@ -24,7 +24,7 @@ import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 
 const toneLabels: Record<DigestTone, string> = {
   formal: "Formal",
@@ -464,11 +464,15 @@ function DigestList() {
               ) : (
                 digests.map((digest) => (
                   <TableRow key={digest.id}>
-                    <TableCell className="font-medium">{digest.client_name || "—"}</TableCell>
+                    <TableCell className="font-medium">
+                      <Link to={`/digests/${digest.id}/edit`} className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-sm">{digest.client_name || "—"}</Link>
+                    </TableCell>
                     <TableCell>
-                      {digest.period_start && digest.period_end
-                        ? `${format(new Date(digest.period_start + "T12:00:00"), "d MMM yyyy", { locale: es })} — ${format(new Date(digest.period_end + "T12:00:00"), "d MMM yyyy", { locale: es })}`
-                        : "—"}
+                      <Link to={`/digests/${digest.id}/edit`} className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-sm">
+                        {digest.period_start && digest.period_end
+                          ? `${format(new Date(digest.period_start + "T12:00:00"), "d MMM yyyy", { locale: es })} — ${format(new Date(digest.period_end + "T12:00:00"), "d MMM yyyy", { locale: es })}`
+                          : "—"}
+                      </Link>
                     </TableCell>
                     <TableCell>{toneLabels[digest.tone]}</TableCell>
                     <TableCell>

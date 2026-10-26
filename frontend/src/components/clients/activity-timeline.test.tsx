@@ -46,3 +46,18 @@ describe("ActivityTimeline recovery", () => {
     expect(screen.queryByText("Dato privado")).not.toBeInTheDocument()
   })
 })
+
+describe("ActivityTimeline links", () => {
+  it("opens what an event describes when it has a page of its own", async () => {
+    const { MemoryRouter } = await import("react-router-dom")
+    api.list.mockResolvedValueOnce([
+      { id: "task-9", type: "task_completed", subtype: "", timestamp: "2026-10-20T10:00:00Z", title: "Tarea completada", description: "Revisar landing", detail: null, user_name: null, icon: "check", link_url: "/tasks?id=9" },
+      { id: "task-created-8", type: "task_created", subtype: "", timestamp: "2026-10-19T10:00:00Z", title: "Nueva tarea sin enlace", description: null, detail: null, user_name: null, icon: "plus", link_url: null },
+    ])
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><MemoryRouter><ActivityTimeline clientId={4} /></MemoryRouter></QueryClientProvider>)
+    expect(await screen.findByRole("link", { name: "Tarea completada" })).toHaveAttribute("href", "/tasks?id=9")
+    expect(screen.getByText("Nueva tarea sin enlace").closest("a")).toBeNull()
+    cleanup()
+  })
+})

@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import type { ClientStatusLevel, ClientStatusRow } from "@/lib/types"
 
@@ -46,8 +47,9 @@ const DIGEST_STATE = { ok: "Al día", due: "Toca enviarlo", late: "Atrasado" } a
 
 const CADENCE = { monthly: "Informe mensual", weekly: "Seguimiento semanal" } as const
 
-/** Una línea por cadencia encendida (informe mensual y/o seguimiento semanal). */
-export function DigestCell({ digests }: { digests: ClientStatusRow["digests"] | null | undefined }) {
+/** Una línea por cadencia encendida (informe mensual y/o seguimiento semanal).
+ * Con `href`, cada línea lleva a los resúmenes de ese cliente. */
+export function DigestCell({ digests, href }: { digests: ClientStatusRow["digests"] | null | undefined; href?: string }) {
   if (!digests?.length) return <p className="text-xs text-muted-foreground">Sin política</p>
   return (
     <div className="space-y-1 text-xs">
@@ -57,9 +59,13 @@ export function DigestCell({ digests }: { digests: ClientStatusRow["digests"] | 
           : null
         return (
           <div key={digest.cadence}>
-            <span className={digest.state === "late" ? "font-medium text-red-600 dark:text-red-400" : digest.state === "due" ? "font-medium text-amber-600 dark:text-amber-400" : ""}>
-              {CADENCE[digest.cadence]} · {DIGEST_STATE[digest.state]}
-            </span>
+            {(() => {
+              const tone = digest.state === "late" ? "font-medium text-red-600 dark:text-red-400" : digest.state === "due" ? "font-medium text-amber-600 dark:text-amber-400" : ""
+              const label = `${CADENCE[digest.cadence]} · ${DIGEST_STATE[digest.state]}`
+              return href
+                ? <Link to={href} className={`${tone} hover:underline`}>{label}</Link>
+                : <span className={tone}>{label}</span>
+            })()}
             <p className="text-muted-foreground">{last ? `Último entregado hasta ${last}` : "Nunca entregado"}</p>
           </div>
         )

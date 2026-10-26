@@ -19,6 +19,7 @@ from backend.db.models import (
 )
 from backend.api.deps import get_current_user, require_module
 from backend.services.dashboard_access import has_module_read
+from backend.services.digest_periods import period_cadence
 
 router = APIRouter(prefix="/api/clients", tags=["activity"])
 
@@ -139,6 +140,7 @@ async def get_client_activity(
             "user_name": _user_name(users_map.get(c.user_id)),
             "contact_name": c.contact_name,
             "icon": "message",
+            "link_url": f"/clients/{client_id}?tab=comunicaciones",
         })
 
     # Build events from completed tasks
@@ -153,6 +155,7 @@ async def get_client_activity(
             "detail": t.description,
             "user_name": _user_name(users_map.get(t.assigned_to)) if t.assigned_to else None,
             "icon": "check",
+            "link_url": f"/tasks?id={t.id}",
         })
 
     # Build events from created tasks
@@ -167,21 +170,25 @@ async def get_client_activity(
             "detail": None,
             "user_name": None,
             "icon": "plus",
+            "link_url": f"/tasks?id={t.id}",
         })
 
     # Build events from digests
     for d in digests:
         status_labels = {"draft": "borrador", "reviewed": "revisado", "sent": "enviado"}
+        kind = {"weekly": "Seguimiento semanal", "monthly": "Informe mensual"}.get(
+            period_cadence(d.period_start, d.period_end) or "", "Resumen")
         events.append({
             "id": f"digest-{d.id}",
             "type": "digest",
             "subtype": d.status.value,
             "timestamp": (d.generated_at or d.created_at).isoformat(),
-            "title": f"Digest semanal ({status_labels.get(d.status.value, d.status.value)})",
+            "title": f"{kind} ({status_labels.get(d.status.value, d.status.value)})",
             "description": f"{d.period_start} — {d.period_end}",
             "detail": None,
             "user_name": None,
             "icon": "newspaper",
+            "link_url": f"/digests/{d.id}/edit",
         })
 
     # Build events from proposals
@@ -203,6 +210,8 @@ async def get_client_activity(
             "detail": None,
             "user_name": _user_name(users_map.get(p.created_by)) if p.created_by else None,
             "icon": "file-text",
+            # La página de presupuestos no abre uno por URL: sin enlace mejor que a la lista.
+            "link_url": None,
         })
 
     # Sort all events by timestamp descending
