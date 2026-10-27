@@ -101,3 +101,27 @@ it("uses a short read-only compact inbox and links to the complete page", async 
   expect(screen.getAllByRole("link")).toHaveLength(6)
   expect(screen.getByRole("link", { name: "Ver todas las alertas" })).toHaveAttribute("href", "/incidents")
 })
+
+it("pospone al lunes a las 9 con un clic y descarta con un motivo frecuente", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(2026, 9, 28, 16, 30) }) // miércoles
+  try {
+    setup()
+    await screen.findByRole("heading", { name: incident.title })
+    fireEvent.click(screen.getByRole("button", { name: "Posponer" }))
+    fireEvent.click(screen.getByRole("button", { name: "El lunes a las 9" }))
+    await waitFor(() => expect(incidentsApi.decide).toHaveBeenCalledTimes(1))
+    const until = new Date(incidentsApi.decide.mock.calls[0][1].until)
+    expect([until.getDay(), until.getHours(), until.getDate()]).toEqual([1, 9, 2])
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it("los motivos frecuentes rellenan el descarte", async () => {
+  setup()
+  await screen.findByRole("heading", { name: incident.title })
+  fireEvent.click(screen.getByRole("button", { name: "Descartar" }))
+  fireEvent.click(screen.getByRole("button", { name: "Falsa alarma" }))
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar descarte" }))
+  await waitFor(() => expect(incidentsApi.decide).toHaveBeenCalledWith(31, expect.objectContaining({ action: "dismiss", reason: "Falsa alarma" })))
+})

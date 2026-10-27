@@ -51,6 +51,15 @@ function localInputToInstant(value: string) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString()
 }
 
+// Posponer sin escribir fechas: lo habitual es "mañana", "el lunes" o "una semana".
+function at9(date: Date) { const next = new Date(date); next.setHours(9, 0, 0, 0); return next }
+const SNOOZE_PRESETS: { label: string; until: (now: Date) => Date }[] = [
+  { label: "Mañana a las 9", until: (now) => { const d = at9(now); d.setDate(d.getDate() + 1); return d } },
+  { label: "El lunes a las 9", until: (now) => { const d = at9(now); d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7)); return d } },
+  { label: "En una semana", until: (now) => { const d = new Date(now); d.setDate(d.getDate() + 7); return d } },
+]
+const DISMISS_REASONS = ["Ya está hablado con el cliente", "No aplica a este cliente", "Falsa alarma"]
+
 export function IncidentInbox({ userId, compact = false, onNavigate }: { userId: number; compact?: boolean; onNavigate?: () => void }) {
   const queryClient = useQueryClient()
   const id = useId()
@@ -235,6 +244,12 @@ export function IncidentInbox({ userId, compact = false, onNavigate }: { userId:
                   <div className="rounded-lg bg-muted/50 p-3">
                     <Label htmlFor={`snooze-${id}-${incident.id}`}>Posponer hasta</Label>
                     <p className="mb-2 text-xs text-muted-foreground">Hora de este dispositivo ({Intl.DateTimeFormat().resolvedOptions().timeZone}).</p>
+                    <div className="mb-2 flex flex-wrap gap-2" role="group" aria-label="Posponer rápido">
+                      {SNOOZE_PRESETS.map((preset) => (
+                        <Button key={preset.label} type="button" size="sm" variant="outline" disabled={decisionMutation.isPending || mustRefresh}
+                          onClick={() => decide(incident, "snooze", preset.until(new Date()).toISOString())}>{preset.label}</Button>
+                      ))}
+                    </div>
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <Input id={`snooze-${id}-${incident.id}`} type="datetime-local" value={snoozeUntil} onChange={(event) => setSnoozeUntil(event.target.value)} disabled={decisionMutation.isPending} />
                       <Button type="button" size="sm" onClick={() => submitSnooze(incident)} isLoading={decisionMutation.isPending} disabled={mustRefresh}>Guardar</Button>
@@ -244,6 +259,12 @@ export function IncidentInbox({ userId, compact = false, onNavigate }: { userId:
                 {dismissFor === incident.id && (
                   <div className="rounded-lg bg-muted/50 p-3">
                     <Label htmlFor={`dismiss-${id}-${incident.id}`}>Motivo para descartar</Label>
+                    <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Motivos frecuentes">
+                      {DISMISS_REASONS.map((reason) => (
+                        <Button key={reason} type="button" size="sm" variant={dismissReason === reason ? "secondary" : "outline"} disabled={decisionMutation.isPending}
+                          onClick={() => setDismissReason(reason)}>{reason}</Button>
+                      ))}
+                    </div>
                     <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                       <Input id={`dismiss-${id}-${incident.id}`} value={dismissReason} onChange={(event) => setDismissReason(event.target.value)} maxLength={500} disabled={decisionMutation.isPending} />
                       <Button type="button" size="sm" variant="destructive" aria-label="Confirmar descarte" onClick={() => submitDismiss(incident)} isLoading={decisionMutation.isPending} disabled={mustRefresh}>Descartar</Button>

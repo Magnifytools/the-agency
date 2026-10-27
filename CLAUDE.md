@@ -280,7 +280,30 @@ admin_users, admin_settings
 - ▶ en cada tarea abierta de Mi agenda y en la cabecera del panel de tarea
   (`TimerButton`). Con otro en marcha no se bloquea: `POST /api/timer/start` ya
   para y guarda el anterior, así que cambiar de tarea es un clic.
+- **Un solo cronómetro**: la barra de arriba (`ActiveTimerBar`, en móvil sólo
+  cuando hay uno en marcha) y el ▶ de cada tarea. Horas y Visión general ya no
+  tienen arranque propio; no lo vuelvas a añadir.
 - En la interfaz se dice **cronómetro**, nunca "timer".
+
+## Visión general, Tareas y navegación
+- **Visión general** no repite Mi agenda: quien no es admin ve sus horas de la
+  semana, deberes y un enlace a Mi agenda. "Hoy" por persona, sólo admins.
+  Discord (cierre del día e informe semanal) va plegado al final.
+- **Tareas**: los filtros viven en la URL (`cliente`, `categoria`, `estado`,
+  `prioridad`, `fecha`, `desde`, `hasta`, `q`); la búsqueda se aplica a los
+  300 ms. "Revisión rápida" (antes QA) sin emojis. El título de la fila abre
+  la tarea. Panel: categoría, fase, dependencia y recurrencia en "Más opciones".
+- **Títulos de pestaña**: el layout pone el de la sección (`useSectionTitle`) y
+  las fichas lo afinan con `usePageTitle` (cliente, proyecto, resumen).
+- **⌘K** (`search-palette.tsx` + `GET /api/search`): clientes, proyectos,
+  tareas, resúmenes (por cliente, `digest_visibility_clause`), notas por aclarar
+  propias e "Ir a" cualquier pantalla del menú.
+- **Alertas**: posponer con "Mañana a las 9", "El lunes a las 9" o "En una
+  semana"; motivos frecuentes para descartar.
+- **Ficha del cliente**: "Panel" se llama "Horas y rentabilidad"; la pestaña
+  de Engine (congelado) está junto a Configuración, no en Resultados.
+- Acciones secundarias de una fila: `components/ui/action-menu.tsx` (menú
+  "Más", fijo para que no lo recorte la tabla).
 
 ## Glosario de la interfaz
 - **Anotar** (capturar) y **Por aclarar** (la lista; ruta `/inbox`).

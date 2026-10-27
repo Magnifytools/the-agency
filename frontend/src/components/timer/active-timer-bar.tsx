@@ -372,7 +372,8 @@ function TimerBar() {
   if (!timer) {
     return (
       <>
-        <div className="bg-card border-b px-4 py-2 flex justify-center items-center">
+        {/* En el móvil la barra vacía no ocupa pantalla: se ficha con el ▶ de Mi agenda. */}
+        <div className="hidden md:flex bg-card border-b px-4 py-2 justify-center items-center">
           <form onSubmit={handleOmniSubmit} className="flex items-center gap-2 w-full max-w-2xl">
             {canReadTasks && tasksQuery.isError && <span role="alert" className="sr-only">No se pudieron cargar las tareas del cronómetro.</span>}
             <div className="w-36 shrink-0 sm:w-48">
@@ -517,7 +518,7 @@ function TimerBar() {
   // Si hay timer activo, mostramos la barra superior
   return (
     <>
-      <div className="bg-brand text-primary-foreground px-4 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm">
+      <div className="bg-brand text-primary-foreground px-4 py-1.5 sm:py-2 flex flex-row items-center justify-between gap-2 text-sm">
         <span role="status" className="sr-only">{timer.is_paused ? "Cronómetro en pausa" : "Cronómetro en marcha"}</span>
         <div className="flex min-w-0 items-center gap-2">
           <Clock className="h-4 w-4 shrink-0" />

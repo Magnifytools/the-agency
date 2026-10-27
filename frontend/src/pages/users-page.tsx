@@ -201,7 +201,7 @@ export default function UsersPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
-        <h2 className="text-2xl font-bold uppercase tracking-wide">Equipo</h2>
+        <h1 className="text-2xl font-bold uppercase tracking-wide">Equipo</h1>
         {currentUser?.role === "admin" && (
           <Button onClick={() => setIsInviteOpen(true)} className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" /> Invitar Miembro
