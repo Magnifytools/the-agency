@@ -327,7 +327,7 @@ admin_users, admin_settings
   la campana los esconde si pierde el permiso o se borra la tarea
   (`TASK_ACTIVITY_TYPES` en `visible_notification_condition`). Los de revisión
   salen de `update_task`, así que valen para panel, tablero, bloque y MCP.
-  Asignarte a ti mismo no avisa. Todos enlazan a `/tasks?task=ID` (abre el panel).
+  Todos, también el de asignación, enlazan a `/tasks?task=ID` (abre el panel).
 - **@menciones**: `components/tasks/comment-input.tsx` (@ abre la lista de
   personas activas; ↑/↓, Enter o Tab, Escape) y `lib/mentions.ts`. El comentario
   manda `mention_ids` (sólo los que siguen escritos en el texto); no se guardan,

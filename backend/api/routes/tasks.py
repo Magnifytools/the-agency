@@ -457,7 +457,7 @@ async def create_task(
         raise HTTPException(status_code=404, detail="Task not found after create")
 
     # Notify assignee (non-critical — don't fail the whole request)
-    if body.assigned_to and body.assigned_to != current_user.id:
+    if body.assigned_to:
         try:
             from backend.services.notification_service import create_notification, TASK_ASSIGNED
             await create_notification(
@@ -581,7 +581,7 @@ async def update_task(
     # Notify new assignee if assignment changed
     update_data = body.model_dump(exclude_unset=True)
     new_assigned = update_data.get("assigned_to")
-    if new_assigned and new_assigned != old_assigned_to and new_assigned != current_user.id:
+    if new_assigned and new_assigned != old_assigned_to:
         try:
             from backend.services.notification_service import create_notification, TASK_ASSIGNED
             await create_notification(

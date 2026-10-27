@@ -159,12 +159,8 @@ async def test_task_notices_disappear_from_the_bell_without_task_access(
     await nacho.aclose()
 
 
-async def test_assigning_yourself_is_not_news_and_links_open_the_task(admin_client, make_member_client, db_session):
+async def test_assignment_notice_opens_the_task(admin_client, make_member_client, db_session):
     nacho = await make_member_client(TASKS_WRITE)
-    mine = await admin_client.post("/api/tasks", json={"title": "Mía", "assigned_to": admin_client.test_user.id})
-    assert mine.status_code == 201, mine.text
-    assert await _notices(db_session, admin_client.test_user.id) == []
-
     theirs = await admin_client.post("/api/tasks", json={"title": "Suya", "assigned_to": nacho.test_user.id})
     notice = (await _notices(db_session, nacho.test_user.id, "task_assigned"))[0]
     assert notice.link_url == f"/tasks?task={theirs.json()['id']}"
