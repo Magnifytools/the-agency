@@ -59,6 +59,7 @@ import type {
   ClientSummary,
   Task,
   TaskCreate,
+  TaskStatus,
   RecurrenceSummary,
   TaskCategory,
   ChecklistItem,
@@ -380,6 +381,9 @@ export const tasksApi = {
   create: (data: TaskCreate) => api.post<Task>("/tasks", data).then((r) => r.data),
   update: (id: number, data: Partial<TaskCreate>) =>
     api.put<Task>(`/tasks/${id}`, data).then((r) => r.data),
+  /** Arrastrar: la lista donde queda (en orden) y, si cambia, estado o día. */
+  move: (id: number, data: { ordered_ids: number[]; status?: TaskStatus; scheduled_date?: string | null }) =>
+    api.post<{ task: Task; ranks: Record<string, string> }>(`/tasks/${id}/move`, data).then((r) => r.data),
   carryoverDecision: (id: number, data: {
     action: "reschedule" | "wait" | "complete" | "retire"
     expected_updated_at: string

@@ -1,4 +1,5 @@
 import type { Task, TaskCreate } from "@/lib/types"
+import { byManualRank } from "@/lib/task-rank"
 
 export type TasksInitialView = "my_day" | "sprint" | "all" | "calendar" | "weekly" | "recurring"
 export type TasksWorkView = Exclude<TasksInitialView, "my_day">
@@ -111,9 +112,10 @@ export function shouldPreserveCurrentProject(currentProjectId: number | null | u
 
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
 
-/** Orden de cada sección de Mi agenda: vencidas, prioridad y fecha límite. */
+/** Orden de cada sección de Mi agenda: el manual (arrastrar) primero; el resto,
+ * vencidas, prioridad y fecha límite. */
 export function sortAgendaTasks(items: Task[], today: string) {
-  return [...items].sort((a, b) => {
+  return byManualRank(items, (a, b) => {
     const aOverdue = a.due_date && a.due_date < today ? 1 : 0
     const bOverdue = b.due_date && b.due_date < today ? 1 : 0
     if (aOverdue !== bOverdue) return bOverdue - aOverdue
@@ -142,4 +144,21 @@ export function agendaOrder(sections: { planned: Task[]; carryover: Task[]; foll
     ...sortAgendaTasks(sections.unplanned, today),
     ...sections.completed,
   ]
+}
+
+/** Una tarea con la fecha límite vencida sigue en "Arrastre" aunque se planifique:
+ * para sacarla hay que revisar la fecha. Las que esperan, tampoco se planifican. */
+export function plannableFrom(task: Task, today: string) {
+  return task.status !== "waiting" && !(task.due_date && task.due_date.slice(0, 10) < today)
+}
+
+/** Los próximos `count` días laborables a partir de mañana. */
+export function nextWorkdays(today: string, count: number) {
+  const days: string[] = []
+  const [year, month, day] = today.split("-").map(Number)
+  for (let offset = 1; days.length < count; offset += 1) {
+    const date = new Date(Date.UTC(year, month - 1, day + offset))
+    if (date.getUTCDay() !== 0 && date.getUTCDay() !== 6) days.push(date.toISOString().slice(0, 10))
+  }
+  return days
 }

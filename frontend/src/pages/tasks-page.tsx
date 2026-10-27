@@ -15,7 +15,7 @@ import { InfoTooltip } from "@/components/ui/tooltip"
 import { Plus, Pencil, Eye, Trash2, Clock, Calendar, Kanban, List, CheckSquare, CalendarDays, Repeat } from "lucide-react"
 import { InlineDate } from "@/components/ui/inline-edit"
 import { TaskAssigneeField, TaskDateField, TaskEstimateField, TaskPriorityBadge, TaskPriorityField, TaskTitleField } from "@/components/tasks/task-inline-fields"
-import { useTaskQuickUpdate, type TaskQuickUpdate } from "@/hooks/use-task-quick-update"
+import { useTaskMove, useTaskQuickUpdate, type TaskMove, type TaskQuickUpdate } from "@/hooks/use-task-quick-update"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
@@ -357,6 +357,13 @@ export default function TasksPage() {
   }
   const moveTask = (task: Task | undefined, data: Partial<TaskCreate>) =>
     updateTask(task, { data, error: "No se pudo mover la tarea" })
+  // Arrastrar en el tablero o en Mi agenda: orden manual y, si cambia, estado o día.
+  const taskMove = useTaskMove()
+  const dragTask = (task: Task, orderedIds: number[], extra: Pick<TaskMove, "status" | "scheduledDate"> = {}) => {
+    const byId = new Map(visibleTasks.map((item) => [item.id, item]))
+    const ordered = orderedIds.map((id) => id === task.id ? task : byId.get(id)).filter((item): item is Task => !!item)
+    taskMove.mutate({ task, ordered, ...extra })
+  }
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => tasksApi.delete(id),
@@ -850,6 +857,7 @@ export default function TasksPage() {
               updateTask(task, { data: { status: status === "completed" && task && sendsForReview(task) ? "in_review" : status } })
             }}
             onUpdate={updateTask}
+            onMove={(task, orderedIds, scheduledDate) => dragTask(task, orderedIds, scheduledDate === undefined ? {} : { scheduledDate })}
             onOpenEdit={openEdit}
             canCompleteReviewedTask={(task) => !!(isAdmin || task.project_review_owner_id === user?.id)}
             onReviewCarryover={setCarryoverTask}
@@ -861,10 +869,9 @@ export default function TasksPage() {
       {!isLoading && !isTasksError && view === "sprint" && (
         <KanbanBoard
           tasks={boardTasks}
-          onStatusChange={(taskId, newStatus) => {
-            const task = boardTasks.find((item) => item.id === taskId)
-            moveTask(task, { status: newStatus === "completed" && task && sendsForReview(task) ? "in_review" : newStatus })
-          }}
+          onMove={(task, orderedIds, status) => dragTask(task, orderedIds, {
+            status: status === "completed" && sendsForReview(task) ? "in_review" : status,
+          })}
           onOpenEdit={openEdit}
           canWrite={canWriteTasks}
           showCompleted={showCompletedColumn}

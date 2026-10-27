@@ -37,7 +37,7 @@ UPDATABLE_TASK_FIELDS = {
     "waiting_for", "follow_up_date", "is_recurring", "recurrence_pattern",
     "recurrence_day", "recurrence_end_date",
     "link_url", "recurrence_anchor_date", "recurrence_paused",
-    "procedure_text", "procedure_url",
+    "procedure_text", "procedure_url", "sort_rank",
 }
 
 PROCEDURE_FIELDS = ("procedure_text", "procedure_url")

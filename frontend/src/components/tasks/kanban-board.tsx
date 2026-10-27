@@ -2,11 +2,11 @@ import { useState } from "react"
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   TouchSensor,
   pointerWithin,
   rectIntersection,
-  useDraggable,
   useDroppable,
   useSensor,
   useSensors,
@@ -14,6 +14,8 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import type { Task, TaskStatus } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -24,10 +26,12 @@ import { toast } from "sonner"
 import { businessDateString, formatCivilDate } from "@/lib/dates"
 import { taskStatusPresentation, type TaskStatusGroup } from "@/lib/task-status"
 import { boardDrop } from "./board-drop"
+import { byManualRank, orderAfterDrop } from "@/lib/task-rank"
 
 interface Props {
   tasks: Task[]
-  onStatusChange: (taskId: number, newStatus: TaskStatus) => void
+  /** Soltar una tarea: la columna destino en el orden en que queda y, si cambia de columna, su estado. */
+  onMove: (task: Task, orderedIds: number[], status?: TaskStatus) => void
   onOpenEdit: (task: Task, initialStatus?: TaskStatus) => void
   canWrite?: boolean
   /** Columna "Hecho" con lo completado recientemente (plegada al empezar). */
@@ -64,11 +68,15 @@ const formatMinutes = (mins: number) => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-// Con el puntero manda la columna que hay debajo; sin él (táctil a medio
-// arrastre), la que más se solapa con la tarjeta.
+type DropData = { task?: Task; status?: TaskStatusGroup }
+
+// Con el puntero manda lo que hay debajo (una tarjeta antes que su columna);
+// sin él (táctil a medio arrastre), lo que más se solapa con la tarjeta.
 const collision: CollisionDetection = (args) => {
   const hits = pointerWithin(args)
-  return hits.length ? hits : rectIntersection(args)
+  if (!hits.length) return rectIntersection(args)
+  const cards = hits.filter((hit) => (args.droppableContainers.find((container) => container.id === hit.id)?.data.current as DropData | undefined)?.task)
+  return cards.length ? cards : hits
 }
 
 function BoardColumn({ status, label, color, bgColor, count, collapsed, onToggle, hint, children }: {
@@ -228,15 +236,16 @@ function TaskCardBody({ task, canWrite, onOpenEdit, todayStr }: {
   )
 }
 
-function DraggableTaskCard({ task, canWrite, onOpenEdit, todayStr }: {
+function SortableTaskCard({ task, status, canWrite, onOpenEdit, todayStr }: {
   task: Task
+  status: TaskStatusGroup
   canWrite: boolean
   onOpenEdit: (task: Task) => void
   todayStr: string
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `task-${task.id}`,
-    data: { task },
+  const { attributes, listeners, setNodeRef, isDragging, transform, transition } = useSortable({
+    id: task.id,
+    data: { task, status },
     disabled: !canWrite,
   })
   const isOverdue = task.due_date && task.due_date < todayStr && task.status !== "completed"
@@ -244,6 +253,7 @@ function DraggableTaskCard({ task, canWrite, onOpenEdit, todayStr }: {
   return (
     <Card
       ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
       {...(canWrite ? attributes : {})}
       {...(canWrite ? listeners : {})}
       data-task-card={task.id}
@@ -259,15 +269,20 @@ function DraggableTaskCard({ task, canWrite, onOpenEdit, todayStr }: {
   )
 }
 
-export function KanbanBoard({ tasks, onStatusChange, onOpenEdit, canWrite = true, showCompleted = false, completedHint }: Props) {
+export function KanbanBoard({ tasks, onMove, onOpenEdit, canWrite = true, showCompleted = false, completedHint }: Props) {
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [completedCollapsed, setCompletedCollapsed] = useState(true)
   const todayStr = businessDateString()
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
   const visibleColumns = showCompleted ? columns : columns.filter((column) => column.status !== "completed")
+  // Dentro de cada columna, el orden manual primero; el resto como llega.
+  const columnTasks = (status: TaskStatusGroup) => byManualRank(
+    tasks.filter((task) => taskStatusPresentation(task.status, task.scheduled_date).group === status),
+  )
 
   const handleDragStart = (event: DragStartEvent) => {
     const task = (event.active.data.current as { task?: Task } | undefined)?.task
@@ -276,16 +291,20 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit, canWrite = true
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveTask(null)
-    const task = (event.active.data.current as { task?: Task } | undefined)?.task
-    const target = (event.over?.data.current as { status?: TaskStatusGroup } | undefined)?.status
+    const task = (event.active.data.current as DropData | undefined)?.task
+    const over = event.over?.data.current as DropData | undefined
+    const target = over?.status
     if (!task || !target) return
     const drop = boardDrop(task, target)
     if (drop.kind === "waiting") {
       onOpenEdit(task, "waiting")
       toast.message("Completa Respuesta pendiente, responsable y fecha para poner la tarea en espera.")
-    } else if (drop.kind === "status") {
-      onStatusChange(task.id, drop.status)
+      return
     }
+    const ids = columnTasks(target).map((item) => item.id)
+    const ordered = orderAfterDrop(ids, task.id, over?.task ? over.task.id : null)
+    if (drop.kind === "status") onMove(task, ordered, drop.status)
+    else if (ordered.some((id, index) => id !== ids[index])) onMove(task, ordered)
   }
 
   return (
@@ -296,11 +315,11 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit, canWrite = true
       onDragEnd={canWrite ? handleDragEnd : undefined}
       onDragCancel={() => setActiveTask(null)}
       accessibility={{
-        screenReaderInstructions: { draggable: "Mantén pulsado y arrastra la tarea a otra columna para cambiar su estado." },
+        screenReaderInstructions: { draggable: "Arrastra la tarea dentro de su columna para ordenarla o a otra columna para cambiar su estado. Con teclado: espacio para cogerla, flechas para moverla, espacio para soltarla y Escape para cancelar." },
         announcements: {
           onDragStart: () => "Moviendo tarea.",
           onDragOver: ({ over }) => {
-            const status = (over?.data.current as { status?: TaskStatusGroup } | undefined)?.status
+            const status = (over?.data.current as DropData | undefined)?.status
             const label = columns.find((column) => column.status === status)?.label
             return label ? `Sobre la columna ${label}.` : "Fuera de las columnas."
           },
@@ -311,7 +330,7 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit, canWrite = true
     >
       <div className={cn("grid grid-cols-1 md:grid-cols-2 gap-4", showCompleted ? "xl:grid-cols-5" : "xl:grid-cols-4")}>
         {visibleColumns.map((col) => {
-          const colTasks = tasks.filter((t) => taskStatusPresentation(t.status, t.scheduled_date).group === col.status)
+          const colTasks = columnTasks(col.status)
           const isCompletedColumn = col.status === "completed"
           return (
             <BoardColumn
@@ -322,9 +341,11 @@ export function KanbanBoard({ tasks, onStatusChange, onOpenEdit, canWrite = true
               onToggle={isCompletedColumn ? () => setCompletedCollapsed((value) => !value) : undefined}
               hint={isCompletedColumn ? completedHint : undefined}
             >
-              {colTasks.map((task) => (
-                <DraggableTaskCard key={task.id} task={task} canWrite={canWrite} onOpenEdit={onOpenEdit} todayStr={todayStr} />
-              ))}
+              <SortableContext id={`column-${col.status}`} items={colTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
+                {colTasks.map((task) => (
+                  <SortableTaskCard key={task.id} task={task} status={col.status} canWrite={canWrite} onOpenEdit={onOpenEdit} todayStr={todayStr} />
+                ))}
+              </SortableContext>
             </BoardColumn>
           )
         })}

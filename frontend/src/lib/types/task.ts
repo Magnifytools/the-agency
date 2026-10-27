@@ -36,6 +36,8 @@ export interface Task {
   depends_on: number | null
   created_by: number | null
   scheduled_date: string | null
+  /** Orden manual (arrastrar); null = sin orden manual. Ver lib/task-rank.ts. */
+  sort_rank?: string | null
   waiting_for: string | null
   follow_up_date: string | null
   is_recurring: boolean

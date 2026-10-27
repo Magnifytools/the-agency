@@ -1,10 +1,11 @@
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { changesApi, tasksApi } from "@/lib/api"
-import type { Task, TaskCreate } from "@/lib/types"
+import type { Task, TaskCreate, TaskStatus } from "@/lib/types"
 import { getErrorMessage } from "@/lib/utils"
 import { invalidateTaskChange, restoreQuerySnapshot, taskKeys, type QuerySnapshot } from "@/lib/query-keys"
 import { showUndoResult } from "@/lib/undo-feedback"
+import { ranksForMove } from "@/lib/task-rank"
 
 export interface TaskQuickUpdate {
   task: Task
@@ -45,11 +46,12 @@ export function patchCachedTask(data: unknown, taskId: number, patch: Partial<Ta
   return data
 }
 
-async function optimisticallyPatchTask(queryClient: QueryClient, taskId: number, patch: Partial<Task>) {
+async function optimisticallyPatchTasks(queryClient: QueryClient, patches: Map<number, Partial<Task>>) {
   await queryClient.cancelQueries({ queryKey: taskKeys.all() })
   const snapshots: QuerySnapshot[] = []
   for (const [queryKey, data] of queryClient.getQueriesData({ queryKey: taskKeys.all() })) {
-    const next = patchCachedTask(data, taskId, patch)
+    let next = data
+    patches.forEach((patch, taskId) => { next = patchCachedTask(next, taskId, patch) })
     if (next === data) continue
     snapshots.push([queryKey, data])
     queryClient.setQueryData(queryKey, next)
@@ -84,7 +86,7 @@ export function useTaskQuickUpdate() {
   return useMutation({
     mutationFn: ({ task, data }: TaskQuickUpdate) => tasksApi.update(task.id, data),
     onMutate: async ({ task, data, display }) => ({
-      snapshots: await optimisticallyPatchTask(queryClient, task.id, { ...data, ...display } as Partial<Task>),
+      snapshots: await optimisticallyPatchTasks(queryClient, new Map([[task.id, { ...data, ...display } as Partial<Task>]])),
     }),
     onSuccess: (saved, { task, data, success }) => {
       if (data.status === "in_review" && saved.status === "in_review" && task.status !== "in_review") {
@@ -105,6 +107,52 @@ export function useTaskQuickUpdate() {
       previousProjectId: task.project_id,
       clientId: saved?.client_id ?? task.client_id,
       previousClientId: task.client_id,
+    }),
+  })
+}
+
+export interface TaskMove {
+  task: Task
+  /** La lista donde queda la tarea, en el orden en que se ve tras soltarla. */
+  ordered: Task[]
+  status?: TaskStatus
+  scheduledDate?: string | null
+}
+
+/**
+ * Arrastrar una tarea (orden manual y, si cambia, columna o día). El nuevo
+ * orden se pinta al momento con los mismos rangos que pondrá el servidor.
+ */
+export function useTaskMove() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ task, ordered, status, scheduledDate }: TaskMove) => tasksApi.move(task.id, {
+      ordered_ids: ordered.map((item) => item.id),
+      ...(status !== undefined && { status }),
+      ...(scheduledDate !== undefined && { scheduled_date: scheduledDate }),
+    }),
+    onMutate: async ({ task, ordered, status, scheduledDate }) => {
+      const ranks = ranksForMove(ordered.map((item) => item.id), task.id, new Map(ordered.map((item) => [item.id, item.sort_rank ?? null])))
+      const patches = new Map<number, Partial<Task>>([...ranks].map(([id, sort_rank]) => [id, { sort_rank }]))
+      patches.set(task.id, {
+        ...patches.get(task.id),
+        ...(status !== undefined && { status }),
+        ...(scheduledDate !== undefined && { scheduled_date: scheduledDate }),
+      })
+      return { snapshots: await optimisticallyPatchTasks(queryClient, patches) }
+    },
+    onSuccess: ({ task: saved }, { task, status }) => {
+      if (status === "in_review" && saved.status === "in_review" && task.status !== "in_review") {
+        toast.success("Enviada a revisión: la cierra quien revisa el proyecto")
+      }
+    },
+    onError: (err, _vars, ctx) => {
+      ctx?.snapshots.forEach((snapshot) => restoreQuerySnapshot(queryClient, snapshot))
+      toast.error(getErrorMessage(err, "No se pudo mover la tarea"))
+    },
+    onSettled: (result, _err, { task }) => invalidateTaskChange(queryClient, {
+      projectId: result?.task.project_id ?? task.project_id,
+      clientId: result?.task.client_id ?? task.client_id,
     }),
   })
 }
