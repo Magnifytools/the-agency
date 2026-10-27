@@ -8,7 +8,7 @@ import type { Credential } from "@/lib/credentials-api"
 
 const api = vi.hoisted(() => ({
   list: vi.fn(), reveal: vi.fn(), log: vi.fn(), remove: vi.fn(), update: vi.fn(), create: vi.fn(),
-  setShares: vi.fn(), shareableUsers: vi.fn(),
+  setShares: vi.fn(), shareableUsers: vi.fn(), totp: vi.fn(),
 }))
 const auth = vi.hoisted(() => ({ isAdmin: false, write: false }))
 vi.mock("@/lib/credentials-api", () => ({ credentialsApi: api }))
@@ -24,7 +24,7 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 const wp: Credential = {
   id: 7, name: "WordPress Fit", url: "fit.example/wp-admin", username: "magnify", notes: null,
   client_id: 3, client_name: "Fit Generation", created_by: 2, created_by_name: "David",
-  updated_at: "2026-10-20T08:00:00+00:00", can_manage: false, shared_with: [],
+  updated_at: "2026-10-20T08:00:00+00:00", can_manage: false, has_totp: false, shared_with: [],
 }
 
 function setup(props: Parameters<typeof CredentialList>[0] = {}) {
@@ -106,4 +106,28 @@ it("a client tab filters by client and never links unsafe URLs", async () => {
   expect(api.list).toHaveBeenCalledWith({ client_id: 3 })
   expect(screen.queryByRole("link")).not.toBeInTheDocument()
   expect(screen.queryByText("Fit Generation")).not.toBeInTheDocument()
+})
+
+it("only entries with a 2FA key offer the code; it counts down, rolls to the next one and hides", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  api.list.mockResolvedValue([{ ...wp, has_totp: true }, { ...wp, id: 8, name: "Semrush" }])
+  api.totp.mockResolvedValue({ code: "123456", next_code: "654321", remaining: 3, period: 30, digits: 6 })
+  const writeText = vi.fn().mockResolvedValue(undefined)
+  Object.assign(navigator, { clipboard: { writeText } })
+  setup()
+  expect(await screen.findByRole("button", { name: "Ver código 2FA de WordPress Fit" })).toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Ver código 2FA de Semrush" })).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole("button", { name: "Ver código 2FA de WordPress Fit" }))
+  await waitFor(() => expect(screen.getByTestId("totp-7")).toHaveTextContent("123 456"))
+  expect(api.totp).toHaveBeenCalledWith(7)
+  fireEvent.click(screen.getByRole("button", { name: "Copiar código 2FA de WordPress Fit" }))
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith("123456"))
+
+  await act(async () => { vi.advanceTimersByTime(3500) })
+  expect(screen.getByTestId("totp-7")).toHaveTextContent("654 321")
+  expect(api.totp).toHaveBeenCalledTimes(1)  // el siguiente no se vuelve a pedir
+  await act(async () => { vi.advanceTimersByTime(30_000) })
+  expect(screen.queryByTestId("totp-7")).not.toBeInTheDocument()
+  expect(screen.getByRole("button", { name: "Ver código 2FA de WordPress Fit" })).toBeInTheDocument()
 })

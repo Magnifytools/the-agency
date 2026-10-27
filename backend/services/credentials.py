@@ -13,6 +13,9 @@ Reglas (decididas por David):
   journal guarda valores viejos y nuevos de columnas en JSON y un secreto no
   puede acabar ahí, ni cifrado (el undo lo podría restaurar tras una rotación).
 - Nunca se escribe el secreto en logs ni en mensajes de error.
+- La clave del autenticador (2FA) sigue las mismas reglas que la contraseña:
+  cifrada (``totp_encrypted``) y sólo sale convertida en código por
+  ``totp_code``, que también deja su fila en el registro.
 """
 from __future__ import annotations
 
@@ -25,6 +28,7 @@ from sqlalchemy import delete, exists, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.security import decrypt_vault_secret, encrypt_vault_secret
+from backend.services import totp
 from backend.db.models import (
     Client,
     Credential,
@@ -66,6 +70,17 @@ def encrypt_secret(raw: str) -> str:
     if len(raw) > MAX_SECRET_LENGTH:
         raise HTTPException(status_code=422, detail=f"La contraseña no puede pasar de {MAX_SECRET_LENGTH} caracteres")
     return encrypt_vault_secret(raw)
+
+
+def encrypt_totp(raw: Optional[str]) -> Optional[str]:
+    """La clave del autenticador, comprobada y normalizada, cifrada. Vacía → None."""
+    if raw is None or not raw.strip():
+        return None
+    try:
+        config = totp.parse(raw)
+    except totp.TotpError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return encrypt_vault_secret(totp.to_uri(config))
 
 
 async def get_visible(db: AsyncSession, user: User, credential_id: int, *, lock: bool = False) -> Credential:
@@ -152,15 +167,32 @@ def log(db: AsyncSession, credential: Credential, user: User, action: str, detai
 
 async def reveal_secret(db: AsyncSession, user: User, credential: Credential, purpose: str) -> str:
     """Descifra, apunta quién y cuándo, confirma, y sólo entonces devuelve."""
+    secret = _decrypt(credential, credential.secret_encrypted)
+    log(db, credential, user, purpose)
+    await db.commit()
+    return secret
+
+
+def _decrypt(credential: Credential, value: str) -> str:
     try:
-        secret = decrypt_vault_secret(credential.secret_encrypted)
+        return decrypt_vault_secret(value)
     except ValueError:
         # Ni el secreto ni el texto cifrado van al log.
         logger.warning("No se pudo descifrar el acceso %s (¿ha cambiado VAULT_KEY?)", credential.id)
         raise HTTPException(status_code=500, detail="No se pudo descifrar este acceso. Avisa a un admin.") from None
-    log(db, credential, user, purpose)
+
+
+async def totp_code(db: AsyncSession, user: User, credential: Credential) -> dict:
+    """El código 2FA de ahora (y el siguiente). Apunta quién y cuándo antes de devolverlo."""
+    if not credential.totp_encrypted:
+        raise HTTPException(status_code=404, detail="Este acceso no tiene código 2FA")
+    try:
+        config = totp.parse(_decrypt(credential, credential.totp_encrypted))
+    except totp.TotpError:
+        raise HTTPException(status_code=500, detail="La clave 2FA guardada no es válida. Vuelve a ponerla.") from None
+    log(db, credential, user, "totp")
     await db.commit()
-    return secret
+    return totp.current(config)
 
 
 async def serialize(db: AsyncSession, user: User, credentials: list[Credential]) -> list[dict]:
@@ -193,5 +225,6 @@ async def serialize(db: AsyncSession, user: User, credentials: list[Credential])
         "created_by_name": names.get(c.created_by),
         "updated_at": c.updated_at,
         "can_manage": c.id in managed,
+        "has_totp": bool(c.totp_encrypted),
         "shared_with": shares.get(c.id, []),
     } for c in credentials]

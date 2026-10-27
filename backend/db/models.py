@@ -2122,6 +2122,7 @@ class Credential(Base):
     __tablename__ = "credentials"
     __table_args__ = (
         CheckConstraint("secret_encrypted LIKE 'v1:%'", name="ck_credentials_secret_encrypted"),
+        CheckConstraint("totp_encrypted IS NULL OR totp_encrypted LIKE 'v1:%'", name="ck_credentials_totp_encrypted"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -2129,6 +2130,9 @@ class Credential(Base):
     url = Column(String(500), nullable=True)
     username = Column(String(255), nullable=True)
     secret_encrypted = Column(Text, nullable=False)
+    # Clave del autenticador (2FA) como enlace otpauth:// normalizado, cifrada
+    # igual que la contraseña. Sólo sale convertida en código (`/totp`).
+    totp_encrypted = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
     client_id = Column(Integer, ForeignKey("clients.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -2151,7 +2155,7 @@ class CredentialAccessLog(Base):
     __tablename__ = "credential_access_log"
     __table_args__ = (
         CheckConstraint(
-            "action IN ('reveal','copy','create','update','share','delete')",
+            "action IN ('reveal','copy','create','update','share','delete','totp')",
             name="ck_credential_access_log_action",
         ),
     )
