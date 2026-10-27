@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { TimerButton } from "@/components/timer/timer-button";
 import { useUnsavedChangesWarning } from "@/hooks/use-unsaved-changes";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -541,7 +542,12 @@ export function TaskPanel({
     />
     <Dialog open={open} onOpenChange={requestOpenChange}>
       <DialogHeader>
-        <DialogTitle>{taskId ? "Detalle de tarea" : "Nueva tarea"}</DialogTitle>
+        <div className="flex items-center justify-between gap-2 pr-8">
+          <DialogTitle>{taskId ? "Detalle de tarea" : "Nueva tarea"}</DialogTitle>
+          {loadedTask && canWrite && !isRetired && loadedTask.status !== "completed" && (
+            <TimerButton taskId={loadedTask.id} taskTitle={loadedTask.title} />
+          )}
+        </div>
       </DialogHeader>
       {taskQuery.isError && (
         <div role="alert" className="space-y-2 text-sm">

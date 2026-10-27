@@ -250,16 +250,16 @@ function TimerWidget({ tasks, tasksError, canReadTasks, canReadClients, canReadP
 
   const handleStart = async () => {
     if (!selectedTask) {
-      toast.error("Selecciona una tarea para iniciar el timer")
+      toast.error("Selecciona una tarea para iniciar el cronómetro")
       return
     }
     try {
       await timerApi.start({ task_id: Number(selectedTask) })
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       onTimerChange()
-      toast.success("Timer iniciado")
+      toast.success("Cronómetro en marcha")
     } catch (err) {
-      toast.error(getErrorMessage(err, "Error al iniciar timer"))
+      toast.error(getErrorMessage(err, "No se pudo iniciar el cronómetro"))
     }
   }
 
@@ -269,10 +269,10 @@ function TimerWidget({ tasks, tasksError, canReadTasks, canReadClients, canReadP
       await timerApi.stop(activeTimer.id)
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       onTimerChange()
-      toast.success("Timer detenido")
+      toast.success("Cronómetro parado")
     } catch (err) {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      toast.error(getErrorMessage(err, "Error al detener timer"))
+      toast.error(getErrorMessage(err, "No se pudo parar el cronómetro"))
     }
   }
 
@@ -882,7 +882,7 @@ export default function TimesheetPage() {
                 <TableRow><TableCell colSpan={4}><RecoveryNotice label="los registros de hoy" onRetry={() => void todaysEntriesQuery.refetch()} /></TableCell></TableRow>
               )}
               {!todaysEntriesQuery.isPending && !todaysEntriesQuery.isError && todaysEntries.length === 0 && (
-                <EmptyTableState colSpan={4} icon={Clock} title="Sin registros hoy" description="Usa el timer desde cualquier tarea para registrar tiempo." />
+                <EmptyTableState colSpan={4} icon={Clock} title="Sin registros hoy" description="Usa el cronómetro desde cualquier tarea para registrar tiempo." />
               )}
               {todaysEntries.map((e) => (
                 <TableRow key={e.id}>

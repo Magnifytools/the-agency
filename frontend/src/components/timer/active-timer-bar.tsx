@@ -33,6 +33,13 @@ function orderTimerTasks(tasks: Task[], today: string) {
   })
 }
 
+// El cliente va delante del recorte: dos tareas con el mismo título ("Informe
+// mensual") sólo se distinguen por él.
+function timerOptionLabel(task: Task) {
+  const title = task.title.length > 50 ? `${task.title.slice(0, 50)}…` : task.title
+  return task.client_name ? `${title} · ${task.client_name}` : title
+}
+
 function TimerTaskSelector({
   tasks,
   today,
@@ -56,7 +63,7 @@ function TimerTaskSelector({
   const orderedTasks = useMemo(() => orderTimerTasks(tasks, today), [tasks, today])
   const normalizedSearch = search.trim().toLocaleLowerCase("es")
   const matches = normalizedSearch
-    ? orderedTasks.filter((task) => task.title.toLocaleLowerCase("es").includes(normalizedSearch))
+    ? orderedTasks.filter((task) => `${task.title} ${task.client_name ?? ""}`.toLocaleLowerCase("es").includes(normalizedSearch))
     : orderedTasks
   const selected = orderedTasks.find((task) => String(task.id) === value)
   const visible = normalizedSearch || orderedTasks.length <= TIMER_OPTION_INITIAL_LIMIT
@@ -86,7 +93,7 @@ function TimerTaskSelector({
       <option value="">{loading ? "Cargando tareas…" : emptyLabel}</option>
       {options.map((task) => (
         <option key={task.id} value={task.id}>
-          {task.title.length > 50 ? `${task.title.slice(0, 50)}…` : task.title}
+          {timerOptionLabel(task)}
         </option>
       ))}
     </Select>
@@ -236,7 +243,7 @@ function TimerBar() {
         timer.is_paused || false,
       )
       if (secs > 14400 && !reminderShown) {
-        toast.warning("¡Llevas más de 4 horas con el timer activo! ¿Sigue corriendo?")
+        toast.warning("Llevas más de 4 horas con el cronómetro en marcha. ¿Sigue corriendo?")
         setReminderShown(true)
       }
     }
@@ -253,7 +260,7 @@ function TimerBar() {
       setSelectedTaskId("")
       setRecentlyCreatedTask(null)
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al iniciar timer")),
+    onError: (err) => toast.error(getErrorMessage(err, "No se pudo iniciar el cronómetro")),
   })
 
   const stopMutation = useMutation({
@@ -265,9 +272,9 @@ function TimerBar() {
         setStoppedEntryId(entry.id)
         setAssignTaskId("")
         setShowAssignDialog(true)
-        toast.success("Timer detenido — asigna una tarea al registro")
+        toast.success("Cronómetro parado: asigna una tarea al registro")
       } else {
-        toast.success("Timer detenido")
+        toast.success("Cronómetro parado")
       }
     },
     onError: (err) => {
@@ -275,12 +282,12 @@ function TimerBar() {
       const status = (err as { response?: { status?: number } })?.response?.status
       if (status === 404) {
         // Intención cumplida: no hay nada corriendo. No es un fallo del usuario.
-        toast.info("Ese timer ya estaba parado", {
+        toast.info("Ese cronómetro ya estaba parado", {
           description: "La barra estaba desactualizada; ya se ha refrescado.",
         })
         return
       }
-      toast.error(getErrorMessage(err, "Error al detener timer"))
+      toast.error(getErrorMessage(err, "No se pudo parar el cronómetro"))
     },
   })
 

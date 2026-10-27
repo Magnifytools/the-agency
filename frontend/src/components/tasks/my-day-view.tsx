@@ -1,6 +1,7 @@
 import { useState } from "react"
 import type { PaginatedResponse, Task, TaskStatus } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
+import { TimerButton } from "@/components/timer/timer-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Pencil, Eye, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat } from "lucide-react"
@@ -141,7 +142,7 @@ export function MyDayView({ planned, carryover, unplanned, followups = { items: 
               )}
               {task.checklist_count > 0 && (
                 <span className="flex items-center gap-0.5">
-                  <CheckCircle2 className="h-2.5 w-2.5" />{task.checklist_count} subtask{task.checklist_count !== 1 ? "s" : ""}
+                  <CheckCircle2 className="h-2.5 w-2.5" />{task.checklist_count} subtarea{task.checklist_count !== 1 ? "s" : ""}
                 </span>
               )}
               {task.scheduled_date ? (
@@ -164,15 +165,18 @@ export function MyDayView({ planned, carryover, unplanned, followups = { items: 
             </div>
           </div>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={`${canWrite ? "Editar" : "Ver"} ${task.title}`}
-            className="h-9 w-9 sm:h-7 sm:w-7 sm:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity shrink-0"
-            onClick={(e) => { e.stopPropagation(); onOpenEdit(task) }}
-          >
-            {canWrite ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-          </Button>
+          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+            {canWrite && task.status !== "completed" && <TimerButton taskId={task.id} taskTitle={task.title} />}
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`${canWrite ? "Editar" : "Ver"} ${task.title}`}
+              className="h-9 w-9 sm:h-7 sm:w-7 shrink-0 text-muted-foreground"
+              onClick={() => onOpenEdit(task)}
+            >
+              {canWrite ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </Button>
+          </div>
           {carryover && canWrite && (
             <Button variant="outline" size="sm" className="col-span-2 sm:col-span-1" onClick={(event) => { event.stopPropagation(); onReviewCarryover(task) }}>
               Revisar
@@ -267,7 +271,7 @@ export function MyDayView({ planned, carryover, unplanned, followups = { items: 
                 {canWrite && <button
                   title="Reabrir tarea"
                   aria-label={`Reabrir ${task.title}`}
-                  className="opacity-0 group-hover/done:opacity-100 transition-opacity shrink-0 text-muted-foreground hover:text-amber-600"
+                  className="sm:opacity-0 group-hover/done:opacity-100 focus-visible:opacity-100 transition-opacity shrink-0 text-muted-foreground hover:text-amber-600"
                   onClick={() => onStatusChange(task.id, "pending")}
                 >
                   <RotateCcw className="h-3.5 w-3.5" />

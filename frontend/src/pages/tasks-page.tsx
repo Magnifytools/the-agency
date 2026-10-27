@@ -592,7 +592,7 @@ export default function TasksPage() {
               <TableHead>Prioridad</TableHead>
               <TableHead>Asignado</TableHead>
               <TableHead>Estado</TableHead>
-              <TableHead><span className="inline-flex items-center gap-1">Est / Real <InfoTooltip content="Estimado: minutos previstos al crear la tarea. Real: minutos declarados al cerrarla. Para horas fichadas con el cronómetro, mira la columna Tiempo/Timer." /></span></TableHead>
+              <TableHead><span className="inline-flex items-center gap-1">Est / Real <InfoTooltip content="Estimado: minutos previstos al crear la tarea. Real: minutos declarados al cerrarla. Para horas fichadas con el cronómetro, mira la columna Tiempo." /></span></TableHead>
               <TableHead>Fecha limite</TableHead>
               <TableHead>Tiempo</TableHead>
               <TableHead className="w-24">Acciones</TableHead>
@@ -626,7 +626,7 @@ export default function TasksPage() {
               <SortableTableHead sortKey="priority" currentSort={taskSortConfig} onSort={requestTaskSort}>Prioridad</SortableTableHead>
               <TableHead>Asignado</TableHead>
               <SortableTableHead sortKey="status" currentSort={taskSortConfig} onSort={requestTaskSort}>Estado</SortableTableHead>
-              <TableHead><span className="inline-flex items-center gap-1">Est / Real <InfoTooltip content="Estimado: minutos previstos al crear la tarea. Real: minutos declarados al cerrarla. Para horas fichadas con el cronómetro, mira la columna Tiempo/Timer." /></span></TableHead>
+              <TableHead><span className="inline-flex items-center gap-1">Est / Real <InfoTooltip content="Estimado: minutos previstos al crear la tarea. Real: minutos declarados al cerrarla. Para horas fichadas con el cronómetro, mira la columna Tiempo." /></span></TableHead>
               <SortableTableHead sortKey="due_date" currentSort={taskSortConfig} onSort={requestTaskSort}>Fecha limite</SortableTableHead>
               <TableHead>Timer</TableHead>
               <TableHead className="w-24">Acciones</TableHead>

@@ -165,7 +165,7 @@ describe("client detail areas", () => {
     expect(await screen.findByText("VistaGeneral")).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "Acme" })).toBeInTheDocument()
     expect(screen.queryByText("Total tareas")).not.toBeInTheDocument()
-    expect(screen.queryByText("Tiempo tracked")).not.toBeInTheDocument()
+    expect(screen.queryByText("Tiempo fichado")).not.toBeInTheDocument()
     expect(screen.queryByRole("option", { name: "Tiempo" })).not.toBeInTheDocument()
     expect(mocks.time).not.toHaveBeenCalled()
   })
@@ -186,7 +186,7 @@ describe("client detail areas", () => {
     expect(screen.getByText("VistaGeneral")).toBeInTheDocument()
     expect(screen.queryByText("Trabajo privado")).not.toBeInTheDocument()
     expect(screen.queryByText("Total tareas")).not.toBeInTheDocument()
-    expect(screen.queryByText("Tiempo tracked")).not.toBeInTheDocument()
+    expect(screen.queryByText("Tiempo fichado")).not.toBeInTheDocument()
   })
 
   it("shows the financial client panel only for an admin while finance is enabled", async () => {
