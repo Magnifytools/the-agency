@@ -13,7 +13,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from backend.startup import (
-    phase0_retirement_schema, report_policy_legacy_retirement_schema, vigil_retirement_schema,
+    alert_settings_notify_retirement_schema, phase0_retirement_schema,
+    report_policy_legacy_retirement_schema, vigil_retirement_schema,
 )
 from backend.startup.schema_indexes import check_unique_indexes
 from backend.startup.schema_runner import Migration, run_schema_migrations
@@ -21,6 +22,7 @@ from backend.startup.schema_runner import Migration, run_schema_migrations
 # Pasos posteriores que retiran parte de P12 (ver ``retirement_schema``).
 RETIREMENTS = (
     phase0_retirement_schema.STEP, report_policy_legacy_retirement_schema.STEP, vigil_retirement_schema.STEP,
+    alert_settings_notify_retirement_schema.STEP,
 )
 RETIRED_TABLES = frozenset().union(*(step.tables for step in RETIREMENTS))
 RETIRED_COLUMNS = frozenset().union(*(step.columns for step in RETIREMENTS))

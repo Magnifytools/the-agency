@@ -278,8 +278,6 @@ def _settings_to_response(settings: AlertSettings) -> AlertSettingsResponse:
         days_before_deadline=settings.days_before_deadline,
         days_without_contact=settings.days_without_contact,
         max_tasks_per_week=settings.max_tasks_per_week,
-        notify_in_app=settings.notify_in_app,
-        notify_email=settings.notify_email,
     )
 
 
@@ -329,10 +327,6 @@ async def update_alert_settings(
         settings.days_without_contact = data.days_without_contact
     if data.max_tasks_per_week is not None:
         settings.max_tasks_per_week = data.max_tasks_per_week
-    if data.notify_in_app is not None:
-        settings.notify_in_app = data.notify_in_app
-    if data.notify_email is not None:
-        settings.notify_email = data.notify_email
 
     await db.commit()
     await safe_refresh(db, settings, log_context="pm")

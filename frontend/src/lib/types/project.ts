@@ -356,8 +356,6 @@ export interface AlertSettings {
   days_before_deadline: number
   days_without_contact: number
   max_tasks_per_week: number
-  notify_in_app: boolean
-  notify_email: boolean
 }
 
 export interface AlertSettingsUpdate {
@@ -365,8 +363,6 @@ export interface AlertSettingsUpdate {
   days_before_deadline?: number
   days_without_contact?: number
   max_tasks_per_week?: number
-  notify_in_app?: boolean
-  notify_email?: boolean
 }
 
 // Growth Operations

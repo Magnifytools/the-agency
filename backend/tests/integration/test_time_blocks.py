@@ -98,7 +98,7 @@ async def test_time_blocks_migration_is_the_last_one():
     from backend.startup import deployment_schema
     from backend.startup.task_time_blocks_schema import MIGRATION
 
-    assert deployment_schema.MIGRATIONS[-1] is MIGRATION
+    assert MIGRATION in deployment_schema.MIGRATIONS
 
 
 async def test_calendar_events_of_a_week_for_the_hours_view(admin_client, db_session):

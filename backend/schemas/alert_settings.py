@@ -9,8 +9,6 @@ class AlertSettingsUpdate(BaseModel):
     days_before_deadline: Optional[int] = None
     days_without_contact: Optional[int] = None
     max_tasks_per_week: Optional[int] = None
-    notify_in_app: Optional[bool] = None
-    notify_email: Optional[bool] = None
 
 
 class AlertSettingsResponse(BaseModel):
@@ -20,7 +18,5 @@ class AlertSettingsResponse(BaseModel):
     days_before_deadline: int
     days_without_contact: int
     max_tasks_per_week: int
-    notify_in_app: bool
-    notify_email: bool
 
     model_config = ConfigDict(from_attributes=True)

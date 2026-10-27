@@ -1144,9 +1144,6 @@ class AlertSettings(TimestampMixin, Base):
     days_without_contact = Column(Integer, nullable=False, default=10)
     max_tasks_per_week = Column(Integer, nullable=False, default=15)
 
-    notify_in_app = Column(Boolean, nullable=False, default=True)
-    notify_email = Column(Boolean, nullable=False, default=False)
-
     user = relationship("User", lazy="selectin")
 
 

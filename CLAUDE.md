@@ -1142,7 +1142,8 @@ admin_users, admin_settings
   `am_desktop_prefs_v1` en `chrome.storage.local`): activar y horas de silencio
   (20:00-08:00 por defecto, hora del ordenador). En silencio no avanza: lo
   pendiente sale al terminar; desactivado, avanza sin avisar. No se guarda en el
-  servidor: `alert_settings.notify_in_app/notify_email` siguen sin uso.
+  servidor (las columnas sin uso `alert_settings.notify_in_app/notify_email` se
+  retiraron con `alert_settings_notify_retirement_v1`).
 - Insignia: alertas activas en rojo (como la campana); sin alertas, las notas
   por aclarar en índigo.
 - Tests: `chrome-extension/tests/desktop-notices.test.cjs` y

@@ -1,0 +1,7 @@
+{
+  "version": "20261027_alert_settings_notify_retirement_v1",
+  "drop_tables": [],
+  "drop_columns": {
+    "alert_settings": ["notify_in_app", "notify_email"]
+  }
+}
