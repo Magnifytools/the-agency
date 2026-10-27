@@ -2,6 +2,7 @@ import { formatCivilDate, timeEntryBusinessDate } from "@/lib/dates"
 import { useState } from "react"
 import { useParams, Link, useSearchParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
+import { usePageTitle } from "@/hooks/use-page-title"
 import { clientsApi, projectsApi, holdedApi, clientStatusApi, engineApi } from "@/lib/api"
 import type { TaskStatus } from "@/lib/types"
 import { isEnabled } from "@/lib/hidden-modules"
@@ -127,6 +128,7 @@ export default function ClientDetailPage() {
     enabled: !!clientId && canReadClient,
   })
   const { data: summary, isLoading } = summaryQuery
+  usePageTitle(summary?.client.name)
 
   const projectsQuery = useQuery({
     queryKey: projectKeys.client(clientId),
@@ -259,14 +261,14 @@ export default function ClientDetailPage() {
     <div className="space-y-6">
       {/* Breadcrumb + Header */}
       <Breadcrumb items={[
-        { label: "Inicio", href: "/dashboard" },
+        { label: "Inicio", href: "/" },
         { label: "Clientes", href: "/clients" },
         { label: client.name },
       ]} />
       <div className="flex items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold uppercase tracking-wide">{client.name}</h2>
+            <h1 className="text-2xl font-bold uppercase tracking-wide">{client.name}</h1>
             {statusBadge(client.status)}
             {client.is_internal && <Badge variant="outline" className="border-purple-500/50 text-purple-400">Interno</Badge>}
             {client.engine_project_id && engineConfig?.engine_frontend_url && (
@@ -332,10 +334,8 @@ export default function ClientDetailPage() {
             label: "Resultados",
             tabs: [
               ...(isTabVisible("resumenes") ? (["resumenes"] as TabKey[]) : []),
-              // Control SEO (Search Console propio) con propiedad; "seo" es la de
-              // Engine: se llama "Engine" pero conserva la clave (?tab=seo).
+              // Control SEO (Search Console propio) con propiedad.
               ...(client.gsc_url ? (["control_seo"] as TabKey[]) : []),
-              ...(client.engine_project_id ? (["seo"] as TabKey[]) : []),
               ...(isTabVisible("web") ? (["web"] as TabKey[]) : []),
               "panel",
               ...(isTabVisible("comunicaciones")
@@ -361,6 +361,9 @@ export default function ClientDetailPage() {
                 ? (["facturas"] as TabKey[])
                 : []),
               "ajustes",
+              // Engine está congelado: su pestaña (clave ?tab=seo) sale de
+              // Resultados y queda junto a la configuración.
+              ...(client.engine_project_id ? (["seo"] as TabKey[]) : []),
             ],
           },
         ] satisfies AreaDef[]).filter((area) => area.tabs.length > 0)
@@ -370,7 +373,7 @@ export default function ClientDetailPage() {
           ficha: "Vista general",
           contexto: "Contexto",
           actividad: "Actividad",
-          panel: "Panel",
+          panel: "Horas y rentabilidad",
           tareas: "Tareas",
           proyectos: "Proyectos",
           tiempo: "Tiempo",
@@ -378,7 +381,7 @@ export default function ClientDetailPage() {
           resumenes: "Resúmenes",
           comunicaciones: "Comunicaciones",
           control_seo: "Control SEO",
-          seo: "Engine",
+          seo: "Engine (congelado)",
           contactos: "Contactos",
           accesos: "Accesos",
           web: "Web",
@@ -410,6 +413,7 @@ export default function ClientDetailPage() {
                   key={area.key}
                   variant={activeArea.key === area.key ? "default" : "ghost"}
                   size="sm"
+                  aria-current={activeArea.key === area.key ? "true" : undefined}
                   onClick={() => setActiveTab(area.tabs[0])}
                 >
                   {area.label}
@@ -437,6 +441,7 @@ export default function ClientDetailPage() {
                     key={tab}
                     variant={activeTab === tab ? "secondary" : "ghost"}
                     size="sm"
+                    aria-current={activeTab === tab ? "page" : undefined}
                     className="text-xs h-7"
                     onClick={() => setActiveTab(tab)}
                   >

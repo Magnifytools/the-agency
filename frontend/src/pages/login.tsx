@@ -70,8 +70,7 @@ export default function LoginPage() {
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
-                type="text"
-                inputMode="email"
+                type="email"
                 autoComplete="email"
                 placeholder="tu@email.com"
                 value={email}

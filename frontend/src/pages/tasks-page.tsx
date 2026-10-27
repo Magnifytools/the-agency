@@ -64,6 +64,8 @@ const weekRange = (offset: number, today: string) => {
   return { from: monday, to: addCivilDays(monday, 4) }
 }
 
+const ACTIVE_STATUS_FILTER = "backlog,pending,in_progress,advanced,waiting,in_review"
+
 export default function TasksPage() {
   const { user, isAdmin, hasPermission } = useAuth()
   const canWriteTasks = hasPermission?.("tasks", true) ?? false
@@ -92,17 +94,42 @@ export default function TasksPage() {
   })
 
   // Filters
-  const [filterClient, setFilterClient] = useState<string>("")
-  const [filterCategory, setFilterCategory] = useState<string>("")
-  const [filterStatus, setFilterStatus] = useState<string>("backlog,pending,in_progress,advanced,waiting,in_review")
-  const [filterPriority, setFilterPriority] = useState<string>("")
+  // Los filtros viven en la URL: sobreviven a abrir una tarea, volver atrás o
+  // compartir el enlace. El estado por defecto ("Activas") no se escribe.
+  const urlFilter = (key: string, fallback = "") => searchParams.get(key) ?? fallback
+  const setUrlFilter = (key: string, value: string, fallback = "") => setSearchParams((previous) => {
+    const next = new URLSearchParams(previous)
+    if (value === fallback) next.delete(key)
+    else next.set(key, value)
+    return next
+  }, { replace: true })
+  const filterClient = urlFilter("cliente")
+  const setFilterClient = (value: string) => setUrlFilter("cliente", value)
+  const filterCategory = urlFilter("categoria")
+  const setFilterCategory = (value: string) => setUrlFilter("categoria", value)
+  const filterStatus = urlFilter("estado", ACTIVE_STATUS_FILTER)
+  const setFilterStatus = (value: string) => setUrlFilter("estado", value, ACTIVE_STATUS_FILTER)
+  const filterPriority = urlFilter("prioridad")
+  const setFilterPriority = (value: string) => setUrlFilter("prioridad", value)
   const filterAssigned = selectedTaskAssignee(searchParams, user?.id, user?.role === "admin")
   const setFilterAssigned = (value: string) => setSearchParams((previous) =>
     withTaskAssignee(previous, value, user?.role === "admin"))
-  const [filterDateFrom, setFilterDateFrom] = useState<string>("")
-  const [filterDateTo, setFilterDateTo] = useState<string>("")
-  const [filterDateField, setFilterDateField] = useState<"due_date" | "scheduled_date">("due_date")
-  const [searchQuery, setSearchQuery] = useState<string>("")
+  const filterDateFrom = urlFilter("desde")
+  const setFilterDateFrom = (value: string) => setUrlFilter("desde", value)
+  const filterDateTo = urlFilter("hasta")
+  const setFilterDateTo = (value: string) => setUrlFilter("hasta", value)
+  const filterDateField: "due_date" | "scheduled_date" = urlFilter("fecha") === "planificada" ? "scheduled_date" : "due_date"
+  const setFilterDateField = (value: "due_date" | "scheduled_date") => setUrlFilter("fecha", value === "scheduled_date" ? "planificada" : "")
+  // La búsqueda escrita se aplica (URL + consulta) 300 ms después de la última tecla.
+  const searchQuery = urlFilter("q")
+  const [searchInput, setSearchInput] = useState(searchQuery)
+  useEffect(() => {
+    if (searchInput.trim() === searchQuery) return
+    const timer = window.setTimeout(() => { setUrlFilter("q", searchInput.trim()); reset() }, 300)
+    return () => window.clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput])
+  const secondaryFilters = [filterCategory, filterPriority, filterDateFrom, filterDateTo].filter(Boolean).length
 
   // The URL is the single source of truth, including browser Back/Forward.
   type QaFilter = "none" | "unassigned" | "no_date" | "no_estimate" | "no_project" | "overdue"
@@ -414,8 +441,8 @@ export default function TasksPage() {
           type="search"
           aria-label="Buscar tareas"
           placeholder="Buscar tareas..."
-          value={searchQuery}
-          onChange={(e) => { setSearchQuery(e.target.value); reset() }}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
           className="w-64"
         />
         <Select aria-label="Filtrar por cliente" value={filterClient} onChange={(e) => { setFilterClient(e.target.value); reset() }} className="w-48">
@@ -426,31 +453,14 @@ export default function TasksPage() {
             </option>
           ))}
         </Select>
-        <Select aria-label="Filtrar por categoría" value={filterCategory} onChange={(e) => { setFilterCategory(e.target.value); reset() }} className="w-48">
-          <option value="">Todas las categorias</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
         <Select aria-label="Filtrar por estado" value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); reset() }} className="w-48">
           <option value="">Todos (incl. completadas)</option>
-          <option value="backlog,pending,in_progress,advanced,waiting,in_review">Activas</option>
+          <option value={ACTIVE_STATUS_FILTER}>Activas</option>
           <option value="pending,backlog">Pendiente</option>
           <option value="in_progress,advanced">En curso</option>
           <option value="waiting">En espera</option>
           <option value="in_review">En revisión</option>
           <option value="completed">Hecho</option>
-          <option value="backlog">Pendiente · backlog</option>
-          <option value="advanced">En curso · avance registrado</option>
-        </Select>
-        <Select aria-label="Filtrar por prioridad" value={filterPriority} onChange={(e) => { setFilterPriority(e.target.value); reset() }} className="w-48">
-          <option value="">Todas las prioridades</option>
-          <option value="urgent">Urgente</option>
-          <option value="high">Alta</option>
-          <option value="medium">Media</option>
-          <option value="low">Baja</option>
         </Select>
         <Select aria-label="Filtrar por responsable" value={filterAssigned} onChange={(e) => { setFilterAssigned(e.target.value); reset() }} className="w-48">
           <option value="">Todos los asignados</option>
@@ -459,6 +469,24 @@ export default function TasksPage() {
               {u.full_name}
             </option>
           ))}
+        </Select>
+        <details className="w-full" open={secondaryFilters > 0}>
+          <summary className="cursor-pointer select-none text-sm text-muted-foreground">Más filtros{secondaryFilters > 0 ? ` (${secondaryFilters})` : ""}</summary>
+          <div className="mt-3 flex flex-wrap gap-3">
+        <Select aria-label="Filtrar por categoría" value={filterCategory} onChange={(e) => { setFilterCategory(e.target.value); reset() }} className="w-48">
+          <option value="">Todas las categorias</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </Select>
+        <Select aria-label="Filtrar por prioridad" value={filterPriority} onChange={(e) => { setFilterPriority(e.target.value); reset() }} className="w-48">
+          <option value="">Todas las prioridades</option>
+          <option value="urgent">Urgente</option>
+          <option value="high">Alta</option>
+          <option value="medium">Media</option>
+          <option value="low">Baja</option>
         </Select>
         <Select aria-label="Tipo de fecha para filtrar" value={filterDateField} onChange={(e) => { setFilterDateField(e.target.value as "due_date" | "scheduled_date"); reset() }} className="w-40">
           <option value="due_date">Fecha límite</option>
@@ -482,54 +510,35 @@ export default function TasksPage() {
           title={`${filterDateField === "due_date" ? "Fecha límite" : "Fecha planificada"} hasta`}
           className="w-40"
         />
+          </div>
+        </details>
       </div>
 
-      {/* QA Health Filters */}
-      <div className="flex gap-2 flex-wrap mb-4">
-        <Button
-          variant={qaFilter === "unassigned" ? "secondary" : "outline"}
-          size="sm"
-          onClick={() => { setQaFilter(qaFilter === "unassigned" ? "none" : "unassigned"); reset() }}
-          className="text-xs h-8 bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 border-orange-500/20"
-        >
-          ⚠️ Sin responsable
-        </Button>
-        <Button
-          variant={qaFilter === "no_date" ? "secondary" : "outline"}
-          size="sm"
-          onClick={() => { setQaFilter(qaFilter === "no_date" ? "none" : "no_date"); reset() }}
-          className="text-xs h-8 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border-blue-500/20"
-        >
-          ⚠️ Sin fecha límite ni plan
-        </Button>
-        <Button
-          variant={qaFilter === "no_estimate" ? "secondary" : "outline"}
-          size="sm"
-          onClick={() => { setQaFilter(qaFilter === "no_estimate" ? "none" : "no_estimate"); reset() }}
-          className="text-xs h-8 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 border-purple-500/20"
-        >
-          ⚠️ Sin estimación de tiempo
-        </Button>
-        <Button
-          variant={qaFilter === "no_project" ? "secondary" : "outline"}
-          size="sm"
-          onClick={() => { setQaFilter(qaFilter === "no_project" ? "none" : "no_project"); reset() }}
-          className="text-xs h-8 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 border-amber-500/20"
-          title="Tareas sin proyecto asignado (no cuentan en métricas de proyecto)"
-        >
-          ⚠️ Sin proyecto
-        </Button>
-        <Button
-          variant={qaFilter === "overdue" ? "secondary" : "outline"}
-          size="sm"
-          onClick={() => { setQaFilter(qaFilter === "overdue" ? "none" : "overdue"); reset() }}
-          className="text-xs h-8 bg-red-500/10 hover:bg-red-500/20 text-red-600 border-red-500/20"
-        >
-          🔥 Vencidas
-        </Button>
+      {/* Revisión rápida: huecos de datos que conviene completar */}
+      <div className="flex gap-2 flex-wrap items-center mb-4" role="group" aria-label="Revisión rápida">
+        <span className="text-xs text-muted-foreground">Revisión rápida:</span>
+        {([
+          ["unassigned", "Sin responsable", undefined],
+          ["no_date", "Sin fecha límite ni plan", undefined],
+          ["no_estimate", "Sin estimación de tiempo", undefined],
+          ["no_project", "Sin proyecto", "Tareas sin proyecto asignado (no cuentan en métricas de proyecto)"],
+          ["overdue", "Vencidas", undefined],
+        ] as const).map(([value, label, title]) => (
+          <Button
+            key={value}
+            variant={qaFilter === value ? "secondary" : "outline"}
+            size="sm"
+            aria-pressed={qaFilter === value}
+            onClick={() => { setQaFilter(qaFilter === value ? "none" : value); reset() }}
+            className="text-xs h-8"
+            title={title}
+          >
+            {label}
+          </Button>
+        ))}
         {qaFilter !== "none" && (
           <Button variant="ghost" size="sm" onClick={() => { setQaFilter("none"); reset() }} className="text-xs h-8 text-muted-foreground">
-            Limpiar filtros QA
+            Quitar revisión
           </Button>
         )}
       </div>
@@ -662,10 +671,10 @@ export default function TasksPage() {
                     />
                   </TableCell>}
                   <TableCell className="font-medium">
-                    <span className="inline-flex items-center gap-1">
+                    <button type="button" onClick={() => openEdit(t)} className="inline-flex items-center gap-1 text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-sm">
                       {t.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" aria-label="Recurrente" />}
                       {t.title}
-                    </span>
+                    </button>
                     {t.recurring_parent_title && t.recurrence_occurrence_date && (
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         Prevista por {t.recurring_parent_title} para {t.recurrence_occurrence_date}
@@ -681,7 +690,7 @@ export default function TasksPage() {
                   <TableCell>{t.client_name ?? (t.client_id != null ? <span className="text-muted-foreground">(eliminado)</span> : "-")}</TableCell>
                   <TableCell>{priorityBadge(t.priority)}</TableCell>
                   <TableCell className={qaFilter === "unassigned" && QA_unassigned ? "text-destructive font-bold" : ""}>
-                    {t.assigned_user_name || (QA_unassigned && qaFilter === "unassigned" ? "⚠️ Faltante" : "-")}
+                    {t.assigned_user_name || (QA_unassigned && qaFilter === "unassigned" ? "Falta" : "-")}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
@@ -728,14 +737,14 @@ export default function TasksPage() {
                       </span>
                     ) : (
                       <span className={qaFilter === "no_estimate" && QA_noestimate ? "text-destructive font-bold" : ""}>
-                        {QA_noestimate && qaFilter === "no_estimate" ? "⚠️ 0" : "-"}
+                        {QA_noestimate && qaFilter === "no_estimate" ? "Falta" : "-"}
                       </span>
                     )}
                   </TableCell>
                   <TableCell className={`mono ${(qaFilter === "no_date" && QA_nodate) || (qaFilter === "overdue" && QA_overdue)
                       ? "text-destructive font-bold" : ""
                     }`}>
-                    {t.due_date ? formatCivilDate(t.due_date) : (QA_nodate && qaFilter === "no_date" ? "⚠️ Sin planificar" : "-")}
+                    {t.due_date ? formatCivilDate(t.due_date) : (QA_nodate && qaFilter === "no_date" ? "Sin planificar" : "-")}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">

@@ -2013,6 +2013,22 @@ class GscQueryDaily(Base):
     position = Column(REAL, nullable=False)
 
 
+class SeoAnnotation(Base):
+    """Nota con fecha en las gráficas SEO de un cliente ("migramos la web", "cambio de títulos")."""
+    __tablename__ = "seo_annotations"
+    __table_args__ = (
+        CheckConstraint("length(btrim(text)) > 0", name="ck_seo_annotations_text"),
+        Index("ix_seo_annotations_client_date", "client_id", "date"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    date = Column(Date, nullable=False)
+    text = Column(String(160), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class GscPageDaily(Base):
     """Cifras diarias finales por página de una propiedad (sólo los últimos 120 días).
 

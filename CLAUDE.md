@@ -280,7 +280,30 @@ admin_users, admin_settings
 - ▶ en cada tarea abierta de Mi agenda y en la cabecera del panel de tarea
   (`TimerButton`). Con otro en marcha no se bloquea: `POST /api/timer/start` ya
   para y guarda el anterior, así que cambiar de tarea es un clic.
+- **Un solo cronómetro**: la barra de arriba (`ActiveTimerBar`, en móvil sólo
+  cuando hay uno en marcha) y el ▶ de cada tarea. Horas y Visión general ya no
+  tienen arranque propio; no lo vuelvas a añadir.
 - En la interfaz se dice **cronómetro**, nunca "timer".
+
+## Visión general, Tareas y navegación
+- **Visión general** no repite Mi agenda: quien no es admin ve sus horas de la
+  semana, deberes y un enlace a Mi agenda. "Hoy" por persona, sólo admins.
+  Discord (cierre del día e informe semanal) va plegado al final.
+- **Tareas**: los filtros viven en la URL (`cliente`, `categoria`, `estado`,
+  `prioridad`, `fecha`, `desde`, `hasta`, `q`); la búsqueda se aplica a los
+  300 ms. "Revisión rápida" (antes QA) sin emojis. El título de la fila abre
+  la tarea. Panel: categoría, fase, dependencia y recurrencia en "Más opciones".
+- **Títulos de pestaña**: el layout pone el de la sección (`useSectionTitle`) y
+  las fichas lo afinan con `usePageTitle` (cliente, proyecto, resumen).
+- **⌘K** (`search-palette.tsx` + `GET /api/search`): clientes, proyectos,
+  tareas, resúmenes (por cliente, `digest_visibility_clause`), notas por aclarar
+  propias e "Ir a" cualquier pantalla del menú.
+- **Alertas**: posponer con "Mañana a las 9", "El lunes a las 9" o "En una
+  semana"; motivos frecuentes para descartar.
+- **Ficha del cliente**: "Panel" se llama "Horas y rentabilidad"; la pestaña
+  de Engine (congelado) está junto a Configuración, no en Resultados.
+- Acciones secundarias de una fila: `components/ui/action-menu.tsx` (menú
+  "Más", fijo para que no lo recorte la tabla).
 
 ## Glosario de la interfaz
 - **Anotar** (capturar) y **Por aclarar** (la lista; ruta `/inbox`).
@@ -522,6 +545,29 @@ admin_users, admin_settings
   `test_el_detalle_de_search_console_no_llega_a_la_ia`, que también prohíbe
   `seo_control`/`client_seo`, `gsc_query_monthly`, `seo_page_groups` y
   `query_history` en cualquier camino de IA.
+
+## Control SEO: qué ha pasado, antes y después y páginas que caen (bloque B)
+- **Qué ha pasado** (`seo-annotations-card.tsx`, `GET /api/clients/{id}/seo/annotations?from&to`,
+  `services/seo_insights.annotations`): notas a mano (`seo_annotations`, migración
+  `seo_annotations_v1`; crear/borrar pide escritura de `clients`), actualizaciones e
+  incidencias de Google leídas EN VIVO del panel oficial
+  (`services/google_search_status.py`, `status.search.google.com/incidents.json`,
+  caché 6 h; sin red → `google_available: false`, nunca se guardan), cambios
+  críticos de la web (si lee `web`) y tareas cerradas con URL (si lee `tasks`).
+  Cubre las 16 semanas de la gráfica de marca, que marca las semanas con algo.
+  En tests, el fixture autouse `_no_real_google_status` sustituye `_fetch`.
+- **Antes y después** (`GET /seo/impact?date&days=14|28|56&page|group`): N días
+  antes y N después de la fecha (el día no cuenta); si aún no han pasado N días,
+  tramos iguales con lo que haya (mínimo 7: `too_early`). Web entera desde
+  `gsc_daily`; página (`page_variants`: sin query, con y sin barra) o grupo desde
+  `gsc_page_daily` (120 días: `outside_detail` si no llega). En el panel de una
+  tarea cerrada con URL sale como "Impacto en Google" (`task-seo-impact.tsx`).
+- **Páginas que pierden tráfico** (`GET /seo/decay`): clics de los últimos 28 días
+  frente a su mejor tramo de 28 dentro del detalle (hasta 4 tramos; hacen falta 2);
+  entra si cae ≥ 40 % y su mejor tramo tuvo ≥ 30 clics. Motivo: `position` (empeora
+  ≥ 1), `demand` (las impresiones caen como los clics) o `ctr`. "Crear tarea" crea
+  una tarea del cliente con la URL en `link_url`.
+- Todo sigue fuera de la IA y del MCP, como el resto del detalle de Search Console.
 
 ## Estado del cliente (cartera)
 

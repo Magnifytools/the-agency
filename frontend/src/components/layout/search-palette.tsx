@@ -2,11 +2,13 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { searchApi } from "@/lib/api"
-import { Building2, FolderKanban, CheckSquare, Target, Search } from "lucide-react"
+import { Building2, FolderKanban, CheckSquare, Target, Search, ClipboardList, Inbox, CornerDownRight } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
 import { searchKeys } from "@/lib/query-keys"
 import { isEnabled } from "@/lib/hidden-modules"
 import { Dialog, DialogTitle } from "@/components/ui/dialog"
+import { navigationFor } from "@/components/layout/navigation"
+import { formatCivilDate } from "@/lib/dates"
 
 interface Props {
   open: boolean
@@ -23,9 +25,9 @@ function SearchPaletteDialog({ onOpenChange }: Omit<Props, "open">) {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
-  const { user, hasPermission } = useAuth()
+  const { user, hasPermission, isAdmin } = useAuth()
   const normalizedQuery = query.trim()
-  const searchableTypes = ["clients", "projects", "tasks", "leads"].filter(
+  const searchableTypes = ["clients", "projects", "tasks", "leads", "digests"].filter(
     (module) => isEnabled(module) && hasPermission(module),
   )
   const permissionSignature = searchableTypes.join(",")
@@ -34,6 +36,7 @@ function SearchPaletteDialog({ onOpenChange }: Omit<Props, "open">) {
     projects: "proyectos",
     tasks: "tareas",
     leads: "leads",
+    digests: "resúmenes",
   }
   const searchPlaceholder = searchableTypes.length > 0
     ? `Buscar ${searchableTypes.map((module) => searchTargetLabels[module]).join(", ")}...`
@@ -52,8 +55,8 @@ function SearchPaletteDialog({ onOpenChange }: Omit<Props, "open">) {
   })
 
   // Build flat list of all results for keyboard nav
-  const allItems: { type: string; id: number; label: string; sub: string | null; href: string }[] = []
-  if (results && !isError) {
+  const allItems: { type: string; id: number | string; label: string; sub: string | null; href: string }[] = []
+  if (results && !isError && normalizedQuery.length >= 2) {
     if (searchableTypes.includes("clients")) {
       for (const c of results.clients) allItems.push({ type: "client", id: c.id, label: c.name, sub: c.company, href: `/clients/${c.id}` })
     }
@@ -65,6 +68,19 @@ function SearchPaletteDialog({ onOpenChange }: Omit<Props, "open">) {
     }
     if (searchableTypes.includes("leads")) {
       for (const l of results.leads) allItems.push({ type: "lead", id: l.id, label: l.company_name, sub: l.contact_name, href: `/leads/${l.id}` })
+    }
+    for (const d of results.digests ?? []) allItems.push({ type: "digest", id: d.id, label: `Resumen de ${d.client_name}`, sub: `${formatCivilDate(d.period_start, { day: "numeric", month: "short" })} – ${formatCivilDate(d.period_end, { day: "numeric", month: "short", year: "numeric" })}`, href: `/digests/${d.id}/edit` })
+    for (const n of results.notes ?? []) allItems.push({ type: "note", id: n.id, label: n.text, sub: null, href: "/inbox" })
+  }
+  // "Ir a…" después de los resultados: las pantallas del menú cuyo nombre casa
+  // con lo escrito (todas si aún no hay nada escrito).
+  const folded = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+  for (const area of navigationFor(hasPermission, isAdmin)) {
+    for (const link of area.links) {
+      const label = link.label === area.label ? link.label : `${area.label} · ${link.label}`
+      if (!normalizedQuery || folded(label).includes(folded(normalizedQuery))) {
+        allItems.push({ type: "goto", id: link.to, label: link.label, sub: area.label === link.label ? null : area.label, href: link.to })
+      }
     }
   }
   const activeIndex = Math.min(selectedIndex, Math.max(allItems.length - 1, 0))
@@ -93,6 +109,9 @@ function SearchPaletteDialog({ onOpenChange }: Omit<Props, "open">) {
       case "project": return FolderKanban
       case "task": return CheckSquare
       case "lead": return Target
+      case "digest": return ClipboardList
+      case "note": return Inbox
+      case "goto": return CornerDownRight
       default: return Search
     }
   }
@@ -103,13 +122,16 @@ function SearchPaletteDialog({ onOpenChange }: Omit<Props, "open">) {
       case "project": return "Proyectos"
       case "task": return "Tareas"
       case "lead": return "Pipeline"
+      case "digest": return "Resúmenes"
+      case "note": return "Por aclarar"
+      case "goto": return "Ir a"
       default: return type
     }
   }
 
   // Group items by type for section headers
   const sections: { type: string; items: typeof allItems }[] = []
-  for (const type of ["client", "project", "task", "lead"]) {
+  for (const type of ["client", "project", "task", "lead", "digest", "note", "goto"]) {
     const items = allItems.filter((i) => i.type === type)
     if (items.length > 0) sections.push({ type, items })
   }
@@ -134,11 +156,12 @@ function SearchPaletteDialog({ onOpenChange }: Omit<Props, "open">) {
           </kbd>
         </div>
 
-        {normalizedQuery.length >= 2 && (
+        {(
           <div className="max-h-[50vh] overflow-y-auto p-2">
-            {isLoading ? <p role="status" className="text-sm text-muted-foreground text-center py-8">Buscando…</p> : isError ? (
+            {normalizedQuery.length >= 2 && isLoading && <p role="status" className="text-sm text-muted-foreground text-center py-4">Buscando…</p>}
+            {isError ? (
               <div role="alert" className="text-center py-8 text-sm text-muted-foreground">No se pudo buscar. <button type="button" className="underline" onClick={() => void refetch()}>Reintentar</button></div>
-            ) : allItems.length === 0 ? (
+            ) : allItems.length === 0 && normalizedQuery.length >= 2 ? (
               <p className="text-sm text-muted-foreground text-center py-8">Sin resultados para &quot;{query}&quot;</p>
             ) : (
               sections.map((section) => {
@@ -176,9 +199,7 @@ function SearchPaletteDialog({ onOpenChange }: Omit<Props, "open">) {
         )}
 
         {normalizedQuery.length < 2 && (
-          <div className="p-6 text-center">
-            <p className="text-sm text-muted-foreground">Escribe al menos 2 caracteres para buscar</p>
-          </div>
+          <p className="px-4 pb-3 text-xs text-muted-foreground">Escribe al menos 2 caracteres para buscar clientes, tareas, resúmenes o notas.</p>
         )}
       </div>
     </Dialog>

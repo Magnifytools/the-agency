@@ -73,7 +73,7 @@ export default function HoldedFinancePage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Finanzas</h2>
+          <h1 className="text-2xl font-bold tracking-tight">Finanzas</h1>
           <div className="flex items-center gap-2 mt-1">
             {connected ? (
               <Badge variant="success" className="flex items-center gap-1">

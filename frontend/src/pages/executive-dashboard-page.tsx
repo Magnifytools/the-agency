@@ -173,7 +173,7 @@ export default function ExecutiveDashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold uppercase tracking-wide">Dashboard Ejecutivo</h2>
+          <h1 className="text-2xl font-bold uppercase tracking-wide">Dashboard Ejecutivo</h1>
           {ytd && (
             <p className="text-sm text-muted-foreground mt-1">
               YTD {year}: {formatCurrency(ytd.income)} ingresos, {formatCurrency(ytd.profit)} beneficio

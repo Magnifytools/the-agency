@@ -474,7 +474,7 @@ function ClientsPageBody() {
     <div className="space-y-4" onClick={() => openMenuId !== null && setOpenMenuId(null)}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold uppercase tracking-wide">Clientes</h2>
+          <h1 className="text-2xl font-bold uppercase tracking-wide">Clientes</h1>
           {data && <p className="text-sm text-muted-foreground mt-1">
             {STATUS_TABS.find((item) => item.value === tab)?.label} · {COHORTS.find((item) => item.value === cohort)?.label} · {data.total} resultados
           </p>}

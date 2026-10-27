@@ -13,12 +13,17 @@ const mocks = vi.hoisted(() => ({
   pages: vi.fn(),
   queryHistory: vi.fn(),
   groups: vi.fn(),
+  annotations: vi.fn(),
+  decay: vi.fn(),
+  impact: vi.fn(),
   admin: false,
   canWrite: true,
 }))
 
 vi.mock("@/lib/api", () => ({
-  clientSeoApi: { get: mocks.get, queries: mocks.queries, pages: mocks.pages, queryHistory: mocks.queryHistory, groups: mocks.groups },
+  clientSeoApi: { get: mocks.get, queries: mocks.queries, pages: mocks.pages, queryHistory: mocks.queryHistory, groups: mocks.groups,
+                  annotations: mocks.annotations, decay: mocks.decay, impact: mocks.impact },
+  tasksApi: { create: vi.fn() },
 }))
 vi.mock("@/context/auth-context", () => ({
   useAuth: () => ({ isAdmin: mocks.admin, hasPermission: (_m: string, write = false) => (write ? mocks.canWrite : true) }),
@@ -28,7 +33,7 @@ vi.mock("recharts", () => {
   const Box = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>
   const Empty = () => null
   return { ResponsiveContainer: Box, BarChart: Box, ComposedChart: Box, Bar: Empty, Line: Empty, CartesianGrid: Empty,
-           XAxis: Empty, YAxis: Empty, Tooltip: Empty, Legend: Empty }
+           XAxis: Empty, YAxis: Empty, Tooltip: Empty, Legend: Empty, ReferenceLine: Empty }
 })
 
 const client = { id: 5, name: "Acme", gsc_url: "sc-domain:acme.com" } as never
@@ -87,6 +92,9 @@ beforeEach(() => {
   mocks.get.mockResolvedValue(summary())
   mocks.queries.mockResolvedValue({ ...blocked("ok"), rows: [query("posicion sube")], total: 1 })
   mocks.pages.mockResolvedValue({ ...blocked("ok"), rows: [], total: 0 })
+  mocks.annotations.mockResolvedValue({ items: [], google_available: true })
+  mocks.decay.mockResolvedValue({ ...blocked("ok"), rows: [], total: 0, windows: 4 })
+  mocks.impact.mockResolvedValue({ ...blocked("ok"), pivot: "2026-09-20", scope: "site", page: null, group: null, reason: "too_early", available_from: "2026-09-27", result: null })
 })
 
 describe("SeoControlTab", () => {
@@ -274,5 +282,37 @@ describe("SeoControlTab empty states", () => {
     mocks.get.mockResolvedValue(blocked("error", { error_code: "no_access" }))
     show()
     expect(await screen.findByText("La cuenta conectada no tiene acceso a esta propiedad.")).toBeInTheDocument()
+  })
+
+  it("explica lo que ha pasado, compara antes y después y propone páginas a refrescar", async () => {
+    mocks.annotations.mockResolvedValue({ google_available: true, items: [
+      { kind: "google", id: null, date: "2026-09-24", end_date: "2026-10-08", title: "Actualización de Google: September 2026 spam update", author: null, href: "https://status.search.google.com/incidents/x" },
+      { kind: "manual", id: 7, date: "2026-10-05", end_date: null, title: "Migración de la web", author: "David", href: null },
+    ] })
+    mocks.decay.mockResolvedValue({ ...blocked("ok"), windows: 4, total: 1, rows: [{
+      page: "https://acme.com/blog/guia", current: { clicks: 20, impressions: 900, position: 9.1 },
+      peak: { clicks: 100, impressions: 1000, position: 4.0, start: "2026-07-01", end: "2026-07-28" },
+      lost_clicks: 80, drop_pct: -80, cause: "position",
+    }] })
+    mocks.impact.mockResolvedValue({ ...blocked("ok"), pivot: "2026-10-05", scope: "site", page: null, group: null, reason: null, result: {
+      days: 13, clicks_change_pct: 12.5, impressions_change_pct: 3, position_delta: 0.4, pages: null,
+      before: { clicks: 80, impressions: 1000, position: 5.1, start: "2026-09-22", end: "2026-10-04" },
+      after: { clicks: 90, impressions: 1030, position: 4.7, start: "2026-10-06", end: "2026-10-18" },
+    } })
+    show()
+    expect(await screen.findByText("Migración de la web")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /September 2026 spam update/ })).toHaveAttribute("href", "https://status.search.google.com/incidents/x")
+    expect(await screen.findByText("Pierde posiciones")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Crear tarea para refrescar /blog/guia" })).toBeInTheDocument()
+    const notes = screen.getAllByRole("button", { name: "Antes y después" })
+    await userEvent.click(notes[0])
+    await waitFor(() => expect(mocks.impact).toHaveBeenLastCalledWith(5, { date: "2026-10-05", days: 28 }))
+    expect(await screen.findByText(/13 días antes y 13 después/)).toBeInTheDocument()
+  })
+
+  it("una nota se añade desde la tarjeta", async () => {
+    show()
+    await userEvent.type(await screen.findByRole("textbox", { name: "Nota" }), "Nuevos títulos")
+    expect(screen.getByRole("button", { name: "Añadir nota" })).toBeEnabled()
   })
 })

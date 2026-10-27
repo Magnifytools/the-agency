@@ -9,7 +9,7 @@ const api = vi.hoisted(() => ({ search: vi.fn() }))
 const auth = vi.hoisted(() => ({ user: { id: 7 }, permissions: new Set(["clients", "projects", "tasks", "leads"]) }))
 vi.mock("@/lib/api", () => ({ searchApi: api }))
 vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: auth.user, hasPermission: (module: string) => auth.permissions.has(module) }) }))
-vi.mock("@/lib/hidden-modules", () => ({ isEnabled: () => true }))
+vi.mock("@/lib/hidden-modules", () => ({ isEnabled: () => true, isHidden: () => false }))
 
 const emptyResults = { clients: [], projects: [], tasks: [], leads: [] }
 
@@ -147,3 +147,13 @@ it("does not navigate a cached result while a refetch error is visible", async (
   expect(screen.getByTestId("location")).toHaveTextContent("/")
 })
 import { useState } from "react"
+
+it("encuentra resúmenes y notas, y ofrece ir a la pantalla que casa con lo escrito", async () => {
+  auth.permissions = new Set(["clients", "tasks", "digests"])
+  api.search.mockResolvedValue({ ...emptyResults, digests: [{ id: 41, client_name: "Sage", period_start: "2026-09-01", period_end: "2026-09-30" }], notes: [{ id: 3, text: "Llamar a Sage por el informe", status: "pending" }] })
+  show()
+  await userEvent.type(screen.getByRole("textbox", { name: "Buscar" }), "resum")
+  expect(await screen.findByRole("button", { name: /Resumen de Sage/ })).toBeInTheDocument()
+  expect(screen.getByRole("button", { name: /Llamar a Sage por el informe/ })).toBeInTheDocument()
+  expect(screen.getByRole("button", { name: /Resúmenes de clientes/ })).toBeInTheDocument()
+})
