@@ -1,17 +1,19 @@
 import { useState } from "react"
-import { KeyRound, Plus, Search } from "lucide-react"
+import { KeyRound, Plus, Search, Upload } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { CredentialList } from "@/components/credentials/credential-list"
 import { CredentialFormDialog } from "@/components/credentials/credential-dialogs"
+import { CredentialImportDialog } from "@/components/credentials/credential-import-dialog"
 
 /** Accesos: las contraseñas compartidas del equipo (WordPress, GA, herramientas…). */
 export default function CredentialsPage() {
   const { hasPermission, isAdmin } = useAuth()
   const [q, setQ] = useState("")
   const [creating, setCreating] = useState(false)
+  const [importing, setImporting] = useState(false)
 
   return (
     <div className="space-y-4">
@@ -25,7 +27,10 @@ export default function CredentialsPage() {
           </p>
         </div>
         {hasPermission("credentials", true) && (
-          <Button onClick={() => setCreating(true)}><Plus className="h-4 w-4 mr-1" /> Nuevo acceso</Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setImporting(true)}><Upload className="h-4 w-4 mr-1" /> Importar</Button>
+            <Button onClick={() => setCreating(true)}><Plus className="h-4 w-4 mr-1" /> Nuevo acceso</Button>
+          </div>
         )}
       </div>
       <div className="relative max-w-md">
@@ -38,6 +43,7 @@ export default function CredentialsPage() {
         </CardContent>
       </Card>
       {creating && <CredentialFormDialog open onOpenChange={setCreating} />}
+      {importing && <CredentialImportDialog onOpenChange={setImporting} />}
     </div>
   )
 }
