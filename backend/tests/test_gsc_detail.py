@@ -193,11 +193,13 @@ def test_el_job_usa_el_lock_17_y_la_misma_puerta_que_gsc():
 # ── Las consultas y páginas no van a la IA (lo promete la política de privacidad) ──
 
 # También el historial mensual por consulta (con lo importado de The Engine),
-# los grupos de URL del Control SEO y los leads por landing de GA4.
+# los grupos de URL del Control SEO, los leads por landing de GA4 y la foto del
+# mes que lleva el resumen mensual (top, oportunidades y marca).
 _FORBIDDEN = re.compile(
     r"GscQueryDaily|GscPageDaily|GscQueryMonthly|gsc_query_daily|gsc_page_daily|gsc_query_monthly"
     r"|gsc_detail_service|seo_control|client_seo|seo_page_groups|query_history"
     r"|Ga4LeadDaily|ga4_lead_daily|ga4_leads|client_leads|import_engine"
+    r"|DigestSeoDetail|digest_seo_detail"
 )
 
 
@@ -206,8 +208,7 @@ def _ai_paths() -> list[Path]:
     paths = {
         services / name for name in (
             "ai_utils.py", "digest_generator.py", "digest_generation.py", "digest_collector.py",
-            "task_draft.py", "client_advisor.py", "client_share_links.py", "daily_parser.py",
-            "email_drafter.py",
+            "task_draft.py", "client_advisor.py", "daily_parser.py", "email_drafter.py",
         )
     }
     paths.add(ROOT / "backend" / "api" / "routes" / "advisor.py")
@@ -220,6 +221,16 @@ def _ai_paths() -> list[Path]:
 def test_la_guardia_reconoce_el_historial_y_los_grupos():
     for name in ("GscQueryMonthly", "gsc_query_monthly", "seo_page_groups", "query_history"):
         assert _FORBIDDEN.search(f"x = {name}")
+
+
+def test_la_guardia_reconoce_la_foto_del_resumen_mensual():
+    # `client_share_links.py` no llama a la IA: pinta con código el resumen
+    # entregado, con su foto del mes, como permite la política. Si un día llama
+    # a la IA, entra solo en `_ai_paths` (busca `ai_utils`) y esta guardia salta.
+    for name in ("DigestSeoDetail", "digest_seo_detail", "digest_seo_details"):
+        assert _FORBIDDEN.search(f"x = {name}")
+    assert not any(p.name == "client_share_links.py" and "ai_utils" in p.read_text(encoding="utf-8")
+                   for p in _ai_paths())
 
 
 def test_la_guardia_reconoce_los_leads_y_lo_importado_de_engine():

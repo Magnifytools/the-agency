@@ -221,6 +221,37 @@ admin_users, admin_settings
   `informe-<cliente>-<AAAA-MM>.pdf`, `Cache-Control: no-store`.
 - Se genera en `asyncio.to_thread` con 20 s de techo (504 si se agota).
 
+## Informe mensual: foto del mes de Search Console
+- **Qué es**: bajo los totales del bloque SEO de un resumen de MES NATURAL, el
+  top 5 de búsquedas y de páginas por clics (con su cambio frente al mes
+  anterior), hasta 5 oportunidades (sin marca, posición media 8–20, ≥ 30
+  impresiones, por impresiones) y clics con marca / sin marca / sin detallar
+  (si el cliente tiene `brand_terms`). Más el interanual completo (las cuatro
+  cifras de Search Console; visitas, conversiones e IA de GA4).
+- **Dónde vive**: tabla `digest_seo_details` (PK `digest_id`, en cascada con el
+  resumen; migración `digest_seo_detail_v1`), NO en `raw_context`: `raw_context`
+  llega entero al generador (también al regenerar por tono). Servicio
+  `services/digest_seo_detail.py` (`build` puro + `for_digest` + `seo_for_render`,
+  que devuelve el bloque SEO con `detail`); lo pinta `digest_seo.py` (texto y
+  HTML) y `digest_pdf.py`; en el editor, `DigestSeoPanel`.
+- **Cuándo se calcula**: al pintar (GET del resumen, vista previa, PDF) mientras
+  la versión NO ha salido de la app (`_has_left_the_app`): se recalcula y se
+  guarda si cambió, así un término de marca nuevo se ve al momento. Cuando ya
+  salió se lee la guardada (lo que se envió); un resumen entregado antes de esto
+  no gana el bloque. La página pública y su PDF sólo leen (`may_compute=False`).
+- **Ventana**: el mes del resumen y el anterior, desde `gsc_query_daily` /
+  `gsc_page_daily` con `seo_control.range_aggregates` (sin caché: un febrero
+  chocaría con la clave de la ventana de 28 días). Sin el detalle del mes
+  entero (`coverage_start`) o sin datos finales hasta su último día → sin foto;
+  sin el mes anterior entero → sin columna de cambio.
+- **Retención**: como el detalle. `gsc_detail_service.prune` borra las de webs
+  sin cliente activo y desconectar con `purge_data` también. Fuera del Deshacer.
+- **IA**: `DigestSeoDetail`/`digest_seo_detail` están en `_FORBIDDEN`.
+  `client_share_links.py` salió de `_ai_paths` porque no llama a la IA (si un
+  día importa `ai_utils`, vuelve a entrar solo).
+- Lo guardan `tests/test_digest_seo_detail.py` y
+  `tests/integration/test_digest_seo_detail_integration.py`.
+
 ## The Engine (congelado)
 - **Congelado el 21 oct 2026** (decisión de David): sigue encendido, pero no se
   trabaja en él y **nada de The Agency depende de él**. Ni el semáforo, ni el
@@ -474,9 +505,11 @@ admin_users, admin_settings
   clasificar" = total − suma de consultas. (2) Las impresiones por página NO
   suman el total de la propiedad (una búsqueda que enseña dos páginas cuenta en
   las dos): el total sale siempre de `gsc_daily`.
-- **El detalle no va a la IA**: ni resúmenes, ni borradores, ni asesor, ni
-  enlace del cliente, ni MCP. Lo vigila `test_el_detalle_de_search_console_no_llega_a_la_ia`
-  (`tests/test_gsc_detail.py`). Si lo cambias, cambia antes la política.
+- **El detalle no va a la IA**: ni al generador de resúmenes, ni a borradores,
+  ni al asesor, ni al MCP. Sí sale, pintado con código, en el resumen mensual y
+  en el enlace del cliente (ver "Informe mensual: foto del mes"). Lo vigila
+  `test_el_detalle_de_search_console_no_llega_a_la_ia` (`tests/test_gsc_detail.py`).
+  Si lo cambias, cambia antes la política.
 - El PDF ya no es el de The Engine (congelado; el enlace se quitó el 21 oct
   2026): ver "PDF del resumen". Su `report-data` tampoco se usa: traga errores
   como ceros y no pondera la posición.

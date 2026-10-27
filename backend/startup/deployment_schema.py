@@ -45,6 +45,7 @@ from backend.startup.seo_annotations_schema import MIGRATION as SEO_ANNOTATIONS_
 from backend.startup.web_health_schema import MIGRATION as WEB_HEALTH_MIGRATION
 from backend.startup.client_scope_requests_schema import MIGRATION as CLIENT_SCOPE_REQUESTS_MIGRATION
 from backend.startup.project_hours_carryover_schema import MIGRATION as PROJECT_HOURS_CARRYOVER_MIGRATION
+from backend.startup.digest_seo_detail_schema import MIGRATION as DIGEST_SEO_DETAIL_MIGRATION
 
 MIGRATIONS = (
     *schema_baseline.MIGRATIONS, JOB_RUNTIME_MIGRATION, INBOX_RECOVERY_MIGRATION,
@@ -60,6 +61,7 @@ MIGRATIONS = (
     SEO_ANNOTATIONS_MIGRATION,
     WEB_HEALTH_MIGRATION,
     CLIENT_SCOPE_REQUESTS_MIGRATION, PROJECT_HOURS_CARRYOVER_MIGRATION,
+    DIGEST_SEO_DETAIL_MIGRATION,
 )
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 
