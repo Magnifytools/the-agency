@@ -689,7 +689,7 @@ admin_users, admin_settings
   largo = Vigilar; bloque `uptime` en `/status` y `/portfolio`, sólo si quien
   mira lee `web`.
 - **Job** `uptime`: lock **15** (16 reservado para `web_sweep`, 17 para
-  `gsc_detail`), cada 60 s, timeout 150 s, sólo clientes activos no internos.
+  `gsc_detail`, 18 `web_health`, 19 `publish_checks`), cada 60 s, timeout 150 s, sólo clientes activos no internos.
   **Apagado por defecto**: en Railway `UPTIME_ENABLED=true`. Sondeos 30 días
   (`_retention_cleanup_once`); las caídas se conservan.
 - Fuera del Deshacer (`test_webs_quedan_fuera_del_journal`). Alta inicial:
@@ -828,6 +828,60 @@ admin_users, admin_settings
 - **Fuera del Deshacer** (`test_cambios_web_quedan_fuera_del_journal` y
   `test_nada_de_la_vigilancia_de_cambios_entra_en_el_deshacer`). Dependencias:
   `lxml` y `cssselect` (ruedas cp312 manylinux, sin compilar).
+
+## Webs: salud diaria y revisión tras publicar
+
+- **Job** `web_health` (lock **18**, diario 00:01 + al arrancar, timeout 30 min):
+  `services/web/health.py`. Sin interruptor propio: la caducidad corre con
+  `UPTIME_ENABLED` y robots/sitemap con `WEB_SWEEP_ENABLED`. Red sin
+  transacción; después se escribe todo y se borran las filas de hosts/orígenes
+  que ya no se miran. Migración `web_health_v1` (3 tablas).
+- **Caducidad** (`web_host_expiry`, PK cliente+host): hosts de las URLs de
+  disponibilidad activas de clientes activos y externos. Certificado con
+  `safe_http.fetch_tls_certificate` (mismas garantías que `fetch`: puertos
+  80/443, DNS una vez con TODAS las IPs globales, conexión a la IP fijada con SNI;
+  si no verifica, se relee sin verificar sólo para la fecha y se guarda el
+  motivo); sólo hosts con alguna URL https (si no, `no_https`). Dominio por
+  RDAP desde el registro de la IANA (`data.iana.org/rdap/dns.json`), preguntando
+  al registro del TLD del nombre más largo al registrable (sin `www.`). TLD sin
+  RDAP (**.es hoy**) = `unsupported`: la ficha lo dice, no se inventa fecha. Un
+  error de lectura conserva la última fecha conocida. Si la IANA no responde, el
+  job queda `provider_unavailable`.
+- **robots.txt y sitemap** (`web_robots_state`, PK cliente+origen): orígenes de
+  las URLs vigiladas (o `Client.website`, máx. 5) de clientes con
+  `changes_enabled`. robots.txt: hash normalizado + cuerpo ≤ 64 KiB (se leen
+  512 KiB); 404/410 = no existe (= todo permitido, cuenta como cambio); otros
+  errores no tocan lo último leído. Un cambio guarda el anterior y pide revisión
+  (`POST /api/clients/{id}/web/robots/review`, escritura de `web`). Bloqueo total
+  = `Disallow: /` (o `/*`) sin `Allow: /` en el grupo `*` o `googlebot`.
+  Sitemap: el primero declarado en robots.txt o `/sitemap.xml`, con
+  `sitemap.fetch_sitemap_urls` (≤ 1.000 URLs): `ok`/`empty`/`invalid`/`error`.
+- **Incidencias** (en `incident_web_conditions.py`, mismos destinatarios que las
+  caídas, clave `...:client:{id}:open`): `client_cert_expiring` (≤ 14 días aviso,
+  ≤ 3 crítica), `client_domain_expiring` (≤ 30 / ≤ 7), `client_robots_blocked`
+  (crítica), `client_robots_changed` (aviso hasta revisarlo),
+  `client_sitemap_broken` (aviso). Las tres últimas sólo con `changes_enabled`.
+  La huella lleva el nivel: si un aviso pasa a crítico, vuelve a avisar. El
+  presupuesto de lecturas de la reconciliación sube a 13 (`test_incidents.py`).
+- **Revisión tras publicar** (job `publish_checks`, lock **19**, cada 60 s,
+  **apagado por defecto**: `PUBLISH_CHECK_ENABLED=true`):
+  `services/web/publish_check.py`, tabla `task_publish_checks` (una fila por
+  tarea, ligada a su `completed_at` y `link_url`). Tareas completadas hace ≤ 3
+  días con enlace: nunca en la petición que las cierra. Sólo enlaces de la web
+  del cliente (`website`, `gsc_url`, URLs de disponibilidad o vigiladas, con
+  subdominios); lo demás `skipped` con motivo. `safe_http.fetch` + `extract_seo`
+  en un hilo: 2xx, sin `noindex`/`none` (meta o `X-Robots-Tag`), canonical a sí
+  misma, title y description. Red, 5xx o 404: reintento a 2, 10 y 30 min. Si
+  falla, aviso en la campana al responsable (`task_publish_check`, clave por
+  finalización; visible con lectura de `tasks`). API `GET/POST
+  /api/tasks/{id}/publish-check` (el POST la pone en cola). Panel de la tarea:
+  `components/tasks/publish-check-block.tsx`.
+- **UI**: pestaña Web → `web-health-card.tsx` ("Dominio y certificado" bajo la
+  disponibilidad; "robots.txt y sitemap" en la vigilancia de cambios). API
+  `GET /api/clients/{id}/web/health` (lectura de `web`).
+- Fuera del Deshacer y fuera de la IA y del MCP. Tests: `tests/test_web_health.py`
+  y `tests/integration/test_web_health.py` (fixture autouse
+  `_no_real_web_health_network`: nada sale a la red).
 
 ## Enlace para el cliente (fase 3 Agency 2.0)
 

@@ -32,7 +32,7 @@ from backend.api.routes import (
     bank_import,
     usage_stats, job_runtime, ga4,
     credentials,
-    web_uptime, web_watches, web_changes, web_settings,
+    web_uptime, web_watches, web_changes, web_settings, web_health,
 )
 
 # ── Re-export migration/seed functions so scripts/init_db.py keeps working ──
@@ -236,6 +236,9 @@ _CORE_ROUTERS = [
     web_watches,
     web_changes,
     web_settings,
+    # web_health: dominio, certificado, robots.txt y sitemap (job ``web_health``)
+    # y la revisión tras publicar de las tareas (job ``publish_checks``).
+    web_health,
     # holidays: los festivos de empresa (Ajustes → Festivos, plan de la mañana).
     holidays,
     # suggestions: el botón "Sugerencias o fallos" del shell, para todos.

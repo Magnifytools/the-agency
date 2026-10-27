@@ -205,3 +205,23 @@ def _no_real_ga4_leads(monkeypatch):
     fake = AsyncMock(return_value=[])
     monkeypatch.setattr(ga4_leads, "query_leads", fake)
     return fake
+
+
+@pytest.fixture(autouse=True)
+def _no_real_web_health_network(monkeypatch):
+    """Dominio, certificado, robots.txt, sitemap y la revisión tras publicar
+    nunca salen a la red en los tests: por defecto "no responde" (``timeout``) y
+    no hay certificado. Un test que quiera otra respuesta pasa ``fetcher=`` /
+    ``cert_reader=`` o vuelve a parchear estos nombres."""
+    from backend.services.web import health, publish_check
+    from backend.services.web.safe_http import FetchResult, TlsCertificate
+
+    async def no_network(url, **_kwargs):
+        return FetchResult(None, 0, url, error="timeout")
+
+    async def no_cert(_host, **_kwargs):
+        return TlsCertificate(error="timeout")
+
+    monkeypatch.setattr(health, "fetch", no_network)
+    monkeypatch.setattr(health, "fetch_tls_certificate", no_cert)
+    monkeypatch.setattr(publish_check, "fetch", no_network)
