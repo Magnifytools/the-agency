@@ -293,6 +293,16 @@ admin_users, admin_settings
   `prioridad`, `fecha`, `desde`, `hasta`, `q`); la búsqueda se aplica a los
   300 ms. "Revisión rápida" (antes QA) sin emojis. El título de la fila abre
   la tarea. Panel: categoría, fase, dependencia y recurrencia en "Más opciones".
+- **Vistas de Tareas**: Lista · Tablero · Calendario · Semana · Recurrentes. El
+  menú y G+A abren `view=tareas` = la última vista usada (`localStorage`, sólo
+  comodidad; sin él, Lista). Mes (`mes=AAAA-MM`) y semana (`semana=` su lunes)
+  en la URL. Sólo la Lista pagina: Tablero, Calendario y Semana traen hasta 500
+  y avisan si hay más. El Tablero añade "Hecho" (cerradas en los últimos 7 días,
+  `completed_from`, plegada) y la Semana trae aparte "Sin planificar"
+  (`unscheduled`, 100 más recientes). Arrastre con `@dnd-kit` (ratón y táctil)
+  en las tres: estado, fecha límite y día planificado, optimista con vuelta
+  atrás. Soltar en "En espera" abre el panel; "Hecho" pasa a revisión si el
+  proyecto la exige (mismas reglas que el select de estado).
 - **Títulos de pestaña**: el layout pone el de la sección (`useSectionTitle`) y
   las fichas lo afinan con `usePageTitle` (cliente, proyecto, resumen).
 - **⌘K** (`search-palette.tsx` + `GET /api/search`): clientes, proyectos,

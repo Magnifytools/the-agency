@@ -48,7 +48,7 @@ const ACTION_ROUTES: Record<string, string> = {
   goto_timesheet: "/timesheet",
   goto_clients: "/clients",
   goto_projects: "/projects",
-  goto_tasks: "/tasks?view=all",
+  goto_tasks: "/tasks?view=tareas",
   goto_leads: "/leads",
 }
 

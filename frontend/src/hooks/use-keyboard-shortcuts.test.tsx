@@ -74,7 +74,7 @@ it("ignores a legacy shortcut to hidden Pipeline and navigates to active Trabajo
   expect(screen.getByRole("status")).toHaveTextContent("/settings")
   fireEvent.keyDown(document, { key: "g" })
   fireEvent.keyDown(document, { key: "a" })
-  expect(screen.getByRole("status")).toHaveTextContent("/tasks?view=all")
+  expect(screen.getByRole("status")).toHaveTextContent("/tasks?view=tareas")
 })
 
 it("opens the global entry with N but does not interrupt typing", () => {
