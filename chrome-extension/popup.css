@@ -388,6 +388,15 @@ textarea::placeholder {
   margin-top: 8px;
 }
 
+.quiet-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.quiet-row input[type="time"] { width: auto; color-scheme: dark; }
+
 .actions {
   margin-top: 10px;
   display: flex;
