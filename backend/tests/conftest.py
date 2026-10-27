@@ -205,3 +205,17 @@ def _no_real_ga4_leads(monkeypatch):
     fake = AsyncMock(return_value=[])
     monkeypatch.setattr(ga4_leads, "query_leads", fake)
     return fake
+
+
+@pytest.fixture(autouse=True)
+def _no_real_google_status(monkeypatch):
+    """Las anotaciones de Control SEO leen el panel de estado de Google Search:
+    en los tests nunca sale a la red. Por defecto no hay eventos; un test que
+    quiera otros sustituye `_fetch`."""
+    from backend.services import google_search_status
+
+    google_search_status.clear_cache()
+    fake = AsyncMock(return_value=[])
+    monkeypatch.setattr(google_search_status, "_fetch", fake)
+    yield fake
+    google_search_status.clear_cache()

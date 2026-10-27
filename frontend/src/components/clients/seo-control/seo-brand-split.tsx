@@ -1,4 +1,4 @@
-import { Bar, BarChart, Legend, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts"
+import { Bar, BarChart, Legend, ReferenceLine, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts"
 import { Tag } from "lucide-react"
 import type { ClientSeoSummary } from "@/lib/types"
 import { Button } from "@/components/ui/button"
@@ -16,6 +16,8 @@ interface Props {
   brand: NonNullable<ClientSeoSummary["brand"]>
   canEditTerms: boolean
   onEditTerms?: () => void
+  /** Fechas (AAAA-MM-DD) de "Qué ha pasado": se marcan sus semanas en la gráfica. */
+  markedDates?: string[]
 }
 
 function pct(current: number, previous: number): number | null {
@@ -24,7 +26,7 @@ function pct(current: number, previous: number): number | null {
 }
 
 /** Marca / Sin marca / Sin clasificar: clics de la ventana y su evolución semanal. */
-export function SeoBrandSplit({ brand, canEditTerms, onEditTerms }: Props) {
+export function SeoBrandSplit({ brand, canEditTerms, onEditTerms, markedDates = [] }: Props) {
   const { current, previous, terms, trend } = brand
   const total = current.brand.clicks + current.non_brand.clicks + current.unclassified.clicks
 
@@ -53,6 +55,8 @@ export function SeoBrandSplit({ brand, canEditTerms, onEditTerms }: Props) {
     { key: "non_brand" as const, label: "Sin marca" },
     { key: "unclassified" as const, label: "Sin clasificar" },
   ]
+  // Semanas con algo en "Qué ha pasado": línea discontinua sobre la barra.
+  const markedWeeks = trend.filter((w) => markedDates.some((day) => day >= w.week_start && day <= w.week_end))
   const chartData = trend.map((w) => ({
     week: formatShortDay(w.week_end),
     Marca: w.brand_clicks,
@@ -99,6 +103,9 @@ export function SeoBrandSplit({ brand, canEditTerms, onEditTerms }: Props) {
               <Bar dataKey="Marca" stackId="clics" fill={COLORS.brand} />
               <Bar dataKey="Sin marca" stackId="clics" fill={COLORS.non_brand} />
               <Bar dataKey="Sin clasificar" stackId="clics" fill={COLORS.unclassified} radius={[2, 2, 0, 0]} />
+              {markedWeeks.map((w) => (
+                <ReferenceLine key={w.week_end} x={formatShortDay(w.week_end)} stroke="#FFD600" strokeDasharray="3 3" ifOverflow="extendDomain" />
+              ))}
             </BarChart>
           </ResponsiveContainer>
         </div>

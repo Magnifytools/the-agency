@@ -546,6 +546,29 @@ admin_users, admin_settings
   `seo_control`/`client_seo`, `gsc_query_monthly`, `seo_page_groups` y
   `query_history` en cualquier camino de IA.
 
+## Control SEO: qué ha pasado, antes y después y páginas que caen (bloque B)
+- **Qué ha pasado** (`seo-annotations-card.tsx`, `GET /api/clients/{id}/seo/annotations?from&to`,
+  `services/seo_insights.annotations`): notas a mano (`seo_annotations`, migración
+  `seo_annotations_v1`; crear/borrar pide escritura de `clients`), actualizaciones e
+  incidencias de Google leídas EN VIVO del panel oficial
+  (`services/google_search_status.py`, `status.search.google.com/incidents.json`,
+  caché 6 h; sin red → `google_available: false`, nunca se guardan), cambios
+  críticos de la web (si lee `web`) y tareas cerradas con URL (si lee `tasks`).
+  Cubre las 16 semanas de la gráfica de marca, que marca las semanas con algo.
+  En tests, el fixture autouse `_no_real_google_status` sustituye `_fetch`.
+- **Antes y después** (`GET /seo/impact?date&days=14|28|56&page|group`): N días
+  antes y N después de la fecha (el día no cuenta); si aún no han pasado N días,
+  tramos iguales con lo que haya (mínimo 7: `too_early`). Web entera desde
+  `gsc_daily`; página (`page_variants`: sin query, con y sin barra) o grupo desde
+  `gsc_page_daily` (120 días: `outside_detail` si no llega). En el panel de una
+  tarea cerrada con URL sale como "Impacto en Google" (`task-seo-impact.tsx`).
+- **Páginas que pierden tráfico** (`GET /seo/decay`): clics de los últimos 28 días
+  frente a su mejor tramo de 28 dentro del detalle (hasta 4 tramos; hacen falta 2);
+  entra si cae ≥ 40 % y su mejor tramo tuvo ≥ 30 clics. Motivo: `position` (empeora
+  ≥ 1), `demand` (las impresiones caen como los clics) o `ctr`. "Crear tarea" crea
+  una tarea del cliente con la URL en `link_url`.
+- Todo sigue fuera de la IA y del MCP, como el resto del detalle de Search Console.
+
 ## Estado del cliente (cartera)
 
 - **Qué es**: la antigua salud 0-100 se sustituyó (19 oct 2026) por un estado
