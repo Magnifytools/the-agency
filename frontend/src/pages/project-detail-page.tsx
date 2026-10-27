@@ -285,7 +285,7 @@ export default function ProjectDetailPage() {
     <div className="space-y-6">
       {/* Breadcrumb + Header */}
       <Breadcrumb items={[
-        { label: "Inicio", href: "/dashboard" },
+        { label: "Inicio", href: "/" },
         { label: "Proyectos", href: "/projects" },
         { label: project.name },
       ]} />

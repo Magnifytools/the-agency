@@ -185,7 +185,7 @@ export default function LeadDetailPage() {
     <div className="space-y-6 max-w-4xl">
       {/* Breadcrumb + Header */}
       <Breadcrumb items={[
-        { label: "Inicio", href: "/dashboard" },
+        { label: "Inicio", href: "/" },
         { label: "Pipeline", href: "/leads" },
         { label: lead.company_name },
       ]} />
