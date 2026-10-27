@@ -6,6 +6,9 @@ from pydantic import BaseModel, Field
 
 class TaskCommentCreate(BaseModel):
     text: str = Field(..., min_length=1, max_length=2000)
+    # Personas elegidas con @ en el comentario: reciben "te ha mencionado".
+    # No se guardan; sólo deciden a quién se avisa.
+    mention_ids: list[int] = Field(default_factory=list, max_length=20)
 
 
 class TaskCommentResponse(BaseModel):

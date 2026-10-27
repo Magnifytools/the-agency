@@ -15,6 +15,7 @@ from sqlalchemy.orm import aliased, noload
 from backend.core.modules import is_enabled
 from backend.db.models import Notification, Project, Task, User, WeeklyDigest
 from backend.services.incident_conditions import module_permission
+from backend.services.task_notifications import TASK_ACTIVITY_TYPES
 from backend.services.temporal import business_today
 
 # These rows came from the retired ``/notifications/generate-checks`` writer.
@@ -50,9 +51,10 @@ def visible_notification_condition(user_id: int):
     project_read = module_permission(user_id, "projects") if is_enabled("projects") else false()
     digest_read = module_permission(user_id, "digests") if is_enabled("digests") else false()
     task_activity = ("task_assigned",)
-    # Revisión tras publicar (services/web/publish_check.py): se ve mientras se
-    # pueda leer la tarea, aunque luego se reasigne.
-    task_checks = ("task_publish_check",)
+    # Revisión tras publicar (services/web/publish_check.py) y comentarios,
+    # menciones, revisión y "vence mañana" (services/task_notifications.py): se
+    # ven mientras se pueda leer la tarea, aunque luego se reasigne.
+    task_checks = ("task_publish_check", *TASK_ACTIVITY_TYPES)
     project_activity = ("phase_completed",)
     digest_activity = ("digest_generated",)
     task_summaries = ("scheduled_morning", "scheduled_evening")
