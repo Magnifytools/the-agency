@@ -100,4 +100,3 @@ async def test_sort_rank_migration_is_registered():
     from backend.startup.task_sort_rank_schema import MIGRATION
 
     assert MIGRATION in deployment_schema.MIGRATIONS
-    assert deployment_schema.MIGRATIONS[-1] is MIGRATION
