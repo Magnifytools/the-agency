@@ -74,7 +74,7 @@ function DailyWorkspace({ userId, today }: { userId: number; today: string }) {
   const [date, setDate] = useState(today)
   return <div className="space-y-6">
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div><h1 className="text-2xl font-bold">Cerrar el día</h1><p className="text-muted-foreground">Revisa los hechos, añade tus notas y guarda. Compartir es una acción aparte.</p></div>
+      <div><h1 className="text-2xl font-bold">Cierre del día</h1><p className="text-muted-foreground">Revisa los hechos, añade tus notas y guarda. Compartir es una acción aparte.</p></div>
       <label className="space-y-1 text-sm font-medium">Fecha
         <input aria-label="Fecha del daily" type="date" value={date} onChange={(event) => event.target.value && setDate(event.target.value)} className="ml-2 rounded-md border border-border bg-background px-2 py-1.5 text-sm" />
       </label>

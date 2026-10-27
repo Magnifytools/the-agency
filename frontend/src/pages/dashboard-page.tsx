@@ -826,11 +826,11 @@ export default function DashboardPage() {
 
       {isAdmin && (
         <Card>
-          <CardHeader><CardTitle>Resumen Diario</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Cierre del día del equipo (Discord)</CardTitle></CardHeader>
           <CardContent className="pt-4">
             <div className="flex flex-wrap gap-2 items-center">
               <Button variant="outline" onClick={handlePreview}><Eye className="h-4 w-4 mr-2" /> Vista previa antes de enviar</Button>
-              {!discordConfigured && <span className="text-xs text-muted-foreground">Configura el webhook en Ajustes → Discord</span>}
+              {!discordConfigured && <span className="text-xs text-muted-foreground">Discord no está conectado: falta la variable DISCORD_WEBHOOK_URL en Railway</span>}
             </div>
           </CardContent>
         </Card>

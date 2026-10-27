@@ -67,7 +67,7 @@ export function InboxWidget() {
                 <div className="p-3 border-b border-border/40 bg-background/50">
                     <div className="relative group">
                         <Input
-                            aria-label="Capturar una nota"
+                            aria-label="Anotar"
                             value={newNote}
                             onChange={(e) => setNewNote(e.target.value)}
                             onKeyDown={handleKeyDown}

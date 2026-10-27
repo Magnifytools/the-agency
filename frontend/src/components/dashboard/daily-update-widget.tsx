@@ -52,7 +52,7 @@ export function DailyUpdateWidget({ userId, readOnly = false }: DailyUpdateWidge
         )}
         {!readOnly && (
           <Link to="/dailys" className="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand">
-            {daily ? "Abrir mi resumen diario" : "Cerrar el día"}
+            {daily ? "Abrir mi cierre del día" : "Cerrar el día"}
           </Link>
         )}
       </CardContent>

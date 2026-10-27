@@ -22,19 +22,19 @@ it("opens shortcut help with the shifted question mark key", () => {
 })
 
 it("executes a custom sequential navigation chord and rejects modified second keys", () => {
-  render(<MemoryRouter initialEntries={["/settings"]}><OverrideHarness overrides={{ goto_dashboard: "G+H" }} /></MemoryRouter>)
-  fireEvent.keyDown(document, { key: "h" })
+  render(<MemoryRouter initialEntries={["/settings"]}><OverrideHarness overrides={{ goto_dashboard: "G+Y" }} /></MemoryRouter>)
+  fireEvent.keyDown(document, { key: "y" })
   expect(screen.getByRole("status")).toHaveTextContent("/settings")
   fireEvent.keyDown(document, { key: "g" })
-  fireEvent.keyDown(document, { key: "h", ctrlKey: true })
+  fireEvent.keyDown(document, { key: "y", ctrlKey: true })
   expect(screen.getByRole("status")).toHaveTextContent("/settings")
   fireEvent.keyDown(document, { key: "g" })
-  fireEvent.keyDown(document, { key: "h" })
+  fireEvent.keyDown(document, { key: "y" })
   expect(screen.getByRole("status")).toHaveTextContent("/dashboard")
 })
 
 it("clears a pending chord when typing starts in an input", () => {
-  render(<MemoryRouter initialEntries={["/settings"]}><OverrideHarness overrides={{ goto_dashboard: "G+H" }} /></MemoryRouter>)
+  render(<MemoryRouter initialEntries={["/settings"]}><OverrideHarness overrides={{ goto_dashboard: "G+Y" }} /></MemoryRouter>)
   fireEvent.keyDown(document, { key: "g" })
   const input = document.createElement("input")
   document.body.appendChild(input)
@@ -42,7 +42,7 @@ it("clears a pending chord when typing starts in an input", () => {
   fireEvent.keyDown(document, { key: "x" })
   input.blur()
   input.remove()
-  fireEvent.keyDown(document, { key: "h" })
+  fireEvent.keyDown(document, { key: "y" })
   expect(screen.getByRole("status")).toHaveTextContent("/settings")
 })
 
@@ -97,4 +97,11 @@ it("uses the customized new-entry shortcut", () => {
   expect(onCapture).not.toHaveBeenCalled()
   fireEvent.keyDown(document, { key: "N", shiftKey: true })
   expect(onCapture).toHaveBeenCalledTimes(1)
+})
+
+it.each([["h", "/tasks?view=my_day"], ["r", "/digests"], ["n", "/incidents"]])("G+%s lleva a donde se trabaja cada día", (key, path) => {
+  render(<MemoryRouter initialEntries={["/settings"]}><Harness /></MemoryRouter>)
+  fireEvent.keyDown(document, { key: "g" })
+  fireEvent.keyDown(document, { key })
+  expect(screen.getByRole("status")).toHaveTextContent(path)
 })

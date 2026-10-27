@@ -63,7 +63,7 @@ export function AppLayout() {
       <ActiveTimerBar />
       <div className="md:hidden flex items-center justify-between border-b border-border px-4 py-1.5 bg-card">
         <button onClick={() => setSearchOpen(true)} className="flex items-center gap-2 min-h-11 text-sm"><Search className="h-4 w-4" />Buscar</button>
-        <button onClick={() => setCaptureOpen(true)} className="flex items-center gap-2 min-h-11 text-sm font-semibold" title="Pide una acción o guarda una nota para aclararla después"><Inbox className="h-4 w-4" />Hacer o anotar</button>
+        <button onClick={() => setCaptureOpen(true)} className="flex items-center gap-2 min-h-11 text-sm font-semibold" title="Pide una acción o guarda una nota para aclararla después"><Inbox className="h-4 w-4" />Anotar</button>
         <button onClick={() => setMoreDrawerOpen(true)} className="flex items-center gap-2 min-h-11 text-sm" aria-label="Abrir menú de cuenta"><LayoutGrid className="h-4 w-4" />Cuenta</button>
       </div>
 
