@@ -358,7 +358,7 @@ export const clientsApi = {
 
 // Tasks
 export const tasksApi = {
-  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; timer_eligible?: boolean; timer_scope?: "assigned" | "assigned_or_created"; retirement?: "active" | "retired"; search?: string; page?: number; page_size?: number }) =>
+  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; unscheduled?: boolean; completed_from?: string; is_recurring?: boolean; timer_eligible?: boolean; timer_scope?: "assigned" | "assigned_or_created"; retirement?: "active" | "retired"; search?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params }).then((r) => r.data),
   agenda: (params: { date: string; section: TaskAgendaSection; assigned_to?: number | "me" | "unassigned" | "all"; timezone_offset_minutes?: number; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks/agenda", { params }).then((r) => r.data),
@@ -409,8 +409,8 @@ export const tasksApi = {
   comments: {
     list: (taskId: number) =>
       api.get<TaskComment[]>(`/tasks/${taskId}/comments`).then((r) => r.data),
-    create: (taskId: number, text: string) =>
-      api.post<TaskComment>(`/tasks/${taskId}/comments`, { text }).then((r) => r.data),
+    create: (taskId: number, text: string, mentionIds: number[] = []) =>
+      api.post<TaskComment>(`/tasks/${taskId}/comments`, { text, mention_ids: mentionIds }).then((r) => r.data),
     delete: (taskId: number, commentId: number) =>
       api.delete(`/tasks/${taskId}/comments/${commentId}`).then((r) => r.data),
   },

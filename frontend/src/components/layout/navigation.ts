@@ -12,7 +12,7 @@ const areas: NavigationArea[] = [
     { to: "/dashboard", label: "Visión general", module: "dashboard" },
   ] },
   { id: "work", label: "Trabajo", icon: CheckSquare, links: [
-    { to: "/tasks?view=all", label: "Tareas", module: "tasks" },
+    { to: "/tasks?view=tareas", label: "Tareas", module: "tasks" },
     { to: "/projects", label: "Proyectos", module: "projects" },
     { to: "/timesheet", label: "Horas", module: "timesheet" },
     { to: "/inbox", label: "Por aclarar", module: "tasks" },

@@ -54,7 +54,7 @@ vi.mock("@/lib/api", () => ({
     get: mocks.getProject,
   },
   usersApi: {
-    listAll: () => Promise.resolve([{ id: 2, full_name: "Violeta" }]),
+    listAll: () => Promise.resolve([{ id: 2, full_name: "Violeta", is_active: true }, { id: 5, full_name: "Nacho Pérez", short_name: "Nacho", is_active: true }]),
   },
   categoriesApi: { list: () => Promise.resolve([]) },
   tasksApi: {
@@ -776,5 +776,17 @@ describe("TaskPanel", () => {
       expect(await screen.findByText(/1\. Exportar/)).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Generar borrador" })).not.toBeInTheDocument();
     });
+  });
+
+  it("comenta mencionando a alguien y le pasa su id al servidor", async () => {
+    mocks.createComment.mockResolvedValue({ id: 1 });
+    setup({ taskId: 9 });
+    await userEvent.click(await screen.findByText(/Checklist, comentarios/));
+    const input = await screen.findByRole("combobox", { name: "Nuevo comentario" });
+    await userEvent.type(input, "Revisa @Na");
+    await userEvent.keyboard("{Enter}");
+    await userEvent.type(input, "por favor{Enter}");
+    await waitFor(() => expect(mocks.createComment).toHaveBeenCalledWith(9, "Revisa @Nacho por favor", [5]));
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 });

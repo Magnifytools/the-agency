@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query"
 import { tasksApi, clientsApi, categoriesApi, usersApi } from "@/lib/api"
-import type { Task, TaskAgendaSection, TaskCreate, TaskStatus, TaskPriority } from "@/lib/types"
+import type { PaginatedResponse, Task, TaskAgendaSection, TaskCreate, TaskStatus, TaskPriority } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { usePagination } from "@/hooks/use-pagination"
 import { useAuth } from "@/context/auth-context"
@@ -33,9 +33,9 @@ import { WeeklyPlannerView } from "@/components/tasks/weekly-planner-view"
 import { TaskPanel } from "@/components/tasks/task-panel"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
-import { initialTasksView, selectedTaskAssignee, taskQueryKeyWithWeek, withTaskAssignee } from "@/components/tasks/task-page-utils"
+import { LAST_TASKS_VIEW, boardStatusQuery, calendarMonthFrom, calendarMonthParam, initialTasksView, rememberTasksView, selectedTaskAssignee, shiftCalendarMonth, taskQueryKeyWithWeek, weekOffsetFrom, weekParam, withTaskAssignee } from "@/components/tasks/task-page-utils"
 import { invalidateTaskChange, optimisticallyUpdateExactQuery, restoreQuerySnapshot, taskKeys } from "@/lib/query-keys"
-import type { OperationalImpact } from "@/lib/query-keys"
+import type { OperationalImpact, QuerySnapshot } from "@/lib/query-keys"
 import { addCivilDays, formatCivilDate } from "@/lib/dates"
 import { useBusinessDate } from "@/hooks/use-business-date"
 import { taskStatusPresentation, taskStatusSelectClass } from "@/lib/task-status"
@@ -65,6 +65,12 @@ const weekRange = (offset: number, today: string) => {
 }
 
 const ACTIVE_STATUS_FILTER = "backlog,pending,in_progress,advanced,waiting,in_review"
+// Tablero, calendario y semana no paginan: traen hasta este tope y avisan si
+// hay más. "Sin planificar" y "Hecho" (últimos 7 días) llevan el suyo.
+const BOARD_LIMIT = 500
+const UNSCHEDULED_LIMIT = 100
+const COMPLETED_LIMIT = 200
+const COMPLETED_DAYS = 7
 
 export default function TasksPage() {
   const { user, isAdmin, hasPermission } = useAuth()
@@ -87,11 +93,33 @@ export default function TasksPage() {
     next.delete("qaFilter")
     return next
   })
-  const [weekOffset, setWeekOffset] = useState(0)
-  const [calMonth, setCalMonth] = useState(() => {
-    const [year, month] = businessToday.split("-").map(Number)
-    return { year, month: month - 1 }
-  })
+  // El menú abre "la última vista de Tareas": se resuelve y se escribe la real
+  // en la URL para que recargar o compartir enseñe lo mismo.
+  useEffect(() => {
+    if (searchParams.get("view") !== LAST_TASKS_VIEW) return
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.set("view", view)
+      return next
+    }, { replace: true })
+  }, [searchParams, setSearchParams, view])
+  useEffect(() => { rememberTasksView(view) }, [view])
+  const isBoardView = view === "sprint" || view === "calendar" || view === "weekly"
+  // Mes del calendario y semana del planificador también viven en la URL.
+  const calMonth = calendarMonthFrom(searchParams.get("mes"), businessToday)
+  const setCalMonth = (next: { year: number; month: number }) => setSearchParams((previous) => {
+    const params = new URLSearchParams(previous)
+    if (calendarMonthParam(next) === businessToday.slice(0, 7)) params.delete("mes")
+    else params.set("mes", calendarMonthParam(next))
+    return params
+  }, { replace: true })
+  const weekOffset = weekOffsetFrom(searchParams.get("semana"), businessToday)
+  const setWeekOffset = (offset: number) => setSearchParams((previous) => {
+    const params = new URLSearchParams(previous)
+    if (offset === 0) params.delete("semana")
+    else params.set("semana", weekParam(offset, businessToday))
+    return params
+  }, { replace: true })
 
   // Filters
   // Los filtros viven en la URL: sobreviven a abrir una tarea, volver atrás o
@@ -162,17 +190,29 @@ export default function TasksPage() {
     : undefined
 
   const selectedWeek = weekRange(weekOffset, businessToday)
+  const boardStatus = boardStatusQuery(filterStatus, ACTIVE_STATUS_FILTER)
+  const listStatus = view === "sprint" ? boardStatus.active : filterStatus
+  const listPage = isBoardView ? 1 : page
+  const listPageSize = isBoardView ? BOARD_LIMIT : pageSize
   const tasksQueryKey = taskQueryKeyWithWeek(
-    taskKeys.list([filterClient, filterCategory, filterStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, filterDateField, searchQuery, page, pageSize, qaFilter, view, calMonth.year, calMonth.month]),
+    taskKeys.list([filterClient, filterCategory, listStatus, filterPriority, filterAssigned, filterDateFrom, filterDateTo, filterDateField, searchQuery, listPage, listPageSize, qaFilter, view, calMonth.year, calMonth.month]),
     selectedWeek,
   )
+  // Mismos filtros que la lista para las consultas auxiliares del tablero y la semana.
+  const sharedFilters = {
+    client_id: filterClient ? Number(filterClient) : undefined,
+    category_id: filterCategory ? Number(filterCategory) : undefined,
+    priority: filterPriority || undefined,
+    assigned_to: filterAssigned ? Number(filterAssigned) : undefined,
+    search: searchQuery || undefined,
+  }
   const { data: tasksData, isLoading, isError: isTasksError, refetch: refetchTasks } = useQuery({
     queryKey: tasksQueryKey,
     queryFn: () =>
       tasksApi.list({
         client_id: filterClient ? Number(filterClient) : undefined,
         category_id: filterCategory ? Number(filterCategory) : undefined,
-        status: filterStatus || undefined,
+        status: listStatus || undefined,
         priority: filterPriority || undefined,
         assigned_to: qaFilter === "unassigned" ? ("unassigned" as unknown as number) : (filterAssigned ? Number(filterAssigned) : undefined),
         due_date_from: calDateFrom ?? (filterDateField === "due_date" && filterDateFrom ? filterDateFrom : undefined),
@@ -184,10 +224,24 @@ export default function TasksPage() {
         no_estimate: qaFilter === "no_estimate" ? true : undefined,
         no_project: qaFilter === "no_project" ? true : undefined,
         search: searchQuery || undefined,
-        page,
-        page_size: pageSize,
+        page: listPage,
+        page_size: listPageSize,
       }),
-    enabled: view !== "my_day",
+    enabled: view !== "my_day" && listStatus !== null,
+  })
+  const completedFrom = addCivilDays(businessToday, -(COMPLETED_DAYS - 1))
+  const completedQueryKey = taskKeys.list(["board-completed", completedFrom, sharedFilters])
+  const showCompletedColumn = view === "sprint" && boardStatus.completed
+  const { data: completedData, isError: isCompletedError } = useQuery({
+    queryKey: completedQueryKey,
+    queryFn: () => tasksApi.list({ ...sharedFilters, status: "completed", completed_from: completedFrom, page: 1, page_size: COMPLETED_LIMIT }),
+    enabled: showCompletedColumn,
+  })
+  const unscheduledQueryKey = taskKeys.list(["week-unscheduled", sharedFilters])
+  const { data: unscheduledData } = useQuery({
+    queryKey: unscheduledQueryKey,
+    queryFn: () => tasksApi.list({ ...sharedFilters, status: "pending,backlog", unscheduled: true, page: 1, page_size: UNSCHEDULED_LIMIT }),
+    enabled: view === "weekly",
   })
 
   const useAgendaQuery = (section: TaskAgendaSection) => useInfiniteQuery({
@@ -217,10 +271,14 @@ export default function TasksPage() {
   const agendaLoading = plannedAgenda.isLoading || carryoverAgenda.isLoading || unplannedAgenda.isLoading || followupsAgenda.isLoading || completedAgenda.isLoading
   const invalidateTaskViews = (affected: OperationalImpact = {}) =>
     invalidateTaskChange(queryClient, affected)
-  const allTasks = tasksData?.items ?? []
+  const allTasks = listStatus === null ? [] : tasksData?.items ?? []
+  const withoutDuplicates = (items: Task[]) => items.filter((task, index) => items.findIndex((other) => other.id === task.id) === index)
+  const boardTasks = withoutDuplicates([...allTasks, ...(showCompletedColumn ? completedData?.items ?? [] : [])])
+  const weekTasks = withoutDuplicates([...allTasks, ...(unscheduledData?.items ?? [])])
+  const boardTruncated = isBoardView && !!tasksData && tasksData.total > tasksData.items.length
   const agendaTasks = [plannedAgenda, carryoverAgenda, unplannedAgenda, followupsAgenda, completedAgenda]
     .flatMap((query) => agendaData(query).items)
-  const visibleTasks = [...allTasks, ...agendaTasks]
+  const visibleTasks = [...boardTasks, ...weekTasks, ...agendaTasks]
 
   const impactForTasks = (items: Task[], extra: Record<string, unknown> = {}) => ({
     projectIds: [...items.map((task) => task.project_id), typeof extra.project_id === "number" ? extra.project_id : undefined],
@@ -320,22 +378,25 @@ export default function TasksPage() {
     onError: (err) => toast.error(getErrorMessage(err, "No se pudo cambiar la recurrencia")),
   })
 
-  // Separate mutation for drag & drop schedule changes (no dialog close, optimistic update)
-  const scheduleQueryKey = tasksQueryKey
-  const scheduleMutation = useMutation({
-    mutationFn: ({ id, scheduled_date }: { id: number; scheduled_date: string | null }) =>
-      tasksApi.update(id, { scheduled_date }),
-    onMutate: async ({ id, scheduled_date }) => {
-      const snapshot = await optimisticallyUpdateExactQuery<typeof tasksData>(queryClient, scheduleQueryKey, (old) => {
-        if (!old) return old
-        return { ...old, items: old.items.map((t: Task) => t.id === id ? { ...t, scheduled_date } : t) }
-      })
+  // Cambios rápidos desde tablero, calendario y semana: sin cerrar diálogos y
+  // al momento (optimista en las listas visibles; si el servidor dice que no,
+  // vuelve atrás y lo explica).
+  const boardQueryKeys = [tasksQueryKey, completedQueryKey, unscheduledQueryKey]
+  const quickUpdateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<TaskCreate> }) => tasksApi.update(id, data),
+    onMutate: async ({ id, data }) => {
+      const snapshots: QuerySnapshot[] = await Promise.all(boardQueryKeys.map((key) =>
+        optimisticallyUpdateExactQuery<PaginatedResponse<Task>>(queryClient, key, (old) =>
+          old && { ...old, items: old.items.map((task) => task.id === id ? { ...task, ...data } as Task : task) })))
       const movedTask = visibleTasks.find((task) => task.id === id)
-      return { snapshot, projectId: movedTask?.project_id, clientId: movedTask?.client_id }
+      return { snapshots, projectId: movedTask?.project_id, clientId: movedTask?.client_id }
     },
-    onError: (_err, _vars, ctx) => {
-      restoreQuerySnapshot(queryClient, ctx?.snapshot)
-      toast.error("Error al mover tarea")
+    onSuccess: (task, { data }) => {
+      if (data.status === "in_review" && task.status === "in_review") toast.success("Enviada a revisión: la cierra quien revisa el proyecto")
+    },
+    onError: (err, _vars, ctx) => {
+      ctx?.snapshots.forEach((snapshot) => restoreQuerySnapshot(queryClient, snapshot))
+      toast.error(getErrorMessage(err, "No se pudo mover la tarea"))
     },
     onSettled: (_data, _error, _vars, ctx) => invalidateTaskViews({ projectId: ctx?.projectId, clientId: ctx?.clientId }),
   })
@@ -545,8 +606,18 @@ export default function TasksPage() {
       </>}
 
       {view !== "my_day" && <div className="relative mb-6">
-      <div className="flex gap-2 overflow-x-auto scrollbar-none flex-nowrap bg-muted/30 p-1 sm:w-fit rounded-lg border border-border">
+      <div role="group" aria-label="Vista de tareas" className="flex gap-2 overflow-x-auto scrollbar-none flex-nowrap bg-muted/30 p-1 sm:w-fit rounded-lg border border-border">
         <Button
+          aria-pressed={view === "all"}
+          variant={view === "all" ? "default" : "ghost"}
+          size="sm"
+          className="shrink-0 whitespace-nowrap"
+          onClick={() => setView("all")}
+        >
+          <List className="w-4 h-4 mr-2" /> Lista
+        </Button>
+        <Button
+          aria-pressed={view === "sprint"}
           variant={view === "sprint" ? "default" : "ghost"}
           size="sm"
           className="shrink-0 whitespace-nowrap"
@@ -555,14 +626,7 @@ export default function TasksPage() {
           <Kanban className="w-4 h-4 mr-2" /> Tablero
         </Button>
         <Button
-          variant={view === "all" ? "default" : "ghost"}
-          size="sm"
-          className="shrink-0 whitespace-nowrap"
-          onClick={() => setView("all")}
-        >
-          <List className="w-4 h-4 mr-2" /> Todas
-        </Button>
-        <Button
+          aria-pressed={view === "calendar"}
           variant={view === "calendar" ? "default" : "ghost"}
           size="sm"
           className="shrink-0 whitespace-nowrap"
@@ -571,6 +635,7 @@ export default function TasksPage() {
           <CalendarDays className="w-4 h-4 mr-2" /> Calendario
         </Button>
         <Button
+          aria-pressed={view === "weekly"}
           variant={view === "weekly" ? "default" : "ghost"}
           size="sm"
           className="shrink-0 whitespace-nowrap"
@@ -579,6 +644,7 @@ export default function TasksPage() {
           <Calendar className="w-4 h-4 mr-2" /> Semana
         </Button>
         <Button
+          aria-pressed={view === "recurring"}
           variant={view === "recurring" ? "default" : "ghost"}
           size="sm"
           className="shrink-0 whitespace-nowrap"
@@ -781,8 +847,13 @@ export default function TasksPage() {
         </Table>
       ) : null}
 
-      {(view === "all" || view === "sprint" || view === "weekly" || view === "calendar") && (
+      {view === "all" && (
         <Pagination page={page} pageSize={pageSize} total={tasksData?.total ?? 0} onPageChange={setPage} />
+      )}
+      {boardTruncated && tasksData && (
+        <p role="status" className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+          Se ven {tasksData.items.length} de {tasksData.total} tareas. Filtra por cliente, responsable o estado para ver el resto.
+        </p>
       )}
 
       {/* Conditional Rendering of Views */}
@@ -819,13 +890,15 @@ export default function TasksPage() {
 
       {!isLoading && !isTasksError && view === "sprint" && (
         <KanbanBoard
-          tasks={tasks}
+          tasks={boardTasks}
           onStatusChange={(taskId, newStatus) => {
-            const task = tasks.find((item) => item.id === taskId)
-            updateMutation.mutate({ id: taskId, data: { status: newStatus === "completed" && task && sendsForReview(task) ? "in_review" : newStatus } })
+            const task = boardTasks.find((item) => item.id === taskId)
+            quickUpdateMutation.mutate({ id: taskId, data: { status: newStatus === "completed" && task && sendsForReview(task) ? "in_review" : newStatus } })
           }}
           onOpenEdit={openEdit}
           canWrite={canWriteTasks}
+          showCompleted={showCompletedColumn}
+          completedHint={isCompletedError ? "No se pudieron cargar" : `últimos ${COMPLETED_DAYS} días`}
         />
       )}
 
@@ -834,20 +907,25 @@ export default function TasksPage() {
           tasks={allTasks}
           year={calMonth.year}
           month={calMonth.month}
-          onPrev={() => { reset(); setCalMonth(({ year, month }) => month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 }) }}
-          onNext={() => { reset(); setCalMonth(({ year, month }) => month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 }) }}
+          onPrev={() => setCalMonth(shiftCalendarMonth(calMonth, -1))}
+          onNext={() => setCalMonth(shiftCalendarMonth(calMonth, 1))}
+          onToday={() => setCalMonth(calendarMonthFrom(null, businessToday))}
           onOpenEdit={openEdit}
+          onDueDateChange={canWriteTasks ? (taskId, date) => quickUpdateMutation.mutate({ id: taskId, data: { due_date: date } }) : undefined}
         />
       )}
 
       {!isLoading && !isTasksError && view === "weekly" && (
         <WeeklyPlannerView
-          tasks={allTasks}
+          tasks={weekTasks}
           weekOffset={weekOffset}
-          onWeekOffsetChange={(offset) => { setWeekOffset(offset); reset() }}
-          onScheduleChange={(taskId, date) => scheduleMutation.mutate({ id: taskId, scheduled_date: date })}
+          onWeekOffsetChange={setWeekOffset}
+          onScheduleChange={(taskId, date) => quickUpdateMutation.mutate({ id: taskId, data: { scheduled_date: date } })}
           onOpenEdit={openEdit}
           canWrite={canWriteTasks}
+          unscheduledNote={unscheduledData && unscheduledData.total > unscheduledData.items.length
+            ? `Las ${unscheduledData.items.length} más recientes de ${unscheduledData.total}`
+            : undefined}
         />
       )}
 
