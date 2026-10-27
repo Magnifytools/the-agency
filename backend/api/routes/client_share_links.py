@@ -11,6 +11,7 @@ from backend.core.rate_limiter import public_link_limiter, public_pdf_limiter
 from backend.db.database import get_db
 from backend.db.models import Client, User
 from backend.services import client_share_links as links
+from backend.services import digest_seo_detail
 from backend.services.dashboard_access import has_module_read
 
 router = APIRouter(tags=["client-share-links"])
@@ -116,5 +117,6 @@ async def public_digest_pdf(token: str, digest_id: int, request: Request,
     if digest is None:
         raise HTTPException(status_code=404, detail=_NOT_FOUND, headers=_PUBLIC_HEADERS)
     client_name = await db.scalar(select(Client.name).where(Client.id == link.client_id)) or ""
-    data, filename = await build_pdf_or_error(digest, client_name)
+    seo = await digest_seo_detail.seo_for_render(db, digest, may_compute=False)
+    data, filename = await build_pdf_or_error(digest, client_name, seo=seo)
     return pdf_response(data, filename, _PUBLIC_HEADERS)

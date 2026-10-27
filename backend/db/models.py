@@ -2031,6 +2031,21 @@ class SeoAnnotation(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class DigestSeoDetail(Base):
+    """Foto del detalle de Search Console del mes de un resumen mensual: top de
+    consultas y páginas, oportunidades y marca. Se pinta con código en el email,
+    el PDF y el enlace del cliente; nunca va a la IA. Mientras el resumen no ha
+    salido de la app se recalcula al pintarlo; después es lo que se envió.
+    Fuera del Deshacer (dato de máquina) y con la retención del detalle."""
+    __tablename__ = "digest_seo_details"
+    __table_args__ = (Index("ix_digest_seo_details_site_url", "site_url"),)
+
+    digest_id = Column(Integer, ForeignKey("weekly_digests.id", ondelete="CASCADE"), primary_key=True)
+    site_url = Column(String(255), nullable=False)
+    payload = Column(JSONB, nullable=False)
+    computed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class GscPageDaily(Base):
     """Cifras diarias finales por página de una propiedad (sólo los últimos 120 días).
 
