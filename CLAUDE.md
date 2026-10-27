@@ -210,8 +210,8 @@ admin_users, admin_settings
   datos y helpers del email, en A4 con márgenes, marca vectorial (la del
   favicon) y paleta Magnify.
 - **Sin red**: ni imágenes ni fuentes externas (Helvetica de serie, cp1252: los
-  emojis se quitan). `_OfflinePDF.image()` lanza error, porque fpdf2 descarga
-  con `urlopen` si recibe una URL. El cierre (HTML) se reduce a texto, saltos,
+  emojis se quitan). `_OfflinePDF.image()` lanza error, porque fpdf2 (2.8.8) descarga
+  por su cuenta si recibe una URL. El cierre (HTML) se reduce a texto, saltos,
   negritas y enlaces `http(s)`/`mailto`. Lo guarda `tests/test_digest_pdf.py`.
 - **API**: `GET /api/digests/{id}/pdf` (mismas reglas que verlo:
   `authorize_digest`; 10/min por usuario) y
