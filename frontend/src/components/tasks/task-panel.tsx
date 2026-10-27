@@ -41,6 +41,8 @@ import { UploadProgress } from "@/components/ui/upload-progress";
 import { businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates";
 import { taskStatusPresentation, taskStatusSelectClass } from "@/lib/task-status";
 import { PublishCheckBlock } from "@/components/tasks/publish-check-block";
+import { CommentInput } from "@/components/tasks/comment-input";
+import { mentionCandidates, mentionName, splitMentions } from "@/lib/mentions";
 
 type Defaults = {
   clientId?: number | null;
@@ -190,6 +192,8 @@ export function TaskPanel({
     queryFn: () => usersApi.listAll(),
     enabled: open,
   });
+  const mentionPeople = useMemo(() => mentionCandidates(users), [users]);
+  const mentionNames = useMemo(() => users.map(mentionName), [users]);
   const { data: categories = [] } = useQuery({
     queryKey: ["categories"],
     queryFn: () => categoriesApi.list(),
@@ -394,7 +398,8 @@ export function TaskPanel({
     onUploaded: () => void attachmentsQuery.refetch(),
   });
   const addComment = useMutation({
-    mutationFn: () => tasksApi.comments.create(taskId!, newComment.trim()),
+    mutationFn: ({ text, mentionIds }: { text: string; mentionIds: number[] }) =>
+      tasksApi.comments.create(taskId!, text, mentionIds),
     onSuccess: () => {
       setNewComment("");
       void commentsQuery.refetch();
@@ -1407,9 +1412,11 @@ export function TaskPanel({
                         key={item.id}
                         className="flex items-start gap-2 rounded bg-muted p-2 text-sm"
                       >
-                        <p className="flex-1">
+                        <p className="flex-1 whitespace-pre-wrap break-words">
                           <strong>{item.user_name ?? "Usuario"}:</strong>{" "}
-                          {item.text}
+                          {splitMentions(item.text, mentionNames).map((part, index) => part.mention
+                            ? <span key={index} className="font-medium text-brand">{part.text}</span>
+                            : part.text)}
                         </p>
                         {canWrite && (
                           <Button
@@ -1426,23 +1433,13 @@ export function TaskPanel({
                       </div>
                     ))}
                     {canWrite && (
-                      <div className="flex gap-2">
-                        <Input
-                          aria-label="Nuevo comentario"
-                          value={newComment}
-                          onChange={(event) =>
-                            setNewComment(event.target.value)
-                          }
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          disabled={addComment.isPending || !newComment.trim()}
-                          onClick={() => addComment.mutate()}
-                        >
-                          Comentar
-                        </Button>
-                      </div>
+                      <CommentInput
+                        value={newComment}
+                        onChange={setNewComment}
+                        candidates={mentionPeople}
+                        pending={addComment.isPending}
+                        onSubmit={(text, mentionIds) => addComment.mutate({ text, mentionIds })}
+                      />
                     )}
                   </section>
                   <section className="space-y-2">

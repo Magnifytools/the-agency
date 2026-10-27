@@ -252,6 +252,7 @@ def test_startup_loops_match_enabled_catalog(monkeypatch):
         "gsc_detail": "gsc-detail-sync",
         "web_health": "web-health",
         "publish_checks": "publish-checks",
+        "due_tomorrow": "due-tomorrow",
     }
     definitions = {definition.spec.key: definition for definition in job_definitions()}
     expected = {

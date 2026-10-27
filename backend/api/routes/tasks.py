@@ -41,6 +41,7 @@ from backend.services.domain_writes import (
     update_task as update_task_write,
 )
 from backend.services.recurrence import summarize_recurrence
+from backend.services.task_notifications import notify_task_comment, task_link
 from backend.services.task_draft import (
     TaskDraftError, build_draft_prompt, collect_draft_context, generate_task_draft,
 )
@@ -465,7 +466,7 @@ async def create_task(
                 type=TASK_ASSIGNED,
                 title=f"Nueva tarea asignada: {task.title}",
                 message=f"Se te ha asignado la tarea '{task.title}'",
-                link_url="/tasks",
+                link_url=task_link(task.id),
                 entity_type="task",
                 entity_id=task.id,
             )
@@ -589,7 +590,7 @@ async def update_task(
                 type=TASK_ASSIGNED,
                 title=f"Tarea asignada: {task.title}",
                 message=f"Se te ha reasignado la tarea '{task.title}'",
-                link_url="/tasks",
+                link_url=task_link(task.id),
                 entity_type="task",
                 entity_id=task.id,
             )
@@ -924,12 +925,15 @@ async def create_comment(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("tasks", write=True)),
 ):
-    # Verify task exists
-    t = await db.execute(select(Task.id).where(Task.id == task_id))
-    if not t.scalar_one_or_none():
+    task = (await db.execute(
+        select(Task).options(noload("*")).where(Task.id == task_id)
+    )).scalar_one_or_none()
+    if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     comment = TaskComment(task_id=task_id, user_id=current_user.id, text=body.text)
     db.add(comment)
+    await db.flush()
+    await notify_task_comment(db, task, comment, current_user, body.mention_ids)
     await db.commit()
     await safe_refresh(db, comment, log_context="tasks")
     return TaskCommentResponse(

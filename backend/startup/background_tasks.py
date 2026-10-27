@@ -310,6 +310,17 @@ async def _retention_cleanup_once():
 
 # ── Coordinated runtime ──────────────────────────────────────
 
+async def _due_tomorrow_once():
+    from backend.db.database import async_session
+    from backend.services.task_notifications import notify_due_tomorrow
+
+    async with async_session() as session:
+        created = await notify_due_tomorrow(session)
+        await session.commit()
+    if created:
+        logging.info("Due-tomorrow notices created: %d", created)
+
+
 async def _incident_once():
     from backend.db.database import async_session
     from backend.services.incidents import reconcile_all
@@ -382,6 +393,7 @@ def start_background_tasks() -> list[asyncio.Task]:
         "web_sweep": ("web-sweep", _web_sweep_once),
         "web_health": ("web-health", _web_health_once),
         "publish_checks": ("publish-checks", _publish_checks_once),
+        "due_tomorrow": ("due-tomorrow", _due_tomorrow_once),
     }
 
     for key, (task_name, operation) in operations.items():

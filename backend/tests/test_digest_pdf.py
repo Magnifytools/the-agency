@@ -96,7 +96,8 @@ def test_rendering_never_touches_the_network(monkeypatch):
     monkeypatch.setattr(socket.socket, "connect", blocked)
     monkeypatch.setattr(socket, "create_connection", blocked)
     monkeypatch.setattr(urllib.request, "urlopen", blocked)
-    monkeypatch.setattr("fpdf.image_parsing.urlopen", blocked)
+    # fpdf2 >= 2.8.8 descarga con build_opener (antes, urlopen).
+    monkeypatch.setattr("fpdf.image_parsing.build_opener", blocked)
     closing = ('<img src="http://169.254.169.254/latest/meta-data">'
                '<a href="javascript:alert(1)">mal</a> <a href="https://ok.example">bien</a>'
                '<style>@import url(http://evil.example/x.css)</style><script>fetch("http://x")</script>')
