@@ -90,4 +90,7 @@ def job_definitions() -> tuple[JobDefinition, ...]:
                       "Cuando se completa una tarea con enlace a la web del cliente, comprueba que la página responde, es indexable y tiene canonical, title y description.",
                       None if settings.PUBLISH_CHECK_ENABLED
                       else "La revisión tras publicar está apagada (PUBLISH_CHECK_ENABLED)."),
+        # Lock 20. Diario (00:01 de Madrid y al arrancar); repetirlo no duplica avisos.
+        JobDefinition(JobSpec("due_tomorrow", 20, 86400, daily=True), "Avisar de lo que vence mañana",
+                      "Avisa en la campana a cada responsable de sus tareas abiertas con fecha límite mañana."),
     )

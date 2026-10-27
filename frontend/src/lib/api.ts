@@ -409,8 +409,8 @@ export const tasksApi = {
   comments: {
     list: (taskId: number) =>
       api.get<TaskComment[]>(`/tasks/${taskId}/comments`).then((r) => r.data),
-    create: (taskId: number, text: string) =>
-      api.post<TaskComment>(`/tasks/${taskId}/comments`, { text }).then((r) => r.data),
+    create: (taskId: number, text: string, mentionIds: number[] = []) =>
+      api.post<TaskComment>(`/tasks/${taskId}/comments`, { text, mention_ids: mentionIds }).then((r) => r.data),
     delete: (taskId: number, commentId: number) =>
       api.delete(`/tasks/${taskId}/comments/${commentId}`).then((r) => r.data),
   },

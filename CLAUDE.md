@@ -317,6 +317,22 @@ admin_users, admin_settings
 - Junto a Buscar en la barra lateral y en la barra superior móvil (ya no en
   Cuenta). Contador rojo = alertas; sin alertas, un punto amarillo avisa de la
   actividad sin leer y la campana abre directamente en Actividad.
+- **Avisos de tareas en Actividad** (`services/task_notifications.py`, sin
+  migración: filas de `notifications`): comentario (al responsable y a quien ya
+  comentó), @mención (sustituye al de comentario), pedir revisión (al
+  responsable del proyecto y a los admins), aprobarla o devolverla (al
+  responsable de la tarea) y "vence mañana" (job `due_tomorrow`, lock **20**,
+  diario a las 00:01 y al arrancar; `dedupe_key` con el día, así que repetirlo no
+  duplica). Sólo a personas activas que leen Tareas, nunca a quien hace el cambio;
+  la campana los esconde si pierde el permiso o se borra la tarea
+  (`TASK_ACTIVITY_TYPES` en `visible_notification_condition`). Los de revisión
+  salen de `update_task`, así que valen para panel, tablero, bloque y MCP.
+  Asignarte a ti mismo no avisa. Todos enlazan a `/tasks?task=ID` (abre el panel).
+- **@menciones**: `components/tasks/comment-input.tsx` (@ abre la lista de
+  personas activas; ↑/↓, Enter o Tab, Escape) y `lib/mentions.ts`. El comentario
+  manda `mention_ids` (sólo los que siguen escritos en el texto); no se guardan,
+  sólo deciden a quién se avisa. Enter publica el comentario y ya no guarda el
+  formulario de la tarea.
 
 ## Undo (deshacer los últimos cambios)
 
