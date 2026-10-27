@@ -19,6 +19,10 @@ vi.mock("./web-watches-card", () => ({ WebWatchesCard: () => <div>urls-vigiladas
 vi.mock("./web-changes-list", () => ({ WebChangesList: () => <div>lista-cambios</div> }))
 vi.mock("./web-runs-card", () => ({ WebRunsCard: () => <div>barridos</div> }))
 vi.mock("./web-change-settings-card", () => ({ WebChangeSettingsCard: () => <div>calendario-captura</div> }))
+vi.mock("./web-health-card", () => ({
+  WebExpiryCard: () => <div>caducidad</div>,
+  WebRobotsCard: () => <div>robots-sitemap</div>,
+}))
 
 const down = {
   id: 3, client_id: 7, url: "https://fit.es/", label: "Home", is_active: true, status: "down",

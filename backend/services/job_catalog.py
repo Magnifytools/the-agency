@@ -77,4 +77,17 @@ def job_definitions() -> tuple[JobDefinition, ...]:
                       "Compara SEO, texto, enlaces y maquetación de las URLs vigiladas y avisa en el Slack de cada cliente.",
                       None if settings.WEB_SWEEP_ENABLED
                       else "La vigilancia de cambios está apagada (WEB_SWEEP_ENABLED)."),
+        # Lock 18. Diario: caducidad de certificado y dominio (con UPTIME_ENABLED) y
+        # robots.txt + sitemap (con WEB_SWEEP_ENABLED). Ver services/web/health.py.
+        JobDefinition(JobSpec("web_health", 18, 86400, timeout_seconds=1800, daily=True, retry_seconds=3600),
+                      "Revisar dominio, certificado, robots.txt y sitemap",
+                      "Mira cuándo caducan el certificado y el dominio de cada web vigilada, y el robots.txt y el sitemap de las webs con vigilancia de cambios.",
+                      None if settings.UPTIME_ENABLED or settings.WEB_SWEEP_ENABLED
+                      else "El monitor de caídas y la vigilancia de cambios están apagados."),
+        # Lock 19. Cada 60 s: enlaces de tareas recién completadas y reintentos.
+        JobDefinition(JobSpec("publish_checks", 19, 60, timeout_seconds=150, retry_seconds=60),
+                      "Revisar páginas publicadas",
+                      "Cuando se completa una tarea con enlace a la web del cliente, comprueba que la página responde, es indexable y tiene canonical, title y description.",
+                      None if settings.PUBLISH_CHECK_ENABLED
+                      else "La revisión tras publicar está apagada (PUBLISH_CHECK_ENABLED)."),
     )

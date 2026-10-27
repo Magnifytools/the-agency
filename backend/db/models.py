@@ -2461,3 +2461,104 @@ class WebChangeItem(Base):
 
 
 Index("ix_web_change_items_change", WebChangeItem.change_id)
+
+
+# ── Webs: salud diaria (migración ``web_health_v1``) ─────────────────────────
+# Caducidad de certificado y dominio, robots.txt + sitemap y la revisión tras
+# publicar de las tareas. Datos de máquina: fuera del journal de Deshacer.
+
+
+class WebHostExpiry(Base):
+    """Cuándo caducan el certificado TLS y el dominio de un host vigilado.
+
+    Una fila por (cliente, host) de sus URLs de disponibilidad activas; el job
+    ``web_health`` la reescribe a diario y borra las de hosts que ya no se miran.
+    """
+    __tablename__ = "web_host_expiry"
+    __table_args__ = (
+        CheckConstraint("cert_status IN ('ok','invalid','error','no_https')", name="ck_web_host_expiry_cert_status"),
+        CheckConstraint(
+            "domain_status IN ('ok','no_date','unsupported','not_found','error')",
+            name="ck_web_host_expiry_domain_status",
+        ),
+    )
+
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
+    host = Column(String(253), primary_key=True)
+    checked_at = Column(DateTime(timezone=True), nullable=False)
+    cert_status = Column(String(16), nullable=False)
+    cert_expires_at = Column(DateTime(timezone=True), nullable=True)
+    cert_issuer = Column(String(200), nullable=True)
+    cert_error = Column(String(200), nullable=True)
+    domain_name = Column(String(253), nullable=True)
+    domain_status = Column(String(16), nullable=False)
+    domain_expires_at = Column(DateTime(timezone=True), nullable=True)
+    domain_error = Column(String(200), nullable=True)
+
+
+class WebRobotsState(Base):
+    """robots.txt y sitemap de un origen (``https://host``) de un cliente con la
+    vigilancia de cambios encendida. Se guarda el último robots.txt (acotado), el
+    anterior cuando cambia y si alguien revisó ese cambio."""
+    __tablename__ = "web_robots_state"
+    __table_args__ = (
+        CheckConstraint("robots_status IN ('ok','missing','error')", name="ck_web_robots_state_status"),
+        CheckConstraint(
+            "sitemap_status IS NULL OR sitemap_status IN ('ok','empty','invalid','error')",
+            name="ck_web_robots_state_sitemap_status",
+        ),
+        CheckConstraint(
+            "sitemap_source IS NULL OR sitemap_source IN ('declared','default')",
+            name="ck_web_robots_state_sitemap_source",
+        ),
+    )
+
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
+    origin = Column(String(300), primary_key=True)
+    checked_at = Column(DateTime(timezone=True), nullable=False)
+    robots_status = Column(String(16), nullable=False)
+    robots_error = Column(String(120), nullable=True)
+    robots_hash = Column(String(64), nullable=True)
+    robots_body = Column(Text, nullable=True)
+    robots_blocks_all = Column(Boolean, nullable=False, server_default="false", default=False)
+    robots_previous_body = Column(Text, nullable=True)
+    robots_changed_at = Column(DateTime(timezone=True), nullable=True)
+    robots_reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    robots_reviewed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    sitemap_url = Column(String(500), nullable=True)
+    sitemap_source = Column(String(16), nullable=True)
+    sitemap_status = Column(String(16), nullable=True)
+    sitemap_url_count = Column(Integer, nullable=True)
+    sitemap_has_more = Column(Boolean, nullable=True)
+    sitemap_error = Column(String(200), nullable=True)
+
+
+class TaskPublishCheck(Base):
+    """Revisión tras publicar: lo que vimos en el enlace de una tarea al completarla.
+
+    Una fila por tarea (la última finalización). ``task_completed_at`` y ``url``
+    dicen a qué finalización y a qué enlace corresponde: si la tarea se reabre y
+    se vuelve a completar, o cambia el enlace, se comprueba de nuevo.
+    """
+    __tablename__ = "task_publish_checks"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','ok','problems','unreachable','skipped')", name="ck_task_publish_checks_status",
+        ),
+    )
+
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
+    url = Column(Text, nullable=False)
+    task_completed_at = Column(DateTime, nullable=False)
+    status = Column(String(16), nullable=False)
+    attempts = Column(SmallInteger, nullable=False, server_default="0", default=0)
+    next_attempt_at = Column(DateTime(timezone=True), nullable=True)
+    checked_at = Column(DateTime(timezone=True), nullable=True)
+    http_status = Column(Integer, nullable=True)
+    final_url = Column(Text, nullable=True)
+    error = Column(String(32), nullable=True)
+    results = Column(JSONB, nullable=True)
+
+
+Index("ix_task_publish_checks_pending", TaskPublishCheck.next_attempt_at,
+      postgresql_where=TaskPublishCheck.status == "pending")

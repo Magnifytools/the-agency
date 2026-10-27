@@ -40,6 +40,7 @@ import { useFileUpload } from "@/hooks/use-file-upload";
 import { UploadProgress } from "@/components/ui/upload-progress";
 import { businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates";
 import { taskStatusPresentation, taskStatusSelectClass } from "@/lib/task-status";
+import { PublishCheckBlock } from "@/components/tasks/publish-check-block";
 
 type Defaults = {
   clientId?: number | null;
@@ -828,6 +829,9 @@ export function TaskPanel({
               <Label htmlFor="task-panel-link">Enlace</Label>
               <Input id="task-panel-link" type="url" value={draft.link_url ?? ""} onChange={(event) => change("link_url", event.target.value || null)} disabled={!canWrite} />
             </div>
+            {taskId && loadedTask?.status === "completed" && loadedTask.link_url && (
+              <PublishCheckBlock taskId={taskId} canWrite={canWrite} />
+            )}
             {loadedTask?.status === "completed" && loadedTask.completed_at && loadedTask.link_url && loadedTask.client_id && (
               <TaskSeoImpact clientId={loadedTask.client_id} url={loadedTask.link_url} completedAt={loadedTask.completed_at} />
             )}

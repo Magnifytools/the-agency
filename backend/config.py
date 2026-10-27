@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     # un cliente por ciclo, en los días de su calendario.
     WEB_SWEEP_ENABLED: bool = False
     WEB_SWEEP_LOCAL_TIME: str = "06:30"
+    # Webs: salud diaria (job ``web_health``, lock 18). No tiene interruptor
+    # propio: la caducidad de certificado y dominio corre con UPTIME_ENABLED y
+    # robots.txt + sitemap con WEB_SWEEP_ENABLED (backend/services/web/health.py).
+    # Revisión tras publicar (job ``publish_checks``, lock 19): mira el enlace de
+    # cada tarea completada. Apagada por defecto; en Railway, PUBLISH_CHECK_ENABLED=true.
+    PUBLISH_CHECK_ENABLED: bool = False
     VOYAGE_API_KEY: Optional[str] = None
     AGENCY_TIMEZONE: str = "Europe/Madrid"
 

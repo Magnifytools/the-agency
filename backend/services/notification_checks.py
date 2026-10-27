@@ -50,6 +50,9 @@ def visible_notification_condition(user_id: int):
     project_read = module_permission(user_id, "projects") if is_enabled("projects") else false()
     digest_read = module_permission(user_id, "digests") if is_enabled("digests") else false()
     task_activity = ("task_assigned",)
+    # Revisión tras publicar (services/web/publish_check.py): se ve mientras se
+    # pueda leer la tarea, aunque luego se reasigne.
+    task_checks = ("task_publish_check",)
     project_activity = ("phase_completed",)
     digest_activity = ("digest_generated",)
     task_summaries = ("scheduled_morning", "scheduled_evening")
@@ -75,7 +78,10 @@ def visible_notification_condition(user_id: int):
             and_(Notification.type.in_(digest_activity), Notification.entity_type == "digest",
                  digest_read, exists().where(WeeklyDigest.id == Notification.entity_id)),
             and_(Notification.type.in_(task_summaries), task_read),
-            Notification.type.notin_((*task_activity, *project_activity, *digest_activity, *task_summaries)),
+            and_(Notification.type.in_(task_checks), Notification.entity_type == "task",
+                 task_read, exists().where(Task.id == Notification.entity_id)),
+            Notification.type.notin_((*task_activity, *project_activity, *digest_activity, *task_summaries,
+                                      *task_checks)),
         ),
     )
 
