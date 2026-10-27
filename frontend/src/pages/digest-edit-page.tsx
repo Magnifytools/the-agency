@@ -23,6 +23,7 @@ import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
+import { useUnsavedChangesWarning } from "@/hooks/use-unsaved-changes"
 import { clearDigestGeneration, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type ToneDigestIntent } from "@/lib/digest-generation-recovery"
 
 const sectionLabels: Record<keyof DigestSections, { title: string; color: string }> = {
@@ -272,6 +273,7 @@ export default function DigestEditPage() {
   const busy = updateMutation.isPending || toneChangeMutation.isPending || previewSaving
   const unsaved = !!digest && (tone !== digest.tone || greeting !== (digest.content?.greeting || "") || closing !== (digest.content?.closing || "") || includeSeo !== (digest.content?.include_seo ?? true) || includeGa4 !== (digest.content?.include_ga4 ?? true) ||
     (["done", "need", "next", "metrics"] as const).some(section => JSON.stringify(sections[section]) !== JSON.stringify(digest.content?.sections?.[section] || [])))
+  useUnsavedChangesWarning(unsaved && canWrite)
   const catalog = sourceCatalog(digest?.raw_context ?? null)
   const seo = (digest?.raw_context?.seo ?? null) as DigestSeo | null
   const ga4 = (digest?.raw_context?.ga4 ?? null) as DigestGa4 | null

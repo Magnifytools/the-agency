@@ -153,6 +153,9 @@ app.add_middleware(SecurityHeadersMiddleware)
 from backend.api.middleware.usage_tracker import UsageTrackerMiddleware
 app.add_middleware(UsageTrackerMiddleware)
 
+from backend.api.middleware.session_renewal import SessionRenewalMiddleware
+app.add_middleware(SessionRenewalMiddleware)
+
 
 class CsrfProtectionMiddleware(BaseHTTPMiddleware):
     """Protect cookie-authenticated mutating requests with double-submit CSRF."""

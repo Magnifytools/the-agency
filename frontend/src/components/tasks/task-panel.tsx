@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useUnsavedChangesWarning } from "@/hooks/use-unsaved-changes";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Clock,
@@ -159,6 +161,8 @@ export function TaskPanel({
   const [recurrencePreview, setRecurrencePreview] = useState<RecurrencePreview | null>(null);
   const [legacyComparison, setLegacyComparison] = useState<LegacyComparison | null>(null);
   const [restoreConflict, setRestoreConflict] = useState<string | null>(null);
+  const [initialDraft, setInitialDraft] = useState<string | null>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const initializedFor = useRef<string | null>(null);
   const contextKey = `${taskId ?? "new"}:${defaults?.clientId ?? ""}:${defaults?.projectId ?? ""}:${defaults?.phaseId ?? ""}:${defaults?.initialStatus ?? ""}`;
 
@@ -223,7 +227,9 @@ export function TaskPanel({
     if (initializedFor.current === contextKey) return;
     // Opening a different entity deliberately starts a fresh draft; retries keep it intact.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDraft(fromTask(taskQuery.data, defaults));
+    const fresh = fromTask(taskQuery.data, defaults);
+    setDraft(fresh);
+    setInitialDraft(JSON.stringify(fresh));
     setSecondaryOpen(false);
     initializedFor.current = contextKey;
   }, [open, taskId, taskQuery.data, defaults, contextKey]);
@@ -512,8 +518,28 @@ export function TaskPanel({
       toast.error(getErrorMessage(error, "No se pudo restaurar la tarea. Actualiza y vuelve a intentarlo."));
     },
   });
+  const unsaved = open && canWrite && initialDraft !== null && JSON.stringify(draft) !== initialDraft;
+  useUnsavedChangesWarning(unsaved);
+  // Escape, clic fuera o "Cerrar" con cambios sin guardar: se pregunta antes de tirarlos.
+  const requestOpenChange = (next: boolean) => {
+    if (!next && unsaved && !save.isPending) {
+      setConfirmDiscard(true);
+      return;
+    }
+    onOpenChange(next);
+  };
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+    <ConfirmDialog
+      open={confirmDiscard}
+      onOpenChange={setConfirmDiscard}
+      title="¿Descartar los cambios?"
+      description="Has cambiado la tarea y no la has guardado. Si cierras ahora, esos cambios se pierden."
+      cancelLabel="Seguir editando"
+      confirmLabel="Descartar cambios"
+      onConfirm={() => onOpenChange(false)}
+    />
+    <Dialog open={open} onOpenChange={requestOpenChange}>
       <DialogHeader>
         <DialogTitle>{taskId ? "Detalle de tarea" : "Nueva tarea"}</DialogTitle>
       </DialogHeader>
@@ -1481,7 +1507,7 @@ export function TaskPanel({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onOpenChange(false)}
+                onClick={() => requestOpenChange(false)}
               >
                 Cerrar
               </Button>
@@ -1498,5 +1524,6 @@ export function TaskPanel({
         )
       )}
     </Dialog>
+    </>
   );
 }

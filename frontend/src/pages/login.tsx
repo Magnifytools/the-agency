@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import { AxiosError } from "axios"
 import { useAuth } from "@/context/auth-context"
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,10 @@ import { getErrorMessage } from "@/lib/utils"
 export default function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const { from, expired } = (location.state ?? {}) as { from?: string; expired?: boolean }
+  // Sólo rutas internas: nada de volver a "//otro-sitio".
+  const returnTo = from && from.startsWith("/") && !from.startsWith("//") && !from.startsWith("/login") ? from : "/"
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -21,7 +25,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await login(email, password)
-      navigate("/")
+      navigate(returnTo, { replace: true })
     } catch (err) {
       if (err instanceof AxiosError) {
         if (!err.response) {
@@ -55,7 +59,12 @@ export default function LoginPage() {
           </div>
         </div>
         <div className="rounded-[16px] border border-border bg-card p-8">
-          <h2 className="text-lg font-semibold text-foreground mb-6">Iniciar sesión</h2>
+          <h1 className="text-lg font-semibold text-foreground mb-6">Iniciar sesión</h1>
+          {expired && (
+            <p role="status" className="mb-5 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              Tu sesión ha caducado. Vuelve a entrar y seguirás donde estabas.
+            </p>
+          )}
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -75,12 +84,13 @@ export default function LoginPage() {
               <Input
                 id="password"
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Entrando..." : "Entrar"}
             </Button>

@@ -1,8 +1,9 @@
-import { Navigate } from "react-router-dom"
+import { Navigate, useLocation } from "react-router-dom"
 import { useAuth } from "@/context/auth-context"
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth()
+  const { isAuthenticated, isLoading, sessionExpired } = useAuth()
+  const location = useLocation()
 
   if (isLoading) {
     return (
@@ -16,7 +17,9 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
+    // Tras entrar se vuelve aquí: un enlace de Slack o de una alerta no acaba en la portada.
+    const from = `${location.pathname}${location.search}${location.hash}`
+    return <Navigate to="/login" replace state={{ from, expired: sessionExpired }} />
   }
 
   return <>{children}</>
