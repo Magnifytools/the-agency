@@ -477,7 +477,10 @@ class Project(UTCTimestampMixin, Base):
     progress_percent = Column(Integer, nullable=False, default=0)
     budget_hours = Column(Float, nullable=True)
     weekly_hours_budget = Column(Float, nullable=True)  # guía visual de carga semanal; no dispara alertas por sí solo
-    monthly_hours_budget = Column(Float, nullable=True)  # techo acumulado del mes; warning 80%, alerta 100%
+    monthly_hours_budget = Column(Float, nullable=True)  # techo acumulado del mes; aviso 75 %, alerta 100 %
+    # Lo que sobra (o el exceso) del mes anterior suma (o resta) al techo de este
+    # mes; sólo un mes, sin cadena. Ver services/hours_carryover.py.
+    hours_carryover = Column(Boolean, nullable=False, default=False, server_default="false")
     budget_amount = Column(Numeric(12, 2), nullable=True)
     gsc_url = Column(String(255), nullable=True)
     ga4_property_id = Column(String(50), nullable=True)

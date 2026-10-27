@@ -7,12 +7,14 @@ endpoint without drift.
 
 Design (acordado con David, jun 2026):
 - El presupuesto SEMANAL (`weekly_hours_budget`) es guía visual / informativa.
-- El techo MENSUAL (`monthly_hours_budget`) es el que dispara la notificación dura
-  (warning 80%, alerta 100%) — ver `api/routes/notifications.py`.
+- El techo MENSUAL (`monthly_hours_budget`) es el que dispara el aviso del
+  proyecto (aviso temprano 75 %, alerta 100 %; responsable y admins) — ver
+  `services/incident_project_conditions.py`. Con `hours_carryover`, el techo del
+  mes incluye lo que sobró o faltó el mes anterior (`services/hours_carryover.py`).
 """
 from __future__ import annotations
 
-WARNING_THRESHOLD = 0.8
+WARNING_THRESHOLD = 0.75  # aviso temprano (oct 2026; antes 0.8)
 OVER_THRESHOLD = 1.0
 
 
@@ -162,9 +164,26 @@ def build_budget_status(
     monthly_budget: float | None,
     week_minutes: float,
     month_minutes: float,
+    *,
+    month_base: float | None = None,
+    month_carried: float | None = None,
 ) -> dict:
-    """Return a serializable budget-status dict for week + month windows."""
+    """Return a serializable budget-status dict for week + month windows.
+
+    With ``hours_carryover`` the caller passes this month's ceiling (base + carry)
+    as ``monthly_budget`` and the parts in ``month_base`` / ``month_carried``.
+    """
+    month = _window(monthly_budget, month_minutes)
+    if month_carried is not None:
+        if monthly_budget is not None and monthly_budget <= 0:
+            # El exceso del mes anterior se comió el mes entero: ya no queda nada.
+            month.update({
+                "budget_hours": 0.0, "pct": None, "status": "over",
+                "remaining_hours": round(-month_minutes / 60, 2),
+            })
+        month["base_budget_hours"] = round(float(month_base), 2) if month_base is not None else None
+        month["carried_hours"] = round(float(month_carried), 2)
     return {
         "week": _window(weekly_budget, week_minutes),
-        "month": _window(monthly_budget, month_minutes),
+        "month": month,
     }

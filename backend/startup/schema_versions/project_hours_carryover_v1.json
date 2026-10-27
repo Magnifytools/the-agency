@@ -1,0 +1,8 @@
+{
+  "version": "20261027_project_hours_carryover_v1",
+  "sql": "ALTER TABLE projects ADD COLUMN IF NOT EXISTS hours_carryover BOOLEAN NOT NULL DEFAULT false",
+  "column": "hours_carryover",
+  "type": "bool",
+  "nullable": false,
+  "default": "false"
+}

@@ -23,7 +23,7 @@ from backend.db.models import Client, ClientStatus, User, UserRole
 from backend.services.client_status import Viewer, portfolio
 from backend.services.dashboard_access import has_module_read
 from backend.services.digest_periods import format_month
-from backend.services.incident_project_conditions import monthly_hours_usage, project_measure_rows
+from backend.services.incident_project_conditions import hours_ratio, monthly_hours_usage, project_measure_rows
 from backend.services.incident_report_conditions import unsent_monthly_clients
 from backend.services.recurring_fee import active_monthly_fees
 from backend.services.temporal import business_today
@@ -58,9 +58,13 @@ async def _projects_at_risk(db, now: datetime, *, with_hours: bool) -> dict:
             reasons.append(f"Cierre vencido hace {days} día{'s' if days != 1 else ''}")
             weight += 1000 + days
         usage = monthly_hours_usage(row) if with_hours else None
-        if usage is not None and usage[0] / usage[1] >= OVER_THRESHOLD:
-            pct = usage[0] * 100 / usage[1]
-            reasons.append(f"Horas del mes al {pct:.0f} %")
+        if usage is not None and hours_ratio(*usage) >= OVER_THRESHOLD:
+            if usage[1] > 0:
+                pct = usage[0] * 100 / usage[1]
+                reasons.append(f"Horas del mes al {pct:.0f} %")
+            else:
+                pct = 100.0
+                reasons.append("Sin horas este mes: el exceso del anterior se comió el presupuesto")
             weight += pct
         if reasons:
             items.append((weight, {"id": row.id, "name": row.name or f"Proyecto #{row.id}", "reasons": reasons}))

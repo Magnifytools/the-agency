@@ -57,7 +57,11 @@ async def test_upgrade_is_opt_in_preserves_business_values_and_ledger(engine):
     await deployment_schema.migrate_schema(engine)
     await deployment_schema.check_deployment_ready(engine)
     async with engine.connect() as conn:
-        assert await conn.scalar(text("SELECT to_jsonb(p)-'requires_task_review' FROM projects p WHERE id=1")) == project
+        # Later additive step (hours_carryover) adds an opt-in column off by default.
+        assert await conn.scalar(text(
+            "SELECT to_jsonb(p)-'requires_task_review'-'hours_carryover' FROM projects p WHERE id=1"
+        )) == project
+        assert await conn.scalar(text("SELECT hours_carryover FROM projects WHERE id=1")) is False
         assert await conn.scalar(text("SELECT requires_task_review FROM projects WHERE id=1")) is False
         # Later additive steps (task procedure) add empty columns only.
         assert await conn.scalar(text(

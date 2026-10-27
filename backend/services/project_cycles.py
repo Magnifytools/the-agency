@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from sqlalchemy import and_, func, or_, select
 
 from backend.db.models import Project, Task, TimeEntry
+from backend.services.hours_carryover import month_budget, project_month_budget
 from backend.services.temporal import business_today, civil_day_utc_bounds
 from backend.services.time_budget import effective_budgets, is_recurring_project
 from backend.services.time_entry_dates import time_entry_civil_period
@@ -39,6 +40,9 @@ async def collect_project_monthly_cycle(
                 Project.budget_hours,
                 Project.weekly_hours_budget,
                 Project.monthly_hours_budget,
+                Project.hours_carryover,
+                Project.start_date,
+                Project.created_at,
             ).where(Project.id == project_id)
         )
     ).one_or_none()
@@ -91,7 +95,12 @@ async def collect_project_monthly_cycle(
         )
     _, monthly_budget = effective_budgets(project)
     used_hours = round(total_minutes / 60, 2) if total_minutes is not None else None
-    budget = round(float(monthly_budget), 2) if monthly_budget and monthly_budget > 0 else None
+    # El arrastre sale de las horas del mes anterior: sólo con lectura de horas.
+    month = (
+        await project_month_budget(db, project, monthly_budget, start) if include_hours
+        else month_budget(monthly_budget, carryover=False, previous_minutes=None, eligible=False)
+    )
+    budget = round(month.budget, 2) if month.budget is not None else None
     return {
         "project_id": project_id,
         "month": month_key,
@@ -106,6 +115,8 @@ async def collect_project_monthly_cycle(
         "total_minutes": int(total_minutes) if total_minutes is not None else None,
         "used_hours": used_hours,
         "budget_hours": budget,
+        "base_budget_hours": round(month.base, 2) if month.base is not None else None,
+        "carried_hours": round(month.carried, 2) if month.carried is not None else None,
         "remaining_hours": round(budget - used_hours, 2) if budget is not None and used_hours is not None else None,
         "tasks": [
             {

@@ -563,6 +563,29 @@ admin_users, admin_settings
   `report_unsent`).
 - Cada cifra es `null` si quien mira no lee su fuente; el front no la pinta.
 
+## Horas del mes: aviso temprano y arrastre entre meses
+- **Aviso temprano al 75 %** (antes 80 %) del techo mensual de horas del
+  proyecto (`monthly_hours_budget`, o `budget_hours` en retainers):
+  `project_monthly_hours_warning`; al 100 %, `project_monthly_hours_exceeded`
+  (crítica). Misma clave `...:project:{id}:AAAA-MM` y huella que antes. Llegan
+  al **responsable y a los admins activos** (los admins, sólo estas dos; el
+  resto de avisos del proyecto siguen siendo del responsable). Una sola consulta
+  (`collect_project_conditions`); `_recipient_clause` en la visibilidad. El
+  umbral es `time_budget.WARNING_THRESHOLD` (0,75): ficha, extensión y aviso
+  usan el mismo. Los presupuestos totales de proyectos puntuales siguen al 80 %.
+- La señal de **cuota en dinero** del estado del cliente (coste/cuota, sólo
+  admin, 90 % Vigilar / 110 % Actuar) NO cambia: es un estado, no un aviso, y
+  el aviso temprano en horas es el que puede ver también el responsable.
+- **Arrastre** (`projects.hours_carryover`, migración `project_hours_carryover_v1`,
+  casilla en Editar proyecto, apagado por defecto): techo de este mes = techo
+  base + (techo base − horas del mes anterior), nunca < 0. Sólo el mes anterior
+  y sin cadena; con el techo ACTUAL; un proyecto que empezó este mes
+  (`start_date`, o `created_at`) no arrastra. Reglas y SQL en
+  `services/hours_carryover.py` (`month_budget` y su gemelo `budget_minutes_expr`).
+  Lo usan los avisos, la fila "Operación", la ficha (`month_hours_budget`,
+  `month_hours_carried`), el ciclo mensual (`base_budget_hours`, `carried_hours`)
+  y `/api/timer/project-budget` (extensión). Entra en el Deshacer con el proyecto.
+
 ## GA4 propio (visitas, conversiones y tráfico desde IA)
 
 - **Qué es**: con las mismas cuentas de Google que Search Console (permiso
