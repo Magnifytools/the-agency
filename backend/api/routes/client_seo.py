@@ -8,16 +8,17 @@ la app (política de privacidad).
 """
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, field_validator
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import require_module
 from backend.db.database import get_db
-from backend.db.models import Client, User
-from backend.services import ga4_leads, seo_control
+from backend.db.models import Client, SeoAnnotation, User
+from backend.services import ga4_leads, seo_control, seo_insights
 
 router = APIRouter(prefix="/api/clients", tags=["client-seo"])
 
@@ -158,3 +159,110 @@ async def client_leads(
     if days not in ga4_leads.WINDOW_CHOICES:
         raise HTTPException(status_code=422, detail="La ventana es de 7 o 28 días")
     return await ga4_leads.client_leads(db, client, days=days)
+
+
+# ── Anotaciones, antes/después y páginas que pierden tráfico (bloque B) ──
+
+ANNOTATION_MAX_DAYS = 800
+
+
+async def _client(db: AsyncSession, client_id: int) -> Client:
+    client = await db.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return client
+
+
+@router.get("/{client_id}/seo/annotations")
+async def client_seo_annotations(
+    client_id: int,
+    start: date = Query(..., alias="from"),
+    end: date = Query(..., alias="to"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_module("clients")),
+):
+    """Notas, actualizaciones de Google, cambios críticos de la web y tareas
+    publicadas entre dos fechas, para pintarlas sobre las gráficas."""
+    client = await _client(db, client_id)
+    if end < start or (end - start).days > ANNOTATION_MAX_DAYS:
+        raise HTTPException(status_code=422, detail="Rango de fechas no válido")
+    return await seo_insights.annotations(db, client, user, start, end)
+
+
+class AnnotationCreate(BaseModel):
+    date: date
+    text: str = Field(min_length=1, max_length=160)
+
+    @field_validator("text")
+    @classmethod
+    def _text(cls, value: str) -> str:
+        value = " ".join(value.split())
+        if not value:
+            raise ValueError("Escribe la nota")
+        return value
+
+
+@router.post("/{client_id}/seo/annotations", status_code=201)
+async def create_seo_annotation(
+    client_id: int,
+    body: AnnotationCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_module("clients", write=True)),
+):
+    await _client(db, client_id)
+    if body.date > date.today() + timedelta(days=1):
+        raise HTTPException(status_code=422, detail="La nota no puede ser de una fecha futura")
+    annotation = SeoAnnotation(client_id=client_id, date=body.date, text=body.text, created_by=user.id)
+    db.add(annotation)
+    await db.commit()
+    return {"id": annotation.id, "date": annotation.date.isoformat(), "text": annotation.text}
+
+
+@router.delete("/{client_id}/seo/annotations/{annotation_id}", status_code=204)
+async def delete_seo_annotation(
+    client_id: int,
+    annotation_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("clients", write=True)),
+):
+    annotation = await db.get(SeoAnnotation, annotation_id)
+    if annotation is None or annotation.client_id != client_id:
+        raise HTTPException(status_code=404, detail="Annotation not found")
+    await db.delete(annotation)
+    await db.commit()
+    return Response(status_code=204)
+
+
+@router.get("/{client_id}/seo/impact")
+async def client_seo_impact(
+    client_id: int,
+    pivot: date = Query(..., alias="date"),
+    days: int = Query(28),
+    page: Optional[str] = Query(None, max_length=2000),
+    group: Optional[str] = Query(None, max_length=60),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("clients")),
+):
+    """Antes y después de una fecha: la web entera, una página o un grupo de URL."""
+    client = await _client(db, client_id)
+    if days not in seo_insights.IMPACT_DAY_CHOICES:
+        raise HTTPException(status_code=422, detail="Compara 14, 28 o 56 días")
+    if page and group:
+        raise HTTPException(status_code=422, detail="Elige una página o un grupo, no los dos")
+    if page and not seo_insights.page_variants(page):
+        raise HTTPException(status_code=422, detail="La página tiene que ser una URL completa (https://…)")
+    try:
+        return await seo_insights.impact(db, client, pivot=pivot, days=days, page=page, group=group)
+    except seo_control.PageGroupTimeout:
+        raise HTTPException(status_code=422, detail=_GROUPS_TOO_SLOW)
+
+
+@router.get("/{client_id}/seo/decay")
+async def client_seo_decay(
+    client_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_module("clients")),
+):
+    """Páginas muy por debajo de su mejor tramo de 28 días (detalle de 120 días)."""
+    client = await _client(db, client_id)
+    return await seo_insights.decaying_pages(db, client)

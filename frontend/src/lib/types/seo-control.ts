@@ -213,3 +213,68 @@ export interface ClientLeads {
   landing_count?: number
   channels?: (LeadsChange & { channel: string })[]
 }
+
+// ── Bloque B: anotaciones, antes/después y páginas que pierden tráfico ──
+
+export type SeoAnnotationKind = "manual" | "google" | "web_change" | "task"
+
+export interface SeoAnnotation {
+  kind: SeoAnnotationKind
+  id: number | string | null
+  date: string
+  end_date: string | null
+  title: string
+  author: string | null
+  href: string | null
+}
+
+export interface SeoAnnotations {
+  items: SeoAnnotation[]
+  google_available: boolean
+}
+
+export interface SeoImpactSide {
+  clicks: number
+  impressions: number
+  position: number | null
+  start: string
+  end: string
+}
+
+export interface SeoImpact {
+  status: SeoControlStatus
+  pivot: string
+  scope: "site" | "page" | "group"
+  page: string | null
+  group: string | null
+  reason: "too_early" | "outside_detail" | "no_data" | null
+  available_from?: string
+  detail_start?: string | null
+  result: {
+    days: number
+    before: SeoImpactSide
+    after: SeoImpactSide
+    clicks_change_pct: number | null
+    impressions_change_pct: number | null
+    position_delta: number | null
+    pages: number | null
+  } | null
+}
+
+export interface SeoDecayRow {
+  page: string
+  current: { clicks: number; impressions: number; position: number | null }
+  peak: { clicks: number; impressions: number; position: number | null; start: string; end: string }
+  lost_clicks: number
+  drop_pct: number | null
+  cause: "position" | "demand" | "ctr"
+}
+
+export interface SeoDecay {
+  status: SeoControlStatus
+  rows: SeoDecayRow[]
+  total?: number
+  windows: number
+  end?: string
+  window_days?: number
+}
