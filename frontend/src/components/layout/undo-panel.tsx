@@ -45,9 +45,6 @@ export function UndoPanel({ showLabel = false }: { showLabel?: boolean } = {}) {
       >
         <Undo2 className="h-4 w-4" />
         {showLabel && <span aria-hidden="true">Cambios</span>}
-        {entries.length > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-brand" />
-        )}
       </button>
 
       {open && (
