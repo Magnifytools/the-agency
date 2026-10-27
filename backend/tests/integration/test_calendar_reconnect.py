@@ -233,3 +233,23 @@ async def test_callback_failure_does_not_log_error_details_or_remove_saved_state
     async with maker() as db:
         assert (await db.get(User, ids["member"])).google_refresh_token == "synthetic-retained-grant"
         assert await db.get(Event, event_id) is not None
+
+
+async def test_sync_reads_from_monday_to_the_end_of_next_week(fixture, monkeypatch):
+    """La vista con horas de Mi agenda enseña la semana entera (y la próxima)."""
+    maker, ids, now = fixture
+    await connected(fixture)
+    async with maker() as db:
+        user = await db.get(User, ids["member"])
+        user.google_calendar_connected = True
+        await db.commit()
+    now[0] = datetime(2026, 9, 17, 9, 0)  # jueves 17 sep, 11:00 en Madrid
+    windows = []
+    def capture(*args, time_min=None, time_max=None, **kwargs):
+        windows.append((time_min, time_max))
+        return []
+    monkeypatch.setattr(route, "fetch_events", capture)
+    async with client(fixture) as http:
+        assert (await http.post("/api/calendar/sync")).status_code == 200
+    (start, end), = windows
+    assert (start.replace(tzinfo=None), end.replace(tzinfo=None)) == (datetime(2026, 9, 14), datetime(2026, 9, 28))

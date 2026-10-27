@@ -99,7 +99,7 @@ describe("tasks URL navigation", () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/tasks?qaFilter=overdue"]}><TasksPage /><Back /></MemoryRouter></QueryClientProvider>)
     await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ overdue: true })))
-    await userEvent.click(screen.getByRole("button", { name: "Todas" }))
+    await userEvent.click(screen.getByRole("button", { name: "Lista" }))
     await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ overdue: undefined, page: 1 })))
     expect(screen.queryByRole("button", { name: "Quitar revisión" })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Atrás navegador" }))
@@ -160,5 +160,28 @@ describe("tasks URL navigation", () => {
     api.list.mockResolvedValueOnce({ items: [{ id: 8, title: "Preparar informe", status: "pending", priority: "medium", assigned_to: null, scheduled_date: null, estimated_minutes: null, due_date: null }], total: 1, page: 1, page_size: 25 })
     showAgenda("/tasks?view=all")
     expect(await screen.findByRole("button", { name: "Preparar informe" })).toBeInTheDocument()
+  })
+  it("el tablero no pagina: pide todas las activas y aparte lo cerrado esta semana", async () => {
+    clock.today = "2026-10-01"
+    showAgenda("/tasks?view=sprint")
+    await waitFor(() => expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ status: "backlog,pending,in_progress,advanced,waiting,in_review", page: 1, page_size: 500 })))
+    expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ status: "completed", completed_from: "2026-09-25", page_size: 200 }))
+    expect(screen.queryByRole("navigation", { name: /paginación/i })).not.toBeInTheDocument()
+  })
+  it("avisa cuando el tablero no cabe entero", async () => {
+    api.list.mockResolvedValue({ items: [{ id: 8, title: "Preparar informe", status: "pending", priority: "medium", assigned_to: null, scheduled_date: null, estimated_minutes: null, due_date: null }], total: 640, page: 1, page_size: 500 })
+    showAgenda("/tasks?view=sprint")
+    expect(await screen.findByText(/Se ven 1 de 640 tareas/)).toBeInTheDocument()
+  })
+  it("la semana trae también las tareas sin planificar para poder arrastrarlas", async () => {
+    showAgenda("/tasks?view=weekly&semana=2026-10-07")
+    await waitFor(() => expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ status: "pending,backlog", unscheduled: true })))
+    expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ scheduled_date_from: "2026-10-05", scheduled_date_to: "2026-10-09", page_size: 500 }))
+  })
+  it("el enlace del menú abre la última vista de Tareas", async () => {
+    window.localStorage.setItem("agency.tasks.lastView", "calendar")
+    showAgenda("/tasks?view=tareas")
+    expect(await screen.findByRole("button", { name: "Calendario", pressed: true })).toBeInTheDocument()
+    window.localStorage.removeItem("agency.tasks.lastView")
   })
 })

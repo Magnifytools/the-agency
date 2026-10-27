@@ -59,6 +59,7 @@ import type {
   ClientSummary,
   Task,
   TaskCreate,
+  TaskStatus,
   RecurrenceSummary,
   TaskCategory,
   ChecklistItem,
@@ -358,7 +359,7 @@ export const clientsApi = {
 
 // Tasks
 export const tasksApi = {
-  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; timer_eligible?: boolean; timer_scope?: "assigned" | "assigned_or_created"; retirement?: "active" | "retired"; search?: string; page?: number; page_size?: number }) =>
+  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; unscheduled?: boolean; completed_from?: string; is_recurring?: boolean; timer_eligible?: boolean; timer_scope?: "assigned" | "assigned_or_created"; retirement?: "active" | "retired"; search?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params }).then((r) => r.data),
   agenda: (params: { date: string; section: TaskAgendaSection; assigned_to?: number | "me" | "unassigned" | "all"; timezone_offset_minutes?: number; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks/agenda", { params }).then((r) => r.data),
@@ -380,6 +381,9 @@ export const tasksApi = {
   create: (data: TaskCreate) => api.post<Task>("/tasks", data).then((r) => r.data),
   update: (id: number, data: Partial<TaskCreate>) =>
     api.put<Task>(`/tasks/${id}`, data).then((r) => r.data),
+  /** Arrastrar: la lista donde queda (en orden) y, si cambia, estado o día. */
+  move: (id: number, data: { ordered_ids: number[]; status?: TaskStatus; scheduled_date?: string | null }) =>
+    api.post<{ task: Task; ranks: Record<string, string> }>(`/tasks/${id}/move`, data).then((r) => r.data),
   carryoverDecision: (id: number, data: {
     action: "reschedule" | "wait" | "complete" | "retire"
     expected_updated_at: string
@@ -409,8 +413,8 @@ export const tasksApi = {
   comments: {
     list: (taskId: number) =>
       api.get<TaskComment[]>(`/tasks/${taskId}/comments`).then((r) => r.data),
-    create: (taskId: number, text: string) =>
-      api.post<TaskComment>(`/tasks/${taskId}/comments`, { text }).then((r) => r.data),
+    create: (taskId: number, text: string, mentionIds: number[] = []) =>
+      api.post<TaskComment>(`/tasks/${taskId}/comments`, { text, mention_ids: mentionIds }).then((r) => r.data),
     delete: (taskId: number, commentId: number) =>
       api.delete(`/tasks/${taskId}/comments/${commentId}`).then((r) => r.data),
   },
@@ -1152,6 +1156,40 @@ export const calendarApi = {
     api.post<{ ok: boolean; events_synced: number }>("/calendar/sync").then((r) => r.data),
   upcoming: (minutes: number = 60) =>
     api.get<{ id: number; title: string; start_time: string; minutes_until: number }[]>(`/calendar/upcoming?minutes=${minutes}`).then((r) => r.data),
+  /** Reuniones guardadas entre dos días (hora civil de la agencia). */
+  events: (dateFrom: string, dateTo: string) =>
+    api.get<CalendarEvent[]>("/calendar/events", { params: { date_from: dateFrom, date_to: dateTo } }).then((r) => r.data),
+}
+
+export interface CalendarEvent {
+  id: number
+  title: string
+  start_time: string
+  end_time: string | null
+  is_all_day: boolean
+  source: string
+}
+
+/** Bloque de trabajo con hora (Mi agenda). Horas civiles sin zona: "2026-10-28T10:00". */
+export interface TimeBlock {
+  id: number
+  task_id: number
+  starts_at: string
+  ends_at: string
+  task_title: string
+  task_status: string
+  task_estimated_minutes: number | null
+  client_name: string | null
+}
+
+export const timeBlocksApi = {
+  list: (dateFrom: string, dateTo: string) =>
+    api.get<TimeBlock[]>("/time-blocks", { params: { date_from: dateFrom, date_to: dateTo } }).then((r) => r.data),
+  create: (data: { task_id: number; starts_at: string; ends_at: string }) =>
+    api.post<TimeBlock>("/time-blocks", data).then((r) => r.data),
+  update: (id: number, data: { starts_at: string; ends_at: string }) =>
+    api.patch<TimeBlock>(`/time-blocks/${id}`, data).then((r) => r.data),
+  delete: (id: number) => api.delete(`/time-blocks/${id}`).then((r) => r.data),
 }
 
 // ── Search Console ──────────────────────────────────────────

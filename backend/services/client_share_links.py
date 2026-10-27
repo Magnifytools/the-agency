@@ -29,6 +29,7 @@ from backend.db.models import (
 )
 from backend.schemas.digest import DigestContent
 from backend.services.digest_periods import format_digest_period
+from backend.services import digest_seo_detail
 from backend.services.digest_renderer import render_email
 from backend.services.gsc_service import normalize_site_url
 from backend.services.incident_report_conditions import delivery_is_confirmed
@@ -128,6 +129,7 @@ async def _delivered_versions(db: AsyncSession, client_id: int) -> list[tuple[We
 
 async def delivered_digests(db: AsyncSession, client_id: int) -> list[dict]:
     """Lo que enseña la página pública: la versión entregada de cada periodo, ya pintada."""
+    # Ya entregadas: la foto del mes se lee tal cual se envió, nunca se recalcula.
     return [{
         "id": digest.id,
         "period_start": digest.period_start.isoformat(),
@@ -136,7 +138,7 @@ async def delivered_digests(db: AsyncSession, client_id: int) -> list[dict]:
         "delivered_at": delivered_at.isoformat() if delivered_at else None,
         "html": render_email(content, tone=digest.tone, period_start=digest.period_start,
                              period_end=digest.period_end,
-                             seo=(digest.raw_context or {}).get("seo"),
+                             seo=await digest_seo_detail.seo_for_render(db, digest, may_compute=False),
                              ga4=(digest.raw_context or {}).get("ga4")),
     } for digest, content, delivered_at in await _delivered_versions(db, client_id)]
 

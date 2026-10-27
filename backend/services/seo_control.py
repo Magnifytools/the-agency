@@ -649,24 +649,38 @@ async def _cached(key: tuple, compute):
     return value
 
 
-def _params(source: SeoSource, window: SeoWindow) -> dict:
-    return {"site": source.site_url, "start": window.start, "prev_start": window.previous_start, "end": window.end}
-
-
 def _agg(row) -> Agg:
     return Agg(int(row.clicks), int(row.impressions), float(row.weighted),
                int(row.prev_clicks), int(row.prev_impressions), float(row.prev_weighted))
 
 
+async def range_aggregates(db, site: str, *, start: date, previous_start: date, end: date,
+                           dimension: str) -> dict[str, Agg]:
+    """Sumas por consulta o página de [start, end] y de [previous_start, start).
+    Sin caché: también la usa el resumen mensual, cuyos meses no son la ventana
+    de 28 días (un febrero tendría la misma clave de caché que esa ventana)."""
+    params = {"site": site, "start": start, "prev_start": previous_start, "end": end}
+    rows = (await db.execute(_DETAIL_SQL[dimension], params)).all()
+    return {row.key: _agg(row) for row in rows}
+
+
+async def range_totals(db, site: str, *, start: date, previous_start: date, end: date) -> Agg:
+    """Totales de `gsc_daily` con los mismos tramos que `range_aggregates`."""
+    params = {"site": site, "start": start, "prev_start": previous_start, "end": end}
+    return _agg((await db.execute(_TOTALS_SQL, params)).one())
+
+
 async def detail_aggregates(db, source: SeoSource, window: SeoWindow, dimension: str) -> dict[str, Agg]:
     async def compute():
-        rows = (await db.execute(_DETAIL_SQL[dimension], _params(source, window))).all()
-        return {row.key: _agg(row) for row in rows}
+        return await range_aggregates(db, source.site_url, start=window.start,
+                                      previous_start=window.previous_start, end=window.end,
+                                      dimension=dimension)
     return await _cached((dimension, source.site_url, window.end, window.days, source.version), compute)
 
 
 async def property_totals(db, source: SeoSource, window: SeoWindow) -> Agg:
-    return _agg((await db.execute(_TOTALS_SQL, _params(source, window))).one())
+    return await range_totals(db, source.site_url, start=window.start,
+                              previous_start=window.previous_start, end=window.end)
 
 
 async def _trend_rows(db, source: SeoSource, end: date):

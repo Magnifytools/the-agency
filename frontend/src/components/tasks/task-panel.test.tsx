@@ -54,7 +54,7 @@ vi.mock("@/lib/api", () => ({
     get: mocks.getProject,
   },
   usersApi: {
-    listAll: () => Promise.resolve([{ id: 2, full_name: "Violeta" }]),
+    listAll: () => Promise.resolve([{ id: 2, full_name: "Violeta", is_active: true }, { id: 5, full_name: "Nacho Pérez", short_name: "Nacho", is_active: true }]),
   },
   categoriesApi: { list: () => Promise.resolve([]) },
   tasksApi: {
@@ -776,5 +776,52 @@ describe("TaskPanel", () => {
       expect(await screen.findByText(/1\. Exportar/)).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Generar borrador" })).not.toBeInTheDocument();
     });
+  });
+
+  it("comenta mencionando a alguien y le pasa su id al servidor", async () => {
+    mocks.createComment.mockResolvedValue({ id: 1 });
+    setup({ taskId: 9 });
+    await userEvent.click(await screen.findByText(/Checklist, comentarios/));
+    const input = await screen.findByRole("combobox", { name: "Nuevo comentario" });
+    await userEvent.type(input, "Revisa @Na");
+    await userEvent.keyboard("{Enter}");
+    await userEvent.type(input, "por favor{Enter}");
+    await waitFor(() => expect(mocks.createComment).toHaveBeenCalledWith(9, "Revisa @Nacho por favor", [5]));
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("pasa a la tarea anterior o siguiente con los botones y con ↑/↓ fuera de los campos", async () => {
+    const onNavigate = vi.fn();
+    setup({ taskId: 9, navigation: { position: 1, total: 3, onNavigate } });
+    expect(await screen.findByDisplayValue("Auditar")).toBeInTheDocument();
+    expect(screen.getByText("1 de 3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tarea anterior" })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Tarea siguiente" }));
+    expect(onNavigate).toHaveBeenLastCalledWith(1);
+
+    // Escribiendo en un campo, las flechas son del campo.
+    screen.getByLabelText("Título").focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+
+    screen.getByRole("button", { name: "Tarea siguiente" }).focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(onNavigate).toHaveBeenCalledTimes(2);
+    // En la primera no hay anterior.
+    await userEvent.keyboard("{ArrowUp}");
+    expect(onNavigate).toHaveBeenCalledTimes(2);
+  });
+
+  it("pregunta antes de pasar a otra tarea con cambios sin guardar", async () => {
+    const onNavigate = vi.fn();
+    setup({ taskId: 9, navigation: { position: 2, total: 3, onNavigate } });
+    await userEvent.type(await screen.findByDisplayValue("Auditar"), " web");
+    await userEvent.click(screen.getByRole("button", { name: "Tarea anterior" }));
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(screen.getByText("¿Descartar los cambios?")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Descartar cambios" }));
+    expect(onNavigate).toHaveBeenCalledWith(-1);
   });
 });

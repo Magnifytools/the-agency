@@ -43,7 +43,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from backend.db.bulk import insert_chunks
 from backend.db.models import (
-    GscConnection, GscDetailSync, GscPageDaily, GscQueryDaily, GscQueryMonthly, GscSiteSync,
+    DigestSeoDetail, GscConnection, GscDetailSync, GscPageDaily, GscQueryDaily, GscQueryMonthly, GscSiteSync,
 )
 from backend.services import gsc_service
 from backend.services.gsc_service import GscAuthError, GscSiteError, TAIL_DAYS
@@ -495,6 +495,10 @@ async def prune(db, *, today: date | None = None) -> None:
     if untracked:
         for model in (GscQueryDaily, GscPageDaily, GscQueryMonthly, GscDetailSync):
             await db.execute(delete(model).where(model.site_url.in_(untracked)))
+    # La foto de los resúmenes mensuales sigue la misma regla: se va con la web.
+    snapshot_sites = set((await db.scalars(select(DigestSeoDetail.site_url).distinct())).all())
+    if snapshot_sites - tracked:
+        await db.execute(delete(DigestSeoDetail).where(DigestSeoDetail.site_url.in_(sorted(snapshot_sites - tracked))))
     # Lo importado de The Engine (`source='engine'`) no caduca a los 16 meses:
     # se queda mientras la web tenga cliente activo (lo de arriba lo borra si no).
     await db.execute(delete(GscQueryMonthly).where(

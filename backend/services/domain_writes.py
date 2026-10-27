@@ -23,6 +23,7 @@ from backend.services.project_lifecycle import (
 from backend.services.project_owner import validate_project_owner
 from backend.services.recurrence import validate_recurrence_rule
 from backend.services.task_lifecycle import stamp_task_status, validate_task_waiting
+from backend.services.task_notifications import notify_task_status_change
 from backend.services.task_review import validate_project_review, validate_task_review
 from backend.services.task_scope import validate_client_exists, validate_task_scope
 from backend.services.temporal import business_today, utc_now_naive
@@ -36,7 +37,7 @@ UPDATABLE_TASK_FIELDS = {
     "waiting_for", "follow_up_date", "is_recurring", "recurrence_pattern",
     "recurrence_day", "recurrence_end_date",
     "link_url", "recurrence_anchor_date", "recurrence_paused",
-    "procedure_text", "procedure_url",
+    "procedure_text", "procedure_url", "sort_rank",
 }
 
 PROCEDURE_FIELDS = ("procedure_text", "procedure_url")
@@ -271,6 +272,7 @@ async def update_task(
         setattr(task, field, value)
     if "status" in data:
         stamp_task_status(task, old_status)
+        await notify_task_status_change(db, task, old_status, actor)
     if manual_changed:
         fixed_sum = (await db.execute(select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(
             TimeEntry.task_id == task.id, TimeEntry.minutes.isnot(None),

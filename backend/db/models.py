@@ -662,6 +662,8 @@ class Task(TimestampMixin, Base):
     depends_on = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     scheduled_date = Column(Date, nullable=True)
+    # Orden manual (índice fraccional, services/task_rank.py); NULL = sin orden manual.
+    sort_rank = Column(String(64), nullable=True)
     # Fecha en que se marcó como "Avanzada". La barrida nocturna devuelve a
     # in_progress toda tarea advanced con advanced_at anterior a hoy, de modo
     # que un servidor caído a medianoche se recupera solo al arrancar.
@@ -734,6 +736,41 @@ class TaskRecurrenceOccurrence(Base):
         Index("uq_task_recurrence_consumed", "template_id", "date", unique=True),
         Index("ix_task_recurrence_generated", "task_id"),
     )
+
+
+class TaskTimeBlock(TimestampMixin, Base):
+    """Bloque de trabajo con hora: "trabajo en la tarea X de 10:00 a 11:30".
+
+    Horas civiles de la agencia sin zona (como ``Event``). Varios por tarea y
+    persona; lo lee Mi agenda (vista con horas) y el cronómetro se arranca desde
+    él. Migración ``task_time_blocks_v1``; entra en el Deshacer como hijo de la
+    tarea.
+    """
+    __tablename__ = "task_time_blocks"
+    __table_args__ = (
+        CheckConstraint("ends_at > starts_at", name="ck_task_time_blocks_order"),
+        CheckConstraint("ends_at - starts_at <= interval '12 hours'", name="ck_task_time_blocks_length"),
+        CheckConstraint(
+            "starts_at::date = (ends_at - interval '1 microsecond')::date",
+            name="ck_task_time_blocks_same_day",
+        ),
+        Index("ix_task_time_blocks_user_starts", "user_id", "starts_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    starts_at = Column(DateTime, nullable=False)
+    ends_at = Column(DateTime, nullable=False)
+
+    task = relationship("Task", lazy="noload")
+
+    @property
+    def display_label(self) -> str:
+        """Para el Deshacer: "28/10 10:00–11:30"."""
+        if not self.starts_at or not self.ends_at:
+            return "Bloque"
+        return f"{self.starts_at:%d/%m %H:%M}–{self.ends_at:%H:%M}"
 
 
 class TaskChecklist(TimestampMixin, Base):
@@ -2026,6 +2063,21 @@ class SeoAnnotation(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class DigestSeoDetail(Base):
+    """Foto del detalle de Search Console del mes de un resumen mensual: top de
+    consultas y páginas, oportunidades y marca. Se pinta con código en el email,
+    el PDF y el enlace del cliente; nunca va a la IA. Mientras el resumen no ha
+    salido de la app se recalcula al pintarlo; después es lo que se envió.
+    Fuera del Deshacer (dato de máquina) y con la retención del detalle."""
+    __tablename__ = "digest_seo_details"
+    __table_args__ = (Index("ix_digest_seo_details_site_url", "site_url"),)
+
+    digest_id = Column(Integer, ForeignKey("weekly_digests.id", ondelete="CASCADE"), primary_key=True)
+    site_url = Column(String(255), nullable=False)
+    payload = Column(JSONB, nullable=False)
+    computed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class GscPageDaily(Base):
     """Cifras diarias finales por página de una propiedad (sólo los últimos 120 días).
 
@@ -2102,6 +2154,7 @@ class Credential(Base):
     __tablename__ = "credentials"
     __table_args__ = (
         CheckConstraint("secret_encrypted LIKE 'v1:%'", name="ck_credentials_secret_encrypted"),
+        CheckConstraint("totp_encrypted IS NULL OR totp_encrypted LIKE 'v1:%'", name="ck_credentials_totp_encrypted"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -2109,6 +2162,9 @@ class Credential(Base):
     url = Column(String(500), nullable=True)
     username = Column(String(255), nullable=True)
     secret_encrypted = Column(Text, nullable=False)
+    # Clave del autenticador (2FA) como enlace otpauth:// normalizado, cifrada
+    # igual que la contraseña. Sólo sale convertida en código (`/totp`).
+    totp_encrypted = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
     client_id = Column(Integer, ForeignKey("clients.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -2131,7 +2187,7 @@ class CredentialAccessLog(Base):
     __tablename__ = "credential_access_log"
     __table_args__ = (
         CheckConstraint(
-            "action IN ('reveal','copy','create','update','share','delete')",
+            "action IN ('reveal','copy','create','update','share','delete','totp')",
             name="ck_credential_access_log_action",
         ),
     )

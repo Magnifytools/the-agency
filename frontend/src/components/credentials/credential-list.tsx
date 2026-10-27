@@ -9,6 +9,7 @@ import { getErrorMessage } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { CredentialSecret } from "./credential-secret"
+import { CredentialTotp } from "./credential-totp"
 import {
   CREDENTIALS_KEY,
   CredentialFormDialog,
@@ -117,7 +118,10 @@ export function CredentialList({ q, clientId, showClient = true }: {
                   </button>
                 ) : <span className="text-xs text-muted-foreground">Sin usuario</span>}
               </div>
-              <CredentialSecret credentialId={c.id} name={c.name} />
+              <div className="flex flex-wrap items-center gap-x-2 min-w-0">
+                <CredentialSecret credentialId={c.id} name={c.name} />
+                {c.has_totp && <CredentialTotp credentialId={c.id} name={c.name} />}
+              </div>
               <div className="flex gap-1 md:justify-end">
                 {c.can_manage && canWrite && (
                   <>

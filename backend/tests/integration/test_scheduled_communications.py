@@ -538,7 +538,8 @@ async def test_calendar_reconciliation_is_complete_user_window_scoped_and_civil(
         other = Event(user_id=ids["admin"], title="Other owner", event_type=EventType.meeting, start_time=local_start + timedelta(hours=12), source="google", source_calendar_id="primary", google_event_id="removed")
         other_calendar = Event(user_id=user.id, title="Other calendar", event_type=EventType.meeting, start_time=local_start + timedelta(hours=12), source="google", source_calendar_id="other", google_event_id="removed")
         manual = Event(user_id=user.id, title="Manual", event_type=EventType.meeting, start_time=local_start + timedelta(hours=12))
-        outside = Event(user_id=user.id, title="Outside", event_type=EventType.meeting, start_time=local_start + timedelta(days=10), source="google", source_calendar_id="primary", google_event_id="outside")
+        # La ventana va del lunes de esta semana al final de la siguiente: +20 días queda siempre fuera.
+        outside = Event(user_id=user.id, title="Outside", event_type=EventType.meeting, start_time=local_start + timedelta(days=20), source="google", source_calendar_id="primary", google_event_id="outside")
         db.add_all([existing, removed, other, other_calendar, manual, outside]); await db.commit()
         preserved = [e.id for e in (other, other_calendar, manual, outside)]
         kept_id, removed_id = existing.id, removed.id
