@@ -34,7 +34,10 @@ async def test_subida_y_cascada(engine):
     await deployment_schema.migrate_schema(engine)
     await deployment_schema.check_deployment_ready(engine)
     async with engine.begin() as conn:
-        await conn.execute(text("INSERT INTO clients (id, name, status) VALUES (1, 'Acme', 'active')"))
+        await conn.execute(text("""
+            INSERT INTO clients (id,name,contract_type,status,currency,is_internal,is_intermediary_deal,created_at,updated_at)
+            VALUES (1,'Acme','monthly','active','EUR',false,false,'2026-01-01','2026-01-02')
+        """))
         await conn.execute(text("INSERT INTO seo_annotations (client_id, date, text) VALUES (1, '2026-10-05', 'Migración')"))
         with pytest.raises(Exception):
             async with conn.begin_nested():
