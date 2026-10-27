@@ -175,6 +175,23 @@
         <p id="meeting-settings-error" class="error hidden" role="alert"></p>
         <button id="meeting-settings-save" type="button" class="secondary-btn full-width">Guardar preferencias</button>
       </details>
+      <details id="desktop-settings" class="timer-section">
+        <summary>Avisos en el escritorio</summary>
+        <p class="mode-intro">Te avisa en Chrome cuando te asignan una tarea, te mencionan o hay una revisión, y de las alertas críticas. Al pulsar el aviso se abre en The Agency. Sólo mientras Chrome está abierto; es una preferencia de este navegador.</p>
+        <label class="checkbox-row">
+          <input type="checkbox" id="desktop-enabled">
+          <span>Mostrar avisos en el escritorio</span>
+        </label>
+        <div class="field-row quiet-row">
+          <span class="section-label">No molestar de</span>
+          <input type="time" id="desktop-quiet-start" class="field-select compact" aria-label="No molestar desde">
+          <span class="hint">a</span>
+          <input type="time" id="desktop-quiet-end" class="field-select compact" aria-label="No molestar hasta">
+        </div>
+        <p class="hint">Lo que llegue en esas horas te avisa al terminar. Deja las dos vacías para no silenciar nunca.</p>
+        <p id="desktop-settings-state" class="hint" role="status"></p>
+        <button id="desktop-settings-save" type="button" class="secondary-btn full-width">Guardar</button>
+      </details>
     </div>
 
     <!-- ═══ TIMER TAB ═══ -->

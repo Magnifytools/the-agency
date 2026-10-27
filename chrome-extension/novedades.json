@@ -1,5 +1,13 @@
 [
   {
+    "version": "2.3.0",
+    "date": "2026-10-27",
+    "changes": [
+      "Avisos en el escritorio: te asignan una tarea, te mencionan, hay una revisión o salta una alerta crítica. Al pulsarlos se abre en The Agency. Con horas de silencio.",
+      "La insignia cuenta las alertas activas (en rojo); sin alertas, las notas por aclarar."
+    ]
+  },
+  {
     "version": "2.2.8",
     "date": "2026-10-24",
     "changes": [

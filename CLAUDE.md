@@ -1020,6 +1020,27 @@ admin_users, admin_settings
 - En tests, el fixture autouse `_no_real_google_revoke` (`backend/tests/conftest.py`)
   sustituye la revocación en las rutas: nunca sale a la red.
 
+## Extensión de Chrome: avisos en el escritorio
+- `background.js` sondea cada minuto `GET /api/notifications/desktop?after_id=`
+  y lanza `chrome.notifications`. Sólo lo que pide hacer algo: actividad sin leer
+  de tipo asignación, mención y revisión (`DESKTOP_ACTIVITY_TYPES` en
+  `api/routes/notifications.py`; comentarios y "vence mañana" se quedan en la
+  campana) y alertas CRÍTICAS activas (ni pospuestas ni descartadas).
+- La primera vez en un navegador (o con otra cuenta) sólo guarda desde dónde
+  seguir: nunca vuelca el historial. La actividad llega de 10 en 10
+  (`next_after_id`); las alertas se distinguen por id + `fingerprint` (una alerta
+  reutiliza su fila al reabrirse o cambiar). Más de 3 en una pasada → un aviso
+  "N más". Pulsar abre la ruta de la app (sólo rutas que empiezan por `/`).
+- Preferencia POR NAVEGADOR en el popup ("Avisos en el escritorio",
+  `am_desktop_prefs_v1` en `chrome.storage.local`): activar y horas de silencio
+  (20:00-08:00 por defecto, hora del ordenador). En silencio no avanza: lo
+  pendiente sale al terminar; desactivado, avanza sin avisar. No se guarda en el
+  servidor: `alert_settings.notify_in_app/notify_email` siguen sin uso.
+- Insignia: alertas activas en rojo (como la campana); sin alertas, las notas
+  por aclarar en índigo.
+- Tests: `chrome-extension/tests/desktop-notices.test.cjs` y
+  `backend/tests/integration/test_desktop_notices.py`.
+
 ## Extensión de Chrome: descarga
 - Ajustes → "Extensión de Chrome" (`components/settings/extension-section.tsx`):
   botón "Descargar extensión" con la versión desplegada y pasos para instalar
