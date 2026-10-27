@@ -1,4 +1,10 @@
 import { useState } from "react"
+import {
+  DndContext, KeyboardSensor, PointerSensor, TouchSensor, closestCenter, pointerWithin, useSensor, useSensors,
+  type CollisionDetection, type DragEndEvent, type DragStartEvent,
+} from "@dnd-kit/core"
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable"
+import { toast } from "sonner"
 import type { PaginatedResponse, Task, TaskStatus } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { TimerButton } from "@/components/timer/timer-button"
@@ -7,9 +13,11 @@ import { Pencil, Eye, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, 
 import { InlineDate } from "@/components/ui/inline-edit"
 import { TaskPriorityField, type TaskFieldUpdate } from "@/components/tasks/task-inline-fields"
 import { formatMinutes } from "@/lib/inline-edit"
-import { sortAgendaTasks, sortFollowups } from "@/components/tasks/task-page-utils"
+import { nextWorkdays, plannableFrom, sortAgendaTasks, sortFollowups } from "@/components/tasks/task-page-utils"
+import { AgendaDropZone, DayStrip, DragHandle, SortableAgendaItem, type AgendaDropData, type AgendaSection, type DragHandleProps } from "@/components/tasks/agenda-dnd"
+import { orderAfterDrop } from "@/lib/task-rank"
 import { cn } from "@/lib/utils"
-import { agencyTimezoneLabel, businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates"
+import { addCivilDays, agencyTimezoneLabel, businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates"
 import { taskStatusPresentation, taskStatusSelectClass } from "@/lib/task-status"
 
 
@@ -33,9 +41,11 @@ interface Props {
   canCompleteReviewedTask?: (task: Task) => boolean
   /** Prioridad y "Mover a…" sin abrir la tarea. */
   onUpdate?: (task: Task, update: Parameters<TaskFieldUpdate>[0]) => void
+  /** Arrastrar: la sección donde queda (en orden) y, si entra en hoy, el día. */
+  onMove?: (task: Task, orderedIds: number[], scheduledDate?: string) => void
 }
 
-export function MyDayView({ planned, carryover, unplanned, followups = { items: [], total: 0, page: 1, page_size: 25 }, completed, retired, isLoadingMore, onLoadMore, onStatusChange, onOpenEdit, onReviewCarryover, retiredLoading = false, retiredError = false, onRetryRetired, canWrite = false, canCompleteReviewedTask = () => true, onUpdate }: Props) {
+export function MyDayView({ planned, carryover, unplanned, followups = { items: [], total: 0, page: 1, page_size: 25 }, completed, retired, isLoadingMore, onLoadMore, onStatusChange, onOpenEdit, onReviewCarryover, retiredLoading = false, retiredError = false, onRetryRetired, canWrite = false, canCompleteReviewedTask = () => true, onUpdate, onMove }: Props) {
   const today = businessDateString()
   const [showRetired, setShowRetired] = useState(false)
 
@@ -47,7 +57,67 @@ export function MyDayView({ planned, carryover, unplanned, followups = { items: 
   const followupTasks = sortFollowups(followups.items)
   const completedToday = completed.items
 
-  const renderTaskCard = (task: Task, carryover = false) => {
+  // Arrastrar (con el asa): ordenar cada sección, llevar a "Planificadas hoy"
+  // desde arrastre o sin planificar, o soltar en un día de la tira.
+  const canDrag = canWrite && !!onMove
+  const [dragging, setDragging] = useState<Task | null>(null)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+  // Manda lo que hay bajo el puntero (una tarjeta antes que su sección); con
+  // teclado, sin puntero, lo más cercano.
+  const collision: CollisionDetection = (args) => {
+    const hits = pointerWithin(args)
+    if (!hits.length) return closestCenter(args)
+    const cards = hits.filter((hit) => (args.droppableContainers.find((container) => container.id === hit.id)?.data.current as AgendaDropData | undefined)?.task)
+    return cards.length ? cards : hits
+  }
+  const sections: Record<AgendaSection, Task[]> = { planned: plannedTodayTasks, carryover: carryoverTasks, unplanned: unplannedTasks }
+  const days = nextWorkdays(today, 5)
+  const notPlannable = () => toast.message("Tiene la fecha límite vencida: cámbiala con «Revisar» para sacarla del arrastre.")
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    setDragging(null)
+    const from = active.data.current as AgendaDropData | undefined
+    const target = over?.data.current as AgendaDropData | undefined
+    const task = from?.task
+    if (!task || !from?.section || !target || !onMove) return
+    if (target.day) {
+      if (!plannableFrom(task, today)) return notPlannable()
+      if (task.scheduled_date !== target.day) onUpdate?.(task, {
+        data: { scheduled_date: target.day },
+        success: `Planificada: ${formatCivilDate(target.day, { weekday: "short", day: "numeric", month: "short" })}`,
+      })
+      return
+    }
+    const section = target.section
+    if (!section) return
+    const overId = target.task && target.task.id !== task.id ? target.task.id : null
+    if (section !== from.section) {
+      // Entre secciones sólo se lleva a hoy; sacar de hoy es "Mover a…" o la tira.
+      if (section !== "planned") return
+      if (!plannableFrom(task, today)) return notPlannable()
+      onMove(task, orderAfterDrop(sections.planned.map((item) => item.id), task.id, overId), today)
+      return
+    }
+    const ids = sections[section].map((item) => item.id)
+    const ordered = orderAfterDrop(ids, task.id, target.task ? target.task.id : null)
+    if (ordered.some((id, index) => id !== ids[index])) onMove(task, ordered)
+  }
+  const sortable = (section: AgendaSection, items: Task[], carryover = false) => (
+    <SortableContext id={section} items={items.map((task) => task.id)} strategy={verticalListSortingStrategy}>
+      <div className="space-y-2">
+        {items.map((task) => (
+          <SortableAgendaItem key={task.id} task={task} section={section} disabled={!canDrag}>
+            {(handle) => renderTaskCard(task, carryover, handle)}
+          </SortableAgendaItem>
+        ))}
+      </div>
+    </SortableContext>
+  )
+
+  const renderTaskCard = (task: Task, carryover = false, handle: DragHandleProps | null = null) => {
     const isOverdue = task.due_date && task.due_date < today
     const isInProgress = task.status === "in_progress"
     const sendsForReview = !!task.project_requires_task_review && !task.is_recurring && !canCompleteReviewedTask(task)
@@ -92,6 +162,7 @@ export function MyDayView({ planned, carryover, unplanned, followups = { items: 
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
+              {handle && <DragHandle handle={handle} title={task.title} />}
               <span className="min-w-0 text-sm font-medium whitespace-normal sm:truncate inline-flex items-center gap-1">
                 {task.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" />}
                 {task.title}
@@ -177,23 +248,44 @@ export function MyDayView({ planned, carryover, unplanned, followups = { items: 
   }
 
   return (
+    <DndContext
+      sensors={canDrag ? sensors : []}
+      collisionDetection={collision}
+      onDragStart={({ active }: DragStartEvent) => setDragging((active.data.current as AgendaDropData | undefined)?.task ?? null)}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => setDragging(null)}
+      accessibility={{
+        screenReaderInstructions: { draggable: "Con el asa: espacio para coger la tarea, flechas para moverla, espacio para soltarla y Escape para cancelar." },
+        announcements: {
+          onDragStart: () => "Moviendo tarea.",
+          onDragOver: ({ over }) => {
+            const target = over?.data.current as AgendaDropData | undefined
+            if (target?.day) return `Sobre el ${formatCivilDate(target.day, { weekday: "long", day: "numeric" })}.`
+            return target?.section === "planned" ? "Sobre Planificadas hoy." : "Sobre la lista."
+          },
+          onDragEnd: ({ over }) => over ? "Tarea soltada." : "Tarea devuelta a su sitio.",
+          onDragCancel: () => "Movimiento cancelado.",
+        },
+      }}
+    >
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">{agencyTimezoneLabel()}</p>
+      {dragging && <DayStrip days={days} tomorrow={addCivilDays(today, 1)} />}
       {/* Tareas del día */}
       <div>
         <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
           Planificadas hoy ({planned.total})
         </p>
+        <AgendaDropZone section="planned">
         {plannedTodayTasks.length === 0 ? (
           <Card>
             <CardContent className="py-4 flex items-center gap-3 text-muted-foreground">
               <CheckCircle2 className="h-5 w-5 shrink-0" />
-              <p className="font-medium">Sin tareas planificadas para hoy</p>
+              <p className="font-medium">{dragging ? "Suelta aquí para hacerla hoy" : "Sin tareas planificadas para hoy"}</p>
             </CardContent>
           </Card>
-        ) : (
-          <div className="space-y-2">{plannedTodayTasks.map((task) => renderTaskCard(task))}</div>
-        )}
+        ) : sortable("planned", plannedTodayTasks)}
+        </AgendaDropZone>
         {planned.total > planned.items.length && (
           <Button variant="outline" className="mt-3" disabled={isLoadingMore} onClick={() => onLoadMore("planned")}>
             Ver más planificadas ({planned.total - planned.items.length} restantes)
@@ -205,7 +297,7 @@ export function MyDayView({ planned, carryover, unplanned, followups = { items: 
         <div className="mt-6">
           <p className="text-xs font-bold uppercase tracking-wider text-red-600 mb-2">Arrastre pendiente ({carryover.total})</p>
           <p className="text-sm text-muted-foreground mb-2">No son compromisos nuevos de hoy. Reprograma, deja en espera o completa cada una.</p>
-          <div className="space-y-2">{carryoverTasks.map((task) => renderTaskCard(task, true))}</div>
+          {sortable("carryover", carryoverTasks, true)}
           {carryover.total > carryover.items.length && (
             <Button variant="outline" className="mt-3" disabled={isLoadingMore} onClick={() => onLoadMore("carryover")}>
               Ver más de arrastre ({carryover.total - carryover.items.length} restantes)
@@ -233,9 +325,7 @@ export function MyDayView({ planned, carryover, unplanned, followups = { items: 
             Sin planificar ({unplanned.total})
           </p>
           <p className="mb-2 text-sm text-muted-foreground">Tareas activas que todavía no tienen fecha planificada.</p>
-          <div className="space-y-2">
-            {unplannedTasks.map((task) => renderTaskCard(task))}
-          </div>
+          {sortable("unplanned", unplannedTasks)}
           {unplanned.total > unplanned.items.length && (
             <Button variant="outline" className="mt-3" disabled={isLoadingMore} onClick={() => onLoadMore("unplanned")}>
               Ver más sin planificar ({unplanned.total - unplanned.items.length} restantes)
@@ -298,5 +388,6 @@ export function MyDayView({ planned, carryover, unplanned, followups = { items: 
         )}
       </div>
     </div>
+    </DndContext>
   )
 }

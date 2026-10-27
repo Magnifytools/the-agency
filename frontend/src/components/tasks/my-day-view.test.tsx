@@ -180,4 +180,14 @@ describe("MyDayView", () => {
     expect(screen.queryByRole("button", { name: /Prioridad de/ })).not.toBeInTheDocument()
     expect(screen.getByText("Media")).toBeInTheDocument()
   })
+
+  it("ofrece el asa para arrastrar sólo con escritura y con a dónde mandarlo", () => {
+    const props = { carryover: page([]), unplanned: page([task(5, "Sin día")]), completed: page([]), retired: page([]), onLoadMore: vi.fn(), onStatusChange: vi.fn(), onOpenEdit: vi.fn(), onReviewCarryover: vi.fn() }
+    const { rerender } = render(<MyDayView {...props} planned={page([task(4, "Hoy")])} canWrite onMove={vi.fn()} />)
+    expect(screen.getByRole("button", { name: "Mover Hoy" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Mover Sin día" })).toBeInTheDocument()
+
+    rerender(<MyDayView {...props} planned={page([task(4, "Hoy")])} canWrite={false} onMove={vi.fn()} />)
+    expect(screen.queryByRole("button", { name: "Mover Hoy" })).not.toBeInTheDocument()
+  })
 })

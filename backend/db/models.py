@@ -662,6 +662,8 @@ class Task(TimestampMixin, Base):
     depends_on = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     scheduled_date = Column(Date, nullable=True)
+    # Orden manual (índice fraccional, services/task_rank.py); NULL = sin orden manual.
+    sort_rank = Column(String(64), nullable=True)
     # Fecha en que se marcó como "Avanzada". La barrida nocturna devuelve a
     # in_progress toda tarea advanced con advanced_at anterior a hoy, de modo
     # que un servidor caído a medianoche se recupera solo al arrancar.

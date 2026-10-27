@@ -1,0 +1,8 @@
+{
+  "version": "20261027_task_sort_rank_v1",
+  "sql": "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sort_rank VARCHAR(64)",
+  "column": "sort_rank",
+  "type": "varchar",
+  "nullable": true,
+  "default": null
+}

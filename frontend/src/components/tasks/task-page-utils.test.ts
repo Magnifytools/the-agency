@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { boardStatusQuery, calendarMonthFrom, calendarMonthParam, initialTasksView, lastTasksView, mondayOf, rememberTasksView, selectedTaskAssignee, shiftCalendarMonth, shouldPreserveCurrentProject, taskQueryKeyWithWeek, weekOffsetFrom, weekParam, withExplicitActualMinutes, withTaskAssignee } from "./task-page-utils"
+import type { Task } from "@/lib/types"
+import { boardStatusQuery, nextWorkdays, plannableFrom, sortAgendaTasks, calendarMonthFrom, calendarMonthParam, initialTasksView, lastTasksView, mondayOf, rememberTasksView, selectedTaskAssignee, shiftCalendarMonth, shouldPreserveCurrentProject, taskQueryKeyWithWeek, weekOffsetFrom, weekParam, withExplicitActualMinutes, withTaskAssignee } from "./task-page-utils"
 
 describe("task page query and submit helpers", () => {
   it("opens Todas when a PM QA deep link carries a filter", () => {
@@ -74,5 +75,30 @@ describe("task views kept in the URL", () => {
     expect(boardStatusQuery("", active)).toEqual({ active, completed: true })
     expect(boardStatusQuery("waiting", active)).toEqual({ active: "waiting", completed: false })
     expect(boardStatusQuery("completed", active)).toEqual({ active: null, completed: true })
+  })
+})
+
+describe("orden manual en Mi agenda", () => {
+  const task = (id: number, extra: Partial<Task> = {}) => ({ id, priority: "medium", due_date: null, status: "pending", ...extra }) as Task
+
+  it("lo ordenado a mano va primero; el resto, por vencidas y prioridad", () => {
+    const items = [
+      task(1, { priority: "urgent" }), task(2, { sort_rank: "k" }), task(3, { sort_rank: "F" }),
+      task(4, { due_date: "2026-10-01T00:00:00" }),
+    ]
+    expect(sortAgendaTasks(items, "2026-10-27").map((item) => item.id)).toEqual([3, 2, 4, 1])
+  })
+
+  it("no lleva a hoy lo que espera ni lo que tiene la fecha límite vencida", () => {
+    expect(plannableFrom(task(1), "2026-10-27")).toBe(true)
+    expect(plannableFrom(task(1, { due_date: "2026-10-27T00:00:00" }), "2026-10-27")).toBe(true)
+    expect(plannableFrom(task(1, { due_date: "2026-10-26T00:00:00" }), "2026-10-27")).toBe(false)
+    expect(plannableFrom(task(1, { status: "waiting" }), "2026-10-27")).toBe(false)
+  })
+
+  it("la tira de días salta el fin de semana", () => {
+    // 30 oct 2026 es viernes.
+    expect(nextWorkdays("2026-10-30", 3)).toEqual(["2026-11-02", "2026-11-03", "2026-11-04"])
+    expect(nextWorkdays("2026-10-27", 2)).toEqual(["2026-10-28", "2026-10-29"])
   })
 })

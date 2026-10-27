@@ -18,30 +18,30 @@ const task: Task = {
 
 describe("KanbanBoard", () => {
   it("keeps cards readable but not draggable for readers", () => {
-    render(<KanbanBoard tasks={[task]} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} canWrite={false} />)
+    render(<KanbanBoard tasks={[task]} onMove={vi.fn()} onOpenEdit={vi.fn()} canWrite={false} />)
     const card = screen.getByText("Preparar revisión").closest("[data-task-card]")!
     expect(card).not.toHaveAttribute("aria-roledescription")
     expect(screen.getByRole("button", { name: "Ver tarea Preparar revisión" })).toBeInTheDocument()
   })
 
   it("makes writer cards draggable", () => {
-    render(<KanbanBoard tasks={[task]} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} />)
-    expect(screen.getByText("Preparar revisión").closest("[data-task-card]")).toHaveAttribute("aria-roledescription", "draggable")
+    render(<KanbanBoard tasks={[task]} onMove={vi.fn()} onOpenEdit={vi.fn()} />)
+    expect(screen.getByText("Preparar revisión").closest("[data-task-card]")).toHaveAttribute("aria-roledescription", "sortable")
   })
 
   it("opens the task from its title", async () => {
     const onOpenEdit = vi.fn()
-    render(<KanbanBoard tasks={[task]} onStatusChange={vi.fn()} onOpenEdit={onOpenEdit} />)
+    render(<KanbanBoard tasks={[task]} onMove={vi.fn()} onOpenEdit={onOpenEdit} />)
     await userEvent.click(screen.getByRole("button", { name: "Preparar revisión" }))
     expect(onOpenEdit).toHaveBeenCalledWith(task)
   })
 
   it("shows recent completed work in a collapsed Hecho column only when asked", async () => {
     const done = { ...task, id: 8, title: "Informe enviado", status: "completed" as const }
-    const { rerender } = render(<KanbanBoard tasks={[task, done]} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} />)
+    const { rerender } = render(<KanbanBoard tasks={[task, done]} onMove={vi.fn()} onOpenEdit={vi.fn()} />)
     expect(screen.queryByRole("region", { name: "Columna Hecho" })).not.toBeInTheDocument()
 
-    rerender(<KanbanBoard tasks={[task, done]} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} showCompleted completedHint="últimos 7 días" />)
+    rerender(<KanbanBoard tasks={[task, done]} onMove={vi.fn()} onOpenEdit={vi.fn()} showCompleted completedHint="últimos 7 días" />)
     const column = screen.getByRole("region", { name: "Columna Hecho" })
     expect(within(column).getByText("1")).toBeInTheDocument()
     expect(within(column).getByText("últimos 7 días")).toBeInTheDocument()

@@ -353,6 +353,29 @@ admin_users, admin_settings
   en Mi agenda pasa a la anterior/siguiente en el orden que se ve (botones y
   ↑/↓ fuera de los campos; `agendaOrder` en `task-page-utils.ts`); con cambios
   sin guardar pregunta antes. El título sólo coge el foco al crear.
+- **Orden manual** (`tasks.sort_rank`, migración `task_sort_rank_v1`; NULL = sin
+  orden manual): un único orden por tarea, el mismo en Mi agenda y en cada
+  columna del tablero (lo ordenado va primero; el resto, como antes). Índices
+  fraccionales en base 62 (`services/task_rank.py`, gemelo `lib/task-rank.ts`
+  con los mismos casos de prueba: el front predice al servidor). Al soltar se
+  conservan los rangos que ya están en orden (subsecuencia creciente más larga)
+  y sólo cambian la tarea movida y las que no tenían o rompían el orden. En SQL
+  se ordena con `COLLATE "C"` (la colación de la BD no compara por bytes).
+- **`POST /api/tasks/{id}/move`** (`ordered_ids` = la lista donde queda, en
+  orden, ≤ 500; opcional `status` y `scheduled_date`): rango, estado y día en una
+  transacción, con las validaciones del `PUT` (revisión, retiradas; "En espera"
+  no, 422) y UNA entrada del Deshacer (el reparto va por ORM). Escritura en
+  `tasks`: un miembro sin ella no reordena ni sus tareas (no se usa
+  `allow_assignee_schedule`). Front: `useTaskMove` (optimista con los rangos
+  predichos).
+- **Arrastrar en Mi agenda** (asa ⠿ de cada tarjeta; `components/tasks/agenda-dnd.tsx`):
+  ordenar Planificadas hoy, Arrastre y Sin planificar; llevar a Planificadas hoy
+  desde las otras dos (pone el día de hoy); mientras se arrastra, abajo, la tira
+  "Mañana · jue 29 · …" (5 laborables) planifica para ese día. Lo que tiene la
+  fecha límite vencida o está en espera no se planifica arrastrando
+  (`plannableFrom`): seguiría en Arrastre; se avisa de usar "Revisar". En el
+  tablero, la tarjeta entera se reordena dentro de su columna y entra en otra en
+  el sitio donde se suelta.
 - **Títulos de pestaña**: el layout pone el de la sección (`useSectionTitle`) y
   las fichas lo afinan con `usePageTitle` (cliente, proyecto, resumen).
 - **⌘K** (`search-palette.tsx` + `GET /api/search`): clientes, proyectos,
