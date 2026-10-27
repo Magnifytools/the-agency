@@ -738,6 +738,41 @@ class TaskRecurrenceOccurrence(Base):
     )
 
 
+class TaskTimeBlock(TimestampMixin, Base):
+    """Bloque de trabajo con hora: "trabajo en la tarea X de 10:00 a 11:30".
+
+    Horas civiles de la agencia sin zona (como ``Event``). Varios por tarea y
+    persona; lo lee Mi agenda (vista con horas) y el cronómetro se arranca desde
+    él. Migración ``task_time_blocks_v1``; entra en el Deshacer como hijo de la
+    tarea.
+    """
+    __tablename__ = "task_time_blocks"
+    __table_args__ = (
+        CheckConstraint("ends_at > starts_at", name="ck_task_time_blocks_order"),
+        CheckConstraint("ends_at - starts_at <= interval '12 hours'", name="ck_task_time_blocks_length"),
+        CheckConstraint(
+            "starts_at::date = (ends_at - interval '1 microsecond')::date",
+            name="ck_task_time_blocks_same_day",
+        ),
+        Index("ix_task_time_blocks_user_starts", "user_id", "starts_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    starts_at = Column(DateTime, nullable=False)
+    ends_at = Column(DateTime, nullable=False)
+
+    task = relationship("Task", lazy="noload")
+
+    @property
+    def display_label(self) -> str:
+        """Para el Deshacer: "28/10 10:00–11:30"."""
+        if not self.starts_at or not self.ends_at:
+            return "Bloque"
+        return f"{self.starts_at:%d/%m %H:%M}–{self.ends_at:%H:%M}"
+
+
 class TaskChecklist(TimestampMixin, Base):
     __tablename__ = "task_checklists"
 

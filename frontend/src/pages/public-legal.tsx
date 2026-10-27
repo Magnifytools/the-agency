@@ -68,7 +68,7 @@ export function AboutPage() {
         </li>
         <li>
           <strong>Google Calendar</strong> (sólo lectura, opcional y personal): cada persona puede conectar
-          su calendario para ver su próxima reunión en su lista de tareas.
+          su calendario para ver su próxima reunión y sus reuniones junto a sus bloques de trabajo en Mi agenda.
         </li>
       </ul>
       <p>
@@ -88,7 +88,7 @@ export function AboutPage() {
           up to 16 months) and Google Analytics data (including daily lead events per landing page and
           channel) (read-only) for our clients' websites to track their traffic and to add
           a block of figures to the monthly report each client receives. Each user may optionally connect
-          their own Google Calendar (read-only) to see their next meeting. The app never writes to, changes
+          their own Google Calendar (read-only) to see their next meeting and their meetings next to their work blocks. The app never writes to, changes
           or deletes anything in Google accounts; the only request it makes is to revoke its own access when
           an account is disconnected. See the <Link to="/privacidad">privacy policy</Link>.
         </p>
@@ -135,9 +135,10 @@ export function PrivacyPage() {
       </p>
       <h3>Google Calendar (permiso calendar.readonly)</h3>
       <p>
-        Cada persona puede conectar su propio calendario. Leemos de los próximos 7 días el título, la
-        descripción, el inicio y el fin de cada evento, y los guardamos para enseñarle su próxima reunión y
-        avisarle antes de que empiece. No leemos asistentes, organizador, ubicación ni adjuntos. Sólo esa
+        Cada persona puede conectar su propio calendario. Leemos el título, la descripción, el inicio y el
+        fin de cada evento desde el lunes de esta semana hasta el final de la siguiente, y los guardamos para
+        enseñarle su próxima reunión, avisarle antes de que empiece y ponerlas junto a sus bloques de trabajo
+        en Mi agenda. No leemos asistentes, organizador, ubicación ni adjuntos. Sólo esa
         persona ve sus eventos dentro de la app. Cada evento importado se borra 30 días después de terminar.
       </p>
 
@@ -148,7 +149,7 @@ export function PrivacyPage() {
         <li>Ver cómo ha evolucionado la posición de cada búsqueda en los últimos meses.</li>
         <li>Ver qué páginas de entrada y qué canales traen leads a cada cliente.</li>
         <li>Añadir un bloque de cifras al resumen mensual que enviamos a cada cliente y a la página de sólo lectura que el cliente puede abrir con su enlace privado.</li>
-        <li>Enseñar a cada persona su próxima reunión, avisarla antes y, si su equipo lo tiene activado, incluir el título y la hora en su plan de la mañana, que puede publicarse en el canal interno del equipo.</li>
+        <li>Enseñar a cada persona su próxima reunión y sus reuniones de la semana junto a sus bloques de trabajo, avisarla antes y, si su equipo lo tiene activado, incluir el título y la hora en su plan de la mañana, que puede publicarse en el canal interno del equipo.</li>
       </ul>
       <p>
         No usamos estos datos para publicidad, no los vendemos y no los usamos para entrenar modelos de
@@ -232,8 +233,9 @@ export function PrivacyPage() {
         </p>
         <p>
           <strong>Google Calendar (calendar.readonly)</strong>: each user may connect their own calendar. We
-          read the title, description, start and end of events in the next 7 days and store them to show
-          that user their next meeting and remind them before it starts; if their team enables it, the title
+          read the title, description, start and end of events from Monday of the current week to the end
+          of the next one and store them to show that user their next meeting, remind them before it starts
+          and place them next to their work blocks in their agenda; if their team enables it, the title
           and time appear in their morning plan, which can be posted to the team's internal channel. We do not
           read attendees, organizer, location or attachments. Only that user sees their events in the app.
           Each imported event is deleted 30 days after it ends.

@@ -46,6 +46,7 @@ from backend.startup.web_health_schema import MIGRATION as WEB_HEALTH_MIGRATION
 from backend.startup.client_scope_requests_schema import MIGRATION as CLIENT_SCOPE_REQUESTS_MIGRATION
 from backend.startup.project_hours_carryover_schema import MIGRATION as PROJECT_HOURS_CARRYOVER_MIGRATION
 from backend.startup.task_sort_rank_schema import MIGRATION as TASK_SORT_RANK_MIGRATION
+from backend.startup.task_time_blocks_schema import MIGRATION as TASK_TIME_BLOCKS_MIGRATION
 
 MIGRATIONS = (
     *schema_baseline.MIGRATIONS, JOB_RUNTIME_MIGRATION, INBOX_RECOVERY_MIGRATION,
@@ -61,7 +62,7 @@ MIGRATIONS = (
     SEO_ANNOTATIONS_MIGRATION,
     WEB_HEALTH_MIGRATION,
     CLIENT_SCOPE_REQUESTS_MIGRATION, PROJECT_HOURS_CARRYOVER_MIGRATION,
-    TASK_SORT_RANK_MIGRATION,
+    TASK_SORT_RANK_MIGRATION, TASK_TIME_BLOCKS_MIGRATION,
 )
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 

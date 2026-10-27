@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal, Optional
 from zoneinfo import ZoneInfo
 
@@ -58,8 +58,9 @@ class EventResponse(BaseModel):
     id: int
     title: str
     description: str | None = None
-    start_time: str
-    end_time: str | None = None
+    # Horas civiles de la agencia sin zona (como se guardan).
+    start_time: datetime
+    end_time: datetime | None = None
     is_all_day: bool = False
     source: str = "manual"
     google_event_id: str | None = None
@@ -224,8 +225,8 @@ async def update_alert_settings(
 
 @router.get("/events", response_model=list[EventResponse])
 async def list_calendar_events(
-    date_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
-    date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    date_from: Optional[date] = Query(None, description="YYYY-MM-DD"),
+    date_to: Optional[date] = Query(None, description="YYYY-MM-DD"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -235,11 +236,12 @@ async def list_calendar_events(
         Event.event_type == EventType.meeting,
     ).order_by(Event.start_time.asc())
 
+    # Antes comparaba el texto con la columna y fallaba (nadie lo usaba); lo lee
+    # la vista con horas de Mi agenda.
     if date_from:
-        query = query.where(Event.start_time >= date_from)
+        query = query.where(Event.start_time >= datetime.combine(date_from, datetime.min.time()))
     if date_to:
-        dt_to = datetime.fromisoformat(date_to) + timedelta(days=1)
-        query = query.where(Event.start_time < dt_to)
+        query = query.where(Event.start_time < datetime.combine(date_to + timedelta(days=1), datetime.min.time()))
 
     result = await db.execute(query.limit(100))
     return result.scalars().all()
@@ -344,8 +346,12 @@ async def sync_user_events(db: AsyncSession, user: User) -> int:
         raise HTTPException(409, "Ya hay una sincronización de este calendario en curso")
     refresh_token, calendar_id = user.google_refresh_token, user.google_calendar_id or "primary"
     now = utc_now_naive().replace(tzinfo=timezone.utc).astimezone(business_zone())
-    time_min = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    time_max = time_min + timedelta(days=7)
+    # Del lunes de esta semana al final de la siguiente: la vista con horas de
+    # Mi agenda enseña las reuniones de la semana entera (y la próxima). Si
+    # cambias la ventana, cambia /privacidad (public-legal.tsx) en el mismo PR.
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    time_min = today - timedelta(days=today.weekday())
+    time_max = time_min + timedelta(days=14)
     try:
         events = await anyio.to_thread.run_sync(lambda: fetch_events(refresh_token, calendar_id=calendar_id, time_min=time_min, time_max=time_max))
         def civil(value):

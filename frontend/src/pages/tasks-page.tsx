@@ -27,6 +27,7 @@ import { TimeLogDialog } from "@/components/timer/time-log-dialog"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { NextMeeting } from "@/components/tasks/next-meeting"
 import { MyDayView } from "@/components/tasks/my-day-view"
+import { AgendaHoursView, type HoursMode } from "@/components/tasks/agenda-hours-view"
 import { CarryoverReviewDialog } from "@/components/tasks/carryover-review-dialog"
 import { IncidentInbox } from "@/components/incidents/incident-inbox"
 import { KanbanBoard } from "@/components/tasks/kanban-board"
@@ -166,6 +167,19 @@ export default function TasksPage() {
   const [bulkStatus, setBulkStatus] = useState("")
 
   const deepLinkTaskId = searchParams.get("edit") || searchParams.get("task") || searchParams.get("id")
+
+  // Mi agenda en lista (por defecto) o con horas (`agenda=horas`): bloques de
+  // trabajo propios y reuniones de Google; día o semana (`horas=semana`) y el
+  // día que se mira (`dia=AAAA-MM-DD`). Los bloques son de cada uno: con "Todo
+  // el equipo" sólo hay lista.
+  const agendaMode = searchParams.get("agenda") === "horas" && agendaScope === "mine" ? "hours" : "list"
+  const hoursMode: HoursMode = searchParams.get("horas") === "semana" ? "week" : "day"
+  const hoursAnchor = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get("dia") ?? "") ? searchParams.get("dia")! : businessToday
+  const setAgendaParams = (changes: Record<string, string | null>) => setSearchParams((previous) => {
+    const next = new URLSearchParams(previous)
+    Object.entries(changes).forEach(([key, value]) => (value === null ? next.delete(key) : next.set(key, value)))
+    return next
+  }, { replace: true })
 
   // Calendar date range: first and last day of the selected month
   const calDateFrom = view === "calendar"
@@ -479,7 +493,21 @@ export default function TasksPage() {
         </Button>}
       </div>
 
-      {view === "my_day" && (user?.role === "admin" ? <Select aria-label="Ámbito de Hoy" className="w-full sm:w-48" value={agendaScope} onChange={(event) => setAgendaScope(event.target.value)}><option value="mine">Mi trabajo</option><option value="team">Todo el equipo</option></Select> : <p className="text-sm text-muted-foreground">Mi trabajo</p>)}
+      {view === "my_day" && <div className="flex flex-wrap items-center gap-3">
+        {user?.role === "admin" ? <Select aria-label="Ámbito de Hoy" className="w-full sm:w-48" value={agendaScope} onChange={(event) => setAgendaScope(event.target.value)}><option value="mine">Mi trabajo</option><option value="team">Todo el equipo</option></Select> : <p className="text-sm text-muted-foreground">Mi trabajo</p>}
+        {agendaScope === "mine" && (
+          <div role="group" aria-label="Cómo ver Mi agenda" className="flex rounded-lg border border-border bg-muted/30 p-0.5">
+            <Button type="button" size="sm" variant={agendaMode === "list" ? "default" : "ghost"} aria-pressed={agendaMode === "list"} className="h-7 px-3 text-xs"
+              onClick={() => setAgendaParams({ agenda: null, horas: null, dia: null })}>
+              <List className="mr-1.5 h-3.5 w-3.5" /> Lista
+            </Button>
+            <Button type="button" size="sm" variant={agendaMode === "hours" ? "default" : "ghost"} aria-pressed={agendaMode === "hours"} className="h-7 px-3 text-xs"
+              onClick={() => setAgendaParams({ agenda: "horas" })}>
+              <Clock className="mr-1.5 h-3.5 w-3.5" /> Horas
+            </Button>
+          </div>
+        )}
+      </div>}
       {view === "my_day" && agendaScope === "mine" && user && <NextMeeting today={businessToday} />}
       {view === "my_day" && agendaScope === "mine" && user && <IncidentInbox key={user.id} userId={user.id} compact />}
       {view !== "my_day" && view !== "recurring" && <>
@@ -833,7 +861,19 @@ export default function TasksPage() {
       )}
 
       {/* Conditional Rendering of Views */}
-      {!isLoading && !agendaLoading && view === "my_day" && (
+      {view === "my_day" && agendaMode === "hours" && (
+        <AgendaHoursView
+          mode={hoursMode}
+          anchor={hoursAnchor}
+          today={businessToday}
+          onAnchorChange={(day) => setAgendaParams({ dia: day === businessToday ? null : day })}
+          onModeChange={(mode) => setAgendaParams({ horas: mode === "week" ? "semana" : null })}
+          candidates={[...agendaData(plannedAgenda).items, ...agendaData(carryoverAgenda).items]}
+          canWrite={canWriteTasks}
+          onOpenTask={(taskId) => setAgendaParams({ task: String(taskId) })}
+        />
+      )}
+      {!isLoading && !agendaLoading && view === "my_day" && agendaMode === "list" && (
         plannedAgenda.isError || carryoverAgenda.isError || unplannedAgenda.isError || followupsAgenda.isError || completedAgenda.isError ? (
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center">
             <p className="font-medium">No hemos podido cargar tus tareas. Reintenta.</p>

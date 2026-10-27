@@ -1,0 +1,73 @@
+{
+  "version": "20261027_task_time_blocks_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS task_time_blocks (\n id SERIAL PRIMARY KEY,\n task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,\n user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n starts_at TIMESTAMP NOT NULL,\n ends_at TIMESTAMP NOT NULL,\n created_at TIMESTAMP NOT NULL DEFAULT now(),\n updated_at TIMESTAMP NOT NULL DEFAULT now(),\n CONSTRAINT ck_task_time_blocks_order CHECK (ends_at > starts_at),\n CONSTRAINT ck_task_time_blocks_length CHECK (ends_at - starts_at <= interval '12 hours'),\n CONSTRAINT ck_task_time_blocks_same_day CHECK (starts_at::date = (ends_at - interval '1 microsecond')::date)\n)",
+    "CREATE INDEX IF NOT EXISTS ix_task_time_blocks_user_starts ON task_time_blocks (user_id, starts_at)",
+    "CREATE INDEX IF NOT EXISTS ix_task_time_blocks_task_id ON task_time_blocks (task_id)"
+  ],
+  "columns": {
+    "task_time_blocks": {
+      "id": [
+        "int4",
+        false,
+        null
+      ],
+      "task_id": [
+        "int4",
+        false,
+        null
+      ],
+      "user_id": [
+        "int4",
+        false,
+        null
+      ],
+      "starts_at": [
+        "timestamp",
+        false,
+        null
+      ],
+      "ends_at": [
+        "timestamp",
+        false,
+        null
+      ],
+      "created_at": [
+        "timestamp",
+        false,
+        null
+      ],
+      "updated_at": [
+        "timestamp",
+        false,
+        null
+      ]
+    }
+  },
+  "primary_keys": {
+    "task_time_blocks": [
+      "id"
+    ]
+  },
+  "foreign_keys": [
+    {
+      "table": "task_time_blocks",
+      "column": "task_id",
+      "references": "tasks",
+      "on_delete": "c"
+    },
+    {
+      "table": "task_time_blocks",
+      "column": "user_id",
+      "references": "users",
+      "on_delete": "c"
+    }
+  ],
+  "check_constraints": {
+    "task_time_blocks": [
+      "ck_task_time_blocks_length",
+      "ck_task_time_blocks_order",
+      "ck_task_time_blocks_same_day"
+    ]
+  }
+}

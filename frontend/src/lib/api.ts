@@ -1156,6 +1156,40 @@ export const calendarApi = {
     api.post<{ ok: boolean; events_synced: number }>("/calendar/sync").then((r) => r.data),
   upcoming: (minutes: number = 60) =>
     api.get<{ id: number; title: string; start_time: string; minutes_until: number }[]>(`/calendar/upcoming?minutes=${minutes}`).then((r) => r.data),
+  /** Reuniones guardadas entre dos días (hora civil de la agencia). */
+  events: (dateFrom: string, dateTo: string) =>
+    api.get<CalendarEvent[]>("/calendar/events", { params: { date_from: dateFrom, date_to: dateTo } }).then((r) => r.data),
+}
+
+export interface CalendarEvent {
+  id: number
+  title: string
+  start_time: string
+  end_time: string | null
+  is_all_day: boolean
+  source: string
+}
+
+/** Bloque de trabajo con hora (Mi agenda). Horas civiles sin zona: "2026-10-28T10:00". */
+export interface TimeBlock {
+  id: number
+  task_id: number
+  starts_at: string
+  ends_at: string
+  task_title: string
+  task_status: string
+  task_estimated_minutes: number | null
+  client_name: string | null
+}
+
+export const timeBlocksApi = {
+  list: (dateFrom: string, dateTo: string) =>
+    api.get<TimeBlock[]>("/time-blocks", { params: { date_from: dateFrom, date_to: dateTo } }).then((r) => r.data),
+  create: (data: { task_id: number; starts_at: string; ends_at: string }) =>
+    api.post<TimeBlock>("/time-blocks", data).then((r) => r.data),
+  update: (id: number, data: { starts_at: string; ends_at: string }) =>
+    api.patch<TimeBlock>(`/time-blocks/${id}`, data).then((r) => r.data),
+  delete: (id: number) => api.delete(`/time-blocks/${id}`).then((r) => r.data),
 }
 
 // ── Search Console ──────────────────────────────────────────
