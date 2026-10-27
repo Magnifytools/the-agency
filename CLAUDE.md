@@ -103,7 +103,9 @@ admin_users, admin_settings
 ## Environment Variables (.env)
 - `DATABASE_URL` - PostgreSQL connection (default: postgresql+asyncpg://agency:agency@localhost:5432/the_agency)
 - `SECRET_KEY` - JWT signing key
-- `ACCESS_TOKEN_EXPIRE_MINUTES` - Token TTL (default: 480)
+- `ACCESS_TOKEN_EXPIRE_MINUTES` - Token TTL (default: 720). La cookie de la web se
+  renueva sola al pasar la mitad de su vida (`core/auth_cookies.renewed_token` +
+  `SessionRenewalMiddleware`); el Bearer de la extensión y del MCP, no.
 - `DISCORD_WEBHOOK_URL` - Optional Discord webhook
 - `ANTHROPIC_API_KEY` - API key for Claude (weekly digests generation)
 
@@ -143,12 +145,19 @@ admin_users, admin_settings
   servidor deshizo todo) y no deja la solicitud guardada. Si se queda alguna sin
   confirmar, tras "Comprobar resultado" sin versión aparece "Descartar" (individual
   y selección): sin esa salida, una solicitud que nunca prospera bloqueaba la pantalla.
-- **Vista "Resúmenes de este mes"** (`components/digests/digest-monthly-cycle.tsx`,
-  arriba en `/digests`): una fila por cliente externo activo con el informe
-  mensual encendido y el estado de su informe del mes anterior. Entregado = entrega externa confirmada
+- **Bloque "Para entregar"** (`components/digests/digest-monthly-cycle.tsx`,
+  arriba en `/digests`): una fila por cliente externo activo y cadencia
+  encendida (informe mensual del mes anterior y seguimiento semanal de la última
+  semana cerrada), con su estado (Pendiente / Borrador sin entregar / Entregado)
+  y una acción. Entregado = entrega externa confirmada
   (`digest_external_delivery_events`); `DigestStatus.sent` es histórico y no
   cuenta. Sin endpoint propio: lee `generation-preview` (Equipo para admins) y
   genera con `generate-cohort`, guardando la clave de recuperación como cohorte.
+  "Preparar varios a la vez" (`DigestCohort`) va plegado debajo; se abre solo
+  con un cliente filtrado, un periodo de aviso o una selección pendiente.
+- **Historial**: columna "Entrega al cliente" con `delivered_at` /
+  `delivered_by_name` de `GET /api/digests` (`_confirmed_deliveries`: la última
+  acción de entrega manda; revocar anula, como `delivery_is_confirmed`).
 
 ## Buffer de Ideas (Growth)
 - **Concepto**: Backlog de ideas **por proyecto**, priorizadas con ICE (Impact/Confidence/Ease)
@@ -252,6 +261,39 @@ admin_users, admin_settings
   responsable no le llega mientras tenga `report_pending` (aún no hay versión).
   Se resuelve sola al confirmar la entrega; clave por mes, así que el mes
   siguiente la sustituye.
+
+## Sesión y cambios sin guardar
+- **Sesión deslizante**: `get_current_user` marca `request.state.renewed_token`
+  cuando a la cookie le queda menos de la mitad de su vida, y
+  `api/middleware/session_renewal.py` la reemite (conserva el CSRF del navegador;
+  nunca en login/logout ni en respuestas de error). Sólo cuenta la cookie: quien
+  deja la app más de `ACCESS_TOKEN_EXPIRE_MINUTES` vuelve a entrar.
+  Lo guarda `tests/test_session_renewal.py`.
+- **Volver a donde estabas**: `ProtectedRoute` pasa `state.from` (y `expired` si
+  fue un 401 a media sesión) y el login vuelve ahí; sólo rutas internas.
+- **Cambios sin guardar**: `hooks/use-unsaved-changes.ts` (aviso de
+  `beforeunload`) en el editor de resúmenes y en el panel de tarea, que además
+  pregunta antes de descartar al cerrarse. El cierre del día ya guarda su borrador
+  en `localStorage`. Con `BrowserRouter` no hay `useBlocker`.
+
+## Cronómetro
+- ▶ en cada tarea abierta de Mi agenda y en la cabecera del panel de tarea
+  (`TimerButton`). Con otro en marcha no se bloquea: `POST /api/timer/start` ya
+  para y guarda el anterior, así que cambiar de tarea es un clic.
+- En la interfaz se dice **cronómetro**, nunca "timer".
+
+## Glosario de la interfaz
+- **Anotar** (capturar) y **Por aclarar** (la lista; ruta `/inbox`).
+- **Cierre del día** (`/dailys`) frente a **resumen** (lo que recibe el cliente).
+- **Mi agenda** (área Hoy), **cronómetro**, **subtareas**.
+- Borrar algo que está en `change_journal._SPECS` no dice "no se puede deshacer":
+  dice que se deshace con ⌘Z.
+- Atajos: G+H Mi agenda, G+R Resúmenes de clientes, G+N Alertas.
+
+## Campana
+- Junto a Buscar en la barra lateral y en la barra superior móvil (ya no en
+  Cuenta). Contador rojo = alertas; sin alertas, un punto amarillo avisa de la
+  actividad sin leer y la campana abre directamente en Actividad.
 
 ## Undo (deshacer los últimos cambios)
 
@@ -1032,4 +1074,4 @@ cd mcp-server && .venv/bin/python -m pytest -q
 
 ---
 
-*Actualizado: 22 Oct 2026*
+*Actualizado: 27 Oct 2026*
