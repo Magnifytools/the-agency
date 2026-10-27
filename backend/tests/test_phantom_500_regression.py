@@ -38,6 +38,7 @@ async def test_create_task_returns_201_when_notification_fails(admin_client, adm
     fake_task.depends_on = None
     fake_task.created_by = admin_user.id
     fake_task.scheduled_date = None
+    fake_task.sort_rank = None
     fake_task.waiting_for = None
     fake_task.follow_up_date = None
     fake_task.retired_at = None

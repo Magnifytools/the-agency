@@ -32,6 +32,7 @@ class TestTaskToResponse:
         task.depends_on = None
         task.created_by = None
         task.scheduled_date = None
+        task.sort_rank = None
         task.waiting_for = None
         task.follow_up_date = None
         task.retired_at = None
@@ -89,6 +90,7 @@ class TestTaskToResponse:
         task.depends_on = None
         task.created_by = 1
         task.scheduled_date = None
+        task.sort_rank = None
         task.waiting_for = None
         task.follow_up_date = None
         task.retired_at = None
