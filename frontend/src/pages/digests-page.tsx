@@ -14,6 +14,7 @@ import type { Digest, DigestStatus, DigestTone } from "@/lib/types"
 import { clearDigestGeneration, httpStatus as httpStatusOf, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type IndividualDigestIntent } from "@/lib/digest-generation-recovery"
 
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { DownloadPdfButton } from "@/components/digests/download-pdf-button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -102,6 +103,7 @@ function DigestList() {
   const [digestToDelete, setDigestToDelete] = useState<Digest | null>(null)
   const [discardPending, setDiscardPending] = useState(false)
   const initialRecovery = useRef(readDigestGenerations(userId))
+  const hasPendingCohort = initialRecovery.current.intents.some((intent) => intent.kind === "cohort")
   const [generationStorageFailed] = useState(initialRecovery.current.failed)
   const [pendingIndividual, setPendingIndividual] = useState<IndividualDigestIntent | null>(() =>
     initialRecovery.current.intents.find((intent): intent is IndividualDigestIntent => intent.kind === "individual") ?? null,
@@ -387,7 +389,15 @@ function DigestList() {
 
       {!filterClient && <DigestMonthlyCycle />}
 
-      <DigestCohort clientId={filterClient || undefined} expectedPeriod={expectedPeriod} />
+      {/* Con el bloque "Para entregar" arriba, preparar en lote es una herramienta
+          secundaria: plegada, salvo que venga de un aviso, de un cliente filtrado
+          o con una selección pendiente de confirmar. */}
+      <details className="group rounded-lg border border-border" open={!!filterClient || !!expectedPeriod || hasPendingCohort}>
+        <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">Preparar varios a la vez</summary>
+        <div className="border-t border-border">
+          <DigestCohort clientId={filterClient || undefined} expectedPeriod={expectedPeriod} />
+        </div>
+      </details>
 
       <div><h2 className="text-lg font-semibold">Historial de versiones</h2><p className="text-sm text-muted-foreground">{canWrite ? "Abre una versión para revisar su texto y confirmar la entrega al cliente. Discord es distribución interna." : "Abre una versión para consultar su texto y sus fuentes."}</p></div>
       {/* Filters */}
@@ -437,7 +447,8 @@ function DigestList() {
                 <TableHead>Cliente</TableHead>
                 <TableHead>Periodo</TableHead>
                 <TableHead>Tono</TableHead>
-                <TableHead>Estado</TableHead>
+                <TableHead>Entrega al cliente</TableHead>
+                <TableHead>Estado interno</TableHead>
                 <TableHead>Generado</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
@@ -445,15 +456,15 @@ function DigestList() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
+                  <TableCell colSpan={7} className="text-center py-8">
                     <Loader2 className="w-6 h-6 mx-auto animate-spin opacity-40" />
                   </TableCell>
                 </TableRow>
               ) : isError && !digestPages ? (
-                <TableRow><TableCell colSpan={6}><div role="alert" className="py-4 text-center">No se pudo cargar el historial. <Button variant="outline" size="sm" onClick={() => void refetch()}>Reintentar historial</Button></div></TableCell></TableRow>
+                <TableRow><TableCell colSpan={7}><div role="alert" className="py-4 text-center">No se pudo cargar el historial. <Button variant="outline" size="sm" onClick={() => void refetch()}>Reintentar historial</Button></div></TableCell></TableRow>
               ) : digests.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={6} className="py-12">
+                  <TableCell colSpan={7} className="py-12">
                     <div className="flex flex-col items-center">
                       <FileText className="h-8 w-8 text-muted-foreground/30 mb-3" />
                       <p className="text-sm font-medium text-foreground mb-1">Sin resúmenes</p>
@@ -475,6 +486,11 @@ function DigestList() {
                       </Link>
                     </TableCell>
                     <TableCell>{toneLabels[digest.tone]}</TableCell>
+                    <TableCell>
+                      {digest.delivered_at
+                        ? <span className="text-sm"><Badge variant="success">Entregado</Badge> <span className="text-xs text-muted-foreground">{format(new Date(digest.delivered_at), "d MMM", { locale: es })}{digest.delivered_by_name ? ` · ${digest.delivered_by_name}` : ""}</span></span>
+                        : <span className="text-sm text-muted-foreground">Sin entregar</span>}
+                    </TableCell>
                     <TableCell>
                       {canWrite ? <Select
                         value={digest.status}

@@ -245,3 +245,15 @@ it("keeps inactive clients in history without offering them for new reports", as
   expect(choices.queryByRole("option", {name: "Finished client"})).not.toBeInTheDocument()
   expect(choices.queryByRole("option", {name: "Internal client"})).not.toBeInTheDocument()
 })
+it("el historial dice qué versión se entregó al cliente y quién la marcó", async () => {
+  mocks.api.list.mockResolvedValue([
+    {...source, delivered_at: "2026-10-02T09:00:00Z", delivered_by_name: "Nacho"},
+    {...source, id: 20, client_id: 2, client_name: "Other", delivered_at: null, delivered_by_name: null},
+  ])
+  setup()
+  const delivered = (await screen.findByRole("link", {name: "Acme"})).closest("tr") as HTMLElement
+  expect(within(delivered).getByText("Entregado")).toBeInTheDocument()
+  expect(within(delivered).getByText(/2 oct · Nacho/)).toBeInTheDocument()
+  const pending = screen.getByRole("link", {name: "Other"}).closest("tr") as HTMLElement
+  expect(within(pending).getByText("Sin entregar")).toBeInTheDocument()
+})
