@@ -773,48 +773,6 @@ export function TaskPanel({
                 </Select>
               </div>
               <div>
-                <Label htmlFor="task-panel-category">Categoría</Label>
-                <Select
-                  id="task-panel-category"
-                  value={draft.category_id ?? ""}
-                  onChange={(e) =>
-                    change(
-                      "category_id",
-                      e.target.value ? Number(e.target.value) : null,
-                    )
-                  }
-                  disabled={!canOperate}
-                >
-                  <option value="">Sin categoría</option>
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="task-panel-phase">Fase</Label>
-                <Select
-                  id="task-panel-phase"
-                  value={draft.phase_id ?? ""}
-                  onChange={(e) =>
-                    change(
-                      "phase_id",
-                      e.target.value ? Number(e.target.value) : null,
-                    )
-                  }
-                  disabled={!canOperate || !draft.project_id}
-                >
-                  <option value="">Sin fase</option>
-                  {projectQuery.data?.phases?.map((phase) => (
-                    <option key={phase.id} value={phase.id}>
-                      {phase.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
                 <Label htmlFor="task-panel-due">Fecha límite</Label>
                 <Input
                   id="task-panel-due"
@@ -989,11 +947,57 @@ export function TaskPanel({
               </div>
               {waitingError && <p role="alert" className="mt-2 text-sm text-destructive">{waitingError}</p>}
             </details>
-            <details>
+            {/* Lo que no se toca en cada tarea va plegado: categoría, fase, dependencia y recurrencia. */}
+            <details open={!!(draft.category_id || draft.phase_id || draft.depends_on || draft.is_recurring)}>
               <summary className="cursor-pointer text-sm font-medium">
-                Dependencias y recurrencia
+                Más opciones
+                <span className="ml-1 font-normal text-muted-foreground">· categoría, fase, dependencia y recurrencia</span>
               </summary>
                 <div className="mt-2 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="task-panel-category">Categoría</Label>
+                  <Select
+                    id="task-panel-category"
+                    value={draft.category_id ?? ""}
+                    onChange={(e) =>
+                      change(
+                        "category_id",
+                        e.target.value ? Number(e.target.value) : null,
+                      )
+                    }
+                    disabled={!canOperate}
+                  >
+                    <option value="">Sin categoría</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="task-panel-phase">Fase</Label>
+                  <Select
+                    id="task-panel-phase"
+                    value={draft.phase_id ?? ""}
+                    onChange={(e) =>
+                      change(
+                        "phase_id",
+                        e.target.value ? Number(e.target.value) : null,
+                      )
+                    }
+                    disabled={!canOperate || !draft.project_id}
+                  >
+                    <option value="">Sin fase</option>
+                    {projectQuery.data?.phases?.map((phase) => (
+                      <option key={phase.id} value={phase.id}>
+                        {phase.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                </div>
                 {taskQuery.data?.recurring_parent_title && taskQuery.data.recurrence_occurrence_date && (
                   <p className="text-sm text-muted-foreground">
                     Prevista por {taskQuery.data.recurring_parent_title} para {taskQuery.data.recurrence_occurrence_date}. La fecha programada se puede ajustar sin cambiar esta referencia.
