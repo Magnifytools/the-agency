@@ -283,6 +283,7 @@ export default function SettingsPage() {
     { id: "shortcuts", label: "Atajos de teclado" },
     ...(canManageCategories ? [{ id: "categories", label: "Categorías de tareas" }] : []),
     { id: "location", label: "Ubicación" },
+    { id: "extension", label: "Extensión de Chrome" },
     { id: "notifications", label: "Avisos" },
     ...(isAdmin ? [{ id: "scheduled-processes", label: "Procesos programados" }] : []),
     ...(isAdmin ? [{ id: "operational-usage", label: "Señales operativas" }] : []),

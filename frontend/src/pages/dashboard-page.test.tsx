@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -106,109 +106,17 @@ describe("DashboardPage", () => {
     expect(mocks.tasks).not.toHaveBeenCalled()
   })
 
-  it("links personal tasks for readers without offering task or timer mutations", async () => {
-    mocks.user = { id: 4, role: "member", permissions: [{ module: "tasks", can_read: true, can_write: false }] }
-    mocks.tasks.mockImplementation(({ status }: { status: string }) => Promise.resolve(status === "in_progress"
-      ? [{ id: 12, title: "Revisar propuesta", status, client_name: null, due_date: null }]
-      : [{ id: 13, title: "Preparar cierre", status, client_name: null, due_date: null }]))
-    show()
-    expect(await screen.findByRole("link", { name: "Revisar propuesta" })).toHaveAttribute("href", "/tasks?task=12")
-    expect(await screen.findByRole("link", { name: "Preparar cierre" })).toHaveAttribute("href", "/tasks?task=13")
-    expect(screen.queryByRole("button", { name: /Completar:|Enviar a revisión:/ })).not.toBeInTheDocument()
-    expect(screen.queryByTitle("Iniciar el cronómetro")).not.toBeInTheDocument()
-  })
-
-  it("uses consultation copy for a reader with no in-progress tasks", async () => {
-    mocks.user = { id: 4, role: "member", permissions: [{ module: "tasks", can_read: true, can_write: false }] }
-    show()
-    expect(await screen.findByText("Sin tareas en curso")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Consulta tus tareas en Trabajo" })).toHaveAttribute("href", "/tasks?view=all")
-  })
-
-  it("keeps the timer available when a task reader can write time entries", async () => {
+  it("para quien no es admin no repite Mi agenda: ni listas de tareas ni cronómetro, sólo el enlace", async () => {
     mocks.user = { id: 4, role: "member", permissions: [
-      { module: "tasks", can_read: true, can_write: false },
+      { module: "tasks", can_read: true, can_write: true },
       { module: "timesheet", can_read: true, can_write: true },
     ] }
-    mocks.tasks.mockImplementation(({ status }: { status: string }) => Promise.resolve(status === "in_progress"
-      ? [{ id: 12, title: "Revisar propuesta", status, client_name: null, due_date: null }]
-      : []))
+    mocks.tasks.mockImplementation(({ status }: { status: string }) => Promise.resolve([{ id: 12, title: "Revisar propuesta", status, client_name: null, due_date: null }]))
     show()
-    expect(await screen.findByRole("link", { name: "Revisar propuesta" })).toHaveAttribute("href", "/tasks?task=12")
-    expect(await screen.findByTitle("Iniciar el cronómetro")).toBeEnabled()
-    expect(screen.queryByRole("button", { name: /Completar:|Enviar a revisión:/ })).not.toBeInTheDocument()
-  })
-
-  it("sends a concrete project task to review for a member who is not the owner", async () => {
-    mocks.user = { id: 4, role: "member", permissions: [{ module: "tasks", can_read: true, can_write: true }] }
-    const task = {
-      id: 12,
-      title: "Revisar propuesta",
-      status: "in_progress",
-      client_name: null,
-      due_date: null,
-      is_recurring: false,
-      project_requires_task_review: true,
-      project_review_owner_id: 9,
-      project_id: 3,
-      client_id: 2,
-    }
-    mocks.tasks.mockImplementation((params) => Promise.resolve(params.status === "in_progress" ? [task] : []))
-    mocks.taskUpdate.mockResolvedValue({ ...task, status: "in_review" })
-
-    show()
-    await userEvent.click(await screen.findByTitle("Enviar a revisión"))
-
-    await waitFor(() => expect(mocks.taskUpdate).toHaveBeenCalledWith(12, { status: "in_review" }))
-    expect(mocks.toastSuccess).toHaveBeenCalledWith("Tarea enviada a revisión")
-  })
-
-  it("lets the project owner complete a reviewed task directly", async () => {
-    mocks.user = { id: 9, role: "member", permissions: [{ module: "tasks", can_read: true, can_write: true }] }
-    const task = {
-      id: 13,
-      title: "Aprobar propuesta",
-      status: "pending",
-      client_name: null,
-      due_date: null,
-      is_recurring: false,
-      project_requires_task_review: true,
-      project_review_owner_id: 9,
-      project_id: 3,
-      client_id: 2,
-    }
-    mocks.tasks.mockImplementation((params) => Promise.resolve(params.status === "pending" ? [task] : []))
-    mocks.taskUpdate.mockResolvedValue({ ...task, status: "completed" })
-
-    show()
-    await userEvent.click(await screen.findByTitle("Completar"))
-
-    await waitFor(() => expect(mocks.taskUpdate).toHaveBeenCalledWith(13, { status: "completed" }))
-    expect(mocks.toastSuccess).toHaveBeenCalledWith("Tarea completada")
-  })
-
-  it("does not claim review submission succeeded when the write fails", async () => {
-    mocks.user = { id: 4, role: "member", permissions: [{ module: "tasks", can_read: true, can_write: true }] }
-    const task = {
-      id: 14,
-      title: "Informe mensual",
-      status: "in_progress",
-      client_name: null,
-      due_date: null,
-      is_recurring: false,
-      project_requires_task_review: true,
-      project_review_owner_id: 9,
-      project_id: 3,
-      client_id: 2,
-    }
-    mocks.tasks.mockImplementation((params) => Promise.resolve(params.status === "in_progress" ? [task] : []))
-    mocks.taskUpdate.mockRejectedValue(new Error("Sin conexión"))
-
-    show()
-    await userEvent.click(await screen.findByTitle("Enviar a revisión"))
-
-    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith("Sin conexión"))
-    expect(mocks.toastSuccess).not.toHaveBeenCalled()
+    expect(await screen.findByRole("link", { name: /Tus tareas de hoy y el cronómetro están en/ })).toHaveAttribute("href", "/tasks?view=my_day")
+    expect(screen.queryByText("Revisar propuesta")).not.toBeInTheDocument()
+    expect(screen.queryByTitle("Iniciar el cronómetro")).not.toBeInTheDocument()
+    expect(screen.getByRole("heading", { level: 1, name: "Visión general" })).toBeInTheDocument()
   })
 
   it("does not expose cached finance data after a 403", async () => {
@@ -312,46 +220,11 @@ describe("DashboardPage", () => {
     mocks.user = { id: 1, role: "admin", permissions: [] }
     mocks.send.mockRejectedValueOnce({ response: { status: 409 } })
     show()
-    await userEvent.click(await screen.findByRole("button", { name: /Vista previa antes de enviar/ }))
+    await userEvent.click(await screen.findByRole("button", { name: /vista previa antes de enviar/i }))
     expect(await screen.findByText("Resumen")).toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Enviar" }))
     await waitFor(() => expect(mocks.send).toHaveBeenCalledWith({ date: "2026-09-20", expected_revision: "sha-1" }))
     expect(mocks.send).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(mocks.preview).toHaveBeenCalledTimes(2))
-  })
-})
-
-
-describe("Dashboard timer shared state", () => {
-  it("updates a mounted timer consumer immediately after starting from Dashboard", async () => {
-    mocks.user = { id: 4, role: "member", permissions: [{ module: "tasks", can_read: true, can_write: true }, { module: "timesheet", can_read: true, can_write: true }] }
-    mocks.tasks.mockImplementation((params) => Promise.resolve(params.status === "in_progress" ? [{ id: 12, title: "Revisar propuesta", status: "in_progress", client_name: null, due_date: null }] : []))
-    let running = false
-    mocks.active.mockImplementation(() => Promise.resolve(running ? { id: 7, task_id: 12, task_title: "Revisar propuesta" } : null))
-    mocks.start.mockImplementation(async () => { running = true; return { id: 7, task_id: 12 } })
-    function OtherTimerConsumer() {
-      const { data } = useQuery({ queryKey: ["active-timer"], queryFn: mocks.active, staleTime: Infinity })
-      return <output data-testid="other-timer">{data?.task_id ?? "Sin cronómetro"}</output>
-    }
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
-    render(<MemoryRouter><QueryClientProvider client={client}><DashboardPage /><OtherTimerConsumer /></QueryClientProvider></MemoryRouter>)
-    await screen.findByText("Revisar propuesta")
-    expect(screen.getByTestId("other-timer")).toHaveTextContent("Sin cronómetro")
-    await userEvent.click(screen.getByTitle("Iniciar el cronómetro"))
-    await waitFor(() => expect(screen.getByTestId("other-timer")).toHaveTextContent("12"))
-    expect(mocks.start).toHaveBeenCalledTimes(1)
-  })
-
-  it("does not offer start as if no timer existed when its state is unknown", async () => {
-    mocks.user = { id: 4, role: "member", permissions: [{ module: "tasks", can_read: true, can_write: true }, { module: "timesheet", can_read: true, can_write: true }] }
-    mocks.tasks.mockImplementation((params) => Promise.resolve(params.status === "in_progress" ? [{ id: 12, title: "Revisar propuesta", status: "in_progress", client_name: null, due_date: null }] : []))
-    mocks.active.mockRejectedValueOnce(new Error("503"))
-    show()
-    await screen.findByText("No se pudo comprobar el cronómetro. Reintenta antes de iniciar otro.")
-    expect(screen.getByTitle("Iniciar el cronómetro")).toBeDisabled()
-    mocks.active.mockResolvedValue(null)
-    await userEvent.click(screen.getByRole("button", { name: "Reintentar cronómetro" }))
-    await waitFor(() => expect(screen.getByTitle("Iniciar el cronómetro")).toBeEnabled())
-    expect(mocks.start).not.toHaveBeenCalled()
   })
 })

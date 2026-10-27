@@ -5,6 +5,7 @@ import { inboxApi } from "@/lib/api"
 import { inboxKeys } from "@/lib/query-keys"
 import { Search, Inbox, LogOut, LayoutGrid } from "lucide-react"
 import { navigationFor, activeArea, activeAreaLink } from "./navigation"
+import { useSectionTitle } from "@/hooks/use-page-title"
 import { cn } from "@/lib/utils"
 import { BottomDrawer } from "@/components/ui/bottom-drawer"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
@@ -51,6 +52,8 @@ export function AppLayout() {
   const currentArea = activeArea(location.pathname, location.search)
   const currentLinks = navigation.find((area) => area.id === currentArea)?.links ?? []
   const isActive = (to: string) => activeAreaLink(to, location.pathname, location.search)
+  // Cada pestaña del navegador dice dónde está; las fichas lo afinan con usePageTitle.
+  useSectionTitle(currentLinks.find((link) => isActive(link.to))?.label ?? navigation.find((area) => area.id === currentArea)?.label)
 
   return (
     <div className="flex h-screen flex-col bg-background overflow-hidden relative">

@@ -257,15 +257,16 @@ function DailyEditor({ userId, date, onDateChange, serverDaily, serverError, che
         {draft.rawText.length > 50_000 && <p role="alert" className="text-sm">Las notas superan 50.000 caracteres. Redúcelas antes de guardar.</p>}
         <p className="text-xs text-muted-foreground">{draft.sourceFactKeys.length} fuentes seleccionadas · máximo 500</p>
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => save.mutate(editorRef.current)} disabled={blocked || (!draft.rawText.trim() && !draft.sourceFactKeys.length) || draft.rawText.length > 50_000 || draft.sourceFactKeys.length > 500}>
-            {save.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}Guardar borrador
-          </Button>
-          {!isSent && <Button variant="outline" onClick={() => enrich.mutate(editorRef.current)} disabled={blocked || (!draft.rawText.trim() && !draft.sourceFactKeys.length) || draft.rawText.length > 50_000 || draft.sourceFactKeys.length > 500}>
-            {enrich.isPending ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Wand2 className="mr-2 size-4" />}Estructurar con IA
+          {/* Lo normal es guardar y estructurar de una vez; guardar sin IA queda como secundario. */}
+          {!isSent && <Button onClick={() => enrich.mutate(editorRef.current)} disabled={blocked || (!draft.rawText.trim() && !draft.sourceFactKeys.length) || draft.rawText.length > 50_000 || draft.sourceFactKeys.length > 500}>
+            {enrich.isPending ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Wand2 className="mr-2 size-4" />}Guardar y estructurar
           </Button>}
+          <Button variant="outline" onClick={() => save.mutate(editorRef.current)} disabled={blocked || (!draft.rawText.trim() && !draft.sourceFactKeys.length) || draft.rawText.length > 50_000 || draft.sourceFactKeys.length > 500}>
+            {save.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}Sólo guardar borrador
+          </Button>
           <span role="status" className="text-xs text-muted-foreground">{save.isPending ? "Guardando…" : enrich.isPending ? "Guardando y estructurando…" : dirty ? "Notas locales sin guardar" : "Versión guardada"}</span>
         </div>
-        {!isSent && <p className="text-xs text-muted-foreground">Al estructurar con IA, guardaremos primero tus notas y fuentes. Podrás revisar el resultado antes de compartirlo.</p>}
+        {!isSent && <p className="text-xs text-muted-foreground">Guardar y estructurar guarda primero tus notas y fuentes; después revisas el resultado y lo compartes en Discord desde su fila del historial (icono de mensaje).</p>}
         {base?.parsed_data && <ParsedDaily daily={base} canOpenSources={canOpenSources} />}
       </CardContent>
     </Card>
